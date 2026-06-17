@@ -20,6 +20,9 @@ let package = Package(
     targets: [
         .target(
             name: "SoloPMCore",
+            resources: [
+                .process("Resources")
+            ],
             linkerSettings: [
                 .linkedLibrary("sqlite3")
             ]

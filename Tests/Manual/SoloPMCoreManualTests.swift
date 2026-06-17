@@ -13,6 +13,10 @@ struct ManualTestRunner {
         try suite.testPhase0MigrationsAreIdempotent()
         try suite.testRedactingAuditLoggerRemovesSecretsFromMetadata()
         try suite.testEmptySummaryLabelsAreStable()
+        try suite.testWriteActionRequiresApproval()
+        try suite.testDangerActionIsRejected()
+        try suite.testAmbiguousActionRequiresUserConfirmationWarning()
+        try suite.testInvalidActionPlanJSONIsBlocking()
 
         suite.finish()
     }
@@ -84,6 +88,67 @@ private struct ManualTestSuite {
         expectEqual(viewModel.overdueLabel, "0 overdue", "Overdue label should be stable.")
         expectEqual(viewModel.thisWeekLabel, "0 due this week", "This week label should be stable.")
         expect(!viewModel.hasRecentProjects, "Empty summary should not have recent projects.")
+    }
+
+    mutating func testWriteActionRequiresApproval() throws {
+        let plan = ActionPlan(
+            id: "plan-1",
+            userInput: "Create a task",
+            summary: "Create task",
+            actions: [
+                PlanAction(id: "action-1", tool: .taskCreate)
+            ],
+            riskLevel: .write,
+            requiresApproval: false
+        )
+
+        let result = ActionPlanValidator().validate(plan)
+
+        expect(!result.isValid, "Write action without approval should be invalid.")
+        expect(result.issues.contains { $0.path == "requiresApproval" }, "Approval issue should be reported.")
+    }
+
+    mutating func testDangerActionIsRejected() throws {
+        let plan = ActionPlan(
+            id: "plan-1",
+            userInput: "Delete file",
+            summary: "Delete file",
+            actions: [
+                PlanAction(id: "action-1", tool: .filesystemCreateMarkdownFile, riskLevel: .danger)
+            ],
+            riskLevel: .danger,
+            requiresApproval: true
+        )
+
+        let result = ActionPlanValidator().validate(plan)
+
+        expect(!result.isValid, "Danger action should be invalid.")
+        expect(result.issues.contains { $0.message.contains("Dangerous") }, "Danger issue should be reported.")
+    }
+
+    mutating func testAmbiguousActionRequiresUserConfirmationWarning() throws {
+        let plan = ActionPlan(
+            id: "plan-1",
+            userInput: "Next Friday",
+            summary: "Create task",
+            actions: [
+                PlanAction(id: "action-1", tool: .taskCreate, requiresUserConfirmation: true)
+            ],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+
+        let result = ActionPlanValidator().validate(plan)
+
+        expect(result.isValid, "Ambiguous action should remain executable after review.")
+        expect(result.requiresUserConfirmation, "Ambiguous action should require user confirmation.")
+    }
+
+    mutating func testInvalidActionPlanJSONIsBlocking() throws {
+        let result = ActionPlanValidator().validate(jsonData: Data("{".utf8))
+
+        expect(!result.isValid, "Invalid JSON should be blocking.")
+        expectEqual(result.issues.first?.path, "$", "Invalid JSON should point to document root.")
     }
 
     mutating func expect(_ condition: @autoclosure () throws -> Bool, _ message: String) rethrows {

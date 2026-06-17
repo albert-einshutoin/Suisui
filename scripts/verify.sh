@@ -6,16 +6,10 @@ BUILD_DIR="$ROOT_DIR/.build/manual"
 
 mkdir -p "$BUILD_DIR"
 
-CORE_SOURCES=(
-  "$ROOT_DIR/Sources/SoloPMCore/App/AppSettings.swift"
-  "$ROOT_DIR/Sources/SoloPMCore/App/MenuBarSummary.swift"
-  "$ROOT_DIR/Sources/SoloPMCore/Permissions/PermissionManager.swift"
-  "$ROOT_DIR/Sources/SoloPMCore/Shortcuts/ShortcutRegistration.swift"
-  "$ROOT_DIR/Sources/SoloPMCore/Security/SecretStore.swift"
-  "$ROOT_DIR/Sources/SoloPMCore/Security/KeychainSecretStore.swift"
-  "$ROOT_DIR/Sources/SoloPMCore/Audit/AuditLogger.swift"
-  "$ROOT_DIR/Sources/SoloPMCore/Database/SQLiteDatabaseClient.swift"
-)
+CORE_SOURCES=()
+while IFS= read -r source_file; do
+  CORE_SOURCES+=("$source_file")
+done < <(find "$ROOT_DIR/Sources/SoloPMCore" -name '*.swift' -print | sort)
 
 swiftc \
   -emit-module \

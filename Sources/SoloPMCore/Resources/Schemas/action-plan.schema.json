@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://solopm.dev/schemas/action-plan.schema.json",
+  "title": "SoloPM ActionPlan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "userInput", "summary", "actions", "riskLevel", "requiresApproval"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "userInput": { "type": "string" },
+    "summary": { "type": "string", "minLength": 1 },
+    "riskLevel": { "$ref": "#/$defs/riskLevel" },
+    "requiresApproval": { "type": "boolean" },
+    "actions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/action" }
+    }
+  },
+  "$defs": {
+    "riskLevel": {
+      "type": "string",
+      "enum": ["read", "draft", "write", "danger"]
+    },
+    "tool": {
+      "type": "string",
+      "enum": [
+        "project.create",
+        "project.update",
+        "project.list",
+        "task.create",
+        "task.bulk_create",
+        "task.list_due",
+        "notification.schedule",
+        "calendar.create_event",
+        "reminders.create",
+        "filesystem.create_directory",
+        "filesystem.create_markdown_file",
+        "frame.search",
+        "maildraft.create_text"
+      ]
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "tool"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "tool": { "$ref": "#/$defs/tool" },
+        "riskLevel": { "$ref": "#/$defs/riskLevel" },
+        "requiresUserConfirmation": { "type": "boolean" },
+        "arguments": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}
+
