@@ -17,6 +17,9 @@ public enum ToolRegistryFactory {
             reminderClient: InMemoryReminderClient(),
             fileAccessClient: LocalFileAccessClient(workspaceRoot: workspaceRoot),
             mailDraftClient: InMemoryMailDraftClient(),
+            notificationRequestStore: SQLiteNotificationRequestStore(connection: connection),
+            calendarLinkStore: SQLiteCalendarLinkStore(connection: connection),
+            reminderLinkStore: SQLiteReminderLinkStore(connection: connection),
             auditLogger: auditLogger
         )
     }

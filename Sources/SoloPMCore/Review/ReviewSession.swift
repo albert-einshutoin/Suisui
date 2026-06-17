@@ -23,6 +23,11 @@ public enum ReviewActionExecutionStatus: Equatable, Sendable {
     case skipped
 }
 
+public enum ReviewActionFailureRecovery: String, Equatable, Sendable {
+    case retryable
+    case notRetryable
+}
+
 public struct ReviewActionItem: Identifiable, Equatable, Sendable {
     public var id: String
     public var originalAction: PlanAction
@@ -31,6 +36,7 @@ public struct ReviewActionItem: Identifiable, Equatable, Sendable {
     public var executionStatus: ReviewActionExecutionStatus
     public var result: ToolResult?
     public var errorMessage: String?
+    public var failureRecovery: ReviewActionFailureRecovery?
 
     public init(action: PlanAction, isEnabled: Bool = true) {
         self.id = action.id
@@ -40,6 +46,7 @@ public struct ReviewActionItem: Identifiable, Equatable, Sendable {
         self.executionStatus = .pending
         self.result = nil
         self.errorMessage = nil
+        self.failureRecovery = nil
     }
 }
 
@@ -129,6 +136,7 @@ public struct ReviewSession: Equatable, Sendable {
         items[index].executionStatus = .pending
         items[index].result = nil
         items[index].errorMessage = nil
+        items[index].failureRecovery = nil
         refreshApprovalState()
     }
 
@@ -141,6 +149,7 @@ public struct ReviewSession: Equatable, Sendable {
         items[index].executionStatus = .pending
         items[index].result = nil
         items[index].errorMessage = nil
+        items[index].failureRecovery = nil
         refreshApprovalState()
     }
 
@@ -171,7 +180,13 @@ public struct ReviewSession: Equatable, Sendable {
         executionStatus = .canceled
     }
 
-    mutating func markAction(id: String, status: ReviewActionExecutionStatus, result: ToolResult? = nil, errorMessage: String? = nil) {
+    mutating func markAction(
+        id: String,
+        status: ReviewActionExecutionStatus,
+        result: ToolResult? = nil,
+        errorMessage: String? = nil,
+        failureRecovery: ReviewActionFailureRecovery? = nil
+    ) {
         guard let index = items.firstIndex(where: { $0.id == id }) else {
             return
         }
@@ -179,6 +194,7 @@ public struct ReviewSession: Equatable, Sendable {
         items[index].executionStatus = status
         items[index].result = result
         items[index].errorMessage = errorMessage
+        items[index].failureRecovery = failureRecovery
     }
 
     private mutating func refreshApprovalState() {
@@ -201,5 +217,66 @@ public struct ReviewSession: Equatable, Sendable {
         }
 
         return .notRequired
+    }
+}
+
+public struct ReviewPermissionGate: Equatable, Sendable {
+    public var permissionSnapshot: PermissionSnapshot
+
+    public init(permissionSnapshot: PermissionSnapshot = .empty) {
+        self.permissionSnapshot = permissionSnapshot
+    }
+
+    public func validationIssues(for action: PlanAction) -> [ToolInputValidationIssue] {
+        guard let permission = action.tool.requiredAppPermission else {
+            return []
+        }
+
+        let status = permissionSnapshot.status(for: permission)
+        guard PermissionDisplayPolicy.isActionDisabled(for: status) else {
+            return []
+        }
+
+        return [
+            ToolInputValidationIssue(
+                actionID: action.id,
+                field: "permission",
+                message: "\(permission.displayName) permission is \(PermissionDisplayPolicy.label(for: status).lowercased()). Open Settings to restore access."
+            )
+        ]
+    }
+}
+
+private extension ActionTool {
+    var requiredAppPermission: AppPermission? {
+        switch self.actionType {
+        case .calendar:
+            .calendar
+        case .reminder:
+            .reminders
+        case .notification:
+            .notifications
+        case .filesystem:
+            .fileAccess
+        case .project, .task, .knowledgeFrame, .mailDraft, .developer:
+            nil
+        }
+    }
+}
+
+private extension AppPermission {
+    var displayName: String {
+        switch self {
+        case .calendar:
+            "Calendar"
+        case .reminders:
+            "Reminders"
+        case .notifications:
+            "Notifications"
+        case .fileAccess:
+            "File access"
+        case .microphone:
+            "Microphone"
+        }
     }
 }

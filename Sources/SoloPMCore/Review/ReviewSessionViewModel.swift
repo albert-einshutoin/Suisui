@@ -6,16 +6,26 @@ public final class ReviewSessionViewModel: ObservableObject {
     @Published public private(set) var session: ReviewSession
     @Published public private(set) var isExecuting: Bool
     @Published public private(set) var errorMessage: String?
+    @Published public private(set) var validationIssuesByActionID: [String: [ToolInputValidationIssue]]
 
     private let executor: ActionExecutor
     private let auditLogger: (any AuditLogger)?
+    private let permissionGate: ReviewPermissionGate
 
-    public init(plan: ActionPlan, executor: ActionExecutor, auditLogger: (any AuditLogger)? = nil) {
+    public init(
+        plan: ActionPlan,
+        executor: ActionExecutor,
+        auditLogger: (any AuditLogger)? = nil,
+        permissionGate: ReviewPermissionGate = ReviewPermissionGate()
+    ) {
         self.session = ReviewSession(plan: plan)
         self.executor = executor
         self.auditLogger = auditLogger
+        self.permissionGate = permissionGate
         self.isExecuting = false
         self.errorMessage = nil
+        self.validationIssuesByActionID = [:]
+        refreshValidationIssues()
         try? record(action: "session.create", status: .started)
     }
 
@@ -24,21 +34,28 @@ public final class ReviewSessionViewModel: ObservableObject {
     }
 
     public var canExecute: Bool {
-        session.canExecute && !isExecuting && session.executionStatus != .canceled
+        session.canExecute && validationIssuesByActionID.isEmpty && !isExecuting && session.executionStatus != .canceled
+    }
+
+    public func validationIssues(for actionID: String) -> [ToolInputValidationIssue] {
+        validationIssuesByActionID[actionID] ?? []
     }
 
     public func setActionEnabled(actionID: String, isEnabled: Bool) {
         session.setActionEnabled(id: actionID, isEnabled)
+        refreshValidationIssues()
         try? record(action: isEnabled ? "action.enable" : "action.disable", status: .succeeded, actionID: actionID)
     }
 
     public func updateStringArgument(actionID: String, key: String, value: String) {
         session.updateStringArgument(id: actionID, key: key, value: value)
+        refreshValidationIssues()
         try? record(action: "action.edit", status: .succeeded, actionID: actionID)
     }
 
     public func resetAction(actionID: String) {
         session.resetAction(id: actionID)
+        refreshValidationIssues()
         try? record(action: "action.reset", status: .succeeded, actionID: actionID)
     }
 
@@ -54,6 +71,9 @@ public final class ReviewSessionViewModel: ObservableObject {
 
     public func execute() throws {
         guard canExecute else {
+            if !validationIssuesByActionID.isEmpty {
+                throw ActionExecutorError.validationFailed(validationIssuesByActionID.values.flatMap { $0 })
+            }
             throw ReviewSessionError.approvalRequired
         }
 
@@ -72,7 +92,16 @@ public final class ReviewSessionViewModel: ObservableObject {
 
     public func cancel() {
         session.cancel()
+        refreshValidationIssues()
         try? record(action: "session.cancel", status: .skipped)
+    }
+
+    private func refreshValidationIssues() {
+        let permissionIssues = session.enabledItems.flatMap { permissionGate.validationIssues(for: $0.editedAction) }
+        validationIssuesByActionID = Dictionary(
+            grouping: executor.validationIssues(for: session) + permissionIssues,
+            by: { $0.actionID ?? "" }
+        ).filter { !$0.key.isEmpty }
     }
 
     private func record(action: String, status: AuditStatus, actionID: String? = nil) throws {

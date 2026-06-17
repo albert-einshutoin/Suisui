@@ -47,6 +47,57 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertTrue(logger.recordedEvents.contains { $0.action == "session.cancel" })
     }
 
+    func testInvalidEditDisablesExecutionAndReportsValidationIssue() throws {
+        let registry = try ToolRegistry(tools: [
+            StaticTool(name: .taskCreate, description: "create", inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]), permissionLevel: .writeWithApproval) { _, _ in
+                ToolResult(tool: .taskCreate, status: .succeeded, summary: "created")
+            }
+        ])
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+            ]),
+            executor: ActionExecutor(registry: registry)
+        )
+
+        viewModel.updateStringArgument(actionID: "task", key: "title", value: "   ")
+        try viewModel.approve()
+
+        XCTAssertFalse(viewModel.canExecute)
+        XCTAssertEqual(viewModel.validationIssues(for: "task").first?.field, "title")
+        XCTAssertThrowsError(try viewModel.execute())
+    }
+
+    func testPermissionDeniedActionIsDisabledWithSettingsGuidance() throws {
+        var permissions = PermissionSnapshot.empty
+        permissions.setStatus(.denied, for: .notifications)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(name: .notificationSchedule, description: "notify", inputSchema: ToolInputSchema(required: ["title", "scheduledAt"], properties: ["title": "string", "scheduledAt": "string"]), permissionLevel: .writeWithApproval) { _, _ in
+                ToolResult(tool: .notificationSchedule, status: .succeeded, summary: "scheduled")
+            }
+        ])
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(
+                    id: "notify",
+                    tool: .notificationSchedule,
+                    arguments: [
+                        "title": .string("Standup"),
+                        "scheduledAt": .string("2026-06-18T09:00:00Z")
+                    ]
+                )
+            ]),
+            executor: ActionExecutor(registry: registry),
+            permissionGate: ReviewPermissionGate(permissionSnapshot: permissions)
+        )
+
+        try viewModel.approve()
+
+        XCTAssertFalse(viewModel.canExecute)
+        XCTAssertEqual(viewModel.validationIssues(for: "notify").first?.field, "permission")
+        XCTAssertTrue(viewModel.validationIssues(for: "notify").first?.message.contains("Open Settings") == true)
+    }
+
     func testFakeVoiceToReviewToExecuteFlow() async throws {
         let plan = ActionPlan.reviewViewModelFixture(actions: [
             PlanAction(id: "project", tool: .projectCreate, arguments: ["title": .string("QZT Article")]),

@@ -34,6 +34,18 @@ public final class SQLiteConnection {
         }
     }
 
+    public func transaction<T>(_ body: () throws -> T) throws -> T {
+        try execute("BEGIN;")
+        do {
+            let result = try body()
+            try execute("COMMIT;")
+            return result
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
     public func queryStrings(_ sql: String) throws -> [String] {
         var statement: OpaquePointer?
         let prepareStatus = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
@@ -248,6 +260,53 @@ public enum CoreMigrations {
                         content='knowledge_frames',
                         content_rowid='id'
                     );
+                    """
+                )
+            },
+            DatabaseMigration(id: "0002b_create_system_tool_state") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS notification_requests (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        request_id TEXT NOT NULL UNIQUE,
+                        status TEXT NOT NULL CHECK(status IN ('pending', 'scheduled', 'failed')),
+                        title TEXT NOT NULL,
+                        scheduled_at TEXT NOT NULL,
+                        external_notification_id TEXT,
+                        failure_reason TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE TABLE IF NOT EXISTS calendar_links (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        event_id TEXT NOT NULL UNIQUE,
+                        project_id INTEGER,
+                        task_id INTEGER,
+                        title TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_calendar_links_project
+                    ON calendar_links(project_id);
+
+                    CREATE INDEX IF NOT EXISTS idx_calendar_links_task
+                    ON calendar_links(task_id);
+
+                    CREATE TABLE IF NOT EXISTS reminder_links (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        reminder_id TEXT NOT NULL UNIQUE,
+                        project_id INTEGER,
+                        task_id INTEGER,
+                        title TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_reminder_links_project
+                    ON reminder_links(project_id);
+
+                    CREATE INDEX IF NOT EXISTS idx_reminder_links_task
+                    ON reminder_links(task_id);
                     """
                 )
             }

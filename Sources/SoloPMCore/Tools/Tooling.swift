@@ -12,6 +12,66 @@ public struct ToolInputSchema: Equatable, Sendable {
     }
 }
 
+public struct ToolInputValidationIssue: Equatable, Sendable {
+    public var actionID: String?
+    public var field: String
+    public var message: String
+
+    public init(actionID: String? = nil, field: String, message: String) {
+        self.actionID = actionID
+        self.field = field
+        self.message = message
+    }
+}
+
+public extension ToolInputSchema {
+    func validate(arguments: [String: JSONValue], tool: ActionTool, actionID: String? = nil) -> [ToolInputValidationIssue] {
+        var issues: [ToolInputValidationIssue] = []
+
+        for key in required {
+            guard let value = arguments[key], !value.isBlankString else {
+                issues.append(
+                    ToolInputValidationIssue(
+                        actionID: actionID,
+                        field: key,
+                        message: "Missing required argument '\(key)' for \(tool.rawValue)."
+                    )
+                )
+                continue
+            }
+        }
+
+        if !additionalProperties {
+            let knownKeys = Set(properties.keys).union(required)
+            for key in arguments.keys.sorted() where !knownKeys.contains(key) {
+                issues.append(
+                    ToolInputValidationIssue(
+                        actionID: actionID,
+                        field: key,
+                        message: "Unknown argument '\(key)' for \(tool.rawValue)."
+                    )
+                )
+            }
+        }
+
+        for (key, value) in arguments {
+            guard let expectedType = properties[key], !value.matchesSchemaType(expectedType) else {
+                continue
+            }
+
+            issues.append(
+                ToolInputValidationIssue(
+                    actionID: actionID,
+                    field: key,
+                    message: "Argument '\(key)' must be \(expectedType) for \(tool.rawValue)."
+                )
+            )
+        }
+
+        return issues
+    }
+}
+
 public enum ToolPermissionLevel: String, Equatable, Sendable {
     case read
     case draft
@@ -89,6 +149,13 @@ public enum ToolExecutionError: Error, Equatable, Sendable {
     case executionFailed(ActionTool, String)
 }
 
+public extension ToolExecutionError {
+    static func validationFailed(_ tool: ActionTool, issues: [ToolInputValidationIssue]) -> ToolExecutionError {
+        let message = issues.map(\.message).joined(separator: " ")
+        return .validationFailed(tool, message.isEmpty ? "Invalid tool arguments." : message)
+    }
+}
+
 public protocol Tool: Sendable {
     var name: ActionTool { get }
     var description: String { get }
@@ -162,6 +229,23 @@ public final class ToolRegistry: @unchecked Sendable {
         return tools[name] != nil
     }
 
+    public func schema(for name: ActionTool) -> ToolInputSchema? {
+        lock.lock()
+        defer { lock.unlock() }
+        return tools[name]?.inputSchema
+    }
+
+    public func validate(action: PlanAction) -> [ToolInputValidationIssue] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard let schema = tools[action.tool]?.inputSchema else {
+            return []
+        }
+
+        return schema.validate(arguments: action.arguments, tool: action.tool, actionID: action.id)
+    }
+
     public var registeredTools: [ActionTool] {
         lock.lock()
         defer { lock.unlock() }
@@ -228,5 +312,51 @@ public struct StaticTool: Tool {
         try enforcePermission(context: context)
         try validateRequiredArguments(arguments)
         return try handler(arguments, context)
+    }
+}
+
+private extension JSONValue {
+    var isBlankString: Bool {
+        guard case .string(let value) = self else {
+            return false
+        }
+
+        return value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    func matchesSchemaType(_ expectedType: String) -> Bool {
+        switch expectedType {
+        case "string":
+            if case .string = self {
+                return true
+            }
+            return false
+        case "number":
+            switch self {
+            case .number:
+                return true
+            case .string(let value):
+                return Double(value) != nil
+            default:
+                return false
+            }
+        case "array":
+            if case .array = self {
+                return true
+            }
+            return false
+        case "object":
+            if case .object = self {
+                return true
+            }
+            return false
+        case "bool", "boolean":
+            if case .bool = self {
+                return true
+            }
+            return false
+        default:
+            return true
+        }
     }
 }

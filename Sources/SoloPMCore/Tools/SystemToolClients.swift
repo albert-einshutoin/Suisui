@@ -41,6 +41,13 @@ public struct NotificationRecord: Equatable, Sendable {
     public var title: String
     public var body: String?
     public var scheduledAt: String
+
+    public init(id: String, title: String, body: String? = nil, scheduledAt: String) {
+        self.id = id
+        self.title = title
+        self.body = body
+        self.scheduledAt = scheduledAt
+    }
 }
 
 public protocol NotificationClient: Sendable {
@@ -116,6 +123,11 @@ public struct CalendarEventDraft: Equatable, Sendable {
 public struct CalendarEventRecord: Equatable, Sendable {
     public var id: String
     public var draft: CalendarEventDraft
+
+    public init(id: String, draft: CalendarEventDraft) {
+        self.id = id
+        self.draft = draft
+    }
 }
 
 public protocol CalendarClient: Sendable {
@@ -177,6 +189,14 @@ public struct ReminderRecord: Equatable, Sendable {
     public var dueAt: String?
     public var listName: String?
     public var isCompleted: Bool
+
+    public init(id: String, title: String, dueAt: String? = nil, listName: String? = nil, isCompleted: Bool) {
+        self.id = id
+        self.title = title
+        self.dueAt = dueAt
+        self.listName = listName
+        self.isCompleted = isCompleted
+    }
 }
 
 public protocol ReminderClient: Sendable {
@@ -321,6 +341,57 @@ public final class LocalFileAccessClient: FileAccessClient, @unchecked Sendable 
             return "."
         }
         return String(path.dropFirst(rootPath.count + 1))
+    }
+}
+
+public final class SecurityScopedBookmarkFileAccessClient: FileAccessClient, @unchecked Sendable {
+    private let bookmarkData: Data
+    private let fileManager: FileManager
+
+    public init(bookmarkData: Data, fileManager: FileManager = .default) {
+        self.bookmarkData = bookmarkData
+        self.fileManager = fileManager
+    }
+
+    public func createDirectory(relativePath: String) throws -> FileArtifact {
+        try withSecurityScopedAccess { client in
+            try client.createDirectory(relativePath: relativePath)
+        }
+    }
+
+    public func createMarkdownFile(relativePath: String, contents: String) throws -> FileArtifact {
+        try withSecurityScopedAccess { client in
+            try client.createMarkdownFile(relativePath: relativePath, contents: contents)
+        }
+    }
+
+    public func scan(relativePath: String) throws -> [FileArtifact] {
+        try withSecurityScopedAccess { client in
+            try client.scan(relativePath: relativePath)
+        }
+    }
+
+    private func withSecurityScopedAccess<T>(_ body: (LocalFileAccessClient) throws -> T) throws -> T {
+        var isStale = false
+        let workspaceRoot = try URL(
+            resolvingBookmarkData: bookmarkData,
+            options: [.withSecurityScope],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        )
+
+        guard !isStale else {
+            throw ToolClientError.invalidRequest("Workspace access bookmark is stale and must be renewed.")
+        }
+
+        let didStartAccessing = workspaceRoot.startAccessingSecurityScopedResource()
+        defer {
+            if didStartAccessing {
+                workspaceRoot.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        return try body(LocalFileAccessClient(workspaceRoot: workspaceRoot, fileManager: fileManager))
     }
 }
 

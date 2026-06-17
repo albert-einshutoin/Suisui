@@ -6,13 +6,15 @@ public struct NotificationTool: Tool {
     public let inputSchema: ToolInputSchema
     public let permissionLevel: ToolPermissionLevel
     private let client: any NotificationClient
+    private let requestStore: SQLiteNotificationRequestStore?
 
-    public init(name: ActionTool, client: any NotificationClient) {
+    public init(name: ActionTool, client: any NotificationClient, requestStore: SQLiteNotificationRequestStore? = nil) {
         self.name = name
         self.description = name.rawValue
         self.inputSchema = NotificationTool.schema(for: name)
         self.permissionLevel = name.defaultRiskLevel >= .write ? .writeWithApproval : .read
         self.client = client
+        self.requestStore = requestStore
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
@@ -23,7 +25,7 @@ public struct NotificationTool: Tool {
         do {
             switch name {
             case .notificationSchedule:
-                let record = try client.schedule(
+                return try schedule(
                     NotificationDraft(
                         title: try args.requiredString("title"),
                         body: args.optionalString("body"),
@@ -31,7 +33,6 @@ public struct NotificationTool: Tool {
                         identifierHint: args.optionalString("id")
                     )
                 )
-                return scheduledResult(record)
             case .notificationScheduleRelative:
                 let offsetSeconds = try args.requiredInt64("offsetSeconds")
                 guard offsetSeconds > 0 else {
@@ -39,17 +40,11 @@ public struct NotificationTool: Tool {
                 }
                 let offset = TimeInterval(offsetSeconds)
                 let scheduledAt = ISO8601DateFormatter().string(from: context.now.addingTimeInterval(offset))
-                let record = try client.schedule(
-                    NotificationDraft(title: try args.requiredString("title"), body: args.optionalString("body"), scheduledAt: scheduledAt)
-                )
-                return scheduledResult(record)
+                return try schedule(NotificationDraft(title: try args.requiredString("title"), body: args.optionalString("body"), scheduledAt: scheduledAt))
             case .notificationScheduleOverdueRule:
                 let taskID = try args.requiredInt64("taskId")
                 let title = args.optionalString("title") ?? "Task \(taskID) is overdue"
-                let record = try client.schedule(
-                    NotificationDraft(title: title, body: args.optionalString("body"), scheduledAt: "overdue-rule:task-\(taskID)")
-                )
-                return scheduledResult(record)
+                return try schedule(NotificationDraft(title: title, body: args.optionalString("body"), scheduledAt: "overdue-rule:task-\(taskID)"))
             case .notificationCancel:
                 let id = try args.requiredString("id")
                 try client.cancel(id: id)
@@ -62,6 +57,25 @@ public struct NotificationTool: Tool {
             }
         } catch let error as ToolClientError {
             throw ToolExecutionError.executionFailed(name, error.message)
+        }
+    }
+
+    private func schedule(_ draft: NotificationDraft) throws -> ToolResult {
+        let requestID = draft.identifierHint ?? "notification-request-\(UUID().uuidString)"
+        try requestStore?.createPending(requestID: requestID, title: draft.title, scheduledAt: draft.scheduledAt)
+
+        do {
+            let record = try client.schedule(draft)
+            try requestStore?.markScheduled(requestID: requestID, externalNotificationID: record.id)
+            return scheduledResult(record)
+        } catch let error as ToolClientError {
+            if case .permissionDenied = error {
+                _ = try? requestStore?.markFailed(requestID: requestID, reason: error.message)
+            }
+            throw error
+        } catch {
+            _ = try? requestStore?.markFailed(requestID: requestID, reason: String(describing: error))
+            throw error
         }
     }
 
@@ -98,13 +112,15 @@ public struct CalendarTool: Tool {
     public let inputSchema: ToolInputSchema
     public let permissionLevel: ToolPermissionLevel
     private let client: any CalendarClient
+    private let linkStore: SQLiteCalendarLinkStore?
 
-    public init(name: ActionTool, client: any CalendarClient) {
+    public init(name: ActionTool, client: any CalendarClient, linkStore: SQLiteCalendarLinkStore? = nil) {
         self.name = name
         self.description = name.rawValue
         self.inputSchema = CalendarTool.schema(for: name)
         self.permissionLevel = .writeWithApproval
         self.client = client
+        self.linkStore = linkStore
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
@@ -135,6 +151,7 @@ public struct CalendarTool: Tool {
             }
 
             let record = try client.createEvent(draft)
+            try linkCalendarEventIfNeeded(record: record, args: args)
             return ToolResult(
                 tool: name,
                 status: .succeeded,
@@ -145,6 +162,16 @@ public struct CalendarTool: Tool {
         } catch let error as ToolClientError {
             throw ToolExecutionError.executionFailed(name, error.message)
         }
+    }
+
+    private func linkCalendarEventIfNeeded(record: CalendarEventRecord, args: ToolArguments) throws {
+        let projectID = args.optionalInt64("projectId")
+        let taskID = args.optionalInt64("taskId")
+        guard projectID != nil || taskID != nil else {
+            return
+        }
+
+        try linkStore?.link(eventID: record.id, projectID: projectID, taskID: taskID, title: record.draft.title)
     }
 
     private func makeEventDraft(args: ToolArguments) throws -> CalendarEventDraft {
@@ -162,11 +189,11 @@ public struct CalendarTool: Tool {
     private static func schema(for name: ActionTool) -> ToolInputSchema {
         switch name {
         case .calendarCreateEvent:
-            ToolInputSchema(required: ["title", "startAt", "endAt"], properties: ["title": "string", "startAt": "string", "endAt": "string", "notes": "string"])
+            ToolInputSchema(required: ["title", "startAt", "endAt"], properties: ["title": "string", "startAt": "string", "endAt": "string", "notes": "string", "projectId": "number", "taskId": "number"])
         case .calendarCreateDeadline:
-            ToolInputSchema(required: ["title", "dueDate"], properties: ["title": "string", "dueDate": "string", "notes": "string"])
+            ToolInputSchema(required: ["title", "dueDate"], properties: ["title": "string", "dueDate": "string", "notes": "string", "projectId": "number", "taskId": "number"])
         case .calendarCreateWorkBlock:
-            ToolInputSchema(required: ["title", "startAt", "durationMinutes"], properties: ["title": "string", "startAt": "string", "durationMinutes": "number", "notes": "string"])
+            ToolInputSchema(required: ["title", "startAt", "durationMinutes"], properties: ["title": "string", "startAt": "string", "durationMinutes": "number", "notes": "string", "projectId": "number", "taskId": "number"])
         default:
             ToolInputSchema()
         }
@@ -179,13 +206,15 @@ public struct ReminderTool: Tool {
     public let inputSchema: ToolInputSchema
     public let permissionLevel: ToolPermissionLevel
     private let client: any ReminderClient
+    private let linkStore: SQLiteReminderLinkStore?
 
-    public init(name: ActionTool, client: any ReminderClient) {
+    public init(name: ActionTool, client: any ReminderClient, linkStore: SQLiteReminderLinkStore? = nil) {
         self.name = name
         self.description = name.rawValue
         self.inputSchema = ReminderTool.schema(for: name)
         self.permissionLevel = .writeWithApproval
         self.client = client
+        self.linkStore = linkStore
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
@@ -197,14 +226,19 @@ public struct ReminderTool: Tool {
             switch name {
             case .remindersCreate:
                 let record = try client.create(makeDraft(args))
+                try linkReminderIfNeeded(record: record, args: args)
                 return createdResult(record)
             case .remindersBulkCreate:
                 let reminderObjects = args.objectArray("reminders")
                 guard !reminderObjects.isEmpty else {
                     throw ToolExecutionError.validationFailed(name, "reminders must contain at least one item.")
                 }
-                let drafts = try reminderObjects.map { try makeDraft(ToolArguments($0, tool: name)) }
+                let perReminderArgs = reminderObjects.map { ToolArguments($0, tool: name) }
+                let drafts = try perReminderArgs.map(makeDraft)
                 let records = try drafts.map { try client.create($0) }
+                for (record, reminderArgs) in zip(records, perReminderArgs) {
+                    try linkReminderIfNeeded(record: record, args: reminderArgs)
+                }
                 return ToolResult(
                     tool: name,
                     status: .succeeded,
@@ -220,6 +254,16 @@ public struct ReminderTool: Tool {
         } catch let error as ToolClientError {
             throw ToolExecutionError.executionFailed(name, error.message)
         }
+    }
+
+    private func linkReminderIfNeeded(record: ReminderRecord, args: ToolArguments) throws {
+        let projectID = args.optionalInt64("projectId")
+        let taskID = args.optionalInt64("taskId")
+        guard projectID != nil || taskID != nil else {
+            return
+        }
+
+        try linkStore?.link(reminderID: record.id, projectID: projectID, taskID: taskID, title: record.title)
     }
 
     private func makeDraft(_ args: ToolArguments) throws -> ReminderDraft {
@@ -239,7 +283,7 @@ public struct ReminderTool: Tool {
     private static func schema(for name: ActionTool) -> ToolInputSchema {
         switch name {
         case .remindersCreate:
-            ToolInputSchema(required: ["title"], properties: ["title": "string", "dueAt": "string", "listName": "string"])
+            ToolInputSchema(required: ["title"], properties: ["title": "string", "dueAt": "string", "listName": "string", "projectId": "number", "taskId": "number"])
         case .remindersBulkCreate:
             ToolInputSchema(required: ["reminders"], properties: ["reminders": "array"])
         case .remindersMarkComplete:

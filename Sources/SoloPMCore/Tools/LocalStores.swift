@@ -21,11 +21,59 @@ public struct TaskRecord: Equatable, Sendable {
     public var sourceCommand: String?
 }
 
+public struct TaskCreateDraft: Equatable, Sendable {
+    public var title: String
+    public var projectID: Int64?
+    public var dueAt: String?
+    public var priority: String?
+    public var sourceCommand: String?
+
+    public init(
+        title: String,
+        projectID: Int64? = nil,
+        dueAt: String? = nil,
+        priority: String? = nil,
+        sourceCommand: String? = nil
+    ) {
+        self.title = title
+        self.projectID = projectID
+        self.dueAt = dueAt
+        self.priority = priority
+        self.sourceCommand = sourceCommand
+    }
+}
+
 public struct KnowledgeFrameRecord: Equatable, Sendable {
     public var id: Int64
     public var name: String
     public var body: String
     public var triggers: [String]
+}
+
+public struct NotificationRequestRecord: Equatable, Sendable {
+    public var id: Int64
+    public var requestID: String
+    public var status: String
+    public var title: String
+    public var scheduledAt: String
+    public var externalNotificationID: String?
+    public var failureReason: String?
+}
+
+public struct CalendarLinkRecord: Equatable, Sendable {
+    public var id: Int64
+    public var eventID: String
+    public var projectID: Int64?
+    public var taskID: Int64?
+    public var title: String?
+}
+
+public struct ReminderLinkRecord: Equatable, Sendable {
+    public var id: Int64
+    public var reminderID: String
+    public var projectID: Int64?
+    public var taskID: Int64?
+    public var title: String?
 }
 
 public final class SQLiteProjectStore: @unchecked Sendable {
@@ -135,16 +183,37 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
+        return try insertLocked(
+            TaskCreateDraft(
+                title: title,
+                projectID: projectID,
+                dueAt: dueAt,
+                priority: priority,
+                sourceCommand: sourceCommand
+            )
+        )
+    }
+
+    public func createMany(_ drafts: [TaskCreateDraft]) throws -> [TaskRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return try connection.transaction {
+            try drafts.map(insertLocked)
+        }
+    }
+
+    private func insertLocked(_ draft: TaskCreateDraft) throws -> TaskRecord {
         try connection.execute(
             """
             INSERT INTO tasks (project_id, title, status, due_at, priority, source_command)
             VALUES (
-              \(projectID.map(String.init) ?? "NULL"),
-              '\(SQL.escape(title))',
+              \(draft.projectID.map(String.init) ?? "NULL"),
+              '\(SQL.escape(draft.title))',
               'open',
-              \(SQL.optional(dueAt)),
-              \(SQL.optional(priority)),
-              \(SQL.optional(sourceCommand))
+              \(SQL.optional(draft.dueAt)),
+              \(SQL.optional(draft.priority)),
+              \(SQL.optional(draft.sourceCommand))
             );
             """
         )
@@ -176,6 +245,13 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         return try connection
             .queryRows("SELECT * FROM tasks WHERE due_at IS NOT NULL AND due_at <= '\(SQL.escape(cutoff))' ORDER BY due_at ASC, id ASC;")
             .map(TaskRecord.init(row:))
+    }
+
+    public func listAll() throws -> [TaskRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return try connection.queryRows("SELECT * FROM tasks ORDER BY id ASC;").map(TaskRecord.init(row:))
     }
 
     public func listOverdue(before cutoff: String) throws -> [TaskRecord] {
@@ -212,6 +288,158 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         }
 
         return TaskRecord(row: row)
+    }
+}
+
+public final class SQLiteNotificationRequestStore: @unchecked Sendable {
+    private let connection: SQLiteConnection
+    private let lock = NSLock()
+
+    public init(connection: SQLiteConnection) {
+        self.connection = connection
+    }
+
+    @discardableResult
+    public func createPending(requestID: String, title: String, scheduledAt: String) throws -> NotificationRequestRecord {
+        lock.lock()
+        defer { lock.unlock() }
+
+        try connection.execute(
+            """
+            INSERT INTO notification_requests (request_id, status, title, scheduled_at)
+            VALUES ('\(SQL.escape(requestID))', 'pending', '\(SQL.escape(title))', '\(SQL.escape(scheduledAt))');
+            """
+        )
+        return try getLocked(requestID: requestID)
+    }
+
+    @discardableResult
+    public func markScheduled(requestID: String, externalNotificationID: String) throws -> NotificationRequestRecord {
+        lock.lock()
+        defer { lock.unlock() }
+
+        try connection.execute(
+            """
+            UPDATE notification_requests
+            SET status = 'scheduled',
+                external_notification_id = '\(SQL.escape(externalNotificationID))',
+                failure_reason = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE request_id = '\(SQL.escape(requestID))';
+            """
+        )
+        return try getLocked(requestID: requestID)
+    }
+
+    @discardableResult
+    public func markFailed(requestID: String, reason: String) throws -> NotificationRequestRecord {
+        lock.lock()
+        defer { lock.unlock() }
+
+        try connection.execute(
+            """
+            UPDATE notification_requests
+            SET status = 'failed',
+                failure_reason = '\(SQL.escape(reason))',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE request_id = '\(SQL.escape(requestID))';
+            """
+        )
+        return try getLocked(requestID: requestID)
+    }
+
+    public func list() throws -> [NotificationRequestRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return try connection.queryRows("SELECT * FROM notification_requests ORDER BY id ASC;").map(NotificationRequestRecord.init(row:))
+    }
+
+    private func getLocked(requestID: String) throws -> NotificationRequestRecord {
+        guard let row = try connection.queryRows(
+            "SELECT * FROM notification_requests WHERE request_id = '\(SQL.escape(requestID))' LIMIT 1;"
+        ).first else {
+            throw DatabaseError.stepFailed("Notification request \(requestID) was not found.")
+        }
+        return NotificationRequestRecord(row: row)
+    }
+}
+
+public final class SQLiteCalendarLinkStore: @unchecked Sendable {
+    private let connection: SQLiteConnection
+    private let lock = NSLock()
+
+    public init(connection: SQLiteConnection) {
+        self.connection = connection
+    }
+
+    @discardableResult
+    public func link(eventID: String, projectID: Int64? = nil, taskID: Int64? = nil, title: String? = nil) throws -> CalendarLinkRecord {
+        lock.lock()
+        defer { lock.unlock() }
+
+        try connection.execute(
+            """
+            INSERT INTO calendar_links (event_id, project_id, task_id, title)
+            VALUES ('\(SQL.escape(eventID))', \(projectID.map(String.init) ?? "NULL"), \(taskID.map(String.init) ?? "NULL"), \(SQL.optional(title)));
+            """
+        )
+        return try getLocked(eventID: eventID)
+    }
+
+    public func list() throws -> [CalendarLinkRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return try connection.queryRows("SELECT * FROM calendar_links ORDER BY id ASC;").map(CalendarLinkRecord.init(row:))
+    }
+
+    private func getLocked(eventID: String) throws -> CalendarLinkRecord {
+        guard let row = try connection.queryRows(
+            "SELECT * FROM calendar_links WHERE event_id = '\(SQL.escape(eventID))' LIMIT 1;"
+        ).first else {
+            throw DatabaseError.stepFailed("Calendar link \(eventID) was not found.")
+        }
+        return CalendarLinkRecord(row: row)
+    }
+}
+
+public final class SQLiteReminderLinkStore: @unchecked Sendable {
+    private let connection: SQLiteConnection
+    private let lock = NSLock()
+
+    public init(connection: SQLiteConnection) {
+        self.connection = connection
+    }
+
+    @discardableResult
+    public func link(reminderID: String, projectID: Int64? = nil, taskID: Int64? = nil, title: String? = nil) throws -> ReminderLinkRecord {
+        lock.lock()
+        defer { lock.unlock() }
+
+        try connection.execute(
+            """
+            INSERT INTO reminder_links (reminder_id, project_id, task_id, title)
+            VALUES ('\(SQL.escape(reminderID))', \(projectID.map(String.init) ?? "NULL"), \(taskID.map(String.init) ?? "NULL"), \(SQL.optional(title)));
+            """
+        )
+        return try getLocked(reminderID: reminderID)
+    }
+
+    public func list() throws -> [ReminderLinkRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return try connection.queryRows("SELECT * FROM reminder_links ORDER BY id ASC;").map(ReminderLinkRecord.init(row:))
+    }
+
+    private func getLocked(reminderID: String) throws -> ReminderLinkRecord {
+        guard let row = try connection.queryRows(
+            "SELECT * FROM reminder_links WHERE reminder_id = '\(SQL.escape(reminderID))' LIMIT 1;"
+        ).first else {
+            throw DatabaseError.stepFailed("Reminder link \(reminderID) was not found.")
+        }
+        return ReminderLinkRecord(row: row)
     }
 }
 
@@ -371,6 +599,44 @@ private extension KnowledgeFrameRecord {
             name: row["name"] ?? "",
             body: row["body"] ?? "",
             triggers: SQL.parseStringArray(row["triggers_json"] ?? "[]")
+        )
+    }
+}
+
+private extension NotificationRequestRecord {
+    init(row: [String: String]) {
+        self.init(
+            id: Int64(row["id"] ?? "") ?? 0,
+            requestID: row["request_id"] ?? "",
+            status: row["status"] ?? "",
+            title: row["title"] ?? "",
+            scheduledAt: row["scheduled_at"] ?? "",
+            externalNotificationID: SQL.nilIfEmpty(row["external_notification_id"]),
+            failureReason: SQL.nilIfEmpty(row["failure_reason"])
+        )
+    }
+}
+
+private extension CalendarLinkRecord {
+    init(row: [String: String]) {
+        self.init(
+            id: Int64(row["id"] ?? "") ?? 0,
+            eventID: row["event_id"] ?? "",
+            projectID: Int64(row["project_id"] ?? ""),
+            taskID: Int64(row["task_id"] ?? ""),
+            title: SQL.nilIfEmpty(row["title"])
+        )
+    }
+}
+
+private extension ReminderLinkRecord {
+    init(row: [String: String]) {
+        self.init(
+            id: Int64(row["id"] ?? "") ?? 0,
+            reminderID: row["reminder_id"] ?? "",
+            projectID: Int64(row["project_id"] ?? ""),
+            taskID: Int64(row["task_id"] ?? ""),
+            title: SQL.nilIfEmpty(row["title"])
         )
     }
 }

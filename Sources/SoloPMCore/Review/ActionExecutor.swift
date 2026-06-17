@@ -9,6 +9,7 @@ public enum ActionExecutorError: Error, Equatable, Sendable {
     case approvalRequired
     case approvalBlocked(String)
     case noEnabledActions
+    case validationFailed([ToolInputValidationIssue])
 }
 
 public struct ActionExecutor: Sendable {
@@ -18,6 +19,10 @@ public struct ActionExecutor: Sendable {
     public init(registry: ToolRegistry, auditLogger: (any AuditLogger)? = nil) {
         self.registry = registry
         self.auditLogger = auditLogger
+    }
+
+    public func validationIssues(for session: ReviewSession) -> [ToolInputValidationIssue] {
+        session.enabledItems.flatMap { registry.validate(action: $0.editedAction) }
     }
 
     public func execute(
@@ -65,7 +70,12 @@ public struct ActionExecutor: Sendable {
                 }
             } catch {
                 hasFailure = true
-                working.markAction(id: item.id, status: .failed, errorMessage: String(describing: error))
+                working.markAction(
+                    id: item.id,
+                    status: .failed,
+                    errorMessage: String(describing: error),
+                    failureRecovery: Self.failureRecovery(for: error)
+                )
                 try recordToolEvent(tool: action.tool, status: .failed, actionID: item.id, error: error)
             }
         }
@@ -78,6 +88,11 @@ public struct ActionExecutor: Sendable {
     private func preflight(_ session: ReviewSession) throws {
         guard !session.enabledItems.isEmpty else {
             throw ActionExecutorError.noEnabledActions
+        }
+
+        let validationIssues = validationIssues(for: session)
+        guard validationIssues.isEmpty else {
+            throw ActionExecutorError.validationFailed(validationIssues)
         }
 
         switch session.approvalState {
@@ -98,6 +113,26 @@ public struct ActionExecutor: Sendable {
         }
 
         action.arguments["projectId"] = latestProjectID
+    }
+
+    private static func failureRecovery(for error: Error) -> ReviewActionFailureRecovery {
+        if let executionError = error as? ToolExecutionError {
+            switch executionError {
+            case .validationFailed,
+                 .approvalRequired,
+                 .dangerousToolBlocked,
+                 .unknownTool,
+                 .duplicateTool:
+                return .notRetryable
+            case .executionFailed(_, let message):
+                return message.localizedCaseInsensitiveContains("permission")
+                    ? .notRetryable
+                    : .retryable
+            }
+        }
+
+        let message = String(describing: error)
+        return message.localizedCaseInsensitiveContains("permission") ? .notRetryable : .retryable
     }
 
     private func recordReviewEvent(action: String, status: AuditStatus, session: ReviewSession) throws {

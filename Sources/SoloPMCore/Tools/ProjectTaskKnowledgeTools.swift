@@ -62,7 +62,7 @@ public struct ProjectTool: Tool {
     private static func schema(for name: ActionTool) -> ToolInputSchema {
         switch name {
         case .projectCreate:
-            ToolInputSchema(required: ["title"], properties: ["title": "string", "deadline": "string", "workspacePath": "string", "tags": "array"])
+            ToolInputSchema(required: ["title"], properties: ["title": "string", "priority": "string", "deadline": "string", "workspacePath": "string", "tags": "array", "sourceCommand": "string"])
         case .projectUpdate:
             ToolInputSchema(required: ["id"], properties: ["id": "number", "title": "string", "status": "string"])
         case .projectGet, .projectComplete:
@@ -115,16 +115,17 @@ public struct TaskTool: Tool {
             guard !taskObjects.isEmpty else {
                 throw ToolExecutionError.validationFailed(name, "tasks must contain at least one task.")
             }
-            var created: [JSONValue] = []
-            for taskObject in taskObjects {
+            let drafts = try taskObjects.map { taskObject in
                 let taskArgs = ToolArguments(taskObject, tool: name)
-                let record = try store.create(
+                return TaskCreateDraft(
                     title: try taskArgs.requiredString("title"),
                     projectID: taskArgs.optionalInt64("projectId"),
-                    dueAt: taskArgs.optionalString("dueAt")
+                    dueAt: taskArgs.optionalString("dueAt"),
+                    priority: taskArgs.optionalString("priority"),
+                    sourceCommand: taskArgs.optionalString("sourceCommand")
                 )
-                created.append(.number(Double(record.id)))
             }
+            let created = try store.createMany(drafts).map { JSONValue.number(Double($0.id)) }
             return ToolResult(tool: name, status: .succeeded, summary: "Created \(created.count) tasks", output: ["taskIds": .array(created)])
         case .taskUpdate:
             let record = try store.update(id: try args.requiredInt64("id"), title: args.optionalString("title"), status: args.optionalString("status"))
@@ -146,7 +147,7 @@ public struct TaskTool: Tool {
     private static func schema(for name: ActionTool) -> ToolInputSchema {
         switch name {
         case .taskCreate:
-            ToolInputSchema(required: ["title"], properties: ["title": "string", "projectId": "number", "dueAt": "string"])
+            ToolInputSchema(required: ["title"], properties: ["title": "string", "projectId": "number", "dueAt": "string", "priority": "string", "sourceCommand": "string"])
         case .taskBulkCreate:
             ToolInputSchema(required: ["tasks"], properties: ["tasks": "array"])
         case .taskUpdate:
@@ -245,21 +246,24 @@ public extension ToolRegistry {
         reminderClient: any ReminderClient,
         fileAccessClient: any FileAccessClient,
         mailDraftClient: any MailDraftClient,
+        notificationRequestStore: SQLiteNotificationRequestStore? = nil,
+        calendarLinkStore: SQLiteCalendarLinkStore? = nil,
+        reminderLinkStore: SQLiteReminderLinkStore? = nil,
         auditLogger: (any AuditLogger)? = nil
     ) throws -> ToolRegistry {
         var tools = phase2CoreTools(projectStore: projectStore, taskStore: taskStore, knowledgeStore: knowledgeStore)
         let systemTools: [any Tool] = [
-            NotificationTool(name: .notificationSchedule, client: notificationClient),
-            NotificationTool(name: .notificationScheduleRelative, client: notificationClient),
-            NotificationTool(name: .notificationScheduleOverdueRule, client: notificationClient),
-            NotificationTool(name: .notificationCancel, client: notificationClient),
+            NotificationTool(name: .notificationSchedule, client: notificationClient, requestStore: notificationRequestStore),
+            NotificationTool(name: .notificationScheduleRelative, client: notificationClient, requestStore: notificationRequestStore),
+            NotificationTool(name: .notificationScheduleOverdueRule, client: notificationClient, requestStore: notificationRequestStore),
+            NotificationTool(name: .notificationCancel, client: notificationClient, requestStore: notificationRequestStore),
             NotificationTool(name: .notificationList, client: notificationClient),
-            CalendarTool(name: .calendarCreateEvent, client: calendarClient),
-            CalendarTool(name: .calendarCreateDeadline, client: calendarClient),
-            CalendarTool(name: .calendarCreateWorkBlock, client: calendarClient),
-            ReminderTool(name: .remindersCreate, client: reminderClient),
-            ReminderTool(name: .remindersBulkCreate, client: reminderClient),
-            ReminderTool(name: .remindersMarkComplete, client: reminderClient),
+            CalendarTool(name: .calendarCreateEvent, client: calendarClient, linkStore: calendarLinkStore),
+            CalendarTool(name: .calendarCreateDeadline, client: calendarClient, linkStore: calendarLinkStore),
+            CalendarTool(name: .calendarCreateWorkBlock, client: calendarClient, linkStore: calendarLinkStore),
+            ReminderTool(name: .remindersCreate, client: reminderClient, linkStore: reminderLinkStore),
+            ReminderTool(name: .remindersBulkCreate, client: reminderClient, linkStore: reminderLinkStore),
+            ReminderTool(name: .remindersMarkComplete, client: reminderClient, linkStore: reminderLinkStore),
             FileSystemTool(name: .filesystemCreateDirectory, client: fileAccessClient),
             FileSystemTool(name: .filesystemCreateMarkdownFile, client: fileAccessClient),
             FileSystemTool(name: .filesystemCreateArtifactsFromFrame, client: fileAccessClient),

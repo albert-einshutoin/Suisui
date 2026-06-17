@@ -77,6 +77,7 @@ private struct MenuBarPanel: View {
             } label: {
                 Label("Voice Command", systemImage: "mic")
             }
+            .keyboardShortcut(.space, modifiers: [.option])
 
             Divider()
 
@@ -350,6 +351,13 @@ private struct ReviewActionRow: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
 
+            ForEach(viewModel.validationIssues(for: item.id), id: \.message) { issue in
+                Label(issue.message, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .lineLimit(2)
+            }
+
             if let result = item.result {
                 Text(result.summary)
                     .font(.caption)
@@ -360,6 +368,11 @@ private struct ReviewActionRow: View {
                     .font(.caption)
                     .foregroundStyle(.red)
                     .lineLimit(2)
+            }
+            if let failureRecovery = item.failureRecovery {
+                Label(failureRecoveryLabel(failureRecovery), systemImage: failureRecovery == .retryable ? "arrow.clockwise" : "lock")
+                    .font(.caption)
+                    .foregroundStyle(failureRecoveryColor(failureRecovery))
             }
         }
     }
@@ -432,6 +445,24 @@ private struct ReviewActionRow: View {
             .sorted { $0.key < $1.key }
             .map { "\($0.key): \($0.value.displayValue)" }
             .joined(separator: ", ")
+    }
+
+    private func failureRecoveryLabel(_ recovery: ReviewActionFailureRecovery) -> String {
+        switch recovery {
+        case .retryable:
+            "Retry available after review"
+        case .notRetryable:
+            "Requires edit or Settings"
+        }
+    }
+
+    private func failureRecoveryColor(_ recovery: ReviewActionFailureRecovery) -> Color {
+        switch recovery {
+        case .retryable:
+            .secondary
+        case .notRetryable:
+            .orange
+        }
     }
 }
 

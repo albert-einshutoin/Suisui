@@ -21,18 +21,45 @@ final class SystemToolTests: XCTestCase {
     }
 
     func testNotificationToolReportsPermissionDenied() throws {
+        let connection = try migratedConnection()
+        let requestStore = SQLiteNotificationRequestStore(connection: connection)
         let client = InMemoryNotificationClient(authorizationStatus: .denied)
-        let tool = NotificationTool(name: .notificationSchedule, client: client)
+        let tool = NotificationTool(name: .notificationSchedule, client: client, requestStore: requestStore)
 
         XCTAssertThrowsError(
             try tool.execute(
                 arguments: [
                     "title": .string("Standup"),
+                    "id": .string("standup-reminder"),
                     "scheduledAt": .string("2026-06-18T09:00:00Z")
                 ],
                 context: approvedContext()
             )
         )
+
+        let request = try XCTUnwrap(requestStore.list().first)
+        XCTAssertEqual(request.requestID, "standup-reminder")
+        XCTAssertEqual(request.status, "failed")
+        XCTAssertEqual(request.failureReason, "Notification permission is denied.")
+    }
+
+    func testNotificationToolPersistsPendingThenScheduledState() throws {
+        let connection = try migratedConnection()
+        let requestStore = SQLiteNotificationRequestStore(connection: connection)
+        let tool = NotificationTool(name: .notificationSchedule, client: InMemoryNotificationClient(), requestStore: requestStore)
+
+        _ = try tool.execute(
+            arguments: [
+                "title": .string("Standup"),
+                "id": .string("standup-reminder"),
+                "scheduledAt": .string("2026-06-18T09:00:00Z")
+            ],
+            context: approvedContext()
+        )
+
+        let request = try XCTUnwrap(requestStore.list().first)
+        XCTAssertEqual(request.status, "scheduled")
+        XCTAssertEqual(request.externalNotificationID, "standup-reminder")
     }
 
     func testNotificationRelativeScheduleRejectsNonPositiveOffset() throws {
@@ -62,6 +89,28 @@ final class SystemToolTests: XCTestCase {
                 context: approvedContext()
             )
         )
+    }
+
+    func testCalendarToolPersistsProjectAndTaskLink() throws {
+        let connection = try migratedConnection()
+        let linkStore = SQLiteCalendarLinkStore(connection: connection)
+        let tool = CalendarTool(name: .calendarCreateEvent, client: InMemoryCalendarClient(), linkStore: linkStore)
+
+        _ = try tool.execute(
+            arguments: [
+                "title": .string("Deep work"),
+                "startAt": .string("2026-06-18T09:00:00Z"),
+                "endAt": .string("2026-06-18T10:00:00Z"),
+                "projectId": .number(10),
+                "taskId": .number(20)
+            ],
+            context: approvedContext()
+        )
+
+        let link = try XCTUnwrap(linkStore.list().first)
+        XCTAssertEqual(link.eventID, "calendar-event-1")
+        XCTAssertEqual(link.projectID, 10)
+        XCTAssertEqual(link.taskID, 20)
     }
 
     func testCalendarWorkBlockRejectsNonPositiveDuration() throws {
@@ -98,6 +147,25 @@ final class SystemToolTests: XCTestCase {
         _ = try complete.execute(arguments: ["id": .string(firstID)], context: approvedContext())
 
         XCTAssertEqual(try client.list().first?.isCompleted, true)
+    }
+
+    func testReminderToolPersistsLocalTaskLink() throws {
+        let connection = try migratedConnection()
+        let linkStore = SQLiteReminderLinkStore(connection: connection)
+        let tool = ReminderTool(name: .remindersCreate, client: InMemoryReminderClient(), linkStore: linkStore)
+
+        _ = try tool.execute(
+            arguments: [
+                "title": .string("Draft spec"),
+                "taskId": .number(42)
+            ],
+            context: approvedContext()
+        )
+
+        let link = try XCTUnwrap(linkStore.list().first)
+        XCTAssertEqual(link.reminderID, "reminder-1")
+        XCTAssertEqual(link.taskID, 42)
+        XCTAssertEqual(link.title, "Draft spec")
     }
 
     func testFileSystemToolRejectsOverwriteAndTraversal() throws {
@@ -213,13 +281,18 @@ final class SystemToolTests: XCTestCase {
     }
 
     private func makeStores() throws -> (projects: SQLiteProjectStore, tasks: SQLiteTaskStore, knowledge: SQLiteKnowledgeFrameStore) {
-        let connection = try SQLiteConnection(path: ":memory:")
-        try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase2)
+        let connection = try migratedConnection()
         return (
             SQLiteProjectStore(connection: connection),
             SQLiteTaskStore(connection: connection),
             SQLiteKnowledgeFrameStore(connection: connection)
         )
+    }
+
+    private func migratedConnection() throws -> SQLiteConnection {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase2)
+        return connection
     }
 
     private func approvedContext() -> ToolExecutionContext {

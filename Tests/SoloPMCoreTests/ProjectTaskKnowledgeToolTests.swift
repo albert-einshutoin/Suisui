@@ -31,7 +31,26 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         )
 
         XCTAssertEqual(result.summary, "Created 2 tasks")
-        XCTAssertEqual(try stores.tasks.listDue(onOrBefore: "9999").count, 0)
+        XCTAssertEqual(try stores.tasks.listAll().map(\.title), ["Draft", "Review"])
+    }
+
+    func testTaskBulkCreateRejectsInvalidBatchWithoutPartialRows() throws {
+        let stores = try makeStores()
+        let tool = TaskTool(name: .taskBulkCreate, store: stores.tasks)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "tasks": .array([
+                        .object(["title": .string("Draft")]),
+                        .object(["dueAt": .string("2026-06-18T09:00:00Z")])
+                    ])
+                ],
+                context: approvedContext()
+            )
+        )
+
+        XCTAssertEqual(try stores.tasks.listAll(), [])
     }
 
     func testKnowledgeFrameCreateAndSearchUseSameStore() throws {

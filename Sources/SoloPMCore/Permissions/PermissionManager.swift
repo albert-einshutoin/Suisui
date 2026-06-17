@@ -33,3 +33,42 @@ public struct PermissionSnapshot: Equatable, Sendable {
     }
 }
 
+public protocol PermissionManager: Sendable {
+    func snapshot() -> PermissionSnapshot
+    func status(for permission: AppPermission) -> PermissionStatus
+}
+
+public struct StaticPermissionManager: PermissionManager {
+    private var currentSnapshot: PermissionSnapshot
+
+    public init(snapshot: PermissionSnapshot = .empty) {
+        self.currentSnapshot = snapshot
+    }
+
+    public func snapshot() -> PermissionSnapshot {
+        currentSnapshot
+    }
+
+    public func status(for permission: AppPermission) -> PermissionStatus {
+        currentSnapshot.status(for: permission)
+    }
+}
+
+public enum PermissionDisplayPolicy {
+    public static func label(for status: PermissionStatus) -> String {
+        switch status {
+        case .notDetermined:
+            "Not requested"
+        case .granted:
+            "Granted"
+        case .denied:
+            "Denied"
+        case .restricted:
+            "Restricted"
+        }
+    }
+
+    public static func isActionDisabled(for status: PermissionStatus) -> Bool {
+        status == .denied || status == .restricted
+    }
+}

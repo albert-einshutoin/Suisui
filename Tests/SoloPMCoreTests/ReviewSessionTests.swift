@@ -83,6 +83,24 @@ final class ActionExecutorTests: XCTestCase {
 
         XCTAssertEqual(executed.executionStatus, .failed)
         XCTAssertEqual(executed.items.map(\.executionStatus), [.succeeded, .failed, .skipped])
+        XCTAssertEqual(executed.items[1].failureRecovery, .retryable)
+    }
+
+    func testExecutorClassifiesValidationFailureAsNotRetryable() throws {
+        let registry = try ToolRegistry(tools: [
+            StaticTool(name: .taskCreate, description: "write", inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]), permissionLevel: .writeWithApproval) { _, _ in
+                throw ToolExecutionError.validationFailed(.taskCreate, "Invalid title.")
+            }
+        ])
+        var session = ReviewSession(plan: .reviewFixture(actions: [
+            PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+        ]))
+        try session.approve(token: ApprovalToken(id: "approval-1", sessionID: session.id))
+
+        let executed = try ActionExecutor(registry: registry).execute(session)
+
+        XCTAssertEqual(executed.items.first?.executionStatus, .failed)
+        XCTAssertEqual(executed.items.first?.failureRecovery, .notRetryable)
     }
 
     func testExecutorRejectsWriteSessionWithoutApproval() throws {
@@ -96,6 +114,24 @@ final class ActionExecutorTests: XCTestCase {
         ]))
 
         XCTAssertThrowsError(try ActionExecutor(registry: registry).execute(session))
+    }
+
+    func testExecutorRejectsInvalidEditedArgumentsBeforeCallingTool() throws {
+        let callTracker = ToolCallTracker()
+        let registry = try ToolRegistry(tools: [
+            StaticTool(name: .taskCreate, description: "write", inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]), permissionLevel: .writeWithApproval) { _, _ in
+                callTracker.markCalled()
+                return ToolResult(tool: .taskCreate, status: .succeeded, summary: "created")
+            }
+        ])
+        var session = ReviewSession(plan: .reviewFixture(actions: [
+            PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+        ]))
+        session.editActionArguments(id: "task", arguments: ["title": .string(" ")])
+        try session.approve(token: ApprovalToken(id: "approval-1", sessionID: session.id))
+
+        XCTAssertThrowsError(try ActionExecutor(registry: registry).execute(session))
+        XCTAssertFalse(callTracker.wasCalled)
     }
 
     func testExecutorMarksUnknownToolAsFailure() throws {
@@ -131,6 +167,23 @@ final class ActionExecutorTests: XCTestCase {
 
         XCTAssertEqual(executed.items.first?.executionStatus, .skipped)
         XCTAssertTrue(logger.recordedEvents.contains { $0.status == .skipped && $0.action == "project.list" })
+    }
+}
+
+private final class ToolCallTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isCalled = false
+
+    var wasCalled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return isCalled
+    }
+
+    func markCalled() {
+        lock.lock()
+        defer { lock.unlock() }
+        isCalled = true
     }
 }
 
