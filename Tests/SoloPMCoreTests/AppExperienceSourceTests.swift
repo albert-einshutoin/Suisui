@@ -30,6 +30,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("Done"))
     }
 
+    func testProjectBoardUsesResponsiveLongContentGuards() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(source.contains("ViewThatFits(in: .horizontal)"))
+        XCTAssertTrue(source.contains("ProjectHeaderTitleEditor"))
+        XCTAssertTrue(source.contains("ProjectHeaderActions"))
+        XCTAssertTrue(source.contains("TaskMetadataRow"))
+        XCTAssertTrue(source.contains(".help(task.title)"))
+        XCTAssertTrue(source.contains(".help(task.detail)"))
+        XCTAssertTrue(source.contains(".truncationMode(.tail)"))
+    }
+
     func testProjectBoardUsesPersistentViewModelInsteadOfStaticSnapshot() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")

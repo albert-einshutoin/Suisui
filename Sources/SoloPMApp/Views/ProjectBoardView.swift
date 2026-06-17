@@ -121,6 +121,8 @@ private struct ProjectSidebarRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(project.title)
                     .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(project.title)
                 Text("\(project.taskCount) tasks")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -141,59 +143,38 @@ private struct ProjectBoardDetail: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        TextField("Project title", text: $projectTitle)
-                            .font(.title2.weight(.semibold))
-                            .textFieldStyle(.plain)
-                            .frame(minWidth: 220, maxWidth: 420)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 12) {
+                    ProjectHeaderTitleEditor(
+                        project: project,
+                        projectTitle: $projectTitle,
+                        onSave: { viewModel.updateSelectedProject(title: projectTitle) }
+                    )
 
-                        Button {
-                            viewModel.updateSelectedProject(title: projectTitle)
-                        } label: {
-                            Label("Save Project", systemImage: "checkmark")
-                        }
-                        .labelStyle(.iconOnly)
-                        .disabled(projectTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || projectTitle == project.title)
-                    }
-                    HStack(spacing: 8) {
-                        Text(project.subtitle)
-                            .foregroundStyle(.secondary)
+                    Spacer(minLength: 12)
 
-                        if project.isCompleted {
-                            Label("Completed", systemImage: "checkmark.seal.fill")
-                                .font(.caption)
-                                .foregroundStyle(.green)
-                        }
-                    }
+                    ProjectHeaderActions(
+                        project: project,
+                        displayMode: $displayMode,
+                        onCompleteProject: viewModel.completeSelectedProject,
+                        onAddTask: { composingStatus = .backlog }
+                    )
                 }
 
-                Spacer()
+                VStack(alignment: .leading, spacing: 10) {
+                    ProjectHeaderTitleEditor(
+                        project: project,
+                        projectTitle: $projectTitle,
+                        onSave: { viewModel.updateSelectedProject(title: projectTitle) }
+                    )
 
-                Picker("View", selection: $displayMode) {
-                    ForEach(ProjectBoardDisplayMode.allCases) { mode in
-                        Label(mode.label, systemImage: mode.systemImage)
-                            .tag(mode)
-                    }
+                    ProjectHeaderActions(
+                        project: project,
+                        displayMode: $displayMode,
+                        onCompleteProject: viewModel.completeSelectedProject,
+                        onAddTask: { composingStatus = .backlog }
+                    )
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 168)
-
-                Button {
-                    viewModel.completeSelectedProject()
-                } label: {
-                    Label("Complete Project", systemImage: "checkmark.seal")
-                }
-                .disabled(project.isCompleted)
-
-                Button {
-                    composingStatus = .backlog
-                } label: {
-                    Label("Add Task", systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut("n", modifiers: [.command])
             }
 
             if let errorMessage = viewModel.errorMessage {
@@ -224,6 +205,98 @@ private struct ProjectBoardDetail: View {
         .onChange(of: project.title) { _, newTitle in
             projectTitle = newTitle
         }
+    }
+}
+
+private struct ProjectHeaderTitleEditor: View {
+    let project: ProjectBoardProject
+    @Binding var projectTitle: String
+    let onSave: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                TextField("Project title", text: $projectTitle)
+                    .font(.title2.weight(.semibold))
+                    .textFieldStyle(.plain)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(project.title)
+                    .frame(minWidth: 160, maxWidth: 520)
+
+                Button(action: onSave) {
+                    Label("Save Project", systemImage: "checkmark")
+                }
+                .labelStyle(.iconOnly)
+                .disabled(projectTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || projectTitle == project.title)
+            }
+
+            HStack(spacing: 8) {
+                Text(project.subtitle)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if project.isCompleted {
+                    Label("Completed", systemImage: "checkmark.seal.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                        .lineLimit(1)
+                }
+            }
+        }
+    }
+}
+
+private struct ProjectHeaderActions: View {
+    let project: ProjectBoardProject
+    @Binding var displayMode: ProjectBoardDisplayMode
+    let onCompleteProject: () -> Void
+    let onAddTask: () -> Void
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                viewPicker
+                completeProjectButton
+                addTaskButton
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                viewPicker
+                HStack(spacing: 8) {
+                    completeProjectButton
+                    addTaskButton
+                }
+            }
+        }
+    }
+
+    private var viewPicker: some View {
+        Picker("View", selection: $displayMode) {
+            ForEach(ProjectBoardDisplayMode.allCases) { mode in
+                Label(mode.label, systemImage: mode.systemImage)
+                    .tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 168)
+    }
+
+    private var completeProjectButton: some View {
+        Button(action: onCompleteProject) {
+            Label("Complete Project", systemImage: "checkmark.seal")
+        }
+        .disabled(project.isCompleted)
+    }
+
+    private var addTaskButton: some View {
+        Button(action: onAddTask) {
+            Label("Add Task", systemImage: "plus")
+        }
+        .buttonStyle(.borderedProminent)
+        .keyboardShortcut("n", modifiers: [.command])
     }
 }
 
@@ -408,25 +481,19 @@ private struct BoardTaskCard: View {
             Text(task.title)
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(2)
+                .truncationMode(.tail)
+                .help(task.title)
 
             if !task.detail.isEmpty {
                 Text(task.detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
+                    .truncationMode(.tail)
+                    .help(task.detail)
             }
 
-            HStack {
-                Label(task.priority.label, systemImage: "flag")
-                    .foregroundStyle(task.priority.color)
-
-                Spacer()
-
-                if let dueLabel = task.dueLabel {
-                    Label(dueLabel, systemImage: "calendar")
-                }
-            }
-            .font(.caption)
+            TaskMetadataRow(task: task)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -435,6 +502,44 @@ private struct BoardTaskCard: View {
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(isSelected ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.16))
+        }
+    }
+}
+
+private struct TaskMetadataRow: View {
+    let task: ProjectBoardTask
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                priorityLabel
+
+                Spacer(minLength: 8)
+
+                dueLabel
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                priorityLabel
+                dueLabel
+            }
+        }
+        .font(.caption)
+    }
+
+    private var priorityLabel: some View {
+        Label(task.priority.label, systemImage: "flag")
+            .foregroundStyle(task.priority.color)
+            .lineLimit(1)
+    }
+
+    @ViewBuilder
+    private var dueLabel: some View {
+        if let dueLabel = task.dueLabel {
+            Label(dueLabel, systemImage: "calendar")
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .help(dueLabel)
         }
     }
 }
@@ -449,11 +554,15 @@ private struct ProjectTaskList: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(task.title)
                         .lineLimit(1)
+                        .truncationMode(.tail)
+                        .help(task.title)
                     if !task.detail.isEmpty {
                         Text(task.detail)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                            .truncationMode(.tail)
+                            .help(task.detail)
                     }
                 }
             }

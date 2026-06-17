@@ -207,6 +207,13 @@
 - [x] 既存 UserDefaults 由来の未実装 STT 設定は runtime 起動時に `openAITranscribe` へ正規化する。
 - [x] 完了条件: shipping app に未実装 STT provider skeleton を含めず、使えない音声 provider を選ばせない。
 
+### P10-024: Project board narrow-window resilience
+
+- [x] ProjectBoard header が狭い window で横潰れしないよう `ViewThatFits` で縦配置へ fallback する。
+- [x] Project / Task の長い title、detail、due label は省略表示し、hover で全文確認できる。
+- [x] Task metadata は横幅不足時に縦配置へ fallback する。
+- [x] 完了条件: ProjectBoard の長文・狭幅 regression を source test で検知できる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
