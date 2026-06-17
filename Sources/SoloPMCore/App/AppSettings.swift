@@ -24,6 +24,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public static let `default` = AppSettings()
 
+    public var normalizedForRuntime: AppSettings {
+        var copy = self
+        if !copy.sttProvider.isReleaseReady {
+            copy.sttProvider = .openAITranscribe
+        }
+        return copy
+    }
+
     public func validate() -> [ValidationIssue] {
         var issues: [ValidationIssue] = []
 
@@ -76,6 +84,12 @@ public enum STTProvider: String, CaseIterable, Codable, Equatable, Sendable {
     case localWhisperKit
     case localWhisperCpp
     case openAITranscribe
+
+    public static let releaseReadyCases: [STTProvider] = [.openAITranscribe]
+
+    public var isReleaseReady: Bool {
+        Self.releaseReadyCases.contains(self)
+    }
 
     public var displayName: String {
         switch self {
@@ -172,7 +186,7 @@ public final class AppSettingsViewModel: ObservableObject {
     public init(settingsStore: any AppSettingsStore, secretStore: any SecretStore) {
         self.settingsStore = settingsStore
         self.secretStore = secretStore
-        self.settings = (try? settingsStore.load()) ?? .default
+        self.settings = ((try? settingsStore.load()) ?? .default).normalizedForRuntime
         self.openAIAPIKeyInput = ""
         self.openAIAPIKeyStatusLabel = "Not configured"
         self.openRouterAPIKeyInput = ""
@@ -194,7 +208,7 @@ public final class AppSettingsViewModel: ObservableObject {
     }
 
     public func setSTTProvider(_ provider: STTProvider) {
-        settings.sttProvider = provider
+        settings.sttProvider = provider.isReleaseReady ? provider : .openAITranscribe
         clearMessages()
     }
 

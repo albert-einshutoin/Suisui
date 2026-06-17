@@ -711,7 +711,7 @@ private struct SettingsView: View {
                         set: { settingsViewModel.setSTTProvider($0) }
                     )
                 ) {
-                    ForEach(STTProvider.allCases, id: \.self) { provider in
+                    ForEach(STTProvider.releaseReadyCases, id: \.self) { provider in
                         Text(provider.displayName)
                             .tag(provider)
                     }
@@ -1012,7 +1012,7 @@ private enum AppRuntimeFactory {
     static func makeVoiceCaptureViewModel() -> VoiceCaptureViewModel {
         let secretStore = makeSecretStore()
         let auditLogger = try? makeAuditLogger()
-        let settings = ((try? UserDefaultsAppSettingsStore().load()) ?? .default)
+        let settings = ((try? UserDefaultsAppSettingsStore().load()) ?? .default).normalizedForRuntime
         return VoiceCaptureViewModel(
             audioRecorder: AVFoundationAudioRecorder(),
             sttProvider: makeSpeechToTextProvider(settings: settings, secretStore: secretStore),
@@ -1047,14 +1047,8 @@ private enum AppRuntimeFactory {
         settings: AppSettings,
         secretStore: any SecretStore
     ) -> any SpeechToTextProvider {
-        switch settings.sttProvider {
-        case .appleSpeechAnalyzer:
-            AppleSpeechAnalyzerProvider()
-        case .localWhisperKit:
-            WhisperKitProvider()
-        case .localWhisperCpp:
-            WhisperCppProvider()
-        case .openAITranscribe:
+        switch settings.normalizedForRuntime.sttProvider {
+        case .openAITranscribe, .appleSpeechAnalyzer, .localWhisperKit, .localWhisperCpp:
             OpenAITranscribeProvider(secretStore: secretStore)
         }
     }

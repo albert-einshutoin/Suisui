@@ -27,6 +27,12 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.validate().first?.field, "defaultWorkspacePath")
     }
 
+    func testReleaseReadySTTProvidersOnlyExposeImplementedRuntimeProvider() {
+        XCTAssertEqual(STTProvider.releaseReadyCases, [.openAITranscribe])
+        XCTAssertTrue(STTProvider.openAITranscribe.isReleaseReady)
+        XCTAssertFalse(STTProvider.localWhisperKit.isReleaseReady)
+    }
+
     func testUserDefaultsAppSettingsStorePersistsSettings() throws {
         let suiteName = "SoloPM.AppSettingsTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -123,5 +129,22 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertEqual(loaded.aiProvider, .openRouter)
         XCTAssertEqual(loaded.sttProvider, .openAITranscribe)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelNormalizesUnsupportedSTTProvider() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelUnsupportedSTT.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        try store.save(AppSettings(sttProvider: .localWhisperKit))
+
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        XCTAssertEqual(viewModel.settings.sttProvider, .openAITranscribe)
+
+        viewModel.setSTTProvider(.localWhisperCpp)
+
+        XCTAssertEqual(viewModel.settings.sttProvider, .openAITranscribe)
     }
 }

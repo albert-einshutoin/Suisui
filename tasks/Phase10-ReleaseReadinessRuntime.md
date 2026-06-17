@@ -200,6 +200,13 @@
 - [x] 実働側には `LocalHashEmbeddingProvider` / `SQLiteKnowledgeVectorIndex` / `SQLiteKnowledgeFrameStore` を残す。
 - [x] 完了条件: shipping module の Knowledge public API から static / in-memory success path を除去する。
 
+### P10-023: Release-ready STT provider surface
+
+- [x] release-ready STT provider は実装済みの `OpenAITranscribeProvider` のみに制限する。
+- [x] Settings UI は `STTProvider.releaseReadyCases` のみを表示し、未実装 provider を選択肢に出さない。
+- [x] 既存 UserDefaults 由来の未実装 STT 設定は runtime 起動時に `openAITranscribe` へ正規化する。
+- [x] 完了条件: shipping app に未実装 STT provider skeleton を含めず、使えない音声 provider を選ばせない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

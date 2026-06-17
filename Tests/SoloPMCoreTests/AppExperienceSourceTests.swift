@@ -170,7 +170,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testAIProvidersDoNotDefaultToInMemorySecretStore() throws {
         let chatSource = try readPackageFile("Sources/SoloPMCore/Planning/ChatCompletionsCompatibleProvider.swift")
-        let sttSource = try readPackageFile("Sources/SoloPMCore/Voice/STTProviderSkeletons.swift")
+        let sttSource = try readPackageFile("Sources/SoloPMCore/Voice/STTProviders.swift")
 
         XCTAssertFalse(chatSource.contains("secretStore: any SecretStore = InMemorySecretStore()"))
         XCTAssertFalse(sttSource.contains("secretStore: any SecretStore = InMemorySecretStore()"))
@@ -240,6 +240,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("settingsViewModel.saveOpenAIAPIKey()"))
         XCTAssertTrue(appSource.contains("settingsViewModel.deleteOpenAIAPIKey()"))
         XCTAssertFalse(appSource.contains("SecureField(\"API Key\", text: .constant(\"\"))"))
+    }
+
+    func testSettingsSurfaceOnlyShowsReleaseReadySTTProviders() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(appSource.contains("STTProvider.releaseReadyCases"))
+        XCTAssertFalse(appSource.contains("ForEach(STTProvider.allCases"))
+        XCTAssertFalse(appSource.contains("AppleSpeechAnalyzerProvider()"))
+        XCTAssertFalse(appSource.contains("WhisperKitProvider()"))
+        XCTAssertFalse(appSource.contains("WhisperCppProvider()"))
     }
 
     private func readPackageFile(_ relativePath: String) throws -> String {

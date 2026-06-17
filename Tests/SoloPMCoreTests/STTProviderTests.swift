@@ -43,36 +43,13 @@ final class STTProviderTests: XCTestCase {
         }
     }
 
-    func testPhase1DefaultCatalogContainsAllMVPProviders() {
+    func testPhase1DefaultCatalogContainsOnlyReleaseReadyProvider() {
         let catalog = STTProviderCatalog.phase1Default
 
-        XCTAssertEqual(Set(catalog.availabilities.map(\.providerID)), Set(STTProviderID.allCases))
-    }
-
-    func testSkeletonProvidersExposeRequirements() {
-        let whisperKit = WhisperKitProvider().availability
-        let whisperCpp = WhisperCppProvider().availability
-        let openAI = OpenAITranscribeProvider.defaultAvailability
-
-        XCTAssertTrue(whisperKit.requiresModelDownload)
-        XCTAssertTrue(whisperCpp.requiresModelDownload)
-        XCTAssertTrue(openAI.requiresAPIKey)
-    }
-
-    func testSkeletonProviderTranscriptionFailsExplicitly() async {
-        let provider = WhisperCppProvider()
-
-        do {
-            _ = try await provider.transcribe(
-                RecordedAudio(fileURL: URL(filePath: "/tmp/audio.m4a"), format: .m4a)
-            )
-            XCTFail("Expected skeleton provider to fail.")
-        } catch {
-            XCTAssertEqual(
-                error as? STTProviderError,
-                .modelMissing("whisper.cpp adapter is not implemented yet.")
-            )
-        }
+        XCTAssertEqual(catalog.availabilities.map(\.providerID), [.openAITranscribe])
+        XCTAssertEqual(catalog.availableProviders.map(\.providerID), [.openAITranscribe])
+        XCTAssertTrue(catalog.availability(for: .openAITranscribe).requiresAPIKey)
+        XCTAssertEqual(catalog.availability(for: .whisperCpp).reason, "Provider is not registered.")
     }
 
     func testOpenAITranscriptionRequestBuilderUsesMultipartEndpointAndAuthorization() throws {
