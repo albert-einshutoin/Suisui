@@ -2,11 +2,27 @@
 set -euo pipefail
 
 MODE="${1:-run}"
-APP_NAME="SoloPM"
-BUNDLE_ID="dev.solopm.app"
-MIN_SYSTEM_VERSION="14.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
+
+if [[ ! -f "$METADATA_FILE" ]]; then
+  echo "missing metadata file: $METADATA_FILE" >&2
+  exit 2
+fi
+
+# shellcheck source=/dev/null
+source "$METADATA_FILE"
+
+APP_NAME="${APP_NAME:?APP_NAME is required}"
+BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:?BUNDLE_IDENTIFIER is required}"
+APP_CATEGORY="${APP_CATEGORY:?APP_CATEGORY is required}"
+MARKETING_VERSION="${MARKETING_VERSION:?MARKETING_VERSION is required}"
+CURRENT_PROJECT_VERSION="${CURRENT_PROJECT_VERSION:?CURRENT_PROJECT_VERSION is required}"
+MIN_SYSTEM_VERSION="${MIN_SYSTEM_VERSION:?MIN_SYSTEM_VERSION is required}"
+COPYRIGHT="${COPYRIGHT:?COPYRIGHT is required}"
+BUILD_CONFIGURATION="${SOLOPM_BUILD_CONFIGURATION:-debug}"
+
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
@@ -18,8 +34,21 @@ cd "$ROOT_DIR"
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
-swift build
-BUILD_DIR="$(swift build --show-bin-path)"
+case "$BUILD_CONFIGURATION" in
+  debug)
+    swift build
+    BUILD_DIR="$(swift build --show-bin-path)"
+    ;;
+  release)
+    swift build -c release
+    BUILD_DIR="$(swift build -c release --show-bin-path)"
+    ;;
+  *)
+    echo "SOLOPM_BUILD_CONFIGURATION must be debug or release" >&2
+    exit 2
+    ;;
+esac
+
 BUILD_BINARY="$BUILD_DIR/$APP_NAME"
 RESOURCE_BUNDLE="$BUILD_DIR/SoloPM_SoloPMCore.bundle"
 
@@ -40,17 +69,27 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundleExecutable</key>
   <string>$APP_NAME</string>
   <key>CFBundleIdentifier</key>
-  <string>$BUNDLE_ID</string>
+  <string>$BUNDLE_IDENTIFIER</string>
+  <key>CFBundleDisplayName</key>
+  <string>$APP_NAME</string>
   <key>CFBundleName</key>
   <string>$APP_NAME</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$MARKETING_VERSION</string>
+  <key>CFBundleVersion</key>
+  <string>$CURRENT_PROJECT_VERSION</string>
+  <key>LSApplicationCategoryType</key>
+  <string>$APP_CATEGORY</string>
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
   <key>NSMicrophoneUsageDescription</key>
   <string>SoloPM uses the microphone when you explicitly start voice capture.</string>
+  <key>NSHumanReadableCopyright</key>
+  <string>$COPYRIGHT</string>
 </dict>
 </plist>
 PLIST
@@ -60,6 +99,8 @@ open_app() {
 }
 
 case "$MODE" in
+  --build-only|build)
+    ;;
   run)
     open_app
     ;;
@@ -72,7 +113,7 @@ case "$MODE" in
     ;;
   --telemetry|telemetry)
     open_app
-    /usr/bin/log stream --info --style compact --predicate "subsystem == \"$BUNDLE_ID\""
+    /usr/bin/log stream --info --style compact --predicate "subsystem == \"$BUNDLE_IDENTIFIER\""
     ;;
   --verify|verify)
     open_app
@@ -80,7 +121,7 @@ case "$MODE" in
     pgrep -x "$APP_NAME" >/dev/null
     ;;
   *)
-    echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2
+    echo "usage: $0 [run|--build-only|--debug|--logs|--telemetry|--verify]" >&2
     exit 2
     ;;
 esac

@@ -24,11 +24,11 @@
 
 ### P5-001: App identity and bundle configuration
 
-- [ ] bundle identifier、app category、versioning rule を決める。
-- [ ] `CFBundleShortVersionString` と build number の更新ルールを作る。
-- [ ] entitlement を棚卸しし、不要な権限を入れない。
-- [ ] テスト: Debug / Release build の bundle 設定差分を確認する。
-- [ ] 完了条件: 配布物として識別可能な app metadata がある。
+- [x] bundle identifier、app category、versioning rule を決める。
+- [x] `CFBundleShortVersionString` と build number の更新ルールを作る。
+- [x] entitlement を棚卸しし、不要な権限を入れない。
+- [x] テスト: Debug / Release build の bundle 設定差分を確認する。
+- [x] 完了条件: 配布物として識別可能な app metadata がある。
 
 ### P5-002: Developer ID signing
 

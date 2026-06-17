@@ -1,0 +1,33 @@
+# App Metadata
+
+SoloPM の public alpha は SwiftPM package から `.app` bundle を生成する。Xcode project に依存しないため、配布用 metadata は `packaging/app_metadata.env` を単一の設定ソースにする。
+
+## Identity
+
+- App name: `SoloPM`
+- Bundle identifier: `dev.solopm.app`
+- App category: `public.app-category.productivity`
+- Minimum macOS: `14.0`
+- Marketing version: `0.1.0`
+- Build number: `1`
+
+## Versioning Rule
+
+- `MARKETING_VERSION` は SemVer とし、ユーザーに見える alpha release ごとに更新する。
+- `CURRENT_PROJECT_VERSION` は配布物を作るたびに単調増加させる整数にする。
+- 同じ `MARKETING_VERSION` で再配布が必要な場合は、`CURRENT_PROJECT_VERSION` だけを上げる。
+- release tag は `v<MARKETING_VERSION>-alpha.<CURRENT_PROJECT_VERSION>` 形式を使う。
+
+## Entitlement Inventory
+
+`packaging/SoloPM.entitlements` は現時点で空の plist にしている。P5-001 時点では不要な entitlement を入れない方針を優先する。
+
+現在 entitlement として要求しないもの:
+
+- App Sandbox: Mac App Store 配布ではないため、Developer ID alpha では有効化しない。
+- Network client: BYOK LLM provider は通常の outbound HTTP で動くが、sandbox を有効化するまで entitlement は不要。
+- File access: MVP はユーザーが選択した workspace 配下だけを扱い、sandbox scoped bookmark の設計は後続で検討する。
+- Microphone: `NSMicrophoneUsageDescription` を `Info.plist` に入れる。entitlement では管理しない。
+- Login item: `SMAppService` を使う。専用 entitlement は追加しない。
+
+Entitlement を追加する場合は、該当 Phase のタスク、根拠、検証コマンド、削除条件をこの文書に追記する。
