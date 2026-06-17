@@ -24,16 +24,45 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(projects.first?.tags, ["oss"])
     }
 
+    func testProjectStoreArchivesProjectsWithoutDeletingRows() throws {
+        let connection = try migratedConnection()
+        let store = SQLiteProjectStore(connection: connection)
+        let project = try store.create(title: "Stale")
+
+        _ = try store.archive(id: project.id)
+
+        XCTAssertEqual(try store.list().map(\.title), [])
+        XCTAssertEqual(try store.list(includeArchived: true).map(\.title), ["Stale"])
+        XCTAssertEqual(try store.get(id: project.id).status, "archived")
+    }
+
     func testTaskStoreCreatesAndQueriesDueTasks() throws {
         let connection = try migratedConnection()
         let store = SQLiteTaskStore(connection: connection)
 
         _ = try store.create(title: "Soon", dueAt: "2026-06-17T00:00:00Z")
         _ = try store.create(title: "Later", dueAt: "2026-06-20T00:00:00Z")
+        let completed = try store.create(title: "Completed", dueAt: "2026-06-17T00:00:00Z")
+        _ = try store.update(id: completed.id, status: "completed")
 
         let due = try store.listDue(onOrBefore: "2026-06-18T00:00:00Z")
 
         XCTAssertEqual(due.map(\.title), ["Soon"])
+    }
+
+    func testTaskStoreDueQueriesExcludeArchivedProjectTasks() throws {
+        let connection = try migratedConnection()
+        let projects = SQLiteProjectStore(connection: connection)
+        let tasks = SQLiteTaskStore(connection: connection)
+        let archived = try projects.create(title: "Archived")
+        _ = try projects.archive(id: archived.id)
+
+        _ = try tasks.create(title: "Archived task", projectID: archived.id, dueAt: "2026-06-17T00:00:00Z")
+        _ = try tasks.create(title: "Visible task", dueAt: "2026-06-17T00:00:00Z")
+
+        let due = try tasks.listDue(onOrBefore: "2026-06-18T00:00:00Z")
+
+        XCTAssertEqual(due.map(\.title), ["Visible task"])
     }
 
     func testKnowledgeFrameStoreSearchesWithFTS5() throws {

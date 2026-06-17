@@ -140,6 +140,7 @@ private struct ProjectBoardDetail: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
     @State private var composingStatus: ProjectTaskStatus?
     @State private var projectTitle = ""
+    @State private var isConfirmingArchive = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -157,6 +158,7 @@ private struct ProjectBoardDetail: View {
                         project: project,
                         displayMode: $displayMode,
                         onCompleteProject: viewModel.completeSelectedProject,
+                        onArchiveProject: { isConfirmingArchive = true },
                         onAddTask: { composingStatus = .backlog }
                     )
                 }
@@ -172,6 +174,7 @@ private struct ProjectBoardDetail: View {
                         project: project,
                         displayMode: $displayMode,
                         onCompleteProject: viewModel.completeSelectedProject,
+                        onArchiveProject: { isConfirmingArchive = true },
                         onAddTask: { composingStatus = .backlog }
                     )
                 }
@@ -204,6 +207,18 @@ private struct ProjectBoardDetail: View {
         }
         .onChange(of: project.title) { _, newTitle in
             projectTitle = newTitle
+        }
+        .confirmationDialog(
+            "Archive this project?",
+            isPresented: $isConfirmingArchive,
+            titleVisibility: .visible
+        ) {
+            Button("Archive Project", role: .destructive) {
+                viewModel.archiveSelectedProject()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This hides the project from the active board and deadline summaries. Existing local tasks are kept in the SoloPM database.")
         }
     }
 }
@@ -253,6 +268,7 @@ private struct ProjectHeaderActions: View {
     let project: ProjectBoardProject
     @Binding var displayMode: ProjectBoardDisplayMode
     let onCompleteProject: () -> Void
+    let onArchiveProject: () -> Void
     let onAddTask: () -> Void
 
     var body: some View {
@@ -260,6 +276,7 @@ private struct ProjectHeaderActions: View {
             HStack(spacing: 8) {
                 viewPicker
                 completeProjectButton
+                archiveProjectButton
                 addTaskButton
             }
 
@@ -267,6 +284,7 @@ private struct ProjectHeaderActions: View {
                 viewPicker
                 HStack(spacing: 8) {
                     completeProjectButton
+                    archiveProjectButton
                     addTaskButton
                 }
             }
@@ -289,6 +307,12 @@ private struct ProjectHeaderActions: View {
             Label("Complete Project", systemImage: "checkmark.seal")
         }
         .disabled(project.isCompleted)
+    }
+
+    private var archiveProjectButton: some View {
+        Button(role: .destructive, action: onArchiveProject) {
+            Label("Archive Project", systemImage: "archivebox")
+        }
     }
 
     private var addTaskButton: some View {

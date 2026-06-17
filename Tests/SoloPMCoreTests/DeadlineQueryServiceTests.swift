@@ -45,6 +45,29 @@ final class DeadlineQueryServiceTests: XCTestCase {
         XCTAssertEqual(summary.tomorrow.map(\.title), ["JST tomorrow"])
     }
 
+    func testSummaryExcludesArchivedProjectAndItsTaskDeadlines() throws {
+        let stores = try makeStores()
+        let archived = try stores.projects.create(title: "Archived project", deadline: "2026-06-17T06:00:00Z")
+        _ = try stores.projects.update(id: archived.id, status: "archived")
+        _ = try stores.tasks.create(
+            title: "Archived project task",
+            projectID: archived.id,
+            dueAt: "2026-06-17T07:00:00Z"
+        )
+        _ = try stores.tasks.create(title: "Visible task", dueAt: "2026-06-17T08:00:00Z")
+
+        let service = DeadlineQueryService(
+            projectStore: stores.projects,
+            taskStore: stores.tasks,
+            dateProvider: FixedDateProvider(now: try Date.iso8601("2026-06-17T00:00:00Z")),
+            settings: AppSettings(timeZoneIdentifier: "UTC")
+        )
+
+        let summary = try service.summary()
+
+        XCTAssertEqual(summary.today.map(\.title), ["Visible task"])
+    }
+
     func testMenuBarSummaryCanBeBuiltFromDeadlineSummary() throws {
         let stores = try makeStores()
         _ = try stores.tasks.create(title: "Today task", dueAt: "2026-06-17T03:00:00Z")

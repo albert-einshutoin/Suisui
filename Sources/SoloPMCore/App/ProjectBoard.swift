@@ -179,6 +179,7 @@ public protocol ProjectBoardStore {
     func createProject(title: String) throws -> ProjectBoardProject
     func updateProject(id: Int64, title: String) throws -> ProjectBoardProject
     func completeProject(id: Int64) throws -> ProjectBoardProject
+    func archiveProject(id: Int64) throws -> ProjectBoardProject
     func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask
     func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask
     func deleteTask(id: Int64) throws
@@ -228,6 +229,13 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     @discardableResult
     public func completeProject(id: Int64) throws -> ProjectBoardProject {
         let record = try projectStore.update(id: id, status: "completed")
+        let tasks = try taskStore.listAll().compactMap(makeBoardTask)
+        return makeBoardProject(project: record, tasks: tasks)
+    }
+
+    @discardableResult
+    public func archiveProject(id: Int64) throws -> ProjectBoardProject {
+        let record = try projectStore.archive(id: id)
         let tasks = try taskStore.listAll().compactMap(makeBoardTask)
         return makeBoardProject(project: record, tasks: tasks)
     }
@@ -468,6 +476,22 @@ public final class ProjectBoardViewModel: ObservableObject {
             _ = try store.completeProject(id: selectedProjectID)
             load()
             self.selectedProjectID = selectedProjectID
+            onChange()
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
+    public func archiveSelectedProject() {
+        guard let selectedProjectID else {
+            return
+        }
+
+        do {
+            _ = try store.archiveProject(id: selectedProjectID)
+            self.selectedProjectID = nil
+            selectedTaskID = nil
+            load()
             onChange()
         } catch {
             errorMessage = String(describing: error)

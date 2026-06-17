@@ -101,6 +101,40 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(updated.subtitle, "0 open / 0 total")
     }
 
+    func testArchiveProjectRemovesItFromActiveBoardWithoutDeletingRows() throws {
+        let stores = try makeStoreBundle()
+        let project = try stores.board.createProject(title: "Stale Initiative")
+        _ = try stores.board.createTask(ProjectBoardTaskDraft(
+            projectID: project.id,
+            title: "Keep historical context",
+            status: .planned,
+            priority: .medium
+        ))
+
+        _ = try stores.board.archiveProject(id: project.id)
+
+        let snapshot = try stores.board.loadSnapshot()
+
+        XCTAssertFalse(snapshot.projects.contains { $0.id == project.id })
+        XCTAssertEqual(try stores.projects.get(id: project.id).status, "archived")
+        XCTAssertEqual(
+            try stores.tasks.listAll().filter { $0.projectID == project.id }.map(\.title),
+            ["Keep historical context"]
+        )
+    }
+
+    func testArchivingLastVisibleProjectCreatesFreshInboxForFirstRunContinuity() throws {
+        let store = try makeStore()
+        let inbox = try XCTUnwrap(store.loadSnapshot().projects.first)
+
+        _ = try store.archiveProject(id: inbox.id)
+
+        let snapshot = try store.loadSnapshot()
+
+        XCTAssertEqual(snapshot.projects.map(\.title), ["Inbox"])
+        XCTAssertNotEqual(snapshot.projects.first?.id, inbox.id)
+    }
+
     @MainActor
     func testProjectBoardViewModelNotifiesAfterSuccessfulMutations() {
         var changeCount = 0
@@ -121,8 +155,10 @@ final class ProjectBoardStoreTests: XCTestCase {
         )
         viewModel.deleteSelectedTask()
         viewModel.completeSelectedProject()
+        viewModel.archiveSelectedProject()
 
-        XCTAssertEqual(changeCount, 5)
+        XCTAssertEqual(changeCount, 6)
+        XCTAssertEqual(viewModel.selectedProject?.title, "Inbox")
     }
 
     @MainActor
@@ -141,9 +177,21 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     private func makeStore() throws -> SQLiteProjectBoardStore {
+        try makeStoreBundle().board
+    }
+
+    private func makeStoreBundle() throws -> (
+        board: SQLiteProjectBoardStore,
+        projects: SQLiteProjectStore,
+        tasks: SQLiteTaskStore
+    ) {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
-        return SQLiteProjectBoardStore(connection: connection)
+        return (
+            SQLiteProjectBoardStore(connection: connection),
+            SQLiteProjectStore(connection: connection),
+            SQLiteTaskStore(connection: connection)
+        )
     }
 }
 

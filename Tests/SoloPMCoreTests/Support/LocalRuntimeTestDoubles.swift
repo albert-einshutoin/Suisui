@@ -66,6 +66,21 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
     }
 
     @discardableResult
+    func archiveProject(id: Int64) throws -> ProjectBoardProject {
+        guard let projectIndex = snapshot.projects.firstIndex(where: { $0.id == id }) else {
+            throw DatabaseError.stepFailed("Project \(id) was not found.")
+        }
+
+        let project = snapshot.projects.remove(at: projectIndex)
+        if snapshot.projects.isEmpty {
+            _ = try createProject(title: "Inbox")
+        }
+        var archived = project
+        archived.status = "archived"
+        return archived
+    }
+
+    @discardableResult
     func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
         let title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else {

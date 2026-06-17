@@ -63,9 +63,11 @@
 - [x] Sidebar から project を作成できる。
 - [x] Project title を編集できる。
 - [x] Project status / complete を編集できる。
+- [x] Project を archive して active board / menu summary / deadline summary から外せる。
 - [x] active project に紐づく task 作成ができる。
 - [x] テスト: project create / title update が board snapshot に反映される。
 - [x] テスト: project complete が board snapshot に反映される。
+- [x] テスト: project archive は active snapshot から消えるが既存 row / task は保持される。
 - [x] 完了条件: Inbox だけでなくユーザーの project 管理ができる。
 
 ### P10-005: Keychain-backed settings
@@ -257,6 +259,16 @@
 - [x] CLI product を `solopm-cli` にし、`SoloPM` GUI app binary と明確に分離する。
 - [x] `solopm-cli --help` が usage を出して exit 0 になる。
 - [x] 完了条件: app build 後に CLI を build しても、またはその逆でも GUI / CLI の binary が取り違えられない。
+
+### P10-031: Project archive release hardening
+
+- [x] `SQLiteProjectStore.archive` は row を削除せず `status = archived` にする。
+- [x] default project list / ProjectBoard snapshot / MenuBar recent projects は archived project を表示しない。
+- [x] archived project とその task deadline は due query / deadline summary / overdue check から除外する。
+- [x] completed task は due query から除外し、`task.list_due` が完了済み作業を再提示しない。
+- [x] ProjectBoard UI は destructive confirmation 付きで `Archive Project` を実行できる。
+- [x] archive 後に active project が 0 件なら fresh `Inbox` を作り、初回利用導線を切らさない。
+- [x] 完了条件: 不要 project を安全に active board から外せ、通知や menu summary に古い project が残らない。
 
 ## PDCA Loop
 

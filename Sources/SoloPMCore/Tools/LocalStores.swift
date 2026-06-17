@@ -157,11 +157,16 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         return try getLocked(id: id)
     }
 
-    public func list() throws -> [ProjectRecord] {
+    public func archive(id: Int64) throws -> ProjectRecord {
+        try update(id: id, status: "archived")
+    }
+
+    public func list(includeArchived: Bool = false) throws -> [ProjectRecord] {
         lock.lock()
         defer { lock.unlock() }
 
-        return try connection.queryRows("SELECT * FROM projects ORDER BY id DESC;").map(ProjectRecord.init(row:))
+        let filter = includeArchived ? "" : "WHERE status != 'archived'"
+        return try connection.queryRows("SELECT * FROM projects \(filter) ORDER BY id DESC;").map(ProjectRecord.init(row:))
     }
 
     public func listDeadlineCandidates() throws -> [ProjectRecord] {
@@ -171,7 +176,7 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         return try connection.queryRows(
             """
             SELECT * FROM projects
-            WHERE status != 'completed' AND deadline IS NOT NULL
+            WHERE status NOT IN ('completed', 'archived') AND deadline IS NOT NULL
             ORDER BY deadline ASC, id ASC;
             """
         ).map(ProjectRecord.init(row:))
@@ -295,7 +300,17 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         defer { lock.unlock() }
 
         return try connection
-            .queryRows("SELECT * FROM tasks WHERE due_at IS NOT NULL AND due_at <= '\(SQL.escape(cutoff))' ORDER BY due_at ASC, id ASC;")
+            .queryRows(
+                """
+                SELECT tasks.* FROM tasks
+                LEFT JOIN projects ON tasks.project_id = projects.id
+                WHERE tasks.status != 'completed'
+                  AND tasks.due_at IS NOT NULL
+                  AND tasks.due_at <= '\(SQL.escape(cutoff))'
+                  AND COALESCE(projects.status, 'active') != 'archived'
+                ORDER BY tasks.due_at ASC, tasks.id ASC;
+                """
+            )
             .map(TaskRecord.init(row:))
     }
 
@@ -311,7 +326,17 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         defer { lock.unlock() }
 
         return try connection
-            .queryRows("SELECT * FROM tasks WHERE status != 'completed' AND due_at IS NOT NULL AND due_at < '\(SQL.escape(cutoff))' ORDER BY due_at ASC, id ASC;")
+            .queryRows(
+                """
+                SELECT tasks.* FROM tasks
+                LEFT JOIN projects ON tasks.project_id = projects.id
+                WHERE tasks.status != 'completed'
+                  AND tasks.due_at IS NOT NULL
+                  AND tasks.due_at < '\(SQL.escape(cutoff))'
+                  AND COALESCE(projects.status, 'active') != 'archived'
+                ORDER BY tasks.due_at ASC, tasks.id ASC;
+                """
+            )
             .map(TaskRecord.init(row:))
     }
 
@@ -321,9 +346,12 @@ public final class SQLiteTaskStore: @unchecked Sendable {
 
         return try connection.queryRows(
             """
-            SELECT * FROM tasks
-            WHERE status != 'completed' AND due_at IS NOT NULL
-            ORDER BY due_at ASC, id ASC;
+            SELECT tasks.* FROM tasks
+            LEFT JOIN projects ON tasks.project_id = projects.id
+            WHERE tasks.status != 'completed'
+              AND tasks.due_at IS NOT NULL
+              AND COALESCE(projects.status, 'active') != 'archived'
+            ORDER BY tasks.due_at ASC, tasks.id ASC;
             """
         ).map(TaskRecord.init(row:))
     }
