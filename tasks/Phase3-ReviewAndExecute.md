@@ -1,0 +1,104 @@
+# Phase 3: Review & Execute
+
+目的は、LLM が生成した ActionPlan をユーザーが理解、編集、承認してから実行できるようにすること。SoloPM の信頼性はこの Phase で決まるため、確認 UI と実行安全性を最優先にする。
+
+## Scope
+
+- Action Review Screen
+- Action ごとの編集
+- 個別 enable / disable
+- Approval flow
+- Execution orchestration
+- Execution log
+- Rollback metadata
+
+## Non-goals
+
+- 自動実行
+- Dangerous operation
+- メール送信 / Slack 投稿
+- 複雑な undo 実装
+- 外部 MCP
+
+## Checklist
+
+### P3-001: Review state model
+
+- [ ] `ReviewSession`、`ReviewActionItem`、`ApprovalState` を定義する。
+- [ ] original plan と user-edited plan を分けて保持する。
+- [ ] action ごとの enabled / disabled を持たせる。
+- [ ] テスト: action disable、edit、reset、approval state transition を確認する。
+- [ ] 完了条件: View が直接 ActionPlan を mutate しない。
+
+### P3-002: Action Review Screen layout
+
+- [ ] summary、risk level、作成予定一覧、必要権限、実行先を表示する。
+- [ ] Project、Task、Calendar、Reminder、Notification、File、Knowledge の action type ごとに読みやすく表示する。
+- [ ] empty / invalid / loading / error state を用意する。
+- [ ] UI テストまたは ViewModel test で各 state を確認する。
+- [ ] 手動確認: 長いタイトル、長いタスク一覧、狭い window で崩れない。
+- [ ] 完了条件: ユーザーが何が作られるかを実行前に判断できる。
+
+### P3-003: Action edit forms
+
+- [ ] action type ごとに編集可能 field を限定する。
+- [ ] 日時、title、body、workspace path、notification rule の validation を即時表示する。
+- [ ] 編集で schema 不一致になった場合は実行ボタンを disabled にする。
+- [ ] テスト: invalid edit が execution に進まないことを確認する。
+- [ ] 完了条件: LLM 出力の誤りをユーザーが修正できる。
+
+### P3-004: Approval requirement UI
+
+- [ ] Write action が含まれる場合は明示的な承認操作を要求する。
+- [ ] Dangerous action が含まれる場合は実行不可として表示する。
+- [ ] 権限不足の場合は該当 action を disabled にし、Settings 導線を出す。
+- [ ] テスト: write without approval、danger present、permission denied の UI state を確認する。
+- [ ] 完了条件: 誤実行を防ぐ UI state が Core policy と一致している。
+
+### P3-005: Execution orchestrator
+
+- [ ] `ActionExecutor` を作り、ReviewSession から enabled action のみ実行する。
+- [ ] Tool Registry を通して action を順番に実行する。
+- [ ] project.create の結果 id を後続 task.create に渡す依存解決を実装する。
+- [ ] 一部失敗時の扱いを `continue` / `stop` / `retryable` で整理する。
+- [ ] テスト: dependent action、partial failure、unknown tool、approval missing を確認する。
+- [ ] 完了条件: UI から直接 Tool を呼ばず、実行経路が一箇所に集約されている。
+
+### P3-006: Execution progress UI
+
+- [ ] 実行中 action、成功、失敗、skip を表示する。
+- [ ] 実行中は二重実行を防ぐ。
+- [ ] 失敗時は retry 可能な action と不可の action を分ける。
+- [ ] テスト: executing state 中に再実行できないことを確認する。
+- [ ] 手動確認: fake executor で成功 / 失敗 / 部分成功を確認する。
+- [ ] 完了条件: ユーザーが結果を理解し、次に何をすべきか分かる。
+
+### P3-007: Rollback metadata
+
+- [ ] 実行結果に created project id、task id、calendar event id、reminder id、notification id、file path を記録する。
+- [ ] MVP では自動 rollback しない。削除や上書きは禁止のため、metadata の保存に留める。
+- [ ] rollback 可能性は tool result に `compensationHint` として残す。
+- [ ] テスト: successful tool result が rollback metadata を持つことを確認する。
+- [ ] 完了条件: 後続で undo / cleanup を作れるだけの情報がある。
+
+### P3-008: Execution audit log
+
+- [ ] ReviewSession 作成、編集、承認、実行開始、各 tool result、完了を audit log に残す。
+- [ ] ユーザーが無効化した action も skipped として記録する。
+- [ ] テスト: approved execution と canceled session の audit event を確認する。
+- [ ] 完了条件: ユーザー確認を経たことがログで追える。
+
+### P3-009: End-to-end fake flow
+
+- [ ] Fake STT、Fake LLM、Fake ToolRegistry で `text input -> plan -> review -> execute` を通す。
+- [ ] 実 OS 連携なしで E2E smoke test を組む。
+- [ ] sample command は docs の QZT 記事公開ケースを使う。
+- [ ] 完了条件: CI 上で主要 UX flow の regression を検知できる。
+
+## Exit Gate
+
+- [ ] ActionPlan を Review UI で確認、編集、承認できる。
+- [ ] 承認なし write action は実行できない。
+- [ ] fake tool で E2E flow が通る。
+- [ ] 実行ログと rollback metadata が残る。
+- [ ] Dangerous operation は UI / Core の両方で拒否される。
