@@ -58,6 +58,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("createTask("))
     }
 
+    func testAppAndCLIShareDefaultDatabaseLocation() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let cliSource = try readPackageFile("Sources/SoloPMCLI/SoloPMCLIEntrypoint.swift")
+
+        XCTAssertTrue(appSource.contains("SoloPMAppDatabaseLocation.defaultDatabaseURL(createDirectory: true)"))
+        XCTAssertTrue(cliSource.contains("SoloPMAppDatabaseLocation.defaultDatabaseURL(createDirectory: false)"))
+        XCTAssertFalse(appSource.contains("appendingPathComponent(\"SoloPM.sqlite\")"))
+    }
+
     func testMenuBarSummaryRefreshesFromRuntimeController() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 

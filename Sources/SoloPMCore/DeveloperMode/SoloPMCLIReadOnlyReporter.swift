@@ -1,20 +1,5 @@
 import Foundation
 
-public enum SoloPMCLIDatabaseURL {
-    public static func defaultAppDatabaseURL(fileManager: FileManager = .default) throws -> URL {
-        guard let applicationSupportURL = fileManager.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first else {
-            throw DatabaseError.openFailed("Application Support directory was not found.")
-        }
-
-        return applicationSupportURL
-            .appendingPathComponent("SoloPM", isDirectory: true)
-            .appendingPathComponent("SoloPM.sqlite")
-    }
-}
-
 public enum SoloPMCLIReadOnlyError: Error, Equatable, LocalizedError {
     case missingTable(String, databasePath: String)
 

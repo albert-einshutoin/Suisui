@@ -80,7 +80,7 @@
 実装メモ:
 - SwiftPM product `solopm-cli` / target `SoloPMCLI` を追加した。
 - `status`、`tasks due`、`frames search` は app default SQLite DB を read-only で開き、Project / Task / Knowledge Frame の実データを表示する。
-- app DB は `SoloPMCLIDatabaseURL.defaultAppDatabaseURL()` で決めた read-only path に固定し、DB が無い初回状態ではファイルを作らず `database: missing` を返す。
+- app DB は GUI と共有する `SoloPMAppDatabaseLocation.defaultDatabaseURL(createDirectory: false)` に固定し、DB が無い初回状態ではファイルを作らず `database: missing` を返す。
 - `plan validate <path>` は `ActionPlanValidator` を使い、write 系 command は parser で受け付けない。
 
 ### P6-006: codebase-memory optional integration

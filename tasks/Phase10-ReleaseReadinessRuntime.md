@@ -285,6 +285,7 @@
 - [x] `solopm-cli tasks due` は completed task と archived project 配下 task を除外し、期限到来 task だけを表示する。
 - [x] `solopm-cli frames search <query>` は `SQLiteKnowledgeFrameStore.search` を使い、FTS の実検索結果を表示する。
 - [x] app DB が無い場合は SQLite ファイルを作らず `database: missing` を返す。
+- [x] GUI と CLI は `SoloPMAppDatabaseLocation` で同じ app default DB path を共有し、path drift を防ぐ。
 - [x] release readiness report の runtime scan は `Sources/SoloPMCLI` と `skeleton` / `placeholder` marker も対象にする。
 - [x] 完了条件: CLI が demo 表示ではなく、GUI と同じ local persistent data を安全に読み取れる。
 

@@ -1201,20 +1201,11 @@ private enum AppRuntimeFactory {
     }
 
     private static func applicationDatabaseURL() throws -> URL {
-        try applicationSupportDirectoryURL().appendingPathComponent("SoloPM.sqlite")
+        try SoloPMAppDatabaseLocation.defaultDatabaseURL(createDirectory: true)
     }
 
     private static func applicationSupportDirectoryURL() throws -> URL {
-        guard let applicationSupportURL = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first else {
-            throw DatabaseError.openFailed("Application Support directory was not found.")
-        }
-
-        let directory = applicationSupportURL.appendingPathComponent("SoloPM", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
+        try SoloPMAppDatabaseLocation.applicationSupportDirectoryURL(createDirectory: true)
     }
 }
 

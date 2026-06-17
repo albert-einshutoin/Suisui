@@ -40,7 +40,9 @@ struct SoloPMCLI {
 
     private static func printReadOnlyLines(_ makeLines: (SoloPMCLIReadOnlyReporter) throws -> [String]) -> SoloPMCLIExitCode {
         do {
-            let reporter = SoloPMCLIReadOnlyReporter(databaseURL: try SoloPMCLIDatabaseURL.defaultAppDatabaseURL())
+            let reporter = SoloPMCLIReadOnlyReporter(
+                databaseURL: try SoloPMAppDatabaseLocation.defaultDatabaseURL(createDirectory: false)
+            )
             for line in try makeLines(reporter) {
                 print(line)
             }
