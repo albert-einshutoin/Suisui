@@ -40,6 +40,29 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("createTask("))
     }
 
+    func testRuntimeAppCompositionDoesNotUseDemoOrInMemorySuccessPath() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertFalse(appSource.contains("AppPreviewFactory"))
+        XCTAssertFalse(appSource.contains("DemoPlanningProvider"))
+        XCTAssertFalse(appSource.contains("DemoTranscriptionUnavailableProvider"))
+        XCTAssertFalse(appSource.contains("InMemoryProjectBoardStore()"))
+        XCTAssertFalse(appSource.contains("ToolRegistryFactory.inMemoryPhase2MVP"))
+        XCTAssertTrue(appSource.contains("AppRuntimeFactory"))
+        XCTAssertTrue(appSource.contains("KeychainSecretStore"))
+        XCTAssertTrue(appSource.contains("OpenAIResponsesProvider(secretStore:"))
+        XCTAssertTrue(appSource.contains("ToolRegistry.phase2MVP("))
+    }
+
+    func testSettingsSurfaceCanPersistOpenAIKeyThroughViewModel() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(appSource.contains("AppSettingsViewModel"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.saveOpenAIAPIKey()"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.deleteOpenAIAPIKey()"))
+        XCTAssertFalse(appSource.contains("SecureField(\"API Key\", text: .constant(\"\"))"))
+    }
+
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)

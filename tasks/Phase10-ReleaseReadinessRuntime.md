@@ -44,51 +44,54 @@
 
 ### P10-002: Durable app container
 
-- [ ] `SoloPMApp` 起動時に SQLite、Keychain、audit logger、ToolRegistry を 1 つの app container から生成する。
-- [ ] Project board と Review execution が同じ SQLite DB を使う。
-- [ ] DB open / migration 失敗時は in-memory fallback せず、明示的な error state を出す。
-- [ ] テスト: app factory が demo provider / in-memory DB fallback を runtime に入れないことを確認する。
-- [ ] 完了条件: review 実行で作った task が board に永続表示される。
+- [x] `SoloPMApp` 起動時に SQLite、Keychain、audit logger、ToolRegistry を 1 つの app container から生成する。
+- [x] Project board と Review execution が同じ SQLite DB を使う。
+- [x] DB open / migration 失敗時は in-memory fallback せず、明示的な error state を出す。
+- [x] テスト: app factory が demo provider / in-memory DB fallback を runtime に入れないことを確認する。
+- [x] 完了条件: review 実行で作った task が board に永続表示される。
 
 ### P10-003: Task CRUD completion
 
-- [ ] Task delete / archive の store API を追加する。
-- [ ] Board card / inspector から task を削除できる。
-- [ ] 削除前に確認し、取り消せないことを明示する。
-- [ ] テスト: create / read / update / delete が SQLite で通る。
-- [ ] 完了条件: task board が CRUD として閉じている。
+- [x] Task delete / archive の store API を追加する。
+- [x] Board card / inspector から task を削除できる。
+- [x] 削除前に確認し、取り消せないことを明示する。
+- [x] テスト: create / read / update / delete が SQLite で通る。
+- [x] 完了条件: task board が CRUD として閉じている。
 
 ### P10-004: Project CRUD completion
 
-- [ ] Sidebar から project を作成できる。
-- [ ] Project title / status を編集できる。
-- [ ] active project に紐づく task 作成ができる。
-- [ ] テスト: project create / update / complete が board snapshot に反映される。
+- [x] Sidebar から project を作成できる。
+- [x] Project title を編集できる。
+- [ ] Project status / complete を編集できる。
+- [x] active project に紐づく task 作成ができる。
+- [x] テスト: project create / title update が board snapshot に反映される。
+- [ ] テスト: project complete が board snapshot に反映される。
 - [ ] 完了条件: Inbox だけでなくユーザーの project 管理ができる。
 
 ### P10-005: Keychain-backed settings
 
-- [ ] Settings で OpenAI API key を保存 / 削除できる。
-- [ ] key は Keychain のみに保存し、UserDefaults / SQLite へは保存しない。
-- [ ] AI provider / STT provider / workspace / notification 設定を UserDefaults に保存する。
-- [ ] テスト: secret redaction、empty key delete、settings persistence を確認する。
-- [ ] 完了条件: LLM 実行が demo ではなく BYOK provider で動く。
+- [x] Settings で OpenAI API key を保存 / 削除できる。
+- [x] key は Keychain のみに保存し、UserDefaults / SQLite へは保存しない。
+- [x] workspace / notification 設定を UserDefaults に保存する。
+- [ ] AI provider / STT provider 選択を UserDefaults に保存する。
+- [x] テスト: secret redaction、empty key delete、settings persistence を確認する。
+- [x] 完了条件: LLM 実行が demo ではなく BYOK provider で動く。
 
 ### P10-006: Text-first Action Plan runtime
 
-- [ ] `DemoPlanningProvider` を runtime から削除する。
-- [ ] API key 未設定時は Generate Plan が設定誘導 error を返す。
-- [ ] LLM で生成された ActionPlan は既存 Review UI で承認して実行する。
-- [ ] テスト: missing key、provider error、valid plan -> review ready を確認する。
-- [ ] 完了条件: text input -> plan -> review -> execute -> persistent board が通る。
+- [x] `DemoPlanningProvider` を runtime から削除する。
+- [x] API key 未設定時は Generate Plan が設定誘導 error を返す。
+- [x] LLM で生成された ActionPlan は既存 Review UI で承認して実行する。
+- [x] テスト: missing key、provider error、valid plan -> review ready を確認する。
+- [x] 完了条件: text input -> plan -> review -> execute -> persistent board が通る。
 
 ### P10-007: Recording without fake transcript
 
-- [ ] runtime の STT provider は固定 transcript / demo plan を返さない。
-- [ ] STT 未設定時は録音後に設定誘導 error を出す。
-- [ ] 可能なら OpenAI Transcribe BYOK adapter を追加する。
-- [ ] テスト: missing key / unavailable provider / recorded audio state reset を確認する。
-- [ ] 完了条件: Record が「動いているふり」をしない。
+- [x] runtime の STT provider は固定 transcript / demo plan を返さない。
+- [x] STT 未設定時は録音後に設定誘導 error を出す。
+- [x] 可能なら OpenAI Transcribe BYOK adapter を追加する。
+- [x] テスト: missing key / unavailable provider / recorded audio state reset を確認する。
+- [x] 完了条件: Record が「動いているふり」をしない。
 
 ### P10-008: MCP settings live check
 
@@ -100,11 +103,11 @@
 
 ### P10-009: Release safety pass
 
-- [ ] `rg` で runtime source に demo / fake / in-memory fallback がないことを確認する。
-- [ ] `swift test`、`xcodebuild`、`./scripts/verify.sh`、`./script/build_and_run.sh --verify` を通す。
-- [ ] screenshot で empty state、CRUD、Settings error を確認する。
-- [ ] security pass で secret が DB / log / settings に保存されないことを確認する。
-- [ ] 完了条件: public alpha として「動くが外部連携は未対応」と正直に出せる。
+- [x] `rg` で runtime source に demo / fake / in-memory fallback がないことを確認する。
+- [x] `swift test`、`xcodebuild`、`./scripts/verify.sh`、`./script/build_and_run.sh --verify` を通す。
+- [x] screenshot で empty state、CRUD、Settings error を確認する。
+- [x] security pass で secret が DB / log / settings に保存されないことを確認する。
+- [x] 完了条件: public alpha として「動くが外部連携は未対応」と正直に出せる。
 
 ## PDCA Loop
 

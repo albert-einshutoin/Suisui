@@ -334,6 +334,14 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         return try getLocked(id: id)
     }
 
+    public func delete(id: Int64) throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        _ = try getLocked(id: id)
+        try connection.execute("DELETE FROM tasks WHERE id = \(id);")
+    }
+
     private func getLocked(id: Int64) throws -> TaskRecord {
         guard let row = try connection.queryRows("SELECT * FROM tasks WHERE id = \(id) LIMIT 1;").first else {
             throw ToolExecutionError.executionFailed(.taskUpdate, "Task \(id) was not found.")

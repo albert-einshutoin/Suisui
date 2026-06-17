@@ -74,4 +74,89 @@ final class STTProviderTests: XCTestCase {
             )
         }
     }
+
+    func testOpenAITranscriptionRequestBuilderUsesMultipartEndpointAndAuthorization() throws {
+        let audioURL = try writeTemporaryAudio()
+        let request = try OpenAITranscriptionRequestBuilder(
+            configuration: OpenAITranscriptionConfiguration(
+                baseURL: URL(string: "https://api.openai.com/v1")!,
+                model: "gpt-transcribe-test",
+                timeoutInterval: 8
+            )
+        ).makeRequest(
+            apiKey: "sk-test",
+            audio: RecordedAudio(fileURL: audioURL, format: .m4a)
+        )
+
+        let body = try XCTUnwrap(request.httpBody)
+        let bodyText = String(data: body, encoding: .utf8) ?? ""
+
+        XCTAssertEqual(request.url?.absoluteString, "https://api.openai.com/v1/audio/transcriptions")
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.timeoutInterval, 8)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer sk-test")
+        XCTAssertTrue(request.value(forHTTPHeaderField: "Content-Type")?.contains("multipart/form-data; boundary=") ?? false)
+        XCTAssertTrue(bodyText.contains("name=\"model\""))
+        XCTAssertTrue(bodyText.contains("gpt-transcribe-test"))
+        XCTAssertTrue(bodyText.contains("name=\"file\""))
+        XCTAssertFalse(bodyText.contains("sk-test"))
+    }
+
+    func testOpenAITranscribeProviderRejectsMissingAPIKeyBeforeReadingAudio() async throws {
+        let provider = OpenAITranscribeProvider(
+            secretStore: InMemorySecretStore(),
+            httpClient: StubSTTHTTPDataClient(data: Data(), statusCode: 200)
+        )
+
+        do {
+            _ = try await provider.transcribe(
+                RecordedAudio(fileURL: URL(filePath: "/tmp/does-not-exist.m4a"), format: .m4a)
+            )
+            XCTFail("Expected missing key to fail.")
+        } catch {
+            XCTAssertEqual(error as? STTProviderError, .unavailable("OpenAI API key is not configured."))
+        }
+    }
+
+    func testOpenAITranscribeProviderParsesSuccessfulResponse() async throws {
+        let audioURL = try writeTemporaryAudio()
+        let provider = OpenAITranscribeProvider(
+            secretStore: InMemorySecretStore(values: [.openAIAPIKey: "sk-test"]),
+            httpClient: StubSTTHTTPDataClient(
+                data: Data(#"{"text":"Create launch checklist","language":"en","duration":1.25}"#.utf8),
+                statusCode: 200
+            )
+        )
+
+        let transcript = try await provider.transcribe(
+            RecordedAudio(fileURL: audioURL, format: .m4a, duration: 1.25)
+        )
+
+        XCTAssertEqual(transcript.text, "Create launch checklist")
+        XCTAssertEqual(transcript.languageCode, "en")
+        XCTAssertEqual(transcript.duration, 1.25)
+    }
+
+    private func writeTemporaryAudio() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("solopm-stt-test-\(UUID().uuidString).m4a")
+        try Data("audio".utf8).write(to: url)
+        return url
+    }
+}
+
+private struct StubSTTHTTPDataClient: HTTPDataClient {
+    var data: Data
+    var statusCode: Int
+
+    func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let response = HTTPURLResponse(
+            url: request.url ?? URL(string: "https://api.openai.com/v1/audio/transcriptions")!,
+            statusCode: statusCode,
+            httpVersion: nil,
+            headerFields: nil
+        )!
+
+        return (data, response)
+    }
 }

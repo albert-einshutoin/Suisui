@@ -11,17 +11,15 @@ struct SoloPM: App {
     @NSApplicationDelegateAdaptor(SparkleAppDelegate.self) private var sparkleAppDelegate
 #endif
 
-    private let menuBarViewModel = AppPreviewFactory.makeMenuBarSummaryViewModel()
-    private let settings = AppSettings.default
-
+    private let menuBarViewModel = AppRuntimeFactory.makeMenuBarSummaryViewModel()
     var body: some Scene {
         WindowGroup("SoloPM", id: "project-board") {
-            ProjectBoardView(viewModel: AppPreviewFactory.makeProjectBoardViewModel())
+            ProjectBoardView(viewModel: AppRuntimeFactory.makeProjectBoardViewModel())
         }
         .defaultSize(width: 1180, height: 760)
 
         Window("Voice Command", id: "voice-capture") {
-            VoiceCaptureView(viewModel: AppPreviewFactory.makeVoiceCaptureViewModel())
+            VoiceCaptureView(viewModel: AppRuntimeFactory.makeVoiceCaptureViewModel())
         }
         .defaultSize(width: 560, height: 420)
 
@@ -32,10 +30,10 @@ struct SoloPM: App {
 
         Settings {
             SettingsView(
-                settings: settings,
-                launchAtLoginViewModel: AppPreviewFactory.makeLaunchAtLoginSettingsViewModel(),
-                watcherDiagnosticsSnapshot: AppPreviewFactory.makeWatcherDiagnosticsSnapshot(),
-                externalMCPViewModel: AppPreviewFactory.makeExternalMCPSettingsViewModel()
+                settingsViewModel: AppRuntimeFactory.makeAppSettingsViewModel(),
+                launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
+                watcherDiagnosticsSnapshot: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot(),
+                externalMCPViewModel: AppRuntimeFactory.makeExternalMCPSettingsViewModel()
             )
         }
     }
@@ -190,7 +188,9 @@ private struct VoiceCaptureView: View {
             if let response = viewModel.planningResponse {
                 Divider()
                 if let plan = response.actionPlan, response.validationResult.isValid {
-                    ActionReviewPanel(viewModel: AppPreviewFactory.makeReviewSessionViewModel(plan: plan))
+                    ActionReviewPanel(viewModel: AppRuntimeFactory.makeReviewSessionViewModel(plan: plan)) {
+                        NotificationCenter.default.post(name: .soloPMProjectBoardDidChange, object: nil)
+                    }
                 } else {
                     ActionPlanPreview(response: response)
                 }
@@ -254,9 +254,11 @@ private struct StatusRow: View {
 
 private struct ActionReviewPanel: View {
     @StateObject private var viewModel: ReviewSessionViewModel
+    private let onExecutionFinished: () -> Void
 
-    init(viewModel: ReviewSessionViewModel) {
+    init(viewModel: ReviewSessionViewModel, onExecutionFinished: @escaping () -> Void = {}) {
         _viewModel = StateObject(wrappedValue: viewModel)
+        self.onExecutionFinished = onExecutionFinished
     }
 
     var body: some View {
@@ -301,6 +303,9 @@ private struct ActionReviewPanel: View {
 
                 Button {
                     try? viewModel.execute()
+                    if viewModel.session.executionStatus == .completed {
+                        onExecutionFinished()
+                    }
                 } label: {
                     Label("Execute", systemImage: "play.circle")
                 }
@@ -574,19 +579,19 @@ private struct SummaryRow: View {
 }
 
 private struct SettingsView: View {
-    let settings: AppSettings
     let watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot
+    @StateObject private var settingsViewModel: AppSettingsViewModel
     @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
     @StateObject private var externalMCPViewModel: ExternalMCPSettingsViewModel
 
     init(
-        settings: AppSettings,
+        settingsViewModel: AppSettingsViewModel,
         launchAtLoginViewModel: LaunchAtLoginSettingsViewModel,
         watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot,
         externalMCPViewModel: ExternalMCPSettingsViewModel
     ) {
-        self.settings = settings
         self.watcherDiagnosticsSnapshot = watcherDiagnosticsSnapshot
+        _settingsViewModel = StateObject(wrappedValue: settingsViewModel)
         _launchAtLoginViewModel = StateObject(wrappedValue: launchAtLoginViewModel)
         _externalMCPViewModel = StateObject(wrappedValue: externalMCPViewModel)
     }
@@ -594,19 +599,44 @@ private struct SettingsView: View {
     var body: some View {
         Form {
             Section("AI") {
-                LabeledContent("Provider", value: settings.aiProvider.displayName)
-                SecureField("API Key", text: .constant(""))
-                    .disabled(true)
+                LabeledContent("Provider", value: settingsViewModel.settings.aiProvider.displayName)
+                LabeledContent("OpenAI API Key", value: settingsViewModel.openAIAPIKeyStatusLabel)
+                SecureField(
+                    "New API Key",
+                    text: Binding(
+                        get: { settingsViewModel.openAIAPIKeyInput },
+                        set: { settingsViewModel.updateOpenAIAPIKeyInput($0) }
+                    )
+                )
+                HStack {
+                    Button {
+                        settingsViewModel.saveOpenAIAPIKey()
+                    } label: {
+                        Label("Save Key", systemImage: "key")
+                    }
+                    .disabled(settingsViewModel.openAIAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    Button(role: .destructive) {
+                        settingsViewModel.deleteOpenAIAPIKey()
+                    } label: {
+                        Label("Delete Key", systemImage: "trash")
+                    }
+                }
             }
 
             Section("Voice") {
-                LabeledContent("Speech to Text", value: settings.sttProvider.displayName)
+                LabeledContent("Speech to Text", value: settingsViewModel.settings.sttProvider.displayName)
                 LabeledContent("Shortcut", value: "Option + Space")
             }
 
             Section("Privacy") {
-                Toggle("Notifications", isOn: .constant(settings.notificationsEnabled))
-                    .disabled(true)
+                Toggle(
+                    "Notifications",
+                    isOn: Binding(
+                        get: { settingsViewModel.settings.notificationsEnabled },
+                        set: { settingsViewModel.setNotificationsEnabled($0) }
+                    )
+                )
                 Toggle(
                     isOn: Binding(
                         get: { launchAtLoginViewModel.isEnabled },
@@ -622,7 +652,28 @@ private struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
-                LabeledContent("Workspace", value: settings.defaultWorkspacePath ?? "Not selected")
+                TextField(
+                    "Workspace",
+                    text: Binding(
+                        get: { settingsViewModel.settings.defaultWorkspacePath ?? "" },
+                        set: { settingsViewModel.setDefaultWorkspacePath($0) }
+                    )
+                )
+                Button {
+                    settingsViewModel.saveSettings()
+                } label: {
+                    Label("Save Settings", systemImage: "square.and.arrow.down")
+                }
+                if let errorMessage = settingsViewModel.errorMessage {
+                    Label(errorMessage, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+                if let successMessage = settingsViewModel.successMessage {
+                    Label(successMessage, systemImage: "checkmark.circle")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
             }
 
             Section("Watcher") {
@@ -776,24 +827,36 @@ private struct SettingsView: View {
     }
 }
 
-private enum AppPreviewFactory {
+private enum AppRuntimeFactory {
     @MainActor
     static func makeProjectBoardViewModel() -> ProjectBoardViewModel {
         do {
             return ProjectBoardViewModel(store: try SQLiteProjectBoardStore(path: applicationDatabaseURL().path))
         } catch {
-            return ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+            return ProjectBoardViewModel(store: UnavailableProjectBoardStore(error: error))
         }
     }
 
     static func makeMenuBarSummaryViewModel() -> MenuBarSummaryViewModel {
-        MenuBarSummaryViewModel(
-            summary: MenuBarSummary(
-                todayTaskCount: 2,
-                overdueTaskCount: 1,
-                dueThisWeekCount: 5,
-                recentProjectTitles: ["SoloPM Phase 4", "QZT article"]
+        do {
+            let connection = try migratedConnection()
+            let projectStore = SQLiteProjectStore(connection: connection)
+            let taskStore = SQLiteTaskStore(connection: connection)
+            let summary = try DeadlineQueryService(projectStore: projectStore, taskStore: taskStore).summary()
+            let recentProjects = try projectStore.list().prefix(3).map(\.title)
+            return MenuBarSummaryViewModel(
+                summary: MenuBarSummary(deadlineSummary: summary, recentProjectTitles: Array(recentProjects))
             )
+        } catch {
+            return MenuBarSummaryViewModel(summary: .empty)
+        }
+    }
+
+    @MainActor
+    static func makeAppSettingsViewModel() -> AppSettingsViewModel {
+        AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(),
+            secretStore: makeSecretStore()
         )
     }
 
@@ -815,7 +878,74 @@ private enum AppPreviewFactory {
         ExternalMCPSettingsViewModel(store: UserDefaultsMCPServerRegistrationStore())
     }
 
+    @MainActor
+    static func makeVoiceCaptureViewModel() -> VoiceCaptureViewModel {
+        let secretStore = makeSecretStore()
+        let auditLogger = try? makeAuditLogger()
+        return VoiceCaptureViewModel(
+            audioRecorder: AVFoundationAudioRecorder(),
+            sttProvider: OpenAITranscribeProvider(secretStore: secretStore),
+            llmProvider: OpenAIResponsesProvider(secretStore: secretStore),
+            auditRecorder: auditLogger.map { PlanningAuditRecorder(logger: $0) }
+        )
+    }
+
+    @MainActor
+    static func makeReviewSessionViewModel(plan: ActionPlan) -> ReviewSessionViewModel {
+        let logger = try? makeAuditLogger()
+        let registry: ToolRegistry
+        do {
+            let connection = try migratedConnection()
+            registry = try ToolRegistry.phase2MVP(
+                projectStore: SQLiteProjectStore(connection: connection),
+                taskStore: SQLiteTaskStore(connection: connection),
+                knowledgeStore: SQLiteKnowledgeFrameStore(connection: connection),
+                notificationClient: UserNotificationsNotificationClient(),
+                calendarClient: EventKitCalendarClient(),
+                reminderClient: EventKitReminderClient(),
+                fileAccessClient: LocalFileAccessClient(workspaceRoot: try workspaceRootURL()),
+                mailDraftClient: UnavailableMailDraftClient(),
+                notificationRequestStore: SQLiteNotificationRequestStore(connection: connection),
+                calendarLinkStore: SQLiteCalendarLinkStore(connection: connection),
+                reminderLinkStore: SQLiteReminderLinkStore(connection: connection),
+                auditLogger: logger
+            )
+        } catch {
+            registry = ToolRegistry()
+        }
+
+        return ReviewSessionViewModel(
+            plan: plan,
+            executor: ActionExecutor(registry: registry, auditLogger: logger),
+            auditLogger: logger
+        )
+    }
+
+    private static func migratedConnection() throws -> SQLiteConnection {
+        let connection = try SQLiteConnection(path: applicationDatabaseURL().path)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        return connection
+    }
+
+    private static func makeSecretStore() -> any SecretStore {
+        KeychainSecretStore()
+    }
+
+    private static func makeAuditLogger() throws -> any AuditLogger {
+        RedactingAuditLogger(base: try SQLiteAuditLogger(path: applicationDatabaseURL().path))
+    }
+
+    private static func workspaceRootURL() throws -> URL {
+        let directory = try applicationSupportDirectoryURL().appendingPathComponent("Workspace", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
     private static func applicationDatabaseURL() throws -> URL {
+        try applicationSupportDirectoryURL().appendingPathComponent("SoloPM.sqlite")
+    }
+
+    private static func applicationSupportDirectoryURL() throws -> URL {
         guard let applicationSupportURL = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
@@ -825,83 +955,45 @@ private enum AppPreviewFactory {
 
         let directory = applicationSupportURL.appendingPathComponent("SoloPM", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.appendingPathComponent("SoloPM.sqlite")
-    }
-
-    @MainActor
-    static func makeVoiceCaptureViewModel() -> VoiceCaptureViewModel {
-        VoiceCaptureViewModel(
-            audioRecorder: AVFoundationAudioRecorder(),
-            sttProvider: DemoTranscriptionUnavailableProvider(),
-            llmProvider: DemoPlanningProvider(),
-            auditRecorder: PlanningAuditRecorder(logger: RedactingAuditLogger(base: InMemoryAuditLogger()))
-        )
-    }
-
-    @MainActor
-    static func makeReviewSessionViewModel(plan: ActionPlan) -> ReviewSessionViewModel {
-        let baseLogger = InMemoryAuditLogger()
-        let logger = RedactingAuditLogger(base: baseLogger)
-        let workspaceRoot = FileManager.default.temporaryDirectory.appendingPathComponent("SoloPMPreviewWorkspace", isDirectory: true)
-        try? FileManager.default.createDirectory(at: workspaceRoot, withIntermediateDirectories: true)
-        let registry = (try? ToolRegistryFactory.inMemoryPhase2MVP(workspaceRoot: workspaceRoot, auditLogger: logger)) ?? ToolRegistry()
-
-        return ReviewSessionViewModel(
-            plan: plan,
-            executor: ActionExecutor(registry: registry, auditLogger: logger),
-            auditLogger: logger
-        )
+        return directory
     }
 }
 
-private struct DemoTranscriptionUnavailableProvider: SpeechToTextProvider {
-    let id: STTProviderID = .whisperKit
-    let availability = STTProviderAvailability(
-        providerID: .whisperKit,
-        isAvailable: false,
-        reason: "Speech transcription is not configured. Type the command manually or choose a provider in Settings."
-    )
+private struct UnavailableProjectBoardStore: ProjectBoardStore {
+    let error: Error
 
-    func transcribe(_ audio: RecordedAudio) async throws -> STTTranscript {
-        throw STTProviderError.unavailable(availability.reason ?? "Speech transcription is not configured.")
+    func loadSnapshot() throws -> ProjectBoardSnapshot {
+        throw error
+    }
+
+    func createProject(title: String) throws -> ProjectBoardProject {
+        throw error
+    }
+
+    func updateProject(id: Int64, title: String) throws -> ProjectBoardProject {
+        throw error
+    }
+
+    func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
+        throw error
+    }
+
+    func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
+        throw error
+    }
+
+    func deleteTask(id: Int64) throws {
+        throw error
     }
 }
 
-private struct DemoPlanningProvider: LLMProvider {
-    let providerID = "demo.local"
+private struct UnavailableMailDraftClient: MailDraftClient {
+    func createTextDraft(to: String?, subject: String, body: String) throws -> MailDraftRecord {
+        throw ToolClientError.invalidRequest("Mail draft integration is not enabled in this release.")
+    }
 
-    func generatePlan(for request: PlanningRequest) async throws -> PlanningResponse {
-        let plan = ActionPlan(
-            id: "plan-demo",
-            userInput: request.userInput,
-            summary: "Create a task",
-            actions: [
-                PlanAction(
-                    id: "action-demo-project",
-                    tool: .projectCreate,
-                    arguments: [
-                        "title": .string("SoloPM Demo")
-                    ]
-                ),
-                PlanAction(
-                    id: "action-demo-task",
-                    tool: .taskCreate,
-                    arguments: [
-                        "title": .string(request.userInput),
-                        "sourceCommand": .string("voice-capture")
-                    ]
-                )
-            ],
-            riskLevel: .write,
-            requiresApproval: true
-        )
-
-        return PlanningResponse(
-            providerID: providerID,
-            rawContent: "",
-            actionPlan: plan,
-            validationResult: ActionPlanValidator().validate(plan)
-        )
+    func listDrafts() throws -> [MailDraftRecord] {
+        []
     }
 }
 

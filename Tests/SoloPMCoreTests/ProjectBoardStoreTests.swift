@@ -68,6 +68,37 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(inProgressTasks.first?.dueLabel, "2026-06-21")
     }
 
+    func testDeleteTaskRemovesCardFromPersistentSnapshot() throws {
+        let store = try makeStore()
+        let projectID = try XCTUnwrap(store.loadSnapshot().projects.first?.id)
+        let task = try store.createTask(ProjectBoardTaskDraft(
+            projectID: projectID,
+            title: "Remove stale release task",
+            status: .blocked,
+            priority: .medium
+        ))
+
+        try store.deleteTask(id: task.id)
+
+        let snapshot = try store.loadSnapshot()
+
+        XCTAssertFalse(snapshot.projects.flatMap(\.tasks).contains { $0.id == task.id })
+        XCTAssertEqual(snapshot.projects.first?.column(.blocked)?.tasks, [])
+    }
+
+    func testCreateAndUpdateProjectAppearInBoardSnapshot() throws {
+        let store = try makeStore()
+
+        let project = try store.createProject(title: "Launch Readiness")
+        _ = try store.updateProject(id: project.id, title: "Alpha Launch Readiness")
+
+        let snapshot = try store.loadSnapshot()
+        let updated = try XCTUnwrap(snapshot.projects.first { $0.id == project.id })
+
+        XCTAssertEqual(updated.title, "Alpha Launch Readiness")
+        XCTAssertEqual(updated.subtitle, "0 open / 0 total")
+    }
+
     private func makeStore() throws -> SQLiteProjectBoardStore {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)

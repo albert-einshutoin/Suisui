@@ -1,6 +1,7 @@
+import Combine
 import Foundation
 
-public struct AppSettings: Equatable, Sendable {
+public struct AppSettings: Codable, Equatable, Sendable {
     public var aiProvider: AIProvider
     public var sttProvider: STTProvider
     public var notificationsEnabled: Bool
@@ -50,7 +51,7 @@ public struct AppSettings: Equatable, Sendable {
     }
 }
 
-public enum AIProvider: String, CaseIterable, Equatable, Sendable {
+public enum AIProvider: String, CaseIterable, Codable, Equatable, Sendable {
     case openAIResponses
     case openAICompatible
     case openRouter
@@ -70,7 +71,7 @@ public enum AIProvider: String, CaseIterable, Equatable, Sendable {
     }
 }
 
-public enum STTProvider: String, CaseIterable, Equatable, Sendable {
+public enum STTProvider: String, CaseIterable, Codable, Equatable, Sendable {
     case appleSpeechAnalyzer
     case localWhisperKit
     case localWhisperCpp
@@ -107,3 +108,149 @@ public enum ValidationSeverity: String, Equatable, Sendable {
     case error
 }
 
+public enum AppSettingsStoreError: Error, Equatable, Sendable {
+    case encodingFailed
+    case decodingFailed
+}
+
+public protocol AppSettingsStore: Sendable {
+    func load() throws -> AppSettings
+    func save(_ settings: AppSettings) throws
+}
+
+public final class UserDefaultsAppSettingsStore: AppSettingsStore, @unchecked Sendable {
+    private let defaults: UserDefaults
+    private let key: String
+    private let lock = NSLock()
+
+    public init(defaults: UserDefaults = .standard, key: String = "app.settings") {
+        self.defaults = defaults
+        self.key = key
+    }
+
+    public func load() throws -> AppSettings {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard let data = defaults.data(forKey: key) else {
+            return .default
+        }
+
+        do {
+            return try JSONDecoder().decode(AppSettings.self, from: data)
+        } catch {
+            throw AppSettingsStoreError.decodingFailed
+        }
+    }
+
+    public func save(_ settings: AppSettings) throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        do {
+            let data = try JSONEncoder().encode(settings)
+            defaults.set(data, forKey: key)
+        } catch {
+            throw AppSettingsStoreError.encodingFailed
+        }
+    }
+}
+
+@MainActor
+public final class AppSettingsViewModel: ObservableObject {
+    @Published public private(set) var settings: AppSettings
+    @Published public private(set) var openAIAPIKeyInput: String
+    @Published public private(set) var openAIAPIKeyStatusLabel: String
+    @Published public private(set) var errorMessage: String?
+    @Published public private(set) var successMessage: String?
+
+    private let settingsStore: any AppSettingsStore
+    private let secretStore: any SecretStore
+
+    public init(settingsStore: any AppSettingsStore, secretStore: any SecretStore) {
+        self.settingsStore = settingsStore
+        self.secretStore = secretStore
+        self.settings = (try? settingsStore.load()) ?? .default
+        self.openAIAPIKeyInput = ""
+        self.openAIAPIKeyStatusLabel = "Not configured"
+        self.errorMessage = nil
+        self.successMessage = nil
+        refreshOpenAIAPIKeyStatus()
+    }
+
+    public func setNotificationsEnabled(_ isEnabled: Bool) {
+        settings.notificationsEnabled = isEnabled
+        clearMessages()
+    }
+
+    public func setDefaultWorkspacePath(_ path: String) {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.defaultWorkspacePath = trimmed.isEmpty ? nil : trimmed
+        clearMessages()
+    }
+
+    public func updateOpenAIAPIKeyInput(_ value: String) {
+        openAIAPIKeyInput = value
+        clearMessages()
+    }
+
+    public func saveSettings() {
+        let issues = settings.validate().filter { $0.severity == .error }
+        guard issues.isEmpty else {
+            errorMessage = issues.map(\.message).joined(separator: " ")
+            successMessage = nil
+            return
+        }
+
+        do {
+            try settingsStore.save(settings)
+            errorMessage = nil
+            successMessage = "Settings saved."
+        } catch {
+            errorMessage = String(describing: error)
+            successMessage = nil
+        }
+    }
+
+    public func saveOpenAIAPIKey() {
+        let trimmed = openAIAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            deleteOpenAIAPIKey()
+            return
+        }
+
+        do {
+            try secretStore.save(trimmed, for: .openAIAPIKey)
+            openAIAPIKeyInput = ""
+            refreshOpenAIAPIKeyStatus()
+            errorMessage = nil
+            successMessage = "API key saved to Keychain."
+        } catch {
+            errorMessage = String(describing: error)
+            successMessage = nil
+        }
+    }
+
+    public func deleteOpenAIAPIKey() {
+        do {
+            try secretStore.delete(.openAIAPIKey)
+            openAIAPIKeyInput = ""
+            refreshOpenAIAPIKeyStatus()
+            errorMessage = nil
+            successMessage = "API key removed."
+        } catch {
+            errorMessage = String(describing: error)
+            successMessage = nil
+        }
+    }
+
+    public func refreshOpenAIAPIKeyStatus() {
+        let stored = (try? secretStore.read(.openAIAPIKey))?.trimmingCharacters(in: .whitespacesAndNewlines)
+        openAIAPIKeyStatusLabel = stored?.isEmpty == false ? "Configured" : "Not configured"
+    }
+
+    private func clearMessages() {
+        errorMessage = nil
+        successMessage = nil
+    }
+}

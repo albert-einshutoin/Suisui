@@ -12,13 +12,26 @@ struct ProjectBoardView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $viewModel.selectedProjectID) {
-                ForEach(viewModel.snapshot.projects) { project in
-                    ProjectSidebarRow(project: project)
-                        .tag(project.id)
+            VStack(spacing: 0) {
+                List(selection: $viewModel.selectedProjectID) {
+                    ForEach(viewModel.snapshot.projects) { project in
+                        ProjectSidebarRow(project: project)
+                            .tag(project.id)
+                    }
                 }
+                .listStyle(.sidebar)
+
+                Divider()
+
+                Button {
+                    viewModel.createProject()
+                } label: {
+                    Label("Add Project", systemImage: "folder.badge.plus")
+                }
+                .buttonStyle(.borderless)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
             }
-            .listStyle(.sidebar)
             .navigationTitle("Projects")
         } detail: {
             if let project = viewModel.selectedProject {
@@ -54,6 +67,9 @@ struct ProjectBoardView: View {
         .task {
             viewModel.load()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
+            viewModel.load()
+        }
     }
 
     private var inspectorBinding: Binding<Bool> {
@@ -66,6 +82,10 @@ struct ProjectBoardView: View {
             }
         )
     }
+}
+
+extension Notification.Name {
+    static let soloPMProjectBoardDidChange = Notification.Name("dev.solopm.projectBoardDidChange")
 }
 
 private enum ProjectBoardDisplayMode: String, CaseIterable, Identifiable {
@@ -116,13 +136,26 @@ private struct ProjectBoardDetail: View {
     @Binding var displayMode: ProjectBoardDisplayMode
     @ObservedObject var viewModel: ProjectBoardViewModel
     @State private var composingStatus: ProjectTaskStatus?
+    @State private var projectTitle = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(project.title)
-                        .font(.title2.weight(.semibold))
+                    HStack(spacing: 8) {
+                        TextField("Project title", text: $projectTitle)
+                            .font(.title2.weight(.semibold))
+                            .textFieldStyle(.plain)
+                            .frame(minWidth: 220, maxWidth: 420)
+
+                        Button {
+                            viewModel.updateSelectedProject(title: projectTitle)
+                        } label: {
+                            Label("Save Project", systemImage: "checkmark")
+                        }
+                        .labelStyle(.iconOnly)
+                        .disabled(projectTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || projectTitle == project.title)
+                    }
                     Text(project.subtitle)
                         .foregroundStyle(.secondary)
                 }
@@ -166,6 +199,15 @@ private struct ProjectBoardDetail: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onAppear {
+            projectTitle = project.title
+        }
+        .onChange(of: project.id) { _, _ in
+            projectTitle = project.title
+        }
+        .onChange(of: project.title) { _, newTitle in
+            projectTitle = newTitle
+        }
     }
 }
 
@@ -426,6 +468,7 @@ private struct TaskInspectorView: View {
     @State private var status: ProjectTaskStatus
     @State private var priority: ProjectTaskPriority
     @State private var dueAt: String
+    @State private var isConfirmingDelete = false
 
     init(task: ProjectBoardTask, viewModel: ProjectBoardViewModel) {
         self.task = task
@@ -478,8 +521,28 @@ private struct TaskInspectorView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+
+            Section {
+                Button(role: .destructive) {
+                    isConfirmingDelete = true
+                } label: {
+                    Label("Delete Task", systemImage: "trash")
+                }
+            }
         }
         .formStyle(.grouped)
+        .confirmationDialog(
+            "Delete this task?",
+            isPresented: $isConfirmingDelete,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Task", role: .destructive) {
+                viewModel.deleteSelectedTask()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the task from the local SoloPM database.")
+        }
         .onChange(of: task.id) { _, newValue in
             guard newValue == task.id else {
                 return

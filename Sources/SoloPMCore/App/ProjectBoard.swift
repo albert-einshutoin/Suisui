@@ -165,12 +165,16 @@ public struct ProjectBoardTaskDraft: Equatable, Sendable {
 
 public enum ProjectBoardStoreError: Error, Equatable, Sendable {
     case emptyTitle
+    case emptyProjectTitle
 }
 
 public protocol ProjectBoardStore {
     func loadSnapshot() throws -> ProjectBoardSnapshot
+    func createProject(title: String) throws -> ProjectBoardProject
+    func updateProject(id: Int64, title: String) throws -> ProjectBoardProject
     func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask
     func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask
+    func deleteTask(id: Int64) throws
 }
 
 public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
@@ -194,22 +198,24 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         let projects = try ensureProjects()
         let tasks = try taskStore.listAll().compactMap(makeBoardTask)
 
-        let boardProjects = projects.map { project in
-            let projectTasks = tasks.filter { $0.projectID == project.id }
-            let columns = ProjectTaskStatus.allCases.map { status in
-                ProjectBoardColumn(
-                    status: status,
-                    tasks: projectTasks
-                        .filter { $0.status == status }
-                        .sorted { $0.id > $1.id }
-                )
-            }
-            let openCount = projectTasks.filter { $0.status != .done }.count
-            let subtitle = "\(openCount) open / \(projectTasks.count) total"
-            return ProjectBoardProject(id: project.id, title: project.title, subtitle: subtitle, columns: columns)
-        }
+        let boardProjects = projects.map { makeBoardProject(project: $0, tasks: tasks) }
 
         return ProjectBoardSnapshot(projects: boardProjects)
+    }
+
+    @discardableResult
+    public func createProject(title: String) throws -> ProjectBoardProject {
+        let normalizedTitle = try normalizedProjectTitle(title)
+        let record = try projectStore.create(title: normalizedTitle, tags: ["local"], sourceCommand: "app.project-board")
+        return makeBoardProject(project: record, tasks: [])
+    }
+
+    @discardableResult
+    public func updateProject(id: Int64, title: String) throws -> ProjectBoardProject {
+        let normalizedTitle = try normalizedProjectTitle(title)
+        let record = try projectStore.update(id: id, title: normalizedTitle)
+        let tasks = try taskStore.listAll().compactMap(makeBoardTask)
+        return makeBoardProject(project: record, tasks: tasks)
     }
 
     @discardableResult
@@ -242,6 +248,10 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         return try makeBoardTask(record).requiredTask()
     }
 
+    public func deleteTask(id: Int64) throws {
+        try taskStore.delete(id: id)
+    }
+
     private func ensureProjects() throws -> [ProjectRecord] {
         let projects = try projectStore.list()
         if !projects.isEmpty {
@@ -269,6 +279,30 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             priority: draft.priority,
             dueAt: dueAt?.isEmpty == true ? nil : dueAt
         )
+    }
+
+    private func normalizedProjectTitle(_ title: String) throws -> String {
+        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedTitle.isEmpty else {
+            throw ProjectBoardStoreError.emptyProjectTitle
+        }
+
+        return normalizedTitle
+    }
+
+    private func makeBoardProject(project: ProjectRecord, tasks: [ProjectBoardTask]) -> ProjectBoardProject {
+        let projectTasks = tasks.filter { $0.projectID == project.id }
+        let columns = ProjectTaskStatus.allCases.map { status in
+            ProjectBoardColumn(
+                status: status,
+                tasks: projectTasks
+                    .filter { $0.status == status }
+                    .sorted { $0.id > $1.id }
+            )
+        }
+        let openCount = projectTasks.filter { $0.status != .done }.count
+        let subtitle = "\(openCount) open / \(projectTasks.count) total"
+        return ProjectBoardProject(id: project.id, title: project.title, subtitle: subtitle, columns: columns)
     }
 
     private func makeBoardTask(_ record: TaskRecord) -> ProjectBoardTask? {
@@ -306,6 +340,38 @@ public final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Send
 
     public func loadSnapshot() throws -> ProjectBoardSnapshot {
         snapshot
+    }
+
+    @discardableResult
+    public func createProject(title: String) throws -> ProjectBoardProject {
+        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedTitle.isEmpty else {
+            throw ProjectBoardStoreError.emptyProjectTitle
+        }
+
+        let nextID = snapshot.projects.map(\.id).max().map { $0 + 1 } ?? 1
+        let project = ProjectBoardProject(
+            id: nextID,
+            title: normalizedTitle,
+            subtitle: "0 open / 0 total",
+            columns: ProjectTaskStatus.allCases.map { ProjectBoardColumn(status: $0, tasks: []) }
+        )
+        snapshot.projects.insert(project, at: 0)
+        return project
+    }
+
+    @discardableResult
+    public func updateProject(id: Int64, title: String) throws -> ProjectBoardProject {
+        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedTitle.isEmpty else {
+            throw ProjectBoardStoreError.emptyProjectTitle
+        }
+        guard let projectIndex = snapshot.projects.firstIndex(where: { $0.id == id }) else {
+            throw DatabaseError.stepFailed("Project \(id) was not found.")
+        }
+
+        snapshot.projects[projectIndex].title = normalizedTitle
+        return snapshot.projects[projectIndex]
     }
 
     @discardableResult
@@ -347,6 +413,15 @@ public final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Send
         )
         upsert(task)
         return task
+    }
+
+    public func deleteTask(id: Int64) throws {
+        for projectIndex in snapshot.projects.indices {
+            for columnIndex in snapshot.projects[projectIndex].columns.indices {
+                snapshot.projects[projectIndex].columns[columnIndex].tasks.removeAll { $0.id == id }
+            }
+            refreshProjectSubtitle(at: projectIndex)
+        }
     }
 
     private func upsert(_ task: ProjectBoardTask) {
@@ -454,6 +529,39 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    @discardableResult
+    public func createProject(title: String = "Untitled Project") -> ProjectBoardProject? {
+        do {
+            let project = try store.createProject(title: title)
+            load()
+            selectedProjectID = project.id
+            selectedTaskID = nil
+            return project
+        } catch ProjectBoardStoreError.emptyProjectTitle {
+            errorMessage = "Project title is required."
+            return nil
+        } catch {
+            errorMessage = String(describing: error)
+            return nil
+        }
+    }
+
+    public func updateSelectedProject(title: String) {
+        guard let selectedProjectID else {
+            return
+        }
+
+        do {
+            _ = try store.updateProject(id: selectedProjectID, title: title)
+            load()
+            self.selectedProjectID = selectedProjectID
+        } catch ProjectBoardStoreError.emptyProjectTitle {
+            errorMessage = "Project title is required."
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
     public func updateSelectedTask(
         title: String,
         detail: String,
@@ -481,6 +589,20 @@ public final class ProjectBoardViewModel: ObservableObject {
             selectedTaskID = selectedTask.id
         } catch ProjectBoardStoreError.emptyTitle {
             errorMessage = "Task title is required."
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
+    public func deleteSelectedTask() {
+        guard let selectedTaskID else {
+            return
+        }
+
+        do {
+            try store.deleteTask(id: selectedTaskID)
+            self.selectedTaskID = nil
+            load()
         } catch {
             errorMessage = String(describing: error)
         }
