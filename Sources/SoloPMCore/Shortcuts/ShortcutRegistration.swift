@@ -77,7 +77,7 @@ public final class ShortcutSettingsViewModel: ObservableObject {
 
     private let client: any ShortcutClient
 
-    public init(client: any ShortcutClient = InMemoryShortcutClient()) {
+    public init(client: any ShortcutClient) {
         self.client = client
         self.state = client.state()
         self.errorMessage = nil

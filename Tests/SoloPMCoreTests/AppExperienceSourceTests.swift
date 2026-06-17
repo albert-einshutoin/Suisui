@@ -117,6 +117,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(sttSource.contains("secretStore: any SecretStore = InMemorySecretStore()"))
     }
 
+    func testShortcutSettingsDoesNotDefaultToInMemoryClient() throws {
+        let source = try readPackageFile("Sources/SoloPMCore/Shortcuts/ShortcutRegistration.swift")
+
+        XCTAssertFalse(source.contains("client: any ShortcutClient = InMemoryShortcutClient()"))
+    }
+
     func testRuntimeAppCompositionDoesNotUseDemoOrInMemorySuccessPath() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 

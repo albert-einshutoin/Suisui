@@ -145,6 +145,12 @@
 - [x] Tests は `InMemorySecretStore` を明示注入する。
 - [x] 完了条件: AI / STT provider が秘密情報 store 未指定で動作しない。
 
+### P10-015: Shortcut client injection hardening
+
+- [x] `ShortcutSettingsViewModel` が `InMemoryShortcutClient` を default injection しないことを regression test で確認する。
+- [x] Tests は shortcut client を明示注入する。
+- [x] 完了条件: runtime UI state が client 未指定で in-memory 成功しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
