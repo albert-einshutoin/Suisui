@@ -38,6 +38,21 @@ public struct ChatCompletionsCompatibleConfiguration: Equatable, Sendable {
         )
     }
 
+    public static func openAICompatible(
+        model: String,
+        baseURL: URL = URL(string: "https://api.openai.com/v1")!,
+        timeoutInterval: TimeInterval = 60
+    ) -> ChatCompletionsCompatibleConfiguration {
+        ChatCompletionsCompatibleConfiguration(
+            providerID: "openai.chat_completions",
+            baseURL: baseURL,
+            model: model,
+            apiKeySecretKey: .openAIAPIKey,
+            requiresAPIKey: true,
+            timeoutInterval: timeoutInterval
+        )
+    }
+
     public static func ollama(
         model: String,
         baseURL: URL = URL(string: "http://localhost:11434/v1")!,

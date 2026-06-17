@@ -599,7 +599,18 @@ private struct SettingsView: View {
     var body: some View {
         Form {
             Section("AI") {
-                LabeledContent("Provider", value: settingsViewModel.settings.aiProvider.displayName)
+                Picker(
+                    "Provider",
+                    selection: Binding(
+                        get: { settingsViewModel.settings.aiProvider },
+                        set: { settingsViewModel.setAIProvider($0) }
+                    )
+                ) {
+                    ForEach(AIProvider.allCases, id: \.self) { provider in
+                        Text(provider.displayName)
+                            .tag(provider)
+                    }
+                }
                 LabeledContent("OpenAI API Key", value: settingsViewModel.openAIAPIKeyStatusLabel)
                 SecureField(
                     "New API Key",
@@ -625,7 +636,18 @@ private struct SettingsView: View {
             }
 
             Section("Voice") {
-                LabeledContent("Speech to Text", value: settingsViewModel.settings.sttProvider.displayName)
+                Picker(
+                    "Speech to Text",
+                    selection: Binding(
+                        get: { settingsViewModel.settings.sttProvider },
+                        set: { settingsViewModel.setSTTProvider($0) }
+                    )
+                ) {
+                    ForEach(STTProvider.allCases, id: \.self) { provider in
+                        Text(provider.displayName)
+                            .tag(provider)
+                    }
+                }
                 LabeledContent("Shortcut", value: "Option + Space")
             }
 
@@ -882,12 +904,51 @@ private enum AppRuntimeFactory {
     static func makeVoiceCaptureViewModel() -> VoiceCaptureViewModel {
         let secretStore = makeSecretStore()
         let auditLogger = try? makeAuditLogger()
+        let settings = ((try? UserDefaultsAppSettingsStore().load()) ?? .default)
         return VoiceCaptureViewModel(
             audioRecorder: AVFoundationAudioRecorder(),
-            sttProvider: OpenAITranscribeProvider(secretStore: secretStore),
-            llmProvider: OpenAIResponsesProvider(secretStore: secretStore),
+            sttProvider: makeSpeechToTextProvider(settings: settings, secretStore: secretStore),
+            llmProvider: makeLLMProvider(settings: settings, secretStore: secretStore),
             auditRecorder: auditLogger.map { PlanningAuditRecorder(logger: $0) }
         )
+    }
+
+    private static func makeLLMProvider(settings: AppSettings, secretStore: any SecretStore) -> any LLMProvider {
+        switch settings.aiProvider {
+        case .openAIResponses:
+            OpenAIResponsesProvider(secretStore: secretStore)
+        case .openAICompatible:
+            ChatCompletionsCompatibleProvider(
+                configuration: .openAICompatible(model: "gpt-5.2"),
+                secretStore: secretStore
+            )
+        case .openRouter:
+            ChatCompletionsCompatibleProvider(
+                configuration: .openRouter(model: "openai/gpt-latest"),
+                secretStore: secretStore
+            )
+        case .ollama:
+            ChatCompletionsCompatibleProvider(
+                configuration: .ollama(model: "llama3.2"),
+                secretStore: secretStore
+            )
+        }
+    }
+
+    private static func makeSpeechToTextProvider(
+        settings: AppSettings,
+        secretStore: any SecretStore
+    ) -> any SpeechToTextProvider {
+        switch settings.sttProvider {
+        case .appleSpeechAnalyzer:
+            AppleSpeechAnalyzerProvider()
+        case .localWhisperKit:
+            WhisperKitProvider()
+        case .localWhisperCpp:
+            WhisperCppProvider()
+        case .openAITranscribe:
+            OpenAITranscribeProvider(secretStore: secretStore)
+        }
     }
 
     @MainActor

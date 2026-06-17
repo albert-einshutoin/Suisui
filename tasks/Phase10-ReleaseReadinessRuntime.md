@@ -73,7 +73,7 @@
 - [x] Settings で OpenAI API key を保存 / 削除できる。
 - [x] key は Keychain のみに保存し、UserDefaults / SQLite へは保存しない。
 - [x] workspace / notification 設定を UserDefaults に保存する。
-- [ ] AI provider / STT provider 選択を UserDefaults に保存する。
+- [x] AI provider / STT provider 選択を UserDefaults に保存する。
 - [x] テスト: secret redaction、empty key delete、settings persistence を確認する。
 - [x] 完了条件: LLM 実行が demo ではなく BYOK provider で動く。
 
@@ -120,12 +120,12 @@
 
 ## Exit Gate
 
-- [ ] Runtime app path に demo success provider がない。
+- [x] Runtime app path に demo success provider がない。
 - [x] Project / Task の CRUD が UI から完結する。
-- [ ] Review execution は persistent board DB に書く。
-- [ ] AI key は Keychain に保存される。
-- [ ] API key 未設定時に fake plan が作られない。
-- [ ] 外部 SaaS なしで task board + text plan + review execution の価値が成立する。
+- [x] Review execution は persistent board DB に書く。
+- [x] AI key は Keychain に保存される。
+- [x] API key 未設定時に fake plan が作られない。
+- [x] 外部 SaaS なしで task board + text plan + review execution の価値が成立する。
 - [ ] リリース前検証コマンドが全て green。
 
 ## Implementation Notes

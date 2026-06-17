@@ -84,4 +84,22 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(loaded.notificationsEnabled)
         XCTAssertEqual(loaded.defaultWorkspacePath, "/tmp/SoloPM")
     }
+
+    @MainActor
+    func testAppSettingsViewModelPersistsProviderSelection() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelProviders.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        viewModel.setAIProvider(.openRouter)
+        viewModel.setSTTProvider(.openAITranscribe)
+        viewModel.saveSettings()
+
+        let loaded = try store.load()
+
+        XCTAssertEqual(loaded.aiProvider, .openRouter)
+        XCTAssertEqual(loaded.sttProvider, .openAITranscribe)
+    }
 }

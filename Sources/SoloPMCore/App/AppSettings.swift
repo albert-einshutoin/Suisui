@@ -10,7 +10,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public init(
         aiProvider: AIProvider = .openAIResponses,
-        sttProvider: STTProvider = .localWhisperKit,
+        sttProvider: STTProvider = .openAITranscribe,
         notificationsEnabled: Bool = false,
         defaultWorkspacePath: String? = nil,
         timeZoneIdentifier: String = TimeZone.current.identifier
@@ -180,6 +180,16 @@ public final class AppSettingsViewModel: ObservableObject {
 
     public func setNotificationsEnabled(_ isEnabled: Bool) {
         settings.notificationsEnabled = isEnabled
+        clearMessages()
+    }
+
+    public func setAIProvider(_ provider: AIProvider) {
+        settings.aiProvider = provider
+        clearMessages()
+    }
+
+    public func setSTTProvider(_ provider: STTProvider) {
+        settings.sttProvider = provider
         clearMessages()
     }
 

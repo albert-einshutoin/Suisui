@@ -11,6 +11,15 @@ final class ChatCompletionsCompatibleProviderTests: XCTestCase {
         XCTAssertTrue(configuration.requiresAPIKey)
     }
 
+    func testOpenAICompatibleConfigurationUsesOpenAIKey() {
+        let configuration = ChatCompletionsCompatibleConfiguration.openAICompatible(model: "gpt-5.2")
+
+        XCTAssertEqual(configuration.providerID, "openai.chat_completions")
+        XCTAssertEqual(configuration.baseURL.absoluteString, "https://api.openai.com/v1")
+        XCTAssertEqual(configuration.apiKeySecretKey, .openAIAPIKey)
+        XCTAssertTrue(configuration.requiresAPIKey)
+    }
+
     func testOllamaConfigurationDoesNotRequireAPIKey() {
         let configuration = ChatCompletionsCompatibleConfiguration.ollama(model: "llama3.2")
 
