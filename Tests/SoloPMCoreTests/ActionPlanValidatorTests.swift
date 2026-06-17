@@ -80,7 +80,7 @@ final class ActionPlanValidatorTests: XCTestCase {
         let result = ActionPlanValidator().validate(jsonData: try fixtureData(named: "unknown-tool"))
 
         XCTAssertFalse(result.isValid)
-        XCTAssertEqual(result.issues.first?.path, "$")
+        XCTAssertEqual(result.issues.first?.path, "actions[0].tool")
     }
 
     func testDangerFixtureIsBlocking() throws {

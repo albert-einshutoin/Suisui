@@ -25,6 +25,8 @@ public struct ActionPlan: Codable, Equatable, Sendable {
     }
 }
 
+public typealias Action = PlanAction
+
 public struct PlanAction: Codable, Equatable, Sendable {
     public var id: String
     public var tool: ActionTool
@@ -64,6 +66,28 @@ public struct PlanAction: Codable, Equatable, Sendable {
     }
 }
 
+public extension PlanAction {
+    var actionType: ActionType {
+        tool.actionType
+    }
+
+    var approvalRequirement: ApprovalRequirement {
+        if riskLevel == .danger {
+            return .blocked
+        }
+
+        if riskLevel >= .write {
+            return .explicitApproval
+        }
+
+        if requiresUserConfirmation {
+            return .userConfirmation
+        }
+
+        return .none
+    }
+}
+
 public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
     case projectCreate = "project.create"
     case projectUpdate = "project.update"
@@ -96,6 +120,80 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
              .filesystemCreateMarkdownFile:
             .write
         }
+    }
+
+    public var actionType: ActionType {
+        switch self {
+        case .projectCreate, .projectUpdate, .projectList:
+            .project
+        case .taskCreate, .taskBulkCreate, .taskListDue:
+            .task
+        case .notificationSchedule:
+            .notification
+        case .calendarCreateEvent:
+            .calendar
+        case .remindersCreate:
+            .reminder
+        case .filesystemCreateDirectory, .filesystemCreateMarkdownFile:
+            .filesystem
+        case .frameSearch:
+            .knowledgeFrame
+        case .mailDraftCreateText:
+            .mailDraft
+        }
+    }
+}
+
+public enum ActionType: String, Codable, CaseIterable, Equatable, Sendable {
+    case project
+    case task
+    case notification
+    case calendar
+    case reminder
+    case filesystem
+    case knowledgeFrame
+    case mailDraft
+}
+
+public enum ApprovalRequirement: String, Codable, Comparable, Equatable, Sendable {
+    case none
+    case userConfirmation
+    case explicitApproval
+    case blocked
+
+    private var rank: Int {
+        switch self {
+        case .none:
+            0
+        case .userConfirmation:
+            1
+        case .explicitApproval:
+            2
+        case .blocked:
+            3
+        }
+    }
+
+    public static func < (lhs: ApprovalRequirement, rhs: ApprovalRequirement) -> Bool {
+        lhs.rank < rhs.rank
+    }
+}
+
+public struct DateExpression: Codable, Equatable, Sendable {
+    public var rawValue: String
+    public var resolvedDate: Date?
+    public var timeZoneIdentifier: String?
+
+    public init(rawValue: String, resolvedDate: Date? = nil, timeZoneIdentifier: String? = nil) {
+        self.rawValue = rawValue
+        self.resolvedDate = resolvedDate
+        self.timeZoneIdentifier = timeZoneIdentifier
+    }
+}
+
+public extension ActionPlan {
+    var approvalRequirement: ApprovalRequirement {
+        actions.map(\.approvalRequirement).max() ?? .none
     }
 }
 
@@ -168,4 +266,3 @@ public enum JSONValue: Codable, Equatable, Sendable {
         }
     }
 }
-

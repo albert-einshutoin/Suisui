@@ -29,11 +29,11 @@ public enum AuditStatus: String, Equatable, Sendable {
     case skipped
 }
 
-public protocol AuditLogger {
+public protocol AuditLogger: Sendable {
     func record(_ event: AuditEvent) throws
 }
 
-public final class InMemoryAuditLogger: AuditLogger {
+public final class InMemoryAuditLogger: AuditLogger, @unchecked Sendable {
     private var events: [AuditEvent]
     private let lock = NSLock()
 
@@ -96,7 +96,6 @@ public enum SecretRedactor {
 
     private static func containsSensitiveValue(_ value: String) -> Bool {
         let normalized = value.lowercased()
-        return normalized.hasPrefix("bearer ") || normalized.hasPrefix("sk-") || normalized.contains("api_key=")
+        return normalized.hasPrefix("bearer ") || normalized.contains("sk-") || normalized.contains("api_key=")
     }
 }
-

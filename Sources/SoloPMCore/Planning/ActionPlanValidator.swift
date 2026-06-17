@@ -1,7 +1,11 @@
 import Foundation
 
 public struct ActionPlanValidator: Sendable {
-    public init() {}
+    private let schemaValidator: ActionPlanJSONSchemaValidator
+
+    public init(schemaValidator: ActionPlanJSONSchemaValidator = ActionPlanJSONSchemaValidator()) {
+        self.schemaValidator = schemaValidator
+    }
 
     public func validate(_ plan: ActionPlan) -> ActionPlanValidationResult {
         var issues: [ActionPlanValidationIssue] = []
@@ -46,6 +50,11 @@ public struct ActionPlanValidator: Sendable {
     }
 
     public func validate(jsonData: Data) -> ActionPlanValidationResult {
+        let schemaIssues = schemaValidator.validate(jsonData: jsonData)
+        if !schemaIssues.isEmpty {
+            return ActionPlanValidationResult(issues: schemaIssues)
+        }
+
         do {
             let plan = try JSONDecoder().decode(ActionPlan.self, from: jsonData)
             return validate(plan)
@@ -137,4 +146,3 @@ public enum ActionPlanValidationSeverity: String, Equatable, Sendable {
     case warning
     case blocking
 }
-

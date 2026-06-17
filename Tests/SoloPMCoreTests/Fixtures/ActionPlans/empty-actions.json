@@ -1,0 +1,8 @@
+{
+  "id": "plan-fixture-empty-actions",
+  "userInput": "Create nothing",
+  "summary": "No actions",
+  "riskLevel": "read",
+  "requiresApproval": false,
+  "actions": []
+}
