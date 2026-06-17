@@ -161,6 +161,8 @@ public final class AppSettingsViewModel: ObservableObject {
     @Published public private(set) var settings: AppSettings
     @Published public private(set) var openAIAPIKeyInput: String
     @Published public private(set) var openAIAPIKeyStatusLabel: String
+    @Published public private(set) var openRouterAPIKeyInput: String
+    @Published public private(set) var openRouterAPIKeyStatusLabel: String
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var successMessage: String?
 
@@ -173,9 +175,12 @@ public final class AppSettingsViewModel: ObservableObject {
         self.settings = (try? settingsStore.load()) ?? .default
         self.openAIAPIKeyInput = ""
         self.openAIAPIKeyStatusLabel = "Not configured"
+        self.openRouterAPIKeyInput = ""
+        self.openRouterAPIKeyStatusLabel = "Not configured"
         self.errorMessage = nil
         self.successMessage = nil
         refreshOpenAIAPIKeyStatus()
+        refreshOpenRouterAPIKeyStatus()
     }
 
     public func setNotificationsEnabled(_ isEnabled: Bool) {
@@ -201,6 +206,11 @@ public final class AppSettingsViewModel: ObservableObject {
 
     public func updateOpenAIAPIKeyInput(_ value: String) {
         openAIAPIKeyInput = value
+        clearMessages()
+    }
+
+    public func updateOpenRouterAPIKeyInput(_ value: String) {
+        openRouterAPIKeyInput = value
         clearMessages()
     }
 
@@ -241,6 +251,25 @@ public final class AppSettingsViewModel: ObservableObject {
         }
     }
 
+    public func saveOpenRouterAPIKey() {
+        let trimmed = openRouterAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            deleteOpenRouterAPIKey()
+            return
+        }
+
+        do {
+            try secretStore.save(trimmed, for: .openRouterAPIKey)
+            openRouterAPIKeyInput = ""
+            refreshOpenRouterAPIKeyStatus()
+            errorMessage = nil
+            successMessage = "OpenRouter API key saved to Keychain."
+        } catch {
+            errorMessage = String(describing: error)
+            successMessage = nil
+        }
+    }
+
     public func deleteOpenAIAPIKey() {
         do {
             try secretStore.delete(.openAIAPIKey)
@@ -254,9 +283,27 @@ public final class AppSettingsViewModel: ObservableObject {
         }
     }
 
+    public func deleteOpenRouterAPIKey() {
+        do {
+            try secretStore.delete(.openRouterAPIKey)
+            openRouterAPIKeyInput = ""
+            refreshOpenRouterAPIKeyStatus()
+            errorMessage = nil
+            successMessage = "OpenRouter API key removed."
+        } catch {
+            errorMessage = String(describing: error)
+            successMessage = nil
+        }
+    }
+
     public func refreshOpenAIAPIKeyStatus() {
         let stored = (try? secretStore.read(.openAIAPIKey))?.trimmingCharacters(in: .whitespacesAndNewlines)
         openAIAPIKeyStatusLabel = stored?.isEmpty == false ? "Configured" : "Not configured"
+    }
+
+    public func refreshOpenRouterAPIKeyStatus() {
+        let stored = (try? secretStore.read(.openRouterAPIKey))?.trimmingCharacters(in: .whitespacesAndNewlines)
+        openRouterAPIKeyStatusLabel = stored?.isEmpty == false ? "Configured" : "Not configured"
     }
 
     private func clearMessages() {

@@ -611,9 +611,14 @@ private struct SettingsView: View {
                             .tag(provider)
                     }
                 }
+                Button {
+                    settingsViewModel.saveSettings()
+                } label: {
+                    Label("Save Provider Selection", systemImage: "square.and.arrow.down")
+                }
                 LabeledContent("OpenAI API Key", value: settingsViewModel.openAIAPIKeyStatusLabel)
                 SecureField(
-                    "New API Key",
+                    "OpenAI API Key",
                     text: Binding(
                         get: { settingsViewModel.openAIAPIKeyInput },
                         set: { settingsViewModel.updateOpenAIAPIKeyInput($0) }
@@ -631,6 +636,28 @@ private struct SettingsView: View {
                         settingsViewModel.deleteOpenAIAPIKey()
                     } label: {
                         Label("Delete Key", systemImage: "trash")
+                    }
+                }
+                LabeledContent("OpenRouter API Key", value: settingsViewModel.openRouterAPIKeyStatusLabel)
+                SecureField(
+                    "OpenRouter API Key",
+                    text: Binding(
+                        get: { settingsViewModel.openRouterAPIKeyInput },
+                        set: { settingsViewModel.updateOpenRouterAPIKeyInput($0) }
+                    )
+                )
+                HStack {
+                    Button {
+                        settingsViewModel.saveOpenRouterAPIKey()
+                    } label: {
+                        Label("Save OpenRouter Key", systemImage: "key")
+                    }
+                    .disabled(settingsViewModel.openRouterAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    Button(role: .destructive) {
+                        settingsViewModel.deleteOpenRouterAPIKey()
+                    } label: {
+                        Label("Delete OpenRouter Key", systemImage: "trash")
                     }
                 }
             }

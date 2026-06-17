@@ -68,6 +68,28 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testAppSettingsViewModelSavesAndDeletesOpenRouterKeyInSecretStoreOnly() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelOpenRouterTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settingsStore = UserDefaultsAppSettingsStore(defaults: defaults)
+        let secretStore = InMemorySecretStore()
+        let viewModel = AppSettingsViewModel(settingsStore: settingsStore, secretStore: secretStore)
+
+        viewModel.updateOpenRouterAPIKeyInput(" sk-or-test-secret ")
+        viewModel.saveOpenRouterAPIKey()
+
+        XCTAssertEqual(try secretStore.read(.openRouterAPIKey), "sk-or-test-secret")
+        XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Configured")
+        XCTAssertNil(defaults.data(forKey: "app.settings"))
+
+        viewModel.deleteOpenRouterAPIKey()
+
+        XCTAssertNil(try secretStore.read(.openRouterAPIKey))
+        XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Not configured")
+    }
+
+    @MainActor
     func testAppSettingsViewModelPersistsNonSecretSettings() throws {
         let suiteName = "SoloPM.AppSettingsViewModelSettings.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
