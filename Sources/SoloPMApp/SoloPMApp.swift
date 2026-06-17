@@ -29,7 +29,10 @@ struct SoloPMApplication: App {
             SettingsView(
                 settings: settings,
                 launchAtLoginViewModel: AppPreviewFactory.makeLaunchAtLoginSettingsViewModel(),
-                watcherDiagnosticsSnapshot: AppPreviewFactory.makeWatcherDiagnosticsSnapshot()
+                watcherDiagnosticsSnapshot: AppPreviewFactory.makeWatcherDiagnosticsSnapshot(),
+                externalMCPRegistration: AppPreviewFactory.makeExternalMCPRegistration(),
+                externalMCPToolRows: AppPreviewFactory.makeExternalMCPToolRows(),
+                externalMCPAuditRows: AppPreviewFactory.makeExternalMCPAuditRows()
             )
         }
     }
@@ -526,16 +529,25 @@ private struct SummaryRow: View {
 private struct SettingsView: View {
     let settings: AppSettings
     let watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot
+    let externalMCPToolRows: [ExternalMCPToolCatalogRow]
+    let externalMCPAuditRows: [ExternalMCPAuditHistoryRow]
     @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
+    @State private var externalMCPRegistration: MCPServerRegistration
 
     init(
         settings: AppSettings,
         launchAtLoginViewModel: LaunchAtLoginSettingsViewModel,
-        watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot
+        watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot,
+        externalMCPRegistration: MCPServerRegistration,
+        externalMCPToolRows: [ExternalMCPToolCatalogRow],
+        externalMCPAuditRows: [ExternalMCPAuditHistoryRow]
     ) {
         self.settings = settings
         self.watcherDiagnosticsSnapshot = watcherDiagnosticsSnapshot
+        self.externalMCPToolRows = externalMCPToolRows
+        self.externalMCPAuditRows = externalMCPAuditRows
         _launchAtLoginViewModel = StateObject(wrappedValue: launchAtLoginViewModel)
+        _externalMCPRegistration = State(initialValue: externalMCPRegistration)
     }
 
     var body: some View {
@@ -577,13 +589,88 @@ private struct SettingsView: View {
                 LabeledContent("Next Check", value: diagnosticDateLabel(watcherDiagnosticsSnapshot.nextCheckAt))
                 LabeledContent("Notifications", value: permissionLabel(watcherDiagnosticsSnapshot.notificationPermissionStatus))
             }
+
+            Section("External MCP") {
+                Toggle(
+                    isOn: Binding(
+                        get: { externalMCPRegistration.isEnabled },
+                        set: { externalMCPRegistration.isEnabled = $0 }
+                    )
+                ) {
+                    Label("Server Enabled", systemImage: "externaldrive.connected.to.line.below")
+                }
+                TextField("Display Name", text: Binding(
+                    get: { externalMCPRegistration.displayName },
+                    set: { externalMCPRegistration.displayName = $0 }
+                ))
+                TextField("Command", text: Binding(
+                    get: { externalMCPRegistration.command },
+                    set: { externalMCPRegistration.command = $0 }
+                ))
+                TextField("Arguments", text: Binding(
+                    get: { externalMCPRegistration.arguments.joined(separator: " ") },
+                    set: { externalMCPRegistration.arguments = $0.split(separator: " ").map(String.init) }
+                ))
+                TextField("Working Directory", text: Binding(
+                    get: { externalMCPRegistration.workingDirectory ?? "" },
+                    set: {
+                        let trimmed = $0.trimmingCharacters(in: .whitespacesAndNewlines)
+                        externalMCPRegistration.workingDirectory = trimmed.isEmpty ? nil : trimmed
+                    }
+                ))
+                LabeledContent("Transport", value: externalMCPDisplay.transportLabel)
+                LabeledContent("Status", value: externalMCPDisplay.statusLabel)
+                ForEach(externalMCPDisplay.environmentRows, id: \.name) { row in
+                    LabeledContent(row.name, value: row.sourceLabel)
+                }
+            }
+
+            Section("MCP Tool Permissions") {
+                ForEach(externalMCPToolRows, id: \.id) { row in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Label(row.title, systemImage: toolPermissionIcon(row.permissionLevel))
+                            Spacer()
+                            Text(row.permissionLabel)
+                                .font(.caption)
+                                .foregroundStyle(toolPermissionColor(row.permissionLevel))
+                        }
+                        Text(row.inputSchemaSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+            }
+
+            Section("MCP Audit") {
+                ForEach(Array(externalMCPAuditRows.enumerated()), id: \.offset) { _, row in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Label(row.toolName, systemImage: row.status == .failed ? "xmark.octagon" : "checkmark.circle")
+                            Spacer()
+                            Text(row.statusLabel)
+                                .font(.caption)
+                                .foregroundStyle(row.status == .failed ? .red : .secondary)
+                        }
+                        Text("\(row.serverName) / \(row.risk) / \(row.approval)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 520, height: 500)
+        .frame(width: 620, height: 720)
         .onAppear {
             launchAtLoginViewModel.refresh()
         }
+    }
+
+    private var externalMCPDisplay: MCPServerRegistrationDisplayModel {
+        MCPServerRegistrationDisplayModel(registration: externalMCPRegistration)
     }
 
     private func diagnosticDateLabel(_ date: Date?) -> String {
@@ -603,6 +690,34 @@ private struct SettingsView: View {
             "Denied"
         case .restricted:
             "Restricted"
+        }
+    }
+
+    private func toolPermissionIcon(_ permission: ExternalMCPToolPermission) -> String {
+        switch permission {
+        case .read:
+            "eye"
+        case .draft:
+            "doc.text"
+        case .writeWithApproval:
+            "checkmark.seal"
+        case .dangerous:
+            "exclamationmark.triangle"
+        case .disabled:
+            "nosign"
+        }
+    }
+
+    private func toolPermissionColor(_ permission: ExternalMCPToolPermission) -> Color {
+        switch permission {
+        case .read, .draft:
+            .secondary
+        case .writeWithApproval:
+            .orange
+        case .dangerous:
+            .red
+        case .disabled:
+            .secondary
         }
     }
 }
@@ -630,6 +745,50 @@ private enum AppPreviewFactory {
             nextCheckAt: Date(),
             notificationPermissionStatus: .notDetermined
         )
+    }
+
+    static func makeExternalMCPRegistration() -> MCPServerRegistration {
+        MCPServerRegistration(
+            id: "development-fake-mcp",
+            displayName: "Development Fake MCP",
+            command: "node",
+            arguments: ["server.js"],
+            environment: ["GITHUB_TOKEN": .keychain(.githubToken)],
+            workingDirectory: nil,
+            isEnabled: false
+        )
+    }
+
+    static func makeExternalMCPToolRows() -> [ExternalMCPToolCatalogRow] {
+        let server = MCPRegisteredServerDescriptor(id: "development-fake-mcp", displayName: "Development Fake MCP")
+        let registry = ExternalMCPToolRegistry(
+            server: server,
+            tools: ExternalMCPTestKit.fakeToolDefinitions(),
+            classifier: ExternalMCPToolClassifier(explicitPolicies: [
+                "read_status": .read,
+                "write_issue": .writeWithApproval,
+                "danger_delete": .dangerous
+            ])
+        )
+        return ExternalMCPToolCatalog.rows(from: registry.allDescriptors)
+    }
+
+    static func makeExternalMCPAuditRows() -> [ExternalMCPAuditHistoryRow] {
+        ExternalMCPAuditHistory.rows(from: [
+            AuditEvent(
+                category: "external_mcp",
+                action: "development-fake-mcp.read_status",
+                status: .succeeded,
+                metadata: [
+                    "server_name": "Development Fake MCP",
+                    "tool_name": "read_status",
+                    "risk": "read",
+                    "approval": "missing",
+                    "duration_ms": "12",
+                    "arguments": "project=soloPM"
+                ]
+            )
+        ])
     }
 
     @MainActor
