@@ -42,5 +42,36 @@ final class STTProviderTests: XCTestCase {
             XCTFail("Unexpected error: \(error)")
         }
     }
-}
 
+    func testPhase1DefaultCatalogContainsAllMVPProviders() {
+        let catalog = STTProviderCatalog.phase1Default
+
+        XCTAssertEqual(Set(catalog.availabilities.map(\.providerID)), Set(STTProviderID.allCases))
+    }
+
+    func testSkeletonProvidersExposeRequirements() {
+        let whisperKit = WhisperKitProvider().availability
+        let whisperCpp = WhisperCppProvider().availability
+        let openAI = OpenAITranscribeProvider().availability
+
+        XCTAssertTrue(whisperKit.requiresModelDownload)
+        XCTAssertTrue(whisperCpp.requiresModelDownload)
+        XCTAssertTrue(openAI.requiresAPIKey)
+    }
+
+    func testSkeletonProviderTranscriptionFailsExplicitly() async {
+        let provider = WhisperCppProvider()
+
+        do {
+            _ = try await provider.transcribe(
+                RecordedAudio(fileURL: URL(filePath: "/tmp/audio.m4a"), format: .m4a)
+            )
+            XCTFail("Expected skeleton provider to fail.")
+        } catch {
+            XCTAssertEqual(
+                error as? STTProviderError,
+                .modelMissing("whisper.cpp adapter is not implemented yet.")
+            )
+        }
+    }
+}

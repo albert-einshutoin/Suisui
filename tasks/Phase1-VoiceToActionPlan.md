@@ -77,9 +77,9 @@
 
 - [x] `STTProvider` protocol を作る。
 - [x] `transcribe(audio:)`、availability、model status、permission requirement を表現する。
-- [ ] `AppleSpeechAnalyzerProvider`、`WhisperKitProvider`、`WhisperCppProvider`、`OpenAITranscribeProvider` の skeleton を作る。
+- [x] `AppleSpeechAnalyzerProvider`、`WhisperKitProvider`、`WhisperCppProvider`、`OpenAITranscribeProvider` の skeleton を作る。
 - [x] テスト: availability に応じて Settings の provider 候補が変わることを確認する。
-- [ ] 完了条件: どの STT を使っても transcript edit UI に同じ形で渡せる。
+- [x] 完了条件: どの STT を使っても transcript edit UI に同じ形で渡せる。
 
 ### P1-008: Audio recording foundation
 
