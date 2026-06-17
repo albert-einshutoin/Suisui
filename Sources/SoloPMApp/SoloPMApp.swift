@@ -12,6 +12,11 @@ struct SoloPMApplication: App {
         }
         .menuBarExtraStyle(.window)
 
+        Window("Voice Command", id: "voice-capture") {
+            VoiceCaptureView()
+        }
+        .defaultSize(width: 560, height: 420)
+
         Settings {
             SettingsView(settings: settings)
         }
@@ -19,6 +24,8 @@ struct SoloPMApplication: App {
 }
 
 private struct MenuBarPanel: View {
+    @Environment(\.openWindow) private var openWindow
+
     let viewModel: MenuBarSummaryViewModel
 
     var body: some View {
@@ -34,10 +41,10 @@ private struct MenuBarPanel: View {
             }
 
             Button {
+                openWindow(id: "voice-capture")
             } label: {
                 Label("Voice Command", systemImage: "mic")
             }
-            .disabled(true)
 
             Divider()
 
@@ -59,6 +66,52 @@ private struct MenuBarPanel: View {
         }
         .padding(16)
         .frame(width: 320)
+    }
+}
+
+private struct VoiceCaptureView: View {
+    @State private var draft = TranscriptDraft()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Voice Command", systemImage: "mic")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    draft.text = ""
+                } label: {
+                    Label("Clear", systemImage: "xmark.circle")
+                }
+                .disabled(draft.text.isEmpty)
+            }
+
+            TextEditor(text: $draft.text)
+                .font(.body)
+                .frame(minHeight: 220)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(.quaternary)
+                }
+
+            HStack {
+                Button {
+                } label: {
+                    Label("Record", systemImage: "record.circle")
+                }
+                .disabled(true)
+
+                Spacer()
+
+                Button {
+                } label: {
+                    Label("Generate Plan", systemImage: "wand.and.stars")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!draft.canGeneratePlan)
+            }
+        }
+        .padding(16)
     }
 }
 
@@ -104,4 +157,3 @@ private struct SettingsView: View {
         .frame(width: 520, height: 360)
     }
 }
-
