@@ -86,29 +86,6 @@ public enum STTProviderError: Error, Equatable, Sendable {
     case transcriptionFailed(String)
 }
 
-public struct FakeSTTProvider: SpeechToTextProvider {
-    public var id: STTProviderID
-    public var availability: STTProviderAvailability
-    private var transcript: STTTranscript
-
-    public init(
-        id: STTProviderID = .whisperKit,
-        availability: STTProviderAvailability? = nil,
-        transcript: STTTranscript
-    ) {
-        self.id = id
-        self.availability = availability ?? STTProviderAvailability(providerID: id, isAvailable: true)
-        self.transcript = transcript
-    }
-
-    public func transcribe(_ audio: RecordedAudio) async throws -> STTTranscript {
-        guard availability.isAvailable else {
-            throw STTProviderError.unavailable(availability.reason ?? "STT provider is unavailable.")
-        }
-        return transcript
-    }
-}
-
 public struct STTProviderCatalog: Sendable {
     public var availabilities: [STTProviderAvailability]
 
@@ -128,4 +105,3 @@ public struct STTProviderCatalog: Sendable {
         )
     }
 }
-

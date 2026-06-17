@@ -97,6 +97,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains("sttProvider: any SpeechToTextProvider = FakeSTTProvider"))
     }
 
+    func testRuntimeSourcesDoNotShipFakeVoiceAndPlanningProviders() throws {
+        let sourceFiles = try allSwiftFiles(under: "Sources")
+
+        for sourceFile in sourceFiles {
+            let source = try String(contentsOf: sourceFile, encoding: .utf8)
+            XCTAssertFalse(source.contains("struct FakeAudioRecorder"), "\(sourceFile.path) ships a test-only audio recorder.")
+            XCTAssertFalse(source.contains("struct FakeSTTProvider"), "\(sourceFile.path) ships a test-only STT provider.")
+            XCTAssertFalse(source.contains("struct FakeLLMProvider"), "\(sourceFile.path) ships a test-only planning provider.")
+        }
+    }
+
     func testExternalMCPLauncherDoesNotDefaultToInMemorySecretStore() throws {
         let source = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")
 

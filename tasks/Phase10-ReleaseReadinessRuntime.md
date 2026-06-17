@@ -158,6 +158,13 @@
 - [x] 既存 E2E-ish unit tests は test support factory 経由で維持する。
 - [x] 完了条件: shipping module に in-memory CRUD / system client registry factory を含めない。
 
+### P10-017: Fake voice/planning provider isolation
+
+- [x] `Sources/` に `FakeAudioRecorder` / `FakeSTTProvider` / `FakeLLMProvider` が含まれていないことを regression test で確認する。
+- [x] Voice / STT / LLM の fake 実装は `Tests/` 配下の test support に隔離する。
+- [x] 既存 unit tests は test support の fake 実装を明示利用する。
+- [x] 完了条件: shipping module の public API から fake voice/planning provider を除去する。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

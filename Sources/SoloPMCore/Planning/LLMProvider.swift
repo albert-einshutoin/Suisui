@@ -28,18 +28,3 @@ public enum LLMProviderError: Error, Equatable, Sendable {
         }
     }
 }
-
-public struct FakeLLMProvider: LLMProvider {
-    public var providerID: String
-    private var response: PlanningResponse
-
-    public init(providerID: String = "fake", response: PlanningResponse) {
-        self.providerID = providerID
-        self.response = response
-    }
-
-    public func generatePlan(for request: PlanningRequest) async throws -> PlanningResponse {
-        response
-    }
-}
-
