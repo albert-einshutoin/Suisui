@@ -178,28 +178,6 @@ public struct BYOKOpenAIEmbeddingProvider: EmbeddingProvider {
     }
 }
 
-public struct StaticEmbeddingProvider: EmbeddingProvider {
-    public let providerID = "static"
-    public var dimensions: Int {
-        vectorsByText.values.first?.count ?? 0
-    }
-    private let vectorsByText: [String: [Double]]
-
-    public init(vectorsByText: [String: [Double]]) {
-        self.vectorsByText = vectorsByText
-    }
-
-    public func embed(_ request: EmbeddingRequest) throws -> KnowledgeEmbeddingVector {
-        guard request.userApproved else {
-            throw EmbeddingError.userApprovalRequired
-        }
-        guard let values = vectorsByText[request.text] else {
-            return KnowledgeEmbeddingVector(frameID: request.frameID, values: [], providerID: providerID, redactedPreview: redactedPreview(request.text))
-        }
-        return KnowledgeEmbeddingVector(frameID: request.frameID, values: normalize(values), providerID: providerID, redactedPreview: redactedPreview(request.text))
-    }
-}
-
 public struct KnowledgeVectorSearchResult: Equatable, Sendable {
     public var frameID: Int64
     public var score: Double
@@ -216,65 +194,6 @@ public protocol KnowledgeVectorIndex: Sendable {
     func delete(frameID: Int64) throws
     func vector(frameID: Int64) throws -> KnowledgeEmbeddingVector?
     func search(queryVector: [Double], topK: Int, threshold: Double) throws -> [KnowledgeVectorSearchResult]
-}
-
-public final class InMemoryKnowledgeVectorIndex: KnowledgeVectorIndex, @unchecked Sendable {
-    public let expectedDimensions: Int
-    private let lock = NSLock()
-    private var vectors: [Int64: KnowledgeEmbeddingVector]
-
-    public init(expectedDimensions: Int, vectors: [Int64: KnowledgeEmbeddingVector] = [:]) {
-        self.expectedDimensions = expectedDimensions
-        self.vectors = vectors
-    }
-
-    public func upsert(_ vector: KnowledgeEmbeddingVector) throws {
-        try validate(vector.values)
-        lock.withLock {
-            vectors[vector.frameID] = vector
-        }
-    }
-
-    public func delete(frameID: Int64) throws {
-        _ = lock.withLock {
-            vectors.removeValue(forKey: frameID)
-        }
-    }
-
-    public func vector(frameID: Int64) throws -> KnowledgeEmbeddingVector? {
-        lock.withLock {
-            vectors[frameID]
-        }
-    }
-
-    public func search(queryVector: [Double], topK: Int, threshold: Double) throws -> [KnowledgeVectorSearchResult] {
-        try validate(queryVector)
-        return lock.withLock {
-            vectors.values
-                .map {
-                    KnowledgeVectorSearchResult(
-                        frameID: $0.frameID,
-                        score: cosineSimilarity(queryVector, $0.values),
-                        providerID: $0.providerID
-                    )
-                }
-                .filter { $0.score >= threshold }
-                .sorted { lhs, rhs in
-                    if lhs.score == rhs.score {
-                        return lhs.frameID < rhs.frameID
-                    }
-                    return lhs.score > rhs.score
-                }
-                .prefix(topK)
-                .map { $0 }
-        }
-    }
-
-    private func validate(_ values: [Double]) throws {
-        guard values.count == expectedDimensions else {
-            throw KnowledgeVectorIndexError.dimensionMismatch(expected: expectedDimensions, actual: values.count)
-        }
-    }
 }
 
 public final class SQLiteKnowledgeVectorIndex: KnowledgeVectorIndex, @unchecked Sendable {
@@ -428,18 +347,6 @@ public protocol KnowledgeTextSearch: Sendable {
 }
 
 extension SQLiteKnowledgeFrameStore: KnowledgeTextSearch {}
-
-public struct StaticKnowledgeTextSearch: KnowledgeTextSearch {
-    private let resultsByQuery: [String: [KnowledgeFrameRecord]]
-
-    public init(resultsByQuery: [String: [KnowledgeFrameRecord]]) {
-        self.resultsByQuery = resultsByQuery
-    }
-
-    public func search(query: String) throws -> [KnowledgeFrameRecord] {
-        resultsByQuery[query] ?? []
-    }
-}
 
 public enum RetrievalMode: String, CaseIterable, Equatable, Sendable {
     case ftsOnly
@@ -662,22 +569,6 @@ public struct WeKnoraConnector: Sendable {
             throw WeKnoraConnectorError.approvalRequired
         }
         return try client.send(preview)
-    }
-}
-
-public final class InMemoryWeKnoraClient: WeKnoraClient, @unchecked Sendable {
-    public var nextError: WeKnoraConnectorError?
-
-    public init(nextError: WeKnoraConnectorError? = nil) {
-        self.nextError = nextError
-    }
-
-    public func send(_ preview: WeKnoraPreview) throws -> WeKnoraResponse {
-        if let nextError {
-            self.nextError = nil
-            throw nextError
-        }
-        return WeKnoraResponse(summary: "ok")
     }
 }
 

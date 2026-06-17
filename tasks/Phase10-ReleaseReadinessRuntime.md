@@ -193,6 +193,13 @@
 - [x] 既存 shortcut unit tests は test support の client を明示利用する。
 - [x] 完了条件: shipping module の shortcut API から in-memory success path を除去する。
 
+### P10-022: Knowledge test double isolation
+
+- [x] `Sources/` に `StaticEmbeddingProvider` / `StaticKnowledgeTextSearch` / `InMemoryKnowledgeVectorIndex` / `InMemoryWeKnoraClient` が含まれていないことを regression test で確認する。
+- [x] Knowledge retrieval / embedding / WeKnora の test double は `Tests/` 配下の test support に隔離する。
+- [x] 実働側には `LocalHashEmbeddingProvider` / `SQLiteKnowledgeVectorIndex` / `SQLiteKnowledgeFrameStore` を残す。
+- [x] 完了条件: shipping module の Knowledge public API から static / in-memory success path を除去する。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

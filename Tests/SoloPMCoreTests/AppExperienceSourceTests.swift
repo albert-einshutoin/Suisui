@@ -191,6 +191,23 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
+    func testRuntimeSourcesDoNotShipKnowledgeTestDoubles() throws {
+        let sourceFiles = try allSwiftFiles(under: "Sources")
+        let forbiddenTypeDeclarations = [
+            "struct StaticEmbeddingProvider",
+            "class InMemoryKnowledgeVectorIndex",
+            "struct StaticKnowledgeTextSearch",
+            "class InMemoryWeKnoraClient"
+        ]
+
+        for sourceFile in sourceFiles {
+            let source = try String(contentsOf: sourceFile, encoding: .utf8)
+            for declaration in forbiddenTypeDeclarations {
+                XCTAssertFalse(source.contains(declaration), "\(sourceFile.path) ships test-only knowledge component \(declaration).")
+            }
+        }
+    }
+
     func testInMemoryToolRegistryFactoryIsNotShippedInRuntimeSources() throws {
         let sourceFiles = try allSwiftFiles(under: "Sources")
 
