@@ -519,9 +519,9 @@ External MCP
 
 ## 9. DB / Knowledge / 検索
 
-## 9.1 採用: SQLite + GRDB.swift
+## 9.1 採用: SQLite + internal sqlite3 adapter
 
-ローカル DB は SQLite。Swift 側の wrapper は GRDB.swift を第一候補にする。
+ローカル DB は SQLite。Swift 側の wrapper は MVP では internal `sqlite3` adapter を採用する。GRDB.swift は第一候補として検討したが、既存の小さな adapter と store API が Phase 0-9 のテストで十分に機能しているため、複雑な query composition や observation が必要になった時点で再評価する。
 
 保存対象:
 
@@ -896,7 +896,7 @@ Sync later:
 | STT | SpeechAnalyzer | Conditional | macOS 26+ / availability check必須。OSネイティブSTT |
 | STT | WhisperKit / Argmax OSS Swift | Yes候補 | Swift-native OSS STT。MVPの第一OSS候補 |
 | STT | whisper.cpp | Yes候補 | 低依存・広互換・Core ML/Metal対応 |
-| DB wrapper | GRDB.swift | Yes | SQLite を Swift で扱う |
+| DB wrapper | internal sqlite3 adapter | Yes | MVP の永続化境界。GRDB.swift は複雑化した時点で再評価 |
 | Global Shortcut | KeyboardShortcuts | Yes | ユーザー設定可能な hotkey |
 | Updater | Sparkle | Yes | 公式サイト配布時の自動更新 |
 | Vector search | sqlite-vec | Later | 小型 vector search。MVP では不要 |
@@ -1086,7 +1086,7 @@ Tool Execution:
 
 Storage:
   SQLite
-  GRDB.swift
+  internal sqlite3 adapter
   FTS5
   Markdown / YAML Knowledge Frames
 

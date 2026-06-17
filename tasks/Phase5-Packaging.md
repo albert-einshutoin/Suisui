@@ -108,3 +108,5 @@
 - [x] privacy / security / contributing docs がある。
 - [x] release checklist で alpha を再現できる。
 - [x] MVP 外の危険機能を混ぜていない。
+
+残タスク: 未チェック項目は Developer ID Application certificate、Apple notary profile、clean/別ユーザー環境が必要な release gate。scripts/docs は実装済みだが、この開発環境だけでは完了判定しない。

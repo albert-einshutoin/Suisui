@@ -39,19 +39,21 @@
 - [ ] 手動確認: 長いタイトル、長いタスク一覧、狭い window で崩れない。
 - [x] 完了条件: ユーザーが何が作られるかを実行前に判断できる。
 
+残タスク: 上記の手動確認は実装漏れではなく、実アプリ画面でのレイアウト確認 gate として残す。
+
 ### P3-003: Action edit forms
 
 - [x] action type ごとに編集可能 field を限定する。
-- [ ] 日時、title、body、workspace path、notification rule の validation を即時表示する。
-- [ ] 編集で schema 不一致になった場合は実行ボタンを disabled にする。
-- [ ] テスト: invalid edit が execution に進まないことを確認する。
+- [x] 日時、title、body、workspace path、notification rule の validation を即時表示する。
+- [x] 編集で schema 不一致になった場合は実行ボタンを disabled にする。
+- [x] テスト: invalid edit が execution に進まないことを確認する。
 - [x] 完了条件: LLM 出力の誤りをユーザーが修正できる。
 
 ### P3-004: Approval requirement UI
 
 - [x] Write action が含まれる場合は明示的な承認操作を要求する。
 - [x] Dangerous action が含まれる場合は実行不可として表示する。
-- [ ] 権限不足の場合は該当 action を disabled にし、Settings 導線を出す。
+- [x] 権限不足の場合は該当 action を disabled にし、Settings 導線を出す。
 - [x] テスト: write without approval、danger present、permission denied の UI state を確認する。
 - [x] 完了条件: 誤実行を防ぐ UI state が Core policy と一致している。
 
@@ -68,7 +70,7 @@
 
 - [x] 実行中 action、成功、失敗、skip を表示する。
 - [x] 実行中は二重実行を防ぐ。
-- [ ] 失敗時は retry 可能な action と不可の action を分ける。
+- [x] 失敗時は retry 可能な action と不可の action を分ける。
 - [x] テスト: executing state 中に再実行できないことを確認する。
 - [x] 手動確認: fake executor で成功 / 失敗 / 部分成功を確認する。
 - [x] 完了条件: ユーザーが結果を理解し、次に何をすべきか分かる。

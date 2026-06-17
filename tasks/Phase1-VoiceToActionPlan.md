@@ -93,7 +93,7 @@
 
 ### P1-009: Voice Capture Overlay
 
-- [ ] shortcut から overlay を開く。
+- [x] shortcut から overlay を開く。
 - [x] 録音状態、文字起こし中、transcript edit、plan generation loading、error を表示する。
 - [x] transcript は実行前に必ず編集可能にする。
 - [x] テスト: ViewModel で録音開始、停止、transcript 反映、LLM 実行の state transition を確認する。

@@ -55,41 +55,41 @@
 - [x] `task.create`、`task.bulk_create`、`task.update`、`task.complete`、`task.list_due`、`task.list_overdue` の schema を定義する。
 - [x] `tasks` table migration を追加する。
 - [x] `projectId` は optional にし、Inbox task を許可する。
-- [ ] bulk create は一部失敗時の扱いを決め、transaction を使う。
+- [x] bulk create は一部失敗時の扱いを決め、transaction を使う。
 - [x] テスト: bulk create、project 紐付け、due query、overdue query を確認する。
 - [x] 完了条件: 今日 / 期限超過ビューの基礎 query が使える。
 
 ### P2-005: NotificationTool
 
 - [x] `notification.schedule`、`notification.schedule_relative`、`notification.schedule_overdue_rule`、`notification.cancel`、`notification.list` の schema を定義する。
-- [ ] UserNotifications adapter を `NotificationClient` protocol の背後に置く。
+- [x] UserNotifications adapter を `NotificationClient` protocol の背後に置く。
 - [x] notification request の id 命名規則を決める。
-- [ ] permission denied の場合は DB 上の予定状態を failed / pending にする。
+- [x] permission denied の場合は DB 上の予定状態を failed / pending にする。
 - [x] テスト: fake client で schedule、relative rule、permission denied を確認する。
 - [x] 完了条件: OS 通知は adapter 以外から直接呼ばれない。
 
 ### P2-006: CalendarTool
 
 - [x] `calendar.create_event`、`calendar.create_deadline`、`calendar.create_work_block` の schema を定義する。
-- [ ] EventKit adapter を `CalendarClient` protocol の背後に置く。
+- [x] EventKit adapter を `CalendarClient` protocol の背後に置く。
 - [x] timezone、all-day deadline、start/end validation を扱う。
-- [ ] `calendar_links` table を作り、外部 event id と Project / Task を紐付ける。
+- [x] `calendar_links` table を作り、外部 event id と Project / Task を紐付ける。
 - [x] テスト: fake EventKit で all-day、invalid range、permission denied を確認する。
 - [x] 完了条件: 実 Calendar 書き込みは approval 後にだけ呼べる設計になっている。
 
 ### P2-007: ReminderTool
 
 - [x] `reminders.create`、`reminders.bulk_create`、`reminders.mark_complete` の schema を定義する。
-- [ ] EventKit Reminders adapter を `ReminderClient` protocol の背後に置く。
+- [x] EventKit Reminders adapter を `ReminderClient` protocol の背後に置く。
 - [x] project 単位の reminder list 作成方針を決める。
-- [ ] `reminder_links` table を作る。
+- [x] `reminder_links` table を作る。
 - [x] テスト: fake client で bulk create、list missing、permission denied を確認する。
-- [ ] 完了条件: Reminders と local task のリンクを追跡できる。
+- [x] 完了条件: Reminders と local task のリンクを追跡できる。
 
 ### P2-008: FileSystemTool
 
 - [x] `filesystem.create_directory`、`filesystem.create_markdown_file`、`filesystem.create_artifacts_from_frame`、`filesystem.scan_project_artifacts` の schema を定義する。
-- [ ] Security-scoped Bookmark を使う境界を `FileAccessClient` に置く。
+- [x] Security-scoped Bookmark を使う境界を `FileAccessClient` に置く。
 - [x] 既存ファイル上書きは禁止し、衝突時は alternative filename または blocking error にする。
 - [x] テスト: temporary directory で create、existing file conflict、path traversal 拒否を確認する。
 - [x] 完了条件: ユーザーが許可した workspace 配下以外には書き込まない。
