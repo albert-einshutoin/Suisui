@@ -45,10 +45,11 @@ git checkout -b feature/phaseN-short-name
 Local verification:
 
 ```sh
-swift test
-swift build
+./scripts/ci.sh
 ./script/build_and_run.sh --verify
 ```
+
+`./scripts/ci.sh` is the shared non-GUI verification entrypoint for local development and GitHub Actions. `./script/build_and_run.sh --verify` additionally launches the app and is intended for local macOS UI smoke checks.
 
 Release verification starts from the [Release Checklist](docs/release/checklist.md).
 

@@ -46,10 +46,11 @@ If the expanded task is larger than one day, split it by domain model, adapter, 
 Local verification:
 
 ```sh
-swift test
-swift build
+./scripts/ci.sh
 ./script/build_and_run.sh --verify
 ```
+
+`./scripts/ci.sh` is the shared CI/local command and intentionally avoids GUI launch. The SwiftPM build and test suite are the current lint gate. A separate formatter is not enforced during alpha because the codebase is still small and relies on focused review plus `git diff --check`; introduce SwiftFormat or SwiftLint only when formatting drift becomes a recurring review cost.
 
 ## Issue Triage
 
