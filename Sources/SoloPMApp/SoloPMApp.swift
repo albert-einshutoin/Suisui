@@ -15,15 +15,15 @@ struct SoloPM: App {
     private let settings = AppSettings.default
 
     var body: some Scene {
+        WindowGroup("Voice Command", id: "voice-capture") {
+            VoiceCaptureView(viewModel: AppPreviewFactory.makeVoiceCaptureViewModel())
+        }
+        .defaultSize(width: 560, height: 420)
+
         MenuBarExtra("SoloPM", systemImage: "checklist") {
             MenuBarPanel(viewModel: menuBarViewModel)
         }
         .menuBarExtraStyle(.window)
-
-        Window("Voice Command", id: "voice-capture") {
-            VoiceCaptureView(viewModel: AppPreviewFactory.makeVoiceCaptureViewModel())
-        }
-        .defaultSize(width: 560, height: 420)
 
         Settings {
             SettingsView(
@@ -41,6 +41,9 @@ private final class SparkleAppDelegate: NSObject, NSApplicationDelegate {
     private var updaterController: SPUStandardUpdaterController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+
         guard Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String != nil,
               Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String != nil else {
             return
