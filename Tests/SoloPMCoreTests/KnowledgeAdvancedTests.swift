@@ -154,7 +154,7 @@ final class KnowledgeAdvancedTests: XCTestCase {
 
         let frames = try store.list()
         XCTAssertEqual(frames.count, candidates.count)
-        XCTAssertTrue(frames.first?.body.contains("[REDACTED]") ?? false)
+        XCTAssertTrue(frames.first?.body.contains("[REDACTED_SECRET]") ?? false)
     }
 
     func testWeKnoraConnectorIsOptionalPreviewedAndApprovalBound() throws {

@@ -41,6 +41,16 @@ final class SaaSConnectorTests: XCTestCase {
             XCTAssertEqual(error as? OAuthTokenLifecycleError, .scopeMismatch(.googleCalendar, missing: [.gmailCompose]))
         }
 
+        try credentialStore.saveTokens(
+            connectorID: .googleCalendar,
+            accessToken: "access-without-refresh",
+            refreshToken: nil,
+            scopes: [.googleCalendarEvents],
+            expiresAt: Date(timeIntervalSince1970: 3_000)
+        )
+        XCTAssertNil(try credentialStore.loadCredential(for: .googleCalendar)?.refreshTokenKey)
+        XCTAssertNil(try secretStore.read(SecretKey("oauth.google_calendar.refresh_token")))
+
         try lifecycle.disconnect(.googleCalendar)
 
         XCTAssertNil(try credentialStore.loadCredential(for: .googleCalendar))

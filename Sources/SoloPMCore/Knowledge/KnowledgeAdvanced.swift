@@ -379,7 +379,17 @@ public struct SQLiteVecCapabilityProbe: Sendable {
     public init() {}
 
     public func capability(connection: SQLiteConnection) -> SQLiteVecCapability {
-        (try? connection.tableExists("vec0")) == true ? .available : .unavailableFallback
+        do {
+            try connection.execute(
+                """
+                CREATE VIRTUAL TABLE temp.solopm_vec_probe USING vec0(embedding float[2]);
+                DROP TABLE temp.solopm_vec_probe;
+                """
+            )
+            return .available
+        } catch {
+            return .unavailableFallback
+        }
     }
 }
 
@@ -756,7 +766,7 @@ private func cosineSimilarity(_ lhs: [Double], _ rhs: [Double]) -> Double {
 }
 
 private func redactedPreview(_ text: String) -> String {
-    SecretRedactor.redact(metadata: ["text": text])["text"] ?? "[REDACTED]"
+    DeveloperSecretRedactor().redact(text).text
 }
 
 private func jsonString(_ values: [Double]) throws -> String {

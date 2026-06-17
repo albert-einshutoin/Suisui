@@ -150,6 +150,8 @@ public final class KeychainOAuthCredentialStore: OAuthCredentialStore, @unchecke
         try secretStore.save(accessToken, for: accessTokenKey)
         if let refreshToken, let refreshTokenKey {
             try secretStore.save(refreshToken, for: refreshTokenKey)
+        } else {
+            try? secretStore.delete(Self.refreshTokenKey(connectorID))
         }
 
         try metadataStore.saveMetadata(OAuthCredentialMetadata(credential: OAuthCredential(
@@ -690,12 +692,6 @@ public struct ConnectorHealthDashboard: Sendable {
                 $0.metadata["connector_id"] == connectorID.rawValue
             }?
             .metadata["error"]
-    }
-}
-
-private func requireApproval(_ context: ToolExecutionContext, connectorID: SaaSConnectorID = .gmail) throws {
-    guard context.approvalToken != nil else {
-        throw SaaSConnectorError.approvalRequired(connectorID)
     }
 }
 
