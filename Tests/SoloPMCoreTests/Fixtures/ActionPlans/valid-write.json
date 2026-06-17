@@ -1,0 +1,19 @@
+{
+  "id": "plan-fixture-valid-write",
+  "userInput": "Create a task for tomorrow",
+  "summary": "Create a task",
+  "riskLevel": "write",
+  "requiresApproval": true,
+  "actions": [
+    {
+      "id": "action-1",
+      "tool": "task.create",
+      "riskLevel": "write",
+      "requiresUserConfirmation": false,
+      "arguments": {
+        "title": "Draft outline",
+        "due": "tomorrow"
+      }
+    }
+  ]
+}

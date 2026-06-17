@@ -33,7 +33,10 @@ let package = Package(
         ),
         .testTarget(
             name: "SoloPMCoreTests",
-            dependencies: ["SoloPMCore"]
+            dependencies: ["SoloPMCore"],
+            resources: [
+                .process("Fixtures")
+            ]
         )
     ]
 )

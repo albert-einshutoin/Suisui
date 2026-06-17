@@ -1,0 +1,14 @@
+{
+  "id": "plan-fixture-unknown-tool",
+  "userInput": "Push my branch",
+  "summary": "Unknown tool",
+  "riskLevel": "write",
+  "requiresApproval": true,
+  "actions": [
+    {
+      "id": "action-1",
+      "tool": "git.push",
+      "riskLevel": "write"
+    }
+  ]
+}

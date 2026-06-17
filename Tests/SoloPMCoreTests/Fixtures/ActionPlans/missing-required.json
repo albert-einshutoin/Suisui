@@ -1,0 +1,6 @@
+{
+  "id": "plan-fixture-missing-required",
+  "summary": "Missing actions",
+  "riskLevel": "read",
+  "requiresApproval": false
+}

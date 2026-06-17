@@ -1,7 +1,13 @@
 import Foundation
 
 public struct PlanningPromptBuilder: Sendable {
-    public init() {}
+    private let actionPlanSchema: String
+
+    public init(actionPlanSchema: String? = nil) {
+        self.actionPlanSchema = actionPlanSchema
+            ?? (try? ActionPlanSchema.loadString())
+            ?? ActionPlanSchema.fallbackPromptContract
+    }
 
     public func buildPrompt(for request: PlanningRequest) -> PlanningPrompt {
         let dateFormatter = ISO8601DateFormatter()
@@ -27,6 +33,9 @@ public struct PlanningPromptBuilder: Sendable {
         Write actions must set requiresApproval to true.
         Ambiguous dates or destinations must set requiresUserConfirmation on the affected action.
         Return JSON only.
+
+        ActionPlan JSON Schema:
+        \(actionPlanSchema)
         """
 
         let user = """

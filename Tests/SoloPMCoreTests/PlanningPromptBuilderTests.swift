@@ -28,5 +28,22 @@ final class PlanningPromptBuilderTests: XCTestCase {
         XCTAssertTrue(prompt.system.contains("Git push"))
         XCTAssertTrue(prompt.system.contains("file delete"))
     }
-}
 
+    func testPromptContainsActionPlanSchemaContract() {
+        let schema = """
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "actions"]
+        }
+        """
+
+        let prompt = PlanningPromptBuilder(actionPlanSchema: schema).buildPrompt(
+            for: PlanningRequest(userInput: "Create a task")
+        )
+
+        XCTAssertTrue(prompt.system.contains("ActionPlan JSON Schema"))
+        XCTAssertTrue(prompt.system.contains("\"additionalProperties\": false"))
+        XCTAssertTrue(prompt.system.contains("\"required\": [\"id\", \"actions\"]"))
+    }
+}

@@ -1,0 +1,17 @@
+{
+  "id": "plan-fixture-danger-action",
+  "userInput": "Delete the file",
+  "summary": "Dangerous file operation",
+  "riskLevel": "danger",
+  "requiresApproval": true,
+  "actions": [
+    {
+      "id": "action-1",
+      "tool": "filesystem.create_markdown_file",
+      "riskLevel": "danger",
+      "arguments": {
+        "path": "/tmp/notes.md"
+      }
+    }
+  ]
+}
