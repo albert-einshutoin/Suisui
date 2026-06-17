@@ -11,19 +11,22 @@ public final class ReviewSessionViewModel: ObservableObject {
     private let executor: ActionExecutor
     private let auditLogger: (any AuditLogger)?
     private let permissionGate: ReviewPermissionGate
+    private let runtimeValidationMessage: String?
 
     public init(
         plan: ActionPlan,
         executor: ActionExecutor,
         auditLogger: (any AuditLogger)? = nil,
-        permissionGate: ReviewPermissionGate = ReviewPermissionGate()
+        permissionGate: ReviewPermissionGate = ReviewPermissionGate(),
+        runtimeValidationMessage: String? = nil
     ) {
         self.session = ReviewSession(plan: plan)
         self.executor = executor
         self.auditLogger = auditLogger
         self.permissionGate = permissionGate
+        self.runtimeValidationMessage = runtimeValidationMessage
         self.isExecuting = false
-        self.errorMessage = nil
+        self.errorMessage = runtimeValidationMessage
         self.validationIssuesByActionID = [:]
         refreshValidationIssues()
         try? record(action: "session.create", status: .started)
@@ -98,8 +101,18 @@ public final class ReviewSessionViewModel: ObservableObject {
 
     private func refreshValidationIssues() {
         let permissionIssues = session.enabledItems.flatMap { permissionGate.validationIssues(for: $0.editedAction) }
+        let runtimeIssues = session.enabledItems.compactMap { item -> ToolInputValidationIssue? in
+            guard let runtimeValidationMessage else {
+                return nil
+            }
+            return ToolInputValidationIssue(
+                actionID: item.id,
+                field: "runtime",
+                message: runtimeValidationMessage
+            )
+        }
         validationIssuesByActionID = Dictionary(
-            grouping: executor.validationIssues(for: session) + permissionIssues,
+            grouping: executor.validationIssues(for: session) + permissionIssues + runtimeIssues,
             by: { $0.actionID ?? "" }
         ).filter { !$0.key.isEmpty }
     }

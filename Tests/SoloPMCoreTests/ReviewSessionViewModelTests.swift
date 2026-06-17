@@ -98,6 +98,29 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.validationIssues(for: "notify").first?.message.contains("Open Settings") == true)
     }
 
+    func testRuntimeValidationMessageDisablesExecutionBeforeUnknownToolFailure() throws {
+        let registry = try ToolRegistry(tools: [
+            StaticTool(name: .taskCreate, description: "create", inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]), permissionLevel: .writeWithApproval) { _, _ in
+                ToolResult(tool: .taskCreate, status: .succeeded, summary: "created")
+            }
+        ])
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+            ]),
+            executor: ActionExecutor(registry: registry),
+            runtimeValidationMessage: "Review execution tools are unavailable."
+        )
+
+        try viewModel.approve()
+
+        XCTAssertEqual(viewModel.errorMessage, "Review execution tools are unavailable.")
+        XCTAssertFalse(viewModel.canExecute)
+        XCTAssertEqual(viewModel.validationIssues(for: "task").first?.field, "runtime")
+        XCTAssertEqual(viewModel.validationIssues(for: "task").first?.message, "Review execution tools are unavailable.")
+        XCTAssertThrowsError(try viewModel.execute())
+    }
+
     func testFakeVoiceToReviewToExecuteFlow() async throws {
         let plan = ActionPlan.reviewViewModelFixture(actions: [
             PlanAction(id: "project", tool: .projectCreate, arguments: ["title": .string("QZT Article")]),

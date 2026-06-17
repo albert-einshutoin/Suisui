@@ -61,6 +61,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains(".fixedSize(horizontal: false, vertical: true)"))
     }
 
+    func testReviewRuntimeDoesNotFallBackToEmptyToolRegistry() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertFalse(appSource.contains("registry = ToolRegistry()"))
+        XCTAssertTrue(appSource.contains("runtimeValidationMessage: reviewRuntimeValidationMessage"))
+        XCTAssertTrue(appSource.contains("Review execution tools are unavailable because local data stores could not be opened."))
+    }
+
     func testRuntimeAppCompositionDoesNotUseDemoOrInMemorySuccessPath() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 

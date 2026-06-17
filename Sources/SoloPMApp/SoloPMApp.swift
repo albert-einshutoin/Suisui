@@ -1054,6 +1054,7 @@ private enum AppRuntimeFactory {
     static func makeReviewSessionViewModel(plan: ActionPlan) -> ReviewSessionViewModel {
         let logger = try? makeAuditLogger()
         let registry: ToolRegistry
+        let reviewRuntimeValidationMessage: String?
         do {
             let connection = try migratedConnection()
             registry = try ToolRegistry.phase2MVP(
@@ -1070,14 +1071,17 @@ private enum AppRuntimeFactory {
                 reminderLinkStore: SQLiteReminderLinkStore(connection: connection),
                 auditLogger: logger
             )
+            reviewRuntimeValidationMessage = nil
         } catch {
-            registry = ToolRegistry()
+            reviewRuntimeValidationMessage = "Review execution tools are unavailable because local data stores could not be opened."
+            registry = unavailableReviewRegistry(for: plan, message: reviewRuntimeValidationMessage ?? "Review execution tools are unavailable.")
         }
 
         return ReviewSessionViewModel(
             plan: plan,
             executor: ActionExecutor(registry: registry, auditLogger: logger),
-            auditLogger: logger
+            auditLogger: logger,
+            runtimeValidationMessage: reviewRuntimeValidationMessage
         )
     }
 
@@ -1112,6 +1116,16 @@ private enum AppRuntimeFactory {
         let directory = try applicationSupportDirectoryURL().appendingPathComponent("Workspace", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
+    }
+
+    private static func unavailableReviewRegistry(for plan: ActionPlan, message: String) -> ToolRegistry {
+        let target = ToolRegistry()
+        var registeredTools: [ActionTool] = []
+        for action in plan.actions where !registeredTools.contains(action.tool) {
+            try? target.register(UnavailableReviewTool(name: action.tool, message: message))
+            registeredTools.append(action.tool)
+        }
+        return target
     }
 
     private static func applicationDatabaseURL() throws -> URL {
@@ -1169,6 +1183,18 @@ private struct UnavailableMenuBarSummaryProvider: MenuBarSummaryProviding {
 
     func loadMenuBarSummary() throws -> MenuBarSummary {
         throw error
+    }
+}
+
+private struct UnavailableReviewTool: Tool {
+    let name: ActionTool
+    let message: String
+    let description = "Unavailable review execution tool."
+    let inputSchema = ToolInputSchema(additionalProperties: true)
+    let permissionLevel: ToolPermissionLevel = .read
+
+    func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
+        throw ToolExecutionError.executionFailed(name, message)
     }
 }
 
