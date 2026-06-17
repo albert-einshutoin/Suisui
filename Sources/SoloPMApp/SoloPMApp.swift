@@ -18,7 +18,10 @@ struct SoloPMApplication: App {
         .defaultSize(width: 560, height: 420)
 
         Settings {
-            SettingsView(settings: settings)
+            SettingsView(
+                settings: settings,
+                launchAtLoginViewModel: AppPreviewFactory.makeLaunchAtLoginSettingsViewModel()
+            )
         }
     }
 }
@@ -490,6 +493,12 @@ private struct SummaryRow: View {
 
 private struct SettingsView: View {
     let settings: AppSettings
+    @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
+
+    init(settings: AppSettings, launchAtLoginViewModel: LaunchAtLoginSettingsViewModel) {
+        self.settings = settings
+        _launchAtLoginViewModel = StateObject(wrappedValue: launchAtLoginViewModel)
+    }
 
     var body: some View {
         Form {
@@ -507,12 +516,30 @@ private struct SettingsView: View {
             Section("Privacy") {
                 Toggle("Notifications", isOn: .constant(settings.notificationsEnabled))
                     .disabled(true)
+                Toggle(
+                    isOn: Binding(
+                        get: { launchAtLoginViewModel.isEnabled },
+                        set: { launchAtLoginViewModel.setEnabled($0) }
+                    )
+                ) {
+                    Label("Launch at Login", systemImage: "power")
+                }
+                .disabled(!launchAtLoginViewModel.canToggle)
+                LabeledContent("Login Item", value: launchAtLoginViewModel.statusLabel)
+                if let errorMessage = launchAtLoginViewModel.errorMessage {
+                    Label(errorMessage, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
                 LabeledContent("Workspace", value: settings.defaultWorkspacePath ?? "Not selected")
             }
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 520, height: 360)
+        .frame(width: 520, height: 420)
+        .onAppear {
+            launchAtLoginViewModel.refresh()
+        }
     }
 }
 
@@ -526,6 +553,11 @@ private enum AppPreviewFactory {
                 recentProjectTitles: ["SoloPM Phase 4", "QZT article"]
             )
         )
+    }
+
+    @MainActor
+    static func makeLaunchAtLoginSettingsViewModel() -> LaunchAtLoginSettingsViewModel {
+        LaunchAtLoginSettingsViewModel(client: SMAppServiceLaunchAtLoginClient())
     }
 
     @MainActor

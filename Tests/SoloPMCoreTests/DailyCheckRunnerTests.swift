@@ -53,6 +53,22 @@ final class DailyCheckRunnerTests: XCTestCase {
         XCTAssertEqual(client.status(), .disabled)
     }
 
+    @MainActor
+    func testLaunchAtLoginSettingsViewModelTogglesClientAndLabelsStatus() {
+        let client = InMemoryLaunchAtLoginClient()
+        let viewModel = LaunchAtLoginSettingsViewModel(client: client)
+
+        XCTAssertFalse(viewModel.isEnabled)
+        XCTAssertEqual(viewModel.statusLabel, "Off")
+
+        viewModel.setEnabled(true)
+
+        XCTAssertTrue(viewModel.isEnabled)
+        XCTAssertEqual(client.status(), .enabled)
+        XCTAssertEqual(viewModel.statusLabel, "On")
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
     func testSQLiteDailyCheckStateStorePersistsLastRunAt() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase4)
