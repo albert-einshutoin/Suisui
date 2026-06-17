@@ -64,6 +64,19 @@ final class MenuBarSummaryViewModelTests: XCTestCase {
         XCTAssertNil(controller.errorMessage)
     }
 
+    @MainActor
+    func testMenuBarSummaryControllerKeepsLastSummaryWhenRefreshFails() {
+        let provider = FailingAfterFirstMenuBarSummaryProvider(summary: MenuBarSummary(todayTaskCount: 3))
+        let controller = MenuBarSummaryController(provider: provider)
+
+        controller.refresh()
+        provider.shouldFail = true
+        controller.refresh()
+
+        XCTAssertEqual(controller.viewModel.todayLabel, "3 tasks today")
+        XCTAssertEqual(controller.errorMessage, "Menu bar summary is unavailable.")
+    }
+
     func testSQLiteMenuBarSummaryProviderReadsLatestProjectBoardChanges() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
@@ -94,5 +107,21 @@ private final class MutableMenuBarSummaryProvider: MenuBarSummaryProviding, @unc
 
     func loadMenuBarSummary() throws -> MenuBarSummary {
         summary
+    }
+}
+
+private final class FailingAfterFirstMenuBarSummaryProvider: MenuBarSummaryProviding, @unchecked Sendable {
+    var summary: MenuBarSummary
+    var shouldFail = false
+
+    init(summary: MenuBarSummary) {
+        self.summary = summary
+    }
+
+    func loadMenuBarSummary() throws -> MenuBarSummary {
+        if shouldFail {
+            throw DatabaseError.stepFailed("summary unavailable")
+        }
+        return summary
     }
 }

@@ -959,7 +959,9 @@ private enum AppRuntimeFactory {
             controller.refresh()
             return controller
         } catch {
-            return MenuBarSummaryController(provider: StaticMenuBarSummaryProvider(summary: .empty))
+            let controller = MenuBarSummaryController(provider: UnavailableMenuBarSummaryProvider(error: error))
+            controller.refresh()
+            return controller
         }
     }
 
@@ -1158,6 +1160,14 @@ private struct UnavailableProjectBoardStore: ProjectBoardStore {
     }
 
     func deleteTask(id: Int64) throws {
+        throw error
+    }
+}
+
+private struct UnavailableMenuBarSummaryProvider: MenuBarSummaryProviding {
+    let error: Error
+
+    func loadMenuBarSummary() throws -> MenuBarSummary {
         throw error
     }
 }

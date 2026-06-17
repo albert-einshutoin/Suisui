@@ -164,7 +164,6 @@ public final class MenuBarSummaryController: ObservableObject {
             viewModel = MenuBarSummaryViewModel(summary: try provider.loadMenuBarSummary())
             errorMessage = nil
         } catch {
-            viewModel = MenuBarSummaryViewModel(summary: .empty)
             errorMessage = "Menu bar summary is unavailable."
         }
     }

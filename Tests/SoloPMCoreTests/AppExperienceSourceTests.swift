@@ -48,6 +48,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("makeMenuBarSummaryController()"))
         XCTAssertTrue(appSource.contains(".onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange))"))
         XCTAssertFalse(appSource.contains("private let menuBarViewModel = AppRuntimeFactory.makeMenuBarSummaryViewModel()"))
+        XCTAssertFalse(appSource.contains("StaticMenuBarSummaryProvider(summary: .empty)"))
+        XCTAssertTrue(appSource.contains("UnavailableMenuBarSummaryProvider(error: error)"))
     }
 
     func testReviewPanelUsesResponsiveLongContentGuards() throws {
