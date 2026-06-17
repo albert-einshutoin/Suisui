@@ -126,7 +126,8 @@ private struct ProjectSidebarRow: View {
                     .foregroundStyle(.secondary)
             }
         } icon: {
-            Image(systemName: "folder")
+            Image(systemName: project.isCompleted ? "checkmark.circle" : "folder")
+                .foregroundStyle(project.isCompleted ? .green : .secondary)
         }
     }
 }
@@ -156,8 +157,16 @@ private struct ProjectBoardDetail: View {
                         .labelStyle(.iconOnly)
                         .disabled(projectTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || projectTitle == project.title)
                     }
-                    Text(project.subtitle)
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        Text(project.subtitle)
+                            .foregroundStyle(.secondary)
+
+                        if project.isCompleted {
+                            Label("Completed", systemImage: "checkmark.seal.fill")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                        }
+                    }
                 }
 
                 Spacer()
@@ -170,6 +179,13 @@ private struct ProjectBoardDetail: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 168)
+
+                Button {
+                    viewModel.completeSelectedProject()
+                } label: {
+                    Label("Complete Project", systemImage: "checkmark.seal")
+                }
+                .disabled(project.isCompleted)
 
                 Button {
                     composingStatus = .backlog

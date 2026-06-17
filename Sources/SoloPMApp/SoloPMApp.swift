@@ -974,6 +974,10 @@ private struct UnavailableProjectBoardStore: ProjectBoardStore {
         throw error
     }
 
+    func completeProject(id: Int64) throws -> ProjectBoardProject {
+        throw error
+    }
+
     func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
         throw error
     }

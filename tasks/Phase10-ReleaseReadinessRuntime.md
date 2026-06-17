@@ -62,11 +62,11 @@
 
 - [x] Sidebar から project を作成できる。
 - [x] Project title を編集できる。
-- [ ] Project status / complete を編集できる。
+- [x] Project status / complete を編集できる。
 - [x] active project に紐づく task 作成ができる。
 - [x] テスト: project create / title update が board snapshot に反映される。
-- [ ] テスト: project complete が board snapshot に反映される。
-- [ ] 完了条件: Inbox だけでなくユーザーの project 管理ができる。
+- [x] テスト: project complete が board snapshot に反映される。
+- [x] 完了条件: Inbox だけでなくユーザーの project 管理ができる。
 
 ### P10-005: Keychain-backed settings
 
@@ -121,7 +121,7 @@
 ## Exit Gate
 
 - [ ] Runtime app path に demo success provider がない。
-- [ ] Project / Task の CRUD が UI から完結する。
+- [x] Project / Task の CRUD が UI から完結する。
 - [ ] Review execution は persistent board DB に書く。
 - [ ] AI key は Keychain に保存される。
 - [ ] API key 未設定時に fake plan が作られない。

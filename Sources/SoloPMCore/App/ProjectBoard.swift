@@ -74,12 +74,14 @@ public struct ProjectBoardSnapshot: Equatable, Sendable {
 public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
     public var id: Int64
     public var title: String
+    public var status: String
     public var subtitle: String
     public var columns: [ProjectBoardColumn]
 
-    public init(id: Int64, title: String, subtitle: String, columns: [ProjectBoardColumn]) {
+    public init(id: Int64, title: String, status: String = "active", subtitle: String, columns: [ProjectBoardColumn]) {
         self.id = id
         self.title = title
+        self.status = status
         self.subtitle = subtitle
         self.columns = columns
     }
@@ -90,6 +92,10 @@ public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
 
     public var tasks: [ProjectBoardTask] {
         columns.flatMap(\.tasks)
+    }
+
+    public var isCompleted: Bool {
+        status == "completed"
     }
 }
 
@@ -172,6 +178,7 @@ public protocol ProjectBoardStore {
     func loadSnapshot() throws -> ProjectBoardSnapshot
     func createProject(title: String) throws -> ProjectBoardProject
     func updateProject(id: Int64, title: String) throws -> ProjectBoardProject
+    func completeProject(id: Int64) throws -> ProjectBoardProject
     func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask
     func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask
     func deleteTask(id: Int64) throws
@@ -214,6 +221,13 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     public func updateProject(id: Int64, title: String) throws -> ProjectBoardProject {
         let normalizedTitle = try normalizedProjectTitle(title)
         let record = try projectStore.update(id: id, title: normalizedTitle)
+        let tasks = try taskStore.listAll().compactMap(makeBoardTask)
+        return makeBoardProject(project: record, tasks: tasks)
+    }
+
+    @discardableResult
+    public func completeProject(id: Int64) throws -> ProjectBoardProject {
+        let record = try projectStore.update(id: id, status: "completed")
         let tasks = try taskStore.listAll().compactMap(makeBoardTask)
         return makeBoardProject(project: record, tasks: tasks)
     }
@@ -302,7 +316,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         }
         let openCount = projectTasks.filter { $0.status != .done }.count
         let subtitle = "\(openCount) open / \(projectTasks.count) total"
-        return ProjectBoardProject(id: project.id, title: project.title, subtitle: subtitle, columns: columns)
+        return ProjectBoardProject(id: project.id, title: project.title, status: project.status, subtitle: subtitle, columns: columns)
     }
 
     private func makeBoardTask(_ record: TaskRecord) -> ProjectBoardTask? {
@@ -330,6 +344,7 @@ public final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Send
         ProjectBoardProject(
             id: 1,
             title: "Inbox",
+            status: "active",
             subtitle: "0 open / 0 total",
             columns: ProjectTaskStatus.allCases.map { ProjectBoardColumn(status: $0, tasks: []) }
         )
@@ -353,6 +368,7 @@ public final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Send
         let project = ProjectBoardProject(
             id: nextID,
             title: normalizedTitle,
+            status: "active",
             subtitle: "0 open / 0 total",
             columns: ProjectTaskStatus.allCases.map { ProjectBoardColumn(status: $0, tasks: []) }
         )
@@ -371,6 +387,16 @@ public final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Send
         }
 
         snapshot.projects[projectIndex].title = normalizedTitle
+        return snapshot.projects[projectIndex]
+    }
+
+    @discardableResult
+    public func completeProject(id: Int64) throws -> ProjectBoardProject {
+        guard let projectIndex = snapshot.projects.firstIndex(where: { $0.id == id }) else {
+            throw DatabaseError.stepFailed("Project \(id) was not found.")
+        }
+
+        snapshot.projects[projectIndex].status = "completed"
         return snapshot.projects[projectIndex]
     }
 
@@ -557,6 +583,20 @@ public final class ProjectBoardViewModel: ObservableObject {
             self.selectedProjectID = selectedProjectID
         } catch ProjectBoardStoreError.emptyProjectTitle {
             errorMessage = "Project title is required."
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
+    public func completeSelectedProject() {
+        guard let selectedProjectID else {
+            return
+        }
+
+        do {
+            _ = try store.completeProject(id: selectedProjectID)
+            load()
+            self.selectedProjectID = selectedProjectID
         } catch {
             errorMessage = String(describing: error)
         }

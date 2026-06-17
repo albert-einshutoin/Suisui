@@ -86,16 +86,18 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(snapshot.projects.first?.column(.blocked)?.tasks, [])
     }
 
-    func testCreateAndUpdateProjectAppearInBoardSnapshot() throws {
+    func testCreateUpdateAndCompleteProjectAppearInBoardSnapshot() throws {
         let store = try makeStore()
 
         let project = try store.createProject(title: "Launch Readiness")
         _ = try store.updateProject(id: project.id, title: "Alpha Launch Readiness")
+        _ = try store.completeProject(id: project.id)
 
         let snapshot = try store.loadSnapshot()
         let updated = try XCTUnwrap(snapshot.projects.first { $0.id == project.id })
 
         XCTAssertEqual(updated.title, "Alpha Launch Readiness")
+        XCTAssertTrue(updated.isCompleted)
         XCTAssertEqual(updated.subtitle, "0 open / 0 total")
     }
 
