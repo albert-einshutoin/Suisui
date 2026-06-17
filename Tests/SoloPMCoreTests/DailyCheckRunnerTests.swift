@@ -14,6 +14,10 @@ final class DailyCheckRunnerTests: XCTestCase {
         XCTAssertEqual(result.scheduledCount, 0)
         XCTAssertEqual(logger.recordedEvents.last?.status, .skipped)
         XCTAssertEqual(logger.recordedEvents.last?.metadata["reason"], "app_launch")
+        XCTAssertEqual(logger.recordedEvents.last?.metadata["scan_count"], "0")
+        XCTAssertEqual(logger.recordedEvents.last?.metadata["notification_planned_count"], "0")
+        XCTAssertEqual(logger.recordedEvents.last?.metadata["skip_reason"], "already_ran_today")
+        XCTAssertEqual(logger.recordedEvents.last?.metadata["error"], "")
     }
 
     func testRunnerRunsMissedCheckSchedulesOverdueNotificationAndAuditsResult() throws {
@@ -42,6 +46,47 @@ final class DailyCheckRunnerTests: XCTestCase {
         XCTAssertEqual(logger.recordedEvents.last?.action, "daily_check")
         XCTAssertEqual(logger.recordedEvents.last?.status, .succeeded)
         XCTAssertEqual(logger.recordedEvents.last?.metadata["scheduled_count"], "1")
+        XCTAssertEqual(logger.recordedEvents.last?.metadata["scan_count"], "1")
+        XCTAssertEqual(logger.recordedEvents.last?.metadata["notification_planned_count"], "1")
+        XCTAssertEqual(logger.recordedEvents.last?.metadata["skip_reason"], "")
+        XCTAssertEqual(logger.recordedEvents.last?.metadata["error"], "")
+    }
+
+    func testSafeDailyCheckRunnerRecordsFailedScanWithoutThrowing() throws {
+        let logger = InMemoryAuditLogger()
+        let runner = SafeDailyCheckRunner(
+            runner: FailingDailyCheckRunnable(),
+            dateProvider: FixedDateProvider(now: try Date.iso8601("2026-06-17T12:00:00Z")),
+            auditLogger: logger
+        )
+
+        let result = runner.run(reason: .scheduledDaily)
+
+        XCTAssertEqual(result.status, .failed)
+        XCTAssertEqual(result.errorMessage, "scan failed")
+        XCTAssertEqual(logger.recordedEvents.last?.status, .failed)
+        XCTAssertEqual(logger.recordedEvents.last?.metadata["scan_count"], "0")
+        XCTAssertEqual(logger.recordedEvents.last?.metadata["notification_planned_count"], "0")
+        XCTAssertEqual(logger.recordedEvents.last?.metadata["skip_reason"], "")
+        XCTAssertEqual(logger.recordedEvents.last?.metadata["error"], "scan failed")
+    }
+
+    func testWatcherDiagnosticsProviderBuildsLastNextAndPermissionSnapshot() throws {
+        var permissions = PermissionSnapshot.empty
+        permissions.setStatus(.granted, for: .notifications)
+        let lastRunAt = try Date.iso8601("2026-06-17T01:00:00Z")
+        let provider = WatcherDiagnosticsProvider(
+            stateStore: InMemoryDailyCheckStateStore(lastRunAt: lastRunAt),
+            permissionSnapshot: permissions,
+            dateProvider: FixedDateProvider(now: try Date.iso8601("2026-06-17T12:00:00Z")),
+            settings: AppSettings(timeZoneIdentifier: "UTC")
+        )
+
+        let snapshot = try provider.snapshot()
+
+        XCTAssertEqual(snapshot.lastCheckAt, lastRunAt)
+        XCTAssertEqual(snapshot.nextCheckAt, try Date.iso8601("2026-06-18T00:00:00Z"))
+        XCTAssertEqual(snapshot.notificationPermissionStatus, .granted)
     }
 
     func testLaunchAtLoginClientCanBeToggledForDailyChecks() throws {
@@ -131,6 +176,12 @@ final class DailyCheckRunnerTests: XCTestCase {
 
 private struct FixedDateProvider: DateProvider {
     let now: Date
+}
+
+private struct FailingDailyCheckRunnable: DailyCheckRunnable {
+    func runIfNeeded(reason: DailyCheckReason) throws -> DailyCheckRunResult {
+        throw ToolClientError.invalidRequest("scan failed")
+    }
 }
 
 private enum TestMigrationRunner {

@@ -20,7 +20,8 @@ struct SoloPMApplication: App {
         Settings {
             SettingsView(
                 settings: settings,
-                launchAtLoginViewModel: AppPreviewFactory.makeLaunchAtLoginSettingsViewModel()
+                launchAtLoginViewModel: AppPreviewFactory.makeLaunchAtLoginSettingsViewModel(),
+                watcherDiagnosticsSnapshot: AppPreviewFactory.makeWatcherDiagnosticsSnapshot()
             )
         }
     }
@@ -493,10 +494,16 @@ private struct SummaryRow: View {
 
 private struct SettingsView: View {
     let settings: AppSettings
+    let watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot
     @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
 
-    init(settings: AppSettings, launchAtLoginViewModel: LaunchAtLoginSettingsViewModel) {
+    init(
+        settings: AppSettings,
+        launchAtLoginViewModel: LaunchAtLoginSettingsViewModel,
+        watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot
+    ) {
         self.settings = settings
+        self.watcherDiagnosticsSnapshot = watcherDiagnosticsSnapshot
         _launchAtLoginViewModel = StateObject(wrappedValue: launchAtLoginViewModel)
     }
 
@@ -533,12 +540,38 @@ private struct SettingsView: View {
                 }
                 LabeledContent("Workspace", value: settings.defaultWorkspacePath ?? "Not selected")
             }
+
+            Section("Watcher") {
+                LabeledContent("Last Check", value: diagnosticDateLabel(watcherDiagnosticsSnapshot.lastCheckAt))
+                LabeledContent("Next Check", value: diagnosticDateLabel(watcherDiagnosticsSnapshot.nextCheckAt))
+                LabeledContent("Notifications", value: permissionLabel(watcherDiagnosticsSnapshot.notificationPermissionStatus))
+            }
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 520, height: 420)
+        .frame(width: 520, height: 500)
         .onAppear {
             launchAtLoginViewModel.refresh()
+        }
+    }
+
+    private func diagnosticDateLabel(_ date: Date?) -> String {
+        guard let date else {
+            return "Never"
+        }
+        return date.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private func permissionLabel(_ status: PermissionStatus) -> String {
+        switch status {
+        case .notDetermined:
+            "Not Determined"
+        case .granted:
+            "Granted"
+        case .denied:
+            "Denied"
+        case .restricted:
+            "Restricted"
         }
     }
 }
@@ -558,6 +591,14 @@ private enum AppPreviewFactory {
     @MainActor
     static func makeLaunchAtLoginSettingsViewModel() -> LaunchAtLoginSettingsViewModel {
         LaunchAtLoginSettingsViewModel(client: SMAppServiceLaunchAtLoginClient())
+    }
+
+    static func makeWatcherDiagnosticsSnapshot() -> WatcherDiagnosticsSnapshot {
+        WatcherDiagnosticsSnapshot(
+            lastCheckAt: nil,
+            nextCheckAt: Date(),
+            notificationPermissionStatus: .notDetermined
+        )
     }
 
     @MainActor

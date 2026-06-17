@@ -98,10 +98,10 @@
 
 ### P4-010: Watcher audit and diagnostics
 
-- [ ] scan 件数、通知予定件数、skip 理由、error を audit log に残す。
-- [ ] Debug view で last check、next check、permission state を確認できるようにする。
-- [ ] テスト: failed scan がアプリ全体を落とさないことを確認する。
-- [ ] 完了条件: 通知されない問題を調査できる。
+- [x] scan 件数、通知予定件数、skip 理由、error を audit log に残す。
+- [x] Debug view で last check、next check、permission state を確認できるようにする。
+- [x] テスト: failed scan がアプリ全体を落とさないことを確認する。
+- [x] 完了条件: 通知されない問題を調査できる。
 
 ## Exit Gate
 
