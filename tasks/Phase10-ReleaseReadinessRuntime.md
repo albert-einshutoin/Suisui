@@ -225,7 +225,7 @@
 
 - [x] Developer ID identity、notary profile、signed app、Gatekeeper、staple、clean-env/manual login-item gate を一箇所で検査する script を追加する。
 - [x] preflight は秘密情報を表示せず、未完了 gate を `BLOCKER` として返す。
-- [x] release checklist に preflight の実行順と manual confirmation env を追加する。
+- [x] release checklist に preflight の実行順と manual release evidence を追加する。
 - [x] 完了条件: 外部資格情報や別ユーザー確認が未完了のまま release 完了扱いにならない。
 
 ### P10-027: Voice review narrow-window resilience
@@ -241,6 +241,13 @@
 - [x] `tasks/README.md` のテンプレート用 unchecked 項目は release blocker から除外する。
 - [x] report は残 gate がある間は `NOT READY` と exit 2 を返す。
 - [x] 完了条件: VC / investor 目線の残 blocker を毎回同じ出力で確認できる。
+
+### P10-029: Manual release evidence gate
+
+- [x] clean 環境起動と login item toggle を一時的な env ではなく、ignored local evidence file で検証する。
+- [x] `packaging/release-evidence.example.json` には秘密情報を入れず、repo には template だけを置く。
+- [x] `verify_release_environment.sh` は `manualChecks.cleanEnvironmentLaunch` と `manualChecks.loginItemToggle` が true でない限り release ready にしない。
+- [x] 完了条件: 人間の手動確認 gate を機械的な release report で再確認できる。
 
 ## PDCA Loop
 
@@ -275,5 +282,5 @@
 - `xcodebuild -workspace .swiftpm/xcode/package.xcworkspace -scheme SoloPM -destination 'platform=macOS' build`
 - `./scripts/verify.sh`
 - `./script/build_and_run.sh --verify`
-- `SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh` (Developer ID / notary / clean-env manual gate が揃った release machine で green にする。開発機では blocker 出力を確認する。)
+- `SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh` (Developer ID / notary / `packaging/release-evidence.json` が揃った release machine で green にする。開発機では blocker 出力を確認する。)
 - `./script/release_readiness_report.sh` (全 release gate が揃うまでは `NOT READY` と blocker を返す。)

@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 SIGNING_ENV_FILE="$ROOT_DIR/packaging/signing.env"
 NOTARIZATION_ENV_FILE="$ROOT_DIR/packaging/notarization.env"
+RELEASE_EVIDENCE_FILE="${SOLOPM_RELEASE_EVIDENCE_FILE:-$ROOT_DIR/packaging/release-evidence.json}"
 
 BLOCKERS=()
 WARNINGS=()
@@ -53,6 +54,22 @@ require_command spctl
 require_command xcrun
 require_command hdiutil
 require_command ditto
+require_command plutil
+
+require_evidence_true() {
+  local key_path="$1"
+  local label="$2"
+  local value
+
+  if ! value="$(plutil -extract "$key_path" raw -o - "$RELEASE_EVIDENCE_FILE" 2>/dev/null)"; then
+    add_blocker "release evidence missing $label: $key_path"
+    return
+  fi
+
+  if [[ "$value" != "true" ]]; then
+    add_blocker "release evidence not confirmed: $label ($key_path must be true)"
+  fi
+}
 
 if [[ -f "$METADATA_FILE" ]]; then
   # shellcheck source=/dev/null
@@ -78,8 +95,6 @@ APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 SIGNING_IDENTITY="${SOLOPM_SIGNING_IDENTITY:-}"
 NOTARY_PROFILE="${SOLOPM_NOTARY_PROFILE:-}"
 ONLINE_PREFLIGHT="${SOLOPM_RELEASE_PREFLIGHT_ONLINE:-0}"
-CLEAN_ENV_CONFIRMED="${SOLOPM_CLEAN_ENV_LAUNCH_CONFIRMED:-0}"
-LOGIN_ITEM_CONFIRMED="${SOLOPM_LOGIN_ITEM_TOGGLE_CONFIRMED:-0}"
 
 case "$ONLINE_PREFLIGHT" in
   0|1)
@@ -121,17 +136,21 @@ else
   add_blocker "missing signed release app bundle: run ./script/sign_app.sh before final release validation"
 fi
 
-if [[ "$CLEAN_ENV_CONFIRMED" != "1" ]]; then
-  add_blocker "clean environment launch is not confirmed; set SOLOPM_CLEAN_ENV_LAUNCH_CONFIRMED=1 only after manual clean-user install and launch"
-fi
-
-if [[ "$LOGIN_ITEM_CONFIRMED" != "1" ]]; then
-  add_blocker "login item toggle is not confirmed in a signed app; set SOLOPM_LOGIN_ITEM_TOGGLE_CONFIRMED=1 only after manual Settings verification"
+if [[ -f "$RELEASE_EVIDENCE_FILE" ]]; then
+  if plutil -convert json -o /dev/null "$RELEASE_EVIDENCE_FILE" 2>/dev/null; then
+    require_evidence_true "manualChecks.cleanEnvironmentLaunch" "clean environment launch"
+    require_evidence_true "manualChecks.loginItemToggle" "login item toggle in signed app"
+  else
+    add_blocker "release evidence is not valid JSON or plist: $RELEASE_EVIDENCE_FILE"
+  fi
+else
+  add_blocker "missing local release evidence: copy packaging/release-evidence.example.json to packaging/release-evidence.json after manual checks"
 fi
 
 printf "SoloPM release environment preflight\n"
 printf "app bundle: %s\n" "$APP_BUNDLE"
 printf "online notary check: %s\n" "$ONLINE_PREFLIGHT"
+printf "release evidence: %s\n" "$RELEASE_EVIDENCE_FILE"
 
 if [[ "${#WARNINGS[@]}" -gt 0 ]]; then
   printf "\nWarnings:\n"

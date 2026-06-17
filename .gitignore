@@ -17,5 +17,6 @@
 /packaging/signing.env
 /packaging/notarization.env
 /packaging/sparkle.env
+/packaging/release-evidence.json
 *.local
 Package.resolved

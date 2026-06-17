@@ -30,6 +30,43 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("AC_PASSWORD"))
     }
 
+    func testReleasePreflightRequiresLocalEvidenceFileForManualChecks() throws {
+        let script = try readPackageFile("script/verify_release_environment.sh")
+
+        XCTAssertTrue(script.contains("RELEASE_EVIDENCE_FILE"))
+        XCTAssertTrue(script.contains("packaging/release-evidence.json"))
+        XCTAssertTrue(script.contains("manualChecks.cleanEnvironmentLaunch"))
+        XCTAssertTrue(script.contains("manualChecks.loginItemToggle"))
+        XCTAssertTrue(script.contains("plutil -extract"))
+        XCTAssertTrue(script.contains("plutil -convert json"))
+        XCTAssertFalse(script.contains("plutil -lint"))
+        XCTAssertFalse(script.contains("SOLOPM_CLEAN_ENV_LAUNCH_CONFIRMED"))
+        XCTAssertFalse(script.contains("SOLOPM_LOGIN_ITEM_TOGGLE_CONFIRMED"))
+    }
+
+    func testReleaseEvidenceExampleContainsNoSecretsAndIsIgnored() throws {
+        let gitignore = try readPackageFile(".gitignore")
+        let example = try readPackageFile("packaging/release-evidence.example.json")
+
+        XCTAssertTrue(gitignore.contains("/packaging/release-evidence.json"))
+        XCTAssertTrue(example.contains("\"manualChecks\""))
+        XCTAssertTrue(example.contains("\"cleanEnvironmentLaunch\": false"))
+        XCTAssertTrue(example.contains("\"loginItemToggle\": false"))
+        XCTAssertFalse(example.contains("PASSWORD"))
+        XCTAssertFalse(example.contains("TOKEN"))
+        XCTAssertFalse(example.contains("SECRET"))
+    }
+
+    func testReleaseChecklistRequiresEvidenceBeforeFinalReport() throws {
+        let checklist = try readPackageFile("docs/release/checklist.md")
+
+        XCTAssertTrue(checklist.contains("packaging/release-evidence.example.json"))
+        XCTAssertTrue(checklist.contains("packaging/release-evidence.json"))
+        XCTAssertTrue(checklist.contains("manual release evidence"))
+        XCTAssertTrue(checklist.contains("./script/verify_release_environment.sh"))
+        XCTAssertTrue(checklist.contains("./script/release_readiness_report.sh"))
+    }
+
     func testReleaseReadinessReportAggregatesRuntimeMockScanTasksAndPreflight() throws {
         let script = try readPackageFile("script/release_readiness_report.sh")
 

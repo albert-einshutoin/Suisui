@@ -1,0 +1,19 @@
+{
+  "release": {
+    "version": "0.1.0-alpha.1",
+    "buildNumber": "1",
+    "appBundlePath": "dist/SoloPM.app",
+    "artifactSha256": "replace-after-package"
+  },
+  "manualChecks": {
+    "cleanEnvironmentLaunch": false,
+    "loginItemToggle": false
+  },
+  "review": {
+    "checkedBy": "release-owner",
+    "checkedAt": "YYYY-MM-DDTHH:MM:SSZ",
+    "notes": [
+      "Set booleans true only after the signed and notarized build is tested."
+    ]
+  }
+}
