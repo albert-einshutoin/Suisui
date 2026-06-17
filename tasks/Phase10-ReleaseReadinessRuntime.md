@@ -165,6 +165,13 @@
 - [x] 既存 unit tests は test support の fake 実装を明示利用する。
 - [x] 完了条件: shipping module の public API から fake voice/planning provider を除去する。
 
+### P10-018: Infrastructure test double isolation
+
+- [x] `Sources/` に `FakeFileMonitorClient` / `StaticPermissionManager` / `StaticMenuBarSummaryProvider` / `StaticTool` が含まれていないことを regression test で確認する。
+- [x] File monitor / permissions / menu summary / closure tool の test double は `Tests/` 配下へ隔離する。
+- [x] 既存 unit tests は test support の test double を明示利用する。
+- [x] 完了条件: shipping module の public API から infrastructure test doubles を除去する。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

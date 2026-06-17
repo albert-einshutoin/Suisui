@@ -287,34 +287,6 @@ public struct ToolSchemaExport: Equatable, Sendable {
     }
 }
 
-public struct StaticTool: Tool {
-    public var name: ActionTool
-    public var description: String
-    public var inputSchema: ToolInputSchema
-    public var permissionLevel: ToolPermissionLevel
-    private var handler: @Sendable ([String: JSONValue], ToolExecutionContext) throws -> ToolResult
-
-    public init(
-        name: ActionTool,
-        description: String,
-        inputSchema: ToolInputSchema,
-        permissionLevel: ToolPermissionLevel,
-        handler: @escaping @Sendable ([String: JSONValue], ToolExecutionContext) throws -> ToolResult
-    ) {
-        self.name = name
-        self.description = description
-        self.inputSchema = inputSchema
-        self.permissionLevel = permissionLevel
-        self.handler = handler
-    }
-
-    public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
-        try enforcePermission(context: context)
-        try validateRequiredArguments(arguments)
-        return try handler(arguments, context)
-    }
-}
-
 private extension JSONValue {
     var isBlankString: Bool {
         guard case .string(let value) = self else {

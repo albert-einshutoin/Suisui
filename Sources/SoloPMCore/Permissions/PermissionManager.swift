@@ -38,22 +38,6 @@ public protocol PermissionManager: Sendable {
     func status(for permission: AppPermission) -> PermissionStatus
 }
 
-public struct StaticPermissionManager: PermissionManager {
-    private var currentSnapshot: PermissionSnapshot
-
-    public init(snapshot: PermissionSnapshot = .empty) {
-        self.currentSnapshot = snapshot
-    }
-
-    public func snapshot() -> PermissionSnapshot {
-        currentSnapshot
-    }
-
-    public func status(for permission: AppPermission) -> PermissionStatus {
-        currentSnapshot.status(for: permission)
-    }
-}
-
 public enum PermissionDisplayPolicy {
     public static func label(for status: PermissionStatus) -> String {
         switch status {

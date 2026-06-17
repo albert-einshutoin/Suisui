@@ -108,6 +108,18 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
+    func testRuntimeSourcesDoNotShipInfrastructureTestDoubles() throws {
+        let sourceFiles = try allSwiftFiles(under: "Sources")
+
+        for sourceFile in sourceFiles {
+            let source = try String(contentsOf: sourceFile, encoding: .utf8)
+            XCTAssertFalse(source.contains("class FakeFileMonitorClient"), "\(sourceFile.path) ships a test-only file monitor.")
+            XCTAssertFalse(source.contains("struct StaticPermissionManager"), "\(sourceFile.path) ships a test-only permission manager.")
+            XCTAssertFalse(source.contains("struct StaticMenuBarSummaryProvider"), "\(sourceFile.path) ships a test-only menu bar summary provider.")
+            XCTAssertFalse(source.contains("struct StaticTool"), "\(sourceFile.path) ships a test-only tool implementation.")
+        }
+    }
+
     func testExternalMCPLauncherDoesNotDefaultToInMemorySecretStore() throws {
         let source = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")
 

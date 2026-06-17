@@ -163,25 +163,6 @@ public protocol FileMonitorClient: Sendable {
     func nextEvent() throws -> FileMonitorEvent?
 }
 
-public final class FakeFileMonitorClient: FileMonitorClient, @unchecked Sendable {
-    private var events: [FileMonitorEvent]
-    private let lock = NSLock()
-
-    public init(events: [FileMonitorEvent] = []) {
-        self.events = events
-    }
-
-    public func nextEvent() throws -> FileMonitorEvent? {
-        lock.lock()
-        defer { lock.unlock() }
-
-        guard !events.isEmpty else {
-            return nil
-        }
-        return events.removeFirst()
-    }
-}
-
 public struct ArtifactMonitoringResult: Equatable, Sendable {
     public var updatedArtifacts: [ArtifactRecord]
     public var skippedReason: String?

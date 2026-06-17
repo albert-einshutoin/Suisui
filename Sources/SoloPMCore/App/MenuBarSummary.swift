@@ -105,18 +105,6 @@ public protocol MenuBarSummaryProviding: Sendable {
     func loadMenuBarSummary() throws -> MenuBarSummary
 }
 
-public struct StaticMenuBarSummaryProvider: MenuBarSummaryProviding {
-    public var summary: MenuBarSummary
-
-    public init(summary: MenuBarSummary) {
-        self.summary = summary
-    }
-
-    public func loadMenuBarSummary() throws -> MenuBarSummary {
-        summary
-    }
-}
-
 public final class SQLiteMenuBarSummaryProvider: MenuBarSummaryProviding, @unchecked Sendable {
     private let connection: SQLiteConnection
     private let projectStore: SQLiteProjectStore
