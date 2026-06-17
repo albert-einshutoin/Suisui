@@ -15,6 +15,10 @@ let package = Package(
         .executable(
             name: "SoloPM",
             targets: ["SoloPMApp"]
+        ),
+        .executable(
+            name: "solopm",
+            targets: ["SoloPMCLI"]
         )
     ],
     dependencies: [
@@ -36,6 +40,10 @@ let package = Package(
                 "SoloPMCore",
                 .product(name: "Sparkle", package: "Sparkle")
             ]
+        ),
+        .executableTarget(
+            name: "SoloPMCLI",
+            dependencies: ["SoloPMCore"]
         ),
         .testTarget(
             name: "SoloPMCoreTests",

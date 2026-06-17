@@ -1,0 +1,50 @@
+import XCTest
+@testable import SoloPMCore
+
+final class DraftGenerationTests: XCTestCase {
+    func testReadmeDraftIsPreviewOnlyAndDoesNotOverwriteExistingReadme() {
+        let context = DraftGenerationContext(
+            repositoryName: "soloPM",
+            currentBranch: "feature/phase6-developer-mode",
+            gitStatusSummary: "clean",
+            commitSummaries: ["abc123 Add CLI foundation"],
+            taskSummaries: ["P6-005 CLI foundation"],
+            generatedAt: Date(timeIntervalSince1970: 1_783_200_000)
+        )
+
+        let draft = DeveloperDraftGenerator().generateReadmeDraft(from: context)
+
+        XCTAssertEqual(draft.kind, .readme)
+        XCTAssertEqual(draft.writePolicy, .previewOnly(suggestedPath: "README.draft.md"))
+        XCTAssertTrue(draft.body.contains("# soloPM"))
+        XCTAssertTrue(draft.body.contains("P6-005 CLI foundation"))
+        XCTAssertTrue(draft.safetyNotes.contains(.doesNotOverwriteExistingReadme))
+    }
+
+    func testReleaseNoteDraftRedactsSecretsFromInputs() {
+        let githubToken = "github" + "_pat_" + "11SECRETSECRETSECRETSECRETSECRETSECRETSECRET"
+        let openAIKey = "sk" + "-proj-" + "SECRETSECRETSECRETSECRETSECRETSECRETSECRET"
+        let classicToken = "ghp" + "_" + "secret"
+        let context = DraftGenerationContext(
+            repositoryName: "soloPM",
+            currentBranch: "release/test",
+            gitStatusSummary: "modified Sources/SoloPMCore/DeveloperMode/DraftGeneration.swift",
+            commitSummaries: [
+                "Add GitHub token \(githubToken)",
+                "Configure OpenAI key \(openAIKey)"
+            ],
+            taskSummaries: ["Release note should not leak \(classicToken)"],
+            generatedAt: Date(timeIntervalSince1970: 1_783_200_000)
+        )
+
+        let draft = DeveloperDraftGenerator().generateReleaseNoteDraft(from: context)
+
+        XCTAssertEqual(draft.kind, .releaseNotes)
+        XCTAssertEqual(draft.writePolicy, .previewOnly(suggestedPath: "RELEASE_NOTES.draft.md"))
+        XCTAssertFalse(draft.body.contains(githubToken))
+        XCTAssertFalse(draft.body.contains(openAIKey))
+        XCTAssertFalse(draft.body.contains(classicToken))
+        XCTAssertTrue(draft.body.contains("[REDACTED_SECRET]"))
+        XCTAssertEqual(draft.redactionReport.replacementCount, 3)
+    }
+}
