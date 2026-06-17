@@ -69,6 +69,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("Review execution tools are unavailable because local data stores could not be opened."))
     }
 
+    func testWatcherDiagnosticsUsesRuntimeStateStoreAndNotificationPermissions() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(appSource.contains("WatcherDiagnosticsProvider("))
+        XCTAssertTrue(appSource.contains("SQLiteDailyCheckStateStore(connection: connection)"))
+        XCTAssertTrue(appSource.contains("UserNotificationsPermissionSnapshotReader.snapshot()"))
+        XCTAssertFalse(appSource.contains("lastCheckAt: nil"))
+        XCTAssertFalse(appSource.contains("nextCheckAt: Date()"))
+        XCTAssertFalse(appSource.contains("notificationPermissionStatus: .notDetermined"))
+    }
+
     func testRuntimeAppCompositionDoesNotUseDemoOrInMemorySuccessPath() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 

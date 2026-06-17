@@ -979,11 +979,20 @@ private enum AppRuntimeFactory {
     }
 
     static func makeWatcherDiagnosticsSnapshot() -> WatcherDiagnosticsSnapshot {
-        WatcherDiagnosticsSnapshot(
-            lastCheckAt: nil,
-            nextCheckAt: Date(),
-            notificationPermissionStatus: .notDetermined
-        )
+        let permissionSnapshot = UserNotificationsPermissionSnapshotReader.snapshot()
+        do {
+            let connection = try migratedConnection()
+            let settings = (try? UserDefaultsAppSettingsStore().load()) ?? .default
+            return try WatcherDiagnosticsProvider(
+                stateStore: SQLiteDailyCheckStateStore(connection: connection),
+                permissionSnapshot: permissionSnapshot,
+                settings: settings
+            ).snapshot()
+        } catch {
+            return WatcherDiagnosticsSnapshot(
+                notificationPermissionStatus: permissionSnapshot.status(for: .notifications)
+            )
+        }
     }
 
     @MainActor

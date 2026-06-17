@@ -92,6 +92,35 @@ final class UserNotificationsNotificationClient: NotificationClient, @unchecked 
     }
 }
 
+struct UserNotificationsPermissionSnapshotReader {
+    static func snapshot(center: UNUserNotificationCenter = .current()) -> PermissionSnapshot {
+        let settings = CallbackBox<UNNotificationSettings>()
+        let semaphore = DispatchSemaphore(value: 0)
+        center.getNotificationSettings { value in
+            settings.value = value
+            semaphore.signal()
+        }
+        semaphore.wait()
+
+        var snapshot = PermissionSnapshot.empty
+        snapshot.setStatus(permissionStatus(from: settings.value?.authorizationStatus), for: .notifications)
+        return snapshot
+    }
+
+    private static func permissionStatus(from status: UNAuthorizationStatus?) -> PermissionStatus {
+        switch status {
+        case .authorized, .provisional, .ephemeral:
+            .granted
+        case .denied:
+            .denied
+        case .notDetermined:
+            .notDetermined
+        default:
+            .restricted
+        }
+    }
+}
+
 private final class CallbackBox<Value>: @unchecked Sendable {
     private let lock = NSLock()
     private var storedValue: Value?
