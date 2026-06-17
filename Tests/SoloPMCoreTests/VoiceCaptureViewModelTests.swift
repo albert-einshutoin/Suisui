@@ -56,6 +56,49 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.recordedAudio?.duration, 2)
     }
 
+    func testCanRecordAgainAfterSuccessfulTranscription() async {
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "Create a task")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            ))
+        )
+
+        viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
+        await viewModel.stopRecording(
+            outputURL: URL(filePath: "/tmp/solopm-test-first.m4a"),
+            at: Date(timeIntervalSince1970: 12)
+        )
+
+        viewModel.startRecording(at: Date(timeIntervalSince1970: 20))
+
+        XCTAssertEqual(viewModel.phase, .recording)
+        XCTAssertEqual(viewModel.recordingState, .recording(startedAt: Date(timeIntervalSince1970: 20)))
+    }
+
+    func testClearResetsActiveRecordingState() {
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            ))
+        )
+
+        viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
+        viewModel.clear()
+        viewModel.startRecording(at: Date(timeIntervalSince1970: 20))
+
+        XCTAssertEqual(viewModel.phase, .recording)
+        XCTAssertEqual(viewModel.recordingState, .recording(startedAt: Date(timeIntervalSince1970: 20)))
+    }
+
     func testGeneratePlanRejectsEmptyDraft() async {
         let viewModel = VoiceCaptureViewModel(
             llmProvider: FakeLLMProvider(response: PlanningResponse(

@@ -14,7 +14,7 @@ final class AVFoundationAudioRecorder: AudioRecorder {
     }
 
     func start(at date: Date = Date()) throws {
-        guard case .idle = state else {
+        guard state.canStartRecording else {
             throw AudioRecorderError.alreadyRecording
         }
 
@@ -87,6 +87,17 @@ final class AVFoundationAudioRecorder: AudioRecorder {
         return audio
     }
 
+    func reset() {
+        let temporaryURL = recorder?.url
+        recorder?.stop()
+        recorder = nil
+        recordingStartedAt = nil
+        if let temporaryURL {
+            try? FileManager.default.removeItem(at: temporaryURL)
+        }
+        state = .idle
+    }
+
     private func temporaryRecordingURL(startedAt date: Date) -> URL {
         let timestamp = Int(date.timeIntervalSince1970)
         return temporaryDirectory.appendingPathComponent("solopm-recording-\(timestamp).m4a")
@@ -97,10 +108,21 @@ final class AVFoundationAudioRecorder: AudioRecorder {
         let directory = destination.deletingLastPathComponent()
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
 
-        guard !fileManager.fileExists(atPath: destination.path) else {
-            throw AudioRecorderError.failed("Recording output already exists.")
+        if fileManager.fileExists(atPath: destination.path) {
+            try fileManager.removeItem(at: destination)
         }
 
         try fileManager.moveItem(at: source, to: destination)
+    }
+}
+
+private extension AudioRecordingState {
+    var canStartRecording: Bool {
+        switch self {
+        case .idle, .completed, .failed:
+            return true
+        case .requestingPermission, .recording, .stopping:
+            return false
+        }
     }
 }

@@ -16,14 +16,14 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("NSApp.activate(ignoringOtherApps: true)"))
     }
 
-    func testVoiceCommandDemoWindowOpensOnLaunch() throws {
+    func testProjectBoardOpensOnLaunch() throws {
         let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
-        XCTAssertTrue(source.contains("WindowGroup(\"Voice Command\", id: \"voice-capture\")"))
+        XCTAssertTrue(source.contains("WindowGroup(\"SoloPM\", id: \"project-board\")"))
 
-        let voiceWindow = try XCTUnwrap(source.range(of: "WindowGroup(\"Voice Command\", id: \"voice-capture\")"))
+        let boardWindow = try XCTUnwrap(source.range(of: "WindowGroup(\"SoloPM\", id: \"project-board\")"))
         let menuBar = try XCTUnwrap(source.range(of: "MenuBarExtra(\"SoloPM\", systemImage: \"checklist\")"))
-        XCTAssertLessThan(voiceWindow.lowerBound, menuBar.lowerBound)
+        XCTAssertLessThan(boardWindow.lowerBound, menuBar.lowerBound)
     }
 
     private func readPackageFile(_ relativePath: String) throws -> String {

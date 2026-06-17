@@ -11,11 +11,17 @@ struct SoloPM: App {
     @NSApplicationDelegateAdaptor(SparkleAppDelegate.self) private var sparkleAppDelegate
 #endif
 
+    private let boardSnapshot = AppPreviewFactory.makeProjectBoardSnapshot()
     private let menuBarViewModel = AppPreviewFactory.makeMenuBarSummaryViewModel()
     private let settings = AppSettings.default
 
     var body: some Scene {
-        WindowGroup("Voice Command", id: "voice-capture") {
+        WindowGroup("SoloPM", id: "project-board") {
+            ProjectBoardView(snapshot: boardSnapshot)
+        }
+        .defaultSize(width: 1180, height: 760)
+
+        Window("Voice Command", id: "voice-capture") {
             VoiceCaptureView(viewModel: AppPreviewFactory.makeVoiceCaptureViewModel())
         }
         .defaultSize(width: 560, height: 420)
@@ -73,6 +79,12 @@ private struct MenuBarPanel: View {
                     Label("Settings", systemImage: "gearshape")
                 }
                 .labelStyle(.iconOnly)
+            }
+
+            Button {
+                openWindow(id: "project-board")
+            } label: {
+                Label("Project Board", systemImage: "rectangle.3.group")
             }
 
             Button {
@@ -152,8 +164,7 @@ private struct VoiceCaptureView: View {
                     if viewModel.isRecording {
                         Task {
                             await viewModel.stopRecording(
-                                outputURL: FileManager.default.temporaryDirectory
-                                    .appendingPathComponent("solopm-demo-recording.m4a")
+                                outputURL: recordingOutputURL()
                             )
                         }
                     } else {
@@ -187,6 +198,11 @@ private struct VoiceCaptureView: View {
             }
         }
         .padding(16)
+    }
+
+    private func recordingOutputURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("solopm-recording-\(UUID().uuidString).m4a")
     }
 }
 
@@ -762,6 +778,10 @@ private struct SettingsView: View {
 }
 
 private enum AppPreviewFactory {
+    static func makeProjectBoardSnapshot() -> ProjectBoardSnapshot {
+        .demo
+    }
+
     static func makeMenuBarSummaryViewModel() -> MenuBarSummaryViewModel {
         MenuBarSummaryViewModel(
             summary: MenuBarSummary(
@@ -794,7 +814,8 @@ private enum AppPreviewFactory {
     @MainActor
     static func makeVoiceCaptureViewModel() -> VoiceCaptureViewModel {
         VoiceCaptureViewModel(
-            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "Create a task to review the SoloPM Phase 1 UI")),
+            audioRecorder: AVFoundationAudioRecorder(),
+            sttProvider: DemoTranscriptionUnavailableProvider(),
             llmProvider: DemoPlanningProvider(),
             auditRecorder: PlanningAuditRecorder(logger: RedactingAuditLogger(base: InMemoryAuditLogger()))
         )
@@ -813,6 +834,19 @@ private enum AppPreviewFactory {
             executor: ActionExecutor(registry: registry, auditLogger: logger),
             auditLogger: logger
         )
+    }
+}
+
+private struct DemoTranscriptionUnavailableProvider: SpeechToTextProvider {
+    let id: STTProviderID = .whisperKit
+    let availability = STTProviderAvailability(
+        providerID: .whisperKit,
+        isAvailable: false,
+        reason: "Speech transcription is not configured. Type the command manually or choose a provider in Settings."
+    )
+
+    func transcribe(_ audio: RecordedAudio) async throws -> STTTranscript {
+        throw STTProviderError.unavailable(availability.reason ?? "Speech transcription is not configured.")
     }
 }
 

@@ -59,9 +59,11 @@ public final class VoiceCaptureViewModel: ObservableObject {
     }
 
     public func clear() {
+        audioRecorder.reset()
         draft = TranscriptDraft()
         planningResponse = nil
         recordedAudio = nil
+        recordingState = audioRecorder.state
         phase = .idle
     }
 
@@ -72,7 +74,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             phase = .recording
         } catch {
             recordingState = audioRecorder.state
-            phase = .failed(String(describing: error))
+            phase = .failed(userMessage(for: error))
         }
     }
 
@@ -87,7 +89,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             phase = .idle
         } catch {
             recordingState = audioRecorder.state
-            phase = .failed(String(describing: error))
+            phase = .failed(userMessage(for: error))
         }
     }
 
@@ -120,7 +122,35 @@ public final class VoiceCaptureViewModel: ObservableObject {
             phase = response.validationResult.isValid ? .reviewReady : .failed("ActionPlan validation failed.")
         } catch {
             try? auditRecorder?.recordFailed(input: request.userInput, providerID: llmProvider.providerID, error: error)
-            phase = .failed(String(describing: error))
+            phase = .failed(userMessage(for: error))
         }
+    }
+
+    private func userMessage(for error: Error) -> String {
+        if let audioError = error as? AudioRecorderError {
+            switch audioError {
+            case .microphonePermissionDenied:
+                return "Microphone permission is required to record."
+            case .alreadyRecording:
+                return "Recording is already in progress."
+            case .notRecording:
+                return "Recording has not started."
+            case .failed(let message):
+                return message
+            }
+        }
+
+        if let sttError = error as? STTProviderError {
+            switch sttError {
+            case .unavailable(let message):
+                return message
+            case .permissionDenied:
+                return "Speech transcription permission is required."
+            case .modelMissing(let message), .transcriptionFailed(let message):
+                return message
+            }
+        }
+
+        return String(describing: error)
     }
 }

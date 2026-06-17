@@ -14,6 +14,7 @@ public protocol AudioRecorder {
 
     mutating func start(at date: Date) throws
     mutating func stop(outputURL: URL, at date: Date) throws -> RecordedAudio
+    mutating func reset()
 }
 
 public enum AudioRecorderError: Error, Equatable, Sendable {
@@ -38,7 +39,7 @@ public struct FakeAudioRecorder: AudioRecorder {
             throw AudioRecorderError.microphonePermissionDenied
         }
 
-        guard case .idle = state else {
+        guard state.canStartRecording else {
             throw AudioRecorderError.alreadyRecording
         }
 
@@ -58,5 +59,20 @@ public struct FakeAudioRecorder: AudioRecorder {
         )
         state = .completed(audio)
         return audio
+    }
+
+    public mutating func reset() {
+        state = .idle
+    }
+}
+
+private extension AudioRecordingState {
+    var canStartRecording: Bool {
+        switch self {
+        case .idle, .completed, .failed:
+            return true
+        case .requestingPermission, .recording, .stopping:
+            return false
+        }
     }
 }
