@@ -1,4 +1,5 @@
 import Foundation
+@testable import SoloPMCore
 
 public final class RecordingMCPTransport: MCPClientTransport, @unchecked Sendable {
     public typealias Handler = @Sendable (MCPJSONRPCRequest) throws -> MCPJSONRPCResponse

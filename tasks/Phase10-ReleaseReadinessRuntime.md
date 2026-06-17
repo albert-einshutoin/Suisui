@@ -109,6 +109,13 @@
 - [x] security pass で secret が DB / log / settings に保存されないことを確認する。
 - [x] 完了条件: public alpha として「動くが外部連携は未対応」と正直に出せる。
 
+### P10-010: MCP test kit production isolation
+
+- [x] `Sources/` に fake MCP server / fake transport helper が含まれていないことを regression test で確認する。
+- [x] MCP fake server kit は `Tests/` 配下の test support に隔離する。
+- [x] 既存 MCP client / settings / execution tests は test support 経由で維持する。
+- [x] 完了条件: shipping module に MCP mock server 実装を含めず、ユーザー登録 server の live check だけを runtime path に残す。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

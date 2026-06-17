@@ -80,6 +80,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains("notificationPermissionStatus: .notDetermined"))
     }
 
+    func testExternalMCPFakeServerKitIsNotShippedInRuntimeSources() throws {
+        let sourceFiles = try allSwiftFiles(under: "Sources")
+
+        for sourceFile in sourceFiles {
+            let source = try String(contentsOf: sourceFile, encoding: .utf8)
+            XCTAssertFalse(source.contains("ExternalMCPTestKit"), "\(sourceFile.path) ships the fake MCP server test kit.")
+            XCTAssertFalse(source.contains("makeFakeServerTransport"), "\(sourceFile.path) ships fake MCP transport helpers.")
+        }
+    }
+
     func testRuntimeAppCompositionDoesNotUseDemoOrInMemorySuccessPath() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
@@ -106,6 +116,25 @@ final class AppExperienceSourceTests: XCTestCase {
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func allSwiftFiles(under relativePath: String) throws -> [URL] {
+        let root = packageRoot().appendingPathComponent(relativePath, isDirectory: true)
+        guard let enumerator = FileManager.default.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+
+        return try enumerator.compactMap { item -> URL? in
+            guard let url = item as? URL, url.pathExtension == "swift" else {
+                return nil
+            }
+            let values = try url.resourceValues(forKeys: [.isRegularFileKey])
+            return values.isRegularFile == true ? url : nil
+        }
     }
 
     private func packageRoot() -> URL {
