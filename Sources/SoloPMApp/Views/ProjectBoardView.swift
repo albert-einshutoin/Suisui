@@ -306,7 +306,7 @@ private struct ProjectKanbanBoard: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
 
     var body: some View {
-        ScrollView(.horizontal) {
+        ScrollView([.horizontal, .vertical]) {
             HStack(alignment: .top, spacing: 12) {
                 ForEach(project.columns) { column in
                     BoardColumnView(
@@ -332,6 +332,7 @@ private struct ProjectKanbanBoard: View {
             }
             .padding(.bottom, 4)
         }
+        .scrollIndicators(.visible)
     }
 }
 

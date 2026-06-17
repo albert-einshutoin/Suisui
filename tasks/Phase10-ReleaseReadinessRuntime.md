@@ -212,6 +212,7 @@
 - [x] ProjectBoard header が狭い window で横潰れしないよう `ViewThatFits` で縦配置へ fallback する。
 - [x] Project / Task の長い title、detail、due label は省略表示し、hover で全文確認できる。
 - [x] Task metadata は横幅不足時に縦配置へ fallback する。
+- [x] Kanban board は長い task list と狭い window で縦横にスクロールでき、scroll indicator を表示する。
 - [x] 完了条件: ProjectBoard の長文・狭幅 regression を source test で検知できる。
 
 ### P10-025: SaaS connector test double isolation

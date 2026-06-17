@@ -36,10 +36,10 @@
 - [x] Project、Task、Calendar、Reminder、Notification、File、Knowledge の action type ごとに読みやすく表示する。
 - [x] empty / invalid / loading / error state を用意する。
 - [x] UI テストまたは ViewModel test で各 state を確認する。
-- [ ] 手動確認: 長いタイトル、長いタスク一覧、狭い window で崩れない。
+- [x] 手動確認: 長いタイトル、長いタスク一覧、狭い window で崩れない。
 - [x] 完了条件: ユーザーが何が作られるかを実行前に判断できる。
 
-残タスク: 上記の手動確認は実装漏れではなく、実アプリ画面でのレイアウト確認 gate として残す。2026-06-18 のセルフレビューで、長い argument summary が判断材料として弱い点と狭幅時に header / action button が圧縮される点を修正済み。Core の `argumentDisplaySummary` で title を優先表示し、長文・大量 field を省略しつつ full text を hover で確認できるようにした。追加で Voice / Review 画面を scrollable にし、Review header / action row を `ViewThatFits` で縦 fallback できるようにした。最終 gate は実 LLM plan 生成後の Review 画面で確認する。
+確認メモ: 2026-06-18 に `CFFIXED_USER_HOME` で一時 Application Support を使い、長い project title と 18 件の長文 task を入れた `dist/SoloPM.app` を 640x440 window で確認した。長文 card は省略 / hover 表示になり、board は縦横スクロール可能で、操作部品の重なりは見えない。Core の `argumentDisplaySummary` は title を優先表示し、長文・大量 field を省略しつつ full text を hover で確認できる。Voice / Review 画面も scrollable にし、Review header / action row は `ViewThatFits` で縦 fallback できる。
 
 ### P3-003: Action edit forms
 

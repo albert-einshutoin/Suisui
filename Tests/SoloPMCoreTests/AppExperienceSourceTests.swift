@@ -37,6 +37,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("ProjectHeaderTitleEditor"))
         XCTAssertTrue(source.contains("ProjectHeaderActions"))
         XCTAssertTrue(source.contains("TaskMetadataRow"))
+        XCTAssertTrue(source.contains("ScrollView([.horizontal, .vertical])"))
+        XCTAssertTrue(source.contains(".scrollIndicators(.visible)"))
         XCTAssertTrue(source.contains(".help(task.title)"))
         XCTAssertTrue(source.contains(".help(task.detail)"))
         XCTAssertTrue(source.contains(".truncationMode(.tail)"))
