@@ -1,6 +1,6 @@
 {
   "release": {
-    "version": "0.1.0-alpha.1",
+    "version": "0.1.0",
     "buildNumber": "1",
     "appBundlePath": "dist/SoloPM.app",
     "artifactSha256": "replace-after-package"

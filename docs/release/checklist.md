@@ -64,7 +64,7 @@ cat dist/releases/*.sha256
 cp packaging/release-evidence.example.json packaging/release-evidence.json
 ```
 
-Edit `packaging/release-evidence.json` only after the Manual Checks below are complete. Set `manualChecks.cleanEnvironmentLaunch` and `manualChecks.loginItemToggle` to `true` only for the exact signed and notarized build being released.
+Edit `packaging/release-evidence.json` only after the Manual Checks below are complete. Keep `release.version`, `release.buildNumber`, and `release.appBundlePath` aligned with `packaging/app_metadata.env` and the exact signed app bundle being released. Set `manualChecks.cleanEnvironmentLaunch` and `manualChecks.loginItemToggle` to `true` only for that signed and notarized build.
 
 9. release environment preflight
 

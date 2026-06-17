@@ -248,6 +248,7 @@
 - [x] clean 環境起動と login item toggle を一時的な env ではなく、ignored local evidence file で検証する。
 - [x] `packaging/release-evidence.example.json` には秘密情報を入れず、repo には template だけを置く。
 - [x] `verify_release_environment.sh` は `manualChecks.cleanEnvironmentLaunch` と `manualChecks.loginItemToggle` が true でない限り release ready にしない。
+- [x] release evidence の version / build number / app bundle path が release metadata と一致しない場合は blocker にする。
 - [x] 完了条件: 人間の手動確認 gate を機械的な release report で再確認できる。
 
 ### P10-030: CLI / app executable product collision

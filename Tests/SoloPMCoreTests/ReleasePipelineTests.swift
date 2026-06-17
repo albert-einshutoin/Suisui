@@ -35,6 +35,11 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(script.contains("RELEASE_EVIDENCE_FILE"))
         XCTAssertTrue(script.contains("packaging/release-evidence.json"))
+        XCTAssertTrue(script.contains("release.version"))
+        XCTAssertTrue(script.contains("release.buildNumber"))
+        XCTAssertTrue(script.contains("release.appBundlePath"))
+        XCTAssertTrue(script.contains("MARKETING_VERSION"))
+        XCTAssertTrue(script.contains("CURRENT_PROJECT_VERSION"))
         XCTAssertTrue(script.contains("manualChecks.cleanEnvironmentLaunch"))
         XCTAssertTrue(script.contains("manualChecks.loginItemToggle"))
         XCTAssertTrue(script.contains("plutil -extract"))
@@ -52,9 +57,46 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(example.contains("\"manualChecks\""))
         XCTAssertTrue(example.contains("\"cleanEnvironmentLaunch\": false"))
         XCTAssertTrue(example.contains("\"loginItemToggle\": false"))
+        XCTAssertTrue(example.contains("\"version\": \"0.1.0\""))
+        XCTAssertTrue(example.contains("\"buildNumber\": \"1\""))
+        XCTAssertTrue(example.contains("\"appBundlePath\": \"dist/SoloPM.app\""))
         XCTAssertFalse(example.contains("PASSWORD"))
         XCTAssertFalse(example.contains("TOKEN"))
         XCTAssertFalse(example.contains("SECRET"))
+    }
+
+    func testReleasePreflightRejectsEvidenceForDifferentBuild() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-mismatch.json")
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        {
+          "release": {
+            "version": "9.9.9",
+            "buildNumber": "999",
+            "appBundlePath": "dist/Other.app",
+            "artifactSha256": "not-used-by-preflight"
+          },
+          "manualChecks": {
+            "cleanEnvironmentLaunch": true,
+            "loginItemToggle": true
+          }
+        }
+        """.write(to: evidenceURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: evidenceURL) }
+
+        let result = try runScript(
+            "script/verify_release_environment.sh",
+            environment: ["SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release evidence version does not match metadata"))
+        XCTAssertTrue(result.output.contains("release evidence build number does not match metadata"))
+        XCTAssertTrue(result.output.contains("release evidence app bundle path does not match metadata"))
     }
 
     func testReleaseChecklistRequiresEvidenceBeforeFinalReport() throws {
@@ -123,6 +165,27 @@ final class ReleasePipelineTests: XCTestCase {
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func runScript(
+        _ relativePath: String,
+        environment: [String: String] = [:]
+    ) throws -> (exitCode: Int32, output: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["bash", packageRoot().appendingPathComponent(relativePath).path]
+        process.currentDirectoryURL = packageRoot()
+        process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
+
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+
+        try process.run()
+        process.waitUntilExit()
+
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
     }
 
     private func packageRoot() -> URL {

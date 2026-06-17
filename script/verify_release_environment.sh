@@ -71,6 +71,22 @@ require_evidence_true() {
   fi
 }
 
+require_evidence_equals() {
+  local key_path="$1"
+  local label="$2"
+  local expected="$3"
+  local value
+
+  if ! value="$(plutil -extract "$key_path" raw -o - "$RELEASE_EVIDENCE_FILE" 2>/dev/null)"; then
+    add_blocker "release evidence missing $label: $key_path"
+    return
+  fi
+
+  if [[ "$value" != "$expected" ]]; then
+    add_blocker "release evidence $label does not match metadata: expected '$expected', got '$value'"
+  fi
+}
+
 if [[ -f "$METADATA_FILE" ]]; then
   # shellcheck source=/dev/null
   source "$METADATA_FILE"
@@ -92,6 +108,7 @@ fi
 
 APP_NAME="${APP_NAME:-SoloPM}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
+EXPECTED_APP_BUNDLE_PATH="dist/$APP_NAME.app"
 SIGNING_IDENTITY="${SOLOPM_SIGNING_IDENTITY:-}"
 NOTARY_PROFILE="${SOLOPM_NOTARY_PROFILE:-}"
 ONLINE_PREFLIGHT="${SOLOPM_RELEASE_PREFLIGHT_ONLINE:-0}"
@@ -138,6 +155,9 @@ fi
 
 if [[ -f "$RELEASE_EVIDENCE_FILE" ]]; then
   if plutil -convert json -o /dev/null "$RELEASE_EVIDENCE_FILE" 2>/dev/null; then
+    require_evidence_equals "release.version" "version" "${MARKETING_VERSION:-}"
+    require_evidence_equals "release.buildNumber" "build number" "${CURRENT_PROJECT_VERSION:-}"
+    require_evidence_equals "release.appBundlePath" "app bundle path" "$EXPECTED_APP_BUNDLE_PATH"
     require_evidence_true "manualChecks.cleanEnvironmentLaunch" "clean environment launch"
     require_evidence_true "manualChecks.loginItemToggle" "login item toggle in signed app"
   else
