@@ -17,6 +17,8 @@ struct ManualTestRunner {
         try suite.testDangerActionIsRejected()
         try suite.testAmbiguousActionRequiresUserConfirmationWarning()
         try suite.testInvalidActionPlanJSONIsBlocking()
+        try suite.testPlanningPromptContainsContext()
+        try suite.testPlanningPromptForbidsDangerousOperations()
 
         suite.finish()
     }
@@ -149,6 +151,33 @@ private struct ManualTestSuite {
 
         expect(!result.isValid, "Invalid JSON should be blocking.")
         expectEqual(result.issues.first?.path, "$", "Invalid JSON should point to document root.")
+    }
+
+    mutating func testPlanningPromptContainsContext() throws {
+        let request = PlanningRequest(
+            userInput: "Create a task for next Friday",
+            currentDate: Date(timeIntervalSince1970: 1_783_200_000),
+            timeZoneIdentifier: "Asia/Tokyo",
+            availableTools: [.taskCreate, .projectCreate],
+            knowledgeFrameCandidates: []
+        )
+
+        let prompt = PlanningPromptBuilder().buildPrompt(for: request)
+
+        expect(prompt.user.contains("Time zone: Asia/Tokyo"), "Prompt should include timezone.")
+        expect(prompt.user.contains("project.create"), "Prompt should include project.create.")
+        expect(prompt.user.contains("task.create"), "Prompt should include task.create.")
+        expect(prompt.user.contains("Create a task for next Friday"), "Prompt should include user input.")
+    }
+
+    mutating func testPlanningPromptForbidsDangerousOperations() throws {
+        let prompt = PlanningPromptBuilder().buildPrompt(
+            for: PlanningRequest(userInput: "Delete this file")
+        )
+
+        expect(prompt.system.contains("Dangerous operations are forbidden"), "Prompt should forbid dangerous operations.")
+        expect(prompt.system.contains("Git push"), "Prompt should mention Git push as forbidden.")
+        expect(prompt.system.contains("file delete"), "Prompt should mention file delete as forbidden.")
     }
 
     mutating func expect(_ condition: @autoclosure () throws -> Bool, _ message: String) rethrows {
