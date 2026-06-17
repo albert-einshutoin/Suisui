@@ -67,9 +67,16 @@ final class AppExperienceSourceTests: XCTestCase {
     func testReviewPanelUsesResponsiveLongContentGuards() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
+        XCTAssertTrue(appSource.contains("ScrollView"))
+        XCTAssertTrue(appSource.contains(".frame(minHeight: 180, idealHeight: 220)"))
+        XCTAssertTrue(appSource.contains(".frame(maxWidth: .infinity, alignment: .leading)"))
+        XCTAssertTrue(appSource.contains("ActionReviewHeader"))
+        XCTAssertTrue(appSource.contains("ReviewActionTitleRow"))
         XCTAssertTrue(appSource.contains("ViewThatFits(in: .horizontal)"))
         XCTAssertTrue(appSource.contains("argumentDisplaySummary(maxFields: 4, maxValueLength: 96)"))
+        XCTAssertTrue(appSource.contains(".help(summary)"))
         XCTAssertTrue(appSource.contains(".help(argumentSummary.fullText)"))
+        XCTAssertTrue(appSource.contains(".help(currentStringArgument(\"title\"))"))
         XCTAssertTrue(appSource.contains(".fixedSize(horizontal: false, vertical: true)"))
     }
 

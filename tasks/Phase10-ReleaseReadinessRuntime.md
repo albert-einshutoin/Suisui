@@ -228,6 +228,13 @@
 - [x] release checklist に preflight の実行順と manual confirmation env を追加する。
 - [x] 完了条件: 外部資格情報や別ユーザー確認が未完了のまま release 完了扱いにならない。
 
+### P10-027: Voice review narrow-window resilience
+
+- [x] Voice Command window は Review panel 表示時も下部操作が切れないよう outer scroll を持つ。
+- [x] Action Review header は summary / approval / risk badge が狭幅で縦配置へ fallback する。
+- [x] Action row は tool label / status が狭幅で縦配置へ fallback し、長文 title は hover で全文確認できる。
+- [x] 完了条件: Review UI の狭幅・長文 regression を source test で検知できる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

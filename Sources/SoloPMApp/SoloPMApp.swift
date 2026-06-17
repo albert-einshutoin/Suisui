@@ -151,75 +151,78 @@ private struct VoiceCaptureView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("Voice Command", systemImage: "mic")
-                    .font(.headline)
-                Spacer()
-                Button {
-                    viewModel.clear()
-                } label: {
-                    Label("Clear", systemImage: "xmark.circle")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label("Voice Command", systemImage: "mic")
+                        .font(.headline)
+                    Spacer()
+                    Button {
+                        viewModel.clear()
+                    } label: {
+                        Label("Clear", systemImage: "xmark.circle")
+                    }
+                    .disabled(viewModel.draft.text.isEmpty && viewModel.planningResponse == nil)
                 }
-                .disabled(viewModel.draft.text.isEmpty && viewModel.planningResponse == nil)
-            }
 
-            StatusRow(phase: viewModel.phase)
+                StatusRow(phase: viewModel.phase)
 
-            TextEditor(
-                text: Binding(
-                    get: { viewModel.draft.text },
-                    set: { viewModel.updateDraftText($0) }
+                TextEditor(
+                    text: Binding(
+                        get: { viewModel.draft.text },
+                        set: { viewModel.updateDraftText($0) }
+                    )
                 )
-            )
                 .font(.body)
-                .frame(minHeight: 220)
+                .frame(minHeight: 180, idealHeight: 220)
                 .overlay {
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(.quaternary)
                 }
 
-            HStack {
-                Button {
-                    if viewModel.isRecording {
+                HStack {
+                    Button {
+                        if viewModel.isRecording {
+                            Task {
+                                await viewModel.stopRecording(
+                                    outputURL: recordingOutputURL()
+                                )
+                            }
+                        } else {
+                            viewModel.startRecording()
+                        }
+                    } label: {
+                        Label(viewModel.isRecording ? "Stop" : "Record", systemImage: viewModel.isRecording ? "stop.circle" : "record.circle")
+                    }
+                    .disabled(viewModel.phase == .generatingPlan || viewModel.phase == .transcribing)
+
+                    Spacer()
+
+                    Button {
                         Task {
-                            await viewModel.stopRecording(
-                                outputURL: recordingOutputURL()
-                            )
+                            await viewModel.generatePlan()
+                        }
+                    } label: {
+                        Label("Generate Plan", systemImage: "wand.and.stars")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!viewModel.canGeneratePlan)
+                }
+
+                if let response = viewModel.planningResponse {
+                    Divider()
+                    if let plan = response.actionPlan, response.validationResult.isValid {
+                        ActionReviewPanel(viewModel: AppRuntimeFactory.makeReviewSessionViewModel(plan: plan)) {
+                            NotificationCenter.default.post(name: .soloPMProjectBoardDidChange, object: nil)
                         }
                     } else {
-                        viewModel.startRecording()
+                        ActionPlanPreview(response: response)
                     }
-                } label: {
-                    Label(viewModel.isRecording ? "Stop" : "Record", systemImage: viewModel.isRecording ? "stop.circle" : "record.circle")
-                }
-                .disabled(viewModel.phase == .generatingPlan || viewModel.phase == .transcribing)
-
-                Spacer()
-
-                Button {
-                    Task {
-                        await viewModel.generatePlan()
-                    }
-                } label: {
-                    Label("Generate Plan", systemImage: "wand.and.stars")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!viewModel.canGeneratePlan)
-            }
-
-            if let response = viewModel.planningResponse {
-                Divider()
-                if let plan = response.actionPlan, response.validationResult.isValid {
-                    ActionReviewPanel(viewModel: AppRuntimeFactory.makeReviewSessionViewModel(plan: plan)) {
-                        NotificationCenter.default.post(name: .soloPMProjectBoardDidChange, object: nil)
-                    }
-                } else {
-                    ActionPlanPreview(response: response)
                 }
             }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(16)
     }
 
     private func recordingOutputURL() -> URL {
@@ -286,28 +289,11 @@ private struct ActionReviewPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(viewModel.session.originalPlan.summary)
-                        .font(.headline)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(approvalLabel)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 8)
-                Text(viewModel.session.originalPlan.riskLevel.rawValue.capitalized)
-                    .font(.caption)
-                    .foregroundStyle(viewModel.session.originalPlan.riskLevel >= .write ? .orange : .secondary)
-                    .lineLimit(1)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.secondary.opacity(0.12))
-                    .clipShape(Capsule())
-            }
+            ActionReviewHeader(
+                summary: viewModel.session.originalPlan.summary,
+                approvalLabel: approvalLabel,
+                riskLevel: viewModel.session.originalPlan.riskLevel
+            )
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
@@ -378,34 +364,66 @@ private struct ActionReviewPanel: View {
     }
 }
 
+private struct ActionReviewHeader: View {
+    let summary: String
+    let approvalLabel: String
+    let riskLevel: RiskLevel
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 10) {
+                titleBlock
+                Spacer(minLength: 8)
+                riskBadge
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                titleBlock
+                riskBadge
+            }
+        }
+    }
+
+    private var titleBlock: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(summary)
+                .font(.headline)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .help(summary)
+            Text(approvalLabel)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .help(approvalLabel)
+        }
+    }
+
+    private var riskBadge: some View {
+        Text(riskLevel.rawValue.capitalized)
+            .font(.caption)
+            .foregroundStyle(riskLevel >= .write ? .orange : .secondary)
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color.secondary.opacity(0.12))
+            .clipShape(Capsule())
+    }
+}
+
 private struct ReviewActionRow: View {
     let item: ReviewActionItem
     @ObservedObject var viewModel: ReviewSessionViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top) {
-                Toggle(
-                    isOn: Binding(
-                        get: { item.isEnabled },
-                        set: { viewModel.setActionEnabled(actionID: item.id, isEnabled: $0) }
-                    )
-                ) {
-                    Label {
-                        Text(item.editedAction.tool.rawValue)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } icon: {
-                        Image(systemName: iconName(for: item.editedAction.actionType))
-                    }
-                    .font(.subheadline)
-                }
-                Spacer(minLength: 8)
-                Text(statusLabel)
-                    .font(.caption)
-                    .foregroundStyle(statusColor)
-                    .lineLimit(1)
-            }
+            ReviewActionTitleRow(
+                item: item,
+                viewModel: viewModel,
+                statusLabel: statusLabel,
+                statusColor: statusColor
+            )
 
             if item.editedAction.arguments["title"]?.stringValue != nil {
                 TextField(
@@ -416,6 +434,8 @@ private struct ReviewActionRow: View {
                     )
                 )
                 .textFieldStyle(.roundedBorder)
+                .lineLimit(1)
+                .help(currentStringArgument("title"))
             }
 
             let argumentSummary = item.argumentDisplaySummary(maxFields: 4, maxValueLength: 96)
@@ -488,29 +508,6 @@ private struct ReviewActionRow: View {
             .stringValue ?? ""
     }
 
-    private func iconName(for actionType: ActionType) -> String {
-        switch actionType {
-        case .project:
-            "folder"
-        case .task:
-            "checkmark.circle"
-        case .notification:
-            "bell"
-        case .calendar:
-            "calendar"
-        case .reminder:
-            "list.bullet"
-        case .filesystem:
-            "doc"
-        case .knowledgeFrame:
-            "text.book.closed"
-        case .mailDraft:
-            "envelope"
-        case .developer:
-            "terminal"
-        }
-    }
-
     private func failureRecoveryLabel(_ recovery: ReviewActionFailureRecovery) -> String {
         switch recovery {
         case .retryable:
@@ -527,6 +524,78 @@ private struct ReviewActionRow: View {
         case .notRetryable:
             .orange
         }
+    }
+}
+
+private struct ReviewActionTitleRow: View {
+    let item: ReviewActionItem
+    @ObservedObject var viewModel: ReviewSessionViewModel
+    let statusLabel: String
+    let statusColor: Color
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top) {
+                enabledToggle
+                Spacer(minLength: 8)
+                statusBadge
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                enabledToggle
+                statusBadge
+            }
+        }
+    }
+
+    private var enabledToggle: some View {
+        Toggle(
+            isOn: Binding(
+                get: { item.isEnabled },
+                set: { viewModel.setActionEnabled(actionID: item.id, isEnabled: $0) }
+            )
+        ) {
+            Label {
+                Text(item.editedAction.tool.rawValue)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: reviewIconName(for: item.editedAction.actionType))
+            }
+            .font(.subheadline)
+            .help(item.editedAction.tool.rawValue)
+        }
+    }
+
+    private var statusBadge: some View {
+        Text(statusLabel)
+            .font(.caption)
+            .foregroundStyle(statusColor)
+            .lineLimit(1)
+    }
+}
+
+private func reviewIconName(for actionType: ActionType) -> String {
+    switch actionType {
+    case .project:
+        "folder"
+    case .task:
+        "checkmark.circle"
+    case .notification:
+        "bell"
+    case .calendar:
+        "calendar"
+    case .reminder:
+        "list.bullet"
+    case .filesystem:
+        "doc"
+    case .knowledgeFrame:
+        "text.book.closed"
+    case .mailDraft:
+        "envelope"
+    case .developer:
+        "terminal"
     }
 }
 
