@@ -98,7 +98,7 @@ public final class DeadlineQueryService: @unchecked Sendable {
     private func deadlineItems() throws -> [DeadlineItem] {
         let projects = try projectStore.listDeadlineCandidates().compactMap { record -> DeadlineItem? in
             guard let deadline = record.deadline,
-                  let dueAt = DateParser.iso8601(deadline) else {
+                  let dueAt = DeadlineDateParser.date(from: deadline) else {
                 return nil
             }
 
@@ -107,7 +107,7 @@ public final class DeadlineQueryService: @unchecked Sendable {
 
         let tasks = try taskStore.listDeadlineCandidates().compactMap { record -> DeadlineItem? in
             guard let dueAtString = record.dueAt,
-                  let dueAt = DateParser.iso8601(dueAtString) else {
+                  let dueAt = DeadlineDateParser.date(from: dueAtString) else {
                 return nil
             }
 
@@ -136,8 +136,8 @@ private struct DayBounds {
     }
 }
 
-private enum DateParser {
-    static func iso8601(_ value: String) -> Date? {
+enum DeadlineDateParser {
+    static func date(from value: String) -> Date? {
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         if let date = fractional.date(from: value) {
@@ -147,6 +147,10 @@ private enum DateParser {
         let standard = ISO8601DateFormatter()
         standard.formatOptions = [.withInternetDateTime]
         return standard.date(from: value)
+    }
+
+    static func string(from date: Date) -> String {
+        ISO8601DateFormatter().string(from: date)
     }
 }
 

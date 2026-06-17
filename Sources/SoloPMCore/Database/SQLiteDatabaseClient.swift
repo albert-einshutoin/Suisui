@@ -253,4 +253,30 @@ public enum CoreMigrations {
             }
         ]
     }
+
+    public static var phase4: [DatabaseMigration] {
+        phase2 + [
+            DatabaseMigration(id: "0003_create_deadline_rules") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS deadline_rules (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        target_type TEXT NOT NULL CHECK(target_type IN ('project', 'task')),
+                        target_id INTEGER NOT NULL,
+                        kind TEXT NOT NULL,
+                        custom_notify_at TEXT,
+                        muted_at TEXT,
+                        last_notified_at TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(target_type, target_id, kind, custom_notify_at)
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_deadline_rules_target
+                    ON deadline_rules(target_type, target_id);
+                    """
+                )
+            }
+        ]
+    }
 }

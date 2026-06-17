@@ -38,11 +38,11 @@
 
 ### P4-003: DeadlineRule model
 
-- [ ] `DeadlineRule` table を作る。
-- [ ] `T-14`、`T-7`、`T-3`、`T-1`、`day_of`、`overdue_daily`、`custom` を表現する。
-- [ ] projectId / taskId のどちらにも紐付けられるようにする。
-- [ ] テスト: rule から notifyAt を計算する logic を確認する。
-- [ ] 完了条件: ActionPlan の notification rule を永続化できる。
+- [x] `DeadlineRule` table を作る。
+- [x] `T-14`、`T-7`、`T-3`、`T-1`、`day_of`、`overdue_daily`、`custom` を表現する。
+- [x] projectId / taskId のどちらにも紐付けられるようにする。
+- [x] テスト: rule から notifyAt を計算する logic を確認する。
+- [x] 完了条件: ActionPlan の notification rule を永続化できる。
 
 ### P4-004: Notification scheduling service
 
