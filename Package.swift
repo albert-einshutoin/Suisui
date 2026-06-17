@@ -17,7 +17,7 @@ let package = Package(
             targets: ["SoloPM"]
         ),
         .executable(
-            name: "solopm",
+            name: "solopm-cli",
             targets: ["SoloPMCLI"]
         )
     ],

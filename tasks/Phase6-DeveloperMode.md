@@ -71,14 +71,14 @@
 
 ### P6-005: CLI foundation
 
-- [x] `solopm` CLI の command scope を決める。
+- [x] `solopm-cli` CLI の command scope を決める。
 - [x] 最初は `status`、`tasks due`、`plan validate`、`frames search` など read / local 操作に限定する。
 - [x] app DB との接続方法を決める。
 - [x] テスト: CLI argument parse と exit code を確認する。
 - [x] 完了条件: GUI なしでも主要な local 状態を確認できる。
 
 実装メモ:
-- SwiftPM product `solopm` / target `SoloPMCLI` を追加した。
+- SwiftPM product `solopm-cli` / target `SoloPMCLI` を追加した。
 - `status`、`tasks due`、`frames search` は local read skeleton、`plan validate <path>` は `ActionPlanValidator` を使う。
 - app DB は `appDefaultReadOnly` policy として固定し、write 系 command は parser で受け付けない。
 
@@ -108,4 +108,4 @@ OSS 作者向け sample workflow:
 2. `git.status` / `git.diff_summary` / `git.log_summary` で local state を読み取る。
 3. `DeveloperDraftGenerator` で README / release note draft を preview し、secret redaction report を確認する。
 4. 必要な issue は `github.issue.create_draft` で Review UI に出し、明示承認後に `github.issue.create_with_approval` を通す。
-5. GUI が不要な確認は `solopm status` / `solopm plan validate <path>` から read-only に実行する。
+5. GUI が不要な確認は `solopm-cli status` / `solopm-cli plan validate <path>` から read-only に実行する。

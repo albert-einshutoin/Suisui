@@ -249,6 +249,13 @@
 - [x] `verify_release_environment.sh` は `manualChecks.cleanEnvironmentLaunch` と `manualChecks.loginItemToggle` が true でない限り release ready にしない。
 - [x] 完了条件: 人間の手動確認 gate を機械的な release report で再確認できる。
 
+### P10-030: CLI / app executable product collision
+
+- [x] case-insensitive macOS filesystem 上で `SoloPM` app product と CLI product が同じ build output を上書きしないことを regression test で確認する。
+- [x] CLI product を `solopm-cli` にし、`SoloPM` GUI app binary と明確に分離する。
+- [x] `solopm-cli --help` が usage を出して exit 0 になる。
+- [x] 完了条件: app build 後に CLI を build しても、またはその逆でも GUI / CLI の binary が取り違えられない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
@@ -282,5 +289,6 @@
 - `xcodebuild -workspace .swiftpm/xcode/package.xcworkspace -scheme SoloPM -destination 'platform=macOS' build`
 - `./scripts/verify.sh`
 - `./script/build_and_run.sh --verify`
+- `swift build --product solopm-cli && .build/debug/solopm-cli --help`
 - `SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh` (Developer ID / notary / `packaging/release-evidence.json` が揃った release machine で green にする。開発機では blocker 出力を確認する。)
 - `./script/release_readiness_report.sh` (全 release gate が揃うまでは `NOT READY` と blocker を返す。)

@@ -47,6 +47,8 @@ Local verification:
 ```sh
 ./scripts/ci.sh
 ./script/build_and_run.sh --verify
+swift build --product solopm-cli
+.build/debug/solopm-cli --help
 ```
 
 `./scripts/ci.sh` is the shared non-GUI verification entrypoint for local development and GitHub Actions. `./script/build_and_run.sh --verify` additionally launches the app and is intended for local macOS UI smoke checks.

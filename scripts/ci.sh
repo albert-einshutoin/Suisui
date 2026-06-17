@@ -7,4 +7,5 @@ cd "$ROOT_DIR"
 
 swift test
 swift build
+swift build --product solopm-cli
 ./script/build_and_run.sh --build-only

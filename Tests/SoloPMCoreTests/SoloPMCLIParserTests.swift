@@ -9,6 +9,29 @@ final class SoloPMCLIParserTests: XCTestCase {
         XCTAssertEqual(try SoloPMCLIParser().parse(["frames", "search", "deadline watcher"]).command, .framesSearch(query: "deadline watcher"))
     }
 
+    func testParsesHelpCommand() throws {
+        XCTAssertEqual(try SoloPMCLIParser().parse([]).command, .help)
+        XCTAssertEqual(try SoloPMCLIParser().parse(["help"]).command, .help)
+        XCTAssertEqual(try SoloPMCLIParser().parse(["--help"]).command, .help)
+        XCTAssertEqual(try SoloPMCLIParser().parse(["-h"]).command, .help)
+    }
+
+    func testUsageNamesCollisionSafeCLIProduct() {
+        XCTAssertTrue(SoloPMCLIUsage.text.contains("solopm-cli status"))
+        XCTAssertTrue(SoloPMCLIUsage.text.contains("solopm-cli plan validate <path>"))
+    }
+
+    func testSwiftPMExecutableProductNamesDoNotCollideOnCaseInsensitiveFilesystems() throws {
+        let manifest = try String(
+            contentsOf: packageRoot().appendingPathComponent("Package.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(manifest.contains("name: \"SoloPM\""))
+        XCTAssertTrue(manifest.contains("name: \"solopm-cli\""))
+        XCTAssertFalse(manifest.contains("name: \"solopm\","))
+    }
+
     func testRejectsWriteOrUnknownCommandsWithUsageExitCode() {
         XCTAssertThrowsError(try SoloPMCLIParser().parse(["github", "issue", "create"])) { error in
             XCTAssertEqual((error as? SoloPMCLIParseError)?.exitCode, .usage)
@@ -28,5 +51,9 @@ final class SoloPMCLIParserTests: XCTestCase {
         XCTAssertEqual(SoloPMCLIExitCode.planValidation(valid), .success)
         XCTAssertEqual(SoloPMCLIExitCode.planValidation(invalid), .validationFailed)
         XCTAssertEqual(SoloPMCLIExitCode.validationFailed.rawValue, 65)
+    }
+
+    private func packageRoot() -> URL {
+        URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
     }
 }

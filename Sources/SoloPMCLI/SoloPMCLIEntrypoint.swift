@@ -24,6 +24,9 @@ struct SoloPMCLI {
 
     private static func run(invocation: SoloPMCLIInvocation) async -> SoloPMCLIExitCode {
         switch invocation.command {
+        case .help:
+            print(SoloPMCLIUsage.text)
+            return .success
         case .status:
             print("status: local read command skeleton")
             print("database: \(SoloPMCLIDatabaseConnectionPolicy.appDefaultReadOnly.description)")

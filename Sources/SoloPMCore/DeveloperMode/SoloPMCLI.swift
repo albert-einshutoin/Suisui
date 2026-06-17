@@ -1,6 +1,7 @@
 import Foundation
 
 public enum SoloPMCLICommand: Equatable, Sendable {
+    case help
     case status
     case tasksDue
     case planValidate(path: String)
@@ -36,6 +37,19 @@ public struct SoloPMCLIParseError: Error, Equatable, Sendable {
     }
 }
 
+public enum SoloPMCLIUsage {
+    public static let text = """
+    Usage:
+      solopm-cli status
+      solopm-cli tasks due
+      solopm-cli plan validate <path>
+      solopm-cli frames search <query>
+      solopm-cli help
+
+    Commands are read-only except plan validation. GUI and task writes must go through SoloPM review.
+    """
+}
+
 public enum SoloPMCLIDatabaseConnectionPolicy: Equatable, Sendable {
     case appDefaultReadOnly
 
@@ -52,6 +66,8 @@ public struct SoloPMCLIParser: Sendable {
 
     public func parse(_ arguments: [String]) throws -> SoloPMCLIInvocation {
         switch arguments {
+        case [], ["help"], ["--help"], ["-h"]:
+            return SoloPMCLIInvocation(command: .help)
         case ["status"]:
             return SoloPMCLIInvocation(command: .status)
         case ["tasks", "due"]:
@@ -69,7 +85,7 @@ public struct SoloPMCLIParser: Sendable {
             }
             return SoloPMCLIInvocation(command: .framesSearch(query: query))
         default:
-            throw SoloPMCLIParseError(message: "Unsupported command. Supported commands: status, tasks due, plan validate <path>, frames search <query>.")
+            throw SoloPMCLIParseError(message: "Unsupported command.\n\(SoloPMCLIUsage.text)")
         }
     }
 }
