@@ -130,6 +130,13 @@
 - [x] Runtime app は `KeychainSecretStore` を使う `SecretStoreMCPEnvironmentResolver` を明示注入する。
 - [x] 完了条件: MCP runtime path が in-memory secret fallback に依存しない。
 
+### P10-013: MCP execution audit hardening
+
+- [x] `ExternalMCPToolExecutor` が `InMemoryAuditLogger` を default injection しないことを regression test で確認する。
+- [x] MCP tool execution は caller が audit logger を明示注入する。
+- [x] 既存 tests は in-memory audit logger を test helper で明示注入する。
+- [x] 完了条件: 外部 MCP call が永続監査なし default で成功しない API になる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

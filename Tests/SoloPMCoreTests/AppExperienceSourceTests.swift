@@ -103,6 +103,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains("SecretStoreMCPEnvironmentResolver(secretStore: InMemorySecretStore())"))
     }
 
+    func testExternalMCPExecutorDoesNotDefaultToInMemoryAuditLogger() throws {
+        let source = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPExecution.swift")
+
+        XCTAssertFalse(source.contains("auditLogger: any AuditLogger = InMemoryAuditLogger()"))
+    }
+
     func testRuntimeAppCompositionDoesNotUseDemoOrInMemorySuccessPath() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 

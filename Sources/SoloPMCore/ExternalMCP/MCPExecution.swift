@@ -72,7 +72,7 @@ public struct ExternalMCPToolExecutor: Sendable {
         server: MCPRegisteredServerDescriptor,
         registry: ExternalMCPToolRegistry,
         client: MCPClient,
-        auditLogger: any AuditLogger = InMemoryAuditLogger(),
+        auditLogger: any AuditLogger,
         processController: any MCPProcessController = NoopMCPProcessController(),
         redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()
     ) {
