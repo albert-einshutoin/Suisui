@@ -114,6 +114,27 @@ final class DailyCheckRunnerTests: XCTestCase {
         XCTAssertNil(viewModel.errorMessage)
     }
 
+    @MainActor
+    func testLaunchAtLoginSettingsViewModelExplainsUnavailableStates() {
+        let unavailableViewModel = LaunchAtLoginSettingsViewModel(
+            client: StaticLaunchAtLoginClient(status: .unavailable)
+        )
+        let requiresApprovalViewModel = LaunchAtLoginSettingsViewModel(
+            client: StaticLaunchAtLoginClient(status: .requiresApproval)
+        )
+
+        XCTAssertFalse(unavailableViewModel.canToggle)
+        XCTAssertEqual(
+            unavailableViewModel.statusDetail,
+            "Launch at Login is unavailable for this app bundle. Use a signed app installed in Applications for release verification."
+        )
+        XCTAssertFalse(requiresApprovalViewModel.canToggle)
+        XCTAssertEqual(
+            requiresApprovalViewModel.statusDetail,
+            "macOS requires approval in System Settings before SoloPM can launch at login."
+        )
+    }
+
     func testSQLiteDailyCheckStateStorePersistsLastRunAt() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase4)
@@ -171,6 +192,22 @@ final class DailyCheckRunnerTests: XCTestCase {
             SQLiteTaskStore(connection: connection),
             SQLiteDeadlineRuleStore(connection: connection)
         )
+    }
+}
+
+private struct StaticLaunchAtLoginClient: LaunchAtLoginClient {
+    var currentStatus: LaunchAtLoginStatus
+
+    init(status: LaunchAtLoginStatus) {
+        self.currentStatus = status
+    }
+
+    func status() -> LaunchAtLoginStatus {
+        currentStatus
+    }
+
+    func setEnabled(_ enabled: Bool) throws -> LaunchAtLoginStatus {
+        currentStatus
     }
 }
 

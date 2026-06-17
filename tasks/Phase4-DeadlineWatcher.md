@@ -71,7 +71,7 @@
 - [ ] 手動確認: login item 設定をオン / オフできる。
 - [x] 完了条件: アプリを毎日開かなくても締切監視が動く設計になる。
 
-残タスク: login item のオン / オフは実 macOS app の Settings 画面での手動 gate として残す。
+残タスク: login item のオン / オフは実 macOS app の Settings 画面での手動 gate として残す。debug app bundle では `SMAppService.mainApp.status` が `.notFound` になり `Unavailable` と表示されるため、Settings には signed app / Applications 配置が必要な旨の guidance を出す。最終チェックは Developer ID signed build で行う。
 
 ### P4-007: Menu bar summaries
 

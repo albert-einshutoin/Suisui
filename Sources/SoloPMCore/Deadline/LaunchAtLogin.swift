@@ -73,6 +73,17 @@ public final class LaunchAtLoginSettingsViewModel: ObservableObject {
         }
     }
 
+    public var statusDetail: String? {
+        switch status {
+        case .enabled, .disabled:
+            nil
+        case .requiresApproval:
+            "macOS requires approval in System Settings before SoloPM can launch at login."
+        case .unavailable:
+            "Launch at Login is unavailable for this app bundle. Use a signed app installed in Applications for release verification."
+        }
+    }
+
     public func refresh() {
         status = client.status()
     }

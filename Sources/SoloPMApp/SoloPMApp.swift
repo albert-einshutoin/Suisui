@@ -696,6 +696,11 @@ private struct SettingsView: View {
                 }
                 .disabled(!launchAtLoginViewModel.canToggle)
                 LabeledContent("Login Item", value: launchAtLoginViewModel.statusLabel)
+                if let statusDetail = launchAtLoginViewModel.statusDetail {
+                    Label(statusDetail, systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 if let errorMessage = launchAtLoginViewModel.errorMessage {
                     Label(errorMessage, systemImage: "exclamationmark.triangle")
                         .font(.caption)
