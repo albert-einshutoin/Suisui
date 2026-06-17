@@ -179,6 +179,13 @@
 - [x] `InMemoryNotificationClient` / `InMemoryCalendarClient` / `InMemoryReminderClient` / `InMemoryMailDraftClient` は `Tests/` 配下の test support に隔離する。
 - [x] 完了条件: shipping module の local CRUD/system integration public API から in-memory success path を除去する。
 
+### P10-020: Security/audit/MCP in-memory store isolation
+
+- [x] `Sources/` に `InMemorySecretStore` / `InMemoryAuditLogger` / `InMemoryMCPServerRegistrationStore` が含まれていないことを regression test で確認する。
+- [x] Secret / audit / MCP registration の in-memory 実装は `Tests/` 配下の test support に隔離する。
+- [x] `Tests/Manual` は shipping module に依存しない private manual double で検証を維持する。
+- [x] 完了条件: shipping module の secret / audit / MCP registration public API から in-memory success path を除去する。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

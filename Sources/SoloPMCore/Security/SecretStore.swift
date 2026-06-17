@@ -22,30 +22,3 @@ public enum SecretStoreError: Error, Equatable {
     case encodingFailed
     case unexpectedStatus(Int32)
 }
-
-public final class InMemorySecretStore: SecretStore, @unchecked Sendable {
-    private var values: [SecretKey: String]
-    private let lock = NSLock()
-
-    public init(values: [SecretKey: String] = [:]) {
-        self.values = values
-    }
-
-    public func save(_ value: String, for key: SecretKey) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        values[key] = value
-    }
-
-    public func read(_ key: SecretKey) throws -> String? {
-        lock.lock()
-        defer { lock.unlock() }
-        return values[key]
-    }
-
-    public func delete(_ key: SecretKey) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        values.removeValue(forKey: key)
-    }
-}

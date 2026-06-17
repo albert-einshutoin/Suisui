@@ -140,6 +140,22 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
+    func testRuntimeSourcesDoNotShipSecurityOrMCPInMemoryStores() throws {
+        let sourceFiles = try allSwiftFiles(under: "Sources")
+        let forbiddenTypeNames = [
+            "InMemorySecretStore",
+            "InMemoryAuditLogger",
+            "InMemoryMCPServerRegistrationStore"
+        ]
+
+        for sourceFile in sourceFiles {
+            let source = try String(contentsOf: sourceFile, encoding: .utf8)
+            for typeName in forbiddenTypeNames {
+                XCTAssertFalse(source.contains("class \(typeName)"), "\(sourceFile.path) ships test-only \(typeName).")
+            }
+        }
+    }
+
     func testExternalMCPLauncherDoesNotDefaultToInMemorySecretStore() throws {
         let source = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")
 

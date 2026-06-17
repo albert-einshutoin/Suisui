@@ -33,27 +33,6 @@ public protocol AuditLogger: Sendable {
     func record(_ event: AuditEvent) throws
 }
 
-public final class InMemoryAuditLogger: AuditLogger, @unchecked Sendable {
-    private var events: [AuditEvent]
-    private let lock = NSLock()
-
-    public init(events: [AuditEvent] = []) {
-        self.events = events
-    }
-
-    public var recordedEvents: [AuditEvent] {
-        lock.lock()
-        defer { lock.unlock() }
-        return events
-    }
-
-    public func record(_ event: AuditEvent) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        events.append(event)
-    }
-}
-
 public final class SQLiteAuditLogger: AuditLogger, @unchecked Sendable {
     private let connection: SQLiteConnection
     private let lock = NSLock()

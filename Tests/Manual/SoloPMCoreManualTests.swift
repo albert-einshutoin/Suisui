@@ -241,3 +241,43 @@ private struct ManualTestSuite {
         exit(1)
     }
 }
+
+private final class InMemorySecretStore: SecretStore, @unchecked Sendable {
+    private var values: [SecretKey: String] = [:]
+    private let lock = NSLock()
+
+    func save(_ value: String, for key: SecretKey) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        values[key] = value
+    }
+
+    func read(_ key: SecretKey) throws -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return values[key]
+    }
+
+    func delete(_ key: SecretKey) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        values.removeValue(forKey: key)
+    }
+}
+
+private final class InMemoryAuditLogger: AuditLogger, @unchecked Sendable {
+    private var events: [AuditEvent] = []
+    private let lock = NSLock()
+
+    var recordedEvents: [AuditEvent] {
+        lock.lock()
+        defer { lock.unlock() }
+        return events
+    }
+
+    func record(_ event: AuditEvent) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        events.append(event)
+    }
+}

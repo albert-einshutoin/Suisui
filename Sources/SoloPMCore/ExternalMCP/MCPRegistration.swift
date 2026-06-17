@@ -105,27 +105,6 @@ public final class UserDefaultsMCPServerRegistrationStore: MCPServerRegistration
     }
 }
 
-public final class InMemoryMCPServerRegistrationStore: MCPServerRegistrationStore, @unchecked Sendable {
-    private let lock = NSLock()
-    private var registrations: [MCPServerRegistration]
-
-    public init(registrations: [MCPServerRegistration] = []) {
-        self.registrations = registrations
-    }
-
-    public func loadRegistrations() throws -> [MCPServerRegistration] {
-        lock.lock()
-        defer { lock.unlock() }
-        return registrations
-    }
-
-    public func saveRegistrations(_ registrations: [MCPServerRegistration]) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        self.registrations = registrations
-    }
-}
-
 @MainActor
 public final class ExternalMCPSettingsViewModel: ObservableObject {
     @Published public private(set) var registration: MCPServerRegistration
