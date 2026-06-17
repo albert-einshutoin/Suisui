@@ -4,7 +4,7 @@ SoloPM は public alpha 以降の更新を手動再配布だけに依存しな�
 
 ## Dependency
 
-Sparkle は SwiftPM dependency として `SoloPMApp` target に追加する。`script/build_and_run.sh` は SwiftPM build output の `.framework` を `SoloPM.app/Contents/Frameworks` にコピーし、配布 signing では nested framework も署名する。
+Sparkle は SwiftPM dependency として `SoloPM` app target に追加する。`script/build_and_run.sh` は SwiftPM build output の `.framework` を `SoloPM.app/Contents/Frameworks` にコピーし、配布 signing では nested framework も署名する。
 
 ## Feed And Public Key
 

@@ -6,7 +6,7 @@ import Sparkle
 #endif
 
 @main
-struct SoloPMApplication: App {
+struct SoloPM: App {
 #if canImport(Sparkle)
     @NSApplicationDelegateAdaptor(SparkleAppDelegate.self) private var sparkleAppDelegate
 #endif

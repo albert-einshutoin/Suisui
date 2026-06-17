@@ -14,7 +14,7 @@ let package = Package(
         ),
         .executable(
             name: "SoloPM",
-            targets: ["SoloPMApp"]
+            targets: ["SoloPM"]
         ),
         .executable(
             name: "solopm",
@@ -35,11 +35,12 @@ let package = Package(
             ]
         ),
         .executableTarget(
-            name: "SoloPMApp",
+            name: "SoloPM",
             dependencies: [
                 "SoloPMCore",
                 .product(name: "Sparkle", package: "Sparkle")
-            ]
+            ],
+            path: "Sources/SoloPMApp"
         ),
         .executableTarget(
             name: "SoloPMCLI",
