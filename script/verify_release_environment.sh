@@ -141,9 +141,9 @@ if [[ "${#WARNINGS[@]}" -gt 0 ]]; then
 fi
 
 if [[ "${#BLOCKERS[@]}" -gt 0 ]]; then
-  printf "\nBlockers:\n" >&2
+  printf "\nBlockers:\n"
   for blocker in "${BLOCKERS[@]}"; do
-    printf "%s\n" "- $blocker" >&2
+    printf "%s\n" "- $blocker"
   done
   exit 2
 fi
