@@ -10,6 +10,8 @@ This checklist is the single runbook for reproducing a SoloPM public alpha relea
 - `packaging/notarization.env` exists only on the release machine.
 - Sparkle private key exists in Keychain.
 - `SOLOPM_SPARKLE_FEED_URL` and `SOLOPM_SPARKLE_PUBLIC_ED_KEY` are set for release builds.
+- `SOLOPM_CLEAN_ENV_LAUNCH_CONFIRMED=1` is set only after a clean-user install and launch check.
+- `SOLOPM_LOGIN_ITEM_TOGGLE_CONFIRMED=1` is set only after Settings can toggle launch at login in a signed app.
 
 ## Order
 
@@ -38,32 +40,38 @@ SOLOPM_BUILD_CONFIGURATION=release ./script/build_and_run.sh --build-only
 ./script/notarize_app.sh
 ```
 
-5. package
+5. release environment preflight
+
+```bash
+SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh
+```
+
+6. package
 
 ```bash
 ./script/package_release.sh
 ```
 
-6. checksum
+7. checksum
 
 ```bash
 cat dist/releases/*.sha256
 ```
 
-7. appcast
+8. appcast
 
 ```bash
 ./script/generate_appcast.sh
 ./script/verify_appcast.sh packaging/appcast.sample.xml
 ```
 
-8. tag
+9. tag
 
 ```bash
 git tag -a v0.1.0-alpha.1 -m "SoloPM 0.1.0 alpha 1"
 ```
 
-9. release notes
+10. release notes
 
 Use [public-alpha.md](public-alpha.md) as the base. Include artifact names, checksums, supported macOS version, Known Issues, and rollback instructions.
 

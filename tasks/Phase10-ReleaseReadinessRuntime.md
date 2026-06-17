@@ -221,6 +221,13 @@
 - [x] Core の SaaS connector protocol / policy / approval 境界は production source に残す。
 - [x] 完了条件: runtime source に SaaS connector test double が混入したら source test で失敗する。
 
+### P10-026: Release environment blocker preflight
+
+- [x] Developer ID identity、notary profile、signed app、Gatekeeper、staple、clean-env/manual login-item gate を一箇所で検査する script を追加する。
+- [x] preflight は秘密情報を表示せず、未完了 gate を `BLOCKER` として返す。
+- [x] release checklist に preflight の実行順と manual confirmation env を追加する。
+- [x] 完了条件: 外部資格情報や別ユーザー確認が未完了のまま release 完了扱いにならない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
@@ -254,3 +261,4 @@
 - `xcodebuild -workspace .swiftpm/xcode/package.xcworkspace -scheme SoloPM -destination 'platform=macOS' build`
 - `./scripts/verify.sh`
 - `./script/build_and_run.sh --verify`
+- `SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh` (Developer ID / notary / clean-env manual gate が揃った release machine で green にする。開発機では blocker 出力を確認する。)

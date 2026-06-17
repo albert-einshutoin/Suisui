@@ -15,6 +15,21 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("AC_PASSWORD"))
     }
 
+    func testReleasePreflightReportsExternalReleaseBlockersWithoutSecrets() throws {
+        let script = try readPackageFile("script/verify_release_environment.sh")
+
+        XCTAssertTrue(script.contains("SOLOPM_SIGNING_IDENTITY"))
+        XCTAssertTrue(script.contains("security find-identity -p codesigning -v"))
+        XCTAssertTrue(script.contains("SOLOPM_NOTARY_PROFILE"))
+        XCTAssertTrue(script.contains("SOLOPM_RELEASE_PREFLIGHT_ONLINE"))
+        XCTAssertTrue(script.contains("xcrun notarytool history"))
+        XCTAssertTrue(script.contains("codesign --verify --strict --deep"))
+        XCTAssertTrue(script.contains("spctl -a -vv"))
+        XCTAssertTrue(script.contains("BLOCKER"))
+        XCTAssertFalse(script.contains("APPLE_ID_PASSWORD"))
+        XCTAssertFalse(script.contains("AC_PASSWORD"))
+    }
+
     func testDistributionPackageScriptBuildsDmgWithApplicationsLinkAndChecksums() throws {
         let script = try readPackageFile("script/package_release.sh")
 
