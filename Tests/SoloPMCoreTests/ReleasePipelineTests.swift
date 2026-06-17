@@ -38,6 +38,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("release.version"))
         XCTAssertTrue(script.contains("release.buildNumber"))
         XCTAssertTrue(script.contains("release.appBundlePath"))
+        XCTAssertTrue(script.contains("release.artifactSha256"))
+        XCTAssertTrue(script.contains("SOLOPM_RELEASE_ARTIFACT_SHA256_FILE"))
+        XCTAssertTrue(script.contains("create_release_evidence.sh"))
         XCTAssertTrue(script.contains("MARKETING_VERSION"))
         XCTAssertTrue(script.contains("CURRENT_PROJECT_VERSION"))
         XCTAssertTrue(script.contains("manualChecks.cleanEnvironmentLaunch"))
@@ -99,10 +102,99 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("release evidence app bundle path does not match metadata"))
     }
 
+    func testReleaseEvidenceScriptCreatesMetadataBoundEvidenceWithChecksum() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-created.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact.dmg.sha256")
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try "abcdef1234567890  dist/releases/SoloPM-0.1.0+1.dmg\n"
+            .write(to: checksumURL, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+        }
+
+        let result = try runScript(
+            "script/create_release_evidence.sh",
+            arguments: [
+                "--force",
+                "--clean-environment-launch",
+                "--login-item-toggle",
+                "--checked-by", "release-owner",
+                "--note", "Manual checks completed on signed build."
+            ],
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+            ]
+        )
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        let evidence = try String(contentsOf: evidenceURL, encoding: .utf8)
+        XCTAssertTrue(evidence.contains("\"version\": \"0.1.0\""))
+        XCTAssertTrue(evidence.contains("\"buildNumber\": \"1\""))
+        XCTAssertTrue(evidence.contains("\"appBundlePath\": \"dist/SoloPM.app\""))
+        XCTAssertTrue(evidence.contains("\"artifactSha256\": \"abcdef1234567890\""))
+        XCTAssertTrue(evidence.contains("\"cleanEnvironmentLaunch\": true"))
+        XCTAssertTrue(evidence.contains("\"loginItemToggle\": true"))
+        XCTAssertTrue(evidence.contains("\"checkedBy\": \"release-owner\""))
+        XCTAssertTrue(evidence.contains("Manual checks completed on signed build."))
+        XCTAssertFalse(evidence.contains("PASSWORD"))
+        XCTAssertFalse(evidence.contains("TOKEN"))
+        XCTAssertFalse(evidence.contains("SECRET"))
+    }
+
+    func testReleasePreflightRejectsEvidenceWithMismatchedArtifactChecksum() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-checksum.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-checksum.dmg.sha256")
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        {
+          "release": {
+            "version": "0.1.0",
+            "buildNumber": "1",
+            "appBundlePath": "dist/SoloPM.app",
+            "artifactSha256": "evidence-sha"
+          },
+          "manualChecks": {
+            "cleanEnvironmentLaunch": true,
+            "loginItemToggle": true
+          }
+        }
+        """.write(to: evidenceURL, atomically: true, encoding: .utf8)
+        try "actual-sha  dist/releases/SoloPM-0.1.0+1.dmg\n"
+            .write(to: checksumURL, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+        }
+
+        let result = try runScript(
+            "script/verify_release_environment.sh",
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release evidence artifact SHA-256 does not match package checksum"))
+    }
+
     func testReleaseChecklistRequiresEvidenceBeforeFinalReport() throws {
         let checklist = try readPackageFile("docs/release/checklist.md")
 
         XCTAssertTrue(checklist.contains("packaging/release-evidence.example.json"))
+        XCTAssertTrue(checklist.contains("./script/create_release_evidence.sh"))
         XCTAssertTrue(checklist.contains("packaging/release-evidence.json"))
         XCTAssertTrue(checklist.contains("manual release evidence"))
         XCTAssertTrue(checklist.contains("./script/verify_release_environment.sh"))
@@ -171,11 +263,12 @@ final class ReleasePipelineTests: XCTestCase {
 
     private func runScript(
         _ relativePath: String,
+        arguments: [String] = [],
         environment: [String: String] = [:]
     ) throws -> (exitCode: Int32, output: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["bash", packageRoot().appendingPathComponent(relativePath).path]
+        process.arguments = ["bash", packageRoot().appendingPathComponent(relativePath).path] + arguments
         process.currentDirectoryURL = packageRoot()
         process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
 

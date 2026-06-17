@@ -45,6 +45,7 @@ require_file "$METADATA_FILE" "app metadata"
 require_file "$ROOT_DIR/packaging/SoloPM.entitlements" "entitlements"
 require_file "$ROOT_DIR/packaging/signing.env.example" "signing env example"
 require_file "$ROOT_DIR/packaging/notarization.env.example" "notarization env example"
+require_executable "$ROOT_DIR/script/create_release_evidence.sh" "release evidence script"
 require_executable "$ROOT_DIR/script/sign_app.sh" "signing script"
 require_executable "$ROOT_DIR/script/notarize_app.sh" "notarization script"
 require_executable "$ROOT_DIR/script/package_release.sh" "packaging script"
@@ -87,6 +88,55 @@ require_evidence_equals() {
   fi
 }
 
+release_artifact_checksum_file() {
+  if [[ -n "$RELEASE_ARTIFACT_SHA256_FILE" ]]; then
+    printf "%s" "$RELEASE_ARTIFACT_SHA256_FILE"
+    return
+  fi
+
+  find "$ROOT_DIR/dist/releases" \
+    -maxdepth 1 \
+    -type f \
+    -name "$ARTIFACT_BASENAME.*.sha256" \
+    2>/dev/null \
+    | sort \
+    | head -n 1
+}
+
+require_evidence_artifact_sha256() {
+  local evidence_sha
+  local checksum_file
+  local package_sha
+
+  if ! evidence_sha="$(plutil -extract "release.artifactSha256" raw -o - "$RELEASE_EVIDENCE_FILE" 2>/dev/null)"; then
+    add_blocker "release evidence missing artifact SHA-256: release.artifactSha256"
+    return
+  fi
+
+  case "$evidence_sha" in
+    ""|"replace-after-package"|"missing-release-artifact")
+      add_blocker "release evidence artifact SHA-256 is not recorded from a packaged artifact"
+      return
+      ;;
+  esac
+
+  checksum_file="$(release_artifact_checksum_file)"
+  if [[ -z "$checksum_file" || ! -f "$checksum_file" ]]; then
+    add_blocker "missing release artifact checksum file: run ./script/package_release.sh before final release validation"
+    return
+  fi
+
+  package_sha="$(awk 'NF { print $1; exit }' "$checksum_file")"
+  if [[ -z "$package_sha" ]]; then
+    add_blocker "release artifact checksum file is empty: $checksum_file"
+    return
+  fi
+
+  if [[ "$evidence_sha" != "$package_sha" ]]; then
+    add_blocker "release evidence artifact SHA-256 does not match package checksum: expected '$package_sha', got '$evidence_sha'"
+  fi
+}
+
 if [[ -f "$METADATA_FILE" ]]; then
   # shellcheck source=/dev/null
   source "$METADATA_FILE"
@@ -109,6 +159,8 @@ fi
 APP_NAME="${APP_NAME:-SoloPM}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 EXPECTED_APP_BUNDLE_PATH="dist/$APP_NAME.app"
+ARTIFACT_BASENAME="$APP_NAME-${MARKETING_VERSION:-}+${CURRENT_PROJECT_VERSION:-}"
+RELEASE_ARTIFACT_SHA256_FILE="${SOLOPM_RELEASE_ARTIFACT_SHA256_FILE:-}"
 SIGNING_IDENTITY="${SOLOPM_SIGNING_IDENTITY:-}"
 NOTARY_PROFILE="${SOLOPM_NOTARY_PROFILE:-}"
 ONLINE_PREFLIGHT="${SOLOPM_RELEASE_PREFLIGHT_ONLINE:-0}"
@@ -158,13 +210,14 @@ if [[ -f "$RELEASE_EVIDENCE_FILE" ]]; then
     require_evidence_equals "release.version" "version" "${MARKETING_VERSION:-}"
     require_evidence_equals "release.buildNumber" "build number" "${CURRENT_PROJECT_VERSION:-}"
     require_evidence_equals "release.appBundlePath" "app bundle path" "$EXPECTED_APP_BUNDLE_PATH"
+    require_evidence_artifact_sha256
     require_evidence_true "manualChecks.cleanEnvironmentLaunch" "clean environment launch"
     require_evidence_true "manualChecks.loginItemToggle" "login item toggle in signed app"
   else
     add_blocker "release evidence is not valid JSON or plist: $RELEASE_EVIDENCE_FILE"
   fi
 else
-  add_blocker "missing local release evidence: copy packaging/release-evidence.example.json to packaging/release-evidence.json after manual checks"
+  add_blocker "missing local release evidence: run ./script/create_release_evidence.sh after packaging and manual checks"
 fi
 
 printf "SoloPM release environment preflight\n"

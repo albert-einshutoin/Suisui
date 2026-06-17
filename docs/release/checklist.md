@@ -61,10 +61,22 @@ cat dist/releases/*.sha256
 8. manual release evidence
 
 ```bash
-cp packaging/release-evidence.example.json packaging/release-evidence.json
+./script/create_release_evidence.sh
 ```
 
-Edit `packaging/release-evidence.json` only after the Manual Checks below are complete. Keep `release.version`, `release.buildNumber`, and `release.appBundlePath` aligned with `packaging/app_metadata.env` and the exact signed app bundle being released. Set `manualChecks.cleanEnvironmentLaunch` and `manualChecks.loginItemToggle` to `true` only for that signed and notarized build.
+Run the evidence script after packaging so `release.version`, `release.buildNumber`, `release.appBundlePath`, and `release.artifactSha256` are bound to `packaging/app_metadata.env` and the generated checksum. After the Manual Checks below are complete, rerun it with:
+
+```bash
+./script/create_release_evidence.sh \
+  --force \
+  --clean-environment-launch \
+  --login-item-toggle \
+  --checked-by "$USER" \
+  --note "Manual checks completed on the signed and notarized build."
+```
+
+Set manual check flags only for that signed and notarized build.
+Use `packaging/release-evidence.example.json` only as the schema template; do not copy it as final evidence without running the script.
 
 9. release environment preflight
 
