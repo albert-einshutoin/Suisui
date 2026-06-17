@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0"
+     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>SoloPM Alpha Updates</title>
+    <link>https://example.com/solopm/appcast.xml</link>
+    <description>Local smoke appcast for SoloPM public alpha update metadata.</description>
+    <language>en</language>
+    <item>
+      <title>SoloPM 0.1.0</title>
+      <pubDate>Wed, 17 Jun 2026 00:00:00 +0000</pubDate>
+      <sparkle:version>1</sparkle:version>
+      <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+      <enclosure
+        url="https://example.com/solopm/SoloPM-0.1.0+1.zip"
+        sparkle:version="1"
+        sparkle:shortVersionString="0.1.0"
+        sparkle:edSignature="local-smoke-signature-placeholder"
+        length="0"
+        type="application/octet-stream" />
+    </item>
+  </channel>
+</rss>

@@ -17,6 +17,9 @@ let package = Package(
             targets: ["SoloPMApp"]
         )
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.3")
+    ],
     targets: [
         .target(
             name: "SoloPMCore",
@@ -29,7 +32,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "SoloPMApp",
-            dependencies: ["SoloPMCore"]
+            dependencies: [
+                "SoloPMCore",
+                .product(name: "Sparkle", package: "Sparkle")
+            ]
         ),
         .testTarget(
             name: "SoloPMCoreTests",

@@ -19,7 +19,11 @@ public enum ActionPlanSchema: Sendable {
     """
 
     public static func loadData() throws -> Data {
-        try loadData(bundle: .module)
+        if let data = try? loadData(bundle: .main) {
+            return data
+        }
+
+        return try loadData(bundle: .module)
     }
 
     public static func loadData(bundle: Bundle) throws -> Data {
@@ -40,7 +44,12 @@ public enum ActionPlanSchema: Sendable {
     }
 
     public static func loadString() throws -> String {
-        try loadString(bundle: .module)
+        let data = try loadData()
+        guard let schema = String(data: data, encoding: .utf8) else {
+            throw ActionPlanSchemaError.invalidUTF8
+        }
+
+        return schema
     }
 
     public static func loadString(bundle: Bundle) throws -> String {

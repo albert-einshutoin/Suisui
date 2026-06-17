@@ -1,8 +1,16 @@
 import SoloPMCore
 import SwiftUI
+#if canImport(Sparkle)
+import AppKit
+import Sparkle
+#endif
 
 @main
 struct SoloPMApplication: App {
+#if canImport(Sparkle)
+    @NSApplicationDelegateAdaptor(SparkleAppDelegate.self) private var sparkleAppDelegate
+#endif
+
     private let menuBarViewModel = AppPreviewFactory.makeMenuBarSummaryViewModel()
     private let settings = AppSettings.default
 
@@ -26,6 +34,25 @@ struct SoloPMApplication: App {
         }
     }
 }
+
+#if canImport(Sparkle)
+private final class SparkleAppDelegate: NSObject, NSApplicationDelegate {
+    private var updaterController: SPUStandardUpdaterController?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        guard Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String != nil,
+              Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String != nil else {
+            return
+        }
+
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriverDelegate: nil
+        )
+    }
+}
+#endif
 
 private struct MenuBarPanel: View {
     @Environment(\.openWindow) private var openWindow

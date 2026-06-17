@@ -56,19 +56,19 @@
 
 ### P5-005: Sparkle update foundation
 
-- [ ] Sparkle を導入する。
-- [ ] appcast feed の生成手順を作る。
-- [ ] update signing key を安全に保管する。
-- [ ] テスト: local appcast で update check smoke を行う。
-- [ ] 完了条件: alpha 以降の更新を手動再配布だけに依存しない。
+- [x] Sparkle を導入する。
+- [x] appcast feed の生成手順を作る。
+- [x] update signing key を安全に保管する。
+- [x] テスト: local appcast で update check smoke を行う。
+- [x] 完了条件: alpha 以降の更新を手動再配布だけに依存しない。
 
 ### P5-006: Founder license / local entitlement
 
-- [ ] Founder / Personal Plus などの license model を local-first で扱う最小仕様を決める。
-- [ ] MVP は購入処理を入れず、license file / code の検証 skeleton に留めるか判断する。
-- [ ] ライセンス情報に個人情報を過剰に含めない。
-- [ ] テスト: valid、expired、missing license の表示 state を確認する。
-- [ ] 完了条件: 将来の課金導線を壊さない最小境界がある。
+- [x] Founder / Personal Plus などの license model を local-first で扱う最小仕様を決める。
+- [x] MVP は購入処理を入れず、license file / code の検証 skeleton に留めるか判断する。
+- [x] ライセンス情報に個人情報を過剰に含めない。
+- [x] テスト: valid、expired、missing license の表示 state を確認する。
+- [x] 完了条件: 将来の課金導線を壊さない最小境界がある。
 
 ### P5-007: Privacy and security docs
 

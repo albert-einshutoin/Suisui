@@ -5,6 +5,7 @@ MODE="${1:-run}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
+SPARKLE_ENV_FILE="$ROOT_DIR/packaging/sparkle.env"
 
 if [[ ! -f "$METADATA_FILE" ]]; then
   echo "missing metadata file: $METADATA_FILE" >&2
@@ -14,6 +15,11 @@ fi
 # shellcheck source=/dev/null
 source "$METADATA_FILE"
 
+if [[ -f "$SPARKLE_ENV_FILE" ]]; then
+  # shellcheck source=/dev/null
+  source "$SPARKLE_ENV_FILE"
+fi
+
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:?BUNDLE_IDENTIFIER is required}"
 APP_CATEGORY="${APP_CATEGORY:?APP_CATEGORY is required}"
@@ -22,11 +28,15 @@ CURRENT_PROJECT_VERSION="${CURRENT_PROJECT_VERSION:?CURRENT_PROJECT_VERSION is r
 MIN_SYSTEM_VERSION="${MIN_SYSTEM_VERSION:?MIN_SYSTEM_VERSION is required}"
 COPYRIGHT="${COPYRIGHT:?COPYRIGHT is required}"
 BUILD_CONFIGURATION="${SOLOPM_BUILD_CONFIGURATION:-debug}"
+SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
+SPARKLE_PUBLIC_ED_KEY="${SOLOPM_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
 
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
+APP_FRAMEWORKS="$APP_CONTENTS/Frameworks"
+APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 
@@ -49,6 +59,16 @@ case "$BUILD_CONFIGURATION" in
     ;;
 esac
 
+if [[ -n "$SPARKLE_FEED_URL" && -z "$SPARKLE_PUBLIC_ED_KEY" ]]; then
+  echo "SOLOPM_SPARKLE_PUBLIC_ED_KEY is required when SOLOPM_SPARKLE_FEED_URL is set" >&2
+  exit 2
+fi
+
+if [[ -z "$SPARKLE_FEED_URL" && -n "$SPARKLE_PUBLIC_ED_KEY" ]]; then
+  echo "SOLOPM_SPARKLE_FEED_URL is required when SOLOPM_SPARKLE_PUBLIC_ED_KEY is set" >&2
+  exit 2
+fi
+
 BUILD_BINARY="$BUILD_DIR/$APP_NAME"
 RESOURCE_BUNDLE="$BUILD_DIR/SoloPM_SoloPMCore.bundle"
 
@@ -57,9 +77,24 @@ mkdir -p "$APP_MACOS"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
 
-if [[ -d "$RESOURCE_BUNDLE" ]]; then
-  cp -R "$RESOURCE_BUNDLE" "$APP_BUNDLE/"
+if ! otool -l "$APP_BINARY" | grep -F "@executable_path/../Frameworks" >/dev/null; then
+  install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BINARY"
 fi
+
+if [[ -d "$RESOURCE_BUNDLE" ]]; then
+  mkdir -p "$APP_RESOURCES"
+  /usr/bin/ditto "$RESOURCE_BUNDLE" "$APP_RESOURCES"
+fi
+
+while IFS= read -r -d '' framework_path; do
+  mkdir -p "$APP_FRAMEWORKS"
+  /usr/bin/ditto "$framework_path" "$APP_FRAMEWORKS/$(basename "$framework_path")"
+done < <(find "$BUILD_DIR" -maxdepth 1 -type d -name "*.framework" -print0)
+
+while IFS= read -r -d '' dylib_path; do
+  mkdir -p "$APP_FRAMEWORKS"
+  /usr/bin/ditto "$dylib_path" "$APP_FRAMEWORKS/$(basename "$dylib_path")"
+done < <(find "$BUILD_DIR" -maxdepth 1 -type f -name "*.dylib" -print0)
 
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -93,6 +128,15 @@ cat >"$INFO_PLIST" <<PLIST
 </dict>
 </plist>
 PLIST
+
+if [[ -n "$SPARKLE_FEED_URL" && -n "$SPARKLE_PUBLIC_ED_KEY" ]]; then
+  /usr/libexec/PlistBuddy -c "Add :SUFeedURL string $SPARKLE_FEED_URL" "$INFO_PLIST"
+  /usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string $SPARKLE_PUBLIC_ED_KEY" "$INFO_PLIST"
+fi
+
+if [[ "$BUILD_CONFIGURATION" == "debug" ]]; then
+  codesign --force --deep --sign - "$APP_BUNDLE" >/dev/null
+fi
 
 open_app() {
   /usr/bin/open -n "$APP_BUNDLE"

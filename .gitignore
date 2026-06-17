@@ -16,5 +16,6 @@
 !.env.example
 /packaging/signing.env
 /packaging/notarization.env
+/packaging/sparkle.env
 *.local
 Package.resolved
