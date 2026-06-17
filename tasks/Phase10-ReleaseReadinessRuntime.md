@@ -214,6 +214,13 @@
 - [x] Task metadata は横幅不足時に縦配置へ fallback する。
 - [x] 完了条件: ProjectBoard の長文・狭幅 regression を source test で検知できる。
 
+### P10-025: SaaS connector test double isolation
+
+- [x] 外部連携はリリース対象外だが、production module に public fake / in-memory connector client を残さない。
+- [x] SaaS connector の in-memory metadata store、fake clients、static health client を test support へ移す。
+- [x] Core の SaaS connector protocol / policy / approval 境界は production source に残す。
+- [x] 完了条件: runtime source に SaaS connector test double が混入したら source test で失敗する。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

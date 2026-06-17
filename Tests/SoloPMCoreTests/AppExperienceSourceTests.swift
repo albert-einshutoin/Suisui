@@ -220,6 +220,26 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
+    func testRuntimeSourcesDoNotShipSaaSConnectorTestDoubles() throws {
+        let sourceFiles = try allSwiftFiles(under: "Sources")
+        let forbiddenTypeDeclarations = [
+            "class InMemoryOAuthCredentialMetadataStore",
+            "class InMemoryGoogleCalendarClient",
+            "class InMemoryGmailDraftClient",
+            "class InMemorySlackClient",
+            "class InMemoryGoogleDriveClient",
+            "class InMemoryNotionClient",
+            "struct StaticConnectorHealthClient"
+        ]
+
+        for sourceFile in sourceFiles {
+            let source = try String(contentsOf: sourceFile, encoding: .utf8)
+            for declaration in forbiddenTypeDeclarations {
+                XCTAssertFalse(source.contains(declaration), "\(sourceFile.path) ships test-only SaaS connector component \(declaration).")
+            }
+        }
+    }
+
     func testInMemoryToolRegistryFactoryIsNotShippedInRuntimeSources() throws {
         let sourceFiles = try allSwiftFiles(under: "Sources")
 

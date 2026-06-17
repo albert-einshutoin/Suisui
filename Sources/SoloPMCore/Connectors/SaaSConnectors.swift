@@ -84,33 +84,6 @@ public protocol OAuthCredentialMetadataStore: Sendable {
     func deleteMetadata(for connectorID: SaaSConnectorID) throws
 }
 
-public final class InMemoryOAuthCredentialMetadataStore: OAuthCredentialMetadataStore, @unchecked Sendable {
-    private let lock = NSLock()
-    private var metadata: [SaaSConnectorID: OAuthCredentialMetadata]
-
-    public init(metadata: [SaaSConnectorID: OAuthCredentialMetadata] = [:]) {
-        self.metadata = metadata
-    }
-
-    public func loadMetadata(for connectorID: SaaSConnectorID) throws -> OAuthCredentialMetadata? {
-        lock.withLock {
-            metadata[connectorID]
-        }
-    }
-
-    public func saveMetadata(_ metadata: OAuthCredentialMetadata) throws {
-        lock.withLock {
-            self.metadata[metadata.connectorID] = metadata
-        }
-    }
-
-    public func deleteMetadata(for connectorID: SaaSConnectorID) throws {
-        _ = lock.withLock {
-            metadata.removeValue(forKey: connectorID)
-        }
-    }
-}
-
 public protocol OAuthCredentialStore: Sendable {
     func loadCredential(for connectorID: SaaSConnectorID) throws -> OAuthCredential?
     func saveTokens(
@@ -335,34 +308,6 @@ public struct GoogleCalendarConnector: Sendable {
     }
 }
 
-public final class InMemoryGoogleCalendarClient: GoogleCalendarClient, @unchecked Sendable {
-    private let validCalendarIDs: Set<String>
-    private let lock = NSLock()
-    private var records: [GoogleCalendarEventRecord] = []
-    private var nextID = 1
-
-    public init(validCalendarIDs: Set<String>) {
-        self.validCalendarIDs = validCalendarIDs
-    }
-
-    public func createEvent(_ draft: CalendarEventDraft, calendarID: String, timeZoneIdentifier: String) throws -> GoogleCalendarEventRecord {
-        guard validCalendarIDs.contains(calendarID) else {
-            throw SaaSConnectorError.invalidRequest(.googleCalendar, "Calendar \(calendarID) is not available.")
-        }
-
-        return lock.withLock {
-            let record = GoogleCalendarEventRecord(
-                calendarID: calendarID,
-                timeZoneIdentifier: timeZoneIdentifier,
-                event: CalendarEventRecord(id: "google-calendar-event-\(nextID)", draft: draft)
-            )
-            nextID += 1
-            records.append(record)
-            return record
-        }
-    }
-}
-
 public struct GmailDraft: Equatable, Sendable {
     public var to: [String]
     public var subject: String
@@ -399,23 +344,6 @@ public struct GmailDraftConnector: Sendable {
     public func createDraft(_ draft: GmailDraft, context: ToolExecutionContext) throws -> GmailDraftRecord {
         try requireApproval(context)
         return try client.createDraft(draft)
-    }
-}
-
-public final class InMemoryGmailDraftClient: GmailDraftClient, @unchecked Sendable {
-    private let lock = NSLock()
-    private var records: [GmailDraftRecord] = []
-    private var nextID = 1
-
-    public init() {}
-
-    public func createDraft(_ draft: GmailDraft) throws -> GmailDraftRecord {
-        lock.withLock {
-            let record = GmailDraftRecord(id: "gmail-draft-\(nextID)", to: draft.to, subject: draft.subject, body: draft.body)
-            nextID += 1
-            records.append(record)
-            return record
-        }
     }
 }
 
@@ -461,35 +389,6 @@ public struct SlackConnector: Sendable {
     }
 }
 
-public final class InMemorySlackClient: SlackClient, @unchecked Sendable {
-    private let lock = NSLock()
-    private var channels: [String: String]
-    private var nextID = 1
-    public var isTokenRevoked: Bool
-
-    public init(channels: [String: String], isTokenRevoked: Bool = false) {
-        self.channels = channels
-        self.isTokenRevoked = isTokenRevoked
-    }
-
-    public func channelExists(_ channelID: String) throws -> Bool {
-        lock.withLock {
-            channels[channelID] != nil
-        }
-    }
-
-    public func postMessage(channelID: String, text: String) throws -> SlackMessageRecord {
-        guard !isTokenRevoked else {
-            throw SaaSConnectorError.tokenRevoked(.slack)
-        }
-        return lock.withLock {
-            let record = SlackMessageRecord(id: "slack-message-\(nextID)", channelID: channelID, text: text)
-            nextID += 1
-            return record
-        }
-    }
-}
-
 public struct GoogleDriveDocumentRecord: Equatable, Sendable {
     public var id: String
     public var folderID: String
@@ -518,21 +417,6 @@ public struct GoogleDriveConnector: Sendable {
             throw SaaSConnectorError.permissionDenied(.googleDrive, "Folder \(folderID) is outside the selected Drive scope.")
         }
         return try client.createDocument(title: title, body: body, folderID: folderID)
-    }
-}
-
-public final class InMemoryGoogleDriveClient: GoogleDriveClient, @unchecked Sendable {
-    private let lock = NSLock()
-    private var nextID = 1
-
-    public init() {}
-
-    public func createDocument(title: String, body: String, folderID: String) throws -> GoogleDriveDocumentRecord {
-        lock.withLock {
-            let record = GoogleDriveDocumentRecord(id: "drive-doc-\(nextID)", folderID: folderID, title: title, body: body)
-            nextID += 1
-            return record
-        }
     }
 }
 
@@ -582,28 +466,6 @@ public struct NotionConnector: Sendable {
     }
 }
 
-public final class InMemoryNotionClient: NotionClient, @unchecked Sendable {
-    private let lock = NSLock()
-    private var nextID = 1
-    public var nextError: SaaSConnectorError?
-
-    public init(nextError: SaaSConnectorError? = nil) {
-        self.nextError = nextError
-    }
-
-    public func createPage(databaseID: String, title: String, properties: [String: String]) throws -> NotionPageRecord {
-        if let nextError {
-            self.nextError = nil
-            throw nextError
-        }
-        return lock.withLock {
-            let record = NotionPageRecord(id: "notion-page-\(nextID)", databaseID: databaseID, title: title, properties: properties)
-            nextID += 1
-            return record
-        }
-    }
-}
-
 public enum ConnectorHealthStatus: Equatable, Sendable {
     case connected
     case disconnected
@@ -624,18 +486,6 @@ public struct ConnectorHealthSnapshot: Equatable, Sendable {
 
 public protocol ConnectorHealthClient: Sendable {
     func health(for connectorID: SaaSConnectorID, credential: OAuthCredential) throws -> ConnectorHealthStatus
-}
-
-public struct StaticConnectorHealthClient: ConnectorHealthClient {
-    private let results: [SaaSConnectorID: ConnectorHealthStatus]
-
-    public init(results: [SaaSConnectorID: ConnectorHealthStatus] = [:]) {
-        self.results = results
-    }
-
-    public func health(for connectorID: SaaSConnectorID, credential: OAuthCredential) throws -> ConnectorHealthStatus {
-        results[connectorID] ?? .connected
-    }
 }
 
 public struct ConnectorHealthDashboard: Sendable {
@@ -732,13 +582,5 @@ private extension NotionConnector {
         guard context.approvalToken != nil else {
             throw SaaSConnectorError.approvalRequired(connectorID)
         }
-    }
-}
-
-private extension NSLock {
-    func withLock<T>(_ operation: () throws -> T) rethrows -> T {
-        lock()
-        defer { unlock() }
-        return try operation()
     }
 }
