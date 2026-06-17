@@ -248,6 +248,7 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
+        let oldRecord = try getLocked(id: id)
         var assignments: [String] = []
         if let name {
             assignments.append("name = '\(SQL.escape(name))'")
@@ -260,9 +261,14 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         }
         assignments.append("updated_at = CURRENT_TIMESTAMP")
 
+        try connection.execute(
+            """
+            INSERT INTO knowledge_frames_fts (knowledge_frames_fts, rowid, name, body)
+            VALUES ('delete', \(id), '\(SQL.escape(oldRecord.name))', '\(SQL.escape(oldRecord.body))');
+            """
+        )
         try connection.execute("UPDATE knowledge_frames SET \(assignments.joined(separator: ", ")) WHERE id = \(id);")
         let record = try getLocked(id: id)
-        try connection.execute("DELETE FROM knowledge_frames_fts WHERE rowid = \(id);")
         try connection.execute(
             """
             INSERT INTO knowledge_frames_fts (rowid, name, body)
@@ -283,6 +289,20 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         defer { lock.unlock() }
 
         return try connection.queryRows("SELECT * FROM knowledge_frames ORDER BY id DESC;").map(KnowledgeFrameRecord.init(row:))
+    }
+
+    public func delete(id: Int64) throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let record = try getLocked(id: id)
+        try connection.execute(
+            """
+            INSERT INTO knowledge_frames_fts (knowledge_frames_fts, rowid, name, body)
+            VALUES ('delete', \(id), '\(SQL.escape(record.name))', '\(SQL.escape(record.body))');
+            """
+        )
+        try connection.execute("DELETE FROM knowledge_frames WHERE id = \(id);")
     }
 
     public func search(query: String) throws -> [KnowledgeFrameRecord] {

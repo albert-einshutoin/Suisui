@@ -314,4 +314,39 @@ public enum CoreMigrations {
             }
         ]
     }
+
+    public static var phase9: [DatabaseMigration] {
+        phase4 + [
+            DatabaseMigration(id: "0006_create_knowledge_vector_indexes") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS knowledge_frame_vectors (
+                        frame_id INTEGER PRIMARY KEY NOT NULL,
+                        provider_id TEXT NOT NULL,
+                        dimensions INTEGER NOT NULL,
+                        vector_json TEXT NOT NULL,
+                        redacted_preview TEXT NOT NULL,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(frame_id) REFERENCES knowledge_frames(id) ON DELETE CASCADE
+                    );
+
+                    CREATE TABLE IF NOT EXISTS knowledge_retrieval_eval_runs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        mode TEXT NOT NULL,
+                        query TEXT NOT NULL,
+                        expected_frame_id INTEGER NOT NULL,
+                        top_frame_id INTEGER,
+                        is_match INTEGER NOT NULL,
+                        latency_ms REAL NOT NULL,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_knowledge_frame_vectors_provider
+                    ON knowledge_frame_vectors(provider_id);
+                    """
+                )
+            }
+        ]
+    }
 }
