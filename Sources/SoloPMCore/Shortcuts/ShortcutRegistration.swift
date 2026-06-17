@@ -35,41 +35,6 @@ public protocol ShortcutClient: Sendable {
     func unregisterVoiceCaptureShortcut() throws -> ShortcutRegistrationState
 }
 
-public final class InMemoryShortcutClient: ShortcutClient, @unchecked Sendable {
-    private let lock = NSLock()
-    private var registrationState: ShortcutRegistrationState
-
-    public init(state: ShortcutRegistrationState = ShortcutRegistrationState()) {
-        self.registrationState = state
-    }
-
-    public func state() -> ShortcutRegistrationState {
-        lock.lock()
-        defer { lock.unlock() }
-        return registrationState
-    }
-
-    public func registerVoiceCaptureShortcut(_ shortcut: KeyboardShortcut) throws -> ShortcutRegistrationState {
-        lock.lock()
-        defer { lock.unlock() }
-
-        registrationState = ShortcutRegistrationState(
-            voiceCaptureShortcut: shortcut,
-            isRegistered: true,
-            conflictDescription: nil
-        )
-        return registrationState
-    }
-
-    public func unregisterVoiceCaptureShortcut() throws -> ShortcutRegistrationState {
-        lock.lock()
-        defer { lock.unlock() }
-
-        registrationState.isRegistered = false
-        return registrationState
-    }
-}
-
 @MainActor
 public final class ShortcutSettingsViewModel: ObservableObject {
     @Published public private(set) var state: ShortcutRegistrationState

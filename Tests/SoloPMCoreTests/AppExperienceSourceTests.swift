@@ -182,6 +182,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains("client: any ShortcutClient = InMemoryShortcutClient()"))
     }
 
+    func testRuntimeSourcesDoNotShipShortcutInMemoryClient() throws {
+        let sourceFiles = try allSwiftFiles(under: "Sources")
+
+        for sourceFile in sourceFiles {
+            let source = try String(contentsOf: sourceFile, encoding: .utf8)
+            XCTAssertFalse(source.contains("class InMemoryShortcutClient"), "\(sourceFile.path) ships test-only shortcut client.")
+        }
+    }
+
     func testInMemoryToolRegistryFactoryIsNotShippedInRuntimeSources() throws {
         let sourceFiles = try allSwiftFiles(under: "Sources")
 
