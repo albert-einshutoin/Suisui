@@ -30,6 +30,17 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("AC_PASSWORD"))
     }
 
+    func testReleaseReadinessReportAggregatesRuntimeMockScanTasksAndPreflight() throws {
+        let script = try readPackageFile("script/release_readiness_report.sh")
+
+        XCTAssertTrue(script.contains("Sources/SoloPMCore Sources/SoloPMApp"))
+        XCTAssertTrue(script.contains("Fake|Mock|InMemory|Static|Demo|sample|canned|stub"))
+        XCTAssertTrue(script.contains("tasks/Phase*.md"))
+        XCTAssertTrue(script.contains("tasks/README.md"))
+        XCTAssertTrue(script.contains("verify_release_environment.sh"))
+        XCTAssertTrue(script.contains("BLOCKER"))
+    }
+
     func testDistributionPackageScriptBuildsDmgWithApplicationsLinkAndChecksums() throws {
         let script = try readPackageFile("script/package_release.sh")
 

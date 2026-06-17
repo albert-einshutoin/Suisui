@@ -65,13 +65,19 @@ cat dist/releases/*.sha256
 ./script/verify_appcast.sh packaging/appcast.sample.xml
 ```
 
-9. tag
+9. final readiness report
+
+```bash
+./script/release_readiness_report.sh
+```
+
+10. tag
 
 ```bash
 git tag -a v0.1.0-alpha.1 -m "SoloPM 0.1.0 alpha 1"
 ```
 
-10. release notes
+11. release notes
 
 Use [public-alpha.md](public-alpha.md) as the base. Include artifact names, checksums, supported macOS version, Known Issues, and rollback instructions.
 

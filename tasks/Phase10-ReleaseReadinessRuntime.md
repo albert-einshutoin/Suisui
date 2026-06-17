@@ -235,6 +235,13 @@
 - [x] Action row は tool label / status が狭幅で縦配置へ fallback し、長文 title は hover で全文確認できる。
 - [x] 完了条件: Review UI の狭幅・長文 regression を source test で検知できる。
 
+### P10-028: Release readiness report
+
+- [x] runtime mock / fake scan、Phase checklist、release environment preflight を 1 コマンドで集約する。
+- [x] `tasks/README.md` のテンプレート用 unchecked 項目は release blocker から除外する。
+- [x] report は残 gate がある間は `NOT READY` と exit 2 を返す。
+- [x] 完了条件: VC / investor 目線の残 blocker を毎回同じ出力で確認できる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
@@ -269,3 +276,4 @@
 - `./scripts/verify.sh`
 - `./script/build_and_run.sh --verify`
 - `SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh` (Developer ID / notary / clean-env manual gate が揃った release machine で green にする。開発機では blocker 出力を確認する。)
+- `./script/release_readiness_report.sh` (全 release gate が揃うまでは `NOT READY` と blocker を返す。)
