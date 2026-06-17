@@ -28,15 +28,34 @@
         "project.create",
         "project.update",
         "project.list",
+        "project.get",
+        "project.complete",
         "task.create",
         "task.bulk_create",
+        "task.update",
+        "task.complete",
         "task.list_due",
+        "task.list_overdue",
         "notification.schedule",
+        "notification.schedule_relative",
+        "notification.schedule_overdue_rule",
+        "notification.cancel",
+        "notification.list",
         "calendar.create_event",
+        "calendar.create_deadline",
+        "calendar.create_work_block",
         "reminders.create",
+        "reminders.bulk_create",
+        "reminders.mark_complete",
         "filesystem.create_directory",
         "filesystem.create_markdown_file",
+        "filesystem.create_artifacts_from_frame",
+        "filesystem.scan_project_artifacts",
         "frame.search",
+        "frame.list",
+        "frame.get",
+        "frame.create",
+        "frame.update",
         "maildraft.create_text"
       ]
     },
@@ -57,4 +76,3 @@
     }
   }
 }
-

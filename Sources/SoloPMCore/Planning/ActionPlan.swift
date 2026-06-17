@@ -92,51 +92,94 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
     case projectCreate = "project.create"
     case projectUpdate = "project.update"
     case projectList = "project.list"
+    case projectGet = "project.get"
+    case projectComplete = "project.complete"
     case taskCreate = "task.create"
     case taskBulkCreate = "task.bulk_create"
+    case taskUpdate = "task.update"
+    case taskComplete = "task.complete"
     case taskListDue = "task.list_due"
+    case taskListOverdue = "task.list_overdue"
     case notificationSchedule = "notification.schedule"
+    case notificationScheduleRelative = "notification.schedule_relative"
+    case notificationScheduleOverdueRule = "notification.schedule_overdue_rule"
+    case notificationCancel = "notification.cancel"
+    case notificationList = "notification.list"
     case calendarCreateEvent = "calendar.create_event"
+    case calendarCreateDeadline = "calendar.create_deadline"
+    case calendarCreateWorkBlock = "calendar.create_work_block"
     case remindersCreate = "reminders.create"
+    case remindersBulkCreate = "reminders.bulk_create"
+    case remindersMarkComplete = "reminders.mark_complete"
     case filesystemCreateDirectory = "filesystem.create_directory"
     case filesystemCreateMarkdownFile = "filesystem.create_markdown_file"
+    case filesystemCreateArtifactsFromFrame = "filesystem.create_artifacts_from_frame"
+    case filesystemScanProjectArtifacts = "filesystem.scan_project_artifacts"
     case frameSearch = "frame.search"
+    case frameList = "frame.list"
+    case frameGet = "frame.get"
+    case frameCreate = "frame.create"
+    case frameUpdate = "frame.update"
     case mailDraftCreateText = "maildraft.create_text"
 
     public var defaultRiskLevel: RiskLevel {
         switch self {
-        case .projectList, .taskListDue, .frameSearch:
+        case .projectList,
+             .projectGet,
+             .taskListDue,
+             .taskListOverdue,
+             .notificationList,
+             .filesystemScanProjectArtifacts,
+             .frameSearch,
+             .frameList,
+             .frameGet:
             .read
         case .mailDraftCreateText:
             .draft
         case .projectCreate,
              .projectUpdate,
+             .projectComplete,
              .taskCreate,
              .taskBulkCreate,
+             .taskUpdate,
+             .taskComplete,
              .notificationSchedule,
+             .notificationScheduleRelative,
+             .notificationScheduleOverdueRule,
+             .notificationCancel,
              .calendarCreateEvent,
+             .calendarCreateDeadline,
+             .calendarCreateWorkBlock,
              .remindersCreate,
+             .remindersBulkCreate,
+             .remindersMarkComplete,
              .filesystemCreateDirectory,
-             .filesystemCreateMarkdownFile:
+             .filesystemCreateMarkdownFile,
+             .filesystemCreateArtifactsFromFrame,
+             .frameCreate,
+             .frameUpdate:
             .write
         }
     }
 
     public var actionType: ActionType {
         switch self {
-        case .projectCreate, .projectUpdate, .projectList:
+        case .projectCreate, .projectUpdate, .projectList, .projectGet, .projectComplete:
             .project
-        case .taskCreate, .taskBulkCreate, .taskListDue:
+        case .taskCreate, .taskBulkCreate, .taskUpdate, .taskComplete, .taskListDue, .taskListOverdue:
             .task
-        case .notificationSchedule:
+        case .notificationSchedule, .notificationScheduleRelative, .notificationScheduleOverdueRule, .notificationCancel, .notificationList:
             .notification
-        case .calendarCreateEvent:
+        case .calendarCreateEvent, .calendarCreateDeadline, .calendarCreateWorkBlock:
             .calendar
-        case .remindersCreate:
+        case .remindersCreate, .remindersBulkCreate, .remindersMarkComplete:
             .reminder
-        case .filesystemCreateDirectory, .filesystemCreateMarkdownFile:
+        case .filesystemCreateDirectory,
+             .filesystemCreateMarkdownFile,
+             .filesystemCreateArtifactsFromFrame,
+             .filesystemScanProjectArtifacts:
             .filesystem
-        case .frameSearch:
+        case .frameSearch, .frameList, .frameGet, .frameCreate, .frameUpdate:
             .knowledgeFrame
         case .mailDraftCreateText:
             .mailDraft

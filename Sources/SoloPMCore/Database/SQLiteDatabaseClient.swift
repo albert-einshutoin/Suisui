@@ -62,6 +62,45 @@ public final class SQLiteConnection {
         }
     }
 
+    public func queryRows(_ sql: String) throws -> [[String: String]] {
+        var statement: OpaquePointer?
+        let prepareStatus = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
+
+        guard prepareStatus == SQLITE_OK else {
+            throw DatabaseError.prepareFailed(errorMessage)
+        }
+
+        defer { sqlite3_finalize(statement) }
+
+        var rows: [[String: String]] = []
+
+        while true {
+            let stepStatus = sqlite3_step(statement)
+
+            if stepStatus == SQLITE_ROW {
+                var row: [String: String] = [:]
+                for index in 0..<sqlite3_column_count(statement) {
+                    let name = String(cString: sqlite3_column_name(statement, index))
+                    if let text = sqlite3_column_text(statement, index) {
+                        let cString = UnsafeRawPointer(text).assumingMemoryBound(to: CChar.self)
+                        row[name] = String(cString: cString)
+                    } else {
+                        row[name] = ""
+                    }
+                }
+                rows.append(row)
+            } else if stepStatus == SQLITE_DONE {
+                return rows
+            } else {
+                throw DatabaseError.stepFailed(errorMessage)
+            }
+        }
+    }
+
+    public var lastInsertedRowID: Int64 {
+        sqlite3_last_insert_rowid(database)
+    }
+
     public func tableExists(_ tableName: String) throws -> Bool {
         let escaped = tableName.replacingOccurrences(of: "'", with: "''")
         let result = try queryStrings(
@@ -157,6 +196,57 @@ public enum CoreMigrations {
                         action TEXT NOT NULL,
                         status TEXT NOT NULL,
                         metadata_json TEXT NOT NULL DEFAULT '{}'
+                    );
+                    """
+                )
+            }
+        ]
+    }
+
+    public static var phase2: [DatabaseMigration] {
+        phase0 + [
+            DatabaseMigration(id: "0002_create_projects_tasks_and_knowledge") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS projects (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        title TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        priority TEXT,
+                        deadline TEXT,
+                        workspace_path TEXT,
+                        tags_json TEXT NOT NULL DEFAULT '[]',
+                        source_command TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE TABLE IF NOT EXISTS tasks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        project_id INTEGER,
+                        title TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        due_at TEXT,
+                        priority TEXT,
+                        source_command TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE TABLE IF NOT EXISTS knowledge_frames (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        body TEXT NOT NULL,
+                        triggers_json TEXT NOT NULL DEFAULT '[]',
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_frames_fts USING fts5(
+                        name,
+                        body,
+                        content='knowledge_frames',
+                        content_rowid='id'
                     );
                     """
                 )
