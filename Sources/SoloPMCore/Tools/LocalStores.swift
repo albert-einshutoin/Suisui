@@ -89,6 +89,19 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         return try connection.queryRows("SELECT * FROM projects ORDER BY id DESC;").map(ProjectRecord.init(row:))
     }
 
+    public func listDeadlineCandidates() throws -> [ProjectRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return try connection.queryRows(
+            """
+            SELECT * FROM projects
+            WHERE status != 'completed' AND deadline IS NOT NULL
+            ORDER BY deadline ASC, id ASC;
+            """
+        ).map(ProjectRecord.init(row:))
+    }
+
     public func get(id: Int64) throws -> ProjectRecord {
         lock.lock()
         defer { lock.unlock() }
@@ -172,6 +185,19 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         return try connection
             .queryRows("SELECT * FROM tasks WHERE status != 'completed' AND due_at IS NOT NULL AND due_at < '\(SQL.escape(cutoff))' ORDER BY due_at ASC, id ASC;")
             .map(TaskRecord.init(row:))
+    }
+
+    public func listDeadlineCandidates() throws -> [TaskRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return try connection.queryRows(
+            """
+            SELECT * FROM tasks
+            WHERE status != 'completed' AND due_at IS NOT NULL
+            ORDER BY due_at ASC, id ASC;
+            """
+        ).map(TaskRecord.init(row:))
     }
 
     public func get(id: Int64) throws -> TaskRecord {

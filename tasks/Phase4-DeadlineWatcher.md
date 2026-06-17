@@ -23,17 +23,17 @@
 
 ### P4-001: Clock abstraction
 
-- [ ] `Clock` / `DateProvider` を作り、現在時刻を injectable にする。
-- [ ] timezone は Settings の値を使う。
-- [ ] テスト: fixed clock で今日、明日、期限超過の判定を安定させる。
-- [ ] 完了条件: 日付ロジックが実行日によって flaky にならない。
+- [x] `Clock` / `DateProvider` を作り、現在時刻を injectable にする。
+- [x] timezone は Settings の値を使う。
+- [x] テスト: fixed clock で今日、明日、期限超過の判定を安定させる。
+- [x] 完了条件: 日付ロジックが実行日によって flaky にならない。
 
 ### P4-002: Deadline query service
 
-- [ ] `DeadlineQueryService` を作り、今日、明日、3日以内、1週間以内、期限超過を返す。
-- [ ] Project と Task を統合した summary model を作る。
-- [ ] 完了済み task / completed project は通知対象から外す。
-- [ ] テスト: 境界日、timezone、completed exclusion を確認する。
+- [x] `DeadlineQueryService` を作り、今日、明日、3日以内、1週間以内、期限超過を返す。
+- [x] Project と Task を統合した summary model を作る。
+- [x] 完了済み task / completed project は通知対象から外す。
+- [x] テスト: 境界日、timezone、completed exclusion を確認する。
 - [ ] 完了条件: MenuBar と Notification scheduler が同じ query を使う。
 
 ### P4-003: DeadlineRule model

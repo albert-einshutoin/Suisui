@@ -18,6 +18,15 @@ public struct MenuBarSummary: Equatable, Sendable {
         self.recentProjectTitles = recentProjectTitles
     }
 
+    public init(deadlineSummary: DeadlineSummary, recentProjectTitles: [String] = []) {
+        self.init(
+            todayTaskCount: deadlineSummary.today.count,
+            overdueTaskCount: deadlineSummary.overdue.count,
+            dueThisWeekCount: deadlineSummary.thisWeek.count,
+            recentProjectTitles: recentProjectTitles
+        )
+    }
+
     public static let empty = MenuBarSummary()
 }
 
@@ -44,4 +53,3 @@ public struct MenuBarSummaryViewModel: Equatable, Sendable {
         !summary.recentProjectTitles.isEmpty
     }
 }
-
