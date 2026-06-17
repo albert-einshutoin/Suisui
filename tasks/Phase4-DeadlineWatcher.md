@@ -34,7 +34,7 @@
 - [x] Project と Task を統合した summary model を作る。
 - [x] 完了済み task / completed project は通知対象から外す。
 - [x] テスト: 境界日、timezone、completed exclusion を確認する。
-- [ ] 完了条件: MenuBar と Notification scheduler が同じ query を使う。
+- [x] 完了条件: MenuBar と Notification scheduler が同じ query を使う。
 
 ### P4-003: DeadlineRule model
 
@@ -46,13 +46,13 @@
 
 ### P4-004: Notification scheduling service
 
-- [ ] DeadlineRule から UserNotifications request を作る service を実装する。
-- [ ] 同じ rule の重複予約を防ぐ idempotency key を決める。
-- [ ] 通知文面は title、未完了数、次の候補 task を短く含める。
-- [ ] 次の候補 task は未完了タスクの due date / priority から deterministic に選び、MVP では LLM 生成しない。
-- [ ] テスト: duplicate schedule、past date skip、permission denied を fake client で確認する。
-- [ ] テスト: 同じ入力なら同じ通知文面になることを fixed clock と fixture で確認する。
-- [ ] 完了条件: 通知が過剰に増えない。
+- [x] DeadlineRule から UserNotifications request を作る service を実装する。
+- [x] 同じ rule の重複予約を防ぐ idempotency key を決める。
+- [x] 通知文面は title、未完了数、次の候補 task を短く含める。
+- [x] 次の候補 task は未完了タスクの due date / priority から deterministic に選び、MVP では LLM 生成しない。
+- [x] テスト: duplicate schedule、past date skip、permission denied を fake client で確認する。
+- [x] テスト: 同じ入力なら同じ通知文面になることを fixed clock と fixture で確認する。
+- [x] 完了条件: 通知が過剰に増えない。
 
 ### P4-005: Overdue checker
 
@@ -106,7 +106,7 @@
 ## Exit Gate
 
 - [ ] 今日、今週、期限超過の summary が menu bar に出る。
-- [ ] DeadlineRule に基づき通知予約できる。
+- [x] DeadlineRule に基づき通知予約できる。
 - [ ] overdue_daily が過剰通知しない。
 - [ ] file monitoring は許可された workspace に限定されている。
-- [ ] 日付ロジックは fixed clock で test されている。
+- [x] 日付ロジックは fixed clock で test されている。
