@@ -287,6 +287,30 @@ public enum CoreMigrations {
                     );
                     """
                 )
+            },
+            DatabaseMigration(id: "0005_create_artifacts") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS artifacts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        project_id INTEGER,
+                        task_id INTEGER,
+                        workspace_path TEXT NOT NULL,
+                        expected_path TEXT NOT NULL,
+                        created_state TEXT NOT NULL CHECK(created_state IN ('expected', 'created', 'missing')),
+                        last_modified_at TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(workspace_path, expected_path)
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_artifacts_workspace_path
+                    ON artifacts(workspace_path);
+
+                    CREATE INDEX IF NOT EXISTS idx_artifacts_last_modified_at
+                    ON artifacts(last_modified_at);
+                    """
+                )
             }
         ]
     }

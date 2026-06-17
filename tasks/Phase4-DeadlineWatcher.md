@@ -82,11 +82,11 @@
 
 ### P4-008: Artifact monitoring foundation
 
-- [ ] Artifact table に expected path、created state、lastModifiedAt を持たせる。
-- [ ] FSEvents adapter を `FileMonitorClient` の背後に置く。
-- [ ] MVP ではユーザーが選択した workspace 配下だけ監視する。
-- [ ] テスト: fake file monitor で update event と stale detection を確認する。
-- [ ] 完了条件: 長期間更新なし通知の基礎ができる。
+- [x] Artifact table に expected path、created state、lastModifiedAt を持たせる。
+- [x] FSEvents adapter を `FileMonitorClient` の背後に置く。
+- [x] MVP ではユーザーが選択した workspace 配下だけ監視する。
+- [x] テスト: fake file monitor で update event と stale detection を確認する。
+- [x] 完了条件: 長期間更新なし通知の基礎ができる。
 
 ### P4-009: Stale artifact detection
 
@@ -108,5 +108,5 @@
 - [x] 今日、今週、期限超過の summary が menu bar に出る。
 - [x] DeadlineRule に基づき通知予約できる。
 - [x] overdue_daily が過剰通知しない。
-- [ ] file monitoring は許可された workspace に限定されている。
+- [x] file monitoring は許可された workspace に限定されている。
 - [x] 日付ロジックは fixed clock で test されている。
