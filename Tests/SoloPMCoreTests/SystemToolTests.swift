@@ -269,7 +269,7 @@ final class SystemToolTests: XCTestCase {
     }
 
     func testInMemoryPhase2MVPFactoryBuildsExecutableRegistry() throws {
-        let registry = try ToolRegistryFactory.inMemoryPhase2MVP(
+        let registry = try ToolRegistryTestFactory.inMemoryPhase2MVP(
             workspaceRoot: temporaryDirectory(),
             auditLogger: InMemoryAuditLogger()
         )

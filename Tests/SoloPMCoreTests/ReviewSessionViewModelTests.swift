@@ -142,7 +142,7 @@ final class ReviewSessionViewModelTests: XCTestCase {
 
         let generatedPlan = try XCTUnwrap(voiceViewModel.planningResponse?.actionPlan)
         let auditLogger = InMemoryAuditLogger()
-        let registry = try ToolRegistryFactory.inMemoryPhase2MVP(
+        let registry = try ToolRegistryTestFactory.inMemoryPhase2MVP(
             workspaceRoot: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true),
             auditLogger: auditLogger
         )
