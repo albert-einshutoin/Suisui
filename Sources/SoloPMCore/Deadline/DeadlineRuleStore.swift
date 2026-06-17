@@ -56,6 +56,21 @@ public final class SQLiteDeadlineRuleStore: @unchecked Sendable {
         ).compactMap(DeadlineRule.init(row:))
     }
 
+    public func markNotified(id: Int64, at notifiedAt: Date) throws -> DeadlineRule {
+        lock.lock()
+        defer { lock.unlock() }
+
+        try connection.execute(
+            """
+            UPDATE deadline_rules
+            SET last_notified_at = '\(SQL.escape(DeadlineDateParser.string(from: notifiedAt)))',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = \(id);
+            """
+        )
+        return try getLocked(id: id)
+    }
+
     public func get(id: Int64) throws -> DeadlineRule {
         lock.lock()
         defer { lock.unlock() }

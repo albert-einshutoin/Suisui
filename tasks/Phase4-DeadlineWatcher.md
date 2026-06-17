@@ -56,11 +56,11 @@
 
 ### P4-005: Overdue checker
 
-- [ ] overdue project / task を検出する。
-- [ ] overdue_daily は 1 日 1 回までに制限する。
-- [ ] ユーザーが完了 / 延期 / mute したものは再通知しない。
-- [ ] テスト: daily throttle、muted exclusion、completed exclusion を確認する。
-- [ ] 完了条件: 期限超過を見逃さず、通知疲れも起こしにくい。
+- [x] overdue project / task を検出する。
+- [x] overdue_daily は 1 日 1 回までに制限する。
+- [x] ユーザーが完了 / 延期 / mute したものは再通知しない。
+- [x] テスト: daily throttle、muted exclusion、completed exclusion を確認する。
+- [x] 完了条件: 期限超過を見逃さず、通知疲れも起こしにくい。
 
 ### P4-006: Daily check runner
 
@@ -107,6 +107,6 @@
 
 - [ ] 今日、今週、期限超過の summary が menu bar に出る。
 - [x] DeadlineRule に基づき通知予約できる。
-- [ ] overdue_daily が過剰通知しない。
+- [x] overdue_daily が過剰通知しない。
 - [ ] file monitoring は許可された workspace に限定されている。
 - [x] 日付ロジックは fixed clock で test されている。
