@@ -17,6 +17,8 @@ struct ManualTestRunner {
         try suite.testDangerActionIsRejected()
         try suite.testAmbiguousActionRequiresUserConfirmationWarning()
         try suite.testInvalidActionPlanJSONIsBlocking()
+        try suite.testActionPlanResponseParserReturnsValidatedPlan()
+        try suite.testActionPlanResponseParserRejectsNonJSON()
         try suite.testPlanningPromptContainsContext()
         try suite.testPlanningPromptForbidsDangerousOperations()
 
@@ -151,6 +153,41 @@ private struct ManualTestSuite {
 
         expect(!result.isValid, "Invalid JSON should be blocking.")
         expectEqual(result.issues.first?.path, "$", "Invalid JSON should point to document root.")
+    }
+
+    mutating func testActionPlanResponseParserReturnsValidatedPlan() throws {
+        let rawContent = """
+        {
+          "id": "plan-1",
+          "userInput": "Create a task",
+          "summary": "Create task",
+          "riskLevel": "write",
+          "requiresApproval": true,
+          "actions": [
+            {
+              "id": "action-1",
+              "tool": "task.create",
+              "arguments": {
+                "title": "Draft outline"
+              }
+            }
+          ]
+        }
+        """
+
+        let response = ActionPlanResponseParser().parse(rawContent: rawContent, providerID: "fake")
+
+        expectEqual(response.providerID, "fake", "Provider id should be preserved.")
+        expectEqual(response.actionPlan?.summary, "Create task", "Parser should decode the plan.")
+        expect(response.validationResult.isValid, "Parsed plan should be valid.")
+    }
+
+    mutating func testActionPlanResponseParserRejectsNonJSON() throws {
+        let response = ActionPlanResponseParser().parse(rawContent: "not json", providerID: "fake")
+
+        expect(response.actionPlan == nil, "Invalid response should not return a plan.")
+        expect(!response.validationResult.isValid, "Invalid response should be blocking.")
+        expectEqual(response.validationResult.issues.first?.path, "$", "Invalid response should point to document root.")
     }
 
     mutating func testPlanningPromptContainsContext() throws {
