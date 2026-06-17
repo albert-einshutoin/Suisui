@@ -18,6 +18,7 @@ Phase ファイルは Epic / Issue seed として扱います。実装に入る�
 | [Phase 7: External MCP](./Phase7-ExternalMCP.md) | 外部 MCP 対応 | stdio client、permission UI、execution log、custom registration |
 | [Phase 8: SaaS Connectors](./Phase8-SaaSConnectors.md) | 外部 SaaS 連携 | Google Calendar、Gmail Draft、Slack、Drive、Notion |
 | [Phase 9: Knowledge Advanced](./Phase9-KnowledgeAdvanced.md) | Knowledge 高度化 | sqlite-vec、local embeddings、project memory、WeKnora connector |
+| [Phase 10: Release Readiness Runtime](./Phase10-ReleaseReadinessRuntime.md) | モックを外し実働 MVP にする | 永続 DB、Keychain、CRUD、実行導線、投資家視点セルフレビュー |
 
 ## 開発原則
 
