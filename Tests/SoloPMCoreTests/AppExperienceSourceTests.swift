@@ -97,6 +97,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains("sttProvider: any SpeechToTextProvider = FakeSTTProvider"))
     }
 
+    func testExternalMCPLauncherDoesNotDefaultToInMemorySecretStore() throws {
+        let source = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")
+
+        XCTAssertFalse(source.contains("SecretStoreMCPEnvironmentResolver(secretStore: InMemorySecretStore())"))
+    }
+
     func testRuntimeAppCompositionDoesNotUseDemoOrInMemorySuccessPath() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 

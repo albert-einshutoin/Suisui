@@ -123,6 +123,13 @@
 - [x] Unit tests は fake dependencies を明示的に渡す。
 - [x] 完了条件: text / recording flow が依存未指定で fake 成功しない。
 
+### P10-012: MCP secret resolver hardening
+
+- [x] `MCPStdioServerLauncher` の default が `InMemorySecretStore` に依存しないことを regression test で確認する。
+- [x] Secret が必要な MCP environment は Keychain-backed resolver を明示注入しない限り `missingSecret` にする。
+- [x] Runtime app は `KeychainSecretStore` を使う `SecretStoreMCPEnvironmentResolver` を明示注入する。
+- [x] 完了条件: MCP runtime path が in-memory secret fallback に依存しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

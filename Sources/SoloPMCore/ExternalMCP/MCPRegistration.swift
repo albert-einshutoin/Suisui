@@ -356,6 +356,18 @@ public struct SecretStoreMCPEnvironmentResolver: MCPEnvironmentResolver {
     }
 }
 
+public struct NoSecretMCPEnvironmentResolver: MCPEnvironmentResolver {
+    public init() {}
+
+    public func resolve(_ environment: [String: MCPEnvironmentReference]) throws -> [String: String] {
+        guard environment.isEmpty else {
+            let firstMissingSecret = environment.keys.sorted().first ?? "MCP_ENV"
+            throw MCPRegistrationError.missingSecret(firstMissingSecret)
+        }
+        return [:]
+    }
+}
+
 public protocol MCPBinaryLocator: Sendable {
     func isExecutableAvailable(command: String) -> Bool
 }
@@ -416,7 +428,7 @@ public struct MCPStdioServerLauncher: Sendable {
 
     public init(
         validator: MCPServerRegistrationValidator = MCPServerRegistrationValidator(),
-        environmentResolver: any MCPEnvironmentResolver = SecretStoreMCPEnvironmentResolver(secretStore: InMemorySecretStore())
+        environmentResolver: any MCPEnvironmentResolver = NoSecretMCPEnvironmentResolver()
     ) {
         self.validator = validator
         self.transportFactory = { registration in

@@ -90,6 +90,15 @@ final class ExternalMCPTests: XCTestCase {
         }
     }
 
+    func testDefaultMCPEnvironmentResolverDoesNotReadFromInMemorySecrets() throws {
+        let resolver = NoSecretMCPEnvironmentResolver()
+
+        XCTAssertEqual(try resolver.resolve([:]), [:])
+        XCTAssertThrowsError(try resolver.resolve(["GITHUB_TOKEN": .keychain(.githubToken)])) { error in
+            XCTAssertEqual(error as? MCPRegistrationError, .missingSecret("GITHUB_TOKEN"))
+        }
+    }
+
     func testStdioLauncherStartsProcessAndCallsTools() async throws {
         let scriptURL = try makeStdioServerScript()
         let registration = MCPServerRegistration(
