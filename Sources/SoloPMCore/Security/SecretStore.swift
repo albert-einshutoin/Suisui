@@ -1,6 +1,6 @@
 import Foundation
 
-public struct SecretKey: Hashable, Equatable, Sendable {
+public struct SecretKey: Codable, Hashable, Equatable, Sendable {
     public var rawValue: String
 
     public init(_ rawValue: String) {
