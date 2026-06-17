@@ -5,27 +5,6 @@ public protocol DailyCheckStateStore: Sendable {
     func recordRun(at date: Date) throws
 }
 
-public final class InMemoryDailyCheckStateStore: DailyCheckStateStore, @unchecked Sendable {
-    private var storedLastRunAt: Date?
-    private let lock = NSLock()
-
-    public init(lastRunAt: Date? = nil) {
-        self.storedLastRunAt = lastRunAt
-    }
-
-    public func lastRunAt() throws -> Date? {
-        lock.lock()
-        defer { lock.unlock() }
-        return storedLastRunAt
-    }
-
-    public func recordRun(at date: Date) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        storedLastRunAt = date
-    }
-}
-
 public final class SQLiteDailyCheckStateStore: DailyCheckStateStore, @unchecked Sendable {
     private let connection: SQLiteConnection
     private let lock = NSLock()

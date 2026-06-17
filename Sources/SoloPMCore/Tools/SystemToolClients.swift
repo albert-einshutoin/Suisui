@@ -56,54 +56,6 @@ public protocol NotificationClient: Sendable {
     func listScheduled() throws -> [NotificationRecord]
 }
 
-public final class InMemoryNotificationClient: NotificationClient, @unchecked Sendable {
-    private let authorizationStatus: ToolClientAuthorizationStatus
-    private var records: [NotificationRecord]
-    private var nextID: Int
-    private let lock = NSLock()
-
-    public init(authorizationStatus: ToolClientAuthorizationStatus = .authorized) {
-        self.authorizationStatus = authorizationStatus
-        self.records = []
-        self.nextID = 1
-    }
-
-    public func schedule(_ draft: NotificationDraft) throws -> NotificationRecord {
-        try ensureAuthorized()
-        lock.lock()
-        defer { lock.unlock() }
-
-        let id = draft.identifierHint ?? "notification-\(nextID)"
-        nextID += 1
-        let record = NotificationRecord(id: id, title: draft.title, body: draft.body, scheduledAt: draft.scheduledAt)
-        records.append(record)
-        return record
-    }
-
-    public func cancel(id: String) throws {
-        try ensureAuthorized()
-        lock.lock()
-        defer { lock.unlock() }
-
-        guard let index = records.firstIndex(where: { $0.id == id }) else {
-            throw ToolClientError.notFound("Notification \(id) was not found.")
-        }
-        records.remove(at: index)
-    }
-
-    public func listScheduled() throws -> [NotificationRecord] {
-        lock.lock()
-        defer { lock.unlock() }
-        return records
-    }
-
-    private func ensureAuthorized() throws {
-        guard authorizationStatus == .authorized else {
-            throw ToolClientError.permissionDenied("Notification permission is denied.")
-        }
-    }
-}
-
 public struct CalendarEventDraft: Equatable, Sendable {
     public var title: String
     public var startAt: String
@@ -133,42 +85,6 @@ public struct CalendarEventRecord: Equatable, Sendable {
 public protocol CalendarClient: Sendable {
     func createEvent(_ draft: CalendarEventDraft) throws -> CalendarEventRecord
     func listEvents() throws -> [CalendarEventRecord]
-}
-
-public final class InMemoryCalendarClient: CalendarClient, @unchecked Sendable {
-    private let authorizationStatus: ToolClientAuthorizationStatus
-    private var records: [CalendarEventRecord]
-    private var nextID: Int
-    private let lock = NSLock()
-
-    public init(authorizationStatus: ToolClientAuthorizationStatus = .authorized) {
-        self.authorizationStatus = authorizationStatus
-        self.records = []
-        self.nextID = 1
-    }
-
-    public func createEvent(_ draft: CalendarEventDraft) throws -> CalendarEventRecord {
-        try ensureAuthorized()
-        lock.lock()
-        defer { lock.unlock() }
-
-        let record = CalendarEventRecord(id: "calendar-event-\(nextID)", draft: draft)
-        nextID += 1
-        records.append(record)
-        return record
-    }
-
-    public func listEvents() throws -> [CalendarEventRecord] {
-        lock.lock()
-        defer { lock.unlock() }
-        return records
-    }
-
-    private func ensureAuthorized() throws {
-        guard authorizationStatus == .authorized else {
-            throw ToolClientError.permissionDenied("Calendar permission is denied.")
-        }
-    }
 }
 
 public struct ReminderDraft: Equatable, Sendable {
@@ -203,60 +119,6 @@ public protocol ReminderClient: Sendable {
     func create(_ draft: ReminderDraft) throws -> ReminderRecord
     func markComplete(id: String) throws -> ReminderRecord
     func list() throws -> [ReminderRecord]
-}
-
-public final class InMemoryReminderClient: ReminderClient, @unchecked Sendable {
-    private let authorizationStatus: ToolClientAuthorizationStatus
-    private var records: [ReminderRecord]
-    private var nextID: Int
-    private let lock = NSLock()
-
-    public init(authorizationStatus: ToolClientAuthorizationStatus = .authorized) {
-        self.authorizationStatus = authorizationStatus
-        self.records = []
-        self.nextID = 1
-    }
-
-    public func create(_ draft: ReminderDraft) throws -> ReminderRecord {
-        try ensureAuthorized()
-        lock.lock()
-        defer { lock.unlock() }
-
-        let record = ReminderRecord(
-            id: "reminder-\(nextID)",
-            title: draft.title,
-            dueAt: draft.dueAt,
-            listName: draft.listName,
-            isCompleted: false
-        )
-        nextID += 1
-        records.append(record)
-        return record
-    }
-
-    public func markComplete(id: String) throws -> ReminderRecord {
-        try ensureAuthorized()
-        lock.lock()
-        defer { lock.unlock() }
-
-        guard let index = records.firstIndex(where: { $0.id == id }) else {
-            throw ToolClientError.notFound("Reminder \(id) was not found.")
-        }
-        records[index].isCompleted = true
-        return records[index]
-    }
-
-    public func list() throws -> [ReminderRecord] {
-        lock.lock()
-        defer { lock.unlock() }
-        return records
-    }
-
-    private func ensureAuthorized() throws {
-        guard authorizationStatus == .authorized else {
-            throw ToolClientError.permissionDenied("Reminder permission is denied.")
-        }
-    }
 }
 
 public struct FileArtifact: Equatable, Sendable {
@@ -405,31 +267,4 @@ public struct MailDraftRecord: Equatable, Sendable {
 public protocol MailDraftClient: Sendable {
     func createTextDraft(to: String?, subject: String, body: String) throws -> MailDraftRecord
     func listDrafts() throws -> [MailDraftRecord]
-}
-
-public final class InMemoryMailDraftClient: MailDraftClient, @unchecked Sendable {
-    private var records: [MailDraftRecord]
-    private var nextID: Int
-    private let lock = NSLock()
-
-    public init() {
-        self.records = []
-        self.nextID = 1
-    }
-
-    public func createTextDraft(to: String?, subject: String, body: String) throws -> MailDraftRecord {
-        lock.lock()
-        defer { lock.unlock() }
-
-        let record = MailDraftRecord(id: "mail-draft-\(nextID)", to: to, subject: subject, body: body)
-        nextID += 1
-        records.append(record)
-        return record
-    }
-
-    public func listDrafts() throws -> [MailDraftRecord] {
-        lock.lock()
-        defer { lock.unlock() }
-        return records
-    }
 }

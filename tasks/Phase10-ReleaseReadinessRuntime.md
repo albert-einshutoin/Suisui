@@ -172,6 +172,13 @@
 - [x] 既存 unit tests は test support の test double を明示利用する。
 - [x] 完了条件: shipping module の public API から infrastructure test doubles を除去する。
 
+### P10-019: Local in-memory CRUD/system client isolation
+
+- [x] `Sources/` に local CRUD / system client 用 `InMemory*` 実装が含まれていないことを regression test で確認する。
+- [x] `InMemoryProjectBoardStore` / `InMemoryDailyCheckStateStore` / `InMemoryLaunchAtLoginClient` は `Tests/` 配下の test support に隔離する。
+- [x] `InMemoryNotificationClient` / `InMemoryCalendarClient` / `InMemoryReminderClient` / `InMemoryMailDraftClient` は `Tests/` 配下の test support に隔離する。
+- [x] 完了条件: shipping module の local CRUD/system integration public API から in-memory success path を除去する。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
