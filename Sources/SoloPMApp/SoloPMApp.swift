@@ -10,8 +10,13 @@ struct SoloPM: App {
 #if canImport(Sparkle)
     @NSApplicationDelegateAdaptor(SparkleAppDelegate.self) private var sparkleAppDelegate
 #endif
+    @StateObject private var menuBarController: MenuBarSummaryController
 
-    private let menuBarViewModel = AppRuntimeFactory.makeMenuBarSummaryViewModel()
+    @MainActor
+    init() {
+        _menuBarController = StateObject(wrappedValue: AppRuntimeFactory.makeMenuBarSummaryController())
+    }
+
     var body: some Scene {
         WindowGroup("SoloPM", id: "project-board") {
             ProjectBoardView(viewModel: AppRuntimeFactory.makeProjectBoardViewModel())
@@ -24,7 +29,7 @@ struct SoloPM: App {
         .defaultSize(width: 560, height: 420)
 
         MenuBarExtra("SoloPM", systemImage: "checklist") {
-            MenuBarPanel(viewModel: menuBarViewModel)
+            MenuBarPanel(controller: menuBarController)
         }
         .menuBarExtraStyle(.window)
 
@@ -64,7 +69,11 @@ private final class SparkleAppDelegate: NSObject, NSApplicationDelegate {
 private struct MenuBarPanel: View {
     @Environment(\.openWindow) private var openWindow
 
-    let viewModel: MenuBarSummaryViewModel
+    @ObservedObject var controller: MenuBarSummaryController
+
+    private var viewModel: MenuBarSummaryViewModel {
+        controller.viewModel
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -103,6 +112,12 @@ private struct MenuBarPanel: View {
                     .foregroundStyle(.secondary)
             }
 
+            if let errorMessage = controller.errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+
             if viewModel.hasRecentProjects {
                 Divider()
                 Text("Recent Projects")
@@ -112,11 +127,19 @@ private struct MenuBarPanel: View {
                 ForEach(viewModel.summary.recentProjectTitles, id: \.self) { title in
                     Text(title)
                         .lineLimit(1)
+                        .truncationMode(.tail)
+                        .help(title)
                 }
             }
         }
         .padding(16)
         .frame(width: 320)
+        .task {
+            controller.refresh()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
+            controller.refresh()
+        }
     }
 }
 
@@ -901,24 +924,24 @@ private enum AppRuntimeFactory {
     @MainActor
     static func makeProjectBoardViewModel() -> ProjectBoardViewModel {
         do {
-            return ProjectBoardViewModel(store: try SQLiteProjectBoardStore(path: applicationDatabaseURL().path))
+            return ProjectBoardViewModel(
+                store: try SQLiteProjectBoardStore(path: applicationDatabaseURL().path),
+                onChange: postProjectBoardDidChange
+            )
         } catch {
             return ProjectBoardViewModel(store: UnavailableProjectBoardStore(error: error))
         }
     }
 
-    static func makeMenuBarSummaryViewModel() -> MenuBarSummaryViewModel {
+    @MainActor
+    static func makeMenuBarSummaryController() -> MenuBarSummaryController {
         do {
-            let connection = try migratedConnection()
-            let projectStore = SQLiteProjectStore(connection: connection)
-            let taskStore = SQLiteTaskStore(connection: connection)
-            let summary = try DeadlineQueryService(projectStore: projectStore, taskStore: taskStore).summary()
-            let recentProjects = try projectStore.list().prefix(3).map(\.title)
-            return MenuBarSummaryViewModel(
-                summary: MenuBarSummary(deadlineSummary: summary, recentProjectTitles: Array(recentProjects))
-            )
+            let provider = try SQLiteMenuBarSummaryProvider(path: applicationDatabaseURL().path)
+            let controller = MenuBarSummaryController(provider: provider)
+            controller.refresh()
+            return controller
         } catch {
-            return MenuBarSummaryViewModel(summary: .empty)
+            return MenuBarSummaryController(provider: StaticMenuBarSummaryProvider(summary: .empty))
         }
     }
 
@@ -1059,6 +1082,10 @@ private enum AppRuntimeFactory {
         } catch {
             return []
         }
+    }
+
+    private static func postProjectBoardDidChange() {
+        NotificationCenter.default.post(name: .soloPMProjectBoardDidChange, object: nil)
     }
 
     private static func workspaceRootURL() throws -> URL {

@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 public struct MenuBarSummary: Equatable, Sendable {
@@ -97,5 +98,74 @@ public struct MenuBarSummaryViewModel: Equatable, Sendable {
         }
 
         return "No deadlines need attention"
+    }
+}
+
+public protocol MenuBarSummaryProviding: Sendable {
+    func loadMenuBarSummary() throws -> MenuBarSummary
+}
+
+public struct StaticMenuBarSummaryProvider: MenuBarSummaryProviding {
+    public var summary: MenuBarSummary
+
+    public init(summary: MenuBarSummary) {
+        self.summary = summary
+    }
+
+    public func loadMenuBarSummary() throws -> MenuBarSummary {
+        summary
+    }
+}
+
+public final class SQLiteMenuBarSummaryProvider: MenuBarSummaryProviding, @unchecked Sendable {
+    private let connection: SQLiteConnection
+    private let projectStore: SQLiteProjectStore
+    private let taskStore: SQLiteTaskStore
+
+    public init(connection: SQLiteConnection) {
+        self.connection = connection
+        self.projectStore = SQLiteProjectStore(connection: connection)
+        self.taskStore = SQLiteTaskStore(connection: connection)
+    }
+
+    public convenience init(path: String, migrations: [DatabaseMigration] = CoreMigrations.current) throws {
+        let connection = try SQLiteConnection(path: path)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: migrations)
+        self.init(connection: connection)
+    }
+
+    public func loadMenuBarSummary() throws -> MenuBarSummary {
+        let deadlineSummary = try DeadlineQueryService(projectStore: projectStore, taskStore: taskStore).summary()
+        let recentProjectTitles = try projectStore.list().prefix(3).map(\.title)
+        return MenuBarSummary(
+            deadlineSummary: deadlineSummary,
+            recentProjectTitles: Array(recentProjectTitles)
+        )
+    }
+}
+
+@MainActor
+public final class MenuBarSummaryController: ObservableObject {
+    @Published public private(set) var viewModel: MenuBarSummaryViewModel
+    @Published public private(set) var errorMessage: String?
+
+    private let provider: any MenuBarSummaryProviding
+
+    public init(
+        provider: any MenuBarSummaryProviding,
+        initialViewModel: MenuBarSummaryViewModel = MenuBarSummaryViewModel()
+    ) {
+        self.provider = provider
+        self.viewModel = initialViewModel
+    }
+
+    public func refresh() {
+        do {
+            viewModel = MenuBarSummaryViewModel(summary: try provider.loadMenuBarSummary())
+            errorMessage = nil
+        } catch {
+            viewModel = MenuBarSummaryViewModel(summary: .empty)
+            errorMessage = "Menu bar summary is unavailable."
+        }
     }
 }

@@ -40,6 +40,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("createTask("))
     }
 
+    func testMenuBarSummaryRefreshesFromRuntimeController() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(appSource.contains("@StateObject private var menuBarController: MenuBarSummaryController"))
+        XCTAssertTrue(appSource.contains("MenuBarPanel(controller: menuBarController)"))
+        XCTAssertTrue(appSource.contains("makeMenuBarSummaryController()"))
+        XCTAssertTrue(appSource.contains(".onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange))"))
+        XCTAssertFalse(appSource.contains("private let menuBarViewModel = AppRuntimeFactory.makeMenuBarSummaryViewModel()"))
+    }
+
     func testRuntimeAppCompositionDoesNotUseDemoOrInMemorySuccessPath() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 

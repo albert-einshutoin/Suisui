@@ -482,10 +482,16 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var errorMessage: String?
 
     private let store: any ProjectBoardStore
+    private let onChange: () -> Void
 
-    public init(store: any ProjectBoardStore, snapshot: ProjectBoardSnapshot = .empty) {
+    public init(
+        store: any ProjectBoardStore,
+        snapshot: ProjectBoardSnapshot = .empty,
+        onChange: @escaping () -> Void = {}
+    ) {
         self.store = store
         self.snapshot = snapshot
+        self.onChange = onChange
         self.selectedProjectID = snapshot.projects.first?.id
     }
 
@@ -545,6 +551,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             selectedTaskID = task.id
             load()
             selectedTaskID = task.id
+            onChange()
             return task
         } catch ProjectBoardStoreError.emptyTitle {
             errorMessage = "Task title is required."
@@ -562,6 +569,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             load()
             selectedProjectID = project.id
             selectedTaskID = nil
+            onChange()
             return project
         } catch ProjectBoardStoreError.emptyProjectTitle {
             errorMessage = "Project title is required."
@@ -581,6 +589,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             _ = try store.updateProject(id: selectedProjectID, title: title)
             load()
             self.selectedProjectID = selectedProjectID
+            onChange()
         } catch ProjectBoardStoreError.emptyProjectTitle {
             errorMessage = "Project title is required."
         } catch {
@@ -597,6 +606,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             _ = try store.completeProject(id: selectedProjectID)
             load()
             self.selectedProjectID = selectedProjectID
+            onChange()
         } catch {
             errorMessage = String(describing: error)
         }
@@ -627,6 +637,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             )
             load()
             selectedTaskID = selectedTask.id
+            onChange()
         } catch ProjectBoardStoreError.emptyTitle {
             errorMessage = "Task title is required."
         } catch {
@@ -643,6 +654,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             try store.deleteTask(id: selectedTaskID)
             self.selectedTaskID = nil
             load()
+            onChange()
         } catch {
             errorMessage = String(describing: error)
         }

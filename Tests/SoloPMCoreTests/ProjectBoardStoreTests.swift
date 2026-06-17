@@ -101,6 +101,45 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(updated.subtitle, "0 open / 0 total")
     }
 
+    @MainActor
+    func testProjectBoardViewModelNotifiesAfterSuccessfulMutations() {
+        var changeCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+
+        _ = viewModel.createProject(title: "Launch Readiness")
+        _ = viewModel.createTask(title: "Prepare release notes", status: .planned, priority: .high)
+        viewModel.updateSelectedTask(
+            title: "Prepare investor release notes",
+            detail: "Focus on working CRUD and local-first data.",
+            status: .inProgress,
+            priority: .high,
+            dueAt: "2026-06-21"
+        )
+        viewModel.deleteSelectedTask()
+        viewModel.completeSelectedProject()
+
+        XCTAssertEqual(changeCount, 5)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelDoesNotNotifyAfterFailedMutation() {
+        var changeCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+
+        _ = viewModel.createTask(title: "   ")
+
+        XCTAssertEqual(changeCount, 0)
+        XCTAssertEqual(viewModel.errorMessage, "Task title is required.")
+    }
+
     private func makeStore() throws -> SQLiteProjectBoardStore {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)

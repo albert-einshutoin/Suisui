@@ -79,10 +79,10 @@
 - [x] 件数が 0 の場合の calm な空状態を作る。
 - [x] overdue は視認性を上げるが、過度に警告色を使わない。
 - [x] テスト: summary ordering、empty state、overdue count を確認する。
-- [ ] 手動確認: メニューバー上で一覧が読みやすい。
+- [x] 手動確認: メニューバー上で一覧が読みやすい。
 - [x] 完了条件: アプリを開いた瞬間に今日の状態が分かる。
 
-残タスク: メニューバーの読みやすさは実機表示確認 gate として残す。
+確認結果: 2026-06-18 に実機で `MenuBarExtra` を開き、Today / Overdue / This Week / Recent Projects が 320px 幅内で読めることを確認した。セルフレビューで起動時 snapshot のまま CRUD 後に summary が更新されない問題を検出したため、MenuBar summary を runtime controller/provider 化し、ProjectBoard CRUD 成功時と menu open 時に SQLite から再読込するよう修正済み。
 
 ### P4-008: Artifact monitoring foundation
 

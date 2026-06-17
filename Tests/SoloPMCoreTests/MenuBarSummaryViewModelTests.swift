@@ -48,4 +48,51 @@ final class MenuBarSummaryViewModelTests: XCTestCase {
 
         XCTAssertNil(viewModel.emptyStateLabel)
     }
+
+    @MainActor
+    func testMenuBarSummaryControllerRefreshesFromProvider() {
+        let provider = MutableMenuBarSummaryProvider(summary: MenuBarSummary(todayTaskCount: 1))
+        let controller = MenuBarSummaryController(provider: provider)
+
+        controller.refresh()
+        XCTAssertEqual(controller.viewModel.todayLabel, "1 task today")
+
+        provider.summary = MenuBarSummary(todayTaskCount: 2, overdueTaskCount: 1, dueThisWeekCount: 4)
+        controller.refresh()
+
+        XCTAssertEqual(controller.viewModel.rows.map(\.value), ["2 tasks today", "1 overdue", "4 due this week"])
+        XCTAssertNil(controller.errorMessage)
+    }
+
+    func testSQLiteMenuBarSummaryProviderReadsLatestProjectBoardChanges() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let provider = SQLiteMenuBarSummaryProvider(connection: connection)
+
+        let project = try boardStore.createProject(title: "Launch Readiness")
+        _ = try boardStore.createTask(ProjectBoardTaskDraft(
+            projectID: project.id,
+            title: "Ship investor demo",
+            status: .planned,
+            priority: .high,
+            dueAt: "2099-01-01"
+        ))
+
+        let summary = try provider.loadMenuBarSummary()
+
+        XCTAssertEqual(summary.recentProjectTitles.first, "Launch Readiness")
+    }
+}
+
+private final class MutableMenuBarSummaryProvider: MenuBarSummaryProviding, @unchecked Sendable {
+    var summary: MenuBarSummary
+
+    init(summary: MenuBarSummary) {
+        self.summary = summary
+    }
+
+    func loadMenuBarSummary() throws -> MenuBarSummary {
+        summary
+    }
 }
