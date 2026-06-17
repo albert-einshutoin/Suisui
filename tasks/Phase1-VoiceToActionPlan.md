@@ -53,7 +53,7 @@
 - [x] 入力は `PlanningRequest`、出力は raw text ではなく `PlanningResponse` にする。
 - [x] provider error は auth、rate limit、network、invalid response、unknown に分類する。
 - [x] test 用 `FakeLLMProvider` を作る。
-- [ ] テスト: provider error が UI 表示用 error に変換されることを確認する。
+- [x] テスト: provider error が UI 表示用 error に変換されることを確認する。
 - [x] 完了条件: OpenAI 以外の provider を後で追加できる。
 
 ### P1-005: OpenAI Responses API adapter
