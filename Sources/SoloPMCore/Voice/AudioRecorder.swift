@@ -9,7 +9,7 @@ public enum AudioRecordingState: Equatable, Sendable {
     case failed(String)
 }
 
-public protocol AudioRecorder: Sendable {
+public protocol AudioRecorder {
     var state: AudioRecordingState { get }
 
     mutating func start(at date: Date) throws
@@ -60,4 +60,3 @@ public struct FakeAudioRecorder: AudioRecorder {
         return audio
     }
 }
-
