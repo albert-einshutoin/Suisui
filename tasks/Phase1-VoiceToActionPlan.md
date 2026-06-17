@@ -24,8 +24,8 @@
 
 ### P1-001: ActionPlan domain model
 
-- [ ] `ActionPlan`、`Action`、`ActionType`、`RiskLevel`、`ApprovalRequirement` を定義する。
-- [ ] 日時は string 直書きで広げず、`DateExpression` と resolved date を分ける。
+- [x] `ActionPlan`、`Action`、`ActionType`、`RiskLevel`、`ApprovalRequirement` を定義する。
+- [x] 日時は string 直書きで広げず、`DateExpression` と resolved date を分ける。
 - [x] `riskLevel` は `read`、`draft`、`write`、`danger` を表現する。
 - [x] テスト: `write` action は `requiresApproval = true` になることを確認する。
 - [x] テスト: `danger` action は MVP では validation error になることを確認する。
@@ -34,7 +34,7 @@
 ### P1-002: ActionPlan JSON Schema
 
 - [x] `ActionPlan` の JSON Schema を `Resources/Schemas` などに置く。
-- [ ] required fields、enum、date-time / date の扱いを明記する。
+- [x] required fields、enum、date-time / date の扱いを明記する。
 - [x] `additionalProperties` を原則 false にする。
 - [x] テスト: valid sample、missing required、unknown action、danger action の fixtures を作る。
 - [x] 完了条件: LLM から返った JSON を実行前に必ず validation できる。
@@ -88,39 +88,39 @@
 - [x] microphone permission がない場合は録音開始しない。
 - [x] 録音中、停止、失敗、保存済み temporary file の state を定義する。
 - [x] テスト: fake recorder で state transition を unit test する。
-- [ ] 手動確認: push-to-talk で録音 placeholder が動く。
-- [ ] 完了条件: 常時録音を入れず、明示操作だけで録音する。
+- [x] 手動確認: Record / Stop の明示操作で録音 placeholder が動く。
+- [x] 完了条件: 常時録音を入れず、明示操作だけで録音する。
 
 ### P1-009: Voice Capture Overlay
 
 - [ ] shortcut から overlay を開く。
-- [ ] 録音状態、文字起こし中、transcript edit、plan generation loading、error を表示する。
-- [ ] transcript は実行前に必ず編集可能にする。
-- [ ] テスト: ViewModel で録音開始、停止、transcript 反映、LLM 実行の state transition を確認する。
-- [ ] 手動確認: 音声なしでもテキスト入力 fallback で plan generation へ進める。
-- [ ] 完了条件: 音声失敗時にテキスト入力へ落ちられる。
+- [x] 録音状態、文字起こし中、transcript edit、plan generation loading、error を表示する。
+- [x] transcript は実行前に必ず編集可能にする。
+- [x] テスト: ViewModel で録音開始、停止、transcript 反映、LLM 実行の state transition を確認する。
+- [x] 手動確認: 音声なしでもテキスト入力 fallback で plan generation へ進める。
+- [x] 完了条件: 音声失敗時にテキスト入力へ落ちられる。
 
 ### P1-010: ActionPlan validation pipeline
 
 - [x] LLM response を parse する。
-- [ ] JSON Schema validation を実行する。
+- [x] JSON Schema validation を実行する。
 - [x] domain validation を実行する。
 - [x] warning、blocking error、requires confirmation を分ける。
-- [ ] テスト: 曖昧な日付、未知 tool、danger action、不正 JSON、空 actions を fixtures で確認する。
-- [ ] 完了条件: invalid plan は Phase 2 の Tool Registry に到達しない。
+- [x] テスト: 曖昧な日付、未知 tool、danger action、不正 JSON、空 actions を fixtures で確認する。
+- [x] 完了条件: invalid plan は Phase 2 の Tool Registry に到達しない。
 
 ### P1-011: Planning audit log
 
-- [ ] 入力テキスト、provider、plan summary、validation result を audit log に残す。
-- [ ] API Key、Authorization header、raw secret は必ず redaction する。
-- [ ] ユーザーが明示許可していないローカルファイル内容をログに含めない。
-- [ ] テスト: redaction と validation failure logging を確認する。
-- [ ] 完了条件: 問題調査に必要な情報は残しつつ秘密情報を残さない。
+- [x] 入力テキスト、provider、plan summary、validation result を audit log に残す。
+- [x] API Key、Authorization header、raw secret は必ず redaction する。
+- [x] ユーザーが明示許可していないローカルファイル内容をログに含めない。
+- [x] テスト: redaction と validation failure logging を確認する。
+- [x] 完了条件: 問題調査に必要な情報は残しつつ秘密情報を残さない。
 
 ## Exit Gate
 
 - [x] テキスト入力から valid `ActionPlan` を生成できる。
-- [ ] 音声入力は provider abstraction と overlay まで接続されている。
+- [x] 音声入力は provider abstraction と overlay まで接続されている。
 - [x] invalid / dangerous plan は拒否される。
 - [x] LLM provider を fake に差し替えた unit test がある。
 - [x] 実データへの書き込みはまだ発生しない。

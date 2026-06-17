@@ -98,6 +98,19 @@ final class ActionExecutorTests: XCTestCase {
         XCTAssertThrowsError(try ActionExecutor(registry: registry).execute(session))
     }
 
+    func testExecutorMarksUnknownToolAsFailure() throws {
+        let registry = try ToolRegistry()
+        let session = ReviewSession(plan: .reviewFixture(actions: [
+            PlanAction(id: "missing", tool: .projectList)
+        ]))
+
+        let executed = try ActionExecutor(registry: registry).execute(session)
+
+        XCTAssertEqual(executed.executionStatus, .failed)
+        XCTAssertEqual(executed.items.first?.executionStatus, .failed)
+        XCTAssertTrue(executed.items.first?.errorMessage?.contains("unknownTool") == true)
+    }
+
     func testExecutorRecordsSkippedDisabledActionInAuditLog() throws {
         let logger = InMemoryAuditLogger()
         let registry = try ToolRegistry(tools: [
