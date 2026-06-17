@@ -68,23 +68,68 @@ final class ExternalMCPTests: XCTestCase {
             validator: validator,
             transportFactory: { _ in ExternalMCPTestKit.makeFakeServerTransport() }
         )
-        let launchedClient = try launcher.client(for: valid)
+        let launchedClient = try await launcher.client(for: valid)
         let tools = try await launchedClient.listTools()
         let result = try await launchedClient.callTool(name: "read_status", arguments: [:])
         XCTAssertTrue(tools.contains { $0.name == "read_status" })
         XCTAssertEqual(result.content.first?.text, "status: ok")
 
-        XCTAssertThrowsError(try launcher.client(for: MCPServerRegistration(
-            id: "disabled",
-            displayName: "Disabled",
-            command: "node",
+        do {
+            _ = try await launcher.client(for: MCPServerRegistration(
+                id: "disabled",
+                displayName: "Disabled",
+                command: "node",
+                arguments: [],
+                environment: [:],
+                workingDirectory: nil,
+                isEnabled: false
+            ))
+            XCTFail("disabled server should not launch")
+        } catch {
+            XCTAssertEqual(error as? MCPRegistrationError, .serverDisabled)
+        }
+    }
+
+    func testStdioLauncherStartsProcessAndCallsTools() async throws {
+        let scriptURL = try makeStdioServerScript()
+        let registration = MCPServerRegistration(
+            id: "stdio",
+            displayName: "Stdio MCP",
+            command: scriptURL.path,
             arguments: [],
             environment: [:],
             workingDirectory: nil,
-            isEnabled: false
-        ))) { error in
-            XCTAssertEqual(error as? MCPRegistrationError, .serverDisabled)
-        }
+            isEnabled: true
+        )
+        let client = try await MCPStdioServerLauncher().client(for: registration)
+
+        let initialize = try await client.initialize()
+        let tools = try await client.listTools()
+        let result = try await client.callTool(name: "read_status", arguments: [:])
+
+        XCTAssertEqual(initialize.protocolVersion, MCPProtocolVersion.v2025_11_25.rawValue)
+        XCTAssertEqual(tools.map(\.name), ["read_status"])
+        XCTAssertEqual(result.content.first?.text, "status: ok")
+    }
+
+    @MainActor
+    func testExternalMCPSettingsViewModelPersistsRegistration() throws {
+        let store = InMemoryMCPServerRegistrationStore()
+        let viewModel = ExternalMCPSettingsViewModel(store: store)
+
+        viewModel.updateDisplayName("Local Files")
+        viewModel.updateCommand("/usr/bin/env")
+        viewModel.updateArgumentsText("node server.js")
+        viewModel.updateWorkingDirectory("/tmp")
+        viewModel.updateEnabled(true)
+        viewModel.save()
+
+        let saved = try XCTUnwrap(try store.loadRegistrations().first)
+        XCTAssertEqual(saved.displayName, "Local Files")
+        XCTAssertEqual(saved.command, "/usr/bin/env")
+        XCTAssertEqual(saved.arguments, ["node", "server.js"])
+        XCTAssertEqual(saved.workingDirectory, "/tmp")
+        XCTAssertTrue(saved.isEnabled)
     }
 
     func testPermissionMappingDisablesUnknownAndBlocksDangerousTools() throws {
@@ -172,10 +217,10 @@ final class ExternalMCPTests: XCTestCase {
 
     func testTimeoutKillsProcessAndAuditsFailure() async throws {
         let logger = InMemoryAuditLogger()
-        let transport = ExternalMCPTestKit.makeTimeoutTransport()
+        let transport = ExternalMCPTestKit.makeHangingTransport()
         let processController = RecordingMCPProcessController()
         let executor = makeExecutor(
-            transport: transport,
+            client: MCPClient(serverID: "fake", transport: transport, timeout: 0.01),
             policies: ["read_status": .read],
             auditLogger: RedactingAuditLogger(base: logger),
             processController: processController
@@ -257,8 +302,40 @@ final class ExternalMCPTests: XCTestCase {
         }
     }
 
+    func testMismatchedJSONRPCResponseIDAndVersionAreRejected() async throws {
+        let mismatchedIDClient = MCPClient(serverID: "fake", transport: ExternalMCPTestKit.makeMismatchedIDTransport())
+        do {
+            _ = try await mismatchedIDClient.listTools()
+            XCTFail("mismatched id should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(error, .invalidResponse(serverID: "fake", method: "tools/list", reason: "Mismatched response id."))
+        }
+
+        let invalidVersionClient = MCPClient(serverID: "fake", transport: ExternalMCPTestKit.makeInvalidJSONRPCVersionTransport())
+        do {
+            _ = try await invalidVersionClient.listTools()
+            XCTFail("invalid JSON-RPC version should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(error, .invalidResponse(serverID: "fake", method: "tools/list", reason: "Invalid JSON-RPC version."))
+        }
+    }
+
     private func makeExecutor(
         transport: RecordingMCPTransport,
+        policies: [String: ExternalMCPToolPermission],
+        auditLogger: any AuditLogger = InMemoryAuditLogger(),
+        processController: any MCPProcessController = NoopMCPProcessController()
+    ) -> ExternalMCPToolExecutor {
+        makeExecutor(
+            client: MCPClient(serverID: "fake", transport: transport),
+            policies: policies,
+            auditLogger: auditLogger,
+            processController: processController
+        )
+    }
+
+    private func makeExecutor(
+        client: MCPClient,
         policies: [String: ExternalMCPToolPermission],
         auditLogger: any AuditLogger = InMemoryAuditLogger(),
         processController: any MCPProcessController = NoopMCPProcessController()
@@ -272,10 +349,38 @@ final class ExternalMCPTests: XCTestCase {
         return ExternalMCPToolExecutor(
             server: server,
             registry: registry,
-            client: MCPClient(serverID: "fake", transport: transport),
+            client: client,
             auditLogger: auditLogger,
             processController: processController
         )
+    }
+
+    private func makeStdioServerScript() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let scriptURL = directory.appendingPathComponent("fake-mcp.sh")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          case "$line" in
+            *\\"id\\":1*)
+              printf '%s\\n' '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","serverInfo":{"name":"stdio-fake"}}}'
+              ;;
+            *\\"method\\":\\"notifications/initialized\\"*)
+              ;;
+            *\\"id\\":2*)
+              printf '%s\\n' '{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"read_status","title":"Read Status","description":"Read status","inputSchema":{"type":"object"}}]}}'
+              ;;
+            *\\"id\\":3*)
+              printf '%s\\n' '{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"status: ok"}],"isError":false}}'
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+        return scriptURL
     }
 }
 

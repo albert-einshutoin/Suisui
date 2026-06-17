@@ -23,15 +23,17 @@ public enum ActionPlanSchema: Sendable {
             return data
         }
 
+#if SWIFT_PACKAGE
+        if let data = try? loadData(bundle: .module) {
+            return data
+        }
+#endif
+
         if let data = try? loadDataFromSourceTree() {
             return data
         }
 
-#if SWIFT_PACKAGE
-        return try loadData(bundle: .module)
-#else
         throw ActionPlanSchemaError.resourceNotFound
-#endif
     }
 
     public static func loadData(bundle: Bundle) throws -> Data {

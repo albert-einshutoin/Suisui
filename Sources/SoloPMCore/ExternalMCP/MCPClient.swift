@@ -98,7 +98,13 @@ public final class MCPClient: @unchecked Sendable {
 
     private func send(_ request: MCPJSONRPCRequest) async throws -> JSONValue {
         do {
-            let response = try await transport.send(request, timeout: timeout)
+            let response = try await sendWithTimeout(request)
+            guard response.jsonrpc == "2.0" else {
+                throw MCPClientError.invalidResponse(serverID: serverID, method: request.method, reason: "Invalid JSON-RPC version.")
+            }
+            guard response.id == request.id else {
+                throw MCPClientError.invalidResponse(serverID: serverID, method: request.method, reason: "Mismatched response id.")
+            }
             if let error = response.error {
                 throw MCPClientError.protocolError(
                     serverID: serverID,
@@ -115,6 +121,29 @@ public final class MCPClient: @unchecked Sendable {
             throw error
         } catch {
             throw MCPClientError.transportFailed(serverID: serverID, method: request.method, message: String(describing: error))
+        }
+    }
+
+    private func sendWithTimeout(_ request: MCPJSONRPCRequest) async throws -> MCPJSONRPCResponse {
+        guard timeout > 0 else {
+            throw MCPClientError.timeout(serverID: serverID, method: request.method)
+        }
+
+        return try await withThrowingTaskGroup(of: MCPJSONRPCResponse.self) { group in
+            group.addTask { [transport, timeout] in
+                try await transport.send(request, timeout: timeout)
+            }
+            group.addTask { [serverID, timeout] in
+                let nanoseconds = UInt64((timeout * 1_000_000_000).rounded(.up))
+                try await Task.sleep(nanoseconds: nanoseconds)
+                throw MCPClientError.timeout(serverID: serverID, method: request.method)
+            }
+
+            guard let response = try await group.next() else {
+                throw MCPClientError.timeout(serverID: serverID, method: request.method)
+            }
+            group.cancelAll()
+            return response
         }
     }
 }

@@ -1,10 +1,38 @@
+import Combine
 import Foundation
 
-public enum MCPEnvironmentReference: Equatable, Sendable {
+public enum MCPEnvironmentReference: Codable, Equatable, Sendable {
     case keychain(SecretKey)
+
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case key
+    }
+
+    private enum ReferenceType: String, Codable {
+        case keychain
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(ReferenceType.self, forKey: .type)
+        switch type {
+        case .keychain:
+            self = .keychain(SecretKey(try container.decode(String.self, forKey: .key)))
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .keychain(let key):
+            try container.encode(ReferenceType.keychain, forKey: .type)
+            try container.encode(key.rawValue, forKey: .key)
+        }
+    }
 }
 
-public struct MCPServerRegistration: Equatable, Sendable {
+public struct MCPServerRegistration: Codable, Equatable, Sendable {
     public var id: String
     public var displayName: String
     public var command: String
@@ -29,6 +57,163 @@ public struct MCPServerRegistration: Equatable, Sendable {
         self.environment = environment
         self.workingDirectory = workingDirectory
         self.isEnabled = isEnabled
+    }
+}
+
+public enum MCPRegistrationStoreError: Error, Equatable, Sendable {
+    case encodingFailed
+    case decodingFailed
+}
+
+public protocol MCPServerRegistrationStore: Sendable {
+    func loadRegistrations() throws -> [MCPServerRegistration]
+    func saveRegistrations(_ registrations: [MCPServerRegistration]) throws
+}
+
+public final class UserDefaultsMCPServerRegistrationStore: MCPServerRegistrationStore, @unchecked Sendable {
+    private let defaults: UserDefaults
+    private let key: String
+    private let lock = NSLock()
+
+    public init(defaults: UserDefaults = .standard, key: String = "external_mcp.registrations") {
+        self.defaults = defaults
+        self.key = key
+    }
+
+    public func loadRegistrations() throws -> [MCPServerRegistration] {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let data = defaults.data(forKey: key) else {
+            return []
+        }
+        do {
+            return try JSONDecoder().decode([MCPServerRegistration].self, from: data)
+        } catch {
+            throw MCPRegistrationStoreError.decodingFailed
+        }
+    }
+
+    public func saveRegistrations(_ registrations: [MCPServerRegistration]) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        do {
+            let data = try JSONEncoder().encode(registrations)
+            defaults.set(data, forKey: key)
+        } catch {
+            throw MCPRegistrationStoreError.encodingFailed
+        }
+    }
+}
+
+public final class InMemoryMCPServerRegistrationStore: MCPServerRegistrationStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var registrations: [MCPServerRegistration]
+
+    public init(registrations: [MCPServerRegistration] = []) {
+        self.registrations = registrations
+    }
+
+    public func loadRegistrations() throws -> [MCPServerRegistration] {
+        lock.lock()
+        defer { lock.unlock() }
+        return registrations
+    }
+
+    public func saveRegistrations(_ registrations: [MCPServerRegistration]) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        self.registrations = registrations
+    }
+}
+
+@MainActor
+public final class ExternalMCPSettingsViewModel: ObservableObject {
+    @Published public private(set) var registration: MCPServerRegistration
+    @Published public private(set) var toolRows: [ExternalMCPToolCatalogRow]
+    @Published public private(set) var auditRows: [ExternalMCPAuditHistoryRow]
+    @Published public private(set) var errorMessage: String?
+
+    private let store: any MCPServerRegistrationStore
+
+    public init(
+        store: any MCPServerRegistrationStore,
+        toolRows: [ExternalMCPToolCatalogRow] = [],
+        auditRows: [ExternalMCPAuditHistoryRow] = []
+    ) {
+        self.store = store
+        self.toolRows = toolRows
+        self.auditRows = auditRows
+        self.errorMessage = nil
+        self.registration = Self.blankRegistration()
+        refresh()
+    }
+
+    public var display: MCPServerRegistrationDisplayModel {
+        MCPServerRegistrationDisplayModel(registration: registration)
+    }
+
+    public func refresh() {
+        do {
+            registration = try store.loadRegistrations().first ?? Self.blankRegistration()
+            errorMessage = nil
+        } catch {
+            registration = Self.blankRegistration()
+            errorMessage = String(describing: error)
+        }
+    }
+
+    public func updateEnabled(_ isEnabled: Bool) {
+        var updated = registration
+        updated.isEnabled = isEnabled
+        registration = updated
+    }
+
+    public func updateDisplayName(_ displayName: String) {
+        var updated = registration
+        updated.displayName = displayName
+        registration = updated
+    }
+
+    public func updateCommand(_ command: String) {
+        var updated = registration
+        updated.command = command
+        registration = updated
+    }
+
+    public func updateArgumentsText(_ argumentsText: String) {
+        var updated = registration
+        updated.arguments = argumentsText
+            .split(separator: " ")
+            .map(String.init)
+        registration = updated
+    }
+
+    public func updateWorkingDirectory(_ workingDirectory: String) {
+        let trimmed = workingDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
+        var updated = registration
+        updated.workingDirectory = trimmed.isEmpty ? nil : trimmed
+        registration = updated
+    }
+
+    public func save() {
+        do {
+            try store.saveRegistrations([registration])
+            errorMessage = nil
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
+    private static func blankRegistration() -> MCPServerRegistration {
+        MCPServerRegistration(
+            id: "custom-mcp",
+            displayName: "Custom MCP",
+            command: "",
+            arguments: [],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: false
+        )
     }
 }
 
@@ -90,6 +275,31 @@ public enum MCPRegistrationError: Error, Equatable, Sendable {
     case invalidCommand
     case missingBinary(String)
     case serverDisabled
+    case missingSecret(String)
+}
+
+public protocol MCPEnvironmentResolver: Sendable {
+    func resolve(_ environment: [String: MCPEnvironmentReference]) throws -> [String: String]
+}
+
+public struct SecretStoreMCPEnvironmentResolver: MCPEnvironmentResolver {
+    private let secretStore: any SecretStore
+
+    public init(secretStore: any SecretStore) {
+        self.secretStore = secretStore
+    }
+
+    public func resolve(_ environment: [String: MCPEnvironmentReference]) throws -> [String: String] {
+        try environment.reduce(into: [:]) { result, pair in
+            switch pair.value {
+            case .keychain(let key):
+                guard let value = try secretStore.read(key), !value.isEmpty else {
+                    throw MCPRegistrationError.missingSecret(pair.key)
+                }
+                result[pair.key] = value
+            }
+        }
+    }
 }
 
 public protocol MCPBinaryLocator: Sendable {
@@ -152,17 +362,32 @@ public struct MCPStdioServerLauncher: Sendable {
 
     public init(
         validator: MCPServerRegistrationValidator = MCPServerRegistrationValidator(),
+        environmentResolver: any MCPEnvironmentResolver = SecretStoreMCPEnvironmentResolver(secretStore: InMemorySecretStore())
+    ) {
+        self.validator = validator
+        self.transportFactory = { registration in
+            let resolvedEnvironment = try environmentResolver.resolve(registration.environment)
+            return MCPStdioTransport(registration: registration, resolvedEnvironment: resolvedEnvironment)
+        }
+    }
+
+    public init(
+        validator: MCPServerRegistrationValidator = MCPServerRegistrationValidator(),
         transportFactory: @escaping @Sendable (MCPServerRegistration) throws -> any MCPClientTransport
     ) {
         self.validator = validator
         self.transportFactory = transportFactory
     }
 
-    public func client(for registration: MCPServerRegistration) throws -> MCPClient {
+    public func client(for registration: MCPServerRegistration) async throws -> MCPClient {
         guard registration.isEnabled else {
             throw MCPRegistrationError.serverDisabled
         }
         try validator.validate(registration)
-        return MCPClient(serverID: registration.id, transport: try transportFactory(registration))
+        let transport = try transportFactory(registration)
+        if let process = transport as? any MCPServerProcess {
+            try await process.start()
+        }
+        return MCPClient(serverID: registration.id, transport: transport)
     }
 }

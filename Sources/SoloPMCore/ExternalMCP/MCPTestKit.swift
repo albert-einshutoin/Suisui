@@ -114,6 +114,24 @@ public enum ExternalMCPTestKit {
         }
     }
 
+    public static func makeMismatchedIDTransport() -> RecordingMCPTransport {
+        RecordingMCPTransport { request in
+            MCPJSONRPCResponse(id: request.id + 1, result: .object(["tools": .array([])]))
+        }
+    }
+
+    public static func makeInvalidJSONRPCVersionTransport() -> RecordingMCPTransport {
+        RecordingMCPTransport { request in
+            var response = MCPJSONRPCResponse(id: request.id, result: .object(["tools": .array([])]))
+            response.jsonrpc = "1.0"
+            return response
+        }
+    }
+
+    public static func makeHangingTransport() -> HangingMCPTransport {
+        HangingMCPTransport()
+    }
+
     private static func fakeResponse(for request: MCPJSONRPCRequest) -> MCPJSONRPCResponse {
         switch request.method {
         case "initialize":
@@ -166,4 +184,15 @@ public enum ExternalMCPTestKit {
             )
         }
     }
+}
+
+public final class HangingMCPTransport: MCPClientTransport, @unchecked Sendable {
+    public init() {}
+
+    public func send(_ request: MCPJSONRPCRequest, timeout: TimeInterval) async throws -> MCPJSONRPCResponse {
+        try await Task.sleep(nanoseconds: 10_000_000_000)
+        return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+    }
+
+    public func notify(_ notification: MCPJSONRPCNotification) async throws {}
 }
