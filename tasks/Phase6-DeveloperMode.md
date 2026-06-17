@@ -22,56 +22,90 @@
 
 ### P6-001: Developer Mode setting
 
-- [ ] Developer Mode を明示的な opt-in にする。
-- [ ] 有効化時に Git / GitHub / codebase scan の権限説明を表示する。
-- [ ] workspace はユーザーが選択した directory に限定する。
-- [ ] テスト: opt-in なしでは developer tools が registry に出ないことを確認する。
-- [ ] 完了条件: 一般ユーザーに不要な機能が前面に出ない。
+- [x] Developer Mode を明示的な opt-in にする。
+- [x] 有効化時に Git / GitHub / codebase scan の権限説明を表示する。
+- [x] workspace はユーザーが選択した directory に限定する。
+- [x] テスト: opt-in なしでは developer tools が registry に出ないことを確認する。
+- [x] 完了条件: 一般ユーザーに不要な機能が前面に出ない。
+
+実装メモ:
+- `DeveloperModeSettings` は `isEnabled` と `workspaceRoot` と capability set を分離し、disabled では permission disclosure も tool registry も空にする。
+- `ToolRegistryFactory.developerMode` は opt-in かつ workspace 選択済みの場合だけ developer tools を登録する。
 
 ### P6-002: Git read-only scan
 
-- [ ] `git.status`、`git.branch`、`git.log_summary`、`git.diff_summary` の read-only tool を作る。
-- [ ] shell 実行は allowlist command に限定する。
-- [ ] `git push`、`reset --hard`、`checkout --` など destructive command は実装しない。
-- [ ] テスト: fake command runner で status parse、non-git directory、command failure を確認する。
-- [ ] 完了条件: Git 状態を読み取れるが変更はできない。
+- [x] `git.status`、`git.branch`、`git.log_summary`、`git.diff_summary` の read-only tool を作る。
+- [x] shell 実行は allowlist command に限定する。
+- [x] `git push`、`reset --hard`、`checkout --` など destructive command は実装しない。
+- [x] テスト: fake command runner で status parse、non-git directory、command failure を確認する。
+- [x] 完了条件: Git 状態を読み取れるが変更はできない。
+
+実装メモ:
+- `GitReadOnlyCommandPolicy` は `status --short --branch`、`branch --show-current`、bounded `log --oneline -n`、`diff --stat` だけを許可する。
+- `GitReadOnlyClient` は workspace directory の存在確認、allowlist 検査、非 0 exit の error 化を行う。
+- `GitReadOnlyTool` は `.read` permission のみで、write / branch mutation / remote mutation は登録しない。
 
 ### P6-003: GitHub Issue creation
 
-- [ ] `github.issue.create_draft` と `github.issue.create_with_approval` を分ける。
-- [ ] token は Keychain に保存する。
-- [ ] repo、title、body、labels、assignees を Review UI で確認する。
-- [ ] テスト: approval なし create が拒否されることを確認する。
-- [ ] 完了条件: GitHub への write は必ず明示承認を通る。
+- [x] `github.issue.create_draft` と `github.issue.create_with_approval` を分ける。
+- [x] token は Keychain に保存する。
+- [x] repo、title、body、labels、assignees を Review UI で確認する。
+- [x] テスト: approval なし create が拒否されることを確認する。
+- [x] 完了条件: GitHub への write は必ず明示承認を通る。
+
+実装メモ:
+- `GitHubIssueCreationService` は draft 作成では token を読まず、`createWithApproval` の承認後に `SecretStore.githubToken` から読み出す。
+- 現時点は client protocol 境界まで。実 GitHub API write adapter は UI approval flow と合わせて後続実装する。
 
 ### P6-004: README / release note generation
 
-- [ ] local Git 状態、commits、tasks をもとに draft text を生成する。
-- [ ] 生成物は file write ではなく draft preview から開始する。
-- [ ] 既存 README 上書きは禁止し、提案 diff または新規 draft file にする。
-- [ ] テスト: generated draft に secret が含まれないことを確認する。
-- [ ] 完了条件: OSS 作者の日常作業を安全に補助できる。
+- [x] local Git 状態、commits、tasks をもとに draft text を生成する。
+- [x] 生成物は file write ではなく draft preview から開始する。
+- [x] 既存 README 上書きは禁止し、提案 diff または新規 draft file にする。
+- [x] テスト: generated draft に secret が含まれないことを確認する。
+- [x] 完了条件: OSS 作者の日常作業を安全に補助できる。
+
+実装メモ:
+- `DeveloperDraftGenerator` は `README.draft.md` / `RELEASE_NOTES.draft.md` の preview-only policy を返すだけで、ファイル書き込みはしない。
+- GitHub/OpenAI/token/password 系の secret redaction を draft 生成時に通す。
 
 ### P6-005: CLI foundation
 
-- [ ] `solopm` CLI の command scope を決める。
-- [ ] 最初は `status`、`tasks due`、`plan validate`、`frames search` など read / local 操作に限定する。
-- [ ] app DB との接続方法を決める。
-- [ ] テスト: CLI argument parse と exit code を確認する。
-- [ ] 完了条件: GUI なしでも主要な local 状態を確認できる。
+- [x] `solopm` CLI の command scope を決める。
+- [x] 最初は `status`、`tasks due`、`plan validate`、`frames search` など read / local 操作に限定する。
+- [x] app DB との接続方法を決める。
+- [x] テスト: CLI argument parse と exit code を確認する。
+- [x] 完了条件: GUI なしでも主要な local 状態を確認できる。
+
+実装メモ:
+- SwiftPM product `solopm` / target `SoloPMCLI` を追加した。
+- `status`、`tasks due`、`frames search` は local read skeleton、`plan validate <path>` は `ActionPlanValidator` を使う。
+- app DB は `appDefaultReadOnly` policy として固定し、write 系 command は parser で受け付けない。
 
 ### P6-006: codebase-memory optional integration
 
-- [ ] codebase-memory-mcp は optional connector として扱う。
-- [ ] 接続前に送信される文脈を preview する。
-- [ ] MVP の Knowledge Frame と責務を混ぜない。
-- [ ] テスト: connector disabled 時に planning が失敗しないことを確認する。
-- [ ] 完了条件: 外部記憶連携がなくても SoloPM が成立する。
+- [x] codebase-memory-mcp は optional connector として扱う。
+- [x] 接続前に送信される文脈を preview する。
+- [x] MVP の Knowledge Frame と責務を混ぜない。
+- [x] テスト: connector disabled 時に planning が失敗しないことを確認する。
+- [x] 完了条件: 外部記憶連携がなくても SoloPM が成立する。
+
+実装メモ:
+- `CodebaseMemoryPlanningIntegration` は disabled / preview-only / enabled-with-approval を分ける。
+- disabled または未承認では planning request をそのまま返し、connector を呼ばない。
+- 外部 connector の検索結果は明示的に `codebase-memory:` prefix の candidate として扱う。
 
 ## Exit Gate
 
-- [ ] Developer Mode は opt-in。
-- [ ] Git 操作は read-only。
-- [ ] GitHub write は approval 必須。
-- [ ] CLI は local / read 系から開始している。
-- [ ] OSS 作者向け workflow の sample がある。
+- [x] Developer Mode は opt-in。
+- [x] Git 操作は read-only。
+- [x] GitHub write は approval 必須。
+- [x] CLI は local / read 系から開始している。
+- [x] OSS 作者向け workflow の sample がある。
+
+OSS 作者向け sample workflow:
+1. Developer Mode を有効化し、対象 repository directory を workspace として選択する。
+2. `git.status` / `git.diff_summary` / `git.log_summary` で local state を読み取る。
+3. `DeveloperDraftGenerator` で README / release note draft を preview し、secret redaction report を確認する。
+4. 必要な issue は `github.issue.create_draft` で Review UI に出し、明示承認後に `github.issue.create_with_approval` を通す。
+5. GUI が不要な確認は `solopm status` / `solopm plan validate <path>` から read-only に実行する。

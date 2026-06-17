@@ -121,6 +121,10 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
     case frameCreate = "frame.create"
     case frameUpdate = "frame.update"
     case mailDraftCreateText = "maildraft.create_text"
+    case gitStatus = "git.status"
+    case gitBranch = "git.branch"
+    case gitLogSummary = "git.log_summary"
+    case gitDiffSummary = "git.diff_summary"
 
     public var defaultRiskLevel: RiskLevel {
         switch self {
@@ -132,7 +136,11 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
              .filesystemScanProjectArtifacts,
              .frameSearch,
              .frameList,
-             .frameGet:
+             .frameGet,
+             .gitStatus,
+             .gitBranch,
+             .gitLogSummary,
+             .gitDiffSummary:
             .read
         case .mailDraftCreateText:
             .draft
@@ -183,6 +191,8 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
             .knowledgeFrame
         case .mailDraftCreateText:
             .mailDraft
+        case .gitStatus, .gitBranch, .gitLogSummary, .gitDiffSummary:
+            .developer
         }
     }
 }
@@ -196,6 +206,17 @@ public enum ActionType: String, Codable, CaseIterable, Equatable, Sendable {
     case filesystem
     case knowledgeFrame
     case mailDraft
+    case developer
+}
+
+public extension ActionTool {
+    static var defaultPlanningTools: [ActionTool] {
+        allCases.filter { $0.actionType != .developer }
+    }
+
+    static var developerModePlanningTools: [ActionTool] {
+        [.gitStatus, .gitBranch, .gitLogSummary, .gitDiffSummary]
+    }
 }
 
 public enum ApprovalRequirement: String, Codable, Comparable, Equatable, Sendable {

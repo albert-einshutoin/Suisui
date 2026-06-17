@@ -11,7 +11,7 @@ public struct PlanningRequest: Equatable, Sendable {
         userInput: String,
         currentDate: Date = Date(),
         timeZoneIdentifier: String = TimeZone.current.identifier,
-        availableTools: [ActionTool] = ActionTool.allCases,
+        availableTools: [ActionTool] = ActionTool.defaultPlanningTools,
         knowledgeFrameCandidates: [KnowledgeFrameCandidate] = []
     ) {
         self.userInput = userInput
@@ -64,4 +64,3 @@ public struct PlanningResponse: Equatable, Sendable {
         self.validationResult = validationResult
     }
 }
-

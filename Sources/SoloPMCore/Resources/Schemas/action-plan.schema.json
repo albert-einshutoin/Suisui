@@ -56,7 +56,11 @@
         "frame.get",
         "frame.create",
         "frame.update",
-        "maildraft.create_text"
+        "maildraft.create_text",
+        "git.status",
+        "git.branch",
+        "git.log_summary",
+        "git.diff_summary"
       ]
     },
     "action": {

@@ -417,6 +417,8 @@ private struct ReviewActionRow: View {
             "text.book.closed"
         case .mailDraft:
             "envelope"
+        case .developer:
+            "terminal"
         }
     }
 
@@ -491,6 +493,8 @@ private struct ActionPlanPreview: View {
             "text.book.closed"
         case .mailDraft:
             "envelope"
+        case .developer:
+            "terminal"
         }
     }
 

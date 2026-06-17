@@ -7,6 +7,7 @@ final class ActionPlanDomainTests: XCTestCase {
         XCTAssertEqual(ActionTool.taskCreate.actionType, .task)
         XCTAssertEqual(ActionTool.calendarCreateEvent.actionType, .calendar)
         XCTAssertEqual(ActionTool.mailDraftCreateText.actionType, .mailDraft)
+        XCTAssertEqual(ActionTool.gitStatus.actionType, .developer)
     }
 
     func testApprovalRequirementUsesHighestActionRisk() {
