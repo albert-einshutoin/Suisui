@@ -40,19 +40,19 @@
 
 ### P5-003: Notarization pipeline
 
-- [ ] `xcrun notarytool` を使った notarization 手順を scripts または docs にする。
-- [ ] staple 手順を含める。
-- [ ] notarization 失敗時の log 取得手順を書く。
+- [x] `xcrun notarytool` を使った notarization 手順を scripts または docs にする。
+- [x] staple 手順を含める。
+- [x] notarization 失敗時の log 取得手順を書く。
 - [ ] 手動確認: notarized app を別ユーザー環境で起動確認する。
-- [ ] 完了条件: release checklist に沿って notarization できる。
+- [x] 完了条件: release checklist に沿って notarization できる。
 
 ### P5-004: DMG / ZIP packaging
 
-- [ ] DMG と ZIP のどちらを alpha 標準にするか決める。
-- [ ] DMG を使う場合は Applications への導線を作る。
-- [ ] checksum を出す。
+- [x] DMG と ZIP のどちらを alpha 標準にするか決める。
+- [x] DMG を使う場合は Applications への導線を作る。
+- [x] checksum を出す。
 - [ ] 手動確認: clean 環境で download、展開、起動できる。
-- [ ] 完了条件: ユーザーが迷わずインストールできる。
+- [x] 完了条件: ユーザーが迷わずインストールできる。
 
 ### P5-005: Sparkle update foundation
 
