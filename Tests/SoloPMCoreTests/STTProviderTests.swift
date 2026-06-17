@@ -52,7 +52,7 @@ final class STTProviderTests: XCTestCase {
     func testSkeletonProvidersExposeRequirements() {
         let whisperKit = WhisperKitProvider().availability
         let whisperCpp = WhisperCppProvider().availability
-        let openAI = OpenAITranscribeProvider().availability
+        let openAI = OpenAITranscribeProvider.defaultAvailability
 
         XCTAssertTrue(whisperKit.requiresModelDownload)
         XCTAssertTrue(whisperCpp.requiresModelDownload)

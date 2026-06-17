@@ -60,6 +60,12 @@ public struct WhisperCppProvider: SpeechToTextProvider {
 }
 
 public struct OpenAITranscribeProvider: SpeechToTextProvider {
+    public static let defaultAvailability = STTProviderAvailability(
+        providerID: .openAITranscribe,
+        isAvailable: true,
+        requiresAPIKey: true
+    )
+
     public let id: STTProviderID = .openAITranscribe
     public var availability: STTProviderAvailability
     private let secretStore: any SecretStore
@@ -68,12 +74,8 @@ public struct OpenAITranscribeProvider: SpeechToTextProvider {
     private let responseParser: OpenAITranscriptionResponseParser
 
     public init(
-        availability: STTProviderAvailability = STTProviderAvailability(
-            providerID: .openAITranscribe,
-            isAvailable: true,
-            requiresAPIKey: true
-        ),
-        secretStore: any SecretStore = InMemorySecretStore(),
+        availability: STTProviderAvailability = Self.defaultAvailability,
+        secretStore: any SecretStore,
         httpClient: any HTTPDataClient = URLSessionHTTPDataClient(),
         configuration: OpenAITranscriptionConfiguration = OpenAITranscriptionConfiguration(),
         responseParser: OpenAITranscriptionResponseParser = OpenAITranscriptionResponseParser()
@@ -223,7 +225,7 @@ public extension STTProviderCatalog {
             AppleSpeechAnalyzerProvider().availability,
             WhisperKitProvider().availability,
             WhisperCppProvider().availability,
-            OpenAITranscribeProvider().availability
+            OpenAITranscribeProvider.defaultAvailability
         ]
     )
 }

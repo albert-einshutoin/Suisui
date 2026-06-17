@@ -137,6 +137,14 @@
 - [x] 既存 tests は in-memory audit logger を test helper で明示注入する。
 - [x] 完了条件: 外部 MCP call が永続監査なし default で成功しない API になる。
 
+### P10-014: AI/STT secret store injection hardening
+
+- [x] Chat Completions provider が `InMemorySecretStore` を default injection しないことを regression test で確認する。
+- [x] OpenAI Transcribe provider が `InMemorySecretStore` を default injection しないことを regression test で確認する。
+- [x] Runtime app は `KeychainSecretStore` を明示注入する。
+- [x] Tests は `InMemorySecretStore` を明示注入する。
+- [x] 完了条件: AI / STT provider が秘密情報 store 未指定で動作しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

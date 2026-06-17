@@ -109,6 +109,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains("auditLogger: any AuditLogger = InMemoryAuditLogger()"))
     }
 
+    func testAIProvidersDoNotDefaultToInMemorySecretStore() throws {
+        let chatSource = try readPackageFile("Sources/SoloPMCore/Planning/ChatCompletionsCompatibleProvider.swift")
+        let sttSource = try readPackageFile("Sources/SoloPMCore/Voice/STTProviderSkeletons.swift")
+
+        XCTAssertFalse(chatSource.contains("secretStore: any SecretStore = InMemorySecretStore()"))
+        XCTAssertFalse(sttSource.contains("secretStore: any SecretStore = InMemorySecretStore()"))
+    }
+
     func testRuntimeAppCompositionDoesNotUseDemoOrInMemorySuccessPath() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 

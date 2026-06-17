@@ -133,7 +133,7 @@ public struct ChatCompletionsCompatibleProvider: LLMProvider {
 
     public init(
         configuration: ChatCompletionsCompatibleConfiguration,
-        secretStore: any SecretStore = InMemorySecretStore(),
+        secretStore: any SecretStore,
         httpClient: any HTTPDataClient = URLSessionHTTPDataClient(),
         promptBuilder: PlanningPromptBuilder = PlanningPromptBuilder(),
         outputTextExtractor: ChatCompletionsOutputTextExtractor = ChatCompletionsOutputTextExtractor(),
