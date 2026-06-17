@@ -26,8 +26,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
     public init(
         draft: TranscriptDraft = TranscriptDraft(),
         phase: VoiceCapturePhase = .idle,
-        audioRecorder: any AudioRecorder = FakeAudioRecorder(),
-        sttProvider: any SpeechToTextProvider = FakeSTTProvider(transcript: STTTranscript(text: "")),
+        audioRecorder: any AudioRecorder,
+        sttProvider: any SpeechToTextProvider,
         llmProvider: any LLMProvider,
         auditRecorder: PlanningAuditRecorder? = nil
     ) {

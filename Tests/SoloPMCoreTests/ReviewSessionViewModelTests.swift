@@ -127,6 +127,8 @@ final class ReviewSessionViewModelTests: XCTestCase {
             PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Publish draft")])
         ])
         let voiceViewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
             llmProvider: FakeLLMProvider(response: PlanningResponse(
                 providerID: "fake",
                 rawContent: "{}",

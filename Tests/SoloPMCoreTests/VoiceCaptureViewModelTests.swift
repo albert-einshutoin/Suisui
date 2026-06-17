@@ -19,6 +19,8 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             validationResult: ActionPlanValidationResult(issues: [])
         )
         let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
             llmProvider: FakeLLMProvider(response: response),
             auditRecorder: PlanningAuditRecorder(logger: logger)
         )
@@ -83,6 +85,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
     func testClearResetsActiveRecordingState() {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
             llmProvider: FakeLLMProvider(response: PlanningResponse(
                 providerID: "fake",
                 rawContent: "{}",
@@ -101,6 +104,8 @@ final class VoiceCaptureViewModelTests: XCTestCase {
 
     func testGeneratePlanRejectsEmptyDraft() async {
         let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
             llmProvider: FakeLLMProvider(response: PlanningResponse(
                 providerID: "fake",
                 rawContent: "{}",

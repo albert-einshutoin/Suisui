@@ -116,6 +116,13 @@
 - [x] 既存 MCP client / settings / execution tests は test support 経由で維持する。
 - [x] 完了条件: shipping module に MCP mock server 実装を含めず、ユーザー登録 server の live check だけを runtime path に残す。
 
+### P10-011: Voice capture dependency injection hardening
+
+- [x] `VoiceCaptureViewModel` が fake recorder / fake STT を default injection しないことを regression test で確認する。
+- [x] Runtime app は `AVFoundationAudioRecorder` と Settings 由来 STT provider を明示注入する。
+- [x] Unit tests は fake dependencies を明示的に渡す。
+- [x] 完了条件: text / recording flow が依存未指定で fake 成功しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

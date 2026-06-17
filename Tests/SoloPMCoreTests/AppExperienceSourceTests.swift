@@ -90,6 +90,13 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
+    func testVoiceCaptureRuntimeDependenciesAreExplicitlyInjected() throws {
+        let source = try readPackageFile("Sources/SoloPMCore/Voice/VoiceCaptureViewModel.swift")
+
+        XCTAssertFalse(source.contains("audioRecorder: any AudioRecorder = FakeAudioRecorder()"))
+        XCTAssertFalse(source.contains("sttProvider: any SpeechToTextProvider = FakeSTTProvider"))
+    }
+
     func testRuntimeAppCompositionDoesNotUseDemoOrInMemorySuccessPath() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
