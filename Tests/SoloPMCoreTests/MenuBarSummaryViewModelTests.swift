@@ -26,5 +26,26 @@ final class MenuBarSummaryViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.thisWeekLabel, "1 due this week")
         XCTAssertTrue(viewModel.hasRecentProjects)
     }
-}
 
+    func testSummaryRowsKeepStableScanningOrder() {
+        let viewModel = MenuBarSummaryViewModel(
+            summary: MenuBarSummary(todayTaskCount: 2, overdueTaskCount: 1, dueThisWeekCount: 4)
+        )
+
+        XCTAssertEqual(viewModel.rows.map(\.title), ["Today", "Overdue", "This Week"])
+        XCTAssertEqual(viewModel.rows.map(\.value), ["2 tasks today", "1 overdue", "4 due this week"])
+        XCTAssertEqual(viewModel.rows.map(\.tone), [.normal, .attention, .normal])
+    }
+
+    func testEmptyStateLabelIsCalmWhenNothingNeedsAttention() {
+        let viewModel = MenuBarSummaryViewModel()
+
+        XCTAssertEqual(viewModel.emptyStateLabel, "No deadlines need attention")
+    }
+
+    func testEmptyStateLabelIsHiddenWhenAnySummaryHasWork() {
+        let viewModel = MenuBarSummaryViewModel(summary: MenuBarSummary(overdueTaskCount: 1))
+
+        XCTAssertNil(viewModel.emptyStateLabel)
+    }
+}

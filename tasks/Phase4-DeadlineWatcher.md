@@ -73,12 +73,12 @@
 
 ### P4-007: Menu bar summaries
 
-- [ ] Today、Overdue、This Week、Recent Projects の summary を ViewModel に出す。
-- [ ] 件数が 0 の場合の calm な空状態を作る。
-- [ ] overdue は視認性を上げるが、過度に警告色を使わない。
-- [ ] テスト: summary ordering、empty state、overdue count を確認する。
+- [x] Today、Overdue、This Week、Recent Projects の summary を ViewModel に出す。
+- [x] 件数が 0 の場合の calm な空状態を作る。
+- [x] overdue は視認性を上げるが、過度に警告色を使わない。
+- [x] テスト: summary ordering、empty state、overdue count を確認する。
 - [ ] 手動確認: メニューバー上で一覧が読みやすい。
-- [ ] 完了条件: アプリを開いた瞬間に今日の状態が分かる。
+- [x] 完了条件: アプリを開いた瞬間に今日の状態が分かる。
 
 ### P4-008: Artifact monitoring foundation
 
@@ -105,7 +105,7 @@
 
 ## Exit Gate
 
-- [ ] 今日、今週、期限超過の summary が menu bar に出る。
+- [x] 今日、今週、期限超過の summary が menu bar に出る。
 - [x] DeadlineRule に基づき通知予約できる。
 - [x] overdue_daily が過剰通知しない。
 - [ ] file monitoring は許可された workspace に限定されている。

@@ -3,7 +3,7 @@ import SwiftUI
 
 @main
 struct SoloPMApplication: App {
-    private let menuBarViewModel = MenuBarSummaryViewModel()
+    private let menuBarViewModel = AppPreviewFactory.makeMenuBarSummaryViewModel()
     private let settings = AppSettings.default
 
     var body: some Scene {
@@ -48,9 +48,15 @@ private struct MenuBarPanel: View {
 
             Divider()
 
-            SummaryRow(title: "Today", value: viewModel.todayLabel, systemImage: "calendar")
-            SummaryRow(title: "Overdue", value: viewModel.overdueLabel, systemImage: "exclamationmark.triangle")
-            SummaryRow(title: "This Week", value: viewModel.thisWeekLabel, systemImage: "clock")
+            ForEach(viewModel.rows) { row in
+                SummaryRow(row: row)
+            }
+
+            if let emptyStateLabel = viewModel.emptyStateLabel {
+                Text(emptyStateLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             if viewModel.hasRecentProjects {
                 Divider()
@@ -470,16 +476,14 @@ private struct ActionPlanPreview: View {
 }
 
 private struct SummaryRow: View {
-    let title: String
-    let value: String
-    let systemImage: String
+    let row: MenuBarSummaryRow
 
     var body: some View {
         HStack {
-            Label(title, systemImage: systemImage)
+            Label(row.title, systemImage: row.systemImage)
             Spacer()
-            Text(value)
-                .foregroundStyle(.secondary)
+            Text(row.value)
+                .foregroundStyle(row.tone == .attention ? .orange : .secondary)
         }
     }
 }
@@ -513,6 +517,17 @@ private struct SettingsView: View {
 }
 
 private enum AppPreviewFactory {
+    static func makeMenuBarSummaryViewModel() -> MenuBarSummaryViewModel {
+        MenuBarSummaryViewModel(
+            summary: MenuBarSummary(
+                todayTaskCount: 2,
+                overdueTaskCount: 1,
+                dueThisWeekCount: 5,
+                recentProjectTitles: ["SoloPM Phase 4", "QZT article"]
+            )
+        )
+    }
+
     @MainActor
     static func makeVoiceCaptureViewModel() -> VoiceCaptureViewModel {
         VoiceCaptureViewModel(
