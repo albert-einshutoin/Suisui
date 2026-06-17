@@ -50,17 +50,6 @@ public enum SoloPMCLIUsage {
     """
 }
 
-public enum SoloPMCLIDatabaseConnectionPolicy: Equatable, Sendable {
-    case appDefaultReadOnly
-
-    public var description: String {
-        switch self {
-        case .appDefaultReadOnly:
-            "app default database, read-only"
-        }
-    }
-}
-
 public struct SoloPMCLIParser: Sendable {
     public init() {}
 

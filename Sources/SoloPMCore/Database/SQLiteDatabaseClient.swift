@@ -11,8 +11,9 @@ public enum DatabaseError: Error, Equatable {
 public final class SQLiteConnection {
     private var database: OpaquePointer?
 
-    public init(path: String) throws {
-        let status = sqlite3_open(path, &database)
+    public init(path: String, readOnly: Bool = false) throws {
+        let flags = readOnly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
+        let status = sqlite3_open_v2(path, &database, flags, nil)
         guard status == SQLITE_OK else {
             let message = database.map { String(cString: sqlite3_errmsg($0)) } ?? "Unknown SQLite open error."
             throw DatabaseError.openFailed(message)

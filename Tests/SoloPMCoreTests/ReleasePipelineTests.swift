@@ -112,7 +112,9 @@ final class ReleasePipelineTests: XCTestCase {
     func testReleaseReadinessReportAggregatesRuntimeMockScanTasksAndPreflight() throws {
         let script = try readPackageFile("script/release_readiness_report.sh")
 
-        XCTAssertTrue(script.contains("Sources/SoloPMCore Sources/SoloPMApp"))
+        XCTAssertTrue(script.contains("Sources/SoloPMCore"))
+        XCTAssertTrue(script.contains("Sources/SoloPMApp"))
+        XCTAssertTrue(script.contains("Sources/SoloPMCLI"))
         XCTAssertTrue(script.contains("Fake|Mock|InMemory|Static|Demo|sample|canned|stub"))
         XCTAssertTrue(script.contains("tasks/Phase*.md"))
         XCTAssertTrue(script.contains("tasks/README.md"))

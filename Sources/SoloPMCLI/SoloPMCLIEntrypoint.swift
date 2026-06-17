@@ -28,19 +28,26 @@ struct SoloPMCLI {
             print(SoloPMCLIUsage.text)
             return .success
         case .status:
-            print("status: local read command skeleton")
-            print("database: \(SoloPMCLIDatabaseConnectionPolicy.appDefaultReadOnly.description)")
-            return .success
+            return printReadOnlyLines { try $0.statusLines() }
         case .tasksDue:
-            print("tasks due: local read command skeleton")
-            print("database: \(SoloPMCLIDatabaseConnectionPolicy.appDefaultReadOnly.description)")
-            return .success
+            return printReadOnlyLines { try $0.tasksDueLines() }
         case .framesSearch(let query):
-            print("frames search: \(query)")
-            print("database: \(SoloPMCLIDatabaseConnectionPolicy.appDefaultReadOnly.description)")
-            return .success
+            return printReadOnlyLines { try $0.framesSearchLines(query: query) }
         case .planValidate(let path):
             return validatePlan(atPath: path)
+        }
+    }
+
+    private static func printReadOnlyLines(_ makeLines: (SoloPMCLIReadOnlyReporter) throws -> [String]) -> SoloPMCLIExitCode {
+        do {
+            let reporter = SoloPMCLIReadOnlyReporter(databaseURL: try SoloPMCLIDatabaseURL.defaultAppDatabaseURL())
+            for line in try makeLines(reporter) {
+                print(line)
+            }
+            return .success
+        } catch {
+            fputs("local read failed: \(error.localizedDescription)\n", stderr)
+            return .runtimeFailure
         }
     }
 

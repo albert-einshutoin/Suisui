@@ -3,7 +3,12 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BLOCKER_COUNT=0
-MOCK_PATTERN="Fake|Mock|InMemory|Static|Demo|sample|canned|stub|TODO|FIXME|:memory:|not implemented|NotImplemented|fatalError|preconditionFailure"
+MOCK_PATTERN="Fake|Mock|InMemory|Static|Demo|sample|canned|stub|skeleton|placeholder|TODO|FIXME|:memory:|not implemented|NotImplemented|fatalError|preconditionFailure"
+RUNTIME_SOURCE_DIRS=(
+  "$ROOT_DIR/Sources/SoloPMCore"
+  "$ROOT_DIR/Sources/SoloPMApp"
+  "$ROOT_DIR/Sources/SoloPMCLI"
+)
 
 section() {
   printf "\n== %s ==\n" "$1"
@@ -19,10 +24,10 @@ printf "SoloPM release readiness report\n"
 section "Runtime mock/fake scan"
 if ! command -v rg >/dev/null 2>&1; then
   blocker "rg is required for source scanning"
-elif rg -n "$MOCK_PATTERN" "$ROOT_DIR/Sources/SoloPMCore" "$ROOT_DIR/Sources/SoloPMApp"; then
+elif rg -n "$MOCK_PATTERN" "${RUNTIME_SOURCE_DIRS[@]}"; then
   blocker "runtime source contains mock/fake/demo/test-only markers"
 else
-  printf "OK: no runtime mock/fake/demo markers in Sources/SoloPMCore Sources/SoloPMApp\n"
+  printf "OK: no runtime mock/fake/demo markers in Sources/SoloPMCore Sources/SoloPMApp Sources/SoloPMCLI\n"
 fi
 
 section "Phase checklist blockers"

@@ -279,6 +279,15 @@
 - [x] ProjectBoard header から `Restore Project` を実行できる。
 - [x] 完了条件: archive は不可逆な削除に見えず、ユーザーがアプリ内で復旧できる。
 
+### P10-033: CLI local read runtime
+
+- [x] `solopm-cli status` は app default SQLite DB を read-only で開き、active / archived project、open / due task、Knowledge Frame 数を実データから出す。
+- [x] `solopm-cli tasks due` は completed task と archived project 配下 task を除外し、期限到来 task だけを表示する。
+- [x] `solopm-cli frames search <query>` は `SQLiteKnowledgeFrameStore.search` を使い、FTS の実検索結果を表示する。
+- [x] app DB が無い場合は SQLite ファイルを作らず `database: missing` を返す。
+- [x] release readiness report の runtime scan は `Sources/SoloPMCLI` と `skeleton` / `placeholder` marker も対象にする。
+- [x] 完了条件: CLI が demo 表示ではなく、GUI と同じ local persistent data を安全に読み取れる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
