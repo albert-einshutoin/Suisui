@@ -126,7 +126,7 @@
 - [x] AI key は Keychain に保存される。
 - [x] API key 未設定時に fake plan が作られない。
 - [x] 外部 SaaS なしで task board + text plan + review execution の価値が成立する。
-- [ ] リリース前検証コマンドが全て green。
+- [x] リリース前検証コマンドが全て green。
 
 ## Implementation Notes
 
