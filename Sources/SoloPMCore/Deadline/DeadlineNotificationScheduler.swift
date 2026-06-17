@@ -53,14 +53,14 @@ public final class DeadlineNotificationScheduler: @unchecked Sendable {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: settings.timeZoneIdentifier) ?? .current
 
-        guard let notifyAt = rule.notifyAt(forDueAt: item.dueAt, calendar: calendar) else {
+        guard let notifyAt = notificationDate(rule: rule, item: item, calendar: calendar) else {
             return DeadlineNotificationScheduleResult(
                 status: .skippedMissingDate,
                 message: "Deadline rule does not have a notification date."
             )
         }
 
-        guard notifyAt > dateProvider.now else {
+        guard notifyAt >= dateProvider.now else {
             return DeadlineNotificationScheduleResult(
                 status: .skippedPastDate,
                 scheduledAt: notifyAt,
@@ -112,6 +112,14 @@ public final class DeadlineNotificationScheduler: @unchecked Sendable {
                 message: String(describing: error)
             )
         }
+    }
+
+    private func notificationDate(rule: DeadlineRule, item: DeadlineItem, calendar: Calendar) -> Date? {
+        if rule.kind == .overdueDaily {
+            return dateProvider.now
+        }
+
+        return rule.notifyAt(forDueAt: item.dueAt, calendar: calendar)
     }
 
     private func makeID(rule: DeadlineRule, item: DeadlineItem, scheduledAt: String) -> String {

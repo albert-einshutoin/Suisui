@@ -1,0 +1,69 @@
+import Foundation
+
+public protocol DailyCheckStateStore: Sendable {
+    func lastRunAt() throws -> Date?
+    func recordRun(at date: Date) throws
+}
+
+public final class InMemoryDailyCheckStateStore: DailyCheckStateStore, @unchecked Sendable {
+    private var storedLastRunAt: Date?
+    private let lock = NSLock()
+
+    public init(lastRunAt: Date? = nil) {
+        self.storedLastRunAt = lastRunAt
+    }
+
+    public func lastRunAt() throws -> Date? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedLastRunAt
+    }
+
+    public func recordRun(at date: Date) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        storedLastRunAt = date
+    }
+}
+
+public final class SQLiteDailyCheckStateStore: DailyCheckStateStore, @unchecked Sendable {
+    private let connection: SQLiteConnection
+    private let lock = NSLock()
+
+    public init(connection: SQLiteConnection) {
+        self.connection = connection
+    }
+
+    public func lastRunAt() throws -> Date? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let value = try connection.queryStrings("SELECT last_run_at FROM daily_check_state WHERE id = 1 LIMIT 1;").first
+        guard let value, !value.isEmpty else {
+            return nil
+        }
+
+        return DeadlineDateParser.date(from: value)
+    }
+
+    public func recordRun(at date: Date) throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        try connection.execute(
+            """
+            INSERT INTO daily_check_state (id, last_run_at, updated_at)
+            VALUES (1, '\(SQL.escape(DeadlineDateParser.string(from: date)))', CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              last_run_at = excluded.last_run_at,
+              updated_at = CURRENT_TIMESTAMP;
+            """
+        )
+    }
+}
+
+private enum SQL {
+    static func escape(_ value: String) -> String {
+        value.replacingOccurrences(of: "'", with: "''")
+    }
+}

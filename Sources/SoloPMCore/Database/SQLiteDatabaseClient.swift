@@ -276,6 +276,17 @@ public enum CoreMigrations {
                     ON deadline_rules(target_type, target_id);
                     """
                 )
+            },
+            DatabaseMigration(id: "0004_create_daily_check_state") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS daily_check_state (
+                        id INTEGER PRIMARY KEY CHECK(id = 1),
+                        last_run_at TEXT,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    """
+                )
             }
         ]
     }

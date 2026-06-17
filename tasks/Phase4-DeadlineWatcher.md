@@ -64,10 +64,10 @@
 
 ### P4-006: Daily check runner
 
-- [ ] SMAppService / login item で日次 check を起動する方針を実装する。
-- [ ] アプリ起動時にも missed check を補完する。
-- [ ] check result を audit log に残す。
-- [ ] テスト: lastRunAt に応じて check が走る / 走らないを確認する。
+- [x] SMAppService / login item で日次 check を起動する方針を実装する。
+- [x] アプリ起動時にも missed check を補完する。
+- [x] check result を audit log に残す。
+- [x] テスト: lastRunAt に応じて check が走る / 走らないを確認する。
 - [ ] 手動確認: login item 設定をオン / オフできる。
 - [ ] 完了条件: アプリを毎日開かなくても締切監視が動く設計になる。
 
