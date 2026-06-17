@@ -2,10 +2,18 @@
 
 SoloPM is local-first and review-before-write. The MVP must avoid dangerous operations by default.
 
-## Secret Handling
+## Supported Versions
+
+| Version | Supported |
+|---|---|
+| public alpha | Security fixes accepted |
+| pre-alpha branches | Best effort only |
+
+## secret handling
 
 - Store API keys and provider tokens in macOS Keychain.
-- Do not store secrets in SQLite settings, UserDefaults, logs, fixtures, screenshots, or crash reports.
+- Store Developer ID certificates, notary credentials, and Sparkle private update keys in Keychain or a CI secret store.
+- Do not store secrets in SQLite settings, UserDefaults, logs, fixtures, screenshots, crash reports, appcast files, or release notes.
 - Redact keys and values containing `api_key`, `token`, `authorization`, `secret`, `password`, or bearer-style credentials before audit logging.
 
 ## MVP Safety Boundaries
@@ -22,7 +30,10 @@ The MVP must not implement:
 
 Write operations must go through a review and approval flow.
 
+## LLM And Local Data
+
+SoloPM should make the LLM send context inspectable before execution. Local audit logs remain local. The app must not upload local files, secrets, transcripts, or project data except through explicit user-approved provider requests.
+
 ## Reporting
 
-This project is not yet in public alpha. Until a public security contact is published, report security issues privately to the repository owner.
-
+Use GitHub Security Advisory when the repository is public. Until the public advisory channel is enabled, report security issues privately to the repository owner and do not disclose exploit details in public issues.

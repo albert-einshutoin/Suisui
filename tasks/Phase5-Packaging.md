@@ -72,39 +72,39 @@
 
 ### P5-007: Privacy and security docs
 
-- [ ] API Key は Keychain、操作ログは local、LLM 送信文脈は確認可能という方針を書く。
-- [ ] MVP で送信しないもの、削除しないもの、自動投稿しないものを明記する。
-- [ ] Crash / telemetry を入れる場合は opt-in にする。入れない場合も明記する。
-- [ ] 完了条件: OSS としてユーザーが安全性を評価できる。
+- [x] API Key は Keychain、操作ログは local、LLM 送信文脈は確認可能という方針を書く。
+- [x] MVP で送信しないもの、削除しないもの、自動投稿しないものを明記する。
+- [x] Crash / telemetry を入れる場合は opt-in にする。入れない場合も明記する。
+- [x] 完了条件: OSS としてユーザーが安全性を評価できる。
 
 ### P5-008: OSS project documents hardening
 
-- [ ] Phase 0 で作成した root `README.md` を public alpha 向けに更新し、スクリーンショット、MVP scope、known limitations を追加する。
-- [ ] `LICENSE` を追加または最終確認する。
-- [ ] `CONTRIBUTING.md` に alpha 期の issue triage、review policy、supported environment を追記する。
-- [ ] `SECURITY.md` に脆弱性報告先、対象バージョン、secret handling 方針を最終化する。
-- [ ] 完了条件: 外部 contributor と alpha user が参加、検証、報告できる情報がある。
+- [x] Phase 0 で作成した root `README.md` を public alpha 向けに更新し、スクリーンショット、MVP scope、known limitations を追加する。
+- [x] `LICENSE` を追加または最終確認する。
+- [x] `CONTRIBUTING.md` に alpha 期の issue triage、review policy、supported environment を追記する。
+- [x] `SECURITY.md` に脆弱性報告先、対象バージョン、secret handling 方針を最終化する。
+- [x] 完了条件: 外部 contributor と alpha user が参加、検証、報告できる情報がある。
 
 ### P5-009: Release checklist
 
-- [ ] test、build、sign、notarize、package、checksum、appcast、tag、release notes の順序を書く。
-- [ ] rollback 手順を書く。
-- [ ] known issues を release notes に含める。
-- [ ] 手動確認: checklist だけを見て alpha build を再現できる。
-- [ ] 完了条件: release 作業が属人化していない。
+- [x] test、build、sign、notarize、package、checksum、appcast、tag、release notes の順序を書く。
+- [x] rollback 手順を書く。
+- [x] known issues を release notes に含める。
+- [x] 手動確認: checklist だけを見て alpha build を再現できる。
+- [x] 完了条件: release 作業が属人化していない。
 
 ### P5-010: First public alpha
 
-- [ ] alpha scope を Phase 0-4 の完了範囲に限定する。
-- [ ] known limitations に外部 MCP、SaaS、RAG、Team 未対応を明記する。
-- [ ] sample workflow を 3 つ用意する。
-- [ ] alpha feedback の受付先を用意する。
-- [ ] 完了条件: OSS として触って価値が分かる alpha が出せる。
+- [x] alpha scope を Phase 0-4 の完了範囲に限定する。
+- [x] known limitations に外部 MCP、SaaS、RAG、Team 未対応を明記する。
+- [x] sample workflow を 3 つ用意する。
+- [x] alpha feedback の受付先を用意する。
+- [x] 完了条件: OSS として触って価値が分かる alpha が出せる。
 
 ## Exit Gate
 
 - [ ] signed / notarized build を作れる。
-- [ ] Sparkle update の smoke が通る。
-- [ ] privacy / security / contributing docs がある。
-- [ ] release checklist で alpha を再現できる。
-- [ ] MVP 外の危険機能を混ぜていない。
+- [x] Sparkle update の smoke が通る。
+- [x] privacy / security / contributing docs がある。
+- [x] release checklist で alpha を再現できる。
+- [x] MVP 外の危険機能を混ぜていない。

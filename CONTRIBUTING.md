@@ -12,6 +12,14 @@ SoloPM is developed with Gitflow, TDD, and a review-before-write safety model.
 
 Do not push directly to `main`.
 
+## Supported Environment
+
+- macOS 14 or later
+- Swift 6 toolchain
+- Xcode command line tools or Xcode
+- Developer ID Application certificate only for release signing
+- Apple notary profile only for notarization
+
 ## Task Workflow
 
 Use [tasks/README.md](tasks/README.md) as the source of task structure.
@@ -26,7 +34,7 @@ Before coding, expand each Phase item into an issue using the recommended format
 - Acceptance criteria
 - Review focus
 
-If the expanded task is larger than one day, split it by domain model, adapter, UI, fixture, or test scope.
+If the expanded task is larger than one day, split it by domain model, adapter, UI, fixture, script, or test scope.
 
 ## TDD
 
@@ -40,22 +48,31 @@ Local verification:
 ```sh
 swift test
 swift build
+./script/build_and_run.sh --verify
 ```
 
-`./scripts/verify.sh` remains available as a direct compiler fallback and diagnostic check.
+## Issue Triage
 
-## Pull Requests
+- `bug`: behavior regression or broken release workflow.
+- `security`: secret handling, unsafe action execution, or trust boundary issue.
+- `phaseN`: work linked to the task phase files.
+- `good first issue`: isolated doc, test, or small fake-adapter improvement.
+- `blocked`: requires certificate, external account, Apple notary profile, or product decision.
+
+Alpha issues should include reproduction steps, expected behavior, actual behavior, environment, and whether the issue touches user data or secrets.
+
+## Review Policy
 
 Every PR should include:
 
-- Linked task
+- Linked task or issue
 - Summary
 - Test results
 - Manual verification
 - Safety / privacy review
 - Remaining risk
 
-Do not mix unrelated UI, storage, external API, and packaging changes in one PR.
+Reviewers should prioritize correctness, security boundaries, secret handling, release reproducibility, and user-visible regressions. Do not mix unrelated UI, storage, external API, and packaging changes in one PR.
 
 ## Architecture Decisions
 
