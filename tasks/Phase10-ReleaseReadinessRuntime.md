@@ -289,6 +289,13 @@
 - [x] release readiness report の runtime scan は `Sources/SoloPMCLI` と `skeleton` / `placeholder` marker も対象にする。
 - [x] 完了条件: CLI が demo 表示ではなく、GUI と同じ local persistent data を安全に読み取れる。
 
+### P10-034: Release readiness truthfulness
+
+- [x] runtime validation と distribution release gate を Exit Gate で分けて表記する。
+- [x] `./script/release_readiness_report.sh` が Developer ID signing / notarization / manual evidence の未完了を blocker として出すことを確認する。
+- [x] runtime mock scan は green でも、署名・notary・manual evidence が未完了なら release ready と表現しない。
+- [x] 完了条件: VC / investor 向けの進捗説明で「動く runtime」と「配布可能 release」の差分を隠さない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
@@ -306,7 +313,8 @@
 - [x] AI key は Keychain に保存される。
 - [x] API key 未設定時に fake plan が作られない。
 - [x] 外部 SaaS なしで task board + text plan + review execution の価値が成立する。
-- [x] リリース前検証コマンドが全て green。
+- [x] runtime 検証コマンドは green。
+- [ ] Developer ID signing、notarization、Gatekeeper、clean environment、login item manual evidence が揃い、`./script/release_readiness_report.sh` が green。
 
 ## Implementation Notes
 
