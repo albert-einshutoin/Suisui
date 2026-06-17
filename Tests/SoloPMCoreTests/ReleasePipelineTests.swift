@@ -124,6 +124,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--force",
                 "--clean-environment-launch",
                 "--login-item-toggle",
+                "--manual-environment", "macOS 15.5 clean user on arm64",
                 "--checked-by", "release-owner",
                 "--note", "Manual checks completed on signed build."
             ],
@@ -138,9 +139,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(evidence.contains("\"version\": \"0.1.0\""))
         XCTAssertTrue(evidence.contains("\"buildNumber\": \"1\""))
         XCTAssertTrue(evidence.contains("\"appBundlePath\": \"dist/SoloPM.app\""))
+        XCTAssertTrue(evidence.contains("\"artifactPath\": \"dist/releases/SoloPM-0.1.0+1.dmg\""))
         XCTAssertTrue(evidence.contains("\"artifactSha256\": \"abcdef1234567890\""))
         XCTAssertTrue(evidence.contains("\"cleanEnvironmentLaunch\": true"))
         XCTAssertTrue(evidence.contains("\"loginItemToggle\": true"))
+        XCTAssertTrue(evidence.contains("\"environment\": \"macOS 15.5 clean user on arm64\""))
         XCTAssertTrue(evidence.contains("\"checkedBy\": \"release-owner\""))
         XCTAssertTrue(evidence.contains("Manual checks completed on signed build."))
         XCTAssertFalse(evidence.contains("PASSWORD"))
@@ -163,7 +166,52 @@ final class ReleasePipelineTests: XCTestCase {
             "version": "0.1.0",
             "buildNumber": "1",
             "appBundlePath": "dist/SoloPM.app",
+            "artifactPath": "dist/releases/SoloPM-0.1.0+1.dmg",
             "artifactSha256": "evidence-sha"
+          },
+          "manualChecks": {
+            "cleanEnvironmentLaunch": true,
+            "loginItemToggle": true,
+            "environment": "macOS 15.5 clean user on arm64"
+          }
+        }
+        """.write(to: evidenceURL, atomically: true, encoding: .utf8)
+        try "actual-sha  dist/releases/SoloPM-0.1.0+1.dmg\n"
+            .write(to: checksumURL, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+        }
+
+        let result = try runScript(
+            "script/verify_release_environment.sh",
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release evidence artifact SHA-256 does not match package checksum"))
+    }
+
+    func testReleasePreflightRejectsManualEvidenceWithoutEnvironment() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-no-environment.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-no-environment.dmg.sha256")
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        {
+          "release": {
+            "version": "0.1.0",
+            "buildNumber": "1",
+            "appBundlePath": "dist/SoloPM.app",
+            "artifactPath": "dist/releases/SoloPM-0.1.0+1.dmg",
+            "artifactSha256": "actual-sha"
           },
           "manualChecks": {
             "cleanEnvironmentLaunch": true,
@@ -187,7 +235,7 @@ final class ReleasePipelineTests: XCTestCase {
         )
 
         XCTAssertNotEqual(result.exitCode, 0)
-        XCTAssertTrue(result.output.contains("release evidence artifact SHA-256 does not match package checksum"))
+        XCTAssertTrue(result.output.contains("release evidence missing manual check environment"))
     }
 
     func testReleaseChecklistRequiresEvidenceBeforeFinalReport() throws {

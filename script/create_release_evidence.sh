@@ -8,6 +8,7 @@ CHECKSUM_FILE="${SOLOPM_RELEASE_ARTIFACT_SHA256_FILE:-}"
 FORCE=0
 CLEAN_ENVIRONMENT_LAUNCH=false
 LOGIN_ITEM_TOGGLE=false
+MANUAL_ENVIRONMENT=""
 CHECKED_BY="${SOLOPM_RELEASE_CHECKED_BY:-$(id -un 2>/dev/null || printf "release-owner")}"
 NOTES=()
 
@@ -20,6 +21,7 @@ Options:
   --force                         overwrite existing evidence file
   --clean-environment-launch      mark clean environment launch as manually checked
   --login-item-toggle             mark launch-at-login toggle as manually checked
+  --manual-environment <text>     describe the manual check environment
   --checked-by <name>             reviewer name to record
   --note <text>                   append a review note; can be repeated
   -h, --help                      show this help
@@ -42,6 +44,14 @@ while [[ "$#" -gt 0 ]]; do
     --login-item-toggle)
       LOGIN_ITEM_TOGGLE=true
       shift
+      ;;
+    --manual-environment)
+      if [[ "$#" -lt 2 || -z "$2" ]]; then
+        echo "--manual-environment requires a value" >&2
+        exit 2
+      fi
+      MANUAL_ENVIRONMENT="$2"
+      shift 2
       ;;
     --checked-by)
       if [[ "$#" -lt 2 || -z "$2" ]]; then
@@ -129,6 +139,18 @@ read_artifact_sha256() {
   awk 'NF { print $1; exit }' "$checksum_path"
 }
 
+read_artifact_path() {
+  local checksum_path
+  checksum_path="$(find_checksum_file)"
+
+  if [[ -z "$checksum_path" || ! -f "$checksum_path" ]]; then
+    printf "missing-release-artifact"
+    return
+  fi
+
+  awk 'NF >= 2 { print $2; exit }' "$checksum_path"
+}
+
 if [[ "${#NOTES[@]}" -eq 0 ]]; then
   NOTES+=("Generated from packaging/app_metadata.env. Set manual check flags only after testing the signed and notarized build.")
 fi
@@ -136,6 +158,7 @@ fi
 mkdir -p "$(dirname "$OUTPUT_FILE")"
 tmp_file="$OUTPUT_FILE.tmp"
 artifact_sha="$(read_artifact_sha256)"
+artifact_path="$(read_artifact_path)"
 
 {
   printf '{\n'
@@ -143,11 +166,13 @@ artifact_sha="$(read_artifact_sha256)"
   printf '    "version": "%s",\n' "$(json_escape "$MARKETING_VERSION")"
   printf '    "buildNumber": "%s",\n' "$(json_escape "$CURRENT_PROJECT_VERSION")"
   printf '    "appBundlePath": "%s",\n' "$(json_escape "$APP_BUNDLE_PATH")"
+  printf '    "artifactPath": "%s",\n' "$(json_escape "$artifact_path")"
   printf '    "artifactSha256": "%s"\n' "$(json_escape "$artifact_sha")"
   printf '  },\n'
   printf '  "manualChecks": {\n'
   printf '    "cleanEnvironmentLaunch": %s,\n' "$CLEAN_ENVIRONMENT_LAUNCH"
-  printf '    "loginItemToggle": %s\n' "$LOGIN_ITEM_TOGGLE"
+  printf '    "loginItemToggle": %s,\n' "$LOGIN_ITEM_TOGGLE"
+  printf '    "environment": "%s"\n' "$(json_escape "$MANUAL_ENVIRONMENT")"
   printf '  },\n'
   printf '  "review": {\n'
   printf '    "checkedBy": "%s",\n' "$(json_escape "$CHECKED_BY")"

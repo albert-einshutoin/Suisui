@@ -299,8 +299,9 @@
 ### P10-035: Release evidence generator
 
 - [x] `script/create_release_evidence.sh` は `packaging/app_metadata.env` から version / build number / app bundle path を生成する。
-- [x] package artifact の `.sha256` から `release.artifactSha256` を生成する。
+- [x] package artifact の `.sha256` から `release.artifactPath` と `release.artifactSha256` を生成する。
 - [x] manual check flags は明示 option が指定された場合だけ true にする。
+- [x] manual check flags が true の場合、`manualChecks.environment` を preflight で必須にする。
 - [x] `verify_release_environment.sh` は evidence の artifact SHA-256 と package checksum の一致を検査する。
 - [x] 完了条件: release owner が手書き JSON で build metadata / checksum を間違えにくい。
 

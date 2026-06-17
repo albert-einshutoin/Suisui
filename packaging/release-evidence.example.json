@@ -3,11 +3,13 @@
     "version": "0.1.0",
     "buildNumber": "1",
     "appBundlePath": "dist/SoloPM.app",
+    "artifactPath": "dist/releases/SoloPM-0.1.0+1.dmg",
     "artifactSha256": "replace-after-package"
   },
   "manualChecks": {
     "cleanEnvironmentLaunch": false,
-    "loginItemToggle": false
+    "loginItemToggle": false,
+    "environment": "macOS version, hardware, clean user/install notes"
   },
   "review": {
     "checkedBy": "release-owner",

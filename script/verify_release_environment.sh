@@ -88,6 +88,21 @@ require_evidence_equals() {
   fi
 }
 
+require_evidence_non_empty() {
+  local key_path="$1"
+  local label="$2"
+  local value
+
+  if ! value="$(plutil -extract "$key_path" raw -o - "$RELEASE_EVIDENCE_FILE" 2>/dev/null)"; then
+    add_blocker "release evidence missing $label: $key_path"
+    return
+  fi
+
+  if [[ -z "$value" ]]; then
+    add_blocker "release evidence missing $label: $key_path must be non-empty"
+  fi
+}
+
 release_artifact_checksum_file() {
   if [[ -n "$RELEASE_ARTIFACT_SHA256_FILE" ]]; then
     printf "%s" "$RELEASE_ARTIFACT_SHA256_FILE"
@@ -105,17 +120,31 @@ release_artifact_checksum_file() {
 
 require_evidence_artifact_sha256() {
   local evidence_sha
+  local evidence_path
   local checksum_file
   local package_sha
+  local package_path
 
   if ! evidence_sha="$(plutil -extract "release.artifactSha256" raw -o - "$RELEASE_EVIDENCE_FILE" 2>/dev/null)"; then
     add_blocker "release evidence missing artifact SHA-256: release.artifactSha256"
     return
   fi
 
+  if ! evidence_path="$(plutil -extract "release.artifactPath" raw -o - "$RELEASE_EVIDENCE_FILE" 2>/dev/null)"; then
+    add_blocker "release evidence missing artifact path: release.artifactPath"
+    return
+  fi
+
   case "$evidence_sha" in
     ""|"replace-after-package"|"missing-release-artifact")
       add_blocker "release evidence artifact SHA-256 is not recorded from a packaged artifact"
+      return
+      ;;
+  esac
+
+  case "$evidence_path" in
+    ""|"missing-release-artifact")
+      add_blocker "release evidence artifact path is not recorded from a packaged artifact"
       return
       ;;
   esac
@@ -127,6 +156,7 @@ require_evidence_artifact_sha256() {
   fi
 
   package_sha="$(awk 'NF { print $1; exit }' "$checksum_file")"
+  package_path="$(awk 'NF >= 2 { print $2; exit }' "$checksum_file")"
   if [[ -z "$package_sha" ]]; then
     add_blocker "release artifact checksum file is empty: $checksum_file"
     return
@@ -134,6 +164,10 @@ require_evidence_artifact_sha256() {
 
   if [[ "$evidence_sha" != "$package_sha" ]]; then
     add_blocker "release evidence artifact SHA-256 does not match package checksum: expected '$package_sha', got '$evidence_sha'"
+  fi
+
+  if [[ -n "$package_path" && "$evidence_path" != "$package_path" ]]; then
+    add_blocker "release evidence artifact path does not match package checksum: expected '$package_path', got '$evidence_path'"
   fi
 }
 
@@ -213,6 +247,7 @@ if [[ -f "$RELEASE_EVIDENCE_FILE" ]]; then
     require_evidence_artifact_sha256
     require_evidence_true "manualChecks.cleanEnvironmentLaunch" "clean environment launch"
     require_evidence_true "manualChecks.loginItemToggle" "login item toggle in signed app"
+    require_evidence_non_empty "manualChecks.environment" "manual check environment"
   else
     add_blocker "release evidence is not valid JSON or plist: $RELEASE_EVIDENCE_FILE"
   fi

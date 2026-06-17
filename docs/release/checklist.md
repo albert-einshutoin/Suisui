@@ -71,11 +71,12 @@ Run the evidence script after packaging so `release.version`, `release.buildNumb
   --force \
   --clean-environment-launch \
   --login-item-toggle \
+  --manual-environment "macOS version, hardware, clean user/install notes" \
   --checked-by "$USER" \
   --note "Manual checks completed on the signed and notarized build."
 ```
 
-Set manual check flags only for that signed and notarized build.
+Set manual check flags only for that signed and notarized build. Record the OS, hardware, install location, and clean user/profile details in `--manual-environment`.
 Use `packaging/release-evidence.example.json` only as the schema template; do not copy it as final evidence without running the script.
 
 9. release environment preflight
