@@ -11,6 +11,11 @@ while IFS= read -r source_file; do
   CORE_SOURCES+=("$source_file")
 done < <(find "$ROOT_DIR/Sources/SoloPMCore" -name '*.swift' -print | sort)
 
+APP_SOURCES=()
+while IFS= read -r source_file; do
+  APP_SOURCES+=("$source_file")
+done < <(find "$ROOT_DIR/Sources/SoloPMApp" -name '*.swift' -print | sort)
+
 swiftc \
   -emit-module \
   -emit-module-path "$BUILD_DIR/SoloPMCore.swiftmodule" \
@@ -27,7 +32,7 @@ swiftc \
   -I "$BUILD_DIR" \
   -L "$BUILD_DIR" \
   -lSoloPMCore \
-  "$ROOT_DIR/Sources/SoloPMApp/SoloPMApp.swift"
+  "${APP_SOURCES[@]}"
 
 swiftc \
   -parse-as-library \
@@ -36,7 +41,7 @@ swiftc \
   -lSoloPMCore \
   -Xlinker -rpath \
   -Xlinker "$BUILD_DIR" \
-  "$ROOT_DIR/Sources/SoloPMApp/SoloPMApp.swift" \
+  "${APP_SOURCES[@]}" \
   -o "$BUILD_DIR/SoloPMApp"
 
 swiftc \

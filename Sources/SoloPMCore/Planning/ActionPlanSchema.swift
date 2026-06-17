@@ -23,7 +23,15 @@ public enum ActionPlanSchema: Sendable {
             return data
         }
 
+        if let data = try? loadDataFromSourceTree() {
+            return data
+        }
+
+#if SWIFT_PACKAGE
         return try loadData(bundle: .module)
+#else
+        throw ActionPlanSchemaError.resourceNotFound
+#endif
     }
 
     public static func loadData(bundle: Bundle) throws -> Data {
@@ -59,5 +67,22 @@ public enum ActionPlanSchema: Sendable {
         }
 
         return schema
+    }
+
+    private static func loadDataFromSourceTree() throws -> Data {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+        let coreRootURL = sourceURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let resourceURL = coreRootURL
+            .appendingPathComponent("Resources")
+            .appendingPathComponent(subdirectory)
+            .appendingPathComponent("\(fileName).\(fileExtension)")
+
+        guard FileManager.default.fileExists(atPath: resourceURL.path) else {
+            throw ActionPlanSchemaError.resourceNotFound
+        }
+
+        return try Data(contentsOf: resourceURL)
     }
 }

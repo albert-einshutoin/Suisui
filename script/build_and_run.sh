@@ -46,11 +46,11 @@ pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
 case "$BUILD_CONFIGURATION" in
   debug)
-    swift build
+    swift build --product "$APP_NAME"
     BUILD_DIR="$(swift build --show-bin-path)"
     ;;
   release)
-    swift build -c release
+    swift build -c release --product "$APP_NAME"
     BUILD_DIR="$(swift build -c release --show-bin-path)"
     ;;
   *)
