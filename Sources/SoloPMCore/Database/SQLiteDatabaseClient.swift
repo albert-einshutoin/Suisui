@@ -139,27 +139,28 @@ public final class SQLiteDatabaseClient: DatabaseClient {
 }
 
 public enum CoreMigrations {
-    public static let phase0 = [
-        DatabaseMigration(id: "0001_create_settings_and_audit_logs") { connection in
-            try connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS settings (
-                    key TEXT PRIMARY KEY NOT NULL,
-                    value TEXT NOT NULL,
-                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                );
+    public static var phase0: [DatabaseMigration] {
+        [
+            DatabaseMigration(id: "0001_create_settings_and_audit_logs") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS settings (
+                        key TEXT PRIMARY KEY NOT NULL,
+                        value TEXT NOT NULL,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
 
-                CREATE TABLE IF NOT EXISTS audit_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp TEXT NOT NULL,
-                    category TEXT NOT NULL,
-                    action TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    metadata_json TEXT NOT NULL DEFAULT '{}'
-                );
-                """
-            )
-        }
-    ]
+                    CREATE TABLE IF NOT EXISTS audit_logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp TEXT NOT NULL,
+                        category TEXT NOT NULL,
+                        action TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        metadata_json TEXT NOT NULL DEFAULT '{}'
+                    );
+                    """
+                )
+            }
+        ]
+    }
 }
-

@@ -7,6 +7,8 @@ Status: Accepted
 
 The current local CommandLineTools installation reports SwiftPM 6.3.2, but `swift test` fails while linking the package manifest against `libPackageDescription.dylib`. Core sources compile with `swiftc`, so the issue is isolated to local SwiftPM manifest loading rather than application source code.
 
+After installing and selecting full Xcode 26.5, normal `swift test` and `swift build` work. The fallback verifier remains useful as a low-level diagnostic path.
+
 ## Decision
 
 Keep `Package.swift` aligned with the intended Swift 6 / macOS 14 project baseline. Add `scripts/verify.sh` as a local fallback that directly compiles the core module, typechecks the SwiftUI app target, and runs a small manual test runner without relying on SwiftPM manifest loading.
@@ -25,11 +27,10 @@ Keep `Package.swift` aligned with the intended Swift 6 / macOS 14 project baseli
 
 ## Consequences
 
-- Positive: Phase 0 implementation remains verifiable in this environment.
-- Negative: `swift test` is currently blocked until the local Xcode / CommandLineTools installation is corrected.
-- Follow-up: When full Xcode is configured, replace the fallback with normal `swift test` in CI.
+- Positive: Phase 0 implementation remains verifiable even if SwiftPM manifest loading regresses.
+- Negative: The fallback verifier duplicates a small amount of SwiftPM behavior.
+- Follow-up: Use `swift test` and `swift build` as primary CI checks. Keep the fallback only for diagnostics.
 
 ## Links
 
 - Related task: tasks/Phase0-Skeleton.md
-

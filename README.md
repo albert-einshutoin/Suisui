@@ -44,10 +44,11 @@ git checkout -b feature/phase0-skeleton
 Local verification:
 
 ```sh
-./scripts/verify.sh
+swift test
+swift build
 ```
 
-When full Xcode and a working SwiftPM manifest toolchain are available, also run `swift test` and `swift build`.
+`./scripts/verify.sh` remains available as a direct compiler fallback and diagnostic check.
 
 The active task plan is in [tasks/README.md](tasks/README.md). Phase files are issue seeds; expand each `Pn-xxx` task into an issue before implementation.
 

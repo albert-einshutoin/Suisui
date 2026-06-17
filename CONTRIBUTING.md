@@ -38,10 +38,11 @@ If the expanded task is larger than one day, split it by domain model, adapter, 
 Local verification:
 
 ```sh
-./scripts/verify.sh
+swift test
+swift build
 ```
 
-When full Xcode and a working SwiftPM manifest toolchain are available, also run `swift test` and `swift build`.
+`./scripts/verify.sh` remains available as a direct compiler fallback and diagnostic check.
 
 ## Pull Requests
 
