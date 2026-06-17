@@ -739,10 +739,26 @@ private struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
-                Button {
-                    externalMCPViewModel.save()
-                } label: {
-                    Label("Save", systemImage: "square.and.arrow.down")
+                HStack {
+                    Button {
+                        externalMCPViewModel.save()
+                    } label: {
+                        Label("Save", systemImage: "square.and.arrow.down")
+                    }
+
+                    Button {
+                        Task {
+                            await externalMCPViewModel.checkConnection()
+                        }
+                    } label: {
+                        Label("Check Connection", systemImage: "network")
+                    }
+                    .disabled(externalMCPViewModel.isCheckingConnection)
+
+                    if externalMCPViewModel.isCheckingConnection {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
                 }
             }
 
@@ -897,7 +913,15 @@ private enum AppRuntimeFactory {
 
     @MainActor
     static func makeExternalMCPSettingsViewModel() -> ExternalMCPSettingsViewModel {
-        ExternalMCPSettingsViewModel(store: UserDefaultsMCPServerRegistrationStore())
+        let secretStore = makeSecretStore()
+        let launcher = MCPStdioServerLauncher(
+            environmentResolver: SecretStoreMCPEnvironmentResolver(secretStore: secretStore)
+        )
+        return ExternalMCPSettingsViewModel(
+            store: UserDefaultsMCPServerRegistrationStore(),
+            launcher: launcher,
+            auditRows: externalMCPAuditRows()
+        )
     }
 
     @MainActor
@@ -994,6 +1018,15 @@ private enum AppRuntimeFactory {
 
     private static func makeAuditLogger() throws -> any AuditLogger {
         RedactingAuditLogger(base: try SQLiteAuditLogger(path: applicationDatabaseURL().path))
+    }
+
+    private static func externalMCPAuditRows() -> [ExternalMCPAuditHistoryRow] {
+        do {
+            let logger = try SQLiteAuditLogger(path: applicationDatabaseURL().path)
+            return ExternalMCPAuditHistory.rows(from: try logger.list(limit: 50))
+        } catch {
+            return []
+        }
     }
 
     private static func workspaceRootURL() throws -> URL {

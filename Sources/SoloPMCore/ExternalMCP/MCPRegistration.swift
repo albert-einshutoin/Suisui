@@ -132,18 +132,23 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
     @Published public private(set) var toolRows: [ExternalMCPToolCatalogRow]
     @Published public private(set) var auditRows: [ExternalMCPAuditHistoryRow]
     @Published public private(set) var errorMessage: String?
+    @Published public private(set) var isCheckingConnection: Bool
 
     private let store: any MCPServerRegistrationStore
+    private let launcher: MCPStdioServerLauncher
 
     public init(
         store: any MCPServerRegistrationStore,
+        launcher: MCPStdioServerLauncher = MCPStdioServerLauncher(),
         toolRows: [ExternalMCPToolCatalogRow] = [],
         auditRows: [ExternalMCPAuditHistoryRow] = []
     ) {
         self.store = store
+        self.launcher = launcher
         self.toolRows = toolRows
         self.auditRows = auditRows
         self.errorMessage = nil
+        self.isCheckingConnection = false
         self.registration = Self.blankRegistration()
         refresh()
     }
@@ -204,6 +209,30 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         }
     }
 
+    public func checkConnection() async {
+        isCheckingConnection = true
+        defer {
+            isCheckingConnection = false
+        }
+
+        do {
+            let client = try await launcher.client(for: registration)
+            _ = try await client.initialize()
+            let tools = try await client.listTools()
+            let server = MCPRegisteredServerDescriptor(id: registration.id, displayName: registration.displayName)
+            let registry = ExternalMCPToolRegistry(
+                server: server,
+                tools: tools,
+                classifier: ExternalMCPToolClassifier()
+            )
+            toolRows = ExternalMCPToolCatalog.rows(from: registry.allDescriptors)
+            errorMessage = nil
+        } catch {
+            toolRows = []
+            errorMessage = Self.connectionErrorMessage(error)
+        }
+    }
+
     private static func blankRegistration() -> MCPServerRegistration {
         MCPServerRegistration(
             id: "custom-mcp",
@@ -214,6 +243,31 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             workingDirectory: nil,
             isEnabled: false
         )
+    }
+
+    private static func connectionErrorMessage(_ error: Error) -> String {
+        switch error {
+        case MCPRegistrationError.serverDisabled:
+            return "MCP server is disabled."
+        case MCPRegistrationError.invalidCommand:
+            return "MCP command is required."
+        case MCPRegistrationError.missingBinary(let command):
+            return "MCP command binary was not found: \(command)"
+        case MCPRegistrationError.missingSecret(let name):
+            return "MCP environment secret is missing: \(name)"
+        case MCPClientError.invalidResponse(_, "tools/list", let reason):
+            return "MCP tools/list response was invalid: \(reason)"
+        case MCPClientError.invalidResponse(_, "initialize", let reason):
+            return "MCP initialize response was invalid: \(reason)"
+        case MCPClientError.protocolError(_, let method, _, let message):
+            return "MCP \(method) failed: \(message)"
+        case MCPClientError.timeout(_, let method):
+            return "MCP \(method) timed out."
+        case MCPClientError.transportFailed(_, let method, let message):
+            return "MCP \(method) transport failed: \(message)"
+        default:
+            return String(describing: error)
+        }
     }
 }
 

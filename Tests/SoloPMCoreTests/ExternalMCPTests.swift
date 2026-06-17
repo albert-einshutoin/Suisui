@@ -132,6 +132,101 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertTrue(saved.isEnabled)
     }
 
+    @MainActor
+    func testExternalMCPSettingsViewModelChecksConnectionAndRefreshesToolCatalog() async throws {
+        let registration = MCPServerRegistration(
+            id: "fake",
+            displayName: "Fake MCP",
+            command: "node",
+            arguments: ["server.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let store = InMemoryMCPServerRegistrationStore(registrations: [registration])
+        let transport = ExternalMCPTestKit.makeFakeServerTransport()
+        let launcher = MCPStdioServerLauncher(
+            validator: MCPServerRegistrationValidator(binaryLocator: StaticBinaryLocator(availableCommands: ["node"])),
+            transportFactory: { _ in transport }
+        )
+        let viewModel = ExternalMCPSettingsViewModel(store: store, launcher: launcher)
+
+        await viewModel.checkConnection()
+
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertFalse(viewModel.isCheckingConnection)
+        XCTAssertEqual(viewModel.toolRows.map(\.toolName), ["danger_delete", "invalid_response", "read_status", "slow_tool", "write_issue"])
+        XCTAssertEqual(viewModel.toolRows.first { $0.toolName == "read_status" }?.serverName, "Fake MCP")
+        XCTAssertEqual(transport.recordedMethods, ["initialize", "notifications/initialized", "tools/list"])
+    }
+
+    @MainActor
+    func testExternalMCPSettingsViewModelReportsDisabledAndMissingBinary() async throws {
+        let disabledStore = InMemoryMCPServerRegistrationStore(registrations: [
+            MCPServerRegistration(
+                id: "disabled",
+                displayName: "Disabled MCP",
+                command: "node",
+                arguments: [],
+                environment: [:],
+                workingDirectory: nil,
+                isEnabled: false
+            )
+        ])
+        let launcher = MCPStdioServerLauncher(
+            validator: MCPServerRegistrationValidator(binaryLocator: StaticBinaryLocator(availableCommands: ["node"])),
+            transportFactory: { _ in ExternalMCPTestKit.makeFakeServerTransport() }
+        )
+        let disabledViewModel = ExternalMCPSettingsViewModel(store: disabledStore, launcher: launcher)
+
+        await disabledViewModel.checkConnection()
+
+        XCTAssertEqual(disabledViewModel.errorMessage, "MCP server is disabled.")
+        XCTAssertTrue(disabledViewModel.toolRows.isEmpty)
+
+        let missingStore = InMemoryMCPServerRegistrationStore(registrations: [
+            MCPServerRegistration(
+                id: "missing",
+                displayName: "Missing MCP",
+                command: "missing-node",
+                arguments: [],
+                environment: [:],
+                workingDirectory: nil,
+                isEnabled: true
+            )
+        ])
+        let missingViewModel = ExternalMCPSettingsViewModel(store: missingStore, launcher: launcher)
+
+        await missingViewModel.checkConnection()
+
+        XCTAssertEqual(missingViewModel.errorMessage, "MCP command binary was not found: missing-node")
+        XCTAssertTrue(missingViewModel.toolRows.isEmpty)
+    }
+
+    @MainActor
+    func testExternalMCPSettingsViewModelReportsInvalidToolsList() async throws {
+        let registration = MCPServerRegistration(
+            id: "fake",
+            displayName: "Fake MCP",
+            command: "node",
+            arguments: [],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let store = InMemoryMCPServerRegistrationStore(registrations: [registration])
+        let launcher = MCPStdioServerLauncher(
+            validator: MCPServerRegistrationValidator(binaryLocator: StaticBinaryLocator(availableCommands: ["node"])),
+            transportFactory: { _ in ExternalMCPTestKit.makeInvalidListTransport() }
+        )
+        let viewModel = ExternalMCPSettingsViewModel(store: store, launcher: launcher)
+
+        await viewModel.checkConnection()
+
+        XCTAssertEqual(viewModel.errorMessage, "MCP tools/list response was invalid: Missing result.tools array.")
+        XCTAssertTrue(viewModel.toolRows.isEmpty)
+    }
+
     func testPermissionMappingDisablesUnknownAndBlocksDangerousTools() throws {
         let registry = ExternalMCPToolRegistry(
             server: MCPRegisteredServerDescriptor(id: "fake", displayName: "Fake MCP"),

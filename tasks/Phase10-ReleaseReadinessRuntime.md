@@ -95,11 +95,11 @@
 
 ### P10-008: MCP settings live check
 
-- [ ] 登録済み MCP server の command validation を Settings から実行できる。
-- [ ] enabled server に対して initialize / tools/list を試せる。
-- [ ] tool catalog と audit history を Settings に表示する。
-- [ ] テスト: disabled、missing binary、invalid response、successful tools/list を確認する。
-- [ ] 完了条件: fake MCP server ではなく、ユーザー登録 server の接続可否が UI で分かる。
+- [x] 登録済み MCP server の command validation を Settings から実行できる。
+- [x] enabled server に対して initialize / tools/list を試せる。
+- [x] tool catalog と audit history を Settings に表示する。
+- [x] テスト: disabled、missing binary、invalid response、successful tools/list を確認する。
+- [x] 完了条件: fake MCP server ではなく、ユーザー登録 server の接続可否が UI で分かる。
 
 ### P10-009: Release safety pass
 
