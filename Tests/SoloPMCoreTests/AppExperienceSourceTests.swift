@@ -50,6 +50,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains("private let menuBarViewModel = AppRuntimeFactory.makeMenuBarSummaryViewModel()"))
     }
 
+    func testReviewPanelUsesResponsiveLongContentGuards() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(appSource.contains("ViewThatFits(in: .horizontal)"))
+        XCTAssertTrue(appSource.contains("argumentDisplaySummary(maxFields: 4, maxValueLength: 96)"))
+        XCTAssertTrue(appSource.contains(".help(argumentSummary.fullText)"))
+        XCTAssertTrue(appSource.contains(".fixedSize(horizontal: false, vertical: true)"))
+    }
+
     func testRuntimeAppCompositionDoesNotUseDemoOrInMemorySuccessPath() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 

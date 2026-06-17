@@ -286,18 +286,27 @@ private struct ActionReviewPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
+            HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(viewModel.session.originalPlan.summary)
                         .font(.headline)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(approvalLabel)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
+                Spacer(minLength: 8)
                 Text(viewModel.session.originalPlan.riskLevel.rawValue.capitalized)
                     .font(.caption)
                     .foregroundStyle(viewModel.session.originalPlan.riskLevel >= .write ? .orange : .secondary)
+                    .lineLimit(1)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.secondary.opacity(0.12))
+                    .clipShape(Capsule())
             }
 
             ScrollView {
@@ -308,7 +317,7 @@ private struct ActionReviewPanel: View {
                     }
                 }
             }
-            .frame(maxHeight: 220)
+            .frame(minHeight: 120, maxHeight: 260)
 
             if let message = viewModel.errorMessage {
                 Label(message, systemImage: "exclamationmark.triangle")
@@ -316,33 +325,43 @@ private struct ActionReviewPanel: View {
                     .foregroundStyle(.red)
             }
 
-            HStack {
-                Button {
-                    try? viewModel.approve()
-                } label: {
-                    Label("Approve", systemImage: "checkmark.seal")
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    actionButtons
                 }
-                .disabled(!viewModel.canApprove)
-
-                Button {
-                    try? viewModel.execute()
-                    if viewModel.session.executionStatus == .completed {
-                        onExecutionFinished()
-                    }
-                } label: {
-                    Label("Execute", systemImage: "play.circle")
+                VStack(alignment: .leading, spacing: 8) {
+                    actionButtons
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(!viewModel.canExecute)
-
-                Button {
-                    viewModel.cancel()
-                } label: {
-                    Label("Cancel", systemImage: "xmark.circle")
-                }
-                .disabled(viewModel.session.executionStatus == .completed || viewModel.session.executionStatus == .canceled)
             }
         }
+    }
+
+    @ViewBuilder
+    private var actionButtons: some View {
+        Button {
+            try? viewModel.approve()
+        } label: {
+            Label("Approve", systemImage: "checkmark.seal")
+        }
+        .disabled(!viewModel.canApprove)
+
+        Button {
+            try? viewModel.execute()
+            if viewModel.session.executionStatus == .completed {
+                onExecutionFinished()
+            }
+        } label: {
+            Label("Execute", systemImage: "play.circle")
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(!viewModel.canExecute)
+
+        Button {
+            viewModel.cancel()
+        } label: {
+            Label("Cancel", systemImage: "xmark.circle")
+        }
+        .disabled(viewModel.session.executionStatus == .completed || viewModel.session.executionStatus == .canceled)
     }
 
     private var approvalLabel: String {
@@ -372,13 +391,20 @@ private struct ReviewActionRow: View {
                         set: { viewModel.setActionEnabled(actionID: item.id, isEnabled: $0) }
                     )
                 ) {
-                    Label(item.editedAction.tool.rawValue, systemImage: iconName(for: item.editedAction.actionType))
-                        .font(.subheadline)
+                    Label {
+                        Text(item.editedAction.tool.rawValue)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        Image(systemName: iconName(for: item.editedAction.actionType))
+                    }
+                    .font(.subheadline)
                 }
-                Spacer()
+                Spacer(minLength: 8)
                 Text(statusLabel)
                     .font(.caption)
                     .foregroundStyle(statusColor)
+                    .lineLimit(1)
             }
 
             if item.editedAction.arguments["title"]?.stringValue != nil {
@@ -392,10 +418,13 @@ private struct ReviewActionRow: View {
                 .textFieldStyle(.roundedBorder)
             }
 
-            Text(argumentSummary(item.editedAction.arguments))
+            let argumentSummary = item.argumentDisplaySummary(maxFields: 4, maxValueLength: 96)
+            Text(argumentSummary.preview)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .lineLimit(2)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .help(argumentSummary.fullText)
 
             ForEach(viewModel.validationIssues(for: item.id), id: \.message) { issue in
                 Label(issue.message, systemImage: "exclamationmark.triangle")
@@ -480,17 +509,6 @@ private struct ReviewActionRow: View {
         case .developer:
             "terminal"
         }
-    }
-
-    private func argumentSummary(_ arguments: [String: JSONValue]) -> String {
-        guard !arguments.isEmpty else {
-            return "No arguments"
-        }
-
-        return arguments
-            .sorted { $0.key < $1.key }
-            .map { "\($0.key): \($0.value.displayValue)" }
-            .joined(separator: ", ")
     }
 
     private func failureRecoveryLabel(_ recovery: ReviewActionFailureRecovery) -> String {

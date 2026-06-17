@@ -34,6 +34,32 @@ final class ReviewSessionTests: XCTestCase {
         XCTAssertEqual(session.approvalState, .blocked("Dangerous actions cannot be executed."))
         XCTAssertFalse(session.canExecute)
     }
+
+    func testReviewActionArgumentSummaryTruncatesLongValuesAndExtraFields() throws {
+        let plan = ActionPlan.reviewFixture(actions: [
+            PlanAction(
+                id: "task",
+                tool: .taskCreate,
+                arguments: [
+                    "title": .string(String(repeating: "Release readiness ", count: 8)),
+                    "detail": .string("Prepare final investor review notes"),
+                    "priority": .string("high"),
+                    "dueAt": .string("2026-06-21"),
+                    "source": .string("voice")
+                ]
+            )
+        ])
+        let session = ReviewSession(plan: plan)
+        let item = try XCTUnwrap(session.items.first)
+
+        let summary = item.argumentDisplaySummary(maxFields: 3, maxValueLength: 36)
+
+        XCTAssertTrue(summary.isTruncated)
+        XCTAssertTrue(summary.preview.hasPrefix("title: Release readiness Release readiness"))
+        XCTAssertTrue(summary.preview.contains("..."))
+        XCTAssertTrue(summary.preview.contains("+2 more"))
+        XCTAssertTrue(summary.fullText.contains("source: voice"))
+    }
 }
 
 final class ActionExecutorTests: XCTestCase {

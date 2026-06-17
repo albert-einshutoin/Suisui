@@ -48,6 +48,64 @@ public struct ReviewActionItem: Identifiable, Equatable, Sendable {
         self.errorMessage = nil
         self.failureRecovery = nil
     }
+
+    public func argumentDisplaySummary(maxFields: Int = 4, maxValueLength: Int = 96) -> ReviewActionArgumentSummary {
+        editedAction.argumentDisplaySummary(maxFields: maxFields, maxValueLength: maxValueLength)
+    }
+}
+
+public struct ReviewActionArgumentSummary: Equatable, Sendable {
+    public var preview: String
+    public var fullText: String
+    public var isTruncated: Bool
+
+    public init(preview: String, fullText: String, isTruncated: Bool) {
+        self.preview = preview
+        self.fullText = fullText
+        self.isTruncated = isTruncated
+    }
+}
+
+public extension PlanAction {
+    func argumentDisplaySummary(maxFields: Int = 4, maxValueLength: Int = 96) -> ReviewActionArgumentSummary {
+        guard !arguments.isEmpty else {
+            return ReviewActionArgumentSummary(preview: "No arguments", fullText: "No arguments", isTruncated: false)
+        }
+
+        let fieldLimit = max(1, maxFields)
+        let valueLimit = max(8, maxValueLength)
+        let fields = arguments
+            .sorted { lhs, rhs in
+                let lhsRank = lhs.key.reviewDisplayPriority
+                let rhsRank = rhs.key.reviewDisplayPriority
+                if lhsRank == rhsRank {
+                    return lhs.key < rhs.key
+                }
+                return lhsRank < rhsRank
+            }
+            .map { key, value in
+                let fullValue = value.reviewDisplayValue.normalizedSingleLine
+                let previewValue = fullValue.truncatedForReview(maxLength: valueLimit)
+                return (
+                    full: "\(key): \(fullValue)",
+                    preview: "\(key): \(previewValue)",
+                    truncated: fullValue != previewValue
+                )
+            }
+
+        let visibleFields = fields.prefix(fieldLimit)
+        let hiddenCount = fields.count - visibleFields.count
+        var previewParts = visibleFields.map(\.preview)
+        if hiddenCount > 0 {
+            previewParts.append("+\(hiddenCount) more")
+        }
+
+        return ReviewActionArgumentSummary(
+            preview: previewParts.joined(separator: ", "),
+            fullText: fields.map(\.full).joined(separator: ", "),
+            isTruncated: hiddenCount > 0 || fields.contains(where: \.truncated)
+        )
+    }
 }
 
 public enum ReviewSessionError: Error, Equatable, Sendable {
@@ -261,6 +319,51 @@ private extension ActionTool {
         case .project, .task, .knowledgeFrame, .mailDraft, .developer:
             nil
         }
+    }
+}
+
+private extension JSONValue {
+    var reviewDisplayValue: String {
+        switch self {
+        case .string(let value):
+            value
+        case .number(let value):
+            String(value)
+        case .bool(let value):
+            value ? "true" : "false"
+        case .object:
+            "object"
+        case .array:
+            "list"
+        case .null:
+            "null"
+        }
+    }
+}
+
+private extension String {
+    var reviewDisplayPriority: Int {
+        switch self {
+        case "title", "name", "summary":
+            0
+        case "projectID", "taskID", "dueAt", "scheduledAt", "priority", "status":
+            1
+        default:
+            2
+        }
+    }
+
+    var normalizedSingleLine: String {
+        replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func truncatedForReview(maxLength: Int) -> String {
+        guard count > maxLength else {
+            return self
+        }
+
+        return "\(prefix(maxLength))..."
     }
 }
 

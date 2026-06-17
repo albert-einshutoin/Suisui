@@ -39,7 +39,7 @@
 - [ ] 手動確認: 長いタイトル、長いタスク一覧、狭い window で崩れない。
 - [x] 完了条件: ユーザーが何が作られるかを実行前に判断できる。
 
-残タスク: 上記の手動確認は実装漏れではなく、実アプリ画面でのレイアウト確認 gate として残す。
+残タスク: 上記の手動確認は実装漏れではなく、実アプリ画面でのレイアウト確認 gate として残す。2026-06-18 のセルフレビューで、長い argument summary が判断材料として弱い点と狭幅時に header / action button が圧縮される点を修正済み。Core の `argumentDisplaySummary` で title を優先表示し、長文・大量 field を省略しつつ full text を hover で確認できるようにした。最終 gate は実 LLM plan 生成後の Review 画面で確認する。
 
 ### P3-003: Action edit forms
 
