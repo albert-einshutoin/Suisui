@@ -31,7 +31,7 @@ final class ReviewSessionViewModelTests: XCTestCase {
 
     func testCancelSessionRecordsAuditEventAndDisablesExecution() throws {
         let logger = InMemoryAuditLogger()
-        let registry = try ToolRegistry()
+        let registry = ToolRegistry()
         let viewModel = ReviewSessionViewModel(
             plan: ActionPlan.reviewViewModelFixture(actions: [
                 PlanAction(id: "read", tool: .projectList)

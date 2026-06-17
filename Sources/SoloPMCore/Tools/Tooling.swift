@@ -123,7 +123,11 @@ public final class ToolRegistry: @unchecked Sendable {
     private var tools: [ActionTool: any Tool]
     private let lock = NSLock()
 
-    public init(tools: [any Tool] = []) throws {
+    public init() {
+        self.tools = [:]
+    }
+
+    public init(tools: [any Tool]) throws {
         self.tools = [:]
         for tool in tools {
             try register(tool)

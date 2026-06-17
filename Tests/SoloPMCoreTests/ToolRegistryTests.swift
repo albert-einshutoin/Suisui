@@ -11,7 +11,7 @@ final class ToolRegistryTests: XCTestCase {
     }
 
     func testRegistryThrowsForUnknownTool() throws {
-        let registry = try ToolRegistry()
+        let registry = ToolRegistry()
 
         XCTAssertThrowsError(try registry.tool(named: .projectList)) { error in
             XCTAssertEqual(error as? ToolExecutionError, .unknownTool(.projectList))

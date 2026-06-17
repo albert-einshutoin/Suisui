@@ -99,7 +99,7 @@ final class ActionExecutorTests: XCTestCase {
     }
 
     func testExecutorMarksUnknownToolAsFailure() throws {
-        let registry = try ToolRegistry()
+        let registry = ToolRegistry()
         let session = ReviewSession(plan: .reviewFixture(actions: [
             PlanAction(id: "missing", tool: .projectList)
         ]))

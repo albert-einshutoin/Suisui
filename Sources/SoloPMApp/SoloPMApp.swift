@@ -528,7 +528,7 @@ private enum AppPreviewFactory {
         let logger = RedactingAuditLogger(base: baseLogger)
         let workspaceRoot = FileManager.default.temporaryDirectory.appendingPathComponent("SoloPMPreviewWorkspace", isDirectory: true)
         try? FileManager.default.createDirectory(at: workspaceRoot, withIntermediateDirectories: true)
-        let registry = (try? ToolRegistryFactory.inMemoryPhase2MVP(workspaceRoot: workspaceRoot, auditLogger: logger)) ?? (try! ToolRegistry())
+        let registry = (try? ToolRegistryFactory.inMemoryPhase2MVP(workspaceRoot: workspaceRoot, auditLogger: logger)) ?? ToolRegistry()
 
         return ReviewSessionViewModel(
             plan: plan,
