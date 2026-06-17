@@ -19,12 +19,25 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardSurfaceUsesKanbanLayout() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
 
         XCTAssertTrue(source.contains("NavigationSplitView"))
         XCTAssertTrue(source.contains("BoardColumnView"))
-        XCTAssertTrue(source.contains("Backlog"))
-        XCTAssertTrue(source.contains("In Progress"))
-        XCTAssertTrue(source.contains("Done"))
+        XCTAssertTrue(source.contains("InlineTaskComposer"))
+        XCTAssertTrue(source.contains("TaskInspectorView"))
+        XCTAssertTrue(coreSource.contains("Backlog"))
+        XCTAssertTrue(coreSource.contains("In Progress"))
+        XCTAssertTrue(coreSource.contains("Done"))
+    }
+
+    func testProjectBoardUsesPersistentViewModelInsteadOfStaticSnapshot() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(appSource.contains("makeProjectBoardViewModel()"))
+        XCTAssertFalse(appSource.contains("makeProjectBoardSnapshot()"))
+        XCTAssertTrue(boardSource.contains("@StateObject private var viewModel: ProjectBoardViewModel"))
+        XCTAssertTrue(boardSource.contains("createTask("))
     }
 
     private func readPackageFile(_ relativePath: String) throws -> String {

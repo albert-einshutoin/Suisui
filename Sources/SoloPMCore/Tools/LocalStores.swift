@@ -19,6 +19,27 @@ public struct TaskRecord: Equatable, Sendable {
     public var dueAt: String?
     public var priority: String?
     public var sourceCommand: String?
+    public var detail: String?
+
+    public init(
+        id: Int64,
+        projectID: Int64?,
+        title: String,
+        status: String,
+        dueAt: String?,
+        priority: String?,
+        sourceCommand: String?,
+        detail: String? = nil
+    ) {
+        self.id = id
+        self.projectID = projectID
+        self.title = title
+        self.status = status
+        self.dueAt = dueAt
+        self.priority = priority
+        self.sourceCommand = sourceCommand
+        self.detail = detail
+    }
 }
 
 public struct TaskCreateDraft: Equatable, Sendable {
@@ -27,19 +48,25 @@ public struct TaskCreateDraft: Equatable, Sendable {
     public var dueAt: String?
     public var priority: String?
     public var sourceCommand: String?
+    public var status: String
+    public var detail: String?
 
     public init(
         title: String,
         projectID: Int64? = nil,
         dueAt: String? = nil,
         priority: String? = nil,
-        sourceCommand: String? = nil
+        sourceCommand: String? = nil,
+        status: String = "open",
+        detail: String? = nil
     ) {
         self.title = title
         self.projectID = projectID
         self.dueAt = dueAt
         self.priority = priority
         self.sourceCommand = sourceCommand
+        self.status = status
+        self.detail = detail
     }
 }
 
@@ -178,7 +205,9 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         projectID: Int64? = nil,
         dueAt: String? = nil,
         priority: String? = nil,
-        sourceCommand: String? = nil
+        sourceCommand: String? = nil,
+        status: String = "open",
+        detail: String? = nil
     ) throws -> TaskRecord {
         lock.lock()
         defer { lock.unlock() }
@@ -189,7 +218,9 @@ public final class SQLiteTaskStore: @unchecked Sendable {
                 projectID: projectID,
                 dueAt: dueAt,
                 priority: priority,
-                sourceCommand: sourceCommand
+                sourceCommand: sourceCommand,
+                status: status,
+                detail: detail
             )
         )
     }
@@ -206,11 +237,12 @@ public final class SQLiteTaskStore: @unchecked Sendable {
     private func insertLocked(_ draft: TaskCreateDraft) throws -> TaskRecord {
         try connection.execute(
             """
-            INSERT INTO tasks (project_id, title, status, due_at, priority, source_command)
+            INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command)
             VALUES (
               \(draft.projectID.map(String.init) ?? "NULL"),
               '\(SQL.escape(draft.title))',
-              'open',
+              '\(SQL.escape(draft.status))',
+              \(SQL.optional(draft.detail)),
               \(SQL.optional(draft.dueAt)),
               \(SQL.optional(draft.priority)),
               \(SQL.optional(draft.sourceCommand))
@@ -221,7 +253,15 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         return try getLocked(id: connection.lastInsertedRowID)
     }
 
-    public func update(id: Int64, title: String? = nil, status: String? = nil) throws -> TaskRecord {
+    public func update(
+        id: Int64,
+        title: String? = nil,
+        status: String? = nil,
+        detail: String? = nil,
+        dueAt: String? = nil,
+        priority: String? = nil,
+        projectID: Int64? = nil
+    ) throws -> TaskRecord {
         lock.lock()
         defer { lock.unlock() }
 
@@ -231,6 +271,18 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         }
         if let status {
             assignments.append("status = '\(SQL.escape(status))'")
+        }
+        if let detail {
+            assignments.append("detail = '\(SQL.escape(detail))'")
+        }
+        if let dueAt {
+            assignments.append("due_at = '\(SQL.escape(dueAt))'")
+        }
+        if let priority {
+            assignments.append("priority = '\(SQL.escape(priority))'")
+        }
+        if let projectID {
+            assignments.append("project_id = \(projectID)")
         }
         assignments.append("updated_at = CURRENT_TIMESTAMP")
 
@@ -587,7 +639,8 @@ private extension TaskRecord {
             status: row["status"] ?? "",
             dueAt: SQL.nilIfEmpty(row["due_at"]),
             priority: SQL.nilIfEmpty(row["priority"]),
-            sourceCommand: SQL.nilIfEmpty(row["source_command"])
+            sourceCommand: SQL.nilIfEmpty(row["source_command"]),
+            detail: SQL.nilIfEmpty(row["detail"])
         )
     }
 }

@@ -1,185 +1,19 @@
+import SoloPMCore
 import SwiftUI
-
-struct ProjectBoardSnapshot: Equatable {
-    var projects: [ProjectBoardProject]
-
-    static let demo = ProjectBoardSnapshot(
-        projects: [
-            ProjectBoardProject(
-                id: "public-alpha",
-                title: "Public Alpha",
-                subtitle: "Packaging, review, and launch readiness",
-                columns: [
-                    ProjectBoardColumn(
-                        id: "backlog",
-                        title: "Backlog",
-                        tasks: [
-                            ProjectBoardTask(
-                                id: "task-feedback",
-                                title: "Draft feedback issue template",
-                                detail: "Keep reports privacy-safe and actionable.",
-                                priority: .medium,
-                                dueLabel: "This week"
-                            ),
-                            ProjectBoardTask(
-                                id: "task-shortcuts",
-                                title: "Polish voice shortcut settings",
-                                detail: "Show conflicts and recovery state.",
-                                priority: .low,
-                                dueLabel: nil
-                            )
-                        ]
-                    ),
-                    ProjectBoardColumn(
-                        id: "planned",
-                        title: "Planned",
-                        tasks: [
-                            ProjectBoardTask(
-                                id: "task-release-notes",
-                                title: "Prepare alpha release notes",
-                                detail: "Summarize scope, limitations, and install steps.",
-                                priority: .high,
-                                dueLabel: "Tomorrow"
-                            )
-                        ]
-                    ),
-                    ProjectBoardColumn(
-                        id: "in-progress",
-                        title: "In Progress",
-                        tasks: [
-                            ProjectBoardTask(
-                                id: "task-review-flow",
-                                title: "Review generated ActionPlan",
-                                detail: "Approve project and task writes before execution.",
-                                priority: .high,
-                                dueLabel: "Today"
-                            )
-                        ]
-                    ),
-                    ProjectBoardColumn(
-                        id: "blocked",
-                        title: "Blocked",
-                        tasks: [
-                            ProjectBoardTask(
-                                id: "task-notarization",
-                                title: "Notarization dry run",
-                                detail: "Requires local Developer ID credentials.",
-                                priority: .medium,
-                                dueLabel: nil
-                            )
-                        ]
-                    ),
-                    ProjectBoardColumn(
-                        id: "done",
-                        title: "Done",
-                        tasks: [
-                            ProjectBoardTask(
-                                id: "task-sparkle",
-                                title: "Sparkle update foundation",
-                                detail: "Bundle metadata and appcast script are in place.",
-                                priority: .low,
-                                dueLabel: nil
-                            )
-                        ]
-                    )
-                ]
-            ),
-            ProjectBoardProject(
-                id: "deadline-watcher",
-                title: "Deadline Watcher",
-                subtitle: "Local reminders and artifact progress",
-                columns: [
-                    ProjectBoardColumn(id: "backlog", title: "Backlog", tasks: []),
-                    ProjectBoardColumn(
-                        id: "planned",
-                        title: "Planned",
-                        tasks: [
-                            ProjectBoardTask(
-                                id: "task-artifact-rules",
-                                title: "Tune stale artifact thresholds",
-                                detail: "Avoid noisy reminders for recent work.",
-                                priority: .medium,
-                                dueLabel: "Friday"
-                            )
-                        ]
-                    ),
-                    ProjectBoardColumn(id: "in-progress", title: "In Progress", tasks: []),
-                    ProjectBoardColumn(id: "blocked", title: "Blocked", tasks: []),
-                    ProjectBoardColumn(
-                        id: "done",
-                        title: "Done",
-                        tasks: [
-                            ProjectBoardTask(
-                                id: "task-daily-check",
-                                title: "Daily check runner",
-                                detail: "Records last run and schedules overdue notices.",
-                                priority: .low,
-                                dueLabel: nil
-                            )
-                        ]
-                    )
-                ]
-            )
-        ]
-    )
-}
-
-struct ProjectBoardProject: Identifiable, Equatable {
-    var id: String
-    var title: String
-    var subtitle: String
-    var columns: [ProjectBoardColumn]
-
-    var taskCount: Int {
-        columns.reduce(0) { $0 + $1.tasks.count }
-    }
-}
-
-struct ProjectBoardColumn: Identifiable, Equatable {
-    var id: String
-    var title: String
-    var tasks: [ProjectBoardTask]
-}
-
-struct ProjectBoardTask: Identifiable, Equatable {
-    enum Priority: String, Equatable {
-        case low
-        case medium
-        case high
-
-        var label: String {
-            rawValue.capitalized
-        }
-
-        var color: Color {
-            switch self {
-            case .low:
-                .secondary
-            case .medium:
-                .orange
-            case .high:
-                .red
-            }
-        }
-    }
-
-    var id: String
-    var title: String
-    var detail: String
-    var priority: Priority
-    var dueLabel: String?
-}
 
 struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
-    @SceneStorage("soloPM.selectedProjectID") private var selectedProjectID: String?
+    @StateObject private var viewModel: ProjectBoardViewModel
+    @State private var displayMode: ProjectBoardDisplayMode = .board
 
-    let snapshot: ProjectBoardSnapshot
+    init(viewModel: ProjectBoardViewModel) {
+        _viewModel = StateObject(wrappedValue: viewModel)
+    }
 
     var body: some View {
         NavigationSplitView {
-            List(selection: selectedProjectBinding) {
-                ForEach(snapshot.projects) { project in
+            List(selection: $viewModel.selectedProjectID) {
+                ForEach(viewModel.snapshot.projects) { project in
                     ProjectSidebarRow(project: project)
                         .tag(project.id)
                 }
@@ -187,40 +21,75 @@ struct ProjectBoardView: View {
             .listStyle(.sidebar)
             .navigationTitle("Projects")
         } detail: {
-            if let project = selectedProject {
-                ProjectBoardDetail(project: project)
-                    .toolbar {
-                        ToolbarItemGroup {
-                            Button {
-                                openWindow(id: "voice-capture")
-                            } label: {
-                                Label("Voice Command", systemImage: "mic")
-                            }
+            if let project = viewModel.selectedProject {
+                ProjectBoardDetail(
+                    project: project,
+                    displayMode: $displayMode,
+                    viewModel: viewModel
+                )
+                .toolbar {
+                    ToolbarItemGroup {
+                        Button {
+                            openWindow(id: "voice-capture")
+                        } label: {
+                            Label("Voice Command", systemImage: "mic")
+                        }
 
-                            SettingsLink {
-                                Label("Settings", systemImage: "gearshape")
-                            }
+                        SettingsLink {
+                            Label("Settings", systemImage: "gearshape")
                         }
                     }
+                }
+                .inspector(isPresented: inspectorBinding) {
+                    if let task = viewModel.selectedTask {
+                        TaskInspectorView(task: task, viewModel: viewModel)
+                            .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
+                    }
+                }
+            } else {
+                ContentUnavailableView("No Projects", systemImage: "folder")
             }
         }
         .navigationTitle("SoloPM")
-        .onAppear {
-            if selectedProjectID == nil {
-                selectedProjectID = snapshot.projects.first?.id
-            }
+        .task {
+            viewModel.load()
         }
     }
 
-    private var selectedProject: ProjectBoardProject? {
-        snapshot.projects.first { $0.id == selectedProjectID } ?? snapshot.projects.first
+    private var inspectorBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.selectedTask != nil },
+            set: { isPresented in
+                if !isPresented {
+                    viewModel.selectedTaskID = nil
+                }
+            }
+        )
+    }
+}
+
+private enum ProjectBoardDisplayMode: String, CaseIterable, Identifiable {
+    case board
+    case list
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .board:
+            "Board"
+        case .list:
+            "List"
+        }
     }
 
-    private var selectedProjectBinding: Binding<String?> {
-        Binding(
-            get: { selectedProjectID ?? snapshot.projects.first?.id },
-            set: { selectedProjectID = $0 }
-        )
+    var systemImage: String {
+        switch self {
+        case .board:
+            "rectangle.3.group"
+        case .list:
+            "list.bullet"
+        }
     }
 }
 
@@ -244,60 +113,237 @@ private struct ProjectSidebarRow: View {
 
 private struct ProjectBoardDetail: View {
     let project: ProjectBoardProject
+    @Binding var displayMode: ProjectBoardDisplayMode
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    @State private var composingStatus: ProjectTaskStatus?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(project.title)
-                    .font(.title2.weight(.semibold))
-                Text(project.subtitle)
-                    .foregroundStyle(.secondary)
-            }
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(project.title)
+                        .font(.title2.weight(.semibold))
+                    Text(project.subtitle)
+                        .foregroundStyle(.secondary)
+                }
 
-            ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 12) {
-                    ForEach(project.columns) { column in
-                        BoardColumnView(column: column)
+                Spacer()
+
+                Picker("View", selection: $displayMode) {
+                    ForEach(ProjectBoardDisplayMode.allCases) { mode in
+                        Label(mode.label, systemImage: mode.systemImage)
+                            .tag(mode)
                     }
                 }
-                .padding(.bottom, 4)
+                .pickerStyle(.segmented)
+                .frame(width: 168)
+
+                Button {
+                    composingStatus = .backlog
+                } label: {
+                    Label("Add Task", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut("n", modifiers: [.command])
+            }
+
+            if let errorMessage = viewModel.errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
+            switch displayMode {
+            case .board:
+                ProjectKanbanBoard(
+                    project: project,
+                    composingStatus: $composingStatus,
+                    viewModel: viewModel
+                )
+            case .list:
+                ProjectTaskList(project: project, viewModel: viewModel)
             }
         }
         .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+private struct ProjectKanbanBoard: View {
+    let project: ProjectBoardProject
+    @Binding var composingStatus: ProjectTaskStatus?
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            HStack(alignment: .top, spacing: 12) {
+                ForEach(project.columns) { column in
+                    BoardColumnView(
+                        column: column,
+                        isComposing: composingStatus == column.status,
+                        selectedTaskID: viewModel.selectedTaskID,
+                        onStartComposing: { composingStatus = column.status },
+                        onCancelComposing: { composingStatus = nil },
+                        onCreateTask: { title, detail, priority, dueAt in
+                            viewModel.createTask(
+                                title: title,
+                                detail: detail,
+                                projectID: project.id,
+                                status: column.status,
+                                priority: priority,
+                                dueAt: dueAt
+                            )
+                            composingStatus = nil
+                        },
+                        onSelectTask: { viewModel.selectedTaskID = $0 }
+                    )
+                }
+            }
+            .padding(.bottom, 4)
+        }
     }
 }
 
 private struct BoardColumnView: View {
     let column: ProjectBoardColumn
+    let isComposing: Bool
+    let selectedTaskID: Int64?
+    let onStartComposing: () -> Void
+    let onCancelComposing: () -> Void
+    let onCreateTask: (String, String, ProjectTaskPriority, String?) -> Void
+    let onSelectTask: (Int64) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(column.title)
+            HStack(spacing: 8) {
+                Label(column.title, systemImage: column.status.systemImage)
                     .font(.headline)
                 Spacer()
                 Text("\(column.tasks.count)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Button(action: onStartComposing) {
+                    Label("Add", systemImage: "plus")
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
             }
 
-            if column.tasks.isEmpty {
-                Text("No tasks")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 72, alignment: .topLeading)
+            if isComposing {
+                InlineTaskComposer(
+                    status: column.status,
+                    onCancel: onCancelComposing,
+                    onCreate: onCreateTask
+                )
+            }
+
+            if column.tasks.isEmpty && !isComposing {
+                Button(action: onStartComposing) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Image(systemName: "plus.circle")
+                            .foregroundStyle(.secondary)
+                        Text("No tasks")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 82, alignment: .topLeading)
+                    .padding(10)
+                }
+                .buttonStyle(.plain)
             } else {
                 ForEach(column.tasks) { task in
-                    BoardTaskCard(task: task)
+                    Button {
+                        onSelectTask(task.id)
+                    } label: {
+                        BoardTaskCard(task: task, isSelected: selectedTaskID == task.id)
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        Button {
+                            onSelectTask(task.id)
+                        } label: {
+                            Label("Open Details", systemImage: "sidebar.right")
+                        }
+                    }
                 }
             }
         }
-        .frame(width: 246, alignment: .topLeading)
+        .frame(width: 190, alignment: .topLeading)
+    }
+}
+
+private struct InlineTaskComposer: View {
+    let status: ProjectTaskStatus
+    let onCancel: () -> Void
+    let onCreate: (String, String, ProjectTaskPriority, String?) -> Void
+
+    @State private var title = ""
+    @State private var detail = ""
+    @State private var priority: ProjectTaskPriority = .medium
+    @State private var dueAt = ""
+    @FocusState private var isTitleFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("Task title", text: $title)
+                .textFieldStyle(.roundedBorder)
+                .focused($isTitleFocused)
+                .onSubmit(submit)
+
+            TextField("Detail", text: $detail, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(2...3)
+
+            HStack {
+                Picker("Priority", selection: $priority) {
+                    ForEach(ProjectTaskPriority.allCases) { priority in
+                        Text(priority.label).tag(priority)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 112)
+
+                TextField("Due", text: $dueAt)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            HStack {
+                Button(action: submit) {
+                    Label("Add", systemImage: "checkmark")
+                }
+                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                Button(action: onCancel) {
+                    Label("Cancel", systemImage: "xmark")
+                }
+            }
+            .font(.caption)
+        }
+        .padding(10)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(.quaternary)
+        }
+        .onAppear {
+            isTitleFocused = true
+        }
+    }
+
+    private func submit() {
+        onCreate(
+            title,
+            detail,
+            priority,
+            dueAt.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank
+        )
     }
 }
 
 private struct BoardTaskCard: View {
     let task: ProjectBoardTask
+    let isSelected: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -305,10 +351,12 @@ private struct BoardTaskCard: View {
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(2)
 
-            Text(task.detail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
+            if !task.detail.isEmpty {
+                Text(task.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
 
             HStack {
                 Label(task.priority.label, systemImage: "flag")
@@ -324,11 +372,160 @@ private struct BoardTaskCard: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial)
+        .background(isSelected ? Color.accentColor.opacity(0.14) : Color.secondary.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(.quaternary)
+                .stroke(isSelected ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.16))
         }
+    }
+}
+
+private struct ProjectTaskList: View {
+    let project: ProjectBoardProject
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    var body: some View {
+        Table(project.tasks, selection: $viewModel.selectedTaskID) {
+            TableColumn("Task") { task in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(task.title)
+                        .lineLimit(1)
+                    if !task.detail.isEmpty {
+                        Text(task.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+
+            TableColumn("Status") { task in
+                Label(task.status.title, systemImage: task.status.systemImage)
+            }
+
+            TableColumn("Priority") { task in
+                Label(task.priority.label, systemImage: "flag")
+                    .foregroundStyle(task.priority.color)
+            }
+
+            TableColumn("Due") { task in
+                Text(task.dueLabel ?? "")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct TaskInspectorView: View {
+    let task: ProjectBoardTask
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    @State private var title: String
+    @State private var detail: String
+    @State private var status: ProjectTaskStatus
+    @State private var priority: ProjectTaskPriority
+    @State private var dueAt: String
+
+    init(task: ProjectBoardTask, viewModel: ProjectBoardViewModel) {
+        self.task = task
+        self.viewModel = viewModel
+        _title = State(initialValue: task.title)
+        _detail = State(initialValue: task.detail)
+        _status = State(initialValue: task.status)
+        _priority = State(initialValue: task.priority)
+        _dueAt = State(initialValue: task.dueAt ?? "")
+    }
+
+    var body: some View {
+        Form {
+            Section("Task") {
+                TextField("Title", text: $title)
+                TextField("Detail", text: $detail, axis: .vertical)
+                    .lineLimit(4...8)
+            }
+
+            Section("Fields") {
+                Picker("Status", selection: $status) {
+                    ForEach(ProjectTaskStatus.allCases) { status in
+                        Label(status.title, systemImage: status.systemImage)
+                            .tag(status)
+                    }
+                }
+
+                Picker("Priority", selection: $priority) {
+                    ForEach(ProjectTaskPriority.allCases) { priority in
+                        Text(priority.label)
+                            .tag(priority)
+                    }
+                }
+
+                TextField("Due", text: $dueAt)
+            }
+
+            Section {
+                Button {
+                    viewModel.updateSelectedTask(
+                        title: title,
+                        detail: detail,
+                        status: status,
+                        priority: priority,
+                        dueAt: dueAt.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank
+                    )
+                } label: {
+                    Label("Save Changes", systemImage: "checkmark.circle")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .formStyle(.grouped)
+        .onChange(of: task.id) { _, newValue in
+            guard newValue == task.id else {
+                return
+            }
+            title = task.title
+            detail = task.detail
+            status = task.status
+            priority = task.priority
+            dueAt = task.dueAt ?? ""
+        }
+    }
+}
+
+private extension ProjectTaskPriority {
+    var color: Color {
+        switch self {
+        case .low:
+            .secondary
+        case .medium:
+            .orange
+        case .high:
+            .red
+        }
+    }
+}
+
+private extension ProjectTaskStatus {
+    var systemImage: String {
+        switch self {
+        case .backlog:
+            "tray"
+        case .planned:
+            "calendar.badge.clock"
+        case .inProgress:
+            "arrow.triangle.2.circlepath"
+        case .blocked:
+            "exclamationmark.octagon"
+        case .done:
+            "checkmark.circle"
+        }
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

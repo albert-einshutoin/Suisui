@@ -26,4 +26,18 @@ final class DatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(try database.tableExists("reminder_links"))
         XCTAssertTrue(try database.appliedMigrationIDs().contains("0002b_create_system_tool_state"))
     }
+
+    func testCurrentMigrationsUpgradeExistingTaskTableWithDetailColumn() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase2)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+
+        let taskColumns = try connection.queryRows("PRAGMA table_info(tasks);").compactMap { $0["name"] }
+        let appliedMigrationIDs = try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;")
+
+        XCTAssertTrue(taskColumns.contains("detail"))
+        XCTAssertTrue(appliedMigrationIDs.contains("0007_add_task_detail"))
+    }
 }

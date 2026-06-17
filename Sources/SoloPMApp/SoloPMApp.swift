@@ -11,13 +11,12 @@ struct SoloPM: App {
     @NSApplicationDelegateAdaptor(SparkleAppDelegate.self) private var sparkleAppDelegate
 #endif
 
-    private let boardSnapshot = AppPreviewFactory.makeProjectBoardSnapshot()
     private let menuBarViewModel = AppPreviewFactory.makeMenuBarSummaryViewModel()
     private let settings = AppSettings.default
 
     var body: some Scene {
         WindowGroup("SoloPM", id: "project-board") {
-            ProjectBoardView(snapshot: boardSnapshot)
+            ProjectBoardView(viewModel: AppPreviewFactory.makeProjectBoardViewModel())
         }
         .defaultSize(width: 1180, height: 760)
 
@@ -778,8 +777,13 @@ private struct SettingsView: View {
 }
 
 private enum AppPreviewFactory {
-    static func makeProjectBoardSnapshot() -> ProjectBoardSnapshot {
-        .demo
+    @MainActor
+    static func makeProjectBoardViewModel() -> ProjectBoardViewModel {
+        do {
+            return ProjectBoardViewModel(store: try SQLiteProjectBoardStore(path: applicationDatabaseURL().path))
+        } catch {
+            return ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        }
     }
 
     static func makeMenuBarSummaryViewModel() -> MenuBarSummaryViewModel {
@@ -809,6 +813,19 @@ private enum AppPreviewFactory {
     @MainActor
     static func makeExternalMCPSettingsViewModel() -> ExternalMCPSettingsViewModel {
         ExternalMCPSettingsViewModel(store: UserDefaultsMCPServerRegistrationStore())
+    }
+
+    private static func applicationDatabaseURL() throws -> URL {
+        guard let applicationSupportURL = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first else {
+            throw DatabaseError.openFailed("Application Support directory was not found.")
+        }
+
+        let directory = applicationSupportURL.appendingPathComponent("SoloPM", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appendingPathComponent("SoloPM.sqlite")
     }
 
     @MainActor

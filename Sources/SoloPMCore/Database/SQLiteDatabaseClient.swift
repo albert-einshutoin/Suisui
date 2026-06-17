@@ -136,20 +136,8 @@ public struct DatabaseMigration {
     }
 }
 
-public protocol DatabaseClient {
-    func migrate(_ migrations: [DatabaseMigration]) throws
-    func appliedMigrationIDs() throws -> [String]
-    func tableExists(_ tableName: String) throws -> Bool
-}
-
-public final class SQLiteDatabaseClient: DatabaseClient {
-    private let connection: SQLiteConnection
-
-    public init(path: String) throws {
-        self.connection = try SQLiteConnection(path: path)
-    }
-
-    public func migrate(_ migrations: [DatabaseMigration]) throws {
+public enum SQLiteMigrationRunner {
+    public static func migrate(connection: SQLiteConnection, migrations: [DatabaseMigration]) throws {
         try connection.execute(
             """
             CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -159,7 +147,7 @@ public final class SQLiteDatabaseClient: DatabaseClient {
             """
         )
 
-        let alreadyApplied = Set(try appliedMigrationIDs())
+        let alreadyApplied = Set(try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;"))
 
         for migration in migrations where !alreadyApplied.contains(migration.id) {
             do {
@@ -176,6 +164,28 @@ public final class SQLiteDatabaseClient: DatabaseClient {
         }
     }
 
+    private static func escape(_ value: String) -> String {
+        value.replacingOccurrences(of: "'", with: "''")
+    }
+}
+
+public protocol DatabaseClient {
+    func migrate(_ migrations: [DatabaseMigration]) throws
+    func appliedMigrationIDs() throws -> [String]
+    func tableExists(_ tableName: String) throws -> Bool
+}
+
+public final class SQLiteDatabaseClient: DatabaseClient {
+    private let connection: SQLiteConnection
+
+    public init(path: String) throws {
+        self.connection = try SQLiteConnection(path: path)
+    }
+
+    public func migrate(_ migrations: [DatabaseMigration]) throws {
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: migrations)
+    }
+
     public func appliedMigrationIDs() throws -> [String] {
         try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;")
     }
@@ -184,9 +194,6 @@ public final class SQLiteDatabaseClient: DatabaseClient {
         try connection.tableExists(tableName)
     }
 
-    private func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
-    }
 }
 
 public enum CoreMigrations {
@@ -238,6 +245,7 @@ public enum CoreMigrations {
                         project_id INTEGER,
                         title TEXT NOT NULL,
                         status TEXT NOT NULL,
+                        detail TEXT,
                         due_at TEXT,
                         priority TEXT,
                         source_command TEXT,
@@ -405,6 +413,18 @@ public enum CoreMigrations {
                     ON knowledge_frame_vectors(provider_id);
                     """
                 )
+            }
+        ]
+    }
+
+    public static var current: [DatabaseMigration] {
+        phase9 + [
+            DatabaseMigration(id: "0007_add_task_detail") { connection in
+                let columns = try connection.queryRows("PRAGMA table_info(tasks);").compactMap { $0["name"] }
+                guard !columns.contains("detail") else {
+                    return
+                }
+                try connection.execute("ALTER TABLE tasks ADD COLUMN detail TEXT;")
             }
         ]
     }
