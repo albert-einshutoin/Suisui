@@ -137,7 +137,11 @@ private struct VoiceCaptureView: View {
 
             if let response = viewModel.planningResponse {
                 Divider()
-                ActionPlanPreview(response: response)
+                if let plan = response.actionPlan, response.validationResult.isValid {
+                    ActionReviewPanel(viewModel: AppPreviewFactory.makeReviewSessionViewModel(plan: plan))
+                } else {
+                    ActionPlanPreview(response: response)
+                }
             }
         }
         .padding(16)
@@ -188,6 +192,206 @@ private struct StatusRow: View {
             return true
         }
         return false
+    }
+}
+
+private struct ActionReviewPanel: View {
+    @StateObject private var viewModel: ReviewSessionViewModel
+
+    init(viewModel: ReviewSessionViewModel) {
+        _viewModel = StateObject(wrappedValue: viewModel)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(viewModel.session.originalPlan.summary)
+                        .font(.headline)
+                    Text(approvalLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(viewModel.session.originalPlan.riskLevel.rawValue.capitalized)
+                    .font(.caption)
+                    .foregroundStyle(viewModel.session.originalPlan.riskLevel >= .write ? .orange : .secondary)
+            }
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(viewModel.session.items) { item in
+                        ReviewActionRow(item: item, viewModel: viewModel)
+                        Divider()
+                    }
+                }
+            }
+            .frame(maxHeight: 220)
+
+            if let message = viewModel.errorMessage {
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
+            HStack {
+                Button {
+                    try? viewModel.approve()
+                } label: {
+                    Label("Approve", systemImage: "checkmark.seal")
+                }
+                .disabled(!viewModel.canApprove)
+
+                Button {
+                    try? viewModel.execute()
+                } label: {
+                    Label("Execute", systemImage: "play.circle")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!viewModel.canExecute)
+
+                Button {
+                    viewModel.cancel()
+                } label: {
+                    Label("Cancel", systemImage: "xmark.circle")
+                }
+                .disabled(viewModel.session.executionStatus == .completed || viewModel.session.executionStatus == .canceled)
+            }
+        }
+    }
+
+    private var approvalLabel: String {
+        switch viewModel.session.approvalState {
+        case .notRequired:
+            "No approval required"
+        case .pending:
+            "Approval required before execution"
+        case .approved:
+            "Approved"
+        case .blocked(let reason):
+            reason
+        }
+    }
+}
+
+private struct ReviewActionRow: View {
+    let item: ReviewActionItem
+    @ObservedObject var viewModel: ReviewSessionViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top) {
+                Toggle(
+                    isOn: Binding(
+                        get: { item.isEnabled },
+                        set: { viewModel.setActionEnabled(actionID: item.id, isEnabled: $0) }
+                    )
+                ) {
+                    Label(item.editedAction.tool.rawValue, systemImage: iconName(for: item.editedAction.actionType))
+                        .font(.subheadline)
+                }
+                Spacer()
+                Text(statusLabel)
+                    .font(.caption)
+                    .foregroundStyle(statusColor)
+            }
+
+            if item.editedAction.arguments["title"]?.stringValue != nil {
+                TextField(
+                    "Title",
+                    text: Binding(
+                        get: { currentStringArgument("title") },
+                        set: { viewModel.updateStringArgument(actionID: item.id, key: "title", value: $0) }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+            }
+
+            Text(argumentSummary(item.editedAction.arguments))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+
+            if let result = item.result {
+                Text(result.summary)
+                    .font(.caption)
+                    .foregroundStyle(.green)
+            }
+            if let error = item.errorMessage {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+            }
+        }
+    }
+
+    private var statusLabel: String {
+        switch item.executionStatus {
+        case .pending:
+            "Pending"
+        case .executing:
+            "Executing"
+        case .succeeded:
+            "Done"
+        case .failed:
+            "Failed"
+        case .skipped:
+            "Skipped"
+        }
+    }
+
+    private var statusColor: Color {
+        switch item.executionStatus {
+        case .succeeded:
+            .green
+        case .failed:
+            .red
+        case .skipped:
+            .secondary
+        default:
+            .secondary
+        }
+    }
+
+    private func currentStringArgument(_ key: String) -> String {
+        viewModel.session.items
+            .first(where: { $0.id == item.id })?
+            .editedAction
+            .arguments[key]?
+            .stringValue ?? ""
+    }
+
+    private func iconName(for actionType: ActionType) -> String {
+        switch actionType {
+        case .project:
+            "folder"
+        case .task:
+            "checkmark.circle"
+        case .notification:
+            "bell"
+        case .calendar:
+            "calendar"
+        case .reminder:
+            "list.bullet"
+        case .filesystem:
+            "doc"
+        case .knowledgeFrame:
+            "text.book.closed"
+        case .mailDraft:
+            "envelope"
+        }
+    }
+
+    private func argumentSummary(_ arguments: [String: JSONValue]) -> String {
+        guard !arguments.isEmpty else {
+            return "No arguments"
+        }
+
+        return arguments
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key): \($0.value.displayValue)" }
+            .joined(separator: ", ")
     }
 }
 
@@ -317,6 +521,21 @@ private enum AppPreviewFactory {
             auditRecorder: PlanningAuditRecorder(logger: RedactingAuditLogger(base: InMemoryAuditLogger()))
         )
     }
+
+    @MainActor
+    static func makeReviewSessionViewModel(plan: ActionPlan) -> ReviewSessionViewModel {
+        let baseLogger = InMemoryAuditLogger()
+        let logger = RedactingAuditLogger(base: baseLogger)
+        let workspaceRoot = FileManager.default.temporaryDirectory.appendingPathComponent("SoloPMPreviewWorkspace", isDirectory: true)
+        try? FileManager.default.createDirectory(at: workspaceRoot, withIntermediateDirectories: true)
+        let registry = (try? ToolRegistryFactory.inMemoryPhase2MVP(workspaceRoot: workspaceRoot, auditLogger: logger)) ?? (try! ToolRegistry())
+
+        return ReviewSessionViewModel(
+            plan: plan,
+            executor: ActionExecutor(registry: registry, auditLogger: logger),
+            auditLogger: logger
+        )
+    }
 }
 
 private struct DemoPlanningProvider: LLMProvider {
@@ -329,11 +548,18 @@ private struct DemoPlanningProvider: LLMProvider {
             summary: "Create a task",
             actions: [
                 PlanAction(
+                    id: "action-demo-project",
+                    tool: .projectCreate,
+                    arguments: [
+                        "title": .string("SoloPM Demo")
+                    ]
+                ),
+                PlanAction(
                     id: "action-demo-task",
                     tool: .taskCreate,
                     arguments: [
                         "title": .string(request.userInput),
-                        "source": .string("voice-capture")
+                        "sourceCommand": .string("voice-capture")
                     ]
                 )
             ],
@@ -351,6 +577,13 @@ private struct DemoPlanningProvider: LLMProvider {
 }
 
 private extension JSONValue {
+    var stringValue: String? {
+        guard case .string(let value) = self else {
+            return nil
+        }
+        return value
+    }
+
     var displayValue: String {
         switch self {
         case .string(let value):

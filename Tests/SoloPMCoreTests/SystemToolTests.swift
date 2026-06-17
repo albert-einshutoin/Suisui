@@ -200,6 +200,18 @@ final class SystemToolTests: XCTestCase {
         XCTAssertTrue(registry.contains(.mailDraftCreateText))
     }
 
+    func testInMemoryPhase2MVPFactoryBuildsExecutableRegistry() throws {
+        let registry = try ToolRegistryFactory.inMemoryPhase2MVP(
+            workspaceRoot: temporaryDirectory(),
+            auditLogger: InMemoryAuditLogger()
+        )
+
+        XCTAssertTrue(registry.contains(.projectCreate))
+        XCTAssertTrue(registry.contains(.taskCreate))
+        XCTAssertTrue(registry.contains(.notificationSchedule))
+        XCTAssertTrue(registry.contains(.mailDraftCreateText))
+    }
+
     private func makeStores() throws -> (projects: SQLiteProjectStore, tasks: SQLiteTaskStore, knowledge: SQLiteKnowledgeFrameStore) {
         let connection = try SQLiteConnection(path: ":memory:")
         try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase2)
