@@ -239,6 +239,118 @@ public final class ArtifactMonitoringService: @unchecked Sendable {
     }
 }
 
+public enum ArtifactProgressIssueKind: String, Equatable, Sendable {
+    case missingFile
+    case staleFile
+    case incompleteBeforeDeadline
+}
+
+public struct ArtifactProgressIssue: Equatable, Sendable {
+    public var artifact: ArtifactRecord
+    public var kind: ArtifactProgressIssueKind
+    public var deadlineRuleTarget: DeadlineRuleTarget?
+    public var referenceDate: Date?
+
+    public init(
+        artifact: ArtifactRecord,
+        kind: ArtifactProgressIssueKind,
+        deadlineRuleTarget: DeadlineRuleTarget? = nil,
+        referenceDate: Date? = nil
+    ) {
+        self.artifact = artifact
+        self.kind = kind
+        self.deadlineRuleTarget = deadlineRuleTarget
+        self.referenceDate = referenceDate
+    }
+}
+
+public final class ArtifactProgressDetector: @unchecked Sendable {
+    private let artifactStore: SQLiteArtifactStore
+    private let projectStore: SQLiteProjectStore
+    private let taskStore: SQLiteTaskStore
+    private let dateProvider: any DateProvider
+
+    public init(
+        artifactStore: SQLiteArtifactStore,
+        projectStore: SQLiteProjectStore,
+        taskStore: SQLiteTaskStore,
+        dateProvider: any DateProvider = SystemDateProvider()
+    ) {
+        self.artifactStore = artifactStore
+        self.projectStore = projectStore
+        self.taskStore = taskStore
+        self.dateProvider = dateProvider
+    }
+
+    public func detectIssues(staleAfter: TimeInterval, deadlineLeadTime: TimeInterval) throws -> [ArtifactProgressIssue] {
+        let now = dateProvider.now
+        let staleCutoff = now.addingTimeInterval(-staleAfter)
+        let deadlineCutoff = now.addingTimeInterval(deadlineLeadTime)
+
+        var issues: [ArtifactProgressIssue] = []
+        for artifact in try artifactStore.list() {
+            let target = deadlineRuleTarget(for: artifact)
+            let dueAt = try deadlineDate(for: artifact)
+
+            if artifact.createdState != .created {
+                issues.append(
+                    ArtifactProgressIssue(
+                        artifact: artifact,
+                        kind: .missingFile,
+                        deadlineRuleTarget: target
+                    )
+                )
+            } else if let lastModifiedAt = artifact.lastModifiedAt,
+                      lastModifiedAt < staleCutoff {
+                issues.append(
+                    ArtifactProgressIssue(
+                        artifact: artifact,
+                        kind: .staleFile,
+                        deadlineRuleTarget: target,
+                        referenceDate: lastModifiedAt
+                    )
+                )
+            }
+
+            if artifact.createdState != .created,
+               let dueAt,
+               dueAt >= now,
+               dueAt <= deadlineCutoff {
+                issues.append(
+                    ArtifactProgressIssue(
+                        artifact: artifact,
+                        kind: .incompleteBeforeDeadline,
+                        deadlineRuleTarget: target,
+                        referenceDate: dueAt
+                    )
+                )
+            }
+        }
+
+        return issues
+    }
+
+    private func deadlineRuleTarget(for artifact: ArtifactRecord) -> DeadlineRuleTarget? {
+        if let taskID = artifact.taskID {
+            return .task(taskID)
+        }
+        if let projectID = artifact.projectID {
+            return .project(projectID)
+        }
+        return nil
+    }
+
+    private func deadlineDate(for artifact: ArtifactRecord) throws -> Date? {
+        if let taskID = artifact.taskID {
+            return try taskStore.get(id: taskID).dueAt.flatMap(DeadlineDateParser.date(from:))
+        }
+        if let projectID = artifact.projectID {
+            return try projectStore.get(id: projectID).deadline.flatMap(DeadlineDateParser.date(from:))
+        }
+        return nil
+    }
+}
+
 public enum WorkspacePathPolicy {
     public static func isPath(_ path: String, inside workspacePath: String) -> Bool {
         let normalizedPath = normalize(path)

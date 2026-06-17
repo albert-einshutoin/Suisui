@@ -90,11 +90,11 @@
 
 ### P4-009: Stale artifact detection
 
-- [ ] 成果物未作成、未更新、期限前未完成を検出する。
-- [ ] 通知対象にする条件を DeadlineRule と紐付ける。
-- [ ] ファイル内容はユーザー承認なしに LLM へ送らない。
-- [ ] テスト: missing file、stale file、recently updated を確認する。
-- [ ] 完了条件: 成果物の進捗をローカル metadata だけで判断できる。
+- [x] 成果物未作成、未更新、期限前未完成を検出する。
+- [x] 通知対象にする条件を DeadlineRule と紐付ける。
+- [x] ファイル内容はユーザー承認なしに LLM へ送らない。
+- [x] テスト: missing file、stale file、recently updated を確認する。
+- [x] 完了条件: 成果物の進捗をローカル metadata だけで判断できる。
 
 ### P4-010: Watcher audit and diagnostics
 

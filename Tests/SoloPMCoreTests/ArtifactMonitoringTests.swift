@@ -152,10 +152,108 @@ final class ArtifactMonitoringTests: XCTestCase {
         XCTAssertFalse(WorkspacePathPolicy.isPath("/tmp/solopm-other/status.md", inside: "/tmp/solopm"))
     }
 
+    func testArtifactProgressDetectorReportsMissingFileWithDeadlineRuleTarget() throws {
+        let connection = try makeConnection()
+        let stores = makeStores(connection: connection)
+        let task = try stores.tasks.create(title: "Draft status", dueAt: "2026-06-30T12:00:00Z")
+        _ = try stores.artifacts.create(
+            taskID: task.id,
+            workspacePath: "/tmp/solopm",
+            expectedPath: "/tmp/solopm/reports/status.md",
+            createdState: .missing
+        )
+        let detector = ArtifactProgressDetector(
+            artifactStore: stores.artifacts,
+            projectStore: stores.projects,
+            taskStore: stores.tasks,
+            dateProvider: FixedDateProvider(now: try Date.iso8601("2026-06-17T12:00:00Z"))
+        )
+
+        let issues = try detector.detectIssues(staleAfter: 7 * 24 * 60 * 60, deadlineLeadTime: 24 * 60 * 60)
+
+        XCTAssertEqual(issues.map(\.kind), [.missingFile])
+        XCTAssertEqual(issues.first?.deadlineRuleTarget, .task(task.id))
+    }
+
+    func testArtifactProgressDetectorReportsStaleFile() throws {
+        let connection = try makeConnection()
+        let stores = makeStores(connection: connection)
+        _ = try stores.artifacts.create(
+            workspacePath: "/tmp/solopm",
+            expectedPath: "/tmp/solopm/reports/old.md",
+            createdState: .created,
+            lastModifiedAt: try Date.iso8601("2026-06-01T12:00:00Z")
+        )
+        let detector = ArtifactProgressDetector(
+            artifactStore: stores.artifacts,
+            projectStore: stores.projects,
+            taskStore: stores.tasks,
+            dateProvider: FixedDateProvider(now: try Date.iso8601("2026-06-17T12:00:00Z"))
+        )
+
+        let issues = try detector.detectIssues(staleAfter: 7 * 24 * 60 * 60, deadlineLeadTime: 24 * 60 * 60)
+
+        XCTAssertEqual(issues.map(\.kind), [.staleFile])
+        XCTAssertEqual(issues.first?.artifact.expectedPath, "/tmp/solopm/reports/old.md")
+    }
+
+    func testArtifactProgressDetectorIgnoresRecentlyUpdatedFile() throws {
+        let connection = try makeConnection()
+        let stores = makeStores(connection: connection)
+        _ = try stores.artifacts.create(
+            workspacePath: "/tmp/solopm",
+            expectedPath: "/tmp/solopm/reports/recent.md",
+            createdState: .created,
+            lastModifiedAt: try Date.iso8601("2026-06-16T12:00:00Z")
+        )
+        let detector = ArtifactProgressDetector(
+            artifactStore: stores.artifacts,
+            projectStore: stores.projects,
+            taskStore: stores.tasks,
+            dateProvider: FixedDateProvider(now: try Date.iso8601("2026-06-17T12:00:00Z"))
+        )
+
+        let issues = try detector.detectIssues(staleAfter: 7 * 24 * 60 * 60, deadlineLeadTime: 24 * 60 * 60)
+
+        XCTAssertEqual(issues, [])
+    }
+
+    func testArtifactProgressDetectorReportsIncompleteArtifactBeforeDeadline() throws {
+        let connection = try makeConnection()
+        let stores = makeStores(connection: connection)
+        let project = try stores.projects.create(title: "Launch", deadline: "2026-06-18T12:00:00Z")
+        _ = try stores.artifacts.create(
+            projectID: project.id,
+            workspacePath: "/tmp/solopm",
+            expectedPath: "/tmp/solopm/reports/launch.md"
+        )
+        let detector = ArtifactProgressDetector(
+            artifactStore: stores.artifacts,
+            projectStore: stores.projects,
+            taskStore: stores.tasks,
+            dateProvider: FixedDateProvider(now: try Date.iso8601("2026-06-17T12:00:00Z"))
+        )
+
+        let issues = try detector.detectIssues(staleAfter: 7 * 24 * 60 * 60, deadlineLeadTime: 2 * 24 * 60 * 60)
+
+        XCTAssertEqual(issues.map(\.kind), [.missingFile, .incompleteBeforeDeadline])
+        XCTAssertEqual(issues.last?.deadlineRuleTarget, .project(project.id))
+    }
+
     private func makeConnection() throws -> SQLiteConnection {
         let connection = try SQLiteConnection(path: ":memory:")
         try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase4)
         return connection
+    }
+
+    private func makeStores(
+        connection: SQLiteConnection
+    ) -> (projects: SQLiteProjectStore, tasks: SQLiteTaskStore, artifacts: SQLiteArtifactStore) {
+        (
+            SQLiteProjectStore(connection: connection),
+            SQLiteTaskStore(connection: connection),
+            SQLiteArtifactStore(connection: connection)
+        )
     }
 }
 
