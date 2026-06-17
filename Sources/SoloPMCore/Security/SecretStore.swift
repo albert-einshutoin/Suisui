@@ -11,7 +11,7 @@ public struct SecretKey: Hashable, Equatable, Sendable {
     public static let openRouterAPIKey = SecretKey("openrouter_api_key")
 }
 
-public protocol SecretStore {
+public protocol SecretStore: Sendable {
     func save(_ value: String, for key: SecretKey) throws
     func read(_ key: SecretKey) throws -> String?
     func delete(_ key: SecretKey) throws
@@ -22,7 +22,7 @@ public enum SecretStoreError: Error, Equatable {
     case unexpectedStatus(Int32)
 }
 
-public final class InMemorySecretStore: SecretStore {
+public final class InMemorySecretStore: SecretStore, @unchecked Sendable {
     private var values: [SecretKey: String]
     private let lock = NSLock()
 
@@ -48,4 +48,3 @@ public final class InMemorySecretStore: SecretStore {
         values.removeValue(forKey: key)
     }
 }
-

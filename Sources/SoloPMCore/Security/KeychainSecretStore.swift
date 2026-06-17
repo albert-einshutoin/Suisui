@@ -3,7 +3,7 @@ import Foundation
 #if canImport(Security)
 import Security
 
-public final class KeychainSecretStore: SecretStore {
+public final class KeychainSecretStore: SecretStore, @unchecked Sendable {
     private let service: String
 
     public init(service: String = "dev.solopm.app") {
@@ -71,4 +71,3 @@ public final class KeychainSecretStore: SecretStore {
     }
 }
 #endif
-
