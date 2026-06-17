@@ -233,7 +233,54 @@ public extension ToolRegistry {
         taskStore: SQLiteTaskStore,
         knowledgeStore: SQLiteKnowledgeFrameStore
     ) throws -> ToolRegistry {
-        try ToolRegistry(tools: [
+        try ToolRegistry(tools: phase2CoreTools(projectStore: projectStore, taskStore: taskStore, knowledgeStore: knowledgeStore))
+    }
+
+    static func phase2MVP(
+        projectStore: SQLiteProjectStore,
+        taskStore: SQLiteTaskStore,
+        knowledgeStore: SQLiteKnowledgeFrameStore,
+        notificationClient: any NotificationClient,
+        calendarClient: any CalendarClient,
+        reminderClient: any ReminderClient,
+        fileAccessClient: any FileAccessClient,
+        mailDraftClient: any MailDraftClient,
+        auditLogger: (any AuditLogger)? = nil
+    ) throws -> ToolRegistry {
+        var tools = phase2CoreTools(projectStore: projectStore, taskStore: taskStore, knowledgeStore: knowledgeStore)
+        let systemTools: [any Tool] = [
+            NotificationTool(name: .notificationSchedule, client: notificationClient),
+            NotificationTool(name: .notificationScheduleRelative, client: notificationClient),
+            NotificationTool(name: .notificationScheduleOverdueRule, client: notificationClient),
+            NotificationTool(name: .notificationCancel, client: notificationClient),
+            NotificationTool(name: .notificationList, client: notificationClient),
+            CalendarTool(name: .calendarCreateEvent, client: calendarClient),
+            CalendarTool(name: .calendarCreateDeadline, client: calendarClient),
+            CalendarTool(name: .calendarCreateWorkBlock, client: calendarClient),
+            ReminderTool(name: .remindersCreate, client: reminderClient),
+            ReminderTool(name: .remindersBulkCreate, client: reminderClient),
+            ReminderTool(name: .remindersMarkComplete, client: reminderClient),
+            FileSystemTool(name: .filesystemCreateDirectory, client: fileAccessClient),
+            FileSystemTool(name: .filesystemCreateMarkdownFile, client: fileAccessClient),
+            FileSystemTool(name: .filesystemCreateArtifactsFromFrame, client: fileAccessClient),
+            FileSystemTool(name: .filesystemScanProjectArtifacts, client: fileAccessClient),
+            MailDraftTool(client: mailDraftClient)
+        ]
+        tools.append(contentsOf: systemTools)
+
+        if let auditLogger {
+            tools = tools.map { AuditedTool(base: $0, logger: auditLogger) }
+        }
+
+        return try ToolRegistry(tools: tools)
+    }
+
+    private static func phase2CoreTools(
+        projectStore: SQLiteProjectStore,
+        taskStore: SQLiteTaskStore,
+        knowledgeStore: SQLiteKnowledgeFrameStore
+    ) -> [any Tool] {
+        [
             ProjectTool(name: .projectCreate, store: projectStore),
             ProjectTool(name: .projectUpdate, store: projectStore),
             ProjectTool(name: .projectList, store: projectStore),
@@ -250,7 +297,7 @@ public extension ToolRegistry {
             KnowledgeFrameTool(name: .frameGet, store: knowledgeStore),
             KnowledgeFrameTool(name: .frameCreate, store: knowledgeStore),
             KnowledgeFrameTool(name: .frameUpdate, store: knowledgeStore)
-        ])
+        ]
     }
 }
 

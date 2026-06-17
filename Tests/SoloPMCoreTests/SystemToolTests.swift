@@ -1,0 +1,263 @@
+import XCTest
+@testable import SoloPMCore
+
+final class SystemToolTests: XCTestCase {
+    func testNotificationToolSchedulesWithFakeClient() throws {
+        let client = InMemoryNotificationClient()
+        let tool = NotificationTool(name: .notificationSchedule, client: client)
+
+        let result = try tool.execute(
+            arguments: [
+                "title": .string("Standup"),
+                "body": .string("Share blockers"),
+                "scheduledAt": .string("2026-06-18T09:00:00Z")
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .succeeded)
+        XCTAssertEqual(result.output["notificationId"]?.stringValue, "notification-1")
+        XCTAssertEqual(try client.listScheduled().map(\.title), ["Standup"])
+    }
+
+    func testNotificationToolReportsPermissionDenied() throws {
+        let client = InMemoryNotificationClient(authorizationStatus: .denied)
+        let tool = NotificationTool(name: .notificationSchedule, client: client)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "title": .string("Standup"),
+                    "scheduledAt": .string("2026-06-18T09:00:00Z")
+                ],
+                context: approvedContext()
+            )
+        )
+    }
+
+    func testNotificationRelativeScheduleRejectsNonPositiveOffset() throws {
+        let tool = NotificationTool(name: .notificationScheduleRelative, client: InMemoryNotificationClient())
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "title": .string("Break"),
+                    "offsetSeconds": .number(0)
+                ],
+                context: approvedContext()
+            )
+        )
+    }
+
+    func testCalendarToolRejectsInvalidDateRange() throws {
+        let tool = CalendarTool(name: .calendarCreateEvent, client: InMemoryCalendarClient())
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "title": .string("Deep work"),
+                    "startAt": .string("2026-06-18T10:00:00Z"),
+                    "endAt": .string("2026-06-18T09:00:00Z")
+                ],
+                context: approvedContext()
+            )
+        )
+    }
+
+    func testCalendarWorkBlockRejectsNonPositiveDuration() throws {
+        let tool = CalendarTool(name: .calendarCreateWorkBlock, client: InMemoryCalendarClient())
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "title": .string("Deep work"),
+                    "startAt": .string("2026-06-18T10:00:00Z"),
+                    "durationMinutes": .number(0)
+                ],
+                context: approvedContext()
+            )
+        )
+    }
+
+    func testReminderToolBulkCreateAndMarkComplete() throws {
+        let client = InMemoryReminderClient()
+        let create = ReminderTool(name: .remindersBulkCreate, client: client)
+        let complete = ReminderTool(name: .remindersMarkComplete, client: client)
+
+        let result = try create.execute(
+            arguments: [
+                "reminders": .array([
+                    .object(["title": .string("Draft spec")]),
+                    .object(["title": .string("Review spec")])
+                ])
+            ],
+            context: approvedContext()
+        )
+        let firstID = try XCTUnwrap(result.output["reminderIds"]?.stringArrayValue.first)
+
+        _ = try complete.execute(arguments: ["id": .string(firstID)], context: approvedContext())
+
+        XCTAssertEqual(try client.list().first?.isCompleted, true)
+    }
+
+    func testFileSystemToolRejectsOverwriteAndTraversal() throws {
+        let root = temporaryDirectory()
+        let client = LocalFileAccessClient(workspaceRoot: root)
+        let tool = FileSystemTool(name: .filesystemCreateMarkdownFile, client: client)
+
+        _ = try tool.execute(
+            arguments: [
+                "relativePath": .string("docs/plan.md"),
+                "contents": .string("# Plan")
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("docs/plan.md").path))
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "relativePath": .string("docs/plan.md"),
+                    "contents": .string("# Overwrite")
+                ],
+                context: approvedContext()
+            )
+        )
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "relativePath": .string("../escape.md"),
+                    "contents": .string("# Escape")
+                ],
+                context: approvedContext()
+            )
+        )
+    }
+
+    func testMailDraftToolCreatesTextOnlyDraftWithoutSendTool() throws {
+        let client = InMemoryMailDraftClient()
+        let tool = MailDraftTool(client: client)
+
+        let result = try tool.execute(
+            arguments: [
+                "to": .string("team@example.com"),
+                "subject": .string("Status"),
+                "body": .string("Draft only")
+            ],
+            context: ToolExecutionContext(source: .test)
+        )
+
+        XCTAssertEqual(result.output["draftId"]?.stringValue, "mail-draft-1")
+        XCTAssertEqual(try client.listDrafts().first?.body, "Draft only")
+        XCTAssertFalse(ActionTool.allCases.contains { $0.rawValue == "maildraft.send" })
+    }
+
+    func testAuditedToolLogsApprovalMissingAndRedactsArguments() throws {
+        let logger = InMemoryAuditLogger()
+        let base = StaticTool(
+            name: .taskCreate,
+            description: "Create task",
+            inputSchema: ToolInputSchema(required: ["title"]),
+            permissionLevel: .writeWithApproval
+        ) { _, _ in
+            ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created")
+        }
+        let audited = AuditedTool(base: base, logger: RedactingAuditLogger(base: logger))
+
+        XCTAssertThrowsError(
+            try audited.execute(
+                arguments: [
+                    "title": .string("Secret task"),
+                    "apiKey": .string("sk-test")
+                ],
+                context: ToolExecutionContext(source: .test)
+            )
+        )
+
+        let events = logger.recordedEvents
+        XCTAssertEqual(events.map(\.status), [.started, .failed])
+        XCTAssertEqual(events.last?.metadata["approval_state"], "missing")
+        XCTAssertEqual(events.last?.metadata["arguments"], "[REDACTED]")
+    }
+
+    func testPhase2MVPRegistryContainsSystemTools() throws {
+        let stores = try makeStores()
+        let registry = try ToolRegistry.phase2MVP(
+            projectStore: stores.projects,
+            taskStore: stores.tasks,
+            knowledgeStore: stores.knowledge,
+            notificationClient: InMemoryNotificationClient(),
+            calendarClient: InMemoryCalendarClient(),
+            reminderClient: InMemoryReminderClient(),
+            fileAccessClient: LocalFileAccessClient(workspaceRoot: temporaryDirectory()),
+            mailDraftClient: InMemoryMailDraftClient()
+        )
+
+        XCTAssertTrue(registry.contains(.notificationSchedule))
+        XCTAssertTrue(registry.contains(.calendarCreateEvent))
+        XCTAssertTrue(registry.contains(.remindersBulkCreate))
+        XCTAssertTrue(registry.contains(.filesystemCreateMarkdownFile))
+        XCTAssertTrue(registry.contains(.mailDraftCreateText))
+    }
+
+    private func makeStores() throws -> (projects: SQLiteProjectStore, tasks: SQLiteTaskStore, knowledge: SQLiteKnowledgeFrameStore) {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase2)
+        return (
+            SQLiteProjectStore(connection: connection),
+            SQLiteTaskStore(connection: connection),
+            SQLiteKnowledgeFrameStore(connection: connection)
+        )
+    }
+
+    private func approvedContext() -> ToolExecutionContext {
+        ToolExecutionContext(approvalToken: ApprovalToken(id: "approval-1", sessionID: "session-1"), source: .test)
+    }
+
+    private func temporaryDirectory() -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SoloPMTests")
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+}
+
+private enum TestMigrationRunner {
+    static func migrate(connection: SQLiteConnection, migrations: [DatabaseMigration]) throws {
+        try connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                id TEXT PRIMARY KEY NOT NULL,
+                applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        let alreadyApplied = Set(try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;"))
+        for migration in migrations where !alreadyApplied.contains(migration.id) {
+            try migration.apply(connection)
+            try connection.execute("INSERT INTO schema_migrations (id) VALUES ('\(migration.id)');")
+        }
+    }
+}
+
+private extension JSONValue {
+    var stringValue: String? {
+        guard case .string(let value) = self else {
+            return nil
+        }
+        return value
+    }
+
+    var stringArrayValue: [String] {
+        guard case .array(let values) = self else {
+            return []
+        }
+        return values.compactMap { value in
+            guard case .string(let string) = value else {
+                return nil
+            }
+            return string
+        }
+    }
+}
