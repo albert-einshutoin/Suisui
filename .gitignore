@@ -14,5 +14,6 @@
 .env
 .env.*
 !.env.example
+/packaging/signing.env
 *.local
 Package.resolved

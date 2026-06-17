@@ -32,9 +32,9 @@
 
 ### P5-002: Developer ID signing
 
-- [ ] Developer ID Application certificate を使う signing 設定を作る。
-- [ ] CI で signing するか、local release machine で signing するか決める。
-- [ ] secret は Keychain / CI secret に保存し、repo に入れない。
+- [x] Developer ID Application certificate を使う signing 設定を作る。
+- [x] CI で signing するか、local release machine で signing するか決める。
+- [x] secret は Keychain / CI secret に保存し、repo に入れない。
 - [ ] 手動確認: signed app を `codesign --verify` で確認する。
 - [ ] 完了条件: Gatekeeper で拒否されない署名済み app を作れる。
 
