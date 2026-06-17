@@ -67,11 +67,11 @@
 
 ### P1-006: OpenAI-compatible fallback adapter
 
-- [ ] OpenRouter / Ollama を想定した Chat Completions compatible adapter を作る。
-- [ ] base URL、model、API Key 必須有無を Settings から渡せる設計にする。
-- [ ] OpenAI Responses adapter と同じ `ActionPlan` validation path を通す。
-- [ ] テスト: request body の provider 差分を unit test する。
-- [ ] 完了条件: provider を切り替えても UI と Core が変わらない。
+- [x] OpenRouter / Ollama を想定した Chat Completions compatible adapter を作る。
+- [x] base URL、model、API Key 必須有無を Settings から渡せる設計にする。
+- [x] OpenAI Responses adapter と同じ `ActionPlan` validation path を通す。
+- [x] テスト: request body の provider 差分を unit test する。
+- [x] 完了条件: provider を切り替えても UI と Core が変わらない。
 
 ### P1-007: STTProvider abstraction
 
