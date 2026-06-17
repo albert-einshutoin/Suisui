@@ -161,6 +161,10 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         try update(id: id, status: "archived")
     }
 
+    public func restore(id: Int64) throws -> ProjectRecord {
+        try update(id: id, status: "active")
+    }
+
     public func list(includeArchived: Bool = false) throws -> [ProjectRecord] {
         lock.lock()
         defer { lock.unlock() }

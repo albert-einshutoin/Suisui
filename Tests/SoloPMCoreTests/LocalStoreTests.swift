@@ -36,6 +36,18 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(try store.get(id: project.id).status, "archived")
     }
 
+    func testProjectStoreRestoresArchivedProjectsToActiveList() throws {
+        let connection = try migratedConnection()
+        let store = SQLiteProjectStore(connection: connection)
+        let project = try store.create(title: "Paused Launch")
+        _ = try store.archive(id: project.id)
+
+        let restored = try store.restore(id: project.id)
+
+        XCTAssertEqual(restored.status, "active")
+        XCTAssertEqual(try store.list().map(\.title), ["Paused Launch"])
+    }
+
     func testTaskStoreCreatesAndQueriesDueTasks() throws {
         let connection = try migratedConnection()
         let store = SQLiteTaskStore(connection: connection)

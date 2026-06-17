@@ -123,6 +123,24 @@ final class ProjectBoardStoreTests: XCTestCase {
         )
     }
 
+    func testArchivedProjectCanBeLoadedAndRestoredToActiveBoard() throws {
+        let stores = try makeStoreBundle()
+        let project = try stores.board.createProject(title: "Restore Candidate")
+        _ = try stores.board.archiveProject(id: project.id)
+
+        let archivedSnapshot = try stores.board.loadSnapshot(includeArchived: true)
+        let archivedProject = try XCTUnwrap(archivedSnapshot.projects.first { $0.id == project.id })
+
+        XCTAssertTrue(archivedProject.isArchived)
+
+        _ = try stores.board.restoreProject(id: project.id)
+
+        let activeSnapshot = try stores.board.loadSnapshot()
+        let restoredProject = try XCTUnwrap(activeSnapshot.projects.first { $0.id == project.id })
+
+        XCTAssertFalse(restoredProject.isArchived)
+    }
+
     func testArchivingLastVisibleProjectCreatesFreshInboxForFirstRunContinuity() throws {
         let store = try makeStore()
         let inbox = try XCTUnwrap(store.loadSnapshot().projects.first)
@@ -159,6 +177,27 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         XCTAssertEqual(changeCount, 6)
         XCTAssertEqual(viewModel.selectedProject?.title, "Inbox")
+    }
+
+    @MainActor
+    func testProjectBoardViewModelCanShowAndRestoreArchivedProjects() {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let archived = viewModel.createProject(title: "Restore Candidate")
+        viewModel.archiveSelectedProject()
+
+        XCTAssertFalse(viewModel.snapshot.projects.contains { $0.id == archived?.id })
+
+        viewModel.setShowsArchivedProjects(true)
+        viewModel.selectedProjectID = archived?.id
+
+        XCTAssertTrue(viewModel.selectedProject?.isArchived == true)
+
+        viewModel.restoreSelectedProject()
+
+        XCTAssertTrue(viewModel.showsArchivedProjects)
+        XCTAssertEqual(viewModel.selectedProject?.id, archived?.id)
+        XCTAssertFalse(viewModel.selectedProject?.isArchived == true)
     }
 
     @MainActor

@@ -1225,6 +1225,10 @@ private struct UnavailableProjectBoardStore: ProjectBoardStore {
         throw error
     }
 
+    func loadSnapshot(includeArchived: Bool) throws -> ProjectBoardSnapshot {
+        throw error
+    }
+
     func createProject(title: String) throws -> ProjectBoardProject {
         throw error
     }
@@ -1238,6 +1242,10 @@ private struct UnavailableProjectBoardStore: ProjectBoardStore {
     }
 
     func archiveProject(id: Int64) throws -> ProjectBoardProject {
+        throw error
+    }
+
+    func restoreProject(id: Int64) throws -> ProjectBoardProject {
         throw error
     }
 

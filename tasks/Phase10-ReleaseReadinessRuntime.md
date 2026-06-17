@@ -270,6 +270,15 @@
 - [x] archive 後に active project が 0 件なら fresh `Inbox` を作り、初回利用導線を切らさない。
 - [x] 完了条件: 不要 project を安全に active board から外せ、通知や menu summary に古い project が残らない。
 
+### P10-032: Archived project restore path
+
+- [x] `SQLiteProjectStore.restore` は archived project を `active` に戻し、active list へ再表示する。
+- [x] `ProjectBoardStore.loadSnapshot(includeArchived:)` で archived project を明示的に表示できる。
+- [x] ProjectBoard sidebar から `Show Archived` を切り替えられる。
+- [x] archived project は active board 上で read-only placeholder を表示し、復元前の task 編集や新規 task 作成を促さない。
+- [x] ProjectBoard header から `Restore Project` を実行できる。
+- [x] 完了条件: archive は不可逆な削除に見えず、ユーザーがアプリ内で復旧できる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

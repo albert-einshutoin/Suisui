@@ -26,6 +26,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("InlineTaskComposer"))
         XCTAssertTrue(source.contains("TaskInspectorView"))
         XCTAssertTrue(source.contains("Archive Project"))
+        XCTAssertTrue(source.contains("Show Archived"))
+        XCTAssertTrue(source.contains("Restore Project"))
         XCTAssertTrue(source.contains("confirmationDialog"))
         XCTAssertTrue(coreSource.contains("Backlog"))
         XCTAssertTrue(coreSource.contains("In Progress"))

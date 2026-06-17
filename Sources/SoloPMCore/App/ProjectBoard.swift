@@ -97,6 +97,10 @@ public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
     public var isCompleted: Bool {
         status == "completed"
     }
+
+    public var isArchived: Bool {
+        status == "archived"
+    }
 }
 
 public struct ProjectBoardColumn: Identifiable, Equatable, Sendable {
@@ -176,10 +180,12 @@ public enum ProjectBoardStoreError: Error, Equatable, Sendable {
 
 public protocol ProjectBoardStore {
     func loadSnapshot() throws -> ProjectBoardSnapshot
+    func loadSnapshot(includeArchived: Bool) throws -> ProjectBoardSnapshot
     func createProject(title: String) throws -> ProjectBoardProject
     func updateProject(id: Int64, title: String) throws -> ProjectBoardProject
     func completeProject(id: Int64) throws -> ProjectBoardProject
     func archiveProject(id: Int64) throws -> ProjectBoardProject
+    func restoreProject(id: Int64) throws -> ProjectBoardProject
     func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask
     func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask
     func deleteTask(id: Int64) throws
@@ -203,7 +209,11 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     }
 
     public func loadSnapshot() throws -> ProjectBoardSnapshot {
-        let projects = try ensureProjects()
+        try loadSnapshot(includeArchived: false)
+    }
+
+    public func loadSnapshot(includeArchived: Bool) throws -> ProjectBoardSnapshot {
+        let projects = try ensureProjects(includeArchived: includeArchived)
         let tasks = try taskStore.listAll().compactMap(makeBoardTask)
 
         let boardProjects = projects.map { makeBoardProject(project: $0, tasks: tasks) }
@@ -236,6 +246,13 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     @discardableResult
     public func archiveProject(id: Int64) throws -> ProjectBoardProject {
         let record = try projectStore.archive(id: id)
+        let tasks = try taskStore.listAll().compactMap(makeBoardTask)
+        return makeBoardProject(project: record, tasks: tasks)
+    }
+
+    @discardableResult
+    public func restoreProject(id: Int64) throws -> ProjectBoardProject {
+        let record = try projectStore.restore(id: id)
         let tasks = try taskStore.listAll().compactMap(makeBoardTask)
         return makeBoardProject(project: record, tasks: tasks)
     }
@@ -274,14 +291,13 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         try taskStore.delete(id: id)
     }
 
-    private func ensureProjects() throws -> [ProjectRecord] {
-        let projects = try projectStore.list()
-        if !projects.isEmpty {
-            return projects
+    private func ensureProjects(includeArchived: Bool) throws -> [ProjectRecord] {
+        let activeProjects = try projectStore.list()
+        if activeProjects.isEmpty {
+            _ = try projectStore.create(title: "Inbox", tags: ["local"], sourceCommand: "app.project-board")
         }
 
-        _ = try projectStore.create(title: "Inbox", tags: ["local"], sourceCommand: "app.project-board")
-        return try projectStore.list()
+        return try projectStore.list(includeArchived: includeArchived)
     }
 
     private func normalizedDraft(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTaskDraft {
@@ -349,6 +365,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var snapshot: ProjectBoardSnapshot
     @Published public var selectedProjectID: Int64?
     @Published public var selectedTaskID: Int64?
+    @Published public private(set) var showsArchivedProjects: Bool
     @Published public private(set) var errorMessage: String?
 
     private let store: any ProjectBoardStore
@@ -363,6 +380,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.snapshot = snapshot
         self.onChange = onChange
         self.selectedProjectID = snapshot.projects.first?.id
+        self.showsArchivedProjects = false
     }
 
     public var selectedProject: ProjectBoardProject? {
@@ -381,7 +399,7 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     public func load() {
         do {
-            snapshot = try store.loadSnapshot()
+            snapshot = try store.loadSnapshot(includeArchived: showsArchivedProjects)
             if selectedProjectID == nil || !snapshot.projects.contains(where: { $0.id == selectedProjectID }) {
                 selectedProjectID = snapshot.projects.first?.id
             }
@@ -392,6 +410,11 @@ public final class ProjectBoardViewModel: ObservableObject {
         } catch {
             errorMessage = String(describing: error)
         }
+    }
+
+    public func setShowsArchivedProjects(_ isShown: Bool) {
+        showsArchivedProjects = isShown
+        load()
     }
 
     @discardableResult
@@ -492,6 +515,21 @@ public final class ProjectBoardViewModel: ObservableObject {
             self.selectedProjectID = nil
             selectedTaskID = nil
             load()
+            onChange()
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
+    public func restoreSelectedProject() {
+        guard let selectedProjectID else {
+            return
+        }
+
+        do {
+            _ = try store.restoreProject(id: selectedProjectID)
+            load()
+            self.selectedProjectID = selectedProjectID
             onChange()
         } catch {
             errorMessage = String(describing: error)

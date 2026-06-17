@@ -22,6 +22,14 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         snapshot
     }
 
+    func loadSnapshot(includeArchived: Bool) throws -> ProjectBoardSnapshot {
+        if includeArchived {
+            return snapshot
+        }
+
+        return ProjectBoardSnapshot(projects: snapshot.projects.filter { !$0.isArchived })
+    }
+
     @discardableResult
     func createProject(title: String) throws -> ProjectBoardProject {
         let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -71,13 +79,22 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
             throw DatabaseError.stepFailed("Project \(id) was not found.")
         }
 
-        let project = snapshot.projects.remove(at: projectIndex)
-        if snapshot.projects.isEmpty {
+        snapshot.projects[projectIndex].status = "archived"
+        let archivedProject = snapshot.projects[projectIndex]
+        if snapshot.projects.allSatisfy(\.isArchived) {
             _ = try createProject(title: "Inbox")
         }
-        var archived = project
-        archived.status = "archived"
-        return archived
+        return archivedProject
+    }
+
+    @discardableResult
+    func restoreProject(id: Int64) throws -> ProjectBoardProject {
+        guard let projectIndex = snapshot.projects.firstIndex(where: { $0.id == id }) else {
+            throw DatabaseError.stepFailed("Project \(id) was not found.")
+        }
+
+        snapshot.projects[projectIndex].status = "active"
+        return snapshot.projects[projectIndex]
     }
 
     @discardableResult

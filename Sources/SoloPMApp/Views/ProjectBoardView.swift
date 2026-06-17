@@ -23,6 +23,17 @@ struct ProjectBoardView: View {
 
                 Divider()
 
+                Toggle(
+                    "Show Archived",
+                    isOn: Binding(
+                        get: { viewModel.showsArchivedProjects },
+                        set: { viewModel.setShowsArchivedProjects($0) }
+                    )
+                )
+                .toggleStyle(.checkbox)
+                .padding(.horizontal, 10)
+                .padding(.top, 8)
+
                 Button {
                     viewModel.createProject()
                 } label: {
@@ -123,14 +134,28 @@ private struct ProjectSidebarRow: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .help(project.title)
-                Text("\(project.taskCount) tasks")
+                Text(project.isArchived ? "Archived" : "\(project.taskCount) tasks")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         } icon: {
-            Image(systemName: project.isCompleted ? "checkmark.circle" : "folder")
-                .foregroundStyle(project.isCompleted ? .green : .secondary)
+            Image(systemName: systemImage)
+                .foregroundStyle(iconColor)
         }
+    }
+
+    private var systemImage: String {
+        if project.isArchived {
+            return "archivebox"
+        }
+        return project.isCompleted ? "checkmark.circle" : "folder"
+    }
+
+    private var iconColor: Color {
+        if project.isArchived {
+            return .secondary
+        }
+        return project.isCompleted ? .green : .secondary
     }
 }
 
@@ -159,6 +184,7 @@ private struct ProjectBoardDetail: View {
                         displayMode: $displayMode,
                         onCompleteProject: viewModel.completeSelectedProject,
                         onArchiveProject: { isConfirmingArchive = true },
+                        onRestoreProject: viewModel.restoreSelectedProject,
                         onAddTask: { composingStatus = .backlog }
                     )
                 }
@@ -175,6 +201,7 @@ private struct ProjectBoardDetail: View {
                         displayMode: $displayMode,
                         onCompleteProject: viewModel.completeSelectedProject,
                         onArchiveProject: { isConfirmingArchive = true },
+                        onRestoreProject: viewModel.restoreSelectedProject,
                         onAddTask: { composingStatus = .backlog }
                     )
                 }
@@ -186,15 +213,19 @@ private struct ProjectBoardDetail: View {
                     .foregroundStyle(.red)
             }
 
-            switch displayMode {
-            case .board:
-                ProjectKanbanBoard(
-                    project: project,
-                    composingStatus: $composingStatus,
-                    viewModel: viewModel
-                )
-            case .list:
-                ProjectTaskList(project: project, viewModel: viewModel)
+            if project.isArchived {
+                ArchivedProjectPlaceholder()
+            } else {
+                switch displayMode {
+                case .board:
+                    ProjectKanbanBoard(
+                        project: project,
+                        composingStatus: $composingStatus,
+                        viewModel: viewModel
+                    )
+                case .list:
+                    ProjectTaskList(project: project, viewModel: viewModel)
+                }
             }
         }
         .padding(18)
@@ -208,6 +239,12 @@ private struct ProjectBoardDetail: View {
         .onChange(of: project.title) { _, newTitle in
             projectTitle = newTitle
         }
+        .onChange(of: project.isArchived) { _, isArchived in
+            if isArchived {
+                composingStatus = nil
+                viewModel.selectedTaskID = nil
+            }
+        }
         .confirmationDialog(
             "Archive this project?",
             isPresented: $isConfirmingArchive,
@@ -220,6 +257,17 @@ private struct ProjectBoardDetail: View {
         } message: {
             Text("This hides the project from the active board and deadline summaries. Existing local tasks are kept in the SoloPM database.")
         }
+    }
+}
+
+private struct ArchivedProjectPlaceholder: View {
+    var body: some View {
+        ContentUnavailableView(
+            "Archived Project",
+            systemImage: "archivebox",
+            description: Text("Restore this project to edit tasks or include it in active deadline summaries.")
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -269,24 +317,32 @@ private struct ProjectHeaderActions: View {
     @Binding var displayMode: ProjectBoardDisplayMode
     let onCompleteProject: () -> Void
     let onArchiveProject: () -> Void
+    let onRestoreProject: () -> Void
     let onAddTask: () -> Void
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 8) {
                 viewPicker
-                completeProjectButton
-                archiveProjectButton
-                addTaskButton
+                projectActionButtons
             }
 
             VStack(alignment: .leading, spacing: 8) {
                 viewPicker
-                HStack(spacing: 8) {
-                    completeProjectButton
-                    archiveProjectButton
-                    addTaskButton
-                }
+                projectActionButtons
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var projectActionButtons: some View {
+        if project.isArchived {
+            restoreProjectButton
+        } else {
+            HStack(spacing: 8) {
+                completeProjectButton
+                archiveProjectButton
+                addTaskButton
             }
         }
     }
@@ -313,6 +369,13 @@ private struct ProjectHeaderActions: View {
         Button(role: .destructive, action: onArchiveProject) {
             Label("Archive Project", systemImage: "archivebox")
         }
+    }
+
+    private var restoreProjectButton: some View {
+        Button(action: onRestoreProject) {
+            Label("Restore Project", systemImage: "arrow.uturn.backward")
+        }
+        .buttonStyle(.borderedProminent)
     }
 
     private var addTaskButton: some View {
