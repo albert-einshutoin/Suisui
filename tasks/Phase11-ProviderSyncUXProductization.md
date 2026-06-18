@@ -168,19 +168,20 @@
 ## P11-040: Competitor benchmark and feature fit
 
 - [ ] Notion、Todoist、Linear、Motion を2-4時間で触り、SoloPMに関係する機能だけを `docs/product/competitor-benchmark.md` に記録する。
-- [ ] Notion: 柔軟だが個人PM用途では構造化と運用設計が重い。SoloPMは「音声/AIで構造化済みのProject/Taskに落とす」ことで差別化する。
-- [ ] Todoist: 速いcaptureと今日の整理が強い。SoloPMはInbox/Todayの即時入力とAI分類を取り込む。
-- [ ] Linear: issue/project/cycleの速度とキーボード操作が強い。SoloPMは個人向けにstatus移動とProject進捗だけを取り込む。
-- [ ] Motion: AIスケジュールと自動調整が強いが、提案理由が見えないと不安になる。SoloPMは提案理由、適用前確認、local-firstを維持する。
-- [ ] 完了条件: 競合比較が機能一覧ではなく、ユーザーの困りごととSoloPMの採用/非採用判断に結びつく。
+- [x] 公式docs/product pageベースの desk research を `docs/product/competitor-benchmark.md` に記録する。
+- [x] Notion: 柔軟だが個人PM用途では構造化と運用設計が重い。SoloPMは「音声/AIで構造化済みのProject/Taskに落とす」ことで差別化する。
+- [x] Todoist: 速いcaptureと今日の整理が強い。SoloPMはInbox/Todayの即時入力とAI分類を取り込む。
+- [x] Linear: issue/project/cycleの速度とキーボード操作が強い。SoloPMは個人向けにstatus移動とProject進捗だけを取り込む。
+- [x] Motion: AIスケジュールと自動調整が強いが、提案理由が見えないと不安になる。SoloPMは提案理由、適用前確認、local-firstを維持する。
+- [x] 完了条件: 競合比較が機能一覧ではなく、ユーザーの困りごととSoloPMの採用/非採用判断に結びつく。
 
 ## P11-041: VC/investor-grade product review loop
 
-- [ ] 各実装サイクルで `Problem / User pull / Retention hook / Monetization / Risk` をセルフレビューする。
-- [ ] 「便利そう」だけの機能はIssue化せず、クリック数削減、継続利用、課金理由のどれに効くかを書く。
-- [ ] Pro機能はFree体験を壊さず、しかしProの価値がSettings/Sync/MCP画面で理解できるようにする。
-- [ ] OSSとして、BYOK provider追加、MCP compliance fixtures、local-first data modelを外部contributorが触れる形にする。
-- [ ] 完了条件: 実装完了だけでなく、投資判断の観点で「なぜ伸びるか / なぜ課金されるか」を説明できる。
+- [x] 各実装サイクルで `Problem / User pull / Retention hook / Monetization / Risk` をセルフレビューする。
+- [x] 「便利そう」だけの機能はIssue化せず、クリック数削減、継続利用、課金理由のどれに効くかを書く。
+- [x] Pro機能はFree体験を壊さず、しかしProの価値がSettings/Sync/MCP画面で理解できるようにする。
+- [x] OSSとして、BYOK provider追加、MCP compliance fixtures、local-first data modelを外部contributorが触れる形にする。
+- [x] 完了条件: 実装完了だけでなく、投資判断の観点で「なぜ伸びるか / なぜ課金されるか」を説明できる。
 
 ## Exit Gate
 
@@ -191,7 +192,7 @@
 - [x] Proユーザーでもsync backend未構成時はmock successにならない。
 - [ ] UX click-path auditで主要操作のクリック数が記録され、改善PRと紐づいている。
 - [ ] `ui-samples/` を参考にした画面密度・インスペクタ・Settingsの改善がスクリーンショットで検証されている。
-- [ ] 競合benchmarkから採用/非採用判断が残っている。
+- [x] 競合benchmarkから採用/非採用判断が残っている。
 - [x] `swift test`、`./scripts/ci.sh`、`xcodebuild ... -scheme SoloPM build` がgreen。
 
 ## Source Notes
@@ -210,3 +211,10 @@
 - Todoist pricing/AI Assist: https://www.todoist.com/pricing
 - Linear pricing/projects: https://linear.app/pricing
 - Motion AI Project Manager: https://www.usemotion.com/features/ai-project-manager.html
+- Notion Projects: https://www.notion.com/product/projects
+- Todoist Quick Add: https://www.todoist.com/help/articles/use-task-quick-add-in-todoist-va4Lhpzz
+- Todoist Board layout: https://www.todoist.com/help/articles/use-the-board-layout-in-todoist-AiAVsyEI
+- Todoist Ramble: https://www.todoist.com/help/articles/dictate-to-add-tasks-with-ramble-P1Raq7vVF
+- Linear Projects: https://linear.app/docs/projects
+- Linear Triage: https://linear.app/docs/triage
+- Motion AI Task Manager: https://www.usemotion.com/features/ai-task-manager

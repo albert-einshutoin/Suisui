@@ -952,6 +952,40 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(geminiSource.contains("No error message."))
     }
 
+    func testProductBenchmarkDocumentsAdoptDeferRejectDecisions() throws {
+        let benchmark = try readPackageFile("docs/product/competitor-benchmark.md")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+
+        XCTAssertTrue(benchmark.contains("Verified: 2026-06-19"))
+        XCTAssertTrue(benchmark.contains("Notion"))
+        XCTAssertTrue(benchmark.contains("Todoist"))
+        XCTAssertTrue(benchmark.contains("Linear"))
+        XCTAssertTrue(benchmark.contains("Motion"))
+        XCTAssertTrue(benchmark.contains("Adopt / Defer / Reject Backlog"))
+        XCTAssertTrue(benchmark.contains("Custom database schema builder | Reject for MVP"))
+        XCTAssertTrue(benchmark.contains("Calendar layout / auto-scheduling | Defer"))
+        XCTAssertTrue(benchmark.contains("Project overview with tasks/artifacts/timeline/suggestions | Adopted"))
+        XCTAssertTrue(benchmark.contains("VC-Grade Feature Fit"))
+        XCTAssertTrue(phase.contains("[x] 競合benchmarkから採用/非採用判断が残っている。"))
+    }
+
+    func testInvestorReviewTiesFeaturesToRetentionMonetizationAndRisk() throws {
+        let review = try readPackageFile("docs/product/investor-review.md")
+
+        XCTAssertTrue(review.contains("Problem"))
+        XCTAssertTrue(review.contains("User pull"))
+        XCTAssertTrue(review.contains("Retention hook"))
+        XCTAssertTrue(review.contains("Monetization"))
+        XCTAssertTrue(review.contains("Risk"))
+        XCTAssertTrue(review.contains("Feature Admission Rules"))
+        XCTAssertTrue(review.contains("Why it can grow"))
+        XCTAssertTrue(review.contains("Why users may pay"))
+        XCTAssertTrue(review.contains("Why it may fail"))
+        XCTAssertTrue(review.contains("Visual quality"))
+        XCTAssertTrue(review.contains("Accessibility"))
+        XCTAssertTrue(review.contains("Paid value"))
+    }
+
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
