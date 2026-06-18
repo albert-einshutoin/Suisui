@@ -122,6 +122,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains("notificationPermissionStatus: .notDetermined"))
     }
 
+    func testNotificationListingDoesNotDefaultMissingCallbackToEmptyList() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Adapters/UserNotificationsNotificationClient.swift")
+
+        XCTAssertFalse(source.contains("requests.value ?? []"))
+        XCTAssertTrue(source.contains("guard let pendingRequests = requests.value else"))
+        XCTAssertTrue(source.contains("Pending notification requests could not be loaded."))
+    }
+
     func testExternalMCPFakeServerKitIsNotShippedInRuntimeSources() throws {
         let sourceFiles = try allSwiftFiles(under: "Sources")
 

@@ -712,6 +712,13 @@
 - [x] `ReviewSessionViewModelTests` で runtime validation message による execution block を維持する。
 - [x] 完了条件: review runtime unavailable 時に、必要な unavailable tool が静かに欠落しない。
 
+### P10-089: Notification listing does not report missing callback as empty
+
+- [x] `UserNotificationsNotificationClient.listScheduled()` は pending request callback が値を返さない場合に `[]` を返さない。
+- [x] `guard let pendingRequests` で取得不能を `ToolClientError.invalidRequest` として返す。
+- [x] source regression test、notification tool tests、daily check runner tests で既存通知フローを確認する。
+- [x] 完了条件: 通知一覧の取得異常が「通知なし」と誤表示されない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

@@ -55,7 +55,11 @@ final class UserNotificationsNotificationClient: NotificationClient, @unchecked 
         }
         semaphore.wait()
 
-        return (requests.value ?? []).map { request in
+        guard let pendingRequests = requests.value else {
+            throw ToolClientError.invalidRequest("Pending notification requests could not be loaded.")
+        }
+
+        return pendingRequests.map { request in
             NotificationRecord(
                 id: request.identifier,
                 title: request.content.title,
