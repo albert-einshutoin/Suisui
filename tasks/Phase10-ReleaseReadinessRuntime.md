@@ -565,6 +565,14 @@
 - [x] テスト: SecretStore read failure が未設定表示にならないことを確認する。
 - [x] 完了条件: Keychain 障害や権限問題が API key 未設定として誤認されない。
 
+### P10-069: Keychain save update-first hardening
+
+- [x] `KeychainSecretStore.save` は既存 key の更新時に `SecItemUpdate` を先に試す。
+- [x] `SecItemUpdate` が `errSecItemNotFound` の場合だけ `SecItemAdd` へ進む。
+- [x] 既存 secret を `delete` してから `add` する実装をやめる。
+- [x] テスト: update 成功時は add/delete が呼ばれず、missing item の場合だけ add されることを確認する。
+- [x] 完了条件: API key 差し替え時に add path の失敗で既存 Keychain secret が失われない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
