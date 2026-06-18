@@ -399,6 +399,12 @@
 - [x] 現在の空 entitlements は signed app の空 entitlements として扱い、将来 entitlement を追加した場合は mismatch を release blocker にする。
 - [x] 完了条件: public alpha 用 app bundle は repository の entitlements manifest と一致した署名だけを release path として扱う。
 
+### P10-050: Signing setup Developer ID gate
+
+- [x] `verify_signing_setup.sh` は configured identity が `Developer ID Application:` で始まらない場合、keychain lookup 前に失敗する。
+- [x] `sign_app.sh` / `verify_release_environment.sh` / `verify_signing_setup.sh` の Developer ID 条件を揃える。
+- [x] 完了条件: release operator は Apple Development / Mac Developer identity を setup check green と誤認しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
