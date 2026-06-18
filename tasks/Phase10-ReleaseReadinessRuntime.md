@@ -440,6 +440,15 @@
 - [x] release evidence / final preflight は `SOLOPM_RELEASE_ARTIFACT_SHA256_FILE` で DMG checksum を明示し、複数 checksum の自動選択を避ける。
 - [x] 完了条件: checklist 通りに進めた場合、appcast 用 ZIP 不足や evidence checksum の曖昧選択で release が止まらない。
 
+### P10-056: Release Sparkle feed gate
+
+- [x] release build は `SOLOPM_SPARKLE_FEED_URL` と `SOLOPM_SPARKLE_PUBLIC_ED_KEY` が揃わない場合に Swift build 前に失敗する。
+- [x] release build は Sparkle feed URL が HTTPS でない場合、または予約ドメイン / ローカルドメインの場合に失敗する。
+- [x] release build と `verify_release_environment.sh` は placeholder Sparkle public key を release blocker にする。
+- [x] `verify_release_environment.sh` は signed app の `SUFeedURL` / `SUPublicEDKey` 欠落と placeholder feed URL を release blocker にする。
+- [x] `packaging/sparkle.env.example` は release 用の `example.com` URL を含まず、production 値は local env または release machine の環境変数から与える。
+- [x] 完了条件: public alpha release build に sample feed URL や Sparkle 無効状態が混入しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

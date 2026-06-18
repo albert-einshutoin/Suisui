@@ -10,7 +10,7 @@ This checklist is the single runbook for reproducing a SoloPM public alpha relea
 - `packaging/notarization.env` exists only on the release machine.
 - `packaging/release-evidence.json` exists only on the release machine after manual checks.
 - Sparkle private key exists in Keychain.
-- `SOLOPM_SPARKLE_FEED_URL` and `SOLOPM_SPARKLE_PUBLIC_ED_KEY` are set for release builds.
+- `SOLOPM_SPARKLE_FEED_URL` is a production HTTPS appcast URL, and `SOLOPM_SPARKLE_PUBLIC_ED_KEY` is set for release builds.
 
 ## Order
 

@@ -123,6 +123,58 @@ require_app_bundle_metadata() {
   fi
 }
 
+require_release_sparkle_metadata() {
+  local app_bundle="$1"
+  local feed_url
+  local public_ed_key
+
+  feed_url="$(read_app_info_plist_key "$app_bundle" "SUFeedURL")"
+  public_ed_key="$(read_app_info_plist_key "$app_bundle" "SUPublicEDKey")"
+
+  if [[ -z "$feed_url" ]]; then
+    add_blocker "release app is missing Sparkle feed URL: SUFeedURL"
+  fi
+
+  if [[ -z "$public_ed_key" ]]; then
+    add_blocker "release app is missing Sparkle public EdDSA key: SUPublicEDKey"
+  else
+    case "$public_ed_key" in
+      base64-public-key-from-generate_keys|"<public key from generate_keys>")
+        add_blocker "release app Sparkle public EdDSA key must not use a placeholder key: SUPublicEDKey"
+        ;;
+    esac
+  fi
+
+  if [[ -z "$feed_url" ]]; then
+    return
+  fi
+
+  case "$feed_url" in
+    https://*)
+      ;;
+    *)
+      add_blocker "release app Sparkle feed URL must use https: SUFeedURL"
+      return
+      ;;
+  esac
+
+  case "$feed_url" in
+    https://example.com|https://example.com/*|\
+    https://*.example.com|https://*.example.com/*|\
+    https://example.org|https://example.org/*|\
+    https://*.example.org|https://*.example.org/*|\
+    https://example.net|https://example.net/*|\
+    https://*.example.net|https://*.example.net/*|\
+    https://*.invalid|https://*.invalid/*|\
+    https://*.test|https://*.test/*|\
+    https://localhost|https://localhost/*|\
+    https://127.0.0.1|https://127.0.0.1/*|\
+    https://0.0.0.0|https://0.0.0.0/*)
+      add_blocker "release app Sparkle feed URL must not use placeholder or local domains: SUFeedURL"
+      ;;
+  esac
+}
+
 normalized_entitlements_json() {
   local entitlements_path="$1"
   plutil -convert json -o - "$entitlements_path" 2>/dev/null
@@ -438,6 +490,7 @@ fi
 
 if [[ -d "$APP_BUNDLE" ]]; then
   require_app_bundle_metadata "$APP_BUNDLE" "$BUNDLE_IDENTIFIER" "${MARKETING_VERSION:-}" "${CURRENT_PROJECT_VERSION:-}"
+  require_release_sparkle_metadata "$APP_BUNDLE"
   require_app_entitlements "$APP_BUNDLE"
 
   if ! codesign --verify --strict --deep --verbose=2 "$APP_BUNDLE" >/dev/null 2>&1; then

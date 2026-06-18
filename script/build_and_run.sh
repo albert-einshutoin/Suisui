@@ -44,6 +44,8 @@ cd "$ROOT_DIR"
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
+SOLOPM_SPARKLE_CONFIG_QUIET=1 "$ROOT_DIR/script/validate_sparkle_release_config.sh"
+
 case "$BUILD_CONFIGURATION" in
   debug)
     swift build --product "$APP_NAME"
@@ -58,16 +60,6 @@ case "$BUILD_CONFIGURATION" in
     exit 2
     ;;
 esac
-
-if [[ -n "$SPARKLE_FEED_URL" && -z "$SPARKLE_PUBLIC_ED_KEY" ]]; then
-  echo "SOLOPM_SPARKLE_PUBLIC_ED_KEY is required when SOLOPM_SPARKLE_FEED_URL is set" >&2
-  exit 2
-fi
-
-if [[ -z "$SPARKLE_FEED_URL" && -n "$SPARKLE_PUBLIC_ED_KEY" ]]; then
-  echo "SOLOPM_SPARKLE_FEED_URL is required when SOLOPM_SPARKLE_PUBLIC_ED_KEY is set" >&2
-  exit 2
-fi
 
 BUILD_BINARY="$BUILD_DIR/$APP_NAME"
 RESOURCE_BUNDLE="$BUILD_DIR/SoloPM_SoloPMCore.bundle"

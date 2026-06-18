@@ -102,6 +102,18 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("release app bundle metadata mismatch"))
     }
 
+    func testReleasePreflightRequiresProductionSparkleFeedMetadata() throws {
+        let script = try readPackageFile("script/verify_release_environment.sh")
+
+        XCTAssertTrue(script.contains("SUFeedURL"))
+        XCTAssertTrue(script.contains("SUPublicEDKey"))
+        XCTAssertTrue(script.contains("release app is missing Sparkle feed URL"))
+        XCTAssertTrue(script.contains("release app is missing Sparkle public EdDSA key"))
+        XCTAssertTrue(script.contains("release app Sparkle feed URL must use https"))
+        XCTAssertTrue(script.contains("release app Sparkle feed URL must not use placeholder or local domains"))
+        XCTAssertTrue(script.contains("release app Sparkle public EdDSA key must not use a placeholder key"))
+    }
+
     func testReleasePreflightRequiresLocalEvidenceFileForManualChecks() throws {
         let script = try readPackageFile("script/verify_release_environment.sh")
 

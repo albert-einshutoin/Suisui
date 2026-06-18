@@ -12,6 +12,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
     func testBundleBuilderSupportsSparkleInfoPlistKeysAndEmbeddedFrameworks() throws {
         let script = try readPackageFile("script/build_and_run.sh")
 
+        XCTAssertTrue(script.contains("validate_sparkle_release_config.sh"))
         XCTAssertTrue(script.contains("SPARKLE_FEED_URL"))
         XCTAssertTrue(script.contains("SPARKLE_PUBLIC_ED_KEY"))
         XCTAssertTrue(script.contains("SUFeedURL"))
@@ -38,6 +39,66 @@ final class SparkleUpdateFoundationTests: XCTestCase {
         XCTAssertTrue(docs.contains("generate_keys"))
         XCTAssertTrue(docs.contains("Keychain"))
         XCTAssertTrue(docs.contains("local appcast"))
+    }
+
+    func testReleaseBuildRequiresProductionSparkleFeedConfiguration() throws {
+        let missingFeed = try runScript(
+            "script/validate_sparkle_release_config.sh",
+            environment: [
+                "SOLOPM_BUILD_CONFIGURATION": "release"
+            ]
+        )
+
+        XCTAssertNotEqual(missingFeed.exitCode, 0)
+        XCTAssertTrue(missingFeed.output.contains("SOLOPM_SPARKLE_FEED_URL is required for release builds"))
+
+        let httpFeed = try runScript(
+            "script/validate_sparkle_release_config.sh",
+            environment: [
+                "SOLOPM_BUILD_CONFIGURATION": "release",
+                "SOLOPM_SPARKLE_FEED_URL": "http://updates.example.invalid/solopm/appcast.xml",
+                "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "generated-public-ed-key-value"
+            ]
+        )
+
+        XCTAssertNotEqual(httpFeed.exitCode, 0)
+        XCTAssertTrue(httpFeed.output.contains("SOLOPM_SPARKLE_FEED_URL must use https for release builds"))
+
+        let placeholderFeed = try runScript(
+            "script/validate_sparkle_release_config.sh",
+            environment: [
+                "SOLOPM_BUILD_CONFIGURATION": "release",
+                "SOLOPM_SPARKLE_FEED_URL": "https://example.com/solopm/appcast.xml",
+                "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "generated-public-ed-key-value"
+            ]
+        )
+
+        XCTAssertNotEqual(placeholderFeed.exitCode, 0)
+        XCTAssertTrue(placeholderFeed.output.contains("SOLOPM_SPARKLE_FEED_URL must not use placeholder or local domains for release builds"))
+
+        let placeholderKey = try runScript(
+            "script/validate_sparkle_release_config.sh",
+            environment: [
+                "SOLOPM_BUILD_CONFIGURATION": "release",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "base64-public-key-from-generate_keys"
+            ]
+        )
+
+        XCTAssertNotEqual(placeholderKey.exitCode, 0)
+        XCTAssertTrue(placeholderKey.output.contains("SOLOPM_SPARKLE_PUBLIC_ED_KEY must not use a placeholder key for release builds"))
+
+        let validFeed = try runScript(
+            "script/validate_sparkle_release_config.sh",
+            environment: [
+                "SOLOPM_BUILD_CONFIGURATION": "release",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "generated-public-ed-key-value"
+            ]
+        )
+
+        XCTAssertEqual(validFeed.exitCode, 0, validFeed.output)
+        XCTAssertTrue(validFeed.output.contains("Sparkle release config is valid."))
     }
 
     func testSampleAppcastSmokeContainsCurrentBundleVersion() throws {
