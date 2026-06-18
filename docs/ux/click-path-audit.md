@@ -79,6 +79,25 @@
 | MCP server別の接続状態証跡はsource test中心 | 複数server rowのinline statusとrow単位Checkは実装済みだが、実アプリで複数serverを並べたスクリーンショット証跡はまだ弱い。 | P1 | MCP server listを含むSettings screenshotをlight/darkで保存する。 |
 | accessibility検証が未完了 | Task card、column add、status move、destructive confirmationのlabel/helpはsource testで固定し、Task cardのOpen Detailsとstatus move controlsも別フォーカス対象に分離した。Sidebar -> board detail -> task card -> inspectorのsource-level VoiceOver focus anchors are fixed。Task / Project inspectorの保存、提案適用、削除確認はキーボードだけで実行できる。Light/Dark/System screenshot evidence scriptは追加済み。実機VoiceOver focus order確認は残る。 | P1 | VoiceOverでProject board -> card -> inspectorの順序を確認し、崩れを修正する。 |
 
+## 改善紐づけ
+
+PR未作成のため、現時点ではcurrent branchの改善commitとsource testに紐づける。PR作成時はこの表をPR descriptionに転記する。
+
+主な回帰テストは `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift`、`Tests/SoloPMCoreTests/ProjectBoardStoreTests.swift`、`Tests/SoloPMCoreTests/ExternalMCPTests.swift`、`Tests/SoloPMCoreTests/SyncEntitlementTests.swift` に固定する。
+
+| 導線 | クリック数上の改善 | 実装 | 回帰テスト |
+| --- | --- | --- | --- |
+| Project作成 / Project選択 / Project inspector | sidebarから1クリックでProjectを作成・選択し、右inspectorで編集、完了、archive、deleteを完結する。 | `Sources/SoloPMApp/Views/ProjectBoardView.swift`, `Sources/SoloPMCore/App/ProjectBoard.swift` | `AppExperienceSourceTests.testProjectBoardExposesPrimaryCRUDKeyboardShortcuts`, `ProjectBoardStoreTests.testDeleteProjectRemovesProjectAndTasksFromPersistentBoard` |
+| Task作成 / Task編集 / Task削除 | 選択中Projectのheaderまたはcolumnから2クリックでTaskを追加し、card -> inspectorで編集・削除を完結する。 | `Sources/SoloPMApp/Views/ProjectBoardView.swift`, `Sources/SoloPMCore/App/ProjectBoard.swift` | `ProjectBoardStoreTests.testCreateTaskPersistsRequestedColumnMetadataAndDetail`, `ProjectBoardStoreTests.testUpdateTaskMovesCardAcrossColumnsAndUpdatesMetadata`, `ProjectBoardStoreTests.testDeleteTaskRemovesCardFromPersistentSnapshot` |
+| Task status移動 | card上のchevronで1クリック移動、またはdrag/dropで任意statusへ移動する。 | `Sources/SoloPMApp/Views/ProjectBoardView.swift`, `Sources/SoloPMCore/App/ProjectBoard.swift` | `AppExperienceSourceTests.testKanbanTaskCardsExposeMouseDrivenStatusMoveControls`, `AppExperienceSourceTests.testKanbanCardsUseTaskComponentDragPreview`, `ProjectBoardStoreTests.testProjectBoardViewModelMovesDroppedTaskAndNotifiesOnce` |
+| Task card metadata strip | title、status、priority、due、drag affordanceを分離し、狭いcolumnでも固定chipとadaptive gridで重なりにくくする。 | `Sources/SoloPMApp/Views/ProjectBoardView.swift` | `AppExperienceSourceTests.testTaskCardsUseSampleInspiredNonOverlappingMetadataStrip` |
+| Inbox triage | item選択後にMake Task、Make Project、Schedule Today、Review Laterを1クリックで実mutationへ送る。 | `Sources/SoloPMApp/Views/ProjectWorkflowViews.swift`, `Sources/SoloPMCore/App/ProjectBoard.swift` | `ProjectBoardStoreTests.testProjectBoardViewModelInboxClassificationShowsFeedbackAdvancesSelectionAndUndo`, `ProjectBoardStoreTests.testSQLiteBoardStorePersistsInboxClassificationUndo` |
+| Today planning | sidebarから1クリックでdue/overdue、focus suggestion、time blockを確認する。 | `Sources/SoloPMApp/Views/ProjectWorkflowViews.swift`, `Sources/SoloPMCore/App/ProjectBoard.swift` | `AppExperienceSourceTests.testTodayWorkflowShowsRecommendationDueCountsAndTimeBlocks`, `ProjectBoardStoreTests.testProjectBoardViewModelBuildsDeterministicTodayPlanWithTimeBlocks` |
+| Settings overview / Theme | toolbar gearから1クリックでSettingsを開き、Status OverviewとTheme segmentをSettings内へ集約する。 | `Sources/SoloPMApp/SoloPMApp.swift` | `AppExperienceSourceTests.testSettingsSurfaceStartsWithStatusOverviewForCoreOperationalAreas`, `AppExperienceSourceTests.testAppearanceSelectionIsConfiguredOnlyFromSettings`, `AppExperienceSourceTests.testProjectBoardSidebarAndToolbarDoNotHostThemeControls` |
+| AI provider設定 | provider pickerの選択を自動保存し、選択中providerのfieldだけを表示する。 | `Sources/SoloPMApp/SoloPMApp.swift`, `Sources/SoloPMCore/App/AppSettings.swift`, `Sources/SoloPMCore/App/LLMProviderCatalog.swift` | `AppExperienceSourceTests.testAISettingsTabShowsOnlySelectedProviderFields`, `AppSettingsTests.testAppSettingsViewModelPersistsProviderSelectionWhenSelected` |
+| MCP接続確認 | Settings内のserver rowから対象serverを2クリックでCheckし、Picker切替を不要にする。 | `Sources/SoloPMApp/SoloPMApp.swift`, `Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift` | `AppExperienceSourceTests.testSettingsSurfaceShowsInlineMCPServerRowsWithCheckActions`, `ExternalMCPTests.testExternalMCPSettingsViewModelChecksSpecificRegistrationFromInlineRow` |
+| Sync gate | Free userはExternal Sync開始前にdomain層で止め、Proでもbackend未構成ならmock successにしない。 | `Sources/SoloPMApp/SoloPMApp.swift`, `Sources/SoloPMCore/App/SyncService.swift`, `Sources/SoloPMCore/App/Entitlements.swift` | `AppExperienceSourceTests.testSettingsSurfaceShowsSyncGateWithoutMockSuccessPath`, `SyncEntitlementTests.testSyncServiceFreeStartFailsBeforeNetworkClientIsReached`, `SyncEntitlementTests.testSyncServiceProWithoutBackendDoesNotReturnMockSuccess` |
+
 ## プロダクトレビュー
 
 Problem: SoloPMは実働するboardとlocal dataを持ったが、まだ日々のPM cockpitとしてはProject detailの文脈整理が弱かった。

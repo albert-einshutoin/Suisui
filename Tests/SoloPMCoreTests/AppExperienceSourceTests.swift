@@ -1172,6 +1172,27 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(phase.contains("[ ] Light/Dark/System切替後にカード、サイドバー、インスペクタのコントラストが破綻しないことをスクリーンショットで確認する。"))
     }
 
+    func testClickPathAuditLinksPrimaryOperationsToImplementationEvidence() throws {
+        let audit = try readPackageFile("docs/ux/click-path-audit.md")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+
+        XCTAssertTrue(audit.contains("## 改善紐づけ"))
+        XCTAssertTrue(audit.contains("PR未作成のため、現時点ではcurrent branchの改善commitとsource testに紐づける"))
+        XCTAssertTrue(audit.contains("PR作成時はこの表をPR descriptionに転記する"))
+        XCTAssertTrue(audit.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift"))
+        XCTAssertTrue(audit.contains("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift"))
+        XCTAssertTrue(audit.contains("Sources/SoloPMApp/SoloPMApp.swift"))
+        XCTAssertTrue(audit.contains("Tests/SoloPMCoreTests/ProjectBoardStoreTests.swift"))
+        XCTAssertTrue(audit.contains("Tests/SoloPMCoreTests/ExternalMCPTests.swift"))
+        XCTAssertTrue(audit.contains("Tests/SoloPMCoreTests/SyncEntitlementTests.swift"))
+        XCTAssertTrue(audit.contains("AppExperienceSourceTests.testTaskCardsUseSampleInspiredNonOverlappingMetadataStrip"))
+        XCTAssertTrue(audit.contains("ProjectBoardStoreTests.testCreateTaskPersistsRequestedColumnMetadataAndDetail"))
+        XCTAssertTrue(audit.contains("ProjectBoardStoreTests.testProjectBoardViewModelInboxClassificationShowsFeedbackAdvancesSelectionAndUndo"))
+        XCTAssertTrue(audit.contains("ExternalMCPTests.testExternalMCPSettingsViewModelChecksSpecificRegistrationFromInlineRow"))
+        XCTAssertTrue(audit.contains("SyncEntitlementTests.testSyncServiceFreeStartFailsBeforeNetworkClientIsReached"))
+        XCTAssertTrue(phase.contains("[x] UX click-path auditで主要操作のクリック数が記録され、改善PRと紐づいている。"))
+    }
+
     func testUIScreenshotEvidenceUsesIsolatedSeededProjectBoard() throws {
         let script = try readPackageFile("script/capture_ui_evidence.sh")
         let evidence = try readPackageFile("docs/release/evidence/ui-screenshots.md")

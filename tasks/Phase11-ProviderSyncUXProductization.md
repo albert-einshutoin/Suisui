@@ -204,7 +204,8 @@
 - [x] 実装済みprovider以外は保存不可または明確なunavailable表示になっている。
 - [x] Freeユーザーは外部同期を開始できず、外部通信も発生しない。
 - [x] Proユーザーでもsync backend未構成時はmock successにならない。
-- [ ] UX click-path auditで主要操作のクリック数が記録され、改善PRと紐づいている。
+- [x] UX click-path auditで主要操作のクリック数が記録され、改善PRと紐づいている。
+  - [x] `docs/ux/click-path-audit.md` の改善紐づけ表で、PR未作成の現時点はcurrent branchの改善commit/source testに対応づけ、PR作成時にdescriptionへ転記する方針を明記する。
 - [ ] `ui-samples/` を参考にした画面密度・インスペクタ・Settingsの改善がスクリーンショットで検証されている。
 - [x] 競合benchmarkから採用/非採用判断が残っている。
 - [x] `swift test`、`./scripts/ci.sh`、`xcodebuild ... -scheme SoloPM build` がgreen。
