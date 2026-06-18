@@ -77,14 +77,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("createTask("))
     }
 
-    func testProjectBoardAppearanceControlDoesNotRenderCrampedPickerLabel() throws {
+    func testAppearanceSelectionIsConfiguredOnlyFromSettings() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
-        let pickerRange = try XCTUnwrap(boardSource.range(of: "Picker(\"Appearance\", selection: $preference)"))
-        let hiddenRange = try XCTUnwrap(boardSource.range(of: ".labelsHidden()", range: pickerRange.lowerBound..<boardSource.endIndex))
-        let segmentedRange = try XCTUnwrap(boardSource.range(of: ".pickerStyle(.segmented)", range: pickerRange.lowerBound..<boardSource.endIndex))
-
-        XCTAssertLessThan(hiddenRange.lowerBound, segmentedRange.lowerBound)
+        XCTAssertTrue(appSource.contains("Section(\"Appearance\")"))
+        XCTAssertTrue(appSource.contains("Picker(\"Theme\", selection: $appearancePreference)"))
+        XCTAssertFalse(boardSource.contains("AppearancePicker"))
+        XCTAssertFalse(boardSource.contains("SidebarAppearanceSection"))
+        XCTAssertFalse(boardSource.contains("Picker(\"Appearance\""))
+        XCTAssertFalse(boardSource.contains("appearancePreference: $appearancePreference"))
     }
 
     func testProjectBoardDropPayloadsAreValidatedByViewModel() throws {
@@ -115,16 +117,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("@AppStorage(SoloPMAppearancePreference.storageKey)"))
         XCTAssertTrue(appSource.contains(".preferredColorScheme(appearancePreference.colorScheme)"))
         XCTAssertTrue(appSource.contains("Section(\"Appearance\")"))
-        XCTAssertTrue(boardSource.contains("AppearancePicker"))
-        XCTAssertTrue(boardSource.contains("appearancePreference: $appearancePreference"))
-    }
-
-    func testProjectBoardExposesAppearanceControlFromSidebar() throws {
-        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-
-        XCTAssertTrue(boardSource.contains("SidebarAppearanceSection"))
-        XCTAssertTrue(boardSource.contains("SidebarAppearanceSection(preference: $appearancePreference)"))
-        XCTAssertTrue(boardSource.contains("AppearancePicker(preference: $preference)"))
+        XCTAssertFalse(boardSource.contains("@AppStorage(SoloPMAppearancePreference.storageKey)"))
+        XCTAssertFalse(boardSource.contains(".preferredColorScheme(appearancePreference.colorScheme)"))
     }
 
     func testKanbanTaskCardsExposeMouseDrivenStatusMoveControls() throws {

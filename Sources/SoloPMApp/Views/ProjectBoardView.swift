@@ -6,7 +6,6 @@ struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
     @StateObject private var viewModel: ProjectBoardViewModel
     @State private var displayMode: ProjectBoardDisplayMode = .board
-    @AppStorage(SoloPMAppearancePreference.storageKey) private var appearancePreference: SoloPMAppearancePreference = .system
 
     init(viewModel: ProjectBoardViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -24,8 +23,6 @@ struct ProjectBoardView: View {
                 .listStyle(.sidebar)
 
                 Divider()
-
-                SidebarAppearanceSection(preference: $appearancePreference)
 
                 Toggle(
                     "Show Archived",
@@ -53,7 +50,6 @@ struct ProjectBoardView: View {
                 ProjectBoardDetail(
                     project: project,
                     displayMode: $displayMode,
-                    appearancePreference: $appearancePreference,
                     viewModel: viewModel
                 )
                 .toolbar {
@@ -92,7 +88,6 @@ struct ProjectBoardView: View {
         .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
             viewModel.load()
         }
-        .preferredColorScheme(appearancePreference.colorScheme)
     }
 
     private var inspectorBinding: Binding<Bool> {
@@ -174,7 +169,6 @@ private struct ProjectSidebarRow: View {
 private struct ProjectBoardDetail: View {
     let project: ProjectBoardProject
     @Binding var displayMode: ProjectBoardDisplayMode
-    @Binding var appearancePreference: SoloPMAppearancePreference
     @ObservedObject var viewModel: ProjectBoardViewModel
     @State private var composingStatus: ProjectTaskStatus?
     @State private var projectTitle = ""
@@ -196,7 +190,6 @@ private struct ProjectBoardDetail: View {
                     ProjectHeaderActions(
                         project: project,
                         displayMode: $displayMode,
-                        appearancePreference: $appearancePreference,
                         onCompleteProject: viewModel.completeSelectedProject,
                         onArchiveProject: { isConfirmingArchive = true },
                         onRestoreProject: viewModel.restoreSelectedProject,
@@ -215,7 +208,6 @@ private struct ProjectBoardDetail: View {
                     ProjectHeaderActions(
                         project: project,
                         displayMode: $displayMode,
-                        appearancePreference: $appearancePreference,
                         onCompleteProject: viewModel.completeSelectedProject,
                         onArchiveProject: { isConfirmingArchive = true },
                         onRestoreProject: viewModel.restoreSelectedProject,
@@ -345,7 +337,6 @@ private struct ProjectHeaderTitleEditor: View {
 private struct ProjectHeaderActions: View {
     let project: ProjectBoardProject
     @Binding var displayMode: ProjectBoardDisplayMode
-    @Binding var appearancePreference: SoloPMAppearancePreference
     let onCompleteProject: () -> Void
     let onArchiveProject: () -> Void
     let onRestoreProject: () -> Void
@@ -355,16 +346,12 @@ private struct ProjectHeaderActions: View {
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 8) {
-                AppearancePicker(preference: $appearancePreference)
                 viewPicker
                 projectActionButtons
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    AppearancePicker(preference: $appearancePreference)
-                    viewPicker
-                }
+                viewPicker
                 projectActionButtons
             }
         }
@@ -430,41 +417,6 @@ private struct ProjectHeaderActions: View {
         }
         .buttonStyle(.borderedProminent)
         .keyboardShortcut("n", modifiers: [.command])
-    }
-}
-
-private struct AppearancePicker: View {
-    @Binding var preference: SoloPMAppearancePreference
-
-    var body: some View {
-        Picker("Appearance", selection: $preference) {
-            ForEach(SoloPMAppearancePreference.allCases) { preference in
-                Label(preference.label, systemImage: preference.systemImage)
-                    .tag(preference)
-            }
-        }
-        .labelsHidden()
-        .pickerStyle(.segmented)
-        .frame(width: 210)
-        .help("Switch between system, light, and dark appearance")
-    }
-}
-
-private struct SidebarAppearanceSection: View {
-    @Binding var preference: SoloPMAppearancePreference
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label("Theme", systemImage: "circle.lefthalf.filled")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
-            AppearancePicker(preference: $preference)
-                .controlSize(.small)
-        }
-        .padding(.horizontal, 10)
-        .padding(.top, 8)
     }
 }
 

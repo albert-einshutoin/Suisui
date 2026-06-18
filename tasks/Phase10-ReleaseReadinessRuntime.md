@@ -880,10 +880,10 @@
 
 ### P10-112: Project board appearance and mouse-driven status movement polish
 
-- [x] Project Board は `System` / `Light` / `Dark` の永続 appearance preference を board と Settings の両方から切り替えられる。
+- [x] `System` / `Light` / `Dark` の永続 appearance preference は Settings の Appearance セクションに集約する。
 - [x] Task card はマウス操作で前後ステータスへ移動でき、別カラムへの drag and drop でも SQLite の task status を更新する。
 - [x] `ui-samples/` の方向性に合わせ、Kanban column / task card は system-adaptive material、ステータス色、安定幅、drag handle、drop target affordance を持つ。
-- [x] `AppExperienceSourceTests` と `ProjectBoardStoreTests` で appearance selection、mouse move controls、drag payload validation、adaptive card styling の regression を固定する。
+- [x] `AppExperienceSourceTests` と `ProjectBoardStoreTests` で Settings-only appearance selection、mouse move controls、drag payload validation、adaptive card styling の regression を固定する。
 - [x] 完了条件: ライト/ダークどちらでもタスクの状態変更がポインタ操作だけで直感的に完了する。
 
 ### P10-113: OAuth refresh token removal failures are fail-closed
@@ -972,13 +972,13 @@
 - [x] `ExternalMCPTests` で string `serverInfo` と number `serverInfo.name` が invalid response になることを固定する。
 - [x] 完了条件: ユーザー登録 MCP server の壊れた initialize identity metadata を正常接続として扱わない。
 
-### P10-125: Board theme switching and mouse drag affordances stay discoverable
+### P10-125: Settings-only theme switching and mouse drag affordances stay discoverable
 
-- [x] Project Board の左サイドバーからも `System` / `Light` / `Dark` を切り替えられ、プロジェクト未選択時でも外観を変更できる。
-- [x] 既存の header / Settings の appearance preference と同じ `@AppStorage` key を使い、画面ごとにテーマ状態が分岐しない。
+- [x] Project Board の左サイドバーと右上ヘッダーから appearance control を削除し、Theme 変更は Settings 画面の `Theme` picker だけにする。
+- [x] Scene-level `.preferredColorScheme(appearancePreference.colorScheme)` と Settings の同じ `@AppStorage` key を使い、画面ごとにテーマ状態が分岐しない。
 - [x] Kanban task card の drag operation は raw payload 文字列ではなく、タスクカードとして認識できる preview を表示する。
-- [x] `AppExperienceSourceTests` でサイドバーの appearance control と task component drag preview の存在を固定する。
-- [x] 完了条件: `ui-samples/` の3ペインUIに近い導線で、Light/Dark切替とマウスによるステータス移動が初見でも見つけやすい。
+- [x] `AppExperienceSourceTests` で Project Board 内に appearance control が残らず、Settings にだけ Theme picker があることを固定する。
+- [x] 完了条件: `ui-samples/` の3ペインUIに近い導線で、Board は作業操作に集中し、Light/Dark切替は Settings から一貫して変更できる。
 
 ### P10-126: Knowledge vector provider identity must be valid before persistence
 
