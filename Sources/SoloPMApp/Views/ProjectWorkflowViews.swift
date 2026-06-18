@@ -27,6 +27,21 @@ enum ProjectBoardSidebarDestination: Hashable {
             "folder"
         }
     }
+
+    var accessibilityIdentifierSuffix: String {
+        switch self {
+        case .inbox:
+            "inbox"
+        case .today:
+            "today"
+        case .project(let projectID):
+            "project-\(projectID)"
+        }
+    }
+
+    func accessibilityLabel(count: Int) -> String {
+        "\(title), \(count) item\(count == 1 ? "" : "s")"
+    }
 }
 
 struct ProjectBoardSidebarDestinationRow: View {
@@ -47,6 +62,9 @@ struct ProjectBoardSidebarDestinationRow: View {
         } icon: {
             Image(systemName: destination.systemImage)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(destination.accessibilityLabel(count: count))
+        .accessibilityIdentifier("sidebar-destination-\(destination.accessibilityIdentifierSuffix)")
     }
 }
 

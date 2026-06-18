@@ -32,6 +32,9 @@ struct ProjectBoardView: View {
                     }
                 }
                 .listStyle(.sidebar)
+                .accessibilityIdentifier("project-board-sidebar")
+                .accessibilityLabel("Project navigation")
+                .accessibilityHint("Select Inbox, Today, or a project before moving to the board detail.")
 
                 Divider()
 
@@ -214,6 +217,9 @@ private struct ProjectSidebarRow: View {
             Image(systemName: systemImage)
                 .foregroundStyle(iconColor)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(project.accessibilitySidebarLabel)
+        .accessibilityIdentifier("project-sidebar-row-\(project.id)")
     }
 
     private var systemImage: String {
@@ -228,6 +234,14 @@ private struct ProjectSidebarRow: View {
             return .secondary
         }
         return project.isCompleted ? .green : .secondary
+    }
+}
+
+private extension ProjectBoardProject {
+    var accessibilitySidebarLabel: String {
+        let state = isArchived ? "Archived" : isCompleted ? "Completed" : "Active"
+        let taskLabel = taskCount == 1 ? "1 task" : "\(taskCount) tasks"
+        return "\(title), \(state), \(taskLabel)"
     }
 }
 
@@ -292,6 +306,10 @@ private struct ProjectBoardDetail: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("project-board-detail")
+        .accessibilityLabel("Project board for \(project.title)")
+        .accessibilityHint("Review project tasks, open a task card, then use the inspector for edits.")
         .onChange(of: project.isArchived) { _, isArchived in
             if isArchived {
                 composingStatus = nil
@@ -660,6 +678,10 @@ private struct ProjectHeaderSummary: View {
             Image(systemName: project.isArchived ? "archivebox" : "folder")
                 .foregroundStyle(project.isCompleted ? .green : .secondary)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(project.title)
+        .accessibilityValue(project.subtitle)
+        .accessibilitySortPriority(3)
     }
 }
 
@@ -680,6 +702,9 @@ private struct ProjectHeaderActions: View {
                 addTaskButton
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Project view actions")
+        .accessibilitySortPriority(1)
     }
 
     private var viewPicker: some View {
@@ -743,6 +768,11 @@ private struct ProjectKanbanBoard: View {
         }
         .defaultScrollAnchor(.topLeading)
         .scrollIndicators(.visible)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("project-kanban-board")
+        .accessibilityLabel("Kanban board for \(project.title)")
+        .accessibilityHint("Open a task card, use status controls, or move tasks between columns.")
+        .accessibilitySortPriority(2)
     }
 }
 
@@ -1261,6 +1291,7 @@ private struct ProjectInspectorView: View {
         Form {
             Section("Edit") {
                 TextField("Title", text: $title)
+                    .accessibilityIdentifier("project-inspector-title")
                 LabeledContent("Status", value: project.status.capitalized)
                 LabeledContent("Tasks", value: project.subtitle)
                 LabeledContent("Artifacts", value: "\(project.artifacts.count)")
@@ -1278,6 +1309,8 @@ private struct ProjectInspectorView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title == project.title)
+                .accessibilityIdentifier("project-inspector-save")
+                .accessibilityHint("Saves edits to the selected project in the local SoloPM database.")
             }
 
             Section("Actions") {
@@ -1312,9 +1345,15 @@ private struct ProjectInspectorView: View {
                 } label: {
                     Label("Delete Project", systemImage: "trash")
                 }
+                .accessibilityIdentifier("project-inspector-delete")
+                .accessibilityHint("Deletes the selected project after confirmation.")
             }
         }
         .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("project-inspector")
+        .accessibilityLabel("Project inspector for \(project.title)")
+        .accessibilityHint("Edit, save, archive, restore, or delete the selected project.")
         .confirmationDialog(
             "Archive this project?",
             isPresented: $isConfirmingArchive,
@@ -1461,6 +1500,7 @@ private struct TaskInspectorView: View {
         Form {
             Section("Edit") {
                 TextField("Title", text: $title)
+                    .accessibilityIdentifier("task-inspector-title")
                 TextField("Detail", text: $detail, axis: .vertical)
                     .lineLimit(4...8)
             }
@@ -1501,6 +1541,8 @@ private struct TaskInspectorView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("task-inspector-save")
+                .accessibilityHint("Saves edits to the selected task in the local SoloPM database.")
             }
 
             Section("Danger Zone") {
@@ -1509,9 +1551,15 @@ private struct TaskInspectorView: View {
                 } label: {
                     Label("Delete Task", systemImage: "trash")
                 }
+                .accessibilityIdentifier("task-inspector-delete")
+                .accessibilityHint("Deletes the selected task after confirmation.")
             }
         }
         .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("task-inspector")
+        .accessibilityLabel("Task inspector for \(task.title)")
+        .accessibilityHint("Edit, save, move, or delete the selected task.")
         .confirmationDialog(
             "Delete this task?",
             isPresented: $isConfirmingDelete,

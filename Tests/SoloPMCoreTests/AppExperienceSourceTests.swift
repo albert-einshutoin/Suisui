@@ -336,6 +336,44 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("\"Delete this task?\""))
     }
 
+    func testProjectBoardVoiceOverFocusPathIsSourceAnchored() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let audit = try readPackageFile("docs/ux/click-path-audit.md")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-sidebar\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Project navigation\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Select Inbox, Today, or a project before moving to the board detail.\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"sidebar-destination-\\(destination.accessibilityIdentifierSuffix)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityLabel(destination.accessibilityLabel(count: count))"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-sidebar-row-\\(project.id)\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityLabel(project.accessibilitySidebarLabel)"))
+
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-detail\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Project board for \\(project.title)\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilitySortPriority(3)"))
+        XCTAssertTrue(boardSource.contains(".accessibilitySortPriority(2)"))
+        XCTAssertTrue(boardSource.contains(".accessibilitySortPriority(1)"))
+
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"task-inspector\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Task inspector for \\(task.title)\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"task-inspector-title\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"task-inspector-save\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"task-inspector-delete\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Saves edits to the selected task in the local SoloPM database.\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Deletes the selected task after confirmation.\")"))
+
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-inspector\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Project inspector for \\(project.title)\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-inspector-title\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-inspector-save\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-inspector-delete\")"))
+        XCTAssertTrue(audit.contains("source-level VoiceOver focus anchors are fixed"))
+        XCTAssertTrue(phase.contains("[x] Sidebar -> board detail -> task card -> inspector edit/save/delete のsource-level focus anchorsを固定する。"))
+        XCTAssertTrue(phase.contains("[ ] 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。"))
+    }
+
     func testTodayWorkflowShowsRecommendationDueCountsAndTimeBlocks() throws {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")

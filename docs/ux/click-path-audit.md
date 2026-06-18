@@ -75,7 +75,7 @@
 | Settings詳細Formはtab分割済み | Settings詳細FormはOverview / AI / MCP / Sync / Privacyのtabへ分割済み。Status OverviewとThemeはOverview、provider詳細はAI、MCP登録/権限/auditはMCP、同期はSync、通知/起動/WatcherはPrivacyに分けた。 | P2 | 次の改善ではproviderごとのvalidation stateを短いstatus rowへ集約する。 |
 | Provider詳細設定は選択中providerだけを表示するcompact panelへ分離済み | Provider pickerの下に選択中providerに必要なfieldだけを出すため、他providerのAPI key、model、local executableは同時表示されない。 | P2 | 次はproviderごとのvalidation stateを短いstatus rowへ集約する。 |
 | MCP server別の接続状態証跡はsource test中心 | 複数server rowのinline statusとrow単位Checkは実装済みだが、実アプリで複数serverを並べたスクリーンショット証跡はまだ弱い。 | P1 | MCP server listを含むSettings screenshotをlight/darkで保存する。 |
-| accessibility検証が未完了 | Task card、column add、status move、destructive confirmationのlabel/helpはsource testで固定し、Task cardのOpen Detailsとstatus move controlsも別フォーカス対象に分離した。Light/Dark/System screenshot evidence scriptは追加済み。実機VoiceOver focus order確認は残る。 | P1 | VoiceOverでProject board -> card -> inspectorの順序を確認し、崩れを修正する。 |
+| accessibility検証が未完了 | Task card、column add、status move、destructive confirmationのlabel/helpはsource testで固定し、Task cardのOpen Detailsとstatus move controlsも別フォーカス対象に分離した。Sidebar -> board detail -> task card -> inspectorのsource-level VoiceOver focus anchors are fixed。Light/Dark/System screenshot evidence scriptは追加済み。実機VoiceOver focus order確認は残る。 | P1 | VoiceOverでProject board -> card -> inspectorの順序を確認し、崩れを修正する。 |
 
 ## プロダクトレビュー
 
