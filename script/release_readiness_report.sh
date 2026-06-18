@@ -24,10 +24,22 @@ printf "SoloPM release readiness report\n"
 section "Runtime mock/fake scan"
 if ! command -v rg >/dev/null 2>&1; then
   blocker "rg is required for source scanning"
-elif rg -n "$MOCK_PATTERN" "${RUNTIME_SOURCE_DIRS[@]}"; then
-  blocker "runtime source contains mock/fake/demo/test-only markers"
 else
-  printf "OK: no runtime mock/fake/demo markers in Sources/SoloPMCore Sources/SoloPMApp Sources/SoloPMCLI\n"
+  missing_runtime_source=0
+  for source_dir in "${RUNTIME_SOURCE_DIRS[@]}"; do
+    if [[ ! -d "$source_dir" ]]; then
+      blocker "missing runtime source directory: ${source_dir#"$ROOT_DIR/"}"
+      missing_runtime_source=1
+    fi
+  done
+
+  if [[ "$missing_runtime_source" -eq 0 ]]; then
+    if rg -n "$MOCK_PATTERN" "${RUNTIME_SOURCE_DIRS[@]}"; then
+      blocker "runtime source contains mock/fake/demo/test-only markers"
+    else
+      printf "OK: no runtime mock/fake/demo markers in Sources/SoloPMCore Sources/SoloPMApp Sources/SoloPMCLI\n"
+    fi
+  fi
 fi
 
 section "Phase checklist blockers"

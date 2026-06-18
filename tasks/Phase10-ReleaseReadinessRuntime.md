@@ -1086,6 +1086,13 @@
 - [x] `ExternalMCPTests` で空白を含む壊れた secret 値が preview / audit log の両方に残らないことを固定する。
 - [x] 完了条件: ユーザー登録 MCP server への tool arguments が壊れた provider token / API key を含み、キーが camelCase / kebab-case で揺れても、MCP preview / SQLite audit log に保存しない。
 
+### P10-140: Release readiness scan must fail closed when runtime source paths are missing
+
+- [x] `release_readiness_report.sh` は runtime source directory が欠けている場合、`rg` の error を「検出なし」と扱わず blocker にする。
+- [x] `Sources/SoloPMCore` / `Sources/SoloPMApp` / `Sources/SoloPMCLI` の固定 scan path が壊れたら `READY` を出さない。
+- [x] `ReleasePipelineTests` で一時 release root に runtime source 欠落 fixture を作り、missing source で non-zero exit になることを固定する。
+- [x] 完了条件: runtime mock/fake scan の対象ディレクトリが typo / move / delete で欠けた状態を release ready と誤判定しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
