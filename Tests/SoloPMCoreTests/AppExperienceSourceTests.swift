@@ -66,6 +66,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("createTask("))
     }
 
+    func testProjectBoardDropPayloadsAreValidatedByViewModel() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+
+        XCTAssertTrue(boardSource.contains("onMoveDroppedTasks(taskIDs, column.status)"))
+        XCTAssertFalse(boardSource.contains("compactMap(Int64.init)"))
+        XCTAssertTrue(coreSource.contains("moveDroppedTasks(ids rawIDs: [String], to status: ProjectTaskStatus)"))
+        XCTAssertTrue(coreSource.contains("Could not move task: invalid drag payload."))
+    }
+
     func testAppAndCLIShareDefaultDatabaseLocation() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let cliSource = try readPackageFile("Sources/SoloPMCLI/SoloPMCLIEntrypoint.swift")

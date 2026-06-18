@@ -649,6 +649,48 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    @discardableResult
+    public func moveDroppedTasks(ids rawIDs: [String], to status: ProjectTaskStatus) -> Bool {
+        guard !rawIDs.isEmpty else {
+            return false
+        }
+
+        var taskIDs: [Int64] = []
+        for rawID in rawIDs {
+            guard let taskID = Int64(rawID) else {
+                errorMessage = "Could not move task: invalid drag payload."
+                return false
+            }
+            taskIDs.append(taskID)
+        }
+
+        let visibleTaskIDs = Set(snapshot.projects.flatMap(\.tasks).map(\.id))
+        guard taskIDs.allSatisfy({ visibleTaskIDs.contains($0) }) else {
+            errorMessage = "Could not move task: task is no longer available."
+            return false
+        }
+
+        do {
+            var lastMovedTask: ProjectBoardTask?
+            for taskID in taskIDs {
+                lastMovedTask = try store.moveTask(id: taskID, to: status)
+            }
+            load()
+            if let lastMovedTask {
+                selectedProjectID = lastMovedTask.projectID
+                selectedTaskID = lastMovedTask.id
+            }
+            onChange()
+            return true
+        } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
+            errorMessage = "Restore the project before moving tasks."
+            return false
+        } catch {
+            errorMessage = String(describing: error)
+            return false
+        }
+    }
+
     public func deleteSelectedTask() {
         guard let selectedTaskID else {
             return

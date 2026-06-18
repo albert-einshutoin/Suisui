@@ -416,6 +416,9 @@ private struct ProjectKanbanBoard: View {
                         onSelectTask: { viewModel.selectedTaskID = $0 },
                         onMoveTask: { taskID, status in
                             viewModel.moveTask(id: taskID, to: status)
+                        },
+                        onMoveDroppedTasks: { taskIDs, status in
+                            viewModel.moveDroppedTasks(ids: taskIDs, to: status)
                         }
                     )
                 }
@@ -435,6 +438,7 @@ private struct BoardColumnView: View {
     let onCreateTask: (String, String, ProjectTaskPriority, String?) -> Void
     let onSelectTask: (Int64) -> Void
     let onMoveTask: (Int64, ProjectTaskStatus) -> Void
+    let onMoveDroppedTasks: ([String], ProjectTaskStatus) -> Bool
 
     @State private var isDropTargeted = false
 
@@ -511,11 +515,7 @@ private struct BoardColumnView: View {
         .background(isDropTargeted ? Color.accentColor.opacity(0.08) : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .dropDestination(for: String.self) { taskIDs, _ in
-            let movedTaskIDs = taskIDs.compactMap(Int64.init)
-            for taskID in movedTaskIDs {
-                onMoveTask(taskID, column.status)
-            }
-            return !movedTaskIDs.isEmpty
+            onMoveDroppedTasks(taskIDs, column.status)
         } isTargeted: { isTargeted in
             isDropTargeted = isTargeted
         }

@@ -747,6 +747,13 @@
 - [x] 不正な project deadline / task due date は `LocalStoreDecodingError.invalidDate` として呼び出し元へ返す。
 - [x] 完了条件: Board で登録した日付だけのタスクが、期限サマリー・メニューバー・期限通知の候補から消えない。
 
+### P10-094: Board drag/drop rejects invalid task payloads atomically
+
+- [x] `ProjectBoardView` は drop payload を `compactMap(Int64.init)` で部分的に捨てて移動しない。
+- [x] `ProjectBoardViewModel.moveDroppedTasks` は payload 全体を先に検証し、不正IDがあれば valid ID も含めて移動しない。
+- [x] 成功時は drop されたタスクを移動し、`onChange` は一度だけ通知する。
+- [x] 完了条件: Drag/drop の壊れた payload によって、ユーザーの意図と違う一部タスクだけが移動しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

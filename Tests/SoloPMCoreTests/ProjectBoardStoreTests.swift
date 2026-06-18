@@ -333,6 +333,53 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelRejectsInvalidDroppedTaskIDsWithoutPartialMove() {
+        var changeCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+        let task = viewModel.createTask(title: "Drag from board", status: .planned)
+        guard let task else {
+            XCTFail("Expected task creation to succeed before testing dropped payload validation.")
+            return
+        }
+        changeCount = 0
+
+        let didMove = viewModel.moveDroppedTasks(ids: [String(task.id), "invalid-id"], to: .inProgress)
+
+        XCTAssertFalse(didMove)
+        XCTAssertEqual(changeCount, 0)
+        XCTAssertEqual(viewModel.errorMessage, "Could not move task: invalid drag payload.")
+        XCTAssertEqual(viewModel.selectedTask?.status, .planned)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelMovesDroppedTaskAndNotifiesOnce() {
+        var changeCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+        let task = viewModel.createTask(title: "Drop on board", status: .planned)
+        guard let task else {
+            XCTFail("Expected task creation to succeed before testing dropped payload movement.")
+            return
+        }
+        changeCount = 0
+
+        let didMove = viewModel.moveDroppedTasks(ids: [String(task.id)], to: .inProgress)
+
+        XCTAssertTrue(didMove)
+        XCTAssertEqual(changeCount, 1)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(viewModel.selectedTaskID, task.id)
+        XCTAssertEqual(viewModel.selectedTask?.status, .inProgress)
+    }
+
+    @MainActor
     func testProjectBoardViewModelCanShowAndRestoreArchivedProjects() {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()
