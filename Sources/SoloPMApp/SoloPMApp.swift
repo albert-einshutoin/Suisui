@@ -1105,21 +1105,31 @@ private struct SettingsView: View {
             }
 
             Section("External MCP") {
-                HStack {
-                    Picker("Server", selection: Binding(
-                        get: { externalMCPViewModel.selectedRegistrationID ?? externalMCPViewModel.registration.id },
-                        set: { externalMCPViewModel.selectRegistration(id: $0) }
-                    )) {
-                        ForEach(externalMCPViewModel.registrationRows) { row in
-                            Text(row.displayName)
-                                .tag(row.id)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Label("Servers", systemImage: "externaldrive.connected.to.line.below")
+                            .font(.headline)
+                        Spacer()
+                        Button {
+                            externalMCPViewModel.createRegistration()
+                        } label: {
+                            Label("Add Server", systemImage: "plus")
                         }
                     }
 
-                    Button {
-                        externalMCPViewModel.createRegistration()
-                    } label: {
-                        Label("Add Server", systemImage: "plus")
+                    ForEach(externalMCPViewModel.registrationRows) { row in
+                        MCPServerSettingsRow(
+                            row: row,
+                            isCheckDisabled: externalMCPViewModel.isCheckingConnection,
+                            onSelect: {
+                                externalMCPViewModel.selectRegistration(id: row.id)
+                            },
+                            onCheck: {
+                                Task {
+                                    await externalMCPViewModel.checkConnection(id: row.id)
+                                }
+                            }
+                        )
                     }
                 }
 
@@ -1402,6 +1412,118 @@ private struct SettingsView: View {
         case .disabled:
             .secondary
         }
+    }
+}
+
+private struct MCPServerSettingsRow: View {
+    let row: MCPServerRegistrationRow
+    let isCheckDisabled: Bool
+    let onSelect: () -> Void
+    let onCheck: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: onSelect) {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: row.isSelected ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(row.isSelected ? Color.accentColor : Color.secondary)
+                        .frame(width: 18)
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(row.displayName)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+
+                        Text(row.commandLine.isEmpty ? "Command not set" : row.commandLine)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 8) {
+                                MCPServerStatusBadge(label: row.statusLabel)
+                                MCPServerConnectionBadge(label: row.connectionCheckResultLabel)
+                                Text("Protocol: \(row.protocolVersionLabel)")
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                MCPServerStatusBadge(label: row.statusLabel)
+                                MCPServerConnectionBadge(label: row.connectionCheckResultLabel)
+                                Text("Protocol: \(row.protocolVersionLabel)")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .font(.caption2)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Select \(row.displayName)")
+            .accessibilityLabel(row.isSelected ? "Selected MCP server \(row.displayName)" : "Select MCP server \(row.displayName)")
+
+            if row.isCheckingConnection {
+                ProgressView()
+                    .controlSize(.small)
+            }
+
+            Button(action: onCheck) {
+                Label("Check", systemImage: "network")
+            }
+            .controlSize(.small)
+            .disabled(isCheckDisabled)
+            .help("Check \(row.displayName) connection")
+            .accessibilityLabel("Check \(row.displayName) connection")
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct MCPServerStatusBadge: View {
+    let label: String
+
+    var body: some View {
+        Label(label, systemImage: label == "Enabled" ? "checkmark.circle" : "pause.circle")
+            .foregroundStyle(label == "Enabled" ? .green : .secondary)
+            .lineLimit(1)
+    }
+}
+
+private struct MCPServerConnectionBadge: View {
+    let label: String
+
+    var body: some View {
+        Label(label, systemImage: systemImage)
+            .foregroundStyle(foregroundStyle)
+            .lineLimit(1)
+    }
+
+    private var systemImage: String {
+        if label == "Connected" {
+            return "network"
+        }
+        if label == "Checking" {
+            return "clock"
+        }
+        if label.hasPrefix("Failed") {
+            return "exclamationmark.triangle"
+        }
+        return "questionmark.circle"
+    }
+
+    private var foregroundStyle: Color {
+        if label == "Connected" {
+            return .green
+        }
+        if label.hasPrefix("Failed") {
+            return .red
+        }
+        return .secondary
     }
 }
 

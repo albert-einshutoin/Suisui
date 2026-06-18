@@ -877,6 +877,131 @@ final class ExternalMCPTests: XCTestCase {
     }
 
     @MainActor
+    func testExternalMCPSettingsViewModelChecksSpecificRegistrationFromInlineRow() async throws {
+        let first = MCPServerRegistration(
+            id: "first",
+            displayName: "First MCP",
+            command: "node",
+            arguments: ["first.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let second = MCPServerRegistration(
+            id: "second",
+            displayName: "Second MCP",
+            command: "node",
+            arguments: ["second.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let store = InMemoryMCPServerRegistrationStore(registrations: [first, second])
+        let checkedRegistrationRecorder = CheckedMCPRegistrationRecorder()
+        let launcher = MCPStdioServerLauncher(
+            validator: MCPServerRegistrationValidator(binaryLocator: StaticBinaryLocator(availableCommands: ["node"])),
+            transportFactory: { registration in
+                checkedRegistrationRecorder.record(registration.id)
+                return ExternalMCPTestKit.makeFakeServerTransport()
+            }
+        )
+        let viewModel = ExternalMCPSettingsViewModel(store: store, launcher: launcher)
+
+        XCTAssertEqual(viewModel.registrationRows.map(\.connectionCheckResultLabel), ["Not checked", "Not checked"])
+        XCTAssertEqual(viewModel.registrationRows.map(\.isSelected), [true, false])
+
+        await viewModel.checkConnection(id: "second")
+
+        XCTAssertEqual(checkedRegistrationRecorder.recordedIDs, ["second"])
+        XCTAssertEqual(viewModel.selectedRegistrationID, "second")
+        XCTAssertEqual(viewModel.connectionCheckResultLabel, "Connected")
+        XCTAssertEqual(viewModel.registrationRows.map(\.id), ["first", "second"])
+        XCTAssertEqual(viewModel.registrationRows.map(\.connectionCheckResultLabel), ["Not checked", "Connected"])
+        XCTAssertEqual(viewModel.registrationRows.map(\.isSelected), [false, true])
+        XCTAssertEqual(viewModel.toolRows.first { $0.toolName == "read_status" }?.serverName, "Second MCP")
+    }
+
+    @MainActor
+    func testExternalMCPSettingsViewModelKeepsSelectedDetailsWhenInlineCheckCompletesAfterSelectionChanges() async throws {
+        let first = MCPServerRegistration(
+            id: "first",
+            displayName: "First MCP",
+            command: "node",
+            arguments: ["first.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let second = MCPServerRegistration(
+            id: "second",
+            displayName: "Second MCP",
+            command: "node",
+            arguments: ["second.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let store = InMemoryMCPServerRegistrationStore(registrations: [first, second])
+        let gatedSecondTransport = GatedMCPListTransport()
+        let launcher = MCPStdioServerLauncher(
+            validator: MCPServerRegistrationValidator(binaryLocator: StaticBinaryLocator(availableCommands: ["node"])),
+            transportFactory: { registration in
+                if registration.id == "second" {
+                    return gatedSecondTransport
+                }
+                return ExternalMCPTestKit.makeFakeServerTransport()
+            }
+        )
+        let viewModel = ExternalMCPSettingsViewModel(store: store, launcher: launcher)
+
+        let checkTask = Task {
+            await viewModel.checkConnection(id: "second")
+        }
+        await gatedSecondTransport.waitForListRequest()
+        viewModel.selectRegistration(id: "first")
+        gatedSecondTransport.releaseListResponse()
+        await checkTask.value
+
+        XCTAssertEqual(viewModel.selectedRegistrationID, "first")
+        XCTAssertEqual(viewModel.connectionCheckResultLabel, "Not checked")
+        XCTAssertEqual(viewModel.protocolVersionLabel, "Not checked")
+        XCTAssertEqual(viewModel.toolRows, [])
+        XCTAssertEqual(viewModel.registrationRows.map(\.id), ["first", "second"])
+        XCTAssertEqual(viewModel.registrationRows.map(\.connectionCheckResultLabel), ["Not checked", "Connected"])
+        XCTAssertEqual(viewModel.registrationRows.map(\.isSelected), [true, false])
+    }
+
+    @MainActor
+    func testExternalMCPSettingsViewModelDoesNotCheckCurrentServerForMissingInlineRowID() async throws {
+        let registration = MCPServerRegistration(
+            id: "first",
+            displayName: "First MCP",
+            command: "node",
+            arguments: ["first.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let store = InMemoryMCPServerRegistrationStore(registrations: [registration])
+        let checkedRegistrationRecorder = CheckedMCPRegistrationRecorder()
+        let launcher = MCPStdioServerLauncher(
+            validator: MCPServerRegistrationValidator(binaryLocator: StaticBinaryLocator(availableCommands: ["node"])),
+            transportFactory: { registration in
+                checkedRegistrationRecorder.record(registration.id)
+                return ExternalMCPTestKit.makeFakeServerTransport()
+            }
+        )
+        let viewModel = ExternalMCPSettingsViewModel(store: store, launcher: launcher)
+
+        await viewModel.checkConnection(id: "missing")
+
+        XCTAssertEqual(viewModel.errorMessage, "MCP registration was not found.")
+        XCTAssertEqual(checkedRegistrationRecorder.recordedIDs, [])
+        XCTAssertEqual(viewModel.connectionCheckResultLabel, "Not checked")
+        XCTAssertEqual(viewModel.registrationRows.map(\.connectionCheckResultLabel), ["Not checked"])
+    }
+
+    @MainActor
     func testExternalMCPSettingsViewModelReportsDisabledAndMissingBinary() async throws {
         let disabledStore = InMemoryMCPServerRegistrationStore(registrations: [
             MCPServerRegistration(
@@ -1721,6 +1846,116 @@ private struct StaticBinaryLocator: MCPBinaryLocator {
 
     func isExecutableAvailable(command: String) -> Bool {
         availableCommands.contains(command)
+    }
+}
+
+private final class CheckedMCPRegistrationRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var ids: [String] = []
+
+    var recordedIDs: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return ids
+    }
+
+    func record(_ id: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        ids.append(id)
+    }
+}
+
+private final class GatedMCPListTransport: MCPClientTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private var hasStartedListRequest = false
+    private var isListResponseReleased = false
+    private var listStartedContinuation: CheckedContinuation<Void, Never>?
+    private var listReleaseContinuation: CheckedContinuation<Void, Never>?
+
+    func send(_ request: MCPJSONRPCRequest, timeout: TimeInterval) async throws -> MCPJSONRPCResponse {
+        if request.method == "tools/list" {
+            await waitForReleaseAfterMarkingListStarted()
+        }
+
+        switch request.method {
+        case "initialize":
+            return MCPJSONRPCResponse(
+                id: request.id,
+                result: .object([
+                    "protocolVersion": .string(MCPProtocolVersion.v2025_11_25.rawValue),
+                    "capabilities": .object(["tools": .object(["listChanged": .bool(true)])]),
+                    "serverInfo": .object(["name": .string("gated-mcp")])
+                ])
+            )
+        case "tools/list":
+            return MCPJSONRPCResponse(
+                id: request.id,
+                result: .object(["tools": .array(ExternalMCPTestKit.fakeToolDefinitions().map(\.jsonValue))])
+            )
+        default:
+            return MCPJSONRPCResponse(
+                id: request.id,
+                error: MCPJSONRPCError(code: -32601, message: "Unknown method: \(request.method)")
+            )
+        }
+    }
+
+    func notify(_ notification: MCPJSONRPCNotification) async throws {}
+
+    func waitForListRequest() async {
+        if hasStartedListRequestSnapshot() {
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            if storeListStartedContinuationIfNeeded(continuation) {
+                continuation.resume()
+            }
+        }
+    }
+
+    func releaseListResponse() {
+        lock.lock()
+        isListResponseReleased = true
+        let continuation = listReleaseContinuation
+        listReleaseContinuation = nil
+        lock.unlock()
+        continuation?.resume()
+    }
+
+    private func waitForReleaseAfterMarkingListStarted() async {
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            hasStartedListRequest = true
+            let startedContinuation = listStartedContinuation
+            listStartedContinuation = nil
+            if isListResponseReleased {
+                lock.unlock()
+                startedContinuation?.resume()
+                continuation.resume()
+            } else {
+                listReleaseContinuation = continuation
+                lock.unlock()
+                startedContinuation?.resume()
+            }
+        }
+    }
+
+    private func hasStartedListRequestSnapshot() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return hasStartedListRequest
+    }
+
+    private func storeListStartedContinuationIfNeeded(_ continuation: CheckedContinuation<Void, Never>) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if hasStartedListRequest {
+            return true
+        }
+        listStartedContinuation = continuation
+        return false
     }
 }
 

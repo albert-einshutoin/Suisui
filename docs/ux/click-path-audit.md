@@ -57,8 +57,8 @@
 | AI Provider変更 | Settings -> provider picker -> provider | 2 | Pass | Provider選択時に自動保存されるため、保存ボタンを探す必要がない。追加設定が必要なproviderは既存validationで理由を出す。 |
 | Provider API key保存 | Settings -> API key field -> save key | 3 | Watch | 初期設定としては許容だが、provider別の状態表示が密すぎる。 |
 | OpenCode Local設定 | Settings -> executable/workspace/model入力 -> approval toggle -> save | 5+ | Watch | 複数fieldが必要な設定だが、validation状態はもっと明確に出すべき。 |
-| 選択中MCP serverの接続確認 | Settings -> `Check Connection` | 2 | Pass | すでに対象serverが選ばれていれば目標達成。 |
-| 別MCP serverの接続確認 | Settings -> server picker -> server -> `Check Connection` | 4 | Watch | server選択と接続状態をよりコンパクトにしたい。 |
+| 選択中MCP serverの接続確認 | Settings -> server rowの `Check` | 2 | Pass | 各server rowにEnabled/Disabled、接続結果、protocol versionを表示する。 |
+| 別MCP serverの接続確認 | Settings -> 対象server rowの `Check` | 2 | Pass | Picker切替を不要にし、rowのCheckで対象serverを選択して接続確認できる。 |
 | Sync状態確認 | Settings -> Status Overviewを見る | 1 | Pass | Planと状態がSettings先頭で分かる。詳細な対象dataはSync sectionに残る。 |
 | Free userでSync開始 | Settings -> `External Sync` toggle | 2 | Pass | network前にupgrade gateで止まる。 |
 | text commandからplan生成 | Voice Command -> 入力 -> `Generate Plan` | 2 | Pass | 生成後にreview panelが同じ画面へ出る。 |
@@ -74,7 +74,7 @@
 | Task card screenshot検証が未完 | Task cardのtitle/status/priority/due/drag affordanceは実装済みだが、light/dark両方で重なりがないことはスクリーンショット evidence がまだ弱い。 | P1 | app起動後にProject boardをlight/darkで撮り、`docs/release/evidence/` に保存する。 |
 | Settings詳細Formが長い | Status Overviewで重要状態は見えるが、詳細設定はまだ縦に長い。 | P1 | General / AI / Sync / MCP / Privacy のtabまたは2カラムdetailsに分ける。 |
 | Provider詳細設定が長い | provider切替は2クリックになったが、API key、model、local executableなどの詳細設定は同じAI section内に縦積みで残る。 | P1 | providerごとに必要なfieldだけをcompact panelへ出し、他providerのfieldは折りたたむ。 |
-| MCP server切替時の接続確認が重い | 複数serverを持つユーザーが状態確認しづらい。 | P1 | MCP server listにinline statusとrow単位のcheck actionを置く。 |
+| MCP server別の接続状態証跡はsource test中心 | 複数server rowのinline statusとrow単位Checkは実装済みだが、実アプリで複数serverを並べたスクリーンショット証跡はまだ弱い。 | P1 | MCP server listを含むSettings screenshotをlight/darkで保存する。 |
 | accessibility検証が未完了 | Task card、column add、status move、destructive confirmationのlabel/helpはsource testで固定し、Task cardのOpen Detailsとstatus move controlsも別フォーカス対象に分離した。実機VoiceOver focus orderとLight/Darkのスクリーンショット確認は残る。 | P1 | 支援技術とテーマ別コントラストを実機で確認し、崩れを修正する。 |
 
 ## プロダクトレビュー

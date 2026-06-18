@@ -570,9 +570,11 @@ final class AppExperienceSourceTests: XCTestCase {
         let mcpRegistrationSource = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")
 
         XCTAssertTrue(appSource.contains("SQLiteMCPServerRegistrationStore(connection:"))
-        XCTAssertTrue(appSource.contains("Picker(\"Server\""))
+        XCTAssertFalse(appSource.contains("Picker(\"Server\""))
+        XCTAssertTrue(appSource.contains("MCPServerSettingsRow("))
         XCTAssertTrue(appSource.contains("externalMCPViewModel.registrationRows"))
-        XCTAssertTrue(appSource.contains("externalMCPViewModel.selectRegistration(id: $0)"))
+        XCTAssertTrue(appSource.contains("externalMCPViewModel.selectRegistration(id: row.id)"))
+        XCTAssertTrue(appSource.contains("await externalMCPViewModel.checkConnection(id: row.id)"))
         XCTAssertTrue(appSource.contains("externalMCPViewModel.createRegistration()"))
         XCTAssertTrue(appSource.contains("Add Server"))
         XCTAssertTrue(appSource.contains("Environment References"))
@@ -952,6 +954,27 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(syncSource.contains("throw SyncServiceError.syncBackendNotConfigured"))
         XCTAssertTrue(entitlementSource.contains("case externalSync"))
         XCTAssertFalse(syncSource.contains("return SyncStartResult(startedAt: Date())"))
+    }
+
+    func testSettingsSurfaceShowsInlineMCPServerRowsWithCheckActions() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let mcpSource = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")
+        let audit = try readPackageFile("docs/ux/click-path-audit.md")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+
+        XCTAssertTrue(appSource.contains("MCPServerSettingsRow("))
+        XCTAssertTrue(appSource.contains("ForEach(externalMCPViewModel.registrationRows) { row in"))
+        XCTAssertTrue(appSource.contains("await externalMCPViewModel.checkConnection(id: row.id)"))
+        XCTAssertTrue(appSource.contains("row.connectionCheckResultLabel"))
+        XCTAssertTrue(appSource.contains("row.statusLabel"))
+        XCTAssertTrue(appSource.contains("row.isCheckingConnection"))
+        XCTAssertTrue(mcpSource.contains("connectionCheckResultLabel"))
+        XCTAssertTrue(mcpSource.contains("isSelected"))
+        XCTAssertTrue(mcpSource.contains("public func checkConnection(id registrationID: String) async"))
+        XCTAssertFalse(appSource.contains("Picker(\"Server\""))
+        XCTAssertTrue(audit.contains("対象server rowの `Check`"))
+        XCTAssertTrue(audit.contains("Picker切替を不要にし"))
+        XCTAssertTrue(phase.contains("[x] 複数MCP serverの接続確認をPicker切替ではなくserver row上の `Check`"))
     }
 
     func testClickPathAuditTracksTaskCardFocusUpgradeAndRemainingManualEvidence() throws {

@@ -65,13 +65,44 @@ public struct MCPServerRegistrationRow: Equatable, Identifiable, Sendable {
     public var displayName: String
     public var commandLine: String
     public var statusLabel: String
+    public var connectionCheckResultLabel: String
+    public var protocolVersionLabel: String
+    public var isSelected: Bool
+    public var isCheckingConnection: Bool
 
-    public init(registration: MCPServerRegistration) {
+    public init(
+        registration: MCPServerRegistration,
+        connectionSnapshot: MCPServerConnectionSnapshot = .notChecked,
+        isSelected: Bool = false,
+        isCheckingConnection: Bool = false
+    ) {
         self.id = registration.id
         self.displayName = registration.displayName
         self.commandLine = MCPArgumentTextCodec.format([registration.command] + registration.arguments)
         self.statusLabel = registration.isEnabled ? "Enabled" : "Disabled"
+        self.connectionCheckResultLabel = connectionSnapshot.resultLabel
+        self.protocolVersionLabel = connectionSnapshot.protocolVersionLabel
+        self.isSelected = isSelected
+        self.isCheckingConnection = isCheckingConnection
     }
+}
+
+public struct MCPServerConnectionSnapshot: Equatable, Sendable {
+    public var resultLabel: String
+    public var protocolVersionLabel: String
+    public var failureTaxonomyLabel: String?
+
+    public init(resultLabel: String, protocolVersionLabel: String, failureTaxonomyLabel: String? = nil) {
+        self.resultLabel = resultLabel
+        self.protocolVersionLabel = protocolVersionLabel
+        self.failureTaxonomyLabel = failureTaxonomyLabel
+    }
+
+    public static let notChecked = MCPServerConnectionSnapshot(
+        resultLabel: "Not checked",
+        protocolVersionLabel: "Not checked",
+        failureTaxonomyLabel: nil
+    )
 }
 
 public enum MCPRegistrationStoreError: Error, Equatable, Sendable {
@@ -327,6 +358,9 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
     private let launcher: MCPStdioServerLauncher
     private let registrationValidator: MCPServerRegistrationValidator
     private var registrations: [MCPServerRegistration]
+    private var connectionSnapshotsByRegistrationID: [String: MCPServerConnectionSnapshot]
+    private var toolRowsByRegistrationID: [String: [ExternalMCPToolCatalogRow]]
+    private var checkingRegistrationID: String?
 
     public init(
         store: any MCPServerRegistrationStore,
@@ -348,6 +382,9 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         self.connectionCheckResultLabel = "Not checked"
         self.connectionFailureTaxonomyLabel = nil
         self.registrations = []
+        self.connectionSnapshotsByRegistrationID = [:]
+        self.toolRowsByRegistrationID = [:]
+        self.checkingRegistrationID = nil
         self.registration = Self.blankRegistration(existingIDs: [])
         self.registrationRows = []
         self.selectedRegistrationID = nil
@@ -392,7 +429,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         registration = selected
         selectedRegistrationID = selected.id
         syncEnvironmentTextFromRegistration()
-        resetConnectionSnapshot()
+        applySelectedConnectionSnapshot()
         refreshRegistrationRows()
         errorMessage = nil
     }
@@ -401,7 +438,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         registration = Self.blankRegistration(existingIDs: Set(registrations.map(\.id)))
         selectedRegistrationID = registration.id
         syncEnvironmentTextFromRegistration()
-        resetConnectionSnapshot()
+        resetConnectionSnapshot(for: registration.id)
         refreshRegistrationRows()
         errorMessage = nil
     }
@@ -410,7 +447,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         var updated = registration
         updated.isEnabled = isEnabled
         registration = updated
-        resetConnectionSnapshot()
+        resetConnectionSnapshot(for: registration.id)
         refreshRegistrationRows()
     }
 
@@ -425,7 +462,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         var updated = registration
         updated.command = command
         registration = updated
-        resetConnectionSnapshot()
+        resetConnectionSnapshot(for: registration.id)
         refreshRegistrationRows()
     }
 
@@ -434,7 +471,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             var updated = registration
             updated.arguments = try MCPArgumentTextCodec.parse(argumentsText)
             registration = updated
-            resetConnectionSnapshot()
+            resetConnectionSnapshot(for: registration.id)
             refreshRegistrationRows()
             errorMessage = nil
         } catch {
@@ -448,7 +485,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             var updated = registration
             updated.environment = try MCPEnvironmentTextCodec.parse(environmentText)
             registration = updated
-            resetConnectionSnapshot()
+            resetConnectionSnapshot(for: registration.id)
             refreshRegistrationRows()
             errorMessage = nil
         } catch {
@@ -461,7 +498,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         var updated = registration
         updated.workingDirectory = trimmed.isEmpty ? nil : trimmed
         registration = updated
-        resetConnectionSnapshot()
+        resetConnectionSnapshot(for: registration.id)
         refreshRegistrationRows()
     }
 
@@ -475,6 +512,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             registration = registrationToSave
             selectedRegistrationID = registrationToSave.id
             syncEnvironmentTextFromRegistration()
+            resetConnectionSnapshot(for: registrationToSave.id)
             refreshRegistrationRows()
             errorMessage = nil
         } catch let error as MCPEnvironmentTextError {
@@ -488,14 +526,17 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
 
     public func deleteRegistration() {
         do {
+            let deletedRegistrationID = registration.id
             let remainingRegistrations = registrations.filter { $0.id != registration.id }
             try store.deleteRegistration(id: registration.id)
             registrations = remainingRegistrations
             registration = remainingRegistrations.first ?? Self.blankRegistration(existingIDs: [])
             selectedRegistrationID = registration.id
             syncEnvironmentTextFromRegistration()
+            connectionSnapshotsByRegistrationID.removeValue(forKey: deletedRegistrationID)
+            toolRowsByRegistrationID.removeValue(forKey: deletedRegistrationID)
             refreshRegistrationRows()
-            resetConnectionSnapshot()
+            applySelectedConnectionSnapshot()
             errorMessage = nil
         } catch let error as MCPRegistrationStoreError {
             errorMessage = Self.storeErrorMessage(error)
@@ -505,39 +546,88 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
     }
 
     public func checkConnection() async {
+        await checkConnection(registration)
+    }
+
+    public func checkConnection(id registrationID: String) async {
+        if registration.id != registrationID {
+            selectRegistration(id: registrationID)
+            guard registration.id == registrationID else {
+                return
+            }
+        }
+        await checkConnection(registration)
+    }
+
+    private func checkConnection(_ targetRegistration: MCPServerRegistration) async {
+        checkingRegistrationID = targetRegistration.id
         isCheckingConnection = true
-        connectionCheckResultLabel = "Checking"
-        connectionFailureTaxonomyLabel = nil
+        let checkingSnapshot = MCPServerConnectionSnapshot(
+            resultLabel: "Checking",
+            protocolVersionLabel: connectionSnapshotsByRegistrationID[targetRegistration.id]?.protocolVersionLabel ?? "Not checked",
+            failureTaxonomyLabel: nil
+        )
+        connectionSnapshotsByRegistrationID[targetRegistration.id] = checkingSnapshot
+        if registration.id == targetRegistration.id {
+            protocolVersionLabel = checkingSnapshot.protocolVersionLabel
+            connectionCheckResultLabel = checkingSnapshot.resultLabel
+            connectionFailureTaxonomyLabel = nil
+            toolRows = toolRowsByRegistrationID[targetRegistration.id] ?? []
+        }
+        refreshRegistrationRows()
         defer {
+            checkingRegistrationID = nil
             isCheckingConnection = false
+            refreshRegistrationRows()
         }
 
         var negotiatedProtocolVersion: String?
         do {
-            let client = try await launcher.client(for: registration)
+            let client = try await launcher.client(for: targetRegistration)
             let initialize = try await client.initialize()
             negotiatedProtocolVersion = initialize.protocolVersion
             let tools = try await client.listTools()
-            let server = MCPRegisteredServerDescriptor(id: registration.id, displayName: registration.displayName)
+            let server = MCPRegisteredServerDescriptor(id: targetRegistration.id, displayName: targetRegistration.displayName)
             let registry = ExternalMCPToolRegistry(
                 server: server,
                 tools: tools,
                 classifier: ExternalMCPToolClassifier()
             )
-            protocolVersionLabel = initialize.protocolVersion
-            connectionCheckResultLabel = "Connected"
-            connectionFailureTaxonomyLabel = nil
-            toolRows = ExternalMCPToolCatalog.rows(from: registry.allDescriptors)
-            errorMessage = nil
-        } catch {
-            resetConnectionSnapshot()
-            if let negotiatedProtocolVersion {
-                protocolVersionLabel = negotiatedProtocolVersion
+            let rows = ExternalMCPToolCatalog.rows(from: registry.allDescriptors)
+            let connectedSnapshot = MCPServerConnectionSnapshot(
+                resultLabel: "Connected",
+                protocolVersionLabel: initialize.protocolVersion
+            )
+            connectionSnapshotsByRegistrationID[targetRegistration.id] = connectedSnapshot
+            toolRowsByRegistrationID[targetRegistration.id] = rows
+            if registration.id == targetRegistration.id {
+                protocolVersionLabel = connectedSnapshot.protocolVersionLabel
+                connectionCheckResultLabel = connectedSnapshot.resultLabel
+                connectionFailureTaxonomyLabel = nil
+                toolRows = rows
+                errorMessage = nil
+            } else {
+                applySelectedConnectionSnapshot()
             }
+        } catch {
+            toolRowsByRegistrationID.removeValue(forKey: targetRegistration.id)
+            let failedProtocolVersionLabel = negotiatedProtocolVersion ?? "Not checked"
             let failureTaxonomy = Self.inspectorFailureTaxonomy(for: error)
-            connectionFailureTaxonomyLabel = failureTaxonomy
-            connectionCheckResultLabel = failureTaxonomy.map { "Failed: \($0)" } ?? "Failed"
-            errorMessage = Self.connectionErrorMessage(error, failureTaxonomy: failureTaxonomy)
+            let failedSnapshot = MCPServerConnectionSnapshot(
+                resultLabel: failureTaxonomy.map { "Failed: \($0)" } ?? "Failed",
+                protocolVersionLabel: failedProtocolVersionLabel,
+                failureTaxonomyLabel: failureTaxonomy
+            )
+            connectionSnapshotsByRegistrationID[targetRegistration.id] = failedSnapshot
+            if registration.id == targetRegistration.id {
+                protocolVersionLabel = failedSnapshot.protocolVersionLabel
+                connectionCheckResultLabel = failedSnapshot.resultLabel
+                connectionFailureTaxonomyLabel = failedSnapshot.failureTaxonomyLabel
+                toolRows = []
+                errorMessage = Self.connectionErrorMessage(error, failureTaxonomy: failureTaxonomy)
+            } else {
+                applySelectedConnectionSnapshot()
+            }
         }
     }
 
@@ -567,12 +657,23 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
 
     private func refreshRegistrationRows() {
         var rows = registrations.map { saved in
-            saved.id == registration.id
-                ? MCPServerRegistrationRow(registration: registration)
-                : MCPServerRegistrationRow(registration: saved)
+            let rowRegistration = saved.id == registration.id ? registration : saved
+            return MCPServerRegistrationRow(
+                registration: rowRegistration,
+                connectionSnapshot: connectionSnapshotsByRegistrationID[rowRegistration.id] ?? .notChecked,
+                isSelected: rowRegistration.id == registration.id,
+                isCheckingConnection: checkingRegistrationID == rowRegistration.id
+            )
         }
         if !registrations.contains(where: { $0.id == registration.id }) {
-            rows.append(MCPServerRegistrationRow(registration: registration))
+            rows.append(
+                MCPServerRegistrationRow(
+                    registration: registration,
+                    connectionSnapshot: connectionSnapshotsByRegistrationID[registration.id] ?? .notChecked,
+                    isSelected: true,
+                    isCheckingConnection: checkingRegistrationID == registration.id
+                )
+            )
         }
         registrationRows = rows
     }
@@ -581,11 +682,18 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         environmentText = MCPEnvironmentTextCodec.format(registration.environment)
     }
 
-    private func resetConnectionSnapshot() {
-        protocolVersionLabel = "Not checked"
-        connectionCheckResultLabel = "Not checked"
-        connectionFailureTaxonomyLabel = nil
-        toolRows = []
+    private func resetConnectionSnapshot(for registrationID: String) {
+        connectionSnapshotsByRegistrationID.removeValue(forKey: registrationID)
+        toolRowsByRegistrationID.removeValue(forKey: registrationID)
+        applySelectedConnectionSnapshot()
+    }
+
+    private func applySelectedConnectionSnapshot() {
+        let snapshot = connectionSnapshotsByRegistrationID[registration.id] ?? .notChecked
+        protocolVersionLabel = snapshot.protocolVersionLabel
+        connectionCheckResultLabel = snapshot.resultLabel
+        connectionFailureTaxonomyLabel = snapshot.failureTaxonomyLabel
+        toolRows = toolRowsByRegistrationID[registration.id] ?? []
     }
 
     private static func connectionErrorMessage(_ error: Error, failureTaxonomy: String? = nil) -> String {

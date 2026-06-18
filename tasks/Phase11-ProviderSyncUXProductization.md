@@ -134,6 +134,7 @@
 - [x] `docs/ux/click-path-audit.md` を作り、Inbox、Today、Projects、Project Detail、Settings、Review Executeの主要操作をクリック数で棚卸しする。
 - [x] 目標: タスク作成は2クリック以内、タスクステータス変更はドラッグ1回またはカードボタン1回、Project作成は2クリック以内。
 - [x] 目標: Provider設定はSettingsを開いて2クリック以内、MCP接続確認はSettingsを開いて2クリック以内、Sync状態確認はSettingsを開いて1クリック以内。
+- [x] 複数MCP serverの接続確認をPicker切替ではなくserver row上の `Check` から実行できるようにし、rowごとにEnabled/Disabledと接続結果を表示する。
 - [x] クリック数だけでなく、次に何をすればよいかが画面上の主要ボタン/状態で分かるかを記録する。
 - [x] 完了条件: UI改善が感覚論ではなく、導線コストとしてレビューできる。
 
