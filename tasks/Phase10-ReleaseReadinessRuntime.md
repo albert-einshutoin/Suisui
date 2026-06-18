@@ -330,6 +330,13 @@
 - [x] Settings の External MCP セクションに Delete button を追加し、不要または壊れた登録を blank 保存で残さず消せる。
 - [x] 完了条件: MCP registration は create / update / delete が runtime UI と永続 store の両方で成立する。
 
+### P10-039: MCP execution process cleanup hardening
+
+- [x] `ExternalMCPToolExecutor` は `NoopMCPProcessController` を default injection せず、process cleanup controller を caller に明示注入させる。
+- [x] production source から no-op / recording MCP process controller を削除し、timeout 時の kill path が無効化されたまま成功しない API にする。
+- [x] unit tests は test support の `RecordingMCPProcessController` を明示利用し、timeout failure が process cleanup request を出すことを維持する。
+- [x] 完了条件: 外部 MCP tool call は監査 logger と実 process cleanup controller の両方を明示しない限り runtime API として構成できない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

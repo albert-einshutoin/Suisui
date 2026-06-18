@@ -212,6 +212,10 @@ final class AppExperienceSourceTests: XCTestCase {
         let source = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPExecution.swift")
 
         XCTAssertFalse(source.contains("auditLogger: any AuditLogger = InMemoryAuditLogger()"))
+        XCTAssertFalse(source.contains("processController: any MCPProcessController = NoopMCPProcessController()"))
+        XCTAssertFalse(source.contains("struct NoopMCPProcessController"))
+        XCTAssertFalse(source.contains("RecordingMCPProcessController"))
+        XCTAssertFalse(source.contains("MCPProcessKillRequest"))
     }
 
     func testAIProvidersDoNotDefaultToInMemorySecretStore() throws {

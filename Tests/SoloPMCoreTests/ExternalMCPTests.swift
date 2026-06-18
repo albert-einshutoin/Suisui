@@ -515,7 +515,7 @@ final class ExternalMCPTests: XCTestCase {
         transport: RecordingMCPTransport,
         policies: [String: ExternalMCPToolPermission],
         auditLogger: any AuditLogger = InMemoryAuditLogger(),
-        processController: any MCPProcessController = NoopMCPProcessController()
+        processController: any MCPProcessController = RecordingMCPProcessController()
     ) -> ExternalMCPToolExecutor {
         makeExecutor(
             client: MCPClient(serverID: "fake", transport: transport),
@@ -529,7 +529,7 @@ final class ExternalMCPTests: XCTestCase {
         client: MCPClient,
         policies: [String: ExternalMCPToolPermission],
         auditLogger: any AuditLogger = InMemoryAuditLogger(),
-        processController: any MCPProcessController = NoopMCPProcessController()
+        processController: any MCPProcessController = RecordingMCPProcessController()
     ) -> ExternalMCPToolExecutor {
         let server = MCPRegisteredServerDescriptor(id: "fake", displayName: "Fake MCP")
         let registry = ExternalMCPToolRegistry(

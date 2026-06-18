@@ -18,46 +18,8 @@ public enum MCPProcessKillReason: String, Equatable, Sendable {
     case crashed
 }
 
-public struct MCPProcessKillRequest: Equatable, Sendable {
-    public var serverID: String
-    public var reason: MCPProcessKillReason
-
-    public init(serverID: String, reason: MCPProcessKillReason) {
-        self.serverID = serverID
-        self.reason = reason
-    }
-}
-
 public protocol MCPProcessController: Sendable {
     func kill(serverID: String, reason: MCPProcessKillReason) async
-}
-
-public struct NoopMCPProcessController: MCPProcessController {
-    public init() {}
-    public func kill(serverID: String, reason: MCPProcessKillReason) async {}
-}
-
-public final class RecordingMCPProcessController: MCPProcessController, @unchecked Sendable {
-    private let lock = NSLock()
-    private var requests: [MCPProcessKillRequest] = []
-
-    public init() {}
-
-    public var killRequests: [MCPProcessKillRequest] {
-        lock.lock()
-        defer { lock.unlock() }
-        return requests
-    }
-
-    public func kill(serverID: String, reason: MCPProcessKillReason) async {
-        record(MCPProcessKillRequest(serverID: serverID, reason: reason))
-    }
-
-    private func record(_ request: MCPProcessKillRequest) {
-        lock.lock()
-        defer { lock.unlock() }
-        requests.append(request)
-    }
 }
 
 public struct ExternalMCPToolExecutor: Sendable {
@@ -73,7 +35,7 @@ public struct ExternalMCPToolExecutor: Sendable {
         registry: ExternalMCPToolRegistry,
         client: MCPClient,
         auditLogger: any AuditLogger,
-        processController: any MCPProcessController = NoopMCPProcessController(),
+        processController: any MCPProcessController,
         redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()
     ) {
         self.server = server
