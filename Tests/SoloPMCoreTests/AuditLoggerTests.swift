@@ -73,4 +73,53 @@ final class AuditLoggerTests: XCTestCase {
         XCTAssertEqual(events.first?.metadata["api_key"], "[REDACTED]")
         XCTAssertEqual(events.first?.metadata["summary"], "Created task")
     }
+
+    func testSQLiteAuditLoggerRejectsCorruptedStatusInsteadOfClassifyingAsFailed() throws {
+        let connection = try migratedConnection()
+        let logger = SQLiteAuditLogger(connection: connection)
+        try logger.record(AuditEvent(category: "planning", action: "request.completed", status: .succeeded))
+
+        try connection.execute("UPDATE audit_logs SET status = 'paused';")
+
+        XCTAssertThrowsError(try logger.list()) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .invalidEnum(column: "audit_logs.status", value: "paused"))
+        }
+    }
+
+    func testSQLiteAuditLoggerRejectsCorruptedTimestampInsteadOfUsingEpoch() throws {
+        let connection = try migratedConnection()
+        let logger = SQLiteAuditLogger(connection: connection)
+        try logger.record(AuditEvent(category: "planning", action: "request.completed", status: .succeeded))
+
+        try connection.execute("UPDATE audit_logs SET timestamp = 'not-a-date';")
+
+        XCTAssertThrowsError(try logger.list()) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .invalidDate(column: "audit_logs.timestamp", value: "not-a-date"))
+        }
+    }
+
+    func testSQLiteAuditLoggerRejectsCorruptedMetadataInsteadOfDroppingIt() throws {
+        let connection = try migratedConnection()
+        let logger = SQLiteAuditLogger(connection: connection)
+        try logger.record(
+            AuditEvent(
+                category: "planning",
+                action: "request.completed",
+                status: .succeeded,
+                metadata: ["provider": "openai.responses"]
+            )
+        )
+
+        try connection.execute("UPDATE audit_logs SET metadata_json = 'not-json';")
+
+        XCTAssertThrowsError(try logger.list()) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .invalidStringMap(column: "audit_logs.metadata_json"))
+        }
+    }
+
+    private func migratedConnection() throws -> SQLiteConnection {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        return connection
+    }
 }

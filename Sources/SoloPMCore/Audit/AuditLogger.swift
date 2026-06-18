@@ -81,13 +81,23 @@ public final class SQLiteAuditLogger: AuditLogger, @unchecked Sendable {
             LIMIT \(boundedLimit);
             """
         ).map { row in
-            let metadata = SQLAudit.decodeMetadata(row["metadata_json"] ?? "{}")
+            let timestampText = try SQLAudit.requiredString(row["timestamp"], column: "audit_logs.timestamp")
+            guard let timestamp = dateFormatter.date(from: timestampText) else {
+                throw LocalStoreDecodingError.invalidDate(column: "audit_logs.timestamp", value: timestampText)
+            }
+            let statusText = try SQLAudit.requiredString(row["status"], column: "audit_logs.status")
+            guard let status = AuditStatus(rawValue: statusText) else {
+                throw LocalStoreDecodingError.invalidEnum(column: "audit_logs.status", value: statusText)
+            }
             return AuditEvent(
-                timestamp: row["timestamp"].flatMap(dateFormatter.date(from:)) ?? Date(timeIntervalSince1970: 0),
-                category: row["category"] ?? "",
-                action: row["action"] ?? "",
-                status: AuditStatus(rawValue: row["status"] ?? "") ?? .failed,
-                metadata: metadata
+                timestamp: timestamp,
+                category: try SQLAudit.requiredString(row["category"], column: "audit_logs.category"),
+                action: try SQLAudit.requiredString(row["action"], column: "audit_logs.action"),
+                status: status,
+                metadata: try SQLAudit.decodeMetadata(
+                    try SQLAudit.requiredString(row["metadata_json"], column: "audit_logs.metadata_json"),
+                    column: "audit_logs.metadata_json"
+                )
             )
         }
     }
@@ -112,13 +122,20 @@ private enum SQLAudit {
         value.replacingOccurrences(of: "'", with: "''")
     }
 
-    static func decodeMetadata(_ value: String) -> [String: String] {
+    static func decodeMetadata(_ value: String, column: String) throws -> [String: String] {
         guard let data = value.data(using: .utf8),
               let decoded = try? JSONDecoder().decode([String: String].self, from: data) else {
-            return [:]
+            throw LocalStoreDecodingError.invalidStringMap(column: column)
         }
 
         return decoded
+    }
+
+    static func requiredString(_ value: String?, column: String) throws -> String {
+        guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw LocalStoreDecodingError.missingRequiredColumn(column: column)
+        }
+        return value
     }
 }
 

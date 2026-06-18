@@ -606,6 +606,14 @@
 - [x] テスト: corrupted task_id、empty expected_path、corrupted last_modified_at が silent fallback されないことを確認する。
 - [x] 完了条件: 成果物監視のリンクや更新日時破損が、missing/stale 判定の誤判定として流れない。
 
+### P10-074: Audit log row decode fail-fast fields
+
+- [x] `SQLiteAuditLogger.list()` は `timestamp` / `category` / `action` / `status` / `metadata_json` を必須 decode する。
+- [x] 不正 `status` を `.failed` に丸めず decode error にする。
+- [x] 不正 `timestamp` を Unix epoch に丸めず decode error にする。
+- [x] 不正 `metadata_json` を `{}` に丸めず decode error にする。
+- [x] 完了条件: 監査ログ破損が失敗イベントや空 metadata として隠れない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
