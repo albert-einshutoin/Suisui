@@ -1334,8 +1334,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("System Settings > Privacy & Security > Screen Recording / Screen & System Audio Recording"))
         XCTAssertTrue(script.contains("Quit and reopen the terminal or Codex app after granting permission"))
         XCTAssertTrue(script.contains("SOLOPM_UI_EVIDENCE_KEEP_HOME=1"))
+        XCTAssertTrue(script.contains("--doctor"))
+        XCTAssertTrue(script.contains("run_doctor"))
+        XCTAssertTrue(script.contains("screen capture preflight"))
+        XCTAssertTrue(script.contains("does not write release evidence"))
+        XCTAssertTrue(script.contains("[[ \"$DRY_RUN\" != \"1\" && \"$DOCTOR\" != \"1\" ]]"))
         XCTAssertTrue(evidence.contains("System Settings > Privacy & Security > Screen Recording / Screen & System Audio Recording"))
         XCTAssertTrue(evidence.contains("SOLOPM_UI_EVIDENCE_KEEP_HOME=1"))
+        XCTAssertTrue(evidence.contains("script/capture_ui_evidence.sh --doctor"))
         XCTAssertTrue(phase.contains("[x] `capture_ui_evidence.sh` はScreen Recording権限やwindow capture失敗時に、選択window情報と再実行手順を出す。"))
     }
 

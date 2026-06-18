@@ -141,6 +141,7 @@ SoloPM must not be described as a full MCP host for this release.
 Generate Light/Dark/System screenshots on a host with Screen Recording permission:
 
 ```bash
+script/capture_ui_evidence.sh --doctor
 script/capture_ui_evidence.sh
 ```
 

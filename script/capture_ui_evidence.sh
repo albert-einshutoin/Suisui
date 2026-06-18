@@ -20,21 +20,32 @@ EVIDENCE_FILE="${SOLOPM_UI_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/ui-scr
 EVIDENCE_HOME="${SOLOPM_UI_EVIDENCE_HOME:-$(mktemp -d "${TMPDIR:-/tmp}/solopm-ui-evidence.XXXXXX")}"
 KEEP_HOME="${SOLOPM_UI_EVIDENCE_KEEP_HOME:-0}"
 DRY_RUN=0
+DOCTOR=0
 
 for arg in "$@"; do
   case "$arg" in
     --dry-run)
       DRY_RUN=1
       ;;
+    --doctor)
+      DOCTOR=1
+      ;;
     *)
-      echo "usage: $0 [--dry-run]" >&2
+      echo "usage: $0 [--dry-run|--doctor]" >&2
       exit 2
       ;;
   esac
 done
 
+if [[ "$DRY_RUN" == "1" && "$DOCTOR" == "1" ]]; then
+  echo "usage: $0 [--dry-run|--doctor]" >&2
+  exit 2
+fi
+
 cleanup() {
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+  if [[ "$DRY_RUN" != "1" && "$DOCTOR" != "1" ]]; then
+    pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+  fi
   if [[ "$KEEP_HOME" != "1" && -d "$EVIDENCE_HOME" && "${SOLOPM_UI_EVIDENCE_HOME:-}" == "" ]]; then
     rm -rf "$EVIDENCE_HOME"
   fi
@@ -351,11 +362,61 @@ Generated with \`script/capture_ui_evidence.sh\`.
 
 - The script seeds only deterministic local Project/Task data into the isolated SQLite database.
 - API keys and provider tokens are not read, written, logged, or rendered.
+- Run \`script/capture_ui_evidence.sh --doctor\` first to verify required commands and Screen Recording visible-pixel capture without writing release evidence.
 - The capture host must grant Screen Recording permission through System Settings > Privacy & Security > Screen Recording / Screen & System Audio Recording to the terminal/Codex app; otherwise the script fails before treating screenshots as evidence.
 - If capture still fails, rerun with \`SOLOPM_UI_EVIDENCE_KEEP_HOME=1\` to keep the isolated HOME for database and preference inspection.
 - VoiceOver focus order still requires a manual assistive-technology pass.
 EOF
 }
+
+run_doctor() {
+  echo "UI evidence doctor"
+  echo "bundle: $APP_BUNDLE"
+  echo "home: $EVIDENCE_HOME"
+  echo "screenshots: $SCREENSHOT_DIR"
+  echo "evidence: $EVIDENCE_FILE"
+  echo "mode: screen capture preflight; does not write release evidence"
+
+  local blocker_count=0
+  local command_name
+  for command_name in sqlite3 screencapture swift sips osascript; do
+    if command -v "$command_name" >/dev/null 2>&1; then
+      echo "OK: found $command_name"
+    else
+      echo "BLOCKER: missing required command: $command_name"
+      blocker_count=$((blocker_count + 1))
+    fi
+  done
+
+  if [[ ! -d "$APP_BUNDLE" ]]; then
+    echo "INFO: app bundle is not present yet; normal capture mode will run script/build_and_run.sh --build-only."
+  fi
+
+  if command -v screencapture >/dev/null 2>&1 && command -v swift >/dev/null 2>&1; then
+    local probe_base
+    local probe
+    probe_base="$(mktemp "${TMPDIR:-/tmp}/solopm-ui-evidence-doctor.XXXXXX")"
+    probe="$probe_base.png"
+    rm -f "$probe_base"
+    if screencapture -x "$probe" >/dev/null 2>&1 && [[ -s "$probe" ]] && assert_screenshot_has_visible_content "$probe"; then
+      echo "OK: screen capture preflight produced visible pixels"
+    else
+      echo "BLOCKER: screen capture preflight did not produce visible pixels"
+      echo "NEXT: grant Screen Recording permission to the terminal/Codex app, quit and reopen it, then rerun script/capture_ui_evidence.sh --doctor."
+      blocker_count=$((blocker_count + 1))
+    fi
+    rm -f "$probe"
+  fi
+
+  if [[ "$blocker_count" -gt 0 ]]; then
+    exit 1
+  fi
+}
+
+if [[ "$DOCTOR" == "1" ]]; then
+  run_doctor
+  exit 0
+fi
 
 require_command sqlite3
 require_command screencapture
