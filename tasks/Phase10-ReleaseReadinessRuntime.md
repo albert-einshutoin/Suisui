@@ -353,7 +353,8 @@
 
 - [x] `create_release_evidence.sh` は manual check flag の有無に関わらず、packaged artifact checksum が無い状態では evidence を作成しない。
 - [x] `release.artifactPath` / `release.artifactSha256` に `missing-release-artifact` sentinel が入った JSON をローカル証跡として残さない。
-- [x] `create_release_evidence.sh` は package evidence manifest を読み、signed / notarized gate を明示的に通した artifact だけを証跡化する。
+- [x] `create_release_evidence.sh` は package evidence manifest を読み、signed / notarized gate と manifest `artifactPath` が checksum と一致する artifact だけを証跡化する。
+- [x] `verify_release_environment.sh` も package evidence manifest を読み、手書き evidence / smoke artifact / artifactPath 欠落 manifest のすり抜けを blocker にする。
 - [x] 完了条件: release evidence は必ず `package_release.sh` が signed / notarized gate 有効で作った artifact checksum に紐づく。
 
 ## PDCA Loop

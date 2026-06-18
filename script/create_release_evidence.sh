@@ -112,6 +112,15 @@ json_escape() {
   printf "%s" "$value"
 }
 
+artifact_path_for_compare() {
+  local artifact_path="$1"
+  if [[ "$artifact_path" == "$ROOT_DIR/"* ]]; then
+    printf "%s" "${artifact_path#"$ROOT_DIR/"}"
+  else
+    printf "%s" "$artifact_path"
+  fi
+}
+
 find_checksum_file() {
   if [[ -n "$CHECKSUM_FILE" ]]; then
     printf "%s" "$CHECKSUM_FILE"
@@ -164,6 +173,8 @@ package_evidence_file() {
 
 require_release_package_evidence() {
   local manifest_path
+  local manifest_artifact_path
+  local expected_artifact_path
   local signed_required
   local notarized_required
   manifest_path="$(package_evidence_file)"
@@ -178,11 +189,24 @@ require_release_package_evidence() {
       echo "package evidence manifest is not valid JSON or plist: $manifest_path" >&2
       exit 2
     fi
+    manifest_artifact_path="$(plutil -extract "package.artifactPath" raw -o - "$manifest_path" 2>/dev/null || true)"
     signed_required="$(plutil -extract "package.signedPackageRequired" raw -o - "$manifest_path" 2>/dev/null || true)"
     notarized_required="$(plutil -extract "package.notarizedPackageRequired" raw -o - "$manifest_path" 2>/dev/null || true)"
   else
+    manifest_artifact_path="$(awk -F': ' '/"artifactPath"/ { gsub(/[",]/, "", $2); print $2; exit }' "$manifest_path")"
     signed_required="$(awk -F': ' '/"signedPackageRequired"/ { gsub(/[ ,]/, "", $2); print $2; exit }' "$manifest_path")"
     notarized_required="$(awk -F': ' '/"notarizedPackageRequired"/ { gsub(/[ ,]/, "", $2); print $2; exit }' "$manifest_path")"
+  fi
+
+  expected_artifact_path="$(read_artifact_path)"
+  if [[ -z "$manifest_artifact_path" ]]; then
+    echo "package evidence manifest is missing artifact path" >&2
+    exit 2
+  fi
+
+  if [[ "$(artifact_path_for_compare "$manifest_artifact_path")" != "$(artifact_path_for_compare "$expected_artifact_path")" ]]; then
+    echo "package evidence artifact path does not match checksum: expected '$expected_artifact_path', got '$manifest_artifact_path'" >&2
+    exit 2
   fi
 
   if [[ "$signed_required" != "true" || "$notarized_required" != "true" ]]; then

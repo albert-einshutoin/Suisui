@@ -18,6 +18,15 @@ add_warning() {
   WARNINGS+=("WARNING: $1")
 }
 
+artifact_path_for_compare() {
+  local artifact_path="$1"
+  if [[ "$artifact_path" == "$ROOT_DIR/"* ]]; then
+    printf "%s" "${artifact_path#"$ROOT_DIR/"}"
+  else
+    printf "%s" "$artifact_path"
+  fi
+}
+
 require_file() {
   local path="$1"
   local label="$2"
@@ -118,6 +127,40 @@ release_artifact_checksum_file() {
     | head -n 1
 }
 
+require_release_package_evidence() {
+  local checksum_file="$1"
+  local package_path="$2"
+  local manifest_path
+  local manifest_artifact_path
+  local signed_required
+  local notarized_required
+
+  manifest_path="${checksum_file%.sha256}.package-evidence.json"
+  if [[ ! -f "$manifest_path" ]]; then
+    add_blocker "missing release package evidence manifest: $manifest_path"
+    return
+  fi
+
+  if ! plutil -convert json -o /dev/null "$manifest_path" 2>/dev/null; then
+    add_blocker "release package evidence manifest is not valid JSON or plist: $manifest_path"
+    return
+  fi
+
+  manifest_artifact_path="$(plutil -extract "package.artifactPath" raw -o - "$manifest_path" 2>/dev/null || true)"
+  signed_required="$(plutil -extract "package.signedPackageRequired" raw -o - "$manifest_path" 2>/dev/null || true)"
+  notarized_required="$(plutil -extract "package.notarizedPackageRequired" raw -o - "$manifest_path" 2>/dev/null || true)"
+
+  if [[ -z "$manifest_artifact_path" ]]; then
+    add_blocker "release package evidence manifest is missing artifact path"
+  elif [[ "$(artifact_path_for_compare "$manifest_artifact_path")" != "$(artifact_path_for_compare "$package_path")" ]]; then
+    add_blocker "release package evidence artifact path does not match checksum: expected '$package_path', got '$manifest_artifact_path'"
+  fi
+
+  if [[ "$signed_required" != "true" || "$notarized_required" != "true" ]]; then
+    add_blocker "release package evidence requires signed and notarized gates enabled"
+  fi
+}
+
 require_evidence_artifact_sha256() {
   local evidence_sha
   local evidence_path
@@ -169,6 +212,8 @@ require_evidence_artifact_sha256() {
   if [[ -n "$package_path" && "$evidence_path" != "$package_path" ]]; then
     add_blocker "release evidence artifact path does not match package checksum: expected '$package_path', got '$evidence_path'"
   fi
+
+  require_release_package_evidence "$checksum_file" "$package_path"
 }
 
 if [[ -f "$METADATA_FILE" ]]; then
