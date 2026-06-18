@@ -283,6 +283,7 @@ public protocol ProjectBoardStore {
     func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask]
     func deleteTask(id: Int64) throws
     func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact
+    func deleteProjectArtifact(id: Int64) throws
 }
 
 public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
@@ -426,6 +427,10 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             createdState: .expected
         )
         return makeBoardArtifact(record)
+    }
+
+    public func deleteProjectArtifact(id: Int64) throws {
+        try artifactStore.delete(id: id)
     }
 
     private func prepareProjectForTaskMutation(projectID: Int64, taskStatus: ProjectTaskStatus) throws {
@@ -1204,6 +1209,25 @@ public final class ProjectBoardViewModel: ObservableObject {
         } catch {
             errorMessage = String(describing: error)
             return nil
+        }
+    }
+
+    @discardableResult
+    public func deleteProjectArtifact(id: Int64, projectID: Int64? = nil) -> Bool {
+        do {
+            try store.deleteProjectArtifact(id: id)
+            let targetProjectID = projectID ?? selectedProjectID
+            load()
+            selectedProjectID = targetProjectID
+            errorMessage = nil
+            onChange()
+            return true
+        } catch ArtifactStoreError.notFound {
+            errorMessage = "Artifact link is no longer available."
+            return false
+        } catch {
+            errorMessage = String(describing: error)
+            return false
         }
     }
 

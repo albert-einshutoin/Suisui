@@ -239,6 +239,18 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         return artifact
     }
 
+    func deleteProjectArtifact(id: Int64) throws {
+        for projectIndex in snapshot.projects.indices {
+            let originalCount = snapshot.projects[projectIndex].artifacts.count
+            snapshot.projects[projectIndex].artifacts.removeAll { $0.id == id }
+            if snapshot.projects[projectIndex].artifacts.count != originalCount {
+                return
+            }
+        }
+
+        throw ArtifactStoreError.notFound(id)
+    }
+
     private func upsert(_ task: ProjectBoardTask) {
         guard let projectIndex = snapshot.projects.firstIndex(where: { $0.id == task.projectID }) else {
             return

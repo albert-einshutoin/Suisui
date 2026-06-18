@@ -542,6 +542,7 @@ private struct ProjectArtifactSection: View {
                                 .foregroundStyle(.secondary)
                         }
                         Spacer(minLength: 8)
+                        artifactRemoveButton(for: artifact)
                     }
                 }
             }
@@ -572,6 +573,23 @@ private struct ProjectArtifactSection: View {
         .disabled(project.isArchived || artifactPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         .accessibilityIdentifier("project-artifact-track")
         .accessibilityHint("Adds an expected artifact link to the selected project in the local SoloPM database.")
+    }
+
+    private func artifactRemoveButton(for artifact: ProjectBoardArtifact) -> some View {
+        Button {
+            _ = viewModel.deleteProjectArtifact(id: artifact.id, projectID: project.id)
+        } label: {
+            Label("Remove artifact link", systemImage: "xmark.circle")
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .foregroundStyle(.secondary)
+        .disabled(project.isArchived)
+        .help("Remove artifact link without deleting the local file")
+        .accessibilityIdentifier("project-artifact-remove-\(artifact.id)")
+        .accessibilityLabel("Remove artifact link")
+        .accessibilityHint("Removes this local SoloPM artifact link without deleting the file.")
     }
 }
 

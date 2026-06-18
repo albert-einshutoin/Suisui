@@ -374,14 +374,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("ProjectArtifactSection(project: project, viewModel: viewModel)"))
         XCTAssertTrue(source.contains("Track Artifact"))
         XCTAssertTrue(source.contains("viewModel.createProjectArtifact"))
+        XCTAssertTrue(source.contains("Remove artifact link"))
+        XCTAssertTrue(source.contains("viewModel.deleteProjectArtifact"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-artifact-path\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-artifact-track\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-artifact-remove-\\(artifact.id)\")"))
         XCTAssertTrue(source.contains("ProjectTimelineSection"))
         XCTAssertTrue(source.contains("ProjectLocalSuggestionPanel"))
         XCTAssertTrue(source.contains("project.artifacts"))
         XCTAssertTrue(coreSource.contains("public struct ProjectBoardArtifact"))
         XCTAssertTrue(coreSource.contains("public var artifacts: [ProjectBoardArtifact]"))
         XCTAssertTrue(coreSource.contains("func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact"))
+        XCTAssertTrue(coreSource.contains("func deleteProjectArtifact(id: Int64) throws"))
         XCTAssertTrue(coreSource.contains("SQLiteArtifactStore(connection: connection)"))
     }
 

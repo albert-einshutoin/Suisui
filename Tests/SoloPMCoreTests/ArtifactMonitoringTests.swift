@@ -21,6 +21,22 @@ final class ArtifactMonitoringTests: XCTestCase {
         XCTAssertEqual(artifact.lastModifiedAt, lastModifiedAt)
     }
 
+    func testArtifactStoreDeletesArtifactAndReportsMissingOnSecondDelete() throws {
+        let connection = try makeConnection()
+        let store = SQLiteArtifactStore(connection: connection)
+        let artifact = try store.create(
+            workspacePath: "/tmp/solopm",
+            expectedPath: "/tmp/solopm/reports/status.md"
+        )
+
+        try store.delete(id: artifact.id)
+
+        XCTAssertTrue(try store.list().isEmpty)
+        XCTAssertThrowsError(try store.delete(id: artifact.id)) { error in
+            XCTAssertEqual(error as? ArtifactStoreError, .notFound(artifact.id))
+        }
+    }
+
     func testArtifactStoreRejectsCorruptedTaskIDInsteadOfDroppingLink() throws {
         let connection = try makeConnection()
         let store = SQLiteArtifactStore(connection: connection)

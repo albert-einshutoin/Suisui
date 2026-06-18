@@ -87,6 +87,14 @@ public final class SQLiteArtifactStore: @unchecked Sendable {
         return try connection.queryRows("SELECT * FROM artifacts ORDER BY id ASC;").map(ArtifactRecord.init(row:))
     }
 
+    public func delete(id: Int64) throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        _ = try getLocked(id: id)
+        try connection.execute("DELETE FROM artifacts WHERE id = \(id);")
+    }
+
     public func updateFromFileEvent(workspacePath: String, path: String, modifiedAt: Date) throws -> [ArtifactRecord] {
         lock.lock()
         defer { lock.unlock() }

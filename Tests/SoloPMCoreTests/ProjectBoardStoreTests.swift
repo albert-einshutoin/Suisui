@@ -141,6 +141,23 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertTrue(try stores.artifacts.list().isEmpty)
     }
 
+    func testDeleteProjectArtifactRemovesLinkFromSnapshot() throws {
+        let stores = try makeStoreBundle()
+        let project = try stores.board.createProject(title: "Launch Readiness")
+        let artifact = try stores.board.createProjectArtifact(
+            projectID: project.id,
+            expectedPath: "/tmp/solopm/release/notes.md"
+        )
+
+        try stores.board.deleteProjectArtifact(id: artifact.id)
+
+        let loadedProject = try XCTUnwrap(stores.board.loadSnapshot().projects.first { $0.id == project.id })
+        XCTAssertTrue(loadedProject.artifacts.isEmpty)
+        XCTAssertThrowsError(try stores.artifacts.get(id: artifact.id)) { error in
+            XCTAssertEqual(error as? ArtifactStoreError, .notFound(artifact.id))
+        }
+    }
+
     func testMoveTaskAssignsUnassignedPersistentTaskToInbox() throws {
         let stores = try makeStoreBundle()
         let orphan = try stores.tasks.create(title: "Move loose task", projectID: nil, status: "planned")
@@ -598,6 +615,46 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(changeCount, 0)
         XCTAssertEqual(viewModel.errorMessage, "Use an absolute artifact path.")
         XCTAssertEqual(viewModel.selectedProject?.artifacts, [])
+    }
+
+    @MainActor
+    func testProjectBoardViewModelDeletesProjectArtifactAndNotifies() throws {
+        var changeCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Launch Readiness"))
+        let artifact = try XCTUnwrap(viewModel.createProjectArtifact(
+            expectedPath: "/tmp/solopm/release/notes.md",
+            projectID: project.id
+        ))
+        changeCount = 0
+
+        XCTAssertTrue(viewModel.deleteProjectArtifact(id: artifact.id, projectID: project.id))
+
+        XCTAssertEqual(changeCount, 1)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(viewModel.selectedProjectID, project.id)
+        XCTAssertEqual(viewModel.selectedProject?.artifacts, [])
+    }
+
+    @MainActor
+    func testProjectBoardViewModelReportsMissingArtifactWithoutNotifying() throws {
+        var changeCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Launch Readiness"))
+        changeCount = 0
+
+        XCTAssertFalse(viewModel.deleteProjectArtifact(id: 99, projectID: project.id))
+
+        XCTAssertEqual(changeCount, 0)
+        XCTAssertEqual(viewModel.errorMessage, "Artifact link is no longer available.")
     }
 
     @MainActor
@@ -1091,6 +1148,10 @@ private struct AlwaysFailingProjectBoardStore: ProjectBoardStore {
     func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact {
         throw error
     }
+
+    func deleteProjectArtifact(id: Int64) throws {
+        throw error
+    }
 }
 
 private final class PartiallyFailingBulkMoveProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
@@ -1216,6 +1277,10 @@ private final class PartiallyFailingBulkMoveProjectBoardStore: ProjectBoardStore
     }
 
     func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func deleteProjectArtifact(id: Int64) throws {
         throw ProjectBoardStoreTestError.unavailable
     }
 }
