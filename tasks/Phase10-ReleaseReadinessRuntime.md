@@ -432,6 +432,12 @@
 - [x] `verify_release_environment.sh` は generated release appcast が存在し、release mode の appcast verification を通ることを release blocker にする。
 - [x] 完了条件: sample appcast smoke を通しただけでは public alpha release ready にならない。
 
+### P10-055: Release package and evidence checksum selection
+
+- [x] release checklist は user download 用 DMG と Sparkle appcast 用 ZIP を `SOLOPM_PACKAGE_FORMAT=all` で同時生成する。
+- [x] release evidence / final preflight は `SOLOPM_RELEASE_ARTIFACT_SHA256_FILE` で DMG checksum を明示し、複数 checksum の自動選択を避ける。
+- [x] 完了条件: checklist 通りに進めた場合、appcast 用 ZIP 不足や evidence checksum の曖昧選択で release が止まらない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

@@ -9,7 +9,7 @@ Sparkle appcast 用、または notarization submission 用には ZIP も生成�
 署名済み、notarized、staple 済みの `dist/SoloPM.app` を作った後に実行する。
 
 ```bash
-./script/package_release.sh
+SOLOPM_PACKAGE_FORMAT=all ./script/package_release.sh
 ```
 
 出力先は `dist/releases/`。
@@ -18,12 +18,15 @@ Sparkle appcast 用、または notarization submission 用には ZIP も生成�
 SoloPM-0.1.0+1.dmg
 SoloPM-0.1.0+1.dmg.sha256
 SoloPM-0.1.0+1.dmg.package-evidence.json
+SoloPM-0.1.0+1.zip
+SoloPM-0.1.0+1.zip.sha256
+SoloPM-0.1.0+1.zip.package-evidence.json
 ```
 
-ZIP も同時に作る場合は次を使う。
+ユーザー向け配布は DMG、Sparkle appcast は ZIP を参照する。release evidence は DMG checksum に明示的に紐づける。
 
 ```bash
-SOLOPM_PACKAGE_FORMAT=all ./script/package_release.sh
+export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-0.1.0+1.dmg.sha256"
 ```
 
 署名環境がない開発機で packaging smoke だけ確認する場合は、明示的に署名要求を外す。

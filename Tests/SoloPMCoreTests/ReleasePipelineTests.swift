@@ -876,6 +876,9 @@ final class ReleasePipelineTests: XCTestCase {
         let checklist = try readPackageFile("docs/release/checklist.md")
 
         XCTAssertTrue(checklist.contains("packaging/release-evidence.example.json"))
+        XCTAssertTrue(checklist.contains("SOLOPM_PACKAGE_FORMAT=all ./script/package_release.sh"))
+        XCTAssertTrue(checklist.contains("SOLOPM_RELEASE_ARTIFACT_SHA256_FILE"))
+        XCTAssertTrue(checklist.contains("SoloPM-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"))
         XCTAssertTrue(checklist.contains("./script/create_release_evidence.sh"))
         XCTAssertTrue(checklist.contains("packaging/release-evidence.json"))
         XCTAssertTrue(checklist.contains("manual release evidence"))
