@@ -1178,6 +1178,14 @@
 - [x] source regression test で provider が `LLMHTTPErrorMessageExtractor` を使い続けることを確認する。
 - [x] 完了条件: BYOK AI provider の upstream failure が、secret を漏らさず調査可能な runtime error として表示される。
 
+### P10-152: Project board multi-card drag moves are atomic
+
+- [x] Project board store に複数 task status move 用の `moveTasks` API を追加し、UI drag/drop が逐次 `moveTask` ループへ戻らないようにする。
+- [x] SQLite implementation は複数 task move を1 transactionで実行し、途中失敗時に先行taskのstatus変更もrollbackする。
+- [x] ViewModel tests で、複数drag/dropの2件目が失敗しても1件目だけ移動した永続状態を残さないことを固定する。
+- [x] source regression test で `ProjectBoardViewModel.moveDroppedTasks` が atomic bulk API を使い続けることを確認する。
+- [x] 完了条件: Notion / GitHub Projects 風の複数カード移動で、失敗時にUIとSQLite永続状態が分岐しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

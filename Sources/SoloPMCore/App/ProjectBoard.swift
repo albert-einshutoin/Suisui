@@ -194,6 +194,7 @@ public protocol ProjectBoardStore {
     func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask
     func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask
     func moveTask(id: Int64, to status: ProjectTaskStatus) throws -> ProjectBoardTask
+    func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask]
     func deleteTask(id: Int64) throws
 }
 
@@ -302,6 +303,13 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         try prepareProjectForTaskMutation(projectID: projectID, taskStatus: status)
         let record = try taskStore.update(id: id, status: status.rawValue, projectID: projectID)
         return try makeBoardTask(record).requiredTask()
+    }
+
+    @discardableResult
+    public func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask] {
+        try connection.transaction {
+            try ids.map { try moveTask(id: $0, to: status) }
+        }
     }
 
     public func deleteTask(id: Int64) throws {
@@ -686,12 +694,9 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         do {
-            var lastMovedTask: ProjectBoardTask?
-            for taskID in taskIDs {
-                lastMovedTask = try store.moveTask(id: taskID, to: status)
-            }
+            let movedTasks = try store.moveTasks(ids: taskIDs, to: status)
             load()
-            if let lastMovedTask {
+            if let lastMovedTask = movedTasks.last {
                 selectedProjectID = lastMovedTask.projectID
                 selectedTaskID = lastMovedTask.id
             }

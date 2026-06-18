@@ -1438,6 +1438,10 @@ private struct UnavailableProjectBoardStore: ProjectBoardStore {
         throw error
     }
 
+    func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask] {
+        throw error
+    }
+
     func deleteTask(id: Int64) throws {
         throw error
     }

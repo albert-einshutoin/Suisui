@@ -96,6 +96,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("ProjectTaskDragPayload"))
         XCTAssertTrue(coreSource.contains("moveDroppedTasks(ids taskIDs: [Int64], to status: ProjectTaskStatus)"))
         XCTAssertTrue(coreSource.contains("moveDroppedTasks(ids rawIDs: [String], to status: ProjectTaskStatus)"))
+        XCTAssertTrue(coreSource.contains("func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask]"))
+        XCTAssertTrue(coreSource.contains("store.moveTasks(ids: taskIDs, to: status)"))
         XCTAssertTrue(coreSource.contains("Could not move task: invalid drag payload."))
     }
 

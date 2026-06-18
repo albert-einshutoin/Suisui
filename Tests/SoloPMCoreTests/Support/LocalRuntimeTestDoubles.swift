@@ -175,6 +175,16 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         return movedTask
     }
 
+    func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask] {
+        let originalSnapshot = snapshot
+        do {
+            return try ids.map { try moveTask(id: $0, to: status) }
+        } catch {
+            snapshot = originalSnapshot
+            throw error
+        }
+    }
+
     func deleteTask(id: Int64) throws {
         for projectIndex in snapshot.projects.indices {
             for columnIndex in snapshot.projects[projectIndex].columns.indices {

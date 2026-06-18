@@ -138,6 +138,21 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(moved.dueAt, "2026-06-22")
     }
 
+    func testSQLiteBoardStoreRollsBackBulkTaskMoveWhenAnyTaskFails() throws {
+        let store = try makeStore()
+        let projectID = try XCTUnwrap(store.loadSnapshot().projects.first?.id)
+        let firstTask = try store.createTask(ProjectBoardTaskDraft(projectID: projectID, title: "First card", status: .planned))
+        let secondTask = try store.createTask(ProjectBoardTaskDraft(projectID: projectID, title: "Second card", status: .planned))
+
+        XCTAssertThrowsError(try store.moveTasks(ids: [firstTask.id, 999_999, secondTask.id], to: .inProgress))
+
+        let snapshot = try store.loadSnapshot()
+        let project = try XCTUnwrap(snapshot.projects.first)
+
+        XCTAssertEqual(Set(project.column(.planned)?.tasks.map(\.id) ?? []), Set([firstTask.id, secondTask.id]))
+        XCTAssertEqual(project.column(.inProgress)?.tasks, [])
+    }
+
     func testUpdateTaskCanClearDueDate() throws {
         let store = try makeStore()
         let projectID = try XCTUnwrap(store.loadSnapshot().projects.first?.id)
@@ -432,6 +447,29 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelRollsBackMultiTaskDropWhenStoreFailsMidMove() {
+        var changeCount = 0
+        let store = PartiallyFailingBulkMoveProjectBoardStore()
+        let viewModel = ProjectBoardViewModel(
+            store: store,
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+        let taskIDs = store.snapshot.projects.flatMap(\.tasks).map(\.id)
+
+        let didMove = viewModel.moveDroppedTasks(ids: taskIDs, to: .inProgress)
+
+        XCTAssertFalse(didMove)
+        XCTAssertEqual(changeCount, 0)
+        XCTAssertEqual(viewModel.errorMessage, "Project board unavailable")
+
+        viewModel.load()
+
+        XCTAssertEqual(viewModel.snapshot.projects.first?.column(.planned)?.tasks.map(\.id), taskIDs)
+        XCTAssertEqual(viewModel.snapshot.projects.first?.column(.inProgress)?.tasks, [])
+    }
+
+    @MainActor
     func testProjectBoardViewModelCanShowAndRestoreArchivedProjects() {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()
@@ -545,8 +583,131 @@ private struct AlwaysFailingProjectBoardStore: ProjectBoardStore {
         throw error
     }
 
+    func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask] {
+        throw error
+    }
+
     func deleteTask(id: Int64) throws {
         throw error
+    }
+}
+
+private final class PartiallyFailingBulkMoveProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
+    private var currentSnapshot: ProjectBoardSnapshot
+
+    init() {
+        let plannedTasks = [
+            ProjectBoardTask(
+                id: 1,
+                projectID: 1,
+                title: "First dropped card",
+                detail: "",
+                status: .planned,
+                priority: .medium,
+                dueAt: nil
+            ),
+            ProjectBoardTask(
+                id: 2,
+                projectID: 1,
+                title: "Second dropped card",
+                detail: "",
+                status: .planned,
+                priority: .medium,
+                dueAt: nil
+            )
+        ]
+        currentSnapshot = ProjectBoardSnapshot(projects: [
+            ProjectBoardProject(
+                id: 1,
+                title: "Inbox",
+                status: "active",
+                subtitle: "2 open / 2 total",
+                columns: ProjectTaskStatus.allCases.map { status in
+                    ProjectBoardColumn(status: status, tasks: status == .planned ? plannedTasks : [])
+                }
+            )
+        ])
+    }
+
+    var snapshot: ProjectBoardSnapshot {
+        currentSnapshot
+    }
+
+    func loadSnapshot() throws -> ProjectBoardSnapshot {
+        currentSnapshot
+    }
+
+    func loadSnapshot(includeArchived: Bool) throws -> ProjectBoardSnapshot {
+        currentSnapshot
+    }
+
+    func createProject(title: String) throws -> ProjectBoardProject {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func updateProject(id: Int64, title: String) throws -> ProjectBoardProject {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func completeProject(id: Int64) throws -> ProjectBoardProject {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func archiveProject(id: Int64) throws -> ProjectBoardProject {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func restoreProject(id: Int64) throws -> ProjectBoardProject {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func moveTask(id: Int64, to status: ProjectTaskStatus) throws -> ProjectBoardTask {
+        guard id == 1 else {
+            throw ProjectBoardStoreTestError.unavailable
+        }
+
+        guard let projectIndex = currentSnapshot.projects.firstIndex(where: { $0.id == 1 }),
+              let task = currentSnapshot.projects[projectIndex].tasks.first(where: { $0.id == id }) else {
+            throw ProjectBoardStoreTestError.unavailable
+        }
+        let movedTask = ProjectBoardTask(
+            id: task.id,
+            projectID: task.projectID,
+            title: task.title,
+            detail: task.detail,
+            status: status,
+            priority: task.priority,
+            dueAt: task.dueAt
+        )
+        for columnIndex in currentSnapshot.projects[projectIndex].columns.indices {
+            currentSnapshot.projects[projectIndex].columns[columnIndex].tasks.removeAll { $0.id == id }
+        }
+        if let targetColumnIndex = currentSnapshot.projects[projectIndex].columns.firstIndex(where: { $0.status == status }) {
+            currentSnapshot.projects[projectIndex].columns[targetColumnIndex].tasks.insert(movedTask, at: 0)
+        }
+        return movedTask
+    }
+
+    func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask] {
+        let originalSnapshot = currentSnapshot
+        do {
+            return try ids.map { try moveTask(id: $0, to: status) }
+        } catch {
+            currentSnapshot = originalSnapshot
+            throw error
+        }
+    }
+
+    func deleteTask(id: Int64) throws {
+        throw ProjectBoardStoreTestError.unavailable
     }
 }
 
