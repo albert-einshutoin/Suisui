@@ -45,6 +45,58 @@ final class DeadlineQueryServiceTests: XCTestCase {
         XCTAssertEqual(summary.tomorrow.map(\.title), ["JST tomorrow"])
     }
 
+    func testSummaryIncludesDateOnlyTaskDueDatesFromBoardUI() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "Board date-only task", dueAt: "2026-06-17")
+
+        let service = DeadlineQueryService(
+            projectStore: stores.projects,
+            taskStore: stores.tasks,
+            dateProvider: FixedDateProvider(now: try Date.iso8601("2026-06-17T12:00:00Z")),
+            settings: AppSettings(timeZoneIdentifier: "UTC")
+        )
+
+        XCTAssertEqual(try service.summary().today.map(\.title), ["Board date-only task"])
+    }
+
+    func testSummaryThrowsWhenTaskDueDateIsInvalid() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "Broken due date", dueAt: "not-a-date")
+
+        let service = DeadlineQueryService(
+            projectStore: stores.projects,
+            taskStore: stores.tasks,
+            dateProvider: FixedDateProvider(now: try Date.iso8601("2026-06-17T00:00:00Z")),
+            settings: AppSettings(timeZoneIdentifier: "UTC")
+        )
+
+        XCTAssertThrowsError(try service.summary()) { error in
+            XCTAssertEqual(
+                error as? LocalStoreDecodingError,
+                .invalidDate(column: "tasks.due_at", value: "not-a-date")
+            )
+        }
+    }
+
+    func testSummaryThrowsWhenProjectDeadlineIsInvalid() throws {
+        let stores = try makeStores()
+        _ = try stores.projects.create(title: "Broken deadline", deadline: "not-a-date")
+
+        let service = DeadlineQueryService(
+            projectStore: stores.projects,
+            taskStore: stores.tasks,
+            dateProvider: FixedDateProvider(now: try Date.iso8601("2026-06-17T00:00:00Z")),
+            settings: AppSettings(timeZoneIdentifier: "UTC")
+        )
+
+        XCTAssertThrowsError(try service.summary()) { error in
+            XCTAssertEqual(
+                error as? LocalStoreDecodingError,
+                .invalidDate(column: "projects.deadline", value: "not-a-date")
+            )
+        }
+    }
+
     func testSummaryExcludesArchivedProjectAndItsTaskDeadlines() throws {
         let stores = try makeStores()
         let archived = try stores.projects.create(title: "Archived project", deadline: "2026-06-17T06:00:00Z")

@@ -740,6 +740,13 @@
 - [x] `DeadlineRuleStoreTests` で破損した rule が「0件」や「not found」ではなく decode failure になることを確認する。
 - [x] 完了条件: 期限通知の rule 設定が、DB上の不正値によって静かに消えたように見えない。
 
+### P10-093: Deadline summaries include board date-only due dates
+
+- [x] `DeadlineQueryService` は `project.deadline` / `task.due_at` の decode に `compactMap` を使って不正日付を捨てない。
+- [x] Board UI で保存される `YYYY-MM-DD` の date-only due date を、設定タイムゾーンの開始日として扱う。
+- [x] 不正な project deadline / task due date は `LocalStoreDecodingError.invalidDate` として呼び出し元へ返す。
+- [x] 完了条件: Board で登録した日付だけのタスクが、期限サマリー・メニューバー・期限通知の候補から消えない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

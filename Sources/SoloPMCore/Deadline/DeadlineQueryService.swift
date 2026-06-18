@@ -96,22 +96,44 @@ public final class DeadlineQueryService: @unchecked Sendable {
     }
 
     private func deadlineItems() throws -> [DeadlineItem] {
-        let projects = try projectStore.listDeadlineCandidates().compactMap { record -> DeadlineItem? in
-            guard let deadline = record.deadline,
-                  let dueAt = DeadlineDateParser.date(from: deadline) else {
-                return nil
+        let projects = try projectStore.listDeadlineCandidates().map { record -> DeadlineItem in
+            guard let deadline = record.deadline else {
+                throw LocalStoreDecodingError.missingRequiredColumn(column: "projects.deadline")
+            }
+            guard let dueAt = DeadlineDateParser.date(
+                from: deadline,
+                timeZoneIdentifier: settings.timeZoneIdentifier
+            ) else {
+                throw LocalStoreDecodingError.invalidDate(column: "projects.deadline", value: deadline)
             }
 
-            return DeadlineItem(id: record.id, kind: .project, title: record.title, dueAt: dueAt, priority: record.priority)
+            return DeadlineItem(
+                id: record.id,
+                kind: .project,
+                title: record.title,
+                dueAt: dueAt,
+                priority: record.priority
+            )
         }
 
-        let tasks = try taskStore.listDeadlineCandidates().compactMap { record -> DeadlineItem? in
-            guard let dueAtString = record.dueAt,
-                  let dueAt = DeadlineDateParser.date(from: dueAtString) else {
-                return nil
+        let tasks = try taskStore.listDeadlineCandidates().map { record -> DeadlineItem in
+            guard let dueAtString = record.dueAt else {
+                throw LocalStoreDecodingError.missingRequiredColumn(column: "tasks.due_at")
+            }
+            guard let dueAt = DeadlineDateParser.date(
+                from: dueAtString,
+                timeZoneIdentifier: settings.timeZoneIdentifier
+            ) else {
+                throw LocalStoreDecodingError.invalidDate(column: "tasks.due_at", value: dueAtString)
             }
 
-            return DeadlineItem(id: record.id, kind: .task, title: record.title, dueAt: dueAt, priority: record.priority)
+            return DeadlineItem(
+                id: record.id,
+                kind: .task,
+                title: record.title,
+                dueAt: dueAt,
+                priority: record.priority
+            )
         }
 
         return (projects + tasks).deadlineSorted()
@@ -147,6 +169,20 @@ enum DeadlineDateParser {
         let standard = ISO8601DateFormatter()
         standard.formatOptions = [.withInternetDateTime]
         return standard.date(from: value)
+    }
+
+    static func date(from value: String, timeZoneIdentifier: String) -> Date? {
+        if let date = date(from: value) {
+            return date
+        }
+
+        let dateOnly = DateFormatter()
+        dateOnly.calendar = Calendar(identifier: .gregorian)
+        dateOnly.locale = Locale(identifier: "en_US_POSIX")
+        dateOnly.timeZone = TimeZone(identifier: timeZoneIdentifier) ?? .current
+        dateOnly.dateFormat = "yyyy-MM-dd"
+        dateOnly.isLenient = false
+        return dateOnly.date(from: value)
     }
 
     static func string(from date: Date) -> String {
