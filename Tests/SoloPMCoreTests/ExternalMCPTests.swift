@@ -149,6 +149,19 @@ final class ExternalMCPTests: XCTestCase {
             XCTAssertEqual(error as? MCPRegistrationError, .missingBinary("missing-binary"))
         }
 
+        let pathWithSpaceValidator = MCPServerRegistrationValidator(
+            binaryLocator: StaticBinaryLocator(availableCommands: ["/Applications/MCP Server/server"])
+        )
+        XCTAssertNoThrow(try pathWithSpaceValidator.validate(MCPServerRegistration(
+            id: "path-with-space",
+            displayName: "Path With Space",
+            command: "/Applications/MCP Server/server",
+            arguments: [],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )))
+
         let launcher = MCPStdioServerLauncher(
             validator: validator,
             transportFactory: { _ in ExternalMCPTestKit.makeFakeServerTransport() }
@@ -173,6 +186,24 @@ final class ExternalMCPTests: XCTestCase {
         } catch {
             XCTAssertEqual(error as? MCPRegistrationError, .serverDisabled)
         }
+    }
+
+    @MainActor
+    func testExternalMCPSettingsRejectsCompositeCommandBeforeSavingRegistration() throws {
+        let store = InMemoryMCPServerRegistrationStore()
+        let validator = MCPServerRegistrationValidator(binaryLocator: StaticBinaryLocator(availableCommands: ["node"]))
+        let viewModel = ExternalMCPSettingsViewModel(store: store, registrationValidator: validator)
+
+        viewModel.updateDisplayName("Local Docs MCP")
+        viewModel.updateCommand("node server.js")
+        viewModel.updateEnabled(true)
+        viewModel.save()
+
+        XCTAssertEqual(try store.loadRegistrations(), [])
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "MCP command must contain only the executable. Move arguments for node into the Arguments field."
+        )
     }
 
     func testDefaultMCPEnvironmentResolverDoesNotReadFromInMemorySecrets() throws {

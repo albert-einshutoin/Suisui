@@ -68,6 +68,8 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertTrue(complianceReview.contains("server/discover"))
         XCTAssertTrue(complianceReview.contains("will not claim draft or full-host compatibility"))
         XCTAssertTrue(complianceReview.contains("MCPInspectorEvidenceTests.testComplianceReviewAndEvidenceRecordStableSpecAndDraftBoundary"))
+        XCTAssertTrue(complianceReview.contains("stdio command boundary"))
+        XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testExternalMCPSettingsRejectsCompositeCommandBeforeSavingRegistration"))
     }
 
     func testInspectorVerificationScriptRunsWithFakeInspectorWithoutNetwork() throws {

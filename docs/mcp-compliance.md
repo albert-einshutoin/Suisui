@@ -38,6 +38,7 @@ Primary references:
 | Paid execution boundary | Implemented | External MCP registrations and diagnostics are available on Free, but `tools/call` execution requires `FeatureGate.advancedMCPExecution`; ADR 0008 records the decision. |
 | Audit | Implemented | External MCP execution records server/tool identity, permission, approval state, duration, result/error, and redacted arguments. |
 | stdio transport | Implemented | `MCPStdioTransport` launches a configured command, writes JSON-RPC lines, reads stdout, redacts stderr, times out hung calls, and supports shutdown/kill. |
+| stdio command boundary | Implemented for SoloPM policy | Settings rejects composite command strings like `node server.js` before saving and requires arguments to live in the Arguments field, while still allowing exact executable paths that contain spaces. |
 | Resources | Not implemented | No `resources/list` or resource read path is exposed; Settings displays "Not supported in this release". |
 | Prompts | Not implemented | No `prompts/list` or prompt get path is exposed; Settings displays "Not supported in this release". |
 | Streamable HTTP | Not implemented | Architecture leaves transport protocol extensibility, but only stdio is release path. |
@@ -63,6 +64,7 @@ Primary references:
 - `ExternalMCPTests.testClientRejectsNonStringToolTitle`
 - `ExternalMCPTests.testClientRejectsMismatchedResponseIDAndInvalidJSONRPCVersion`
 - `ExternalMCPTests.testExternalMCPSettingsViewModelDisplaysInspectorFailureTaxonomy`
+- `ExternalMCPTests.testExternalMCPSettingsRejectsCompositeCommandBeforeSavingRegistration`
 - `ExternalMCPTests.testExternalMCPExecutionRequiresPaidEntitlementBeforeToolCall`
 - `ExternalMCPTests.testPaidEntitlementDoesNotBypassDangerousOrApprovalGuards`
 - `MCPInspectorEvidenceTests.testInspectorVerificationScriptUsesOfficialCLIAndFixturePaths`

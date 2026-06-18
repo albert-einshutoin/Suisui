@@ -703,6 +703,8 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             message = "MCP server is disabled."
         case MCPRegistrationError.invalidCommand:
             message = "MCP command is required."
+        case MCPRegistrationError.commandContainsArguments(let command):
+            message = "MCP command must contain only the executable. Move arguments for \(command) into the Arguments field."
         case MCPRegistrationError.missingBinary(let command):
             message = "MCP command binary was not found: \(command)"
         case MCPRegistrationError.invalidWorkingDirectory(let path):
@@ -1059,6 +1061,7 @@ private extension MCPEnvironmentReference {
 
 public enum MCPRegistrationError: Error, Equatable, Sendable {
     case invalidCommand
+    case commandContainsArguments(String)
     case missingBinary(String)
     case invalidWorkingDirectory(String)
     case serverDisabled
@@ -1139,7 +1142,11 @@ public struct MCPServerRegistrationValidator: Sendable {
         guard !command.isEmpty else {
             throw MCPRegistrationError.invalidCommand
         }
-        guard binaryLocator.isExecutableAvailable(command: command) else {
+        if !binaryLocator.isExecutableAvailable(command: command) {
+            if let executable = Self.embeddedExecutableToken(in: command),
+               binaryLocator.isExecutableAvailable(command: executable) {
+                throw MCPRegistrationError.commandContainsArguments(executable)
+            }
             throw MCPRegistrationError.missingBinary(command)
         }
         if let workingDirectory = registration.workingDirectory {
@@ -1149,6 +1156,17 @@ public struct MCPServerRegistrationValidator: Sendable {
                 throw MCPRegistrationError.invalidWorkingDirectory(workingDirectory)
             }
         }
+    }
+
+    private static func embeddedExecutableToken(in command: String) -> String? {
+        guard command.contains(where: { $0.isWhitespace }),
+              let tokens = try? MCPArgumentTextCodec.parse(command),
+              tokens.count > 1 else {
+            return nil
+        }
+
+        let executable = tokens[0].trimmingCharacters(in: .whitespacesAndNewlines)
+        return executable.isEmpty ? nil : executable
     }
 }
 
