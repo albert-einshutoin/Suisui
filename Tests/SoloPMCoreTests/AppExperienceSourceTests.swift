@@ -1229,6 +1229,21 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(phase.contains("[ ] Light/Dark/System切替後にカード、サイドバー、インスペクタのコントラストが破綻しないことをスクリーンショットで確認する。"))
     }
 
+    func testUIScreenshotCaptureFailureExplainsScreenRecordingAndWindowDiagnostics() throws {
+        let script = try readPackageFile("script/capture_ui_evidence.sh")
+        let evidence = try readPackageFile("docs/release/evidence/ui-screenshots.md")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+
+        XCTAssertTrue(script.contains("print_capture_failure_guidance"))
+        XCTAssertTrue(script.contains("selected SoloPM window"))
+        XCTAssertTrue(script.contains("System Settings > Privacy & Security > Screen Recording / Screen & System Audio Recording"))
+        XCTAssertTrue(script.contains("Quit and reopen the terminal or Codex app after granting permission"))
+        XCTAssertTrue(script.contains("SOLOPM_UI_EVIDENCE_KEEP_HOME=1"))
+        XCTAssertTrue(evidence.contains("System Settings > Privacy & Security > Screen Recording / Screen & System Audio Recording"))
+        XCTAssertTrue(evidence.contains("SOLOPM_UI_EVIDENCE_KEEP_HOME=1"))
+        XCTAssertTrue(phase.contains("[x] `capture_ui_evidence.sh` はScreen Recording権限やwindow capture失敗時に、選択window情報と再実行手順を出す。"))
+    }
+
     func testLLMHTTPErrorMappingDoesNotDropMalformedErrorBodies() throws {
         let llmProviderSource = try readPackageFile("Sources/SoloPMCore/Planning/LLMProvider.swift")
         let responsesSource = try readPackageFile("Sources/SoloPMCore/Planning/OpenAIResponsesProvider.swift")

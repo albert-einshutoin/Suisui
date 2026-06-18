@@ -220,6 +220,21 @@ if luminanceRange < 12 {
 SWIFT
 }
 
+print_capture_failure_guidance() {
+  local appearance="$1"
+  local output_path="$2"
+  local window_context="$3"
+
+  {
+    echo "UI screenshot capture could not produce valid visible pixels for appearance: $appearance"
+    echo "output: $output_path"
+    echo "selected SoloPM window: $window_context"
+    echo "Open System Settings > Privacy & Security > Screen Recording / Screen & System Audio Recording and allow the terminal or Codex app that runs this script."
+    echo "Quit and reopen the terminal or Codex app after granting permission, then rerun: script/capture_ui_evidence.sh"
+    echo "For debugging, rerun with SOLOPM_UI_EVIDENCE_KEEP_HOME=1 to keep the isolated HOME: $EVIDENCE_HOME"
+  } >&2
+}
+
 write_appearance_preference() {
   local appearance="$1"
   HOME="$EVIDENCE_HOME" CFFIXED_USER_HOME="$EVIDENCE_HOME" \
@@ -263,12 +278,15 @@ capture_appearance() {
   local window_metadata
   window_metadata="$(find_window_capture_metadata)"
   read -r window_id window_x window_y window_width window_height <<<"$window_metadata"
+  local window_context
+  window_context="id=$window_id bounds=${window_width}x${window_height}+${window_x}+${window_y}"
 
   if ! screencapture -x -l "$window_id" "$output_path"; then
     local full_screenshot
     full_screenshot="$(mktemp "${TMPDIR:-/tmp}/solopm-ui-evidence-full.XXXXXX.png")"
     trap 'rm -f "$full_screenshot"; cleanup' EXIT
     if ! screencapture -x "$full_screenshot"; then
+      print_capture_failure_guidance "$appearance" "$output_path" "$window_context"
       echo "screen capture failed. Grant Screen Recording permission to the terminal/Codex app and rerun." >&2
       exit 1
     fi
@@ -289,6 +307,7 @@ capture_appearance() {
   /usr/bin/sips -g pixelWidth -g pixelHeight "$output_path" >/dev/null
 
   if ! assert_screenshot_has_visible_content "$output_path"; then
+    print_capture_failure_guidance "$appearance" "$output_path" "$window_context"
     echo "This usually means Screen Recording permission is missing, the display is locked/headless, or the captured image is blank." >&2
     rm -f "$output_path"
     exit 1
@@ -298,6 +317,7 @@ capture_appearance() {
   bytes="$(wc -c <"$output_path" | tr -d '[:space:]')"
   if [[ "$bytes" -lt 50000 ]]; then
     echo "screenshot is unexpectedly small ($bytes bytes): $output_path" >&2
+    print_capture_failure_guidance "$appearance" "$output_path" "$window_context"
     echo "This usually means Screen Recording permission is missing or the captured image is blank." >&2
     rm -f "$output_path"
     exit 1
@@ -331,7 +351,8 @@ Generated with \`script/capture_ui_evidence.sh\`.
 
 - The script seeds only deterministic local Project/Task data into the isolated SQLite database.
 - API keys and provider tokens are not read, written, logged, or rendered.
-- The capture host must grant Screen Recording permission to the terminal/Codex app; otherwise the script fails before treating screenshots as evidence.
+- The capture host must grant Screen Recording permission through System Settings > Privacy & Security > Screen Recording / Screen & System Audio Recording to the terminal/Codex app; otherwise the script fails before treating screenshots as evidence.
+- If capture still fails, rerun with \`SOLOPM_UI_EVIDENCE_KEEP_HOME=1\` to keep the isolated HOME for database and preference inspection.
 - VoiceOver focus order still requires a manual assistive-technology pass.
 EOF
 }
