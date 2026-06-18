@@ -51,6 +51,16 @@ if [[ "$REQUIRE_RELEASE_APPCAST" == "1" ]]; then
     echo "release appcast still contains example.com smoke URL" >&2
     exit 2
   fi
+
+  if ! grep -E 'sparkle:edSignature="[^"]+"' "$APPCAST_FILE" >/dev/null; then
+    echo "release appcast is missing Sparkle edSignature" >&2
+    exit 2
+  fi
+
+  if grep -E 'length="0"' "$APPCAST_FILE" >/dev/null; then
+    echo "release appcast has zero-length enclosure" >&2
+    exit 2
+  fi
 fi
 
 echo "Appcast smoke passed: $APPCAST_FILE"

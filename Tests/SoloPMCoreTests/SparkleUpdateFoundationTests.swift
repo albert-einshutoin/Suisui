@@ -71,6 +71,43 @@ final class SparkleUpdateFoundationTests: XCTestCase {
         XCTAssertTrue(result.output.contains("release appcast still contains local smoke placeholder signature"))
     }
 
+    func testReleaseAppcastVerifierRejectsZeroLengthOrMissingSignature() throws {
+        let releaseLikeAppcastURL = packageRoot()
+            .appendingPathComponent(".build/test-release-appcast-zero-length.xml")
+        try FileManager.default.createDirectory(
+            at: releaseLikeAppcastURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let zeroLengthAppcast = try readPackageFile("packaging/appcast.sample.xml")
+            .replacingOccurrences(of: "https://example.com/solopm/", with: "https://updates.example.invalid/solopm/")
+            .replacingOccurrences(of: "local-smoke-signature-placeholder", with: "release-signature-smoke-value")
+        try zeroLengthAppcast.write(to: releaseLikeAppcastURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: releaseLikeAppcastURL) }
+
+        let zeroLengthResult = try runScript(
+            "script/verify_appcast.sh",
+            arguments: [releaseLikeAppcastURL.path],
+            environment: ["SOLOPM_REQUIRE_RELEASE_APPCAST": "1"]
+        )
+
+        XCTAssertNotEqual(zeroLengthResult.exitCode, 0)
+        XCTAssertTrue(zeroLengthResult.output.contains("release appcast has zero-length enclosure"))
+
+        try zeroLengthAppcast
+            .replacingOccurrences(of: #" sparkle:edSignature="release-signature-smoke-value""#, with: "")
+            .replacingOccurrences(of: #" length="0""#, with: #" length="12345""#)
+            .write(to: releaseLikeAppcastURL, atomically: true, encoding: .utf8)
+
+        let missingSignatureResult = try runScript(
+            "script/verify_appcast.sh",
+            arguments: [releaseLikeAppcastURL.path],
+            environment: ["SOLOPM_REQUIRE_RELEASE_APPCAST": "1"]
+        )
+
+        XCTAssertNotEqual(missingSignatureResult.exitCode, 0)
+        XCTAssertTrue(missingSignatureResult.output.contains("release appcast is missing Sparkle edSignature"))
+    }
+
     func testLocalSparkleEnvironmentFileIsIgnored() throws {
         let gitignore = try readPackageFile(".gitignore")
         let ignoredPaths = gitignore
