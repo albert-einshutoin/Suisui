@@ -139,6 +139,7 @@ final class KnowledgeAdvancedTests: XCTestCase {
         let vectorIndex = InMemoryKnowledgeVectorIndex(expectedDimensions: 2)
         try vectorIndex.upsert(KnowledgeEmbeddingVector(frameID: 2, values: [1, 0], providerID: "static", redactedPreview: "Billing"))
         let provider = StaticEmbeddingProvider(vectorsByText: [
+            "QZT": [0, 1],
             "invoice payment": [1, 0],
             "unrelated": [0, 1]
         ])
@@ -160,6 +161,26 @@ final class KnowledgeAdvancedTests: XCTestCase {
 
         XCTAssertTrue(try retriever.search(query: "", mode: .hybrid, userApprovedForEmbedding: true).isEmpty)
         XCTAssertTrue(try retriever.search(query: "unrelated", mode: .hybrid, userApprovedForEmbedding: true).isEmpty)
+    }
+
+    func testHybridRetrieverRejectsQueryEmbeddingDimensionMismatchInsteadOfReturningFTSOnly() throws {
+        let exact = KnowledgeFrameRecord(id: 1, name: "QZT", body: "QZT launch checklist", triggers: ["qzt"])
+        let fts = StaticKnowledgeTextSearch(resultsByQuery: ["QZT": [exact]])
+        let vectorIndex = InMemoryKnowledgeVectorIndex(expectedDimensions: 2)
+        let provider = StaticEmbeddingProvider(vectorsByText: [
+            "QZT": [1]
+        ])
+        let retriever = HybridKnowledgeRetriever(
+            textSearch: fts,
+            vectorIndex: vectorIndex,
+            embeddingProvider: provider,
+            framesByID: [1: exact],
+            configuration: HybridRetrievalConfiguration(topK: 3, threshold: 0.60)
+        )
+
+        XCTAssertThrowsError(try retriever.search(query: "QZT", mode: .hybrid, userApprovedForEmbedding: true)) { error in
+            XCTAssertEqual(error as? KnowledgeVectorIndexError, .dimensionMismatch(expected: 2, actual: 1))
+        }
     }
 
     func testProjectMemoryCandidatesRequireApprovalAndRedactSecretsBeforeSaving() throws {

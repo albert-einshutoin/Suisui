@@ -411,23 +411,21 @@ public struct HybridKnowledgeRetriever: Sendable {
 
         if mode == .vectorOnly || mode == .hybrid {
             let queryVector = try embeddingProvider.embed(EmbeddingRequest(frameID: 0, text: trimmed, userApproved: userApprovedForEmbedding))
-            if queryVector.values.count == vectorIndex.expectedDimensions {
-                let vectorResults = try vectorIndex.search(
-                    queryVector: queryVector.values,
-                    topK: configuration.topK,
-                    threshold: configuration.threshold
-                )
-                for result in vectorResults {
-                    guard let frame = framesByID[result.frameID] else {
-                        continue
-                    }
-                    let existing = ranked[result.frameID]
-                    ranked[result.frameID] = (
-                        frame: frame,
-                        score: (existing?.score ?? 0) + result.score * configuration.vectorWeight,
-                        explanations: (existing?.explanations ?? []) + ["vector"]
-                    )
+            let vectorResults = try vectorIndex.search(
+                queryVector: queryVector.values,
+                topK: configuration.topK,
+                threshold: configuration.threshold
+            )
+            for result in vectorResults {
+                guard let frame = framesByID[result.frameID] else {
+                    continue
                 }
+                let existing = ranked[result.frameID]
+                ranked[result.frameID] = (
+                    frame: frame,
+                    score: (existing?.score ?? 0) + result.score * configuration.vectorWeight,
+                    explanations: (existing?.explanations ?? []) + ["vector"]
+                )
             }
         }
 

@@ -811,6 +811,13 @@
 - [x] unit / source regression test で audit load failure が空履歴に丸められないことを確認する。
 - [x] 完了条件: MCP 監査ログが壊れている、または開けない状態を、履歴がないだけの正常状態として出荷しない。
 
+### P10-103: Hybrid knowledge search does not hide broken embeddings behind FTS
+
+- [x] `HybridKnowledgeRetriever` は hybrid / vector mode の query embedding 次元不一致を FTS-only 成功に丸めない。
+- [x] `KnowledgeVectorIndex.search` の既存次元検証を必ず通し、`KnowledgeVectorIndexError.dimensionMismatch` を caller へ返す。
+- [x] `KnowledgeAdvancedTests` で FTS hit がある場合でも query embedding 破損が search failure になることを確認する。
+- [x] 完了条件: semantic search が壊れている状態を、通常の全文検索結果だけで成功したように見せない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
