@@ -938,6 +938,13 @@
 - [x] `ActionPlanSchemaTests` / `PlanningPromptBuilderTests` / `AppExperienceSourceTests` で packaged schema load と source-tree fallback absence を固定する。
 - [x] 完了条件: 配布 app bundle の resource packaging 不備が、開発環境の source tree によって隠れない。
 
+### P10-121: MCP tool call `isError` must be boolean when present
+
+- [x] `MCPClient.callTool` は `tools/call` response の `result.isError` が存在する場合、boolean 以外を `false` に丸めない。
+- [x] `result.isError` 欠落時だけ MCP 互換の default として `false` を使う。
+- [x] `ExternalMCPTests` で string `isError` が `MCPClientError.invalidResponse` になることを固定する。
+- [x] 完了条件: ユーザー登録 MCP server の壊れた error flag を成功結果として audit / review path に流さない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

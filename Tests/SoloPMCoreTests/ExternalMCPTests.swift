@@ -146,6 +146,42 @@ final class ExternalMCPTests: XCTestCase {
         }
     }
 
+    func testClientRejectsNonBooleanToolCallIsError() async throws {
+        let transport = RecordingMCPTransport { request in
+            if request.method == "tools/call" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "content": .array([MCPContentItem(type: "text", text: "status: ok").jsonValue]),
+                        "isError": .string("false")
+                    ])
+                )
+            }
+
+            return MCPJSONRPCResponse(
+                id: request.id,
+                result: .object([
+                    "protocolVersion": .string(MCPProtocolVersion.v2025_11_25.rawValue)
+                ])
+            )
+        }
+        let client = MCPClient(serverID: "invalid-is-error", transport: transport)
+
+        do {
+            _ = try await client.callTool(name: "read_status", arguments: [:])
+            XCTFail("non-boolean tools/call isError should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(
+                    serverID: "invalid-is-error",
+                    method: "tools/call",
+                    reason: "result.isError must be a boolean when present."
+                )
+            )
+        }
+    }
+
     @MainActor
     func testExternalMCPSettingsViewModelPersistsRegistration() throws {
         let store = InMemoryMCPServerRegistrationStore()

@@ -81,9 +81,22 @@ public final class MCPClient: @unchecked Sendable {
         } catch let error as MCPClientError {
             throw MCPClientError.invalidResponse(serverID: serverID, method: "tools/call", reason: error.responseReason)
         }
+        let isError: Bool
+        if let isErrorValue = object["isError"] {
+            guard let parsedIsError = isErrorValue.boolValue else {
+                throw MCPClientError.invalidResponse(
+                    serverID: serverID,
+                    method: "tools/call",
+                    reason: "result.isError must be a boolean when present."
+                )
+            }
+            isError = parsedIsError
+        } else {
+            isError = false
+        }
         return MCPToolCallResult(
             content: content,
-            isError: object["isError"]?.boolValue ?? false,
+            isError: isError,
             structuredContent: object["structuredContent"]
         )
     }
