@@ -149,7 +149,10 @@ final class SparkleUpdateFoundationTests: XCTestCase {
         let result = try runScript(
             "script/verify_appcast.sh",
             arguments: [appcastURL.path],
-            environment: ["SOLOPM_REQUIRE_RELEASE_APPCAST": "1"]
+            environment: [
+                "SOLOPM_REQUIRE_RELEASE_APPCAST": "1",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases"
+            ]
         )
 
         XCTAssertEqual(result.exitCode, 0, result.output)
@@ -293,6 +296,42 @@ final class SparkleUpdateFoundationTests: XCTestCase {
 
         XCTAssertNotEqual(mixedSchemeResult.exitCode, 0)
         XCTAssertTrue(mixedSchemeResult.output.contains("release appcast enclosure URL must use https"))
+    }
+
+    func testReleaseAppcastVerifierRequiresConfiguredDownloadPrefix() throws {
+        let releaseLikeAppcastURL = packageRoot()
+            .appendingPathComponent(".build/test-release-appcast-download-prefix.xml")
+        try FileManager.default.createDirectory(
+            at: releaseLikeAppcastURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        <?xml version="1.0" standalone="yes"?>
+        <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+          <channel>
+            <title>SoloPM</title>
+            <item>
+              <title>0.1.0</title>
+              <sparkle:version>1</sparkle:version>
+              <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+              <enclosure url="https://cdn.solopm.app/releases/SoloPM-0.1.0+1.zip" length="12345" type="application/octet-stream" sparkle:edSignature="release-signature-smoke-value"/>
+            </item>
+          </channel>
+        </rss>
+        """.write(to: releaseLikeAppcastURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: releaseLikeAppcastURL) }
+
+        let result = try runScript(
+            "script/verify_appcast.sh",
+            arguments: [releaseLikeAppcastURL.path],
+            environment: [
+                "SOLOPM_REQUIRE_RELEASE_APPCAST": "1",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases"
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release appcast enclosure URL does not match configured SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX"))
     }
 
     func testReleaseAppcastVerifierRejectsPlaceholderOrLocalDomains() throws {

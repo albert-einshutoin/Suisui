@@ -3,9 +3,17 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
+SPARKLE_ENV_FILE="$ROOT_DIR/packaging/sparkle.env"
 APPCAST_FILE="${1:-$ROOT_DIR/packaging/appcast.sample.xml}"
 SAMPLE_APPCAST_FILE="$ROOT_DIR/packaging/appcast.sample.xml"
 REQUIRE_RELEASE_APPCAST="${SOLOPM_REQUIRE_RELEASE_APPCAST:-0}"
+
+if [[ -f "$SPARKLE_ENV_FILE" ]]; then
+  # shellcheck source=/dev/null
+  source "$SPARKLE_ENV_FILE"
+fi
+
+DOWNLOAD_URL_PREFIX="${SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX:-${SPARKLE_DOWNLOAD_URL_PREFIX:-}}"
 
 case "$REQUIRE_RELEASE_APPCAST" in
   0|1)
@@ -84,6 +92,22 @@ if [[ "$REQUIRE_RELEASE_APPCAST" == "1" ]]; then
   if grep -E 'url="https://([^"/]+\.)?(example\.com|example\.org|example\.net)(/|")|url="https://[^"/]+\.(invalid|test)(/|")|url="https://(localhost|127\.0\.0\.1|0\.0\.0\.0)(/|")' <<<"$enclosure_urls" >/dev/null; then
     echo "release appcast enclosure URL must not use placeholder or local domains" >&2
     exit 2
+  fi
+
+  if [[ -n "$DOWNLOAD_URL_PREFIX" ]]; then
+    normalized_download_prefix="${DOWNLOAD_URL_PREFIX%/}/"
+    while IFS= read -r enclosure_url; do
+      enclosure_url="${enclosure_url#url=\"}"
+      enclosure_url="${enclosure_url%\"}"
+      case "$enclosure_url" in
+        "$normalized_download_prefix"*)
+          ;;
+        *)
+          echo "release appcast enclosure URL does not match configured SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX" >&2
+          exit 2
+          ;;
+      esac
+    done <<<"$enclosure_urls"
   fi
 
   if ! grep -E 'sparkle:edSignature="[^"]+"' "$APPCAST_FILE" >/dev/null; then
