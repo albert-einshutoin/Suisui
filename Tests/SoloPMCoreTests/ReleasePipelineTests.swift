@@ -102,6 +102,17 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("release app bundle metadata mismatch"))
     }
 
+    func testReleasePreflightRequiresAppBundleStructure() throws {
+        let script = try readPackageFile("script/verify_release_environment.sh")
+
+        XCTAssertTrue(script.contains("release app bundle is missing executable"))
+        XCTAssertTrue(script.contains("release app bundle executable is not executable"))
+        XCTAssertTrue(script.contains("release app bundle is missing resources directory"))
+        XCTAssertTrue(script.contains("release app bundle is missing action plan schema resource"))
+        XCTAssertTrue(script.contains("release app bundle is missing Sparkle framework"))
+        XCTAssertTrue(script.contains("release app bundle is missing Sparkle updater app"))
+    }
+
     func testReleasePreflightRequiresProductionSparkleFeedMetadata() throws {
         let script = try readPackageFile("script/verify_release_environment.sh")
 

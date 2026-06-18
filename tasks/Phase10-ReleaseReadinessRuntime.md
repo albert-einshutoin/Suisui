@@ -425,6 +425,7 @@
 - [x] `create_release_evidence.sh` は missing / invalid な release Sparkle config がある状態で成功証跡を書かない。
 - [x] release evidence は `release.sparkleFeedURL` / `release.appcastPath` を記録し、final preflight で現在の release config と照合する。
 - [x] manual release evidence は release machine launch、checksum、clean DMG install、Applications install、Gatekeeper、login item、Sparkle metadata を個別 boolean として記録し、final preflight で全て true を要求する。
+- [x] `verify_release_environment.sh` は release app bundle の executable、Resources、action-plan schema、Sparkle.framework、Updater.app が欠けていないことを検証する。
 - [x] 完了条件: manual release evidence は artifact checksum だけでなく、配布署名 context と Sparkle update context にも紐づく。
 
 ### P10-054: Release appcast gate

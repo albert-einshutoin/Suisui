@@ -132,6 +132,38 @@ require_app_bundle_metadata() {
   fi
 }
 
+require_app_bundle_structure() {
+  local app_bundle="$1"
+  local executable_path="$app_bundle/Contents/MacOS/$APP_NAME"
+  local resources_path="$app_bundle/Contents/Resources"
+  local action_plan_schema_path="$resources_path/action-plan.schema.json"
+  local sparkle_framework_path="$app_bundle/Contents/Frameworks/Sparkle.framework"
+  local sparkle_binary_path="$sparkle_framework_path/Sparkle"
+  local sparkle_updater_path="$sparkle_framework_path/Updater.app"
+
+  if [[ ! -f "$executable_path" ]]; then
+    add_blocker "release app bundle is missing executable: $executable_path"
+  elif [[ ! -x "$executable_path" ]]; then
+    add_blocker "release app bundle executable is not executable: $executable_path"
+  fi
+
+  if [[ ! -d "$resources_path" ]]; then
+    add_blocker "release app bundle is missing resources directory: $resources_path"
+  fi
+
+  if [[ ! -f "$action_plan_schema_path" ]]; then
+    add_blocker "release app bundle is missing action plan schema resource: $action_plan_schema_path"
+  fi
+
+  if [[ ! -d "$sparkle_framework_path" || ! -f "$sparkle_binary_path" ]]; then
+    add_blocker "release app bundle is missing Sparkle framework: $sparkle_framework_path"
+  fi
+
+  if [[ ! -d "$sparkle_updater_path" ]]; then
+    add_blocker "release app bundle is missing Sparkle updater app: $sparkle_updater_path"
+  fi
+}
+
 require_release_sparkle_metadata() {
   local app_bundle="$1"
   local feed_url
@@ -516,6 +548,7 @@ else
 fi
 
 if [[ -d "$APP_BUNDLE" ]]; then
+  require_app_bundle_structure "$APP_BUNDLE"
   require_app_bundle_metadata "$APP_BUNDLE" "$BUNDLE_IDENTIFIER" "${MARKETING_VERSION:-}" "${CURRENT_PROJECT_VERSION:-}"
   require_release_sparkle_metadata "$APP_BUNDLE"
   require_app_entitlements "$APP_BUNDLE"
