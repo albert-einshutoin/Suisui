@@ -131,8 +131,7 @@ public enum LLMProviderCatalog {
         LLMProviderCatalogEntry(
             id: .geminiDirect,
             displayName: "Gemini Direct",
-            isAvailableInCurrentBuild: false,
-            unavailableReason: unavailableReason,
+            isAvailableInCurrentBuild: true,
             apiKeySecretKey: .geminiAPIKey,
             baseURL: URL(string: "https://generativelanguage.googleapis.com/v1beta")!,
             defaultModelID: "gemini-3.5-flash",

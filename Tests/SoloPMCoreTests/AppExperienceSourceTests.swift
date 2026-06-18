@@ -668,6 +668,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("settingsViewModel.saveAnthropicAPIKey()"))
         XCTAssertTrue(appSource.contains("settingsViewModel.deleteAnthropicAPIKey()"))
         XCTAssertTrue(appSource.contains("Anthropic API Key"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.saveGeminiAPIKey()"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.deleteGeminiAPIKey()"))
+        XCTAssertTrue(appSource.contains("Gemini API Key"))
+        XCTAssertTrue(appSource.contains("Gemini Model ID"))
         XCTAssertFalse(appSource.contains("SecureField(\"API Key\", text: .constant(\"\"))"))
     }
 
@@ -680,6 +684,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(factorySource.contains("ClaudeMessagesConfiguration(model: entry.defaultModelID)"))
         XCTAssertTrue(factorySource.contains("ClaudeMessagesProvider(secretStore: secretStore, configuration: configuration)"))
         XCTAssertFalse(factorySource.contains(".openaiResponses,\n             .claudeMessages"))
+    }
+
+    func testRuntimeLLMFactoryUsesGeminiDirectProviderWithoutOpenAICompatibleFallback() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let factoryStart = try XCTUnwrap(appSource.range(of: "private static func makeLLMProvider"))
+        let factorySource = String(appSource[factoryStart.lowerBound..<appSource.endIndex])
+
+        XCTAssertTrue(factorySource.contains("case .geminiDirect:"))
+        XCTAssertTrue(factorySource.contains("GeminiDirectConfiguration(model: settings.normalizedForRuntime.geminiModelID ?? entry.defaultModelID)"))
+        XCTAssertTrue(factorySource.contains("GeminiDirectProvider(secretStore: secretStore, configuration: configuration)"))
+        XCTAssertTrue(factorySource.contains(".geminiOpenAICompatible,\n             .groqOpenAICompatible"))
+        XCTAssertFalse(factorySource.contains(".claudeMessages,\n             .geminiDirect"))
     }
 
     func testSettingsSurfaceOnlyShowsReleaseReadySTTProviders() throws {
@@ -711,6 +727,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let responsesSource = try readPackageFile("Sources/SoloPMCore/Planning/OpenAIResponsesProvider.swift")
         let chatSource = try readPackageFile("Sources/SoloPMCore/Planning/ChatCompletionsCompatibleProvider.swift")
         let claudeSource = try readPackageFile("Sources/SoloPMCore/Planning/ClaudeMessagesProvider.swift")
+        let geminiSource = try readPackageFile("Sources/SoloPMCore/Planning/GeminiDirectProvider.swift")
 
         XCTAssertTrue(llmProviderSource.contains("LLMHTTPErrorMessageExtractor"))
         XCTAssertTrue(llmProviderSource.contains("Unexpected error body"))
@@ -718,10 +735,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(responsesSource.contains("LLMHTTPErrorMessageExtractor.message(from: data)"))
         XCTAssertTrue(chatSource.contains("LLMHTTPErrorMessageExtractor.message(from: data)"))
         XCTAssertTrue(claudeSource.contains("LLMHTTPErrorMessageExtractor.message(from: data)"))
+        XCTAssertTrue(geminiSource.contains("LLMHTTPErrorMessageExtractor.message(from: data)"))
         XCTAssertTrue(claudeSource.contains("Claude Messages HTTP"))
+        XCTAssertTrue(geminiSource.contains("Gemini Direct HTTP"))
         XCTAssertFalse(responsesSource.contains("No error message."))
         XCTAssertFalse(chatSource.contains("No error message."))
         XCTAssertFalse(claudeSource.contains("No error message."))
+        XCTAssertFalse(geminiSource.contains("No error message."))
     }
 
     private func readPackageFile(_ relativePath: String) throws -> String {

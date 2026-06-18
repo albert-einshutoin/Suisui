@@ -81,6 +81,8 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Unavailable")
         XCTAssertEqual(viewModel.anthropicAPIKeyStatusLabel, "Unavailable")
+        XCTAssertEqual(viewModel.geminiAPIKeyStatusLabel, "Unavailable")
+        XCTAssertEqual(viewModel.geminiProviderSmokeStatusLabel, "unavailable")
         XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Unavailable")
         XCTAssertEqual(viewModel.openAIProviderSmokeStatusLabel, "unavailable")
         XCTAssertEqual(viewModel.errorMessage, "API key status could not be read from Keychain.")
@@ -100,6 +102,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Invalid")
         XCTAssertEqual(viewModel.openAIProviderSmokeStatusLabel, "invalidConfiguration")
         XCTAssertEqual(viewModel.anthropicAPIKeyStatusLabel, "Not configured")
+        XCTAssertEqual(viewModel.geminiAPIKeyStatusLabel, "Not configured")
         XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Not configured")
         XCTAssertEqual(viewModel.errorMessage, "Stored API key is invalid. Re-enter it in Settings.")
         XCTAssertFalse(viewModel.errorMessage?.contains("sk-live") ?? true)
@@ -119,6 +122,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Not configured")
         XCTAssertEqual(viewModel.openAIProviderSmokeStatusLabel, "notConfigured")
         XCTAssertEqual(viewModel.anthropicAPIKeyStatusLabel, "Not configured")
+        XCTAssertEqual(viewModel.geminiAPIKeyStatusLabel, "Not configured")
         XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Invalid")
         XCTAssertEqual(viewModel.errorMessage, "Stored API key is invalid. Re-enter it in Settings.")
         XCTAssertFalse(viewModel.errorMessage?.contains("sk-or-live") ?? true)
@@ -175,6 +179,25 @@ final class AppSettingsTests: XCTestCase {
         viewModel.saveAnthropicAPIKey()
 
         XCTAssertEqual(viewModel.anthropicAPIKeyStatusLabel, "Unavailable")
+        XCTAssertEqual(viewModel.errorMessage, "API key status could not be read from Keychain.")
+        XCTAssertNil(viewModel.successMessage)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelDoesNotReportGeminiKeySaveSuccessWhenStatusRefreshFails() throws {
+        let suiteName = "SoloPM.AppSettingsGeminiSaveRefreshFailure.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: ThrowingReadSecretStore()
+        )
+
+        viewModel.updateGeminiAPIKeyInput("gemini-test-key")
+        viewModel.saveGeminiAPIKey()
+
+        XCTAssertEqual(viewModel.geminiAPIKeyStatusLabel, "Unavailable")
+        XCTAssertEqual(viewModel.geminiProviderSmokeStatusLabel, "unavailable")
         XCTAssertEqual(viewModel.errorMessage, "API key status could not be read from Keychain.")
         XCTAssertNil(viewModel.successMessage)
     }
@@ -280,6 +303,30 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertNil(try secretStore.read(.anthropicAPIKey))
         XCTAssertEqual(viewModel.anthropicAPIKeyStatusLabel, "Not configured")
+    }
+
+    @MainActor
+    func testAppSettingsViewModelSavesAndDeletesGeminiKeyInSecretStoreOnly() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelGeminiTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settingsStore = UserDefaultsAppSettingsStore(defaults: defaults)
+        let secretStore = InMemorySecretStore()
+        let viewModel = AppSettingsViewModel(settingsStore: settingsStore, secretStore: secretStore)
+
+        viewModel.updateGeminiAPIKeyInput(" gemini-test-secret ")
+        viewModel.saveGeminiAPIKey()
+
+        XCTAssertEqual(try secretStore.read(.geminiAPIKey), "gemini-test-secret")
+        XCTAssertEqual(viewModel.geminiAPIKeyStatusLabel, "Configured")
+        XCTAssertEqual(viewModel.geminiProviderSmokeStatusLabel, "readyForManualSmoke")
+        XCTAssertNil(defaults.data(forKey: "app.settings"))
+
+        viewModel.deleteGeminiAPIKey()
+
+        XCTAssertNil(try secretStore.read(.geminiAPIKey))
+        XCTAssertEqual(viewModel.geminiAPIKeyStatusLabel, "Not configured")
+        XCTAssertEqual(viewModel.geminiProviderSmokeStatusLabel, "notConfigured")
     }
 
     @MainActor
@@ -392,6 +439,26 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testAppSettingsViewModelRejectsGeminiKeyWithInternalWhitespace() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelInvalidGeminiKey.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settingsStore = UserDefaultsAppSettingsStore(defaults: defaults)
+        let secretStore = InMemorySecretStore()
+        let viewModel = AppSettingsViewModel(settingsStore: settingsStore, secretStore: secretStore)
+
+        let keyPrefix = "gemini-live"
+        viewModel.updateGeminiAPIKeyInput("\(keyPrefix)\ninvalid")
+        viewModel.saveGeminiAPIKey()
+
+        XCTAssertNil(try secretStore.read(.geminiAPIKey))
+        XCTAssertEqual(viewModel.geminiAPIKeyStatusLabel, "Not configured")
+        XCTAssertEqual(viewModel.geminiProviderSmokeStatusLabel, "notConfigured")
+        XCTAssertEqual(viewModel.errorMessage, "API key cannot contain whitespace.")
+        XCTAssertFalse(viewModel.errorMessage?.contains(keyPrefix) ?? true)
+    }
+
+    @MainActor
     func testAppSettingsViewModelPersistsNonSecretSettings() throws {
         let suiteName = "SoloPM.AppSettingsViewModelSettings.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -401,12 +468,14 @@ final class AppSettingsTests: XCTestCase {
 
         viewModel.setNotificationsEnabled(true)
         viewModel.setDefaultWorkspacePath("/tmp/SoloPM")
+        viewModel.setGeminiModelID(" gemini-3.5-flash ")
         viewModel.saveSettings()
 
         let loaded = try store.load()
 
         XCTAssertTrue(loaded.notificationsEnabled)
         XCTAssertEqual(loaded.defaultWorkspacePath, "/tmp/SoloPM")
+        XCTAssertEqual(loaded.geminiModelID, "gemini-3.5-flash")
     }
 
     @MainActor
@@ -435,13 +504,13 @@ final class AppSettingsTests: XCTestCase {
         let store = UserDefaultsAppSettingsStore(defaults: defaults)
         let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
 
-        XCTAssertEqual(viewModel.selectableAIProviders, [.openaiResponses, .claudeMessages, .openRouterCompatible, .ollamaCompatible])
+        XCTAssertEqual(viewModel.selectableAIProviders, [.openaiResponses, .claudeMessages, .geminiDirect, .openRouterCompatible, .ollamaCompatible])
 
-        viewModel.setAIProvider(.geminiDirect)
+        viewModel.setAIProvider(.geminiOpenAICompatible)
         viewModel.saveSettings()
 
         XCTAssertEqual(viewModel.settings.aiProvider, .openaiResponses)
-        XCTAssertEqual(viewModel.errorMessage, "Gemini Direct is not available in this build.")
+        XCTAssertEqual(viewModel.errorMessage, "Gemini OpenAI-compatible is not available in this build.")
         XCTAssertNil(defaults.data(forKey: "app.settings"))
     }
 

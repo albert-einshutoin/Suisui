@@ -131,7 +131,7 @@ OpenAI API Key
 OpenRouter API Key
 Ollama local endpoint
 Anthropic API Key
-Gemini API Key later
+Gemini API Key
 ```
 
 SoloPM 側が AI 推論コストを抱えないことで、Obsidian 型の無料・支援・高度機能課金モデルと相性が良くなる。
@@ -370,6 +370,8 @@ MVP では TTS に時間を使わない。
 OpenAI Responses adapter の既定 model id は `LLMProviderCatalog` と `OpenAIResponsesConfiguration` で `gpt-5.2` に固定する。model id が未設定・未移行の場合も、provider 側の暗黙 default や高額 model へ落とさず、この catalog default を使う。
 
 Claude Messages adapter は Anthropic Messages API `POST /v1/messages` を使い、`x-api-key` / `anthropic-version` header、top-level `system`、user `messages`、`max_tokens` を明示する。既定 model id は `LLMProviderCatalog` と `ClaudeMessagesConfiguration` で `claude-opus-4-6` に固定し、Claude固有のtool use loopはAction Plan生成では実行しない。
+
+Gemini Direct adapter は Google Gemini API の native `models/{model}:generateContent` endpointを使い、`x-goog-api-key`、`system_instruction`、user `contents`、`generationConfig.responseFormat.text.mimeType = application/json` を明示する。既定 model id は `gemini-3.5-flash` で、Settings から model id を上書きできる。OpenAI-compatible Gemini は別 provider ID のまま未実装扱いにして、direct endpoint と混ぜない。
 
 ```text
 LLMProvider
@@ -691,7 +693,7 @@ Keychain Services
 OpenAI API Key
 OpenRouter API Key
 Anthropic API Key
-Gemini API Key later
+Gemini API Key
 GitHub Token later
 Google OAuth token later
 ```
@@ -1086,7 +1088,7 @@ LLM:
   OpenAI-compatible Chat fallback
   OpenRouter / Ollama
   Anthropic Messages API
-  Gemini later
+  Gemini Direct API
   Foundation Models later
 
 Tool Execution:

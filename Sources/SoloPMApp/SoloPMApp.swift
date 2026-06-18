@@ -858,6 +858,39 @@ private struct SettingsView: View {
                         Label("Delete Claude Key", systemImage: "trash")
                     }
                 }
+                LabeledContent("Gemini API Key", value: settingsViewModel.geminiAPIKeyStatusLabel)
+                LabeledContent("Gemini Provider Smoke", value: settingsViewModel.geminiProviderSmokeStatusLabel)
+                TextField(
+                    "Gemini Model ID",
+                    text: Binding(
+                        get: {
+                            settingsViewModel.settings.geminiModelID
+                                ?? LLMProviderCatalog.entry(for: .geminiDirect).defaultModelID
+                        },
+                        set: { settingsViewModel.setGeminiModelID($0) }
+                    )
+                )
+                SecureField(
+                    "Gemini API Key",
+                    text: Binding(
+                        get: { settingsViewModel.geminiAPIKeyInput },
+                        set: { settingsViewModel.updateGeminiAPIKeyInput($0) }
+                    )
+                )
+                HStack {
+                    Button {
+                        settingsViewModel.saveGeminiAPIKey()
+                    } label: {
+                        Label("Save Gemini Key", systemImage: "key")
+                    }
+                    .disabled(settingsViewModel.geminiAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    Button(role: .destructive) {
+                        settingsViewModel.deleteGeminiAPIKey()
+                    } label: {
+                        Label("Delete Gemini Key", systemImage: "trash")
+                    }
+                }
                 LabeledContent("OpenRouter API Key", value: settingsViewModel.openRouterAPIKeyStatusLabel)
                 SecureField(
                     "OpenRouter API Key",
@@ -1366,13 +1399,16 @@ private enum AppRuntimeFactory {
     private static func makeLLMProvider(settings: AppSettings, secretStore: any SecretStore) -> any LLMProvider {
         switch settings.normalizedForRuntime.aiProvider {
         case .openaiResponses,
-             .geminiDirect,
              .geminiOpenAICompatible,
              .groqOpenAICompatible,
              .opencodeLocal:
             let entry = LLMProviderCatalog.entry(for: .openaiResponses)
             let configuration = OpenAIResponsesConfiguration(model: entry.defaultModelID)
             return OpenAIResponsesProvider(secretStore: secretStore, configuration: configuration)
+        case .geminiDirect:
+            let entry = LLMProviderCatalog.entry(for: .geminiDirect)
+            let configuration = GeminiDirectConfiguration(model: settings.normalizedForRuntime.geminiModelID ?? entry.defaultModelID)
+            return GeminiDirectProvider(secretStore: secretStore, configuration: configuration)
         case .claudeMessages:
             let entry = LLMProviderCatalog.entry(for: .claudeMessages)
             let configuration = ClaudeMessagesConfiguration(model: entry.defaultModelID)

@@ -7,19 +7,22 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var notificationsEnabled: Bool
     public var defaultWorkspacePath: String?
     public var timeZoneIdentifier: String
+    public var geminiModelID: String?
 
     public init(
         aiProvider: AIProvider = .openaiResponses,
         sttProvider: STTProvider = .openAITranscribe,
         notificationsEnabled: Bool = false,
         defaultWorkspacePath: String? = nil,
-        timeZoneIdentifier: String = TimeZone.current.identifier
+        timeZoneIdentifier: String = TimeZone.current.identifier,
+        geminiModelID: String? = nil
     ) {
         self.aiProvider = aiProvider
         self.sttProvider = sttProvider
         self.notificationsEnabled = notificationsEnabled
         self.defaultWorkspacePath = defaultWorkspacePath
         self.timeZoneIdentifier = timeZoneIdentifier
+        self.geminiModelID = geminiModelID
     }
 
     public static let `default` = AppSettings()
@@ -31,6 +34,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         }
         if !copy.sttProvider.isReleaseReady {
             copy.sttProvider = .openAITranscribe
+        }
+        if let geminiModelID = copy.geminiModelID?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            copy.geminiModelID = geminiModelID.isEmpty ? nil : geminiModelID
         }
         return copy
     }
@@ -66,6 +72,27 @@ public struct AppSettings: Codable, Equatable, Sendable {
                     severity: .error
                 )
             )
+        }
+
+        if let geminiModelID {
+            let trimmedModelID = geminiModelID.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedModelID.isEmpty {
+                issues.append(
+                    ValidationIssue(
+                        field: "geminiModelID",
+                        message: "Gemini model id cannot be blank.",
+                        severity: .error
+                    )
+                )
+            } else if trimmedModelID.rangeOfCharacter(from: .whitespacesAndNewlines) != nil {
+                issues.append(
+                    ValidationIssue(
+                        field: "geminiModelID",
+                        message: "Gemini model id cannot contain whitespace.",
+                        severity: .error
+                    )
+                )
+            }
         }
 
         return issues
@@ -171,6 +198,9 @@ public final class AppSettingsViewModel: ObservableObject {
     @Published public private(set) var openAIProviderSmokeStatusLabel: String
     @Published public private(set) var anthropicAPIKeyInput: String
     @Published public private(set) var anthropicAPIKeyStatusLabel: String
+    @Published public private(set) var geminiAPIKeyInput: String
+    @Published public private(set) var geminiAPIKeyStatusLabel: String
+    @Published public private(set) var geminiProviderSmokeStatusLabel: String
     @Published public private(set) var openRouterAPIKeyInput: String
     @Published public private(set) var openRouterAPIKeyStatusLabel: String
     @Published public private(set) var keychainSecretKeyInput: String
@@ -201,6 +231,9 @@ public final class AppSettingsViewModel: ObservableObject {
         self.openAIProviderSmokeStatusLabel = "notConfigured"
         self.anthropicAPIKeyInput = ""
         self.anthropicAPIKeyStatusLabel = "Not configured"
+        self.geminiAPIKeyInput = ""
+        self.geminiAPIKeyStatusLabel = "Not configured"
+        self.geminiProviderSmokeStatusLabel = "notConfigured"
         self.openRouterAPIKeyInput = ""
         self.openRouterAPIKeyStatusLabel = "Not configured"
         self.keychainSecretKeyInput = ""
@@ -211,6 +244,7 @@ public final class AppSettingsViewModel: ObservableObject {
         self.rejectedAIProvider = nil
         refreshOpenAIAPIKeyStatus()
         refreshAnthropicAPIKeyStatus()
+        refreshGeminiAPIKeyStatus()
         refreshOpenRouterAPIKeyStatus()
     }
 
@@ -246,6 +280,12 @@ public final class AppSettingsViewModel: ObservableObject {
         clearMessages()
     }
 
+    public func setGeminiModelID(_ modelID: String) {
+        let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.geminiModelID = trimmed.isEmpty ? nil : trimmed
+        clearMessages()
+    }
+
     public func updateOpenAIAPIKeyInput(_ value: String) {
         openAIAPIKeyInput = value
         clearMessages()
@@ -253,6 +293,11 @@ public final class AppSettingsViewModel: ObservableObject {
 
     public func updateAnthropicAPIKeyInput(_ value: String) {
         anthropicAPIKeyInput = value
+        clearMessages()
+    }
+
+    public func updateGeminiAPIKeyInput(_ value: String) {
+        geminiAPIKeyInput = value
         clearMessages()
     }
 
@@ -414,6 +459,30 @@ public final class AppSettingsViewModel: ObservableObject {
         }
     }
 
+    public func saveGeminiAPIKey() {
+        let trimmed = geminiAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            deleteGeminiAPIKey()
+            return
+        }
+        guard validateAPIKey(trimmed) else {
+            return
+        }
+
+        do {
+            try secretStore.save(trimmed, for: .geminiAPIKey)
+            geminiAPIKeyInput = ""
+            guard refreshGeminiAPIKeyStatus() else {
+                return
+            }
+            errorMessage = nil
+            successMessage = "Gemini API key saved to Keychain."
+        } catch {
+            errorMessage = String(describing: error)
+            successMessage = nil
+        }
+    }
+
     public func deleteOpenAIAPIKey() {
         do {
             try secretStore.delete(.openAIAPIKey)
@@ -453,6 +522,21 @@ public final class AppSettingsViewModel: ObservableObject {
             }
             errorMessage = nil
             successMessage = "Anthropic API key removed."
+        } catch {
+            errorMessage = String(describing: error)
+            successMessage = nil
+        }
+    }
+
+    public func deleteGeminiAPIKey() {
+        do {
+            try secretStore.delete(.geminiAPIKey)
+            geminiAPIKeyInput = ""
+            guard refreshGeminiAPIKeyStatus() else {
+                return
+            }
+            errorMessage = nil
+            successMessage = "Gemini API key removed."
         } catch {
             errorMessage = String(describing: error)
             successMessage = nil
@@ -511,6 +595,25 @@ public final class AppSettingsViewModel: ObservableObject {
             return true
         } catch {
             anthropicAPIKeyStatusLabel = "Unavailable"
+            errorMessage = "API key status could not be read from Keychain."
+            successMessage = nil
+            return false
+        }
+    }
+
+    @discardableResult
+    public func refreshGeminiAPIKeyStatus() -> Bool {
+        do {
+            geminiAPIKeyStatusLabel = try apiKeyStatusLabel(for: .geminiAPIKey)
+            geminiProviderSmokeStatusLabel = providerSmokeStatusLabel(forAPIKeyStatusLabel: geminiAPIKeyStatusLabel)
+            if geminiAPIKeyStatusLabel == "Invalid" {
+                reportInvalidStoredAPIKey()
+                return false
+            }
+            return true
+        } catch {
+            geminiAPIKeyStatusLabel = "Unavailable"
+            geminiProviderSmokeStatusLabel = "unavailable"
             errorMessage = "API key status could not be read from Keychain."
             successMessage = nil
             return false

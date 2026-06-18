@@ -82,12 +82,12 @@
 
 ## P11-013: Gemini adapter
 
-- [ ] `GeminiDirectProvider` は Gemini API native endpointを使う。
-- [ ] 既存OpenAI互換clientを使う場合のみ `GeminiOpenAICompatibleProvider` を別IDとして用意し、direct providerと混ぜない。
-- [ ] GeminiのresponseからAction Plan JSON候補を抽出し、既存schema validationへ通す。
-- [ ] safety block / quota / invalid key / schema mismatch のエラー分類をテストする。
-- [ ] SettingsでGemini API key保存、接続確認、model id設定を実装する。
-- [ ] 完了条件: Google ecosystemユーザーがOpenAI keyなしで利用できる。
+- [x] `GeminiDirectProvider` は Gemini API native endpointを使う。
+- [x] 既存OpenAI互換clientを使う場合のみ `GeminiOpenAICompatibleProvider` を別IDとして用意し、direct providerと混ぜない。
+- [x] GeminiのresponseからAction Plan JSON候補を抽出し、既存schema validationへ通す。
+- [x] safety block / quota / invalid key / schema mismatch のエラー分類をテストする。
+- [x] SettingsでGemini API key保存、接続確認、model id設定を実装する。
+- [x] 完了条件: Google ecosystemユーザーがOpenAI keyなしで利用できる。
 
 ## P11-014: Groq OpenAI-compatible adapter
 

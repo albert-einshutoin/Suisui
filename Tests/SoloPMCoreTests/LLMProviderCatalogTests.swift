@@ -30,6 +30,9 @@ final class LLMProviderCatalogTests: XCTestCase {
         let geminiCompatible = LLMProviderCatalog.entry(for: .geminiOpenAICompatible)
         XCTAssertEqual(geminiDirect.apiKeySecretKey, .geminiAPIKey)
         XCTAssertEqual(geminiCompatible.apiKeySecretKey, .geminiAPIKey)
+        XCTAssertEqual(geminiDirect.defaultModelID, "gemini-3.5-flash")
+        XCTAssertTrue(geminiDirect.isAvailableInCurrentBuild)
+        XCTAssertFalse(geminiCompatible.isAvailableInCurrentBuild)
         XCTAssertEqual(geminiDirect.requestFamily, .geminiGenerateContent)
         XCTAssertEqual(geminiCompatible.requestFamily, .openAIChatCompletions)
         XCTAssertNotEqual(geminiDirect.baseURL, geminiCompatible.baseURL)
@@ -57,6 +60,7 @@ final class LLMProviderCatalogTests: XCTestCase {
             [
                 .openaiResponses,
                 .claudeMessages,
+                .geminiDirect,
                 .openRouterCompatible,
                 .ollamaCompatible
             ]
