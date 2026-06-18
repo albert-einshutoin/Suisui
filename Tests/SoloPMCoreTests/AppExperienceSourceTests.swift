@@ -83,9 +83,13 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(appSource.contains("Section(\"Appearance\")"))
         XCTAssertTrue(appSource.contains("Picker(\"Theme\", selection: $appearancePreference)"))
+        XCTAssertEqual(appSource.components(separatedBy: "Picker(\"Theme\"").count - 1, 1)
         XCTAssertFalse(boardSource.contains("AppearancePicker"))
         XCTAssertFalse(boardSource.contains("SidebarAppearanceSection"))
+        XCTAssertFalse(boardSource.contains("Picker(\"Theme\""))
         XCTAssertFalse(boardSource.contains("Picker(\"Appearance\""))
+        XCTAssertFalse(boardSource.contains("SoloPMAppearancePreference"))
+        XCTAssertFalse(boardSource.contains("Theme"))
         XCTAssertFalse(boardSource.contains("appearancePreference: $appearancePreference"))
     }
 
