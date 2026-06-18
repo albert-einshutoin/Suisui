@@ -34,4 +34,15 @@ final class ToolArgumentsTests: XCTestCase {
             )
         }
     }
+
+    func testTrimmedStringArrayRejectsBlankElementsInsteadOfDroppingThem() throws {
+        let arguments = ToolArguments(["tags": .array([.string("oss"), .string("  ")])], tool: .projectCreate)
+
+        XCTAssertThrowsError(try arguments.trimmedStringArray("tags")) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .validationFailed(.projectCreate, "Argument 'tags[1]' cannot be blank.")
+            )
+        }
+    }
 }

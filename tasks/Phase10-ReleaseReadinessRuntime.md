@@ -917,6 +917,13 @@
 - [x] `ToolArgumentsTests` と `ProjectTaskKnowledgeToolTests` で non-string optional field が永続 row 作成前に拒否されることを固定する。
 - [x] 完了条件: LLM / MCP / JSON 経由の number や object が `dueAt` / `body` / `notes` などの任意文字列フィールドで silently dropped されない。
 
+### P10-118: Trimmed string array arguments reject blank elements
+
+- [x] `ToolArguments.trimmedStringArray` / `optionalTrimmedStringArray` は空白要素を filter で落とさず validation failure にする。
+- [x] `project.create` の `tags` と `frame.update` の `triggers` は blank element を含む入力で永続 row / 既存 row を部分更新しない。
+- [x] `ToolArgumentsTests` と `ProjectTaskKnowledgeToolTests` で blank array element が silently dropped されないことを固定する。
+- [x] 完了条件: LLM / MCP / JSON 経由の tags / triggers が空白要素を含んでも、一部欠落の成功として保存されない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

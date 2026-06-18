@@ -110,9 +110,7 @@ public struct ToolArguments: Sendable {
             return []
         }
 
-        return values
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        return try trimmedStringArrayValues(values, key: key)
     }
 
     public func optionalTrimmedStringArray(_ key: String) throws -> [String]? {
@@ -120,9 +118,7 @@ public struct ToolArguments: Sendable {
             return nil
         }
 
-        return values
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        return try trimmedStringArrayValues(values, key: key)
     }
 
     public func optionalStringArray(_ key: String) throws -> [String]? {
@@ -156,6 +152,16 @@ public struct ToolArguments: Sendable {
                 throw ToolExecutionError.validationFailed(tool, "Argument '\(key)[\(index)]' must be object.")
             }
             return objectValue
+        }
+    }
+
+    private func trimmedStringArrayValues(_ values: [String], key: String) throws -> [String] {
+        try values.enumerated().map { index, value in
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                throw ToolExecutionError.validationFailed(tool, "Argument '\(key)[\(index)]' cannot be blank.")
+            }
+            return trimmed
         }
     }
 }

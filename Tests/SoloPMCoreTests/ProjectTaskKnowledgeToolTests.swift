@@ -35,6 +35,25 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(try stores.projects.list(), [])
     }
 
+    func testProjectCreateRejectsBlankTagsWithoutCreatingProject() throws {
+        let stores = try makeStores()
+        let tool = ProjectTool(name: .projectCreate, store: stores.projects)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "title": .string("Launch alpha"),
+                    "tags": .array([.string("oss"), .string("  ")])
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(error as? ToolExecutionError, .validationFailed(.projectCreate, "Argument 'tags[1]' cannot be blank."))
+        }
+
+        XCTAssertEqual(try stores.projects.list(), [])
+    }
+
     func testProjectUpdateRejectsBlankTitleWithoutMutatingProject() throws {
         let stores = try makeStores()
         let project = try stores.projects.create(title: "Launch Readiness")
@@ -380,6 +399,36 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         )
 
         XCTAssertEqual(try stores.knowledge.get(id: frameID).triggers, ["writing"])
+    }
+
+    func testKnowledgeFrameUpdateRejectsBlankTriggersWithoutMutatingFrame() throws {
+        let stores = try makeStores()
+        let create = KnowledgeFrameTool(name: .frameCreate, store: stores.knowledge)
+        let update = KnowledgeFrameTool(name: .frameUpdate, store: stores.knowledge)
+
+        let created = try create.execute(
+            arguments: [
+                "name": .string("Writing frame"),
+                "body": .string("Initial"),
+                "triggers": .array([.string("release")])
+            ],
+            context: approvedContext()
+        )
+        let frameID = try XCTUnwrap(created.output["frameId"]?.int64Value)
+
+        XCTAssertThrowsError(
+            try update.execute(
+                arguments: [
+                    "id": .number(Double(frameID)),
+                    "triggers": .array([.string("writing"), .string("  ")])
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(error as? ToolExecutionError, .validationFailed(.frameUpdate, "Argument 'triggers[1]' cannot be blank."))
+        }
+
+        XCTAssertEqual(try stores.knowledge.get(id: frameID).triggers, ["release"])
     }
 
     func testKnowledgeFrameUpdateRejectsBlankBodyWithoutMutatingFrame() throws {
