@@ -866,172 +866,7 @@ private struct SettingsView: View {
                             .tag(provider)
                     }
                 }
-                LabeledContent("OpenAI API Key", value: settingsViewModel.openAIAPIKeyStatusLabel)
-                LabeledContent("OpenAI Provider Smoke", value: settingsViewModel.openAIProviderSmokeStatusLabel)
-                SecureField(
-                    "OpenAI API Key",
-                    text: Binding(
-                        get: { settingsViewModel.openAIAPIKeyInput },
-                        set: { settingsViewModel.updateOpenAIAPIKeyInput($0) }
-                    )
-                )
-                HStack {
-                    Button {
-                        settingsViewModel.saveOpenAIAPIKey()
-                    } label: {
-                        Label("Save Key", systemImage: "key")
-                    }
-                    .disabled(settingsViewModel.openAIAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                    Button(role: .destructive) {
-                        settingsViewModel.deleteOpenAIAPIKey()
-                    } label: {
-                        Label("Delete Key", systemImage: "trash")
-                    }
-                }
-                LabeledContent("Anthropic API Key", value: settingsViewModel.anthropicAPIKeyStatusLabel)
-                SecureField(
-                    "Anthropic API Key",
-                    text: Binding(
-                        get: { settingsViewModel.anthropicAPIKeyInput },
-                        set: { settingsViewModel.updateAnthropicAPIKeyInput($0) }
-                    )
-                )
-                HStack {
-                    Button {
-                        settingsViewModel.saveAnthropicAPIKey()
-                    } label: {
-                        Label("Save Claude Key", systemImage: "key")
-                    }
-                    .disabled(settingsViewModel.anthropicAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                    Button(role: .destructive) {
-                        settingsViewModel.deleteAnthropicAPIKey()
-                    } label: {
-                        Label("Delete Claude Key", systemImage: "trash")
-                    }
-                }
-                LabeledContent("Gemini API Key", value: settingsViewModel.geminiAPIKeyStatusLabel)
-                LabeledContent("Gemini Provider Smoke", value: settingsViewModel.geminiProviderSmokeStatusLabel)
-                TextField(
-                    "Gemini Model ID",
-                    text: Binding(
-                        get: {
-                            settingsViewModel.settings.geminiModelID
-                                ?? LLMProviderCatalog.entry(for: .geminiDirect).defaultModelID
-                        },
-                        set: { settingsViewModel.setGeminiModelID($0) }
-                    )
-                )
-                SecureField(
-                    "Gemini API Key",
-                    text: Binding(
-                        get: { settingsViewModel.geminiAPIKeyInput },
-                        set: { settingsViewModel.updateGeminiAPIKeyInput($0) }
-                    )
-                )
-                HStack {
-                    Button {
-                        settingsViewModel.saveGeminiAPIKey()
-                    } label: {
-                        Label("Save Gemini Key", systemImage: "key")
-                    }
-                    .disabled(settingsViewModel.geminiAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                    Button(role: .destructive) {
-                        settingsViewModel.deleteGeminiAPIKey()
-                    } label: {
-                        Label("Delete Gemini Key", systemImage: "trash")
-                    }
-                }
-                LabeledContent("Groq API Key", value: settingsViewModel.groqAPIKeyStatusLabel)
-                LabeledContent("Groq Provider Smoke", value: settingsViewModel.groqProviderSmokeStatusLabel)
-                TextField(
-                    "Groq Base URL",
-                    text: Binding(
-                        get: {
-                            settingsViewModel.settings.groqBaseURLString
-                                ?? LLMProviderCatalog.entry(for: .groqOpenAICompatible).baseURL?.absoluteString
-                                ?? "https://api.groq.com/openai/v1"
-                        },
-                        set: { settingsViewModel.setGroqBaseURLString($0) }
-                    )
-                )
-                SecureField(
-                    "Groq API Key",
-                    text: Binding(
-                        get: { settingsViewModel.groqAPIKeyInput },
-                        set: { settingsViewModel.updateGroqAPIKeyInput($0) }
-                    )
-                )
-                HStack {
-                    Button {
-                        settingsViewModel.saveGroqAPIKey()
-                    } label: {
-                        Label("Save Groq Key", systemImage: "key")
-                    }
-                    .disabled(settingsViewModel.groqAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                    Button(role: .destructive) {
-                        settingsViewModel.deleteGroqAPIKey()
-                    } label: {
-                        Label("Delete Groq Key", systemImage: "trash")
-                    }
-                }
-                TextField(
-                    "OpenCode Executable",
-                    text: Binding(
-                        get: { settingsViewModel.settings.openCodeExecutablePath ?? "" },
-                        set: { settingsViewModel.setOpenCodeExecutablePath($0) }
-                    )
-                )
-                TextField(
-                    "OpenCode Workspace",
-                    text: Binding(
-                        get: { settingsViewModel.settings.openCodeWorkspacePath ?? "" },
-                        set: { settingsViewModel.setOpenCodeWorkspacePath($0) }
-                    )
-                )
-                TextField(
-                    "OpenCode Model ID",
-                    text: Binding(
-                        get: {
-                            settingsViewModel.settings.openCodeModelID
-                                ?? LLMProviderCatalog.entry(for: .opencodeLocal).defaultModelID
-                        },
-                        set: { settingsViewModel.setOpenCodeModelID($0) }
-                    )
-                )
-                Toggle(
-                    isOn: Binding(
-                        get: { settingsViewModel.settings.isOpenCodeLocalExecutionApproved },
-                        set: { settingsViewModel.setOpenCodeLocalExecutionApproved($0) }
-                    )
-                ) {
-                    Label("Approve OpenCode Local Execution", systemImage: "terminal")
-                }
-                LabeledContent("OpenRouter API Key", value: settingsViewModel.openRouterAPIKeyStatusLabel)
-                SecureField(
-                    "OpenRouter API Key",
-                    text: Binding(
-                        get: { settingsViewModel.openRouterAPIKeyInput },
-                        set: { settingsViewModel.updateOpenRouterAPIKeyInput($0) }
-                    )
-                )
-                HStack {
-                    Button {
-                        settingsViewModel.saveOpenRouterAPIKey()
-                    } label: {
-                        Label("Save OpenRouter Key", systemImage: "key")
-                    }
-                    .disabled(settingsViewModel.openRouterAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                    Button(role: .destructive) {
-                        settingsViewModel.deleteOpenRouterAPIKey()
-                    } label: {
-                        Label("Delete OpenRouter Key", systemImage: "trash")
-                    }
-                }
+                selectedProviderConfigurationFields
             }
 
             Section("Voice") {
@@ -1090,6 +925,222 @@ private struct SettingsView: View {
 
         }
         .formStyle(.grouped)
+    }
+
+    @ViewBuilder
+    private var selectedProviderConfigurationFields: some View {
+        switch settingsViewModel.settings.aiProvider {
+        case .openaiResponses, .geminiOpenAICompatible:
+            openAIProviderSettingsFields
+        case .claudeMessages:
+            claudeProviderSettingsFields
+        case .geminiDirect:
+            geminiProviderSettingsFields
+        case .groqOpenAICompatible:
+            groqProviderSettingsFields
+        case .opencodeLocal:
+            openCodeProviderSettingsFields
+        case .openRouterCompatible:
+            openRouterProviderSettingsFields
+        case .ollamaCompatible:
+            ollamaProviderSettingsFields
+        }
+    }
+
+    @ViewBuilder
+    private var openAIProviderSettingsFields: some View {
+        LabeledContent("OpenAI API Key", value: settingsViewModel.openAIAPIKeyStatusLabel)
+        LabeledContent("OpenAI Provider Smoke", value: settingsViewModel.openAIProviderSmokeStatusLabel)
+        SecureField(
+            "OpenAI API Key",
+            text: Binding(
+                get: { settingsViewModel.openAIAPIKeyInput },
+                set: { settingsViewModel.updateOpenAIAPIKeyInput($0) }
+            )
+        )
+        HStack {
+            Button {
+                settingsViewModel.saveOpenAIAPIKey()
+            } label: {
+                Label("Save Key", systemImage: "key")
+            }
+            .disabled(settingsViewModel.openAIAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+            Button(role: .destructive) {
+                settingsViewModel.deleteOpenAIAPIKey()
+            } label: {
+                Label("Delete Key", systemImage: "trash")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var claudeProviderSettingsFields: some View {
+        LabeledContent("Anthropic API Key", value: settingsViewModel.anthropicAPIKeyStatusLabel)
+        SecureField(
+            "Anthropic API Key",
+            text: Binding(
+                get: { settingsViewModel.anthropicAPIKeyInput },
+                set: { settingsViewModel.updateAnthropicAPIKeyInput($0) }
+            )
+        )
+        HStack {
+            Button {
+                settingsViewModel.saveAnthropicAPIKey()
+            } label: {
+                Label("Save Claude Key", systemImage: "key")
+            }
+            .disabled(settingsViewModel.anthropicAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+            Button(role: .destructive) {
+                settingsViewModel.deleteAnthropicAPIKey()
+            } label: {
+                Label("Delete Claude Key", systemImage: "trash")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var geminiProviderSettingsFields: some View {
+        LabeledContent("Gemini API Key", value: settingsViewModel.geminiAPIKeyStatusLabel)
+        LabeledContent("Gemini Provider Smoke", value: settingsViewModel.geminiProviderSmokeStatusLabel)
+        TextField(
+            "Gemini Model ID",
+            text: Binding(
+                get: {
+                    settingsViewModel.settings.geminiModelID
+                        ?? LLMProviderCatalog.entry(for: .geminiDirect).defaultModelID
+                },
+                set: { settingsViewModel.setGeminiModelID($0) }
+            )
+        )
+        SecureField(
+            "Gemini API Key",
+            text: Binding(
+                get: { settingsViewModel.geminiAPIKeyInput },
+                set: { settingsViewModel.updateGeminiAPIKeyInput($0) }
+            )
+        )
+        HStack {
+            Button {
+                settingsViewModel.saveGeminiAPIKey()
+            } label: {
+                Label("Save Gemini Key", systemImage: "key")
+            }
+            .disabled(settingsViewModel.geminiAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+            Button(role: .destructive) {
+                settingsViewModel.deleteGeminiAPIKey()
+            } label: {
+                Label("Delete Gemini Key", systemImage: "trash")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var groqProviderSettingsFields: some View {
+        LabeledContent("Groq API Key", value: settingsViewModel.groqAPIKeyStatusLabel)
+        LabeledContent("Groq Provider Smoke", value: settingsViewModel.groqProviderSmokeStatusLabel)
+        TextField(
+            "Groq Base URL",
+            text: Binding(
+                get: {
+                    settingsViewModel.settings.groqBaseURLString
+                        ?? LLMProviderCatalog.entry(for: .groqOpenAICompatible).baseURL?.absoluteString
+                        ?? "https://api.groq.com/openai/v1"
+                },
+                set: { settingsViewModel.setGroqBaseURLString($0) }
+            )
+        )
+        SecureField(
+            "Groq API Key",
+            text: Binding(
+                get: { settingsViewModel.groqAPIKeyInput },
+                set: { settingsViewModel.updateGroqAPIKeyInput($0) }
+            )
+        )
+        HStack {
+            Button {
+                settingsViewModel.saveGroqAPIKey()
+            } label: {
+                Label("Save Groq Key", systemImage: "key")
+            }
+            .disabled(settingsViewModel.groqAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+            Button(role: .destructive) {
+                settingsViewModel.deleteGroqAPIKey()
+            } label: {
+                Label("Delete Groq Key", systemImage: "trash")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var openCodeProviderSettingsFields: some View {
+        TextField(
+            "OpenCode Executable",
+            text: Binding(
+                get: { settingsViewModel.settings.openCodeExecutablePath ?? "" },
+                set: { settingsViewModel.setOpenCodeExecutablePath($0) }
+            )
+        )
+        TextField(
+            "OpenCode Workspace",
+            text: Binding(
+                get: { settingsViewModel.settings.openCodeWorkspacePath ?? "" },
+                set: { settingsViewModel.setOpenCodeWorkspacePath($0) }
+            )
+        )
+        TextField(
+            "OpenCode Model ID",
+            text: Binding(
+                get: {
+                    settingsViewModel.settings.openCodeModelID
+                        ?? LLMProviderCatalog.entry(for: .opencodeLocal).defaultModelID
+                },
+                set: { settingsViewModel.setOpenCodeModelID($0) }
+            )
+        )
+        Toggle(
+            isOn: Binding(
+                get: { settingsViewModel.settings.isOpenCodeLocalExecutionApproved },
+                set: { settingsViewModel.setOpenCodeLocalExecutionApproved($0) }
+            )
+        ) {
+            Label("Approve OpenCode Local Execution", systemImage: "terminal")
+        }
+    }
+
+    @ViewBuilder
+    private var openRouterProviderSettingsFields: some View {
+        LabeledContent("OpenRouter API Key", value: settingsViewModel.openRouterAPIKeyStatusLabel)
+        SecureField(
+            "OpenRouter API Key",
+            text: Binding(
+                get: { settingsViewModel.openRouterAPIKeyInput },
+                set: { settingsViewModel.updateOpenRouterAPIKeyInput($0) }
+            )
+        )
+        HStack {
+            Button {
+                settingsViewModel.saveOpenRouterAPIKey()
+            } label: {
+                Label("Save OpenRouter Key", systemImage: "key")
+            }
+            .disabled(settingsViewModel.openRouterAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+            Button(role: .destructive) {
+                settingsViewModel.deleteOpenRouterAPIKey()
+            } label: {
+                Label("Delete OpenRouter Key", systemImage: "trash")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var ollamaProviderSettingsFields: some View {
+        LabeledContent("Provider Status", value: "Local")
+        LabeledContent("API Key", value: "Not required")
     }
 
     private var privacySettingsTab: some View {

@@ -924,6 +924,39 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] Settings詳細FormをOverview / AI / MCP / Sync / Privacyのtabへ分割し"))
     }
 
+    func testAISettingsTabShowsOnlySelectedProviderFields() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let audit = try readPackageFile("docs/ux/click-path-audit.md")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+
+        XCTAssertTrue(appSource.contains("selectedProviderConfigurationFields"))
+        XCTAssertTrue(appSource.contains("switch settingsViewModel.settings.aiProvider"))
+        XCTAssertTrue(appSource.contains("case .openaiResponses, .geminiOpenAICompatible:"))
+        XCTAssertTrue(appSource.contains("case .claudeMessages:"))
+        XCTAssertTrue(appSource.contains("case .geminiDirect:"))
+        XCTAssertTrue(appSource.contains("case .groqOpenAICompatible:"))
+        XCTAssertTrue(appSource.contains("case .opencodeLocal:"))
+        XCTAssertTrue(appSource.contains("case .openRouterCompatible:"))
+        XCTAssertTrue(appSource.contains("case .ollamaCompatible:"))
+        XCTAssertTrue(appSource.contains("private var openAIProviderSettingsFields: some View"))
+        XCTAssertTrue(appSource.contains("private var claudeProviderSettingsFields: some View"))
+        XCTAssertTrue(appSource.contains("private var geminiProviderSettingsFields: some View"))
+        XCTAssertTrue(appSource.contains("private var groqProviderSettingsFields: some View"))
+        XCTAssertTrue(appSource.contains("private var openCodeProviderSettingsFields: some View"))
+        XCTAssertTrue(appSource.contains("private var openRouterProviderSettingsFields: some View"))
+        XCTAssertTrue(appSource.contains("private var ollamaProviderSettingsFields: some View"))
+
+        let aiStart = try XCTUnwrap(appSource.range(of: "private var aiSettingsTab"))
+        let syncStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab"))
+        let aiSource = String(appSource[aiStart.lowerBound..<syncStart.lowerBound])
+
+        XCTAssertTrue(aiSource.contains("selectedProviderConfigurationFields"))
+        XCTAssertFalse(aiSource.contains("LabeledContent(\"Anthropic API Key\""))
+        XCTAssertFalse(aiSource.contains("TextField(\n                    \"OpenCode Executable\""))
+        XCTAssertTrue(audit.contains("Provider詳細設定は選択中providerだけを表示するcompact panelへ分離済み"))
+        XCTAssertTrue(phase.contains("[x] AI tabのprovider詳細fieldは選択中providerだけを表示し"))
+    }
+
     func testRuntimeLLMFactoryUsesClaudeMessagesProviderWithoutOpenAIFallback() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let factoryStart = try XCTUnwrap(appSource.range(of: "private static func makeLLMProvider"))
