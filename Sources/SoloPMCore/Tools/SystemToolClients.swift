@@ -266,5 +266,4 @@ public struct MailDraftRecord: Equatable, Sendable {
 
 public protocol MailDraftClient: Sendable {
     func createTextDraft(to: String?, subject: String, body: String) throws -> MailDraftRecord
-    func listDrafts() throws -> [MailDraftRecord]
 }

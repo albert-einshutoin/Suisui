@@ -240,6 +240,19 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
+    func testUnavailableMailDraftClientDoesNotExposeEmptyListSuccessPath() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let clientSource = try readPackageFile("Sources/SoloPMCore/Tools/SystemToolClients.swift")
+        let unavailableClientStart = try XCTUnwrap(appSource.range(of: "private struct UnavailableMailDraftClient"))
+        let unavailableClientEnd = try XCTUnwrap(appSource.range(of: "private extension JSONValue", range: unavailableClientStart.upperBound..<appSource.endIndex))
+        let unavailableClientSource = String(appSource[unavailableClientStart.lowerBound..<unavailableClientEnd.lowerBound])
+
+        XCTAssertTrue(appSource.contains("mailDraftClient: UnavailableMailDraftClient()"))
+        XCTAssertFalse(unavailableClientSource.contains("func listDrafts() throws -> [MailDraftRecord]"))
+        XCTAssertFalse(unavailableClientSource.contains("[]"))
+        XCTAssertFalse(clientSource.contains("func listDrafts() throws -> [MailDraftRecord]"))
+    }
+
     func testRuntimeSourcesDoNotShipSecurityOrMCPInMemoryStores() throws {
         let sourceFiles = try allSwiftFiles(under: "Sources")
         let forbiddenTypeNames = [

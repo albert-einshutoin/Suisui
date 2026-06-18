@@ -796,6 +796,13 @@
 - [x] Source regression test で `compactMap` による部分 drop の復活を検出する。
 - [x] 完了条件: ファイル監視の OS callback 異常で成果物更新が「何も起きなかった」ように見えない。
 
+### P10-101: Disabled mail draft client fails closed
+
+- [x] Runtime の `UnavailableMailDraftClient` は draft 作成だけを fail closed にし、未対応 list 操作を空配列成功として返さない。
+- [x] `MailDraftClient` protocol から未使用の `listDrafts` 要求を外し、runtime に「メール下書きが0件」と見える mock 的 read path を残さない。
+- [x] Source regression test で `UnavailableMailDraftClient` と `MailDraftClient` に空成功 list path が復活しないことを確認する。
+- [x] 完了条件: 外部メール連携を除外した release runtime が、メール下書き連携の未対応状態を正常な空状態として誤表示しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

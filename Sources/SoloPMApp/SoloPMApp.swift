@@ -1380,10 +1380,6 @@ private struct UnavailableMailDraftClient: MailDraftClient {
     func createTextDraft(to: String?, subject: String, body: String) throws -> MailDraftRecord {
         throw ToolClientError.invalidRequest("Mail draft integration is not enabled in this release.")
     }
-
-    func listDrafts() throws -> [MailDraftRecord] {
-        []
-    }
 }
 
 private extension JSONValue {
