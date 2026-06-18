@@ -693,6 +693,7 @@ private struct SettingsView: View {
     @StateObject private var settingsViewModel: AppSettingsViewModel
     @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
     @StateObject private var externalMCPViewModel: ExternalMCPSettingsViewModel
+    @State private var isConfirmingMCPRegistrationDeletion = false
 
     init(
         settingsViewModel: AppSettingsViewModel,
@@ -888,6 +889,12 @@ private struct SettingsView: View {
                         Label("Save", systemImage: "square.and.arrow.down")
                     }
 
+                    Button(role: .destructive) {
+                        isConfirmingMCPRegistrationDeletion = true
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+
                     Button {
                         Task {
                             await externalMCPViewModel.checkConnection()
@@ -955,6 +962,17 @@ private struct SettingsView: View {
         .frame(width: 620, height: 720)
         .onAppear {
             launchAtLoginViewModel.refresh()
+        }
+        .confirmationDialog(
+            "Delete MCP Server",
+            isPresented: $isConfirmingMCPRegistrationDeletion
+        ) {
+            Button("Delete", role: .destructive) {
+                externalMCPViewModel.deleteRegistration()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the saved registration from SoloPM.")
         }
     }
 

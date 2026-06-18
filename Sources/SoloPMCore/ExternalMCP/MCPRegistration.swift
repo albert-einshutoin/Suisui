@@ -271,6 +271,17 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         }
     }
 
+    public func deleteRegistration() {
+        do {
+            try store.saveRegistrations([])
+            registration = Self.blankRegistration()
+            toolRows = []
+            errorMessage = nil
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
     public func checkConnection() async {
         isCheckingConnection = true
         defer {

@@ -201,6 +201,9 @@ final class AppExperienceSourceTests: XCTestCase {
         let mcpRegistrationSource = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")
 
         XCTAssertTrue(appSource.contains("SQLiteMCPServerRegistrationStore(connection:"))
+        XCTAssertTrue(appSource.contains("isConfirmingMCPRegistrationDeletion = true"))
+        XCTAssertTrue(appSource.contains(#"confirmationDialog("#))
+        XCTAssertTrue(appSource.contains("externalMCPViewModel.deleteRegistration()"))
         XCTAssertFalse(appSource.contains("store: UserDefaultsMCPServerRegistrationStore()"))
         XCTAssertFalse(mcpRegistrationSource.contains("UserDefaultsMCPServerRegistrationStore"))
     }

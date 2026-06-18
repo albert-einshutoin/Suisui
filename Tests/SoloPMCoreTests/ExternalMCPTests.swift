@@ -178,6 +178,56 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(try store.loadRegistrations(), [])
     }
 
+    func testSQLiteMCPRegistrationStoreSurvivesDatabaseReopen() throws {
+        let databaseURL = try temporaryDirectory().appendingPathComponent("SoloPM.sqlite")
+        let registration = MCPServerRegistration(
+            id: "local",
+            displayName: "Local MCP",
+            command: "/usr/bin/env",
+            arguments: ["python", "server.py"],
+            environment: [:],
+            workingDirectory: "/tmp",
+            isEnabled: true
+        )
+
+        do {
+            let connection = try SQLiteConnection(path: databaseURL.path)
+            try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+            try SQLiteMCPServerRegistrationStore(connection: connection).saveRegistrations([registration])
+        }
+
+        do {
+            let reopenedConnection = try SQLiteConnection(path: databaseURL.path)
+            try SQLiteMigrationRunner.migrate(connection: reopenedConnection, migrations: CoreMigrations.current)
+
+            XCTAssertEqual(try SQLiteMCPServerRegistrationStore(connection: reopenedConnection).loadRegistrations(), [registration])
+        }
+    }
+
+    @MainActor
+    func testExternalMCPSettingsViewModelDeletesPersistedRegistration() throws {
+        let store = InMemoryMCPServerRegistrationStore(registrations: [
+            MCPServerRegistration(
+                id: "local",
+                displayName: "Local MCP",
+                command: "/usr/bin/env",
+                arguments: ["node", "server.js"],
+                environment: [:],
+                workingDirectory: "/tmp",
+                isEnabled: true
+            )
+        ])
+        let viewModel = ExternalMCPSettingsViewModel(store: store)
+
+        viewModel.deleteRegistration()
+
+        XCTAssertEqual(try store.loadRegistrations(), [])
+        XCTAssertEqual(viewModel.registration.displayName, "Custom MCP")
+        XCTAssertEqual(viewModel.registration.command, "")
+        XCTAssertEqual(viewModel.toolRows, [])
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
     @MainActor
     func testExternalMCPSettingsViewModelChecksConnectionAndRefreshesToolCatalog() async throws {
         let registration = MCPServerRegistration(
@@ -497,9 +547,7 @@ final class ExternalMCPTests: XCTestCase {
     }
 
     private func makeStdioServerScript() throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let directory = try temporaryDirectory()
         let scriptURL = directory.appendingPathComponent("fake-mcp.sh")
         let script = """
         #!/bin/sh
@@ -522,6 +570,13 @@ final class ExternalMCPTests: XCTestCase {
         try script.write(to: scriptURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
         return scriptURL
+    }
+
+    private func temporaryDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
     }
 }
 

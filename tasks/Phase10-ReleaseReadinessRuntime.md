@@ -323,6 +323,13 @@
 - [x] display name / command / arguments / working directory に quote を含むユーザー入力でも保存と復元が壊れない。
 - [x] 完了条件: MCP registration が app restart 後も残り、外部連携なしの release path に UserDefaults / in-memory success path が混ざらない。
 
+### P10-038: MCP registration CRUD delete path
+
+- [x] `SQLiteMCPServerRegistrationStore` は file-backed SQLite を再オープンしても登録を復元できることを regression test で確認する。
+- [x] `ExternalMCPSettingsViewModel` に登録削除 API を追加し、保存済み MCP registration を空配列として永続削除できる。
+- [x] Settings の External MCP セクションに Delete button を追加し、不要または壊れた登録を blank 保存で残さず消せる。
+- [x] 完了条件: MCP registration は create / update / delete が runtime UI と永続 store の両方で成立する。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
