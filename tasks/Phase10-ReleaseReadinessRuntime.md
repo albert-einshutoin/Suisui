@@ -343,6 +343,12 @@
 - [x] manual release evidence は packaged artifact checksum が無い状態では作成できない。
 - [x] 完了条件: clean environment / login item の手動確認は、署名・公証後に生成された配布 artifact と確認環境が結び付かない限り証跡として保存されない。
 
+### P10-041: Release package notarization gate
+
+- [x] `package_release.sh` は既定で signed app だけでなく stapled / Gatekeeper accepted app を要求する。
+- [x] 開発機の packaging smoke は `SOLOPM_REQUIRE_SIGNED_PACKAGE=0` と `SOLOPM_REQUIRE_NOTARIZED_PACKAGE=0` の両方を明示した場合だけ通せる。
+- [x] 完了条件: public alpha 用 DMG / ZIP は notarization / stapler / Gatekeeper validation を通った app bundle からだけ作成される。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

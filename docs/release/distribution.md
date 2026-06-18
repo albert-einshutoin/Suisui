@@ -28,8 +28,12 @@ SOLOPM_PACKAGE_FORMAT=all ./script/package_release.sh
 署名環境がない開発機で packaging smoke だけ確認する場合は、明示的に署名要求を外す。
 
 ```bash
-SOLOPM_REQUIRE_SIGNED_PACKAGE=0 ./script/package_release.sh
+SOLOPM_REQUIRE_SIGNED_PACKAGE=0 \
+SOLOPM_REQUIRE_NOTARIZED_PACKAGE=0 \
+./script/package_release.sh
 ```
+
+release artifact を作る通常実行では、`SOLOPM_REQUIRE_SIGNED_PACKAGE=1` と `SOLOPM_REQUIRE_NOTARIZED_PACKAGE=1` が既定値になる。つまり `codesign --verify`、`xcrun stapler validate`、`spctl -a -vv` を通らない app bundle からは配布用 DMG / ZIP を作らない。
 
 ## Checksum
 

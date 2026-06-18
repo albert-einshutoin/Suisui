@@ -17,6 +17,7 @@ MARKETING_VERSION="${MARKETING_VERSION:?MARKETING_VERSION is required}"
 CURRENT_PROJECT_VERSION="${CURRENT_PROJECT_VERSION:?CURRENT_PROJECT_VERSION is required}"
 PACKAGE_FORMAT="${SOLOPM_PACKAGE_FORMAT:-dmg}"
 REQUIRE_SIGNED_PACKAGE="${SOLOPM_REQUIRE_SIGNED_PACKAGE:-1}"
+REQUIRE_NOTARIZED_PACKAGE="${SOLOPM_REQUIRE_NOTARIZED_PACKAGE:-1}"
 
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
@@ -44,12 +45,26 @@ case "$REQUIRE_SIGNED_PACKAGE" in
     ;;
 esac
 
+case "$REQUIRE_NOTARIZED_PACKAGE" in
+  0|1)
+    ;;
+  *)
+    echo "SOLOPM_REQUIRE_NOTARIZED_PACKAGE must be 0 or 1" >&2
+    exit 2
+    ;;
+esac
+
 if [[ ! -d "$APP_BUNDLE" ]]; then
   SOLOPM_BUILD_CONFIGURATION=release "$ROOT_DIR/script/build_and_run.sh" --build-only
 fi
 
 if [[ "$REQUIRE_SIGNED_PACKAGE" == "1" ]]; then
   codesign --verify --strict --deep --verbose=2 "$APP_BUNDLE"
+fi
+
+if [[ "$REQUIRE_NOTARIZED_PACKAGE" == "1" ]]; then
+  xcrun stapler validate "$APP_BUNDLE"
+  spctl -a -vv "$APP_BUNDLE"
 fi
 
 rm -rf "$RELEASE_DIR" "$STAGING_DIR"

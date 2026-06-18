@@ -385,6 +385,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SOLOPM_REQUIRE_SIGNED_PACKAGE"))
     }
 
+    func testDistributionPackageScriptRequiresNotarizedAppByDefault() throws {
+        let script = try readPackageFile("script/package_release.sh")
+        let distribution = try readPackageFile("docs/release/distribution.md")
+
+        XCTAssertTrue(script.contains("SOLOPM_REQUIRE_NOTARIZED_PACKAGE"))
+        XCTAssertTrue(script.contains("xcrun stapler validate"))
+        XCTAssertTrue(script.contains("spctl -a -vv"))
+        XCTAssertTrue(distribution.contains("SOLOPM_REQUIRE_NOTARIZED_PACKAGE=0"))
+    }
+
     func testReleaseDocsCoverNotarizationDistributionAndManualChecks() throws {
         let notarization = try readPackageFile("docs/release/notarization.md")
         let distribution = try readPackageFile("docs/release/distribution.md")
