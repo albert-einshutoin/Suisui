@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BLOCKER_COUNT=0
-MOCK_PATTERN="Fake|Mock|InMemory|Static|Demo|sample|canned|stub|skeleton|placeholder|TODO|FIXME|:memory:|not implemented|NotImplemented|fatalError|preconditionFailure"
+MOCK_PATTERN="(?i:fake|mock|demo|canned|stub|skeleton|todo|fixme|not[[:space:]_-]*implemented|notimplemented|inmemory)|(?i:(^|[^[:alnum:]_])(sample|placeholder)([^[:alnum:]_]|$))|Static[A-Za-z0-9_]*|:memory:|fatalError|preconditionFailure"
 RUNTIME_SOURCE_DIRS=(
   "$ROOT_DIR/Sources/SoloPMCore"
   "$ROOT_DIR/Sources/SoloPMApp"

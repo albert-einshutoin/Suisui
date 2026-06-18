@@ -255,11 +255,57 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Sources/SoloPMCore"))
         XCTAssertTrue(script.contains("Sources/SoloPMApp"))
         XCTAssertTrue(script.contains("Sources/SoloPMCLI"))
-        XCTAssertTrue(script.contains("Fake|Mock|InMemory|Static|Demo|sample|canned|stub"))
+        XCTAssertTrue(script.contains("(?i:fake|mock|demo|canned|stub|skeleton|todo|fixme"))
+        XCTAssertTrue(script.contains("not[[:space:]_-]*implemented"))
+        XCTAssertTrue(script.contains("(?i:(^|[^[:alnum:]_])(sample|placeholder)([^[:alnum:]_]|$))"))
+        XCTAssertTrue(script.contains("Static[A-Za-z0-9_]*"))
+        XCTAssertFalse(script.contains("Fake|Mock|InMemory|Static|Demo|sample|canned|stub"))
         XCTAssertTrue(script.contains("tasks/Phase*.md"))
         XCTAssertTrue(script.contains("tasks/README.md"))
         XCTAssertTrue(script.contains("verify_release_environment.sh"))
         XCTAssertTrue(script.contains("BLOCKER"))
+    }
+
+    func testReleaseReadinessRuntimeMarkerPatternCatchesLowercaseMarkersWithoutCommonFalsePositives() throws {
+        let availability = try runTool(["rg", "--version"])
+        try XCTSkipIf(availability.exitCode != 0, "rg is required to exercise the release marker pattern")
+
+        let script = try readPackageFile("script/release_readiness_report.sh")
+        guard let patternLine = script
+            .split(separator: "\n")
+            .first(where: { $0.hasPrefix("MOCK_PATTERN=\"") }) else {
+            return XCTFail("release readiness report must define MOCK_PATTERN")
+        }
+        let pattern = String(patternLine.dropFirst("MOCK_PATTERN=\"".count).dropLast())
+
+        let scanDirectory = packageRoot()
+            .appendingPathComponent(".build/test-runtime-marker-scan", isDirectory: true)
+        let markerFile = scanDirectory.appendingPathComponent("RuntimeMarker.swift")
+        let benignFile = scanDirectory.appendingPathComponent("BenignRuntimeNames.swift")
+        try FileManager.default.createDirectory(at: scanDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scanDirectory) }
+
+        try """
+        final class LocalmockExecutor {}
+        struct StaticPlanningProvider {}
+        let future = "Not_Implemented"
+        let memoryDatabase = ":memory:"
+        """.write(to: markerFile, atomically: true, encoding: .utf8)
+        try """
+        let settings = [AVSampleRateKey: 44_100]
+        private struct ArchivedProjectPlaceholder {}
+        static func buildProductionValue() {}
+        """.write(to: benignFile, atomically: true, encoding: .utf8)
+
+        let markerResult = try runTool(["rg", "-n", pattern, markerFile.path])
+        XCTAssertEqual(markerResult.exitCode, 0, markerResult.output)
+        XCTAssertTrue(markerResult.output.contains("LocalmockExecutor"))
+        XCTAssertTrue(markerResult.output.contains("StaticPlanningProvider"))
+        XCTAssertTrue(markerResult.output.contains("Not_Implemented"))
+        XCTAssertTrue(markerResult.output.contains(":memory:"))
+
+        let benignResult = try runTool(["rg", "-n", pattern, benignFile.path])
+        XCTAssertEqual(benignResult.exitCode, 1, benignResult.output)
     }
 
     func testDistributionPackageScriptBuildsDmgWithApplicationsLinkAndChecksums() throws {
@@ -319,6 +365,23 @@ final class ReleasePipelineTests: XCTestCase {
         process.arguments = ["bash", packageRoot().appendingPathComponent(relativePath).path] + arguments
         process.currentDirectoryURL = packageRoot()
         process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
+
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+
+        try process.run()
+        process.waitUntilExit()
+
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
+    }
+
+    private func runTool(_ arguments: [String]) throws -> (exitCode: Int32, output: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = arguments
+        process.currentDirectoryURL = packageRoot()
 
         let output = Pipe()
         process.standardOutput = output
