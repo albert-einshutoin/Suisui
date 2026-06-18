@@ -1,5 +1,6 @@
 import SoloPMCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
@@ -493,7 +494,7 @@ private struct BoardColumnView: View {
     let onCreateTask: (String, String, ProjectTaskPriority, String?) -> Void
     let onSelectTask: (Int64) -> Void
     let onMoveTask: (Int64, ProjectTaskStatus) -> Void
-    let onMoveDroppedTasks: ([String], ProjectTaskStatus) -> Bool
+    let onMoveDroppedTasks: ([Int64], ProjectTaskStatus) -> Bool
 
     @State private var isDropTargeted = false
 
@@ -557,7 +558,7 @@ private struct BoardColumnView: View {
                         onSelect: { onSelectTask(task.id) },
                         onMoveStatus: { status in onMoveTask(task.id, status) }
                     )
-                    .draggable(String(task.id)) {
+                    .draggable(ProjectTaskDragPayload(taskID: task.id)) {
                         BoardTaskDragPreview(task: task)
                     }
                     .contextMenu {
@@ -590,12 +591,24 @@ private struct BoardColumnView: View {
                 .stroke(isDropTargeted ? column.status.tint.opacity(0.72) : Color.secondary.opacity(0.14), lineWidth: isDropTargeted ? 1.5 : 1)
         }
         .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
-        .dropDestination(for: String.self) { taskIDs, _ in
-            onMoveDroppedTasks(taskIDs, column.status)
+        .dropDestination(for: ProjectTaskDragPayload.self) { payloads, _ in
+            onMoveDroppedTasks(payloads.map(\.taskID), column.status)
         } isTargeted: { isTargeted in
             isDropTargeted = isTargeted
         }
     }
+}
+
+private struct ProjectTaskDragPayload: Codable, Transferable {
+    let taskID: Int64
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .soloPMProjectTask)
+    }
+}
+
+private extension UTType {
+    static let soloPMProjectTask = UTType(exportedAs: "dev.solopm.project-task")
 }
 
 private struct StatusCountBadge: View {

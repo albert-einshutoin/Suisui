@@ -408,6 +408,30 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelMovesTypedDroppedTaskIDsAndNotifiesOnce() {
+        var changeCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+        let task = viewModel.createTask(title: "Drop typed task payload", status: .planned)
+        guard let task else {
+            XCTFail("Expected task creation to succeed before testing typed dropped payload movement.")
+            return
+        }
+        changeCount = 0
+
+        let didMove = viewModel.moveDroppedTasks(ids: [task.id], to: .blocked)
+
+        XCTAssertTrue(didMove)
+        XCTAssertEqual(changeCount, 1)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(viewModel.selectedTaskID, task.id)
+        XCTAssertEqual(viewModel.selectedTask?.status, .blocked)
+    }
+
+    @MainActor
     func testProjectBoardViewModelCanShowAndRestoreArchivedProjects() {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()

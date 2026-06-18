@@ -1044,6 +1044,14 @@
 - [x] Settings 保存時 validation と runtime provider validation と同じ `APIKeyValidator` を status refresh でも使う。
 - [x] 完了条件: 破損 Keychain 値が残っていても、ユーザーが「設定済み」と誤認して AI / STT 実行に進まない。
 
+### P10-135: Kanban drag uses a task-specific transfer payload
+
+- [x] Board card の drag payload は plain text `String` ではなく、SoloPM task 専用の `Transferable` payload にする。
+- [x] Drop target は typed payload から task ID を取り出し、既存の ViewModel validation 経由で status を永続化する。
+- [x] 旧 raw string validation は regression と defensive path として残し、不正 payload の部分移動を防ぐ。
+- [x] `AppExperienceSourceTests` と `ProjectBoardStoreTests` で typed drag payload と mouse-driven status move を固定する。
+- [x] 完了条件: 他アプリやテキスト入力由来の偶然の文字列 drop と、SoloPM task card drag operation を UI / code 上で分離する。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

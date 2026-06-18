@@ -91,8 +91,10 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
 
-        XCTAssertTrue(boardSource.contains("onMoveDroppedTasks(taskIDs, column.status)"))
+        XCTAssertTrue(boardSource.contains("onMoveDroppedTasks(payloads.map(\\.taskID), column.status)"))
         XCTAssertFalse(boardSource.contains("compactMap(Int64.init)"))
+        XCTAssertTrue(boardSource.contains("ProjectTaskDragPayload"))
+        XCTAssertTrue(coreSource.contains("moveDroppedTasks(ids taskIDs: [Int64], to status: ProjectTaskStatus)"))
         XCTAssertTrue(coreSource.contains("moveDroppedTasks(ids rawIDs: [String], to status: ProjectTaskStatus)"))
         XCTAssertTrue(coreSource.contains("Could not move task: invalid drag payload."))
     }
@@ -132,7 +134,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("task.status.previousStatus"))
         XCTAssertTrue(source.contains("task.status.nextStatus"))
         XCTAssertTrue(source.contains("onMoveTask(task.id, status)"))
-        XCTAssertTrue(source.contains(".draggable(String(task.id))"))
+        XCTAssertTrue(source.contains(".draggable(ProjectTaskDragPayload(taskID: task.id))"))
+        XCTAssertFalse(source.contains(".draggable(String(task.id))"))
         XCTAssertFalse(source.contains("Button {\n                        onSelectTask(task.id)\n                    } label: {\n                        BoardTaskCard"))
     }
 
@@ -143,14 +146,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("arrow.up.and.down.and.arrow.left.and.right"))
         XCTAssertTrue(source.contains("Drop to move to"))
         XCTAssertTrue(source.contains("isDropTargeted"))
-        XCTAssertTrue(source.contains(".dropDestination(for: String.self)"))
+        XCTAssertTrue(source.contains(".dropDestination(for: ProjectTaskDragPayload.self)"))
     }
 
     func testKanbanCardsUseTaskComponentDragPreview() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
         XCTAssertTrue(source.contains("BoardTaskDragPreview"))
-        XCTAssertTrue(source.contains(".draggable(String(task.id)) {"))
+        XCTAssertTrue(source.contains(".draggable(ProjectTaskDragPayload(taskID: task.id)) {"))
         XCTAssertTrue(source.contains("BoardTaskDragPreview(task: task)"))
     }
 

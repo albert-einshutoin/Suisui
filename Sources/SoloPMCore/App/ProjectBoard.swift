@@ -670,6 +670,15 @@ public final class ProjectBoardViewModel: ObservableObject {
             taskIDs.append(taskID)
         }
 
+        return moveDroppedTasks(ids: taskIDs, to: status)
+    }
+
+    @discardableResult
+    public func moveDroppedTasks(ids taskIDs: [Int64], to status: ProjectTaskStatus) -> Bool {
+        guard !taskIDs.isEmpty else {
+            return false
+        }
+
         let visibleTaskIDs = Set(snapshot.projects.flatMap(\.tasks).map(\.id))
         guard taskIDs.allSatisfy({ visibleTaskIDs.contains($0) }) else {
             errorMessage = "Could not move task: task is no longer available."
