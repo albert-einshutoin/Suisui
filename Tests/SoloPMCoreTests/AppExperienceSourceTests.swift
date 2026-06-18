@@ -484,6 +484,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains("ForEach(AIProvider.allCases"))
     }
 
+    func testSettingsShowsOpenAIProviderSmokeReadiness() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(appSource.contains("OpenAI Provider Smoke"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.openAIProviderSmokeStatusLabel"))
+    }
+
     func testShortcutSettingsDoesNotDefaultToInMemoryClient() throws {
         let source = try readPackageFile("Sources/SoloPMCore/Shortcuts/ShortcutRegistration.swift")
 

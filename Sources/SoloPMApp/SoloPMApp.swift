@@ -814,6 +814,7 @@ private struct SettingsView: View {
                     Label("Save Provider Selection", systemImage: "square.and.arrow.down")
                 }
                 LabeledContent("OpenAI API Key", value: settingsViewModel.openAIAPIKeyStatusLabel)
+                LabeledContent("OpenAI Provider Smoke", value: settingsViewModel.openAIProviderSmokeStatusLabel)
                 SecureField(
                     "OpenAI API Key",
                     text: Binding(

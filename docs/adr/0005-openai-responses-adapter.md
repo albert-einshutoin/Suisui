@@ -11,7 +11,7 @@ SoloPM Phase 1 needs an LLM provider that converts a planning prompt into an `Ac
 
 Add an `OpenAIResponsesProvider` behind the existing `LLMProvider` protocol. Unit tests cover URLRequest construction, response text extraction, status-code mapping, and fake HTTP success paths. Live OpenAI calls are not part of the default test suite.
 
-The adapter uses a configurable timeout with a 60-second default and does not retry automatically in Phase 1.
+The adapter uses a configurable timeout with a 60-second default and does not retry automatically in Phase 1. The default model id is `gpt-5.2`, sourced through `LLMProviderCatalog` / `OpenAIResponsesConfiguration`; missing model settings must not fall through to an implicit provider-side or highest-cost model.
 
 ## Options Considered
 

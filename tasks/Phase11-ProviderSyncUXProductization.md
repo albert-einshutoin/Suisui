@@ -65,11 +65,11 @@
 
 ## P11-011: OpenAI Responses as reference implementation
 
-- [ ] `OpenAIResponsesProvider` を reference adapter とし、Action Plan JSON schema validationを必ず通す。
-- [ ] Responses APIのsuccess schema mismatchは `LLMProviderError.invalidResponse` に統一する。
-- [ ] provider smokeはAPI key未設定なら skip ではなく `notConfigured` としてSettingsに表示する。
-- [ ] model id未設定時のdefaultをdocsに明記し、勝手に高額modelへ落ちない。
-- [ ] 完了条件: 他provider実装が参照できる一番堅いbaselineになる。
+- [x] `OpenAIResponsesProvider` を reference adapter とし、Action Plan JSON schema validationを必ず通す。
+- [x] Responses APIのsuccess schema mismatchは `LLMProviderError.invalidResponse` に統一する。
+- [x] provider smokeはAPI key未設定なら skip ではなく `notConfigured` としてSettingsに表示する。
+- [x] model id未設定時のdefaultをdocsに明記し、勝手に高額modelへ落ちない。
+- [x] 完了条件: 他provider実装が参照できる一番堅いbaselineになる。
 
 ## P11-012: Claude Messages adapter
 

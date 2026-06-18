@@ -168,6 +168,7 @@ public final class AppSettingsViewModel: ObservableObject {
     @Published public private(set) var settings: AppSettings
     @Published public private(set) var openAIAPIKeyInput: String
     @Published public private(set) var openAIAPIKeyStatusLabel: String
+    @Published public private(set) var openAIProviderSmokeStatusLabel: String
     @Published public private(set) var openRouterAPIKeyInput: String
     @Published public private(set) var openRouterAPIKeyStatusLabel: String
     @Published public private(set) var keychainSecretKeyInput: String
@@ -195,6 +196,7 @@ public final class AppSettingsViewModel: ObservableObject {
         self.settings = loadedSettings.normalizedForRuntime
         self.openAIAPIKeyInput = ""
         self.openAIAPIKeyStatusLabel = "Not configured"
+        self.openAIProviderSmokeStatusLabel = "notConfigured"
         self.openRouterAPIKeyInput = ""
         self.openRouterAPIKeyStatusLabel = "Not configured"
         self.keychainSecretKeyInput = ""
@@ -417,6 +419,7 @@ public final class AppSettingsViewModel: ObservableObject {
     public func refreshOpenAIAPIKeyStatus() -> Bool {
         do {
             openAIAPIKeyStatusLabel = try apiKeyStatusLabel(for: .openAIAPIKey)
+            openAIProviderSmokeStatusLabel = providerSmokeStatusLabel(forAPIKeyStatusLabel: openAIAPIKeyStatusLabel)
             if openAIAPIKeyStatusLabel == "Invalid" {
                 reportInvalidStoredAPIKey()
                 return false
@@ -424,6 +427,7 @@ public final class AppSettingsViewModel: ObservableObject {
             return true
         } catch {
             openAIAPIKeyStatusLabel = "Unavailable"
+            openAIProviderSmokeStatusLabel = "unavailable"
             errorMessage = "API key status could not be read from Keychain."
             successMessage = nil
             return false
@@ -455,6 +459,19 @@ public final class AppSettingsViewModel: ObservableObject {
 
     private func unavailableMessage(for provider: AIProvider) -> String {
         "\(provider.displayName) is not available in this build."
+    }
+
+    private func providerSmokeStatusLabel(forAPIKeyStatusLabel apiKeyStatusLabel: String) -> String {
+        switch apiKeyStatusLabel {
+        case "Configured":
+            "readyForManualSmoke"
+        case "Invalid":
+            "invalidConfiguration"
+        case "Unavailable":
+            "unavailable"
+        default:
+            "notConfigured"
+        }
     }
 
     @discardableResult

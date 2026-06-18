@@ -258,6 +258,23 @@ final class OpenAIResponsesProviderTests: XCTestCase {
         }
     }
 
+    func testProviderMapsSuccessfulEnvelopeSchemaMismatchToInvalidResponse() async throws {
+        let provider = OpenAIResponsesProvider(
+            secretStore: InMemorySecretStore(values: [.openAIAPIKey: "sk-test"]),
+            httpClient: StubHTTPDataClient(data: Data(#"{"output":"not-an-array"}"#.utf8), statusCode: 200)
+        )
+
+        do {
+            _ = try await provider.generatePlan(for: PlanningRequest(userInput: "Create a task"))
+            XCTFail("Expected success envelope mismatch to fail.")
+        } catch {
+            XCTAssertEqual(
+                error as? LLMProviderError,
+                .invalidResponse("OpenAI Responses payload could not be decoded.")
+            )
+        }
+    }
+
     func testProviderParsesSuccessfulResponse() async throws {
         let store = InMemorySecretStore(values: [.openAIAPIKey: "sk-test"])
         let provider = OpenAIResponsesProvider(
@@ -289,6 +306,29 @@ final class OpenAIResponsesProviderTests: XCTestCase {
         XCTAssertEqual(response.providerID, "openai.responses")
         XCTAssertEqual(response.actionPlan?.id, "plan-1")
         XCTAssertTrue(response.validationResult.isValid)
+    }
+
+    func testProviderReturnsBlockingValidationForActionPlanSchemaMismatch() async throws {
+        let provider = OpenAIResponsesProvider(
+            secretStore: InMemorySecretStore(values: [.openAIAPIKey: "sk-test"]),
+            httpClient: StubHTTPDataClient(
+                data: Data(
+                    """
+                    {
+                      "output_text": "{\\"id\\":\\"plan-1\\",\\"userInput\\":\\"Create a task\\",\\"summary\\":\\"Create task\\",\\"riskLevel\\":\\"write\\",\\"requiresApproval\\":true,\\"unexpected\\":true,\\"actions\\":[{\\"id\\":\\"action-1\\",\\"tool\\":\\"task.create\\"}]}"
+                    }
+                    """.utf8
+                ),
+                statusCode: 200
+            )
+        )
+
+        let response = try await provider.generatePlan(for: PlanningRequest(userInput: "Create a task"))
+
+        XCTAssertEqual(response.providerID, "openai.responses")
+        XCTAssertNil(response.actionPlan)
+        XCTAssertFalse(response.validationResult.isValid)
+        XCTAssertEqual(response.validationResult.issues.first?.path, "unexpected")
     }
 }
 

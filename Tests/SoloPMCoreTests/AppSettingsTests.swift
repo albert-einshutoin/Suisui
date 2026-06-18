@@ -81,6 +81,7 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Unavailable")
         XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Unavailable")
+        XCTAssertEqual(viewModel.openAIProviderSmokeStatusLabel, "unavailable")
         XCTAssertEqual(viewModel.errorMessage, "API key status could not be read from Keychain.")
     }
 
@@ -96,6 +97,7 @@ final class AppSettingsTests: XCTestCase {
         )
 
         XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Invalid")
+        XCTAssertEqual(viewModel.openAIProviderSmokeStatusLabel, "invalidConfiguration")
         XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Not configured")
         XCTAssertEqual(viewModel.errorMessage, "Stored API key is invalid. Re-enter it in Settings.")
         XCTAssertFalse(viewModel.errorMessage?.contains("sk-live") ?? true)
@@ -113,6 +115,7 @@ final class AppSettingsTests: XCTestCase {
         )
 
         XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Not configured")
+        XCTAssertEqual(viewModel.openAIProviderSmokeStatusLabel, "notConfigured")
         XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Invalid")
         XCTAssertEqual(viewModel.errorMessage, "Stored API key is invalid. Re-enter it in Settings.")
         XCTAssertFalse(viewModel.errorMessage?.contains("sk-or-live") ?? true)
@@ -132,6 +135,7 @@ final class AppSettingsTests: XCTestCase {
         viewModel.saveOpenAIAPIKey()
 
         XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Unavailable")
+        XCTAssertEqual(viewModel.openAIProviderSmokeStatusLabel, "unavailable")
         XCTAssertEqual(viewModel.errorMessage, "API key status could not be read from Keychain.")
         XCTAssertNil(viewModel.successMessage)
     }
@@ -168,12 +172,14 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertEqual(try secretStore.read(.openAIAPIKey), "sk-test-secret")
         XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Configured")
+        XCTAssertEqual(viewModel.openAIProviderSmokeStatusLabel, "readyForManualSmoke")
         XCTAssertNil(defaults.data(forKey: "app.settings"))
 
         viewModel.deleteOpenAIAPIKey()
 
         XCTAssertNil(try secretStore.read(.openAIAPIKey))
         XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Not configured")
+        XCTAssertEqual(viewModel.openAIProviderSmokeStatusLabel, "notConfigured")
     }
 
     @MainActor
@@ -191,8 +197,24 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertNil(try secretStore.read(.openAIAPIKey))
         XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Not configured")
+        XCTAssertEqual(viewModel.openAIProviderSmokeStatusLabel, "notConfigured")
         XCTAssertEqual(viewModel.errorMessage, "API key cannot contain whitespace.")
         XCTAssertFalse(viewModel.errorMessage?.contains(keyPrefix) ?? true)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelShowsOpenAIProviderSmokeNotConfiguredWithoutAPIKey() throws {
+        let suiteName = "SoloPM.AppSettingsOpenAISmokeNotConfigured.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore()
+        )
+
+        XCTAssertEqual(viewModel.openAIProviderSmokeStatusLabel, "notConfigured")
+        XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Not configured")
     }
 
     @MainActor
