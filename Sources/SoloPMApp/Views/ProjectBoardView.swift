@@ -24,6 +24,8 @@ struct ProjectBoardView: View {
 
                 Divider()
 
+                SidebarAppearanceSection(preference: $appearancePreference)
+
                 Toggle(
                     "Show Archived",
                     isOn: Binding(
@@ -421,6 +423,24 @@ private struct AppearancePicker: View {
     }
 }
 
+private struct SidebarAppearanceSection: View {
+    @Binding var preference: SoloPMAppearancePreference
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Theme", systemImage: "circle.lefthalf.filled")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            AppearancePicker(preference: $preference)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 8)
+    }
+}
+
 private struct ProjectKanbanBoard: View {
     let project: ProjectBoardProject
     @Binding var composingStatus: ProjectTaskStatus?
@@ -537,7 +557,9 @@ private struct BoardColumnView: View {
                         onSelect: { onSelectTask(task.id) },
                         onMoveStatus: { status in onMoveTask(task.id, status) }
                     )
-                    .draggable(String(task.id))
+                    .draggable(String(task.id)) {
+                        BoardTaskDragPreview(task: task)
+                    }
                     .contextMenu {
                         Button {
                             onSelectTask(task.id)
@@ -710,6 +732,41 @@ private struct BoardTaskCard: View {
         .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
         .contentShape(RoundedRectangle(cornerRadius: 8))
         .onTapGesture(perform: onSelect)
+    }
+}
+
+private struct BoardTaskDragPreview: View {
+    let task: ProjectBoardTask
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 7) {
+                Image(systemName: task.status.systemImage)
+                    .foregroundStyle(task.status.tint)
+
+                Text(task.title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+            }
+
+            HStack(spacing: 8) {
+                Label(task.status.title, systemImage: "arrow.right.arrow.left")
+                    .foregroundStyle(task.status.tint)
+                Label(task.priority.label, systemImage: "flag")
+                    .foregroundStyle(task.priority.color)
+            }
+            .font(.caption)
+            .lineLimit(1)
+        }
+        .padding(10)
+        .frame(width: 220, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(task.status.tint.opacity(0.36))
+        }
+        .shadow(color: Color.black.opacity(0.10), radius: 12, x: 0, y: 4)
     }
 }
 

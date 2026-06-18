@@ -115,6 +115,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("appearancePreference: $appearancePreference"))
     }
 
+    func testProjectBoardExposesAppearanceControlFromSidebar() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(boardSource.contains("SidebarAppearanceSection"))
+        XCTAssertTrue(boardSource.contains("SidebarAppearanceSection(preference: $appearancePreference)"))
+        XCTAssertTrue(boardSource.contains("AppearancePicker(preference: $preference)"))
+    }
+
     func testKanbanTaskCardsExposeMouseDrivenStatusMoveControls() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
@@ -136,6 +144,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("Drop to move to"))
         XCTAssertTrue(source.contains("isDropTargeted"))
         XCTAssertTrue(source.contains(".dropDestination(for: String.self)"))
+    }
+
+    func testKanbanCardsUseTaskComponentDragPreview() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(source.contains("BoardTaskDragPreview"))
+        XCTAssertTrue(source.contains(".draggable(String(task.id)) {"))
+        XCTAssertTrue(source.contains("BoardTaskDragPreview(task: task)"))
     }
 
     func testKanbanBoardUsesAdaptiveSampleInspiredCardStyling() throws {

@@ -968,6 +968,14 @@
 - [x] `ExternalMCPTests` で string `serverInfo` と number `serverInfo.name` が invalid response になることを固定する。
 - [x] 完了条件: ユーザー登録 MCP server の壊れた initialize identity metadata を正常接続として扱わない。
 
+### P10-125: Board theme switching and mouse drag affordances stay discoverable
+
+- [x] Project Board の左サイドバーからも `System` / `Light` / `Dark` を切り替えられ、プロジェクト未選択時でも外観を変更できる。
+- [x] 既存の header / Settings の appearance preference と同じ `@AppStorage` key を使い、画面ごとにテーマ状態が分岐しない。
+- [x] Kanban task card の drag operation は raw payload 文字列ではなく、タスクカードとして認識できる preview を表示する。
+- [x] `AppExperienceSourceTests` でサイドバーの appearance control と task component drag preview の存在を固定する。
+- [x] 完了条件: `ui-samples/` の3ペインUIに近い導線で、Light/Dark切替とマウスによるステータス移動が初見でも見つけやすい。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
