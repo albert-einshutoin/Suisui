@@ -52,6 +52,11 @@ if [[ "$REQUIRE_RELEASE_APPCAST" == "1" ]]; then
     exit 2
   fi
 
+  if ! grep -E 'url="https://[^"]+"' "$APPCAST_FILE" >/dev/null; then
+    echo "release appcast enclosure URL must use https" >&2
+    exit 2
+  fi
+
   if ! grep -E 'sparkle:edSignature="[^"]+"' "$APPCAST_FILE" >/dev/null; then
     echo "release appcast is missing Sparkle edSignature" >&2
     exit 2

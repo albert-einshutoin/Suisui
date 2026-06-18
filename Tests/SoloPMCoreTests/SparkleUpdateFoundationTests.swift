@@ -108,6 +108,30 @@ final class SparkleUpdateFoundationTests: XCTestCase {
         XCTAssertTrue(missingSignatureResult.output.contains("release appcast is missing Sparkle edSignature"))
     }
 
+    func testReleaseAppcastVerifierRequiresHTTPSURL() throws {
+        let releaseLikeAppcastURL = packageRoot()
+            .appendingPathComponent(".build/test-release-appcast-http-url.xml")
+        try FileManager.default.createDirectory(
+            at: releaseLikeAppcastURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try readPackageFile("packaging/appcast.sample.xml")
+            .replacingOccurrences(of: "https://example.com/solopm/", with: "http://updates.example.invalid/solopm/")
+            .replacingOccurrences(of: "local-smoke-signature-placeholder", with: "release-signature-smoke-value")
+            .replacingOccurrences(of: #" length="0""#, with: #" length="12345""#)
+            .write(to: releaseLikeAppcastURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: releaseLikeAppcastURL) }
+
+        let result = try runScript(
+            "script/verify_appcast.sh",
+            arguments: [releaseLikeAppcastURL.path],
+            environment: ["SOLOPM_REQUIRE_RELEASE_APPCAST": "1"]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release appcast enclosure URL must use https"))
+    }
+
     func testLocalSparkleEnvironmentFileIsIgnored() throws {
         let gitignore = try readPackageFile(".gitignore")
         let ignoredPaths = gitignore

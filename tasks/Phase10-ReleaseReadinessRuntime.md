@@ -427,6 +427,7 @@
 ### P10-054: Release appcast gate
 
 - [x] `verify_appcast.sh` は release mode で `packaging/appcast.sample.xml`、placeholder signature、example URL を拒否する。
+- [x] `verify_appcast.sh` は release mode で enclosure URL が `https://` でない appcast を拒否する。
 - [x] `verify_appcast.sh` は release mode で `sparkle:edSignature` 欠落と `length="0"` enclosure を拒否する。
 - [x] release checklist は generated `dist/releases/appcast.xml` を `SOLOPM_REQUIRE_RELEASE_APPCAST=1` で検証する。
 - [x] `verify_release_environment.sh` は generated release appcast が存在し、release mode の appcast verification を通ることを release blocker にする。
