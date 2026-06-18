@@ -63,6 +63,36 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.auditErrorMessage, "Planning audit log failed: unavailable")
     }
 
+    func testRuntimeValidationMessageBlocksPlanGenerationUntilRuntimeIsFixed() async {
+        let message = "Voice planning is unavailable because audit logging or local data stores could not be opened."
+        let viewModel = VoiceCaptureViewModel(
+            phase: .failed(message),
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            )),
+            runtimeValidationMessage: message
+        )
+
+        viewModel.updateDraftText("Create a task")
+
+        XCTAssertFalse(viewModel.canGeneratePlan)
+        XCTAssertEqual(viewModel.phase, .failed(message))
+
+        await viewModel.generatePlan()
+
+        XCTAssertNil(viewModel.planningResponse)
+        XCTAssertEqual(viewModel.phase, .failed(message))
+
+        viewModel.clear()
+
+        XCTAssertEqual(viewModel.phase, .failed(message))
+    }
+
     func testRecordingFlowTranscribesIntoDraft() async {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),

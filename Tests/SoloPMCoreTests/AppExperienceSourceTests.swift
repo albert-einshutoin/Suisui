@@ -379,6 +379,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(reviewFactory.contains("Review execution tools are unavailable because audit logging or local data stores could not be opened."))
     }
 
+    func testVoicePlanningRequiresAuditLoggerBeforeGeneration() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let voiceFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeVoiceCaptureViewModel()"))
+        let nextFactoryStart = try XCTUnwrap(appSource.range(of: "private static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
+        let voiceFactory = String(appSource[voiceFactoryStart.lowerBound..<nextFactoryStart.lowerBound])
+
+        XCTAssertFalse(voiceFactory.contains("try? makeAuditLogger()"))
+        XCTAssertTrue(voiceFactory.contains("auditLogger = try makeAuditLogger()"))
+        XCTAssertTrue(voiceFactory.contains("runtimeValidationMessage: runtimeValidationMessage"))
+        XCTAssertTrue(voiceFactory.contains("Voice planning is unavailable because audit logging or local data stores could not be opened."))
+    }
+
     func testReviewActionButtonsDoNotDropViewModelErrors() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 

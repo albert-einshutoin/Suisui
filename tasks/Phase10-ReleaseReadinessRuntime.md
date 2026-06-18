@@ -664,6 +664,13 @@
 - [x] 既存の permission denied path は `failed` request として永続化されることを維持する。
 - [x] 完了条件: 通知作成が失敗したのに request が `pending` のまま残る場合、ユーザーに永続化不整合が見える。
 
+### P10-082: Voice planning requires runtime audit logging
+
+- [x] `makeVoiceCaptureViewModel()` は `try? makeAuditLogger()` で planning audit unavailable を握りつぶさない。
+- [x] audit logger / local data store が開けない場合は `VoiceCaptureViewModel.runtimeValidationMessage` で plan generation を止める。
+- [x] draft edit / Clear で runtime validation failure が消えないことを unit test で確認する。
+- [x] 完了条件: AI 計画生成が監査なし runtime path で成功しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

@@ -1114,15 +1114,26 @@ private enum AppRuntimeFactory {
     @MainActor
     static func makeVoiceCaptureViewModel() -> VoiceCaptureViewModel {
         let secretStore = makeSecretStore()
-        let auditLogger = try? makeAuditLogger()
         let settingsResult = loadRuntimeSettings()
-        let initialPhase = settingsResult.errorMessage.map(VoiceCapturePhase.failed) ?? .idle
+        let auditLogger: (any AuditLogger)?
+        let runtimeValidationMessage: String?
+        let initialFailureMessage: String?
+        do {
+            auditLogger = try makeAuditLogger()
+            runtimeValidationMessage = nil
+            initialFailureMessage = settingsResult.errorMessage
+        } catch {
+            auditLogger = nil
+            runtimeValidationMessage = "Voice planning is unavailable because audit logging or local data stores could not be opened."
+            initialFailureMessage = runtimeValidationMessage
+        }
         return VoiceCaptureViewModel(
-            phase: initialPhase,
+            phase: initialFailureMessage.map(VoiceCapturePhase.failed) ?? .idle,
             audioRecorder: AVFoundationAudioRecorder(),
             sttProvider: makeSpeechToTextProvider(settings: settingsResult.settings, secretStore: secretStore),
             llmProvider: makeLLMProvider(settings: settingsResult.settings, secretStore: secretStore),
-            auditRecorder: auditLogger.map { PlanningAuditRecorder(logger: $0) }
+            auditRecorder: auditLogger.map { PlanningAuditRecorder(logger: $0) },
+            runtimeValidationMessage: runtimeValidationMessage
         )
     }
 

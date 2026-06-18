@@ -23,6 +23,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private let sttProvider: any SpeechToTextProvider
     private let llmProvider: any LLMProvider
     private let auditRecorder: PlanningAuditRecorder?
+    private let runtimeValidationMessage: String?
 
     public init(
         draft: TranscriptDraft = TranscriptDraft(),
@@ -30,7 +31,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         audioRecorder: any AudioRecorder,
         sttProvider: any SpeechToTextProvider,
         llmProvider: any LLMProvider,
-        auditRecorder: PlanningAuditRecorder? = nil
+        auditRecorder: PlanningAuditRecorder? = nil,
+        runtimeValidationMessage: String? = nil
     ) {
         self.draft = draft
         self.phase = phase
@@ -38,12 +40,17 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.sttProvider = sttProvider
         self.llmProvider = llmProvider
         self.auditRecorder = auditRecorder
+        self.runtimeValidationMessage = runtimeValidationMessage
         self.recordingState = audioRecorder.state
         self.auditErrorMessage = nil
     }
 
     public var canGeneratePlan: Bool {
-        draft.canGeneratePlan && phase != .generatingPlan && phase != .recording && phase != .transcribing
+        runtimeValidationMessage == nil
+            && draft.canGeneratePlan
+            && phase != .generatingPlan
+            && phase != .recording
+            && phase != .transcribing
     }
 
     public var isRecording: Bool {
@@ -55,7 +62,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
     public func updateDraftText(_ text: String) {
         draft.text = text
-        if case .failed = phase {
+        if case .failed = phase, runtimeValidationMessage == nil {
             phase = .idle
         }
     }
@@ -67,7 +74,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         recordedAudio = nil
         auditErrorMessage = nil
         recordingState = audioRecorder.state
-        phase = .idle
+        phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
     }
 
     public func startRecording(at date: Date = Date()) {
@@ -104,6 +111,11 @@ public final class VoiceCaptureViewModel: ObservableObject {
     ) async {
         guard draft.canGeneratePlan else {
             phase = .failed("Transcript is empty.")
+            return
+        }
+
+        if let runtimeValidationMessage {
+            phase = .failed(runtimeValidationMessage)
             return
         }
 
