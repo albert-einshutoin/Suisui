@@ -145,7 +145,7 @@ script/capture_ui_evidence.sh --doctor
 script/capture_ui_evidence.sh
 ```
 
-Then replace `docs/release/evidence/accessibility-voiceover.md` with the real VoiceOver pass for the same release-candidate app. The final file must use `Status: passed`, include the Project navigation -> Project board detail -> Open task -> Status controls -> Task inspector path, and remove all pending/template language.
+Then replace `docs/release/evidence/accessibility-voiceover.md` with the real VoiceOver pass for the same release-candidate app. The final file must use `Status: passed`, complete the release-candidate context fields, include the Project navigation -> Project board detail -> Open task -> Status controls -> Task inspector path, and remove all pending/template language.
 
 12. final readiness report
 

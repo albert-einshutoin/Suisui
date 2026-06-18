@@ -512,6 +512,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(evidence.contains("- Follow-up source/test link:"))
         XCTAssertTrue(evidence.contains("## Completion Instructions"))
         XCTAssertTrue(evidence.contains("Remove all `pending` and unchecked `[ ]` markers."))
+        XCTAssertTrue(phase.contains("[x] `release_readiness_report.sh` はVoiceOver証跡のrelease-candidate context空欄/テンプレート値をblockerにする。"))
         XCTAssertTrue(phase.contains("[x] `docs/release/evidence/accessibility-voiceover.md` は実機確認者がmacOS/build/checked-by/failure notesを埋められる形にする。"))
     }
 

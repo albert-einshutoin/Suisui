@@ -2018,7 +2018,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("missing VoiceOver accessibility evidence file"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence is not marked passed"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence still contains pending/template/placeholder text"))
+        XCTAssertTrue(script.contains("VoiceOver accessibility evidence still contains unchecked checklist markers"))
+        XCTAssertTrue(script.contains("VoiceOver accessibility evidence missing release context"))
+        XCTAssertTrue(script.contains("VoiceOver accessibility evidence has template release context"))
         XCTAssertTrue(script.contains("NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass"))
+        XCTAssertTrue(script.contains("complete release-candidate context"))
         XCTAssertTrue(script.contains("section \"MCP Inspector evidence\""))
         XCTAssertTrue(script.contains("docs/release/evidence/mcp-inspector.md"))
         XCTAssertTrue(script.contains("Stable baseline: `2025-11-25`"))
@@ -2339,7 +2343,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         Status: passed
 
-        - Project navigation
+        - [ ] Project navigation
         - Project board detail
         - Open task
         - Status controls
@@ -2465,7 +2469,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         Status: pending. This template mentions `Status: passed` only as an instruction.
 
-        - Project navigation
+        - [ ] Project navigation
         - Project board detail
         - Open task
         - Status controls
@@ -2489,6 +2493,84 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence is not marked passed"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence still contains pending/template/placeholder text"))
         XCTAssertTrue(result.output.contains("NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass"))
+        XCTAssertTrue(result.output.contains("complete release-candidate context"))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+    }
+
+    func testReleaseReadinessReportFailsWhenVoiceOverEvidencePassedButReleaseContextIsBlank() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-blank-voiceover-context", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let evidenceDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("release", isDirectory: true)
+            .appendingPathComponent("evidence", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: evidenceDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: preflightURL, atomically: true, encoding: .utf8)
+        try """
+        # VoiceOver Accessibility Evidence
+
+        Status: passed
+
+        ## Release Candidate Context
+
+        - macOS version:
+        - App build:
+        - Bundle identifier: `dev.solopm.SoloPM`
+        - Checked by:
+        - Check date:
+        - Evidence source: signed or release-candidate `dist/SoloPM.app`
+
+        - [ ] Project navigation
+        - Project board detail
+        - Open task
+        - Status controls
+        - Task inspector
+        - Save Changes
+        - Delete Task confirmation
+        - No keyboard trap
+        - No unlabeled primary CRUD controls
+        """.write(to: evidenceDirectory.appendingPathComponent("accessibility-voiceover.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: preflightURL.path)
+
+        let result = try runTool(["bash", reportURL.path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing release context: macOS version"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing release context: App build"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing release context: Checked by"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing release context: Check date"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence has template release context: Evidence source"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence still contains unchecked checklist markers"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
     }
 

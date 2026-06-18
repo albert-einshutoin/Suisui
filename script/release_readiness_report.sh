@@ -33,6 +33,14 @@ VOICEOVER_REQUIRED_MARKERS=(
   "No keyboard trap"
   "No unlabeled primary CRUD controls"
 )
+VOICEOVER_REQUIRED_CONTEXT_LABELS=(
+  "macOS version"
+  "App build"
+  "Bundle identifier"
+  "Checked by"
+  "Check date"
+  "Evidence source"
+)
 MCP_EVIDENCE_REQUIRED_MARKERS=(
   "Generated:"
   "Scope: validate the release MCP stdio fixture"
@@ -336,9 +344,41 @@ else
   if grep -Eiq '(pending|todo|tbd|placeholder|sample|example|replace me)' "$voiceover_evidence_file"; then
     voiceover_blocker "VoiceOver accessibility evidence still contains pending/template/placeholder text"
   fi
+  if grep -F -- '- [ ]' "$voiceover_evidence_file" >/dev/null; then
+    voiceover_blocker "VoiceOver accessibility evidence still contains unchecked checklist markers"
+  fi
+
+  for context_label in "${VOICEOVER_REQUIRED_CONTEXT_LABELS[@]}"; do
+    context_value="$(
+      awk -v label="$context_label" '
+        index($0, "- " label ":") == 1 {
+          value = $0
+          sub("^- " label ":[[:space:]]*", "", value)
+          print value
+          found = 1
+          exit
+        }
+        END {
+          if (found != 1) {
+            exit 1
+          }
+        }
+      ' "$voiceover_evidence_file" || true
+    )"
+    compact_context_value="$(tr -d '[:space:]' <<<"$context_value")"
+
+    if [[ -z "$compact_context_value" ]]; then
+      voiceover_blocker "VoiceOver accessibility evidence missing release context: $context_label"
+      continue
+    fi
+
+    if grep -Eiq '(pending|todo|tbd|placeholder|sample|example|replace me|signed or release-candidate)' <<<"$context_value"; then
+      voiceover_blocker "VoiceOver accessibility evidence has template release context: $context_label"
+    fi
+  done
 fi
 if [[ "$voiceover_evidence_blocker_count" -gt 0 ]]; then
-  printf "NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass, Status: passed, complete focus-path notes, and no pending/template/unchecked markers.\n"
+  printf "NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass, Status: passed, complete release-candidate context, complete focus-path notes, and no pending/template/unchecked markers.\n"
 fi
 
 section "MCP Inspector evidence"
