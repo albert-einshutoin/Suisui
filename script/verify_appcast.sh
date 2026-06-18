@@ -29,10 +29,27 @@ fi
 # shellcheck source=/dev/null
 source "$METADATA_FILE"
 
-xmllint --noout "$APPCAST_FILE"
-grep -F "sparkle:version=\"$CURRENT_PROJECT_VERSION\"" "$APPCAST_FILE" >/dev/null
-grep -F "sparkle:shortVersionString=\"$MARKETING_VERSION\"" "$APPCAST_FILE" >/dev/null
-grep -F "$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.zip" "$APPCAST_FILE" >/dev/null
+if ! xmllint --noout "$APPCAST_FILE"; then
+  echo "appcast XML is invalid: $APPCAST_FILE" >&2
+  exit 2
+fi
+
+if ! grep -F "sparkle:version=\"$CURRENT_PROJECT_VERSION\"" "$APPCAST_FILE" >/dev/null \
+  && ! grep -F "<sparkle:version>$CURRENT_PROJECT_VERSION</sparkle:version>" "$APPCAST_FILE" >/dev/null; then
+  echo "appcast missing current Sparkle build version: $CURRENT_PROJECT_VERSION" >&2
+  exit 2
+fi
+
+if ! grep -F "sparkle:shortVersionString=\"$MARKETING_VERSION\"" "$APPCAST_FILE" >/dev/null \
+  && ! grep -F "<sparkle:shortVersionString>$MARKETING_VERSION</sparkle:shortVersionString>" "$APPCAST_FILE" >/dev/null; then
+  echo "appcast missing current Sparkle marketing version: $MARKETING_VERSION" >&2
+  exit 2
+fi
+
+if ! grep -F "$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.zip" "$APPCAST_FILE" >/dev/null; then
+  echo "appcast missing current release artifact: $APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.zip" >&2
+  exit 2
+fi
 
 if [[ "$REQUIRE_RELEASE_APPCAST" == "1" ]]; then
   enclosure_urls="$(grep -Eo 'url="[^"]+"' "$APPCAST_FILE" || true)"

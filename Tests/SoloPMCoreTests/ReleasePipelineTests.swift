@@ -168,6 +168,38 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("release appcast verification failed"))
     }
 
+    func testReleasePreflightIncludesAppcastVerifierFailureReason() throws {
+        let appcastURL = packageRoot()
+            .appendingPathComponent(".build/test-release-appcast-preflight-reason.xml")
+        try FileManager.default.createDirectory(
+            at: appcastURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        <?xml version="1.0" standalone="yes"?>
+        <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+          <channel>
+            <title>SoloPM</title>
+            <item>
+              <title>0.1.0</title>
+              <sparkle:version>1</sparkle:version>
+              <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+              <enclosure url="https://example.com/releases/SoloPM-0.1.0+1.zip" length="12345" type="application/octet-stream" sparkle:edSignature="release-signature-smoke-value"/>
+            </item>
+          </channel>
+        </rss>
+        """.write(to: appcastURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: appcastURL) }
+
+        let result = try runScript(
+            "script/verify_release_environment.sh",
+            environment: ["SOLOPM_RELEASE_APPCAST_FILE": appcastURL.path]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release appcast verification failed: \(appcastURL.path): release appcast enclosure URL must not use placeholder or local domains"))
+    }
+
     func testReleaseEvidenceExampleContainsNoSecretsAndIsIgnored() throws {
         let gitignore = try readPackageFile(".gitignore")
         let example = try readPackageFile("packaging/release-evidence.example.json")

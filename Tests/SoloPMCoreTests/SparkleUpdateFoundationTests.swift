@@ -123,6 +123,71 @@ final class SparkleUpdateFoundationTests: XCTestCase {
         XCTAssertTrue(appcast.contains("url=\"https://example.com/solopm/SoloPM-\(metadata["MARKETING_VERSION"] ?? "")+\(metadata["CURRENT_PROJECT_VERSION"] ?? "").zip\""))
     }
 
+    func testAppcastVerifierAcceptsSparkleGeneratedElementMetadata() throws {
+        let appcastURL = packageRoot()
+            .appendingPathComponent(".build/test-generated-element-appcast.xml")
+        try FileManager.default.createDirectory(
+            at: appcastURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        <?xml version="1.0" standalone="yes"?>
+        <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+          <channel>
+            <title>SoloPM</title>
+            <item>
+              <title>0.1.0</title>
+              <sparkle:version>1</sparkle:version>
+              <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+              <enclosure url="https://updates.solopm.app/releases/SoloPM-0.1.0+1.zip" length="12345" type="application/octet-stream" sparkle:edSignature="release-signature-smoke-value"/>
+            </item>
+          </channel>
+        </rss>
+        """.write(to: appcastURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: appcastURL) }
+
+        let result = try runScript(
+            "script/verify_appcast.sh",
+            arguments: [appcastURL.path],
+            environment: ["SOLOPM_REQUIRE_RELEASE_APPCAST": "1"]
+        )
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("Appcast smoke passed"))
+    }
+
+    func testAppcastVerifierReportsMetadataMismatch() throws {
+        let appcastURL = packageRoot()
+            .appendingPathComponent(".build/test-mismatched-appcast.xml")
+        try FileManager.default.createDirectory(
+            at: appcastURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        <?xml version="1.0" standalone="yes"?>
+        <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+          <channel>
+            <title>SoloPM</title>
+            <item>
+              <title>0.1.0</title>
+              <sparkle:version>999</sparkle:version>
+              <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+              <enclosure url="https://updates.solopm.app/releases/SoloPM-0.1.0+1.zip" length="12345" type="application/octet-stream" sparkle:edSignature="release-signature-smoke-value"/>
+            </item>
+          </channel>
+        </rss>
+        """.write(to: appcastURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: appcastURL) }
+
+        let result = try runScript(
+            "script/verify_appcast.sh",
+            arguments: [appcastURL.path]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("appcast missing current Sparkle build version: 1"))
+    }
+
     func testReleaseAppcastVerifierRejectsSamplePlaceholderSignature() throws {
         let releaseLikeAppcastURL = packageRoot()
             .appendingPathComponent(".build/test-release-appcast-placeholder.xml")
