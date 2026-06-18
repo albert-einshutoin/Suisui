@@ -36,7 +36,8 @@
 | Project作成 | sidebarの `Add Project` | 1 | Pass | 速い。作成直後にtitle編集が明確である状態は維持したい。 |
 | Project選択 | sidebar project row | 1 | Pass | ネイティブsidebar listで繰り返し操作に向いている。 |
 | Project overview確認 | sidebar project row -> `Overview` | 1-2 | Pass | 初期表示またはView segmentで、進捗、Task snapshot、実artifact、Timeline、Local suggestionを同一画面で確認できる。 |
-| Project artifact確認 | Project overview -> `Artifacts` section | 1-2 | Pass | SQLite `artifacts` のproject/task linkだけを表示し、未連携時はno tracked artifactsとして扱う。 |
+| Project artifact確認 | Project overview -> `Artifacts` section | 1-2 | Pass | SQLite `artifacts` のproject/task linkを表示し、未連携時はno tracked artifactsとして扱う。 |
+| Project artifact追加 | Project overview -> `Expected artifact path` -> `Track Artifact` | 2 | Pass | 絶対パスだけをexpected artifactとしてlocal SQLiteへ保存し、相対パスはworkspace未確定として保存しない。 |
 | Inbox確認 | sidebar `Inbox` | 1 | Pass | Capture先が見える。選択中itemは右inspectorで編集できる。 |
 | Inbox item分類 | item選択 -> `Make Task` / `Make Project` / `Schedule Today` / `Review Later` | 2 | Pass | 分類action自体は1クリック。選択済みなら即実行され、store mutationを通る。 |
 | Today確認 | sidebar `Today` | 1 | Pass | 今日以前の未完了task、期限内訳、local focus suggestion、time blockがproject横断で見える。 |
@@ -92,6 +93,7 @@ PR未作成のため、現時点ではcurrent branchの改善commitとsource tes
 | Task作成 / Task編集 / Task削除 | 選択中Projectのheaderまたはcolumnから2クリックでTaskを追加し、card -> inspectorで編集・削除を完結する。 | `Sources/SoloPMApp/Views/ProjectBoardView.swift`, `Sources/SoloPMCore/App/ProjectBoard.swift` | `ProjectBoardStoreTests.testCreateTaskPersistsRequestedColumnMetadataAndDetail`, `ProjectBoardStoreTests.testUpdateTaskMovesCardAcrossColumnsAndUpdatesMetadata`, `ProjectBoardStoreTests.testDeleteTaskRemovesCardFromPersistentSnapshot` |
 | Task status移動 | card上のchevronで1クリック移動、またはdrag/dropで任意statusへ移動する。 | `Sources/SoloPMApp/Views/ProjectBoardView.swift`, `Sources/SoloPMCore/App/ProjectBoard.swift` | `AppExperienceSourceTests.testKanbanTaskCardsExposeMouseDrivenStatusMoveControls`, `AppExperienceSourceTests.testKanbanCardsUseTaskComponentDragPreview`, `ProjectBoardStoreTests.testProjectBoardViewModelMovesDroppedTaskAndNotifiesOnce` |
 | Task card metadata strip | title、status、priority、due、drag affordanceを分離し、狭いcolumnでも固定chipとadaptive gridで重なりにくくする。 | `Sources/SoloPMApp/Views/ProjectBoardView.swift` | `AppExperienceSourceTests.testTaskCardsUseSampleInspiredNonOverlappingMetadataStrip` |
+| Project artifact CRUD | Project OverviewのArtifacts panelからexpected artifactを2クリックで追加し、local SQLite snapshotへ即反映する。 | `Sources/SoloPMApp/Views/ProjectBoardView.swift`, `Sources/SoloPMCore/App/ProjectBoard.swift` | `ProjectBoardStoreTests.testCreateProjectArtifactPersistsExpectedArtifactInSnapshot`, `ProjectBoardStoreTests.testProjectBoardViewModelCreatesProjectArtifactAndNotifies` |
 | Inbox capture / triage | MenuBar Quick AddまたはInbox headerから実タスクを作り、item選択後にMake Task、Make Project、Schedule Today、Review Laterを1クリックで実mutationへ送る。 | `Sources/SoloPMApp/SoloPMApp.swift`, `Sources/SoloPMApp/Views/ProjectWorkflowViews.swift`, `Sources/SoloPMCore/App/ProjectBoard.swift` | `AppExperienceSourceTests.testMenuBarPanelProvidesFastInboxCaptureWithRuntimeBoardViewModel`, `ProjectBoardStoreTests.testProjectBoardViewModelQuickCapturesInboxTaskAndNotifies`, `ProjectBoardStoreTests.testProjectBoardViewModelQuickCapturePersistsToSQLiteInbox`, `ProjectBoardStoreTests.testProjectBoardViewModelInboxClassificationShowsFeedbackAdvancesSelectionAndUndo`, `ProjectBoardStoreTests.testSQLiteBoardStorePersistsInboxClassificationUndo` |
 | Today planning | sidebarから1クリックでdue/overdue、focus suggestion、time blockを確認する。 | `Sources/SoloPMApp/Views/ProjectWorkflowViews.swift`, `Sources/SoloPMCore/App/ProjectBoard.swift` | `AppExperienceSourceTests.testTodayWorkflowShowsRecommendationDueCountsAndTimeBlocks`, `ProjectBoardStoreTests.testProjectBoardViewModelBuildsDeterministicTodayPlanWithTimeBlocks` |
 | Settings overview / Theme | toolbar gearから1クリックでSettingsを開き、Status OverviewとTheme segmentをSettings内へ集約する。 | `Sources/SoloPMApp/SoloPMApp.swift` | `AppExperienceSourceTests.testSettingsSurfaceStartsWithStatusOverviewForCoreOperationalAreas`, `AppExperienceSourceTests.testAppearanceSelectionIsConfiguredOnlyFromSettings`, `AppExperienceSourceTests.testProjectBoardSidebarAndToolbarDoNotHostThemeControls` |
@@ -109,7 +111,7 @@ Retention hook: Todayは日次のdefault surfaceに近づき、Project overview�
 
 Monetization: Syncとadvanced MCPのgateは実装済みだが、価値がSettingsの中に埋もれている。Pro価値はdisabled toggleではなくstatus cardとして見える必要がある。
 
-Risk: Artifact表示は実DB rowだけに限定したためmock感はないが、artifact作成/リンク導線はまだ薄い。次のUI作業は機能追加よりaccessibilityとvisual evidenceを優先する。
+Risk: Artifact追加は絶対パスに限定してworkspace推測を避けたため、local-firstの安全性は保てている。一方、相対パスやworkspace default連携はまだ未対応なので、次のUI作業はaccessibilityとvisual evidenceを優先する。
 
 ## 次の実装候補
 

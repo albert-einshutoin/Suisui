@@ -4,6 +4,7 @@ import Foundation
 final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
     private var snapshot: ProjectBoardSnapshot
     private var nextTaskID: Int64
+    private var nextArtifactID: Int64
 
     init(snapshot: ProjectBoardSnapshot = ProjectBoardSnapshot(projects: [
         ProjectBoardProject(
@@ -16,6 +17,7 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
     ])) {
         self.snapshot = snapshot
         self.nextTaskID = snapshot.projects.flatMap(\.tasks).map(\.id).max().map { $0 + 1 } ?? 1
+        self.nextArtifactID = snapshot.projects.flatMap(\.artifacts).map(\.id).max().map { $0 + 1 } ?? 1
     }
 
     func loadSnapshot() throws -> ProjectBoardSnapshot {
@@ -201,8 +203,40 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
             for columnIndex in snapshot.projects[projectIndex].columns.indices {
                 snapshot.projects[projectIndex].columns[columnIndex].tasks.removeAll { $0.id == id }
             }
+            snapshot.projects[projectIndex].artifacts.removeAll { $0.taskID == id }
             refreshProjectSubtitle(at: projectIndex)
         }
+    }
+
+    @discardableResult
+    func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact {
+        guard let projectIndex = snapshot.projects.firstIndex(where: { $0.id == projectID }) else {
+            throw DatabaseError.stepFailed("Project \(projectID) was not found.")
+        }
+        guard !snapshot.projects[projectIndex].isArchived else {
+            throw ProjectBoardStoreError.archivedProjectCannotAcceptArtifacts
+        }
+
+        let trimmedPath = expectedPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPath.isEmpty else {
+            throw ProjectBoardStoreError.emptyArtifactPath
+        }
+        let expandedPath = NSString(string: trimmedPath).expandingTildeInPath
+        guard NSString(string: expandedPath).isAbsolutePath else {
+            throw ProjectBoardStoreError.nonAbsoluteArtifactPath
+        }
+
+        let artifact = ProjectBoardArtifact(
+            id: nextArtifactID,
+            projectID: projectID,
+            taskID: nil,
+            expectedPath: URL(fileURLWithPath: expandedPath).standardizedFileURL.path,
+            createdState: .expected,
+            lastModifiedAt: nil
+        )
+        nextArtifactID += 1
+        snapshot.projects[projectIndex].artifacts.append(artifact)
+        return artifact
     }
 
     private func upsert(_ task: ProjectBoardTask) {

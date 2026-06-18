@@ -89,6 +89,58 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(loadedProject.artifacts.last?.taskID, task.id)
     }
 
+    func testCreateProjectArtifactPersistsExpectedArtifactInSnapshot() throws {
+        let stores = try makeStoreBundle()
+        let project = try stores.board.createProject(title: "Launch Readiness")
+
+        let artifact = try stores.board.createProjectArtifact(
+            projectID: project.id,
+            expectedPath: "/tmp/solopm/release/notes.md"
+        )
+
+        XCTAssertEqual(artifact.projectID, project.id)
+        XCTAssertNil(artifact.taskID)
+        XCTAssertEqual(artifact.expectedPath, "/tmp/solopm/release/notes.md")
+        XCTAssertEqual(artifact.createdState, .expected)
+        XCTAssertEqual(try stores.artifacts.get(id: artifact.id).workspacePath, "/tmp/solopm/release")
+
+        let loadedProject = try XCTUnwrap(stores.board.loadSnapshot().projects.first { $0.id == project.id })
+        XCTAssertEqual(loadedProject.artifacts, [artifact])
+    }
+
+    func testCreateProjectArtifactRejectsRelativePathWithoutMutating() throws {
+        let stores = try makeStoreBundle()
+        let project = try stores.board.createProject(title: "Launch Readiness")
+
+        XCTAssertThrowsError(
+            try stores.board.createProjectArtifact(
+                projectID: project.id,
+                expectedPath: "release/notes.md"
+            )
+        ) { error in
+            XCTAssertEqual(error as? ProjectBoardStoreError, .nonAbsoluteArtifactPath)
+        }
+
+        XCTAssertTrue(try stores.artifacts.list().isEmpty)
+    }
+
+    func testCreateProjectArtifactRejectsArchivedProjectWithoutMutating() throws {
+        let stores = try makeStoreBundle()
+        let project = try stores.board.createProject(title: "Launch Readiness")
+        _ = try stores.board.archiveProject(id: project.id)
+
+        XCTAssertThrowsError(
+            try stores.board.createProjectArtifact(
+                projectID: project.id,
+                expectedPath: "/tmp/solopm/release/notes.md"
+            )
+        ) { error in
+            XCTAssertEqual(error as? ProjectBoardStoreError, .archivedProjectCannotAcceptArtifacts)
+        }
+
+        XCTAssertTrue(try stores.artifacts.list().isEmpty)
+    }
+
     func testMoveTaskAssignsUnassignedPersistentTaskToInbox() throws {
         let stores = try makeStoreBundle()
         let orphan = try stores.tasks.create(title: "Move loose task", projectID: nil, status: "planned")
@@ -501,6 +553,51 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedTask?.detail, "This should keep metadata.")
         XCTAssertEqual(viewModel.selectedTask?.priority, .high)
         XCTAssertEqual(viewModel.selectedTask?.dueAt, "2026-06-22")
+    }
+
+    @MainActor
+    func testProjectBoardViewModelCreatesProjectArtifactAndNotifies() throws {
+        var changeCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Launch Readiness"))
+        changeCount = 0
+
+        let artifact = try XCTUnwrap(viewModel.createProjectArtifact(
+            expectedPath: "/tmp/solopm/release/notes.md",
+            projectID: project.id
+        ))
+
+        XCTAssertEqual(changeCount, 1)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(viewModel.selectedProjectID, project.id)
+        XCTAssertEqual(viewModel.selectedProject?.artifacts, [artifact])
+        XCTAssertEqual(viewModel.selectedProject?.artifacts.first?.createdState, .expected)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelRejectsRelativeArtifactPathWithoutNotifying() throws {
+        var changeCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Launch Readiness"))
+        changeCount = 0
+
+        let artifact = viewModel.createProjectArtifact(
+            expectedPath: "release/notes.md",
+            projectID: project.id
+        )
+
+        XCTAssertNil(artifact)
+        XCTAssertEqual(changeCount, 0)
+        XCTAssertEqual(viewModel.errorMessage, "Use an absolute artifact path.")
+        XCTAssertEqual(viewModel.selectedProject?.artifacts, [])
     }
 
     @MainActor
@@ -990,6 +1087,10 @@ private struct AlwaysFailingProjectBoardStore: ProjectBoardStore {
     func deleteTask(id: Int64) throws {
         throw error
     }
+
+    func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact {
+        throw error
+    }
 }
 
 private final class PartiallyFailingBulkMoveProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
@@ -1111,6 +1212,10 @@ private final class PartiallyFailingBulkMoveProjectBoardStore: ProjectBoardStore
     }
 
     func deleteTask(id: Int64) throws {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact {
         throw ProjectBoardStoreTestError.unavailable
     }
 }

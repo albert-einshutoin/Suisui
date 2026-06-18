@@ -2193,6 +2193,10 @@ private struct UnavailableProjectBoardStore: ProjectBoardStore {
     func deleteTask(id: Int64) throws {
         throw error
     }
+
+    func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact {
+        throw error
+    }
 }
 
 private struct UnavailableMCPServerRegistrationStore: MCPServerRegistrationStore {

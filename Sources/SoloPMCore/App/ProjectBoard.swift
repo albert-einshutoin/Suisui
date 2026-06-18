@@ -262,7 +262,10 @@ public struct ProjectBoardTaskDraft: Equatable, Sendable {
 public enum ProjectBoardStoreError: Error, Equatable, Sendable {
     case emptyTitle
     case emptyProjectTitle
+    case emptyArtifactPath
+    case nonAbsoluteArtifactPath
     case archivedProjectCannotAcceptTasks
+    case archivedProjectCannotAcceptArtifacts
 }
 
 public protocol ProjectBoardStore {
@@ -279,6 +282,7 @@ public protocol ProjectBoardStore {
     func moveTask(id: Int64, to status: ProjectTaskStatus) throws -> ProjectBoardTask
     func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask]
     func deleteTask(id: Int64) throws
+    func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact
 }
 
 public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
@@ -406,6 +410,24 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         try taskStore.delete(id: id)
     }
 
+    @discardableResult
+    public func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact {
+        let project = try projectStore.get(id: projectID)
+        if project.status == "archived" {
+            throw ProjectBoardStoreError.archivedProjectCannotAcceptArtifacts
+        }
+
+        let normalizedPath = try normalizedArtifactPath(expectedPath)
+        let workspacePath = URL(fileURLWithPath: normalizedPath).deletingLastPathComponent().path
+        let record = try artifactStore.create(
+            projectID: projectID,
+            workspacePath: workspacePath,
+            expectedPath: normalizedPath,
+            createdState: .expected
+        )
+        return makeBoardArtifact(record)
+    }
+
     private func prepareProjectForTaskMutation(projectID: Int64, taskStatus: ProjectTaskStatus) throws {
         let project = try projectStore.get(id: projectID)
         if project.status == "archived" {
@@ -483,6 +505,20 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         }
 
         return normalizedTitle
+    }
+
+    private func normalizedArtifactPath(_ path: String) throws -> String {
+        let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPath.isEmpty else {
+            throw ProjectBoardStoreError.emptyArtifactPath
+        }
+
+        let expandedPath = NSString(string: trimmedPath).expandingTildeInPath
+        guard NSString(string: expandedPath).isAbsolutePath else {
+            throw ProjectBoardStoreError.nonAbsoluteArtifactPath
+        }
+
+        return URL(fileURLWithPath: expandedPath).standardizedFileURL.path
     }
 
     private func makeBoardProject(
@@ -1139,6 +1175,35 @@ public final class ProjectBoardViewModel: ObservableObject {
             onChange()
         } catch {
             errorMessage = String(describing: error)
+        }
+    }
+
+    @discardableResult
+    public func createProjectArtifact(expectedPath: String, projectID: Int64? = nil) -> ProjectBoardArtifact? {
+        guard let targetProjectID = projectID ?? selectedProject?.id else {
+            errorMessage = "Project is required."
+            return nil
+        }
+
+        do {
+            let artifact = try store.createProjectArtifact(projectID: targetProjectID, expectedPath: expectedPath)
+            load()
+            selectedProjectID = targetProjectID
+            errorMessage = nil
+            onChange()
+            return artifact
+        } catch ProjectBoardStoreError.emptyArtifactPath {
+            errorMessage = "Artifact path is required."
+            return nil
+        } catch ProjectBoardStoreError.nonAbsoluteArtifactPath {
+            errorMessage = "Use an absolute artifact path."
+            return nil
+        } catch ProjectBoardStoreError.archivedProjectCannotAcceptArtifacts {
+            errorMessage = "Restore the project before linking artifacts."
+            return nil
+        } catch {
+            errorMessage = String(describing: error)
+            return nil
         }
     }
 

@@ -346,7 +346,7 @@ private struct ProjectDetailOverview: View {
 
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
                     ProjectTaskSnapshotSection(project: project, viewModel: viewModel, onAddTask: onAddTask)
-                    ProjectArtifactSection(project: project)
+                    ProjectArtifactSection(project: project, viewModel: viewModel)
                     ProjectTimelineSection(project: project)
                     ProjectLocalSuggestionPanel(project: project, viewModel: viewModel)
                 }
@@ -504,9 +504,23 @@ private struct ProjectTaskSnapshotSection: View {
 
 private struct ProjectArtifactSection: View {
     let project: ProjectBoardProject
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    @State private var artifactPath = ""
 
     var body: some View {
         ProjectOverviewPanel(title: "Artifacts", systemImage: "doc.text") {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    artifactPathField
+                    trackArtifactButton
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    artifactPathField
+                    trackArtifactButton
+                }
+            }
+
             if project.artifacts.isEmpty {
                 Text("No tracked artifacts linked to this project")
                     .font(.caption)
@@ -532,6 +546,32 @@ private struct ProjectArtifactSection: View {
                 }
             }
         }
+    }
+
+    private func trackArtifact() {
+        guard viewModel.createProjectArtifact(expectedPath: artifactPath, projectID: project.id) != nil else {
+            return
+        }
+        artifactPath = ""
+    }
+
+    private var artifactPathField: some View {
+        TextField("Expected artifact path", text: $artifactPath)
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.small)
+            .onSubmit(trackArtifact)
+            .accessibilityIdentifier("project-artifact-path")
+            .accessibilityHint("Enter an absolute local path to track as an expected project artifact.")
+    }
+
+    private var trackArtifactButton: some View {
+        Button(action: trackArtifact) {
+            Label("Track Artifact", systemImage: "link.badge.plus")
+        }
+        .controlSize(.small)
+        .disabled(project.isArchived || artifactPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .accessibilityIdentifier("project-artifact-track")
+        .accessibilityHint("Adds an expected artifact link to the selected project in the local SoloPM database.")
     }
 }
 
