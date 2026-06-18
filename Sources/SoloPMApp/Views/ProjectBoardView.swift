@@ -485,6 +485,17 @@ private struct BoardColumnView: View {
                 .buttonStyle(.borderless)
             }
 
+            if isDropTargeted {
+                Label("Drop to move to \(column.title)", systemImage: "arrow.down.doc")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
+            }
+
             if isComposing {
                 InlineTaskComposer(
                     status: column.status,
@@ -626,11 +637,21 @@ private struct BoardTaskCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(task.title)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(2)
-                .truncationMode(.tail)
-                .help(task.title)
+            HStack(alignment: .top, spacing: 8) {
+                Text(task.title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+                    .help(task.title)
+
+                Spacer(minLength: 6)
+
+                Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .help("Drag to another status column")
+                    .accessibilityLabel("Drag to another status column")
+            }
 
             if !task.detail.isEmpty {
                 Text(task.detail)

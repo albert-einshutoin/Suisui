@@ -107,6 +107,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains("Button {\n                        onSelectTask(task.id)\n                    } label: {\n                        BoardTaskCard"))
     }
 
+    func testKanbanDragAndDropHasVisibleDesktopAffordances() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(source.contains("Drag to another status column"))
+        XCTAssertTrue(source.contains("arrow.up.and.down.and.arrow.left.and.right"))
+        XCTAssertTrue(source.contains("Drop to move to"))
+        XCTAssertTrue(source.contains("isDropTargeted"))
+        XCTAssertTrue(source.contains(".dropDestination(for: String.self)"))
+    }
+
     func testAppAndCLIShareDefaultDatabaseLocation() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let cliSource = try readPackageFile("Sources/SoloPMCLI/SoloPMCLIEntrypoint.swift")
