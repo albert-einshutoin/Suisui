@@ -1157,6 +1157,12 @@
 - [x] source regression test で `try? loadData(bundle:)` による広すぎる fallback の復活を防ぐ。
 - [x] 完了条件: app bundle の schema packaging / read failure が、dev module resource によって成功に見えない。
 
+### P10-149: Knowledge vector JSON encoding does not fall back to empty vectors
+
+- [x] `SQLiteKnowledgeVectorIndex.upsert` の vector JSON encoding は UTF-8 string 化失敗時に `[]` を保存せず、`DatabaseError.executeFailed` を返す。
+- [x] source regression test で `String(data: data, encoding: .utf8) ?? "[]"` の復活を防ぐ。
+- [x] 完了条件: embedding vector persistence が encoding failure 時に空ベクトル保存成功として見えない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

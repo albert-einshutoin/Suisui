@@ -669,7 +669,10 @@ private func redactedPreview(_ text: String) -> String {
 
 private func jsonString(_ values: [Double]) throws -> String {
     let data = try JSONEncoder().encode(values)
-    return String(data: data, encoding: .utf8) ?? "[]"
+    guard let json = String(data: data, encoding: .utf8) else {
+        throw DatabaseError.executeFailed("Could not encode knowledge_frame_vectors.vector_json as UTF-8 JSON.")
+    }
+    return json
 }
 
 private func values(from json: String, column: String) throws -> [Double] {

@@ -351,6 +351,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains(#"String(data: data, encoding: .utf8) ?? "[]""#))
     }
 
+    func testKnowledgeVectorEncodingDoesNotDefaultToEmptyVectorJSON() throws {
+        let source = try readPackageFile("Sources/SoloPMCore/Knowledge/KnowledgeAdvanced.swift")
+
+        XCTAssertFalse(source.contains(#"String(data: data, encoding: .utf8) ?? "[]""#))
+        XCTAssertTrue(source.contains("Could not encode knowledge_frame_vectors.vector_json as UTF-8 JSON."))
+    }
+
     func testAuditLoggerDoesNotDefaultMetadataEncodingToEmptyJSON() throws {
         let source = try readPackageFile("Sources/SoloPMCore/Audit/AuditLogger.swift")
 
