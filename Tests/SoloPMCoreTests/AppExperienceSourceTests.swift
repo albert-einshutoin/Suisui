@@ -364,6 +364,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains("loadDataFromSourceTree"))
         XCTAssertFalse(source.contains("#filePath"))
         XCTAssertFalse(source.contains("Sources/SoloPMCore/Resources"))
+        XCTAssertFalse(source.contains("try? loadData(bundle: .main)"))
+        XCTAssertFalse(source.contains("try? loadData(bundle: .module)"))
+        XCTAssertTrue(source.contains("catch ActionPlanSchemaError.resourceNotFound"))
     }
 
     func testExternalMCPLauncherDoesNotDefaultToInMemorySecretStore() throws {

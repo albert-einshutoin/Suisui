@@ -1149,6 +1149,14 @@
 - [x] source regression test で `String(data: metadataData, encoding: .utf8) ?? "{}"` の復活を防ぐ。
 - [x] 完了条件: audit metadata persistence が、encoding failure 時に監査 context を空 object として保存成功に見せない。
 
+### P10-148: ActionPlan schema fallback only hides missing resources
+
+- [x] `ActionPlanSchema.loadData()` は main bundle schema が `resourceNotFound` の場合だけ SwiftPM module resource へ fallback する。
+- [x] main bundle schema が存在していて読み取り失敗した場合は、module resource で補わず元の error を返す。
+- [x] `ActionPlanSchemaTests` で missing resource fallback と primary read error propagation を固定する。
+- [x] source regression test で `try? loadData(bundle:)` による広すぎる fallback の復活を防ぐ。
+- [x] 完了条件: app bundle の schema packaging / read failure が、dev module resource によって成功に見えない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

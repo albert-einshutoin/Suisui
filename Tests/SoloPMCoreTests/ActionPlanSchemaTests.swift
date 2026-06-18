@@ -43,6 +43,30 @@ final class ActionPlanSchemaTests: XCTestCase {
         XCTAssertEqual(Set(schemaRiskLevels), Set(RiskLevel.allCases.map(\.rawValue)))
     }
 
+    func testSchemaFallbackOnlyUsesModuleResourceWhenPrimaryResourceIsMissing() throws {
+        let fallbackData = try ActionPlanSchema.loadData(
+            primary: { throw ActionPlanSchemaError.resourceNotFound },
+            module: { Data(#"{"title":"fallback"}"#.utf8) }
+        )
+
+        XCTAssertEqual(String(data: fallbackData, encoding: .utf8), #"{"title":"fallback"}"#)
+    }
+
+    func testSchemaFallbackDoesNotHidePrimaryBundleReadErrors() throws {
+        enum TestReadError: Error, Equatable {
+            case denied
+        }
+
+        XCTAssertThrowsError(
+            try ActionPlanSchema.loadData(
+                primary: { throw TestReadError.denied },
+                module: { Data(#"{"title":"fallback"}"#.utf8) }
+            )
+        ) { error in
+            XCTAssertEqual(error as? TestReadError, .denied)
+        }
+    }
+
     private func schemaObject() throws -> [String: Any] {
         let data = try ActionPlanSchema.loadData()
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
