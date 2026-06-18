@@ -262,7 +262,7 @@ private struct ProjectBoardDetail: View {
                     ProjectHeaderActions(
                         project: project,
                         displayMode: $displayMode,
-                        onAddTask: { composingStatus = .backlog }
+                        onAddTask: { startComposingTask() }
                     )
                 }
 
@@ -272,7 +272,7 @@ private struct ProjectBoardDetail: View {
                     ProjectHeaderActions(
                         project: project,
                         displayMode: $displayMode,
-                        onAddTask: { composingStatus = .backlog }
+                        onAddTask: { startComposingTask() }
                     )
                 }
             }
@@ -291,7 +291,7 @@ private struct ProjectBoardDetail: View {
                     ProjectDetailOverview(
                         project: project,
                         viewModel: viewModel,
-                        onAddTask: { composingStatus = .backlog }
+                        onAddTask: { startComposingTask() }
                     )
                 case .board:
                     ProjectKanbanBoard(
@@ -316,6 +316,11 @@ private struct ProjectBoardDetail: View {
                 viewModel.selectedTaskID = nil
             }
         }
+    }
+
+    private func startComposingTask(status: ProjectTaskStatus = .backlog) {
+        displayMode = .board
+        composingStatus = status
     }
 }
 

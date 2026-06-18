@@ -149,6 +149,7 @@
 - [x] Task cardの選択領域を `Open task` のキーボードフォーカス可能なButtonにし、status移動コントロールとdrag affordanceが同じアクセシビリティ要素に潰れないよう分離する。
 - [x] Task card metadata strip はstatus / priority / dueを固定寸法chipに分離し、狭いKanban列ではadaptive gridへ逃がす。
 - [x] Project Detailではタスク一覧、成果物、タイムライン、AI提案をタブまたはセクションとして整理する。
+- [x] Project Overview / headerの `Add Task` は押下後にBoardへ切り替え、Backlogのinline composerを即表示する。Overview上で状態だけ変わり入力欄が見えない状態を残さない。
 - [ ] Task cardはタイトル、状態、優先度、期限、ドラッグ affordance が重ならず表示されることをスクリーンショットで確認する。
 - [x] 右インスペクタは選択中タスク/プロジェクトの編集、削除、AI提案の適用を一箇所に集約する。
   - [x] 選択中Taskの編集、削除、Local suggestion適用はTask inspectorに集約する。

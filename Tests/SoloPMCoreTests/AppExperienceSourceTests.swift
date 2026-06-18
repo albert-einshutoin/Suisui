@@ -77,6 +77,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("createTask("))
     }
 
+    func testProjectAddTaskFromOverviewOpensVisibleBoardComposer() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let detailStart = try XCTUnwrap(source.range(of: "private struct ProjectBoardDetail"))
+        let archivedStart = try XCTUnwrap(source.range(of: "private struct ArchivedProjectPlaceholder"))
+        let detailSource = String(source[detailStart.lowerBound..<archivedStart.lowerBound])
+
+        XCTAssertTrue(detailSource.contains("private func startComposingTask(status: ProjectTaskStatus = .backlog)"))
+        XCTAssertTrue(detailSource.contains("displayMode = .board"))
+        XCTAssertTrue(detailSource.contains("composingStatus = status"))
+        XCTAssertGreaterThanOrEqual(detailSource.components(separatedBy: "onAddTask: { startComposingTask() }").count - 1, 3)
+        XCTAssertFalse(detailSource.contains("onAddTask: { composingStatus = .backlog }"))
+    }
+
     func testAppearanceSelectionIsConfiguredOnlyFromSettings() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
