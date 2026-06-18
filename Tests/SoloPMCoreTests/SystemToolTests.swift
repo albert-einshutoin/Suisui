@@ -62,6 +62,18 @@ final class SystemToolTests: XCTestCase {
         XCTAssertEqual(request.externalNotificationID, "standup-reminder")
     }
 
+    func testNotificationRequestStoreRejectsCorruptedTitleInsteadOfReturningEmptyRequest() throws {
+        let connection = try migratedConnection()
+        let requestStore = SQLiteNotificationRequestStore(connection: connection)
+        _ = try requestStore.createPending(requestID: "standup-reminder", title: "Standup", scheduledAt: "2026-06-18T09:00:00Z")
+
+        try connection.execute("UPDATE notification_requests SET title = '' WHERE request_id = 'standup-reminder';")
+
+        XCTAssertThrowsError(try requestStore.list()) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .missingRequiredColumn(column: "notification_requests.title"))
+        }
+    }
+
     func testNotificationRelativeScheduleRejectsNonPositiveOffset() throws {
         let tool = NotificationTool(name: .notificationScheduleRelative, client: InMemoryNotificationClient())
 
@@ -111,6 +123,18 @@ final class SystemToolTests: XCTestCase {
         XCTAssertEqual(link.eventID, "calendar-event-1")
         XCTAssertEqual(link.projectID, 10)
         XCTAssertEqual(link.taskID, 20)
+    }
+
+    func testCalendarLinkStoreRejectsCorruptedTaskIDInsteadOfDroppingLink() throws {
+        let connection = try migratedConnection()
+        let linkStore = SQLiteCalendarLinkStore(connection: connection)
+        _ = try linkStore.link(eventID: "event-1", projectID: 10, taskID: 20, title: "Deep work")
+
+        try connection.execute("UPDATE calendar_links SET task_id = 'not-int' WHERE event_id = 'event-1';")
+
+        XCTAssertThrowsError(try linkStore.list()) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .invalidInt64(column: "calendar_links.task_id", value: "not-int"))
+        }
     }
 
     func testCalendarWorkBlockRejectsNonPositiveDuration() throws {
@@ -166,6 +190,18 @@ final class SystemToolTests: XCTestCase {
         XCTAssertEqual(link.reminderID, "reminder-1")
         XCTAssertEqual(link.taskID, 42)
         XCTAssertEqual(link.title, "Draft spec")
+    }
+
+    func testReminderLinkStoreRejectsCorruptedProjectIDInsteadOfDroppingLink() throws {
+        let connection = try migratedConnection()
+        let linkStore = SQLiteReminderLinkStore(connection: connection)
+        _ = try linkStore.link(reminderID: "reminder-1", projectID: 10, taskID: 20, title: "Draft spec")
+
+        try connection.execute("UPDATE reminder_links SET project_id = 'not-int' WHERE reminder_id = 'reminder-1';")
+
+        XCTAssertThrowsError(try linkStore.list()) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .invalidInt64(column: "reminder_links.project_id", value: "not-int"))
+        }
     }
 
     func testFileSystemToolRejectsOverwriteAndTraversal() throws {

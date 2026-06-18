@@ -590,6 +590,14 @@
 - [x] テスト: corrupted project status、corrupted task project_id、corrupted knowledge name が silent fallback されないことを確認する。
 - [x] 完了条件: SQLite row 破損や migration bug が、空タイトル・ID 0・project link 消失・未知 status として UI/CLI に流れない。
 
+### P10-072: System tool row decode fail-fast fields
+
+- [x] `NotificationRequestRecord(row:)` は `id` / `request_id` / `status` / `title` / `scheduled_at` を必須 decode する。
+- [x] `CalendarLinkRecord(row:)` は `id` / `event_id` を必須 decode し、不正 `project_id` / `task_id` を `nil` にしない。
+- [x] `ReminderLinkRecord(row:)` は `id` / `reminder_id` を必須 decode し、不正 `project_id` / `task_id` を `nil` にしない。
+- [x] テスト: corrupted notification title、corrupted calendar task_id、corrupted reminder project_id が silent fallback されないことを確認する。
+- [x] 完了条件: notification / calendar / reminder の永続リンク破損が、空 request やリンク消失として UI/CLI に流れない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

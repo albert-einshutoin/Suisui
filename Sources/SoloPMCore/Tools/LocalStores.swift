@@ -487,7 +487,7 @@ public final class SQLiteNotificationRequestStore: @unchecked Sendable {
         ).first else {
             throw DatabaseError.stepFailed("Notification request \(requestID) was not found.")
         }
-        return NotificationRequestRecord(row: row)
+        return try NotificationRequestRecord(row: row)
     }
 }
 
@@ -526,7 +526,7 @@ public final class SQLiteCalendarLinkStore: @unchecked Sendable {
         ).first else {
             throw DatabaseError.stepFailed("Calendar link \(eventID) was not found.")
         }
-        return CalendarLinkRecord(row: row)
+        return try CalendarLinkRecord(row: row)
     }
 }
 
@@ -565,7 +565,7 @@ public final class SQLiteReminderLinkStore: @unchecked Sendable {
         ).first else {
             throw DatabaseError.stepFailed("Reminder link \(reminderID) was not found.")
         }
-        return ReminderLinkRecord(row: row)
+        return try ReminderLinkRecord(row: row)
     }
 }
 
@@ -749,13 +749,17 @@ private extension KnowledgeFrameRecord {
 }
 
 private extension NotificationRequestRecord {
-    init(row: [String: String]) {
+    init(row: [String: String]) throws {
+        let status = try StoreFieldValidation.persistedNotificationStatus(
+            try SQL.requiredString(row["status"], column: "notification_requests.status"),
+            column: "notification_requests.status"
+        )
         self.init(
-            id: Int64(row["id"] ?? "") ?? 0,
-            requestID: row["request_id"] ?? "",
-            status: row["status"] ?? "",
-            title: row["title"] ?? "",
-            scheduledAt: row["scheduled_at"] ?? "",
+            id: try SQL.requiredInt64(row["id"], column: "notification_requests.id"),
+            requestID: try SQL.requiredString(row["request_id"], column: "notification_requests.request_id"),
+            status: status,
+            title: try SQL.requiredString(row["title"], column: "notification_requests.title"),
+            scheduledAt: try SQL.requiredString(row["scheduled_at"], column: "notification_requests.scheduled_at"),
             externalNotificationID: SQL.nilIfEmpty(row["external_notification_id"]),
             failureReason: SQL.nilIfEmpty(row["failure_reason"])
         )
@@ -763,24 +767,24 @@ private extension NotificationRequestRecord {
 }
 
 private extension CalendarLinkRecord {
-    init(row: [String: String]) {
+    init(row: [String: String]) throws {
         self.init(
-            id: Int64(row["id"] ?? "") ?? 0,
-            eventID: row["event_id"] ?? "",
-            projectID: Int64(row["project_id"] ?? ""),
-            taskID: Int64(row["task_id"] ?? ""),
+            id: try SQL.requiredInt64(row["id"], column: "calendar_links.id"),
+            eventID: try SQL.requiredString(row["event_id"], column: "calendar_links.event_id"),
+            projectID: try SQL.optionalInt64(row["project_id"], column: "calendar_links.project_id"),
+            taskID: try SQL.optionalInt64(row["task_id"], column: "calendar_links.task_id"),
             title: SQL.nilIfEmpty(row["title"])
         )
     }
 }
 
 private extension ReminderLinkRecord {
-    init(row: [String: String]) {
+    init(row: [String: String]) throws {
         self.init(
-            id: Int64(row["id"] ?? "") ?? 0,
-            reminderID: row["reminder_id"] ?? "",
-            projectID: Int64(row["project_id"] ?? ""),
-            taskID: Int64(row["task_id"] ?? ""),
+            id: try SQL.requiredInt64(row["id"], column: "reminder_links.id"),
+            reminderID: try SQL.requiredString(row["reminder_id"], column: "reminder_links.reminder_id"),
+            projectID: try SQL.optionalInt64(row["project_id"], column: "reminder_links.project_id"),
+            taskID: try SQL.optionalInt64(row["task_id"], column: "reminder_links.task_id"),
             title: SQL.nilIfEmpty(row["title"])
         )
     }
@@ -789,6 +793,7 @@ private extension ReminderLinkRecord {
 private enum StoreFieldValidation {
     private static let projectStatuses = ["active", "completed", "archived"]
     private static let taskStatuses = ["open", "backlog", "planned", "in_progress", "blocked", "completed"]
+    private static let notificationStatuses = ["pending", "scheduled", "failed"]
     private static let legacyTaskBacklogAlias = "to" + "do"
 
     static func requiredTrimmed(_ value: String, argument: String, tool: ActionTool) throws -> String {
@@ -870,6 +875,14 @@ private enum StoreFieldValidation {
     static func persistedTaskStatus(_ value: String, column: String) throws -> String {
         let normalized = normalizedStatusKey(value)
         guard taskStatuses.contains(normalized) else {
+            throw LocalStoreDecodingError.invalidEnum(column: column, value: value)
+        }
+        return normalized
+    }
+
+    static func persistedNotificationStatus(_ value: String, column: String) throws -> String {
+        let normalized = normalizedStatusKey(value)
+        guard notificationStatuses.contains(normalized) else {
             throw LocalStoreDecodingError.invalidEnum(column: column, value: value)
         }
         return normalized
