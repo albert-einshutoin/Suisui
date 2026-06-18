@@ -113,10 +113,17 @@ struct InboxWorkflowView: View {
                     TextField("Capture an inbox item", text: $quickTitle)
                         .textFieldStyle(.roundedBorder)
                         .onSubmit(addInboxTask)
+                        .accessibilityIdentifier("inbox-quick-add-title")
+                        .accessibilityLabel("Inbox quick add title")
+                        .accessibilityHint("Creates a local Inbox item when submitted.")
                     Button(action: addInboxTask) {
                         Label("Quick Add", systemImage: "plus")
                     }
                     .disabled(quickTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .keyboardShortcut(.return, modifiers: [.command])
+                    .help("Add this item to Inbox")
+                    .accessibilityIdentifier("inbox-quick-add-button")
+                    .accessibilityHint("Adds the typed item to the local Inbox.")
                 }
             },
             footer: {
@@ -283,6 +290,23 @@ private struct WorkflowTaskRow: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Open task \(task.title)")
+        .accessibilityValue(workflowAccessibilityValue)
+        .accessibilityHint("Selects this task so Inbox actions or task inspector edits can use it.")
+        .accessibilityIdentifier("workflow-task-row-\(task.id)")
+    }
+
+    private var workflowAccessibilityValue: String {
+        var values = [
+            "Project: \(projectTitle)",
+            "Status: \(task.status.title)",
+            "Priority: \(task.priority.label)"
+        ]
+        if let dueLabel = task.dueLabel {
+            values.append("Due: \(dueLabel)")
+        }
+        return values.joined(separator: ", ")
     }
 }
 
@@ -312,6 +336,8 @@ private struct InboxActionPanel: View {
                         }
                         .controlSize(.small)
                         .help("Undo the last Inbox classification")
+                        .accessibilityIdentifier("inbox-classification-undo")
+                        .accessibilityHint("Restores the last classified Inbox item when possible.")
                     }
                 }
                 .padding(8)
@@ -331,6 +357,10 @@ private struct InboxActionPanel: View {
         }
         .padding(12)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("inbox-action-panel")
+        .accessibilityLabel("Inbox classification actions")
+        .accessibilityHint("Choose how to classify the selected Inbox item.")
     }
 
     @ViewBuilder
@@ -340,21 +370,37 @@ private struct InboxActionPanel: View {
         } label: {
             Label("Make Task", systemImage: "checkmark.circle")
         }
+        .keyboardShortcut("1", modifiers: [.command])
+        .help("Make selected Inbox item a task")
+        .accessibilityIdentifier("inbox-action-make-task")
+        .accessibilityHint("Classifies the selected Inbox item as a task in the local database.")
         Button {
             viewModel.convertSelectedTaskToProject()
         } label: {
             Label("Make Project", systemImage: "folder.badge.plus")
         }
+        .keyboardShortcut("2", modifiers: [.command])
+        .help("Make selected Inbox item a project")
+        .accessibilityIdentifier("inbox-action-make-project")
+        .accessibilityHint("Creates a local project from the selected Inbox item.")
         Button {
             viewModel.scheduleSelectedTaskForToday()
         } label: {
             Label("Schedule Today", systemImage: "calendar.badge.plus")
         }
+        .keyboardShortcut("3", modifiers: [.command])
+        .help("Schedule selected Inbox item for today")
+        .accessibilityIdentifier("inbox-action-schedule-today")
+        .accessibilityHint("Sets the selected Inbox item due date to today.")
         Button {
             viewModel.deferSelectedTaskForLater()
         } label: {
             Label("Review Later", systemImage: "clock")
         }
+        .keyboardShortcut("4", modifiers: [.command])
+        .help("Review selected Inbox item later")
+        .accessibilityIdentifier("inbox-action-review-later")
+        .accessibilityHint("Leaves the selected Inbox item for later review.")
     }
 }
 
@@ -370,6 +416,10 @@ private struct TodaySuggestionPanel: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("today-suggestion-panel")
+        .accessibilityLabel("Today planning")
+        .accessibilityHint("Shows the recommended focus task, due counts, and local time blocks.")
     }
 }
 
@@ -390,6 +440,8 @@ private struct TodayPlanSummary: View {
                 dueCounts
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("today-plan-summary")
     }
 
     private var recommendation: some View {
@@ -409,6 +461,10 @@ private struct TodayPlanSummary: View {
             Image(systemName: "sparkles")
                 .foregroundStyle(.blue)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("today-focus-recommendation")
+        .accessibilityLabel(recommendationTitle)
+        .accessibilityHint(plan.recommendationReason)
     }
 
     private var dueCounts: some View {
@@ -444,6 +500,10 @@ private struct TodayCountBadge: View {
         .padding(.vertical, 6)
         .padding(.horizontal, 8)
         .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("today-count-badge-\(label.lowercased())")
+        .accessibilityLabel("\(label) tasks")
+        .accessibilityValue("\(value)")
     }
 }
 
@@ -472,8 +532,15 @@ private struct TodayTimeBlockList: View {
                             .truncationMode(.tail)
                             .help(block.task.title)
                     }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("today-time-block-row-\(block.id)")
+                    .accessibilityLabel("\(block.label), \(block.task.title)")
                 }
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("today-time-block-list")
+        .accessibilityLabel("Today time blocks")
+        .accessibilityHint("Lists local focus blocks generated from due and overdue tasks.")
     }
 }
