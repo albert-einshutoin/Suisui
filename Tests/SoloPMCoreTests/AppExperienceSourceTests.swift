@@ -379,6 +379,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(reviewFactory.contains("Review execution tools are unavailable because audit logging or local data stores could not be opened."))
     }
 
+    func testRuntimeSettingsLoadDoesNotSilentlyDefaultOnDecodeFailure() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let runtimeFactoryStart = try XCTUnwrap(appSource.range(of: "private enum AppRuntimeFactory"))
+        let runtimeFactory = String(appSource[runtimeFactoryStart.lowerBound..<appSource.endIndex])
+
+        XCTAssertFalse(runtimeFactory.contains("(try? UserDefaultsAppSettingsStore().load()) ?? .default"))
+        XCTAssertFalse(runtimeFactory.contains("((try? UserDefaultsAppSettingsStore().load()) ?? .default).normalizedForRuntime"))
+        XCTAssertTrue(runtimeFactory.contains("loadRuntimeSettings()"))
+        XCTAssertTrue(runtimeFactory.contains("Runtime app settings could not be loaded. Defaults are shown until settings are saved again."))
+    }
+
     func testSettingsSurfaceCanPersistOpenAIKeyThroughViewModel() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 

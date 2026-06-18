@@ -573,6 +573,14 @@
 - [x] テスト: update 成功時は add/delete が呼ばれず、missing item の場合だけ add されることを確認する。
 - [x] 完了条件: API key 差し替え時に add path の失敗で既存 Keychain secret が失われない。
 
+### P10-070: Runtime settings load failure visibility
+
+- [x] `AppRuntimeFactory` は `UserDefaultsAppSettingsStore.load()` の失敗を `try?` で default に握りつぶさない。
+- [x] Runtime settings load failure は専用 loader で扱い、default 使用時もユーザーに visible な failure message を残す。
+- [x] Voice Command 起動時に設定破損がある場合、`Runtime app settings could not be loaded. Defaults are shown until settings are saved again.` を表示できる初期 phase にする。
+- [x] テスト: runtime factory に silent default fallback が再導入されないことを確認する。
+- [x] 完了条件: 設定破損が provider / STT 選択の意図しない default 化として隠れない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

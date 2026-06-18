@@ -1069,7 +1069,7 @@ private enum AppRuntimeFactory {
         let permissionSnapshot = UserNotificationsPermissionSnapshotReader.snapshot()
         do {
             let connection = try migratedConnection()
-            let settings = (try? UserDefaultsAppSettingsStore().load()) ?? .default
+            let settings = loadRuntimeSettings().settings
             return try WatcherDiagnosticsProvider(
                 stateStore: SQLiteDailyCheckStateStore(connection: connection),
                 permissionSnapshot: permissionSnapshot,
@@ -1106,13 +1106,26 @@ private enum AppRuntimeFactory {
     static func makeVoiceCaptureViewModel() -> VoiceCaptureViewModel {
         let secretStore = makeSecretStore()
         let auditLogger = try? makeAuditLogger()
-        let settings = ((try? UserDefaultsAppSettingsStore().load()) ?? .default).normalizedForRuntime
+        let settingsResult = loadRuntimeSettings()
+        let initialPhase = settingsResult.errorMessage.map(VoiceCapturePhase.failed) ?? .idle
         return VoiceCaptureViewModel(
+            phase: initialPhase,
             audioRecorder: AVFoundationAudioRecorder(),
-            sttProvider: makeSpeechToTextProvider(settings: settings, secretStore: secretStore),
-            llmProvider: makeLLMProvider(settings: settings, secretStore: secretStore),
+            sttProvider: makeSpeechToTextProvider(settings: settingsResult.settings, secretStore: secretStore),
+            llmProvider: makeLLMProvider(settings: settingsResult.settings, secretStore: secretStore),
             auditRecorder: auditLogger.map { PlanningAuditRecorder(logger: $0) }
         )
+    }
+
+    private static func loadRuntimeSettings() -> RuntimeSettingsLoadResult {
+        do {
+            return RuntimeSettingsLoadResult(settings: try UserDefaultsAppSettingsStore().load().normalizedForRuntime)
+        } catch {
+            return RuntimeSettingsLoadResult(
+                settings: .default,
+                errorMessage: "Runtime app settings could not be loaded. Defaults are shown until settings are saved again."
+            )
+        }
     }
 
     private static func makeLLMProvider(settings: AppSettings, secretStore: any SecretStore) -> any LLMProvider {
@@ -1234,6 +1247,16 @@ private enum AppRuntimeFactory {
 
     private static func applicationSupportDirectoryURL() throws -> URL {
         try SoloPMAppDatabaseLocation.applicationSupportDirectoryURL(createDirectory: true)
+    }
+}
+
+private struct RuntimeSettingsLoadResult {
+    let settings: AppSettings
+    let errorMessage: String?
+
+    init(settings: AppSettings, errorMessage: String? = nil) {
+        self.settings = settings
+        self.errorMessage = errorMessage
     }
 }
 
