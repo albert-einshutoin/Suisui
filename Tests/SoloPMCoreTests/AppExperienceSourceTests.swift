@@ -687,6 +687,24 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains("SecureField(\"API Key\", text: .constant(\"\"))"))
     }
 
+    func testSettingsSurfaceStartsWithStatusOverviewForCoreOperationalAreas() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        let overviewRange = try XCTUnwrap(appSource.range(of: "SettingsStatusOverview("))
+        let appearanceRange = try XCTUnwrap(appSource.range(of: "Section(\"Appearance\")"))
+
+        XCTAssertLessThan(overviewRange.lowerBound, appearanceRange.lowerBound)
+        XCTAssertTrue(appSource.contains("Section(\"Status Overview\")"))
+        XCTAssertTrue(appSource.contains("title: \"AI Provider\""))
+        XCTAssertTrue(appSource.contains("title: \"MCP\""))
+        XCTAssertTrue(appSource.contains("title: \"Sync\""))
+        XCTAssertTrue(appSource.contains("title: \"Privacy\""))
+        XCTAssertTrue(appSource.contains("settingsViewModel.settings.aiProvider.displayName"))
+        XCTAssertTrue(appSource.contains("externalMCPViewModel.connectionCheckResultLabel"))
+        XCTAssertTrue(appSource.contains("syncViewModel.statusLabel"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.settings.notificationsEnabled"))
+    }
+
     func testRuntimeLLMFactoryUsesClaudeMessagesProviderWithoutOpenAIFallback() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let factoryStart = try XCTUnwrap(appSource.range(of: "private static func makeLLMProvider"))

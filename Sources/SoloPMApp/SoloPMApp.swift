@@ -785,6 +785,23 @@ private struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("Status Overview") {
+                SettingsStatusOverview(
+                    aiProviderLabel: settingsViewModel.settings.aiProvider.displayName,
+                    aiStatusLabel: activeAIProviderStatusLabel,
+                    aiTone: activeAIProviderTone,
+                    mcpStatusLabel: externalMCPViewModel.connectionCheckResultLabel,
+                    mcpDetailLabel: externalMCPViewModel.display.statusLabel,
+                    mcpTone: mcpOverviewTone,
+                    syncStatusLabel: syncViewModel.statusLabel,
+                    syncDetailLabel: "Plan: \(syncViewModel.planLabel)",
+                    syncTone: syncOverviewTone,
+                    privacyStatusLabel: privacyOverviewStatusLabel,
+                    privacyDetailLabel: "Login Item: \(launchAtLoginViewModel.statusLabel)",
+                    privacyTone: privacyOverviewTone
+                )
+            }
+
             Section("Appearance") {
                 Picker("Theme", selection: $appearancePreference) {
                     ForEach(SoloPMAppearancePreference.allCases) { preference in
@@ -1285,6 +1302,65 @@ private struct SettingsView: View {
         }
     }
 
+    private var activeAIProviderStatusLabel: String {
+        switch settingsViewModel.settings.aiProvider {
+        case .openaiResponses, .geminiOpenAICompatible:
+            settingsViewModel.openAIAPIKeyStatusLabel
+        case .claudeMessages:
+            settingsViewModel.anthropicAPIKeyStatusLabel
+        case .geminiDirect:
+            settingsViewModel.geminiAPIKeyStatusLabel
+        case .groqOpenAICompatible:
+            settingsViewModel.groqAPIKeyStatusLabel
+        case .opencodeLocal:
+            settingsViewModel.settings.isOpenCodeLocalExecutionApproved ? "Approved" : "Approval required"
+        case .openRouterCompatible:
+            settingsViewModel.openRouterAPIKeyStatusLabel
+        case .ollamaCompatible:
+            "Local"
+        }
+    }
+
+    private var activeAIProviderTone: SettingsStatusTone {
+        switch activeAIProviderStatusLabel {
+        case "Configured", "Approved", "Local":
+            .ready
+        case "Invalid", "Unavailable":
+            .danger
+        default:
+            .warning
+        }
+    }
+
+    private var mcpOverviewTone: SettingsStatusTone {
+        if externalMCPViewModel.connectionCheckResultLabel == "Connected" {
+            return .ready
+        }
+        if externalMCPViewModel.connectionCheckResultLabel.hasPrefix("Failed") {
+            return .danger
+        }
+        return externalMCPViewModel.display.isEnabled ? .warning : .neutral
+    }
+
+    private var syncOverviewTone: SettingsStatusTone {
+        switch syncViewModel.statusLabel {
+        case "Ready", "Syncing":
+            .ready
+        case "Failed":
+            .danger
+        default:
+            .warning
+        }
+    }
+
+    private var privacyOverviewStatusLabel: String {
+        settingsViewModel.settings.notificationsEnabled ? "Notifications on" : "Notifications off"
+    }
+
+    private var privacyOverviewTone: SettingsStatusTone {
+        settingsViewModel.settings.notificationsEnabled ? .ready : .neutral
+    }
+
     private func diagnosticDateLabel(_ date: Date?) -> String {
         guard let date else {
             return "Never"
@@ -1330,6 +1406,146 @@ private struct SettingsView: View {
             .red
         case .disabled:
             .secondary
+        }
+    }
+}
+
+private enum SettingsStatusTone {
+    case ready
+    case warning
+    case danger
+    case neutral
+
+    var color: Color {
+        switch self {
+        case .ready:
+            .green
+        case .warning:
+            .orange
+        case .danger:
+            .red
+        case .neutral:
+            .secondary
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .ready:
+            "checkmark.circle.fill"
+        case .warning:
+            "exclamationmark.triangle.fill"
+        case .danger:
+            "xmark.octagon.fill"
+        case .neutral:
+            "circle.dashed"
+        }
+    }
+}
+
+private struct SettingsStatusOverview: View {
+    let aiProviderLabel: String
+    let aiStatusLabel: String
+    let aiTone: SettingsStatusTone
+    let mcpStatusLabel: String
+    let mcpDetailLabel: String
+    let mcpTone: SettingsStatusTone
+    let syncStatusLabel: String
+    let syncDetailLabel: String
+    let syncTone: SettingsStatusTone
+    let privacyStatusLabel: String
+    let privacyDetailLabel: String
+    let privacyTone: SettingsStatusTone
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10)
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 10) {
+            SettingsStatusTile(
+                title: "AI Provider",
+                value: aiProviderLabel,
+                detail: aiStatusLabel,
+                tone: aiTone,
+                systemImage: "sparkles"
+            )
+            SettingsStatusTile(
+                title: "MCP",
+                value: mcpStatusLabel,
+                detail: mcpDetailLabel,
+                tone: mcpTone,
+                systemImage: "point.3.connected.trianglepath.dotted"
+            )
+            SettingsStatusTile(
+                title: "Sync",
+                value: syncStatusLabel,
+                detail: syncDetailLabel,
+                tone: syncTone,
+                systemImage: "arrow.triangle.2.circlepath"
+            )
+            SettingsStatusTile(
+                title: "Privacy",
+                value: privacyStatusLabel,
+                detail: privacyDetailLabel,
+                tone: privacyTone,
+                systemImage: "lock.shield"
+            )
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+private struct SettingsStatusTile: View {
+    let title: String
+    let value: String
+    let detail: String
+    let tone: SettingsStatusTone
+    let systemImage: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.title3)
+                .foregroundStyle(tone.color)
+                .frame(width: 24, height: 24)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    Image(systemName: tone.systemImage)
+                        .font(.caption)
+                        .foregroundStyle(tone.color)
+                        .accessibilityHidden(true)
+                }
+
+                Text(value)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(value)
+
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(detail)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, minHeight: 78, alignment: .topLeading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(tone.color.opacity(0.22))
         }
     }
 }

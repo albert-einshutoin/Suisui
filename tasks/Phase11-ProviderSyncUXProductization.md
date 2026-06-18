@@ -126,8 +126,8 @@
 - [x] Settingsに `Sync` セクションを追加し、Plan、Status、Last attempt、Data included、Upgrade requiredを表示する。
 - [x] Freeでは同期toggleをdisabledにし、押した時も外部通信を発火しない。
 - [x] Pro未構成では「Sync backend is not configured」と表示し、成功バッジを出さない。
-- [ ] `ui-samples/07.png` の設定密度を参考に、AI Provider / MCP / Sync / Privacy が一画面で状態確認できるよう整理する。
-- [ ] 完了条件: ユーザーは自分のデータが同期されているか、なぜ同期できないかを1画面で理解できる。
+- [x] `ui-samples/07.png` の設定密度を参考に、AI Provider / MCP / Sync / Privacy が一画面で状態確認できるよう整理する。
+- [x] 完了条件: ユーザーは自分のデータが同期されているか、なぜ同期できないかを1画面で理解できる。
 
 ## P11-030: UX click-path audit
 
