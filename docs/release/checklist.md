@@ -104,7 +104,17 @@ export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERS
 SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh
 ```
 
-10. final readiness report
+10. UI and accessibility evidence
+
+Generate Light/Dark/System screenshots on a host with Screen Recording permission:
+
+```bash
+script/capture_ui_evidence.sh
+```
+
+Then replace `docs/release/evidence/accessibility-voiceover.md` with the real VoiceOver pass for the same release-candidate app. The final file must use `Status: passed`, include the Project navigation -> Project board detail -> Open task -> Status controls -> Task inspector path, and remove all pending/template language.
+
+11. final readiness report
 
 ```bash
 source packaging/app_metadata.env
@@ -112,13 +122,13 @@ export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERS
 ./script/release_readiness_report.sh
 ```
 
-11. tag
+12. tag
 
 ```bash
 git tag -a v0.1.0-alpha.1 -m "SoloPM 0.1.0 alpha 1"
 ```
 
-12. release notes
+13. release notes
 
 Use [public-alpha.md](public-alpha.md) as the base. Include artifact names, checksums, supported macOS version, Known Issues, and rollback instructions.
 
@@ -131,6 +141,8 @@ Use [public-alpha.md](public-alpha.md) as the base. Include artifact names, chec
 - Confirm Gatekeeper does not reject the app.
 - Confirm Settings can toggle launch at login in the signed app.
 - Confirm Sparkle local appcast metadata points to the new build.
+- Confirm Light/Dark/System screenshots show sidebar, task cards, and right inspector without overlap.
+- Confirm VoiceOver can follow Project navigation -> Project board detail -> Open task -> Status controls -> Task inspector without unlabeled primary CRUD controls or keyboard traps.
 - Record the manual check results in `packaging/release-evidence.json`.
 
 ## Rollback

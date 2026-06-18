@@ -9,6 +9,7 @@ UI_SCREENSHOT_RELATIVE_DIR="docs/release/evidence/ui-screenshots"
 UI_SCREENSHOT_MIN_BYTES=50000
 UI_SCREENSHOT_MIN_WIDTH=640
 UI_SCREENSHOT_MIN_HEIGHT=420
+VOICEOVER_EVIDENCE_RELATIVE="docs/release/evidence/accessibility-voiceover.md"
 RUNTIME_SOURCE_DIRS=(
   "$ROOT_DIR/Sources/SoloPMCore"
   "$ROOT_DIR/Sources/SoloPMApp"
@@ -18,6 +19,18 @@ UI_SCREENSHOTS=(
   "Light:project-board-light.png"
   "Dark:project-board-dark.png"
   "System:project-board-system.png"
+)
+VOICEOVER_REQUIRED_MARKERS=(
+  "Status: passed"
+  "Project navigation"
+  "Project board detail"
+  "Open task"
+  "Status controls"
+  "Task inspector"
+  "Save Changes"
+  "Delete Task confirmation"
+  "No keyboard trap"
+  "No unlabeled primary CRUD controls"
 )
 
 section() {
@@ -169,6 +182,37 @@ for screenshot_entry in "${UI_SCREENSHOTS[@]}"; do
     "$pixel_height" \
     "$screenshot_bytes"
 done
+
+section "VoiceOver accessibility evidence"
+voiceover_evidence_file="$ROOT_DIR/$VOICEOVER_EVIDENCE_RELATIVE"
+if [[ ! -f "$voiceover_evidence_file" ]]; then
+  blocker "missing VoiceOver accessibility evidence file: $VOICEOVER_EVIDENCE_RELATIVE"
+else
+  for required_marker in "${VOICEOVER_REQUIRED_MARKERS[@]}"; do
+    if [[ "$required_marker" == "Status: passed" ]]; then
+      marker_present=0
+      grep -Fx "Status: passed" "$voiceover_evidence_file" >/dev/null && marker_present=1
+    else
+      marker_present=0
+      grep -F "$required_marker" "$voiceover_evidence_file" >/dev/null && marker_present=1
+    fi
+
+    if [[ "$marker_present" -ne 1 ]]; then
+      case "$required_marker" in
+        "Status: passed")
+          blocker "VoiceOver accessibility evidence is not marked passed"
+          ;;
+        *)
+          blocker "VoiceOver accessibility evidence is missing marker: $required_marker"
+          ;;
+      esac
+    fi
+  done
+
+  if grep -Eiq '(pending|todo|tbd|placeholder|sample|example|replace me)' "$voiceover_evidence_file"; then
+    blocker "VoiceOver accessibility evidence still contains placeholder text"
+  fi
+fi
 
 section "Release environment preflight"
 set +e

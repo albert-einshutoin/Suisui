@@ -170,6 +170,7 @@
   - [x] Task card、column add、status move controlにVoiceOver label/helpを付け、delete/archiveのconfirmationをsource testで固定する。
   - [x] Task card本体のOpen Detailsとstatus move controlsを別フォーカス対象に分け、支援技術で移動ボタンがカード要約に埋もれないことをsource testで固定する。
   - [x] Sidebar -> board detail -> task card -> inspector edit/save/delete のsource-level focus anchorsを固定する。
+  - [x] `release_readiness_report.sh` は `docs/release/evidence/accessibility-voiceover.md` の `Status: passed` と必須focus path markerを検証し、pending証跡をblockerにする。
   - [ ] 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。
 - [x] `script/capture_ui_evidence.sh` は一時HOME、seed済みProject board、Light/Dark/System切替、window captureを使う。
 - [x] `release_readiness_report.sh` は `ui-screenshots.md` だけでなく Light/Dark/System PNG の存在、サイズ、寸法を検証し、欠落や小さすぎる画像をblockerにする。
