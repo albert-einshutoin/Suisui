@@ -170,6 +170,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".shadow(color: Color.black.opacity(0.04)"))
     }
 
+    func testKanbanCardsExposePointerHoverAndStatusRailAffordance() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(source.contains("@State private var isPointerHovered = false"))
+        XCTAssertTrue(source.contains("TaskStatusAccentRail(tint: task.status.tint)"))
+        XCTAssertTrue(source.contains("struct TaskStatusAccentRail"))
+        XCTAssertTrue(source.contains(".onHover { isPointerHovered = $0 }"))
+        XCTAssertTrue(source.contains(".shadow(color: Color.black.opacity(isPointerHovered ? 0.10 : 0.04)"))
+        XCTAssertTrue(source.contains(".animation(.snappy(duration: 0.16), value: isPointerHovered)"))
+    }
+
     func testAppAndCLIShareDefaultDatabaseLocation() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let cliSource = try readPackageFile("Sources/SoloPMCLI/SoloPMCLIEntrypoint.swift")

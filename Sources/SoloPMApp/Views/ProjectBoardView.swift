@@ -701,50 +701,69 @@ private struct BoardTaskCard: View {
     let isSelected: Bool
     let onSelect: () -> Void
     let onMoveStatus: (ProjectTaskStatus) -> Void
+    @State private var isPointerHovered = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
-                Text(task.title)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(2)
-                    .truncationMode(.tail)
-                    .help(task.title)
+        HStack(alignment: .top, spacing: 10) {
+            TaskStatusAccentRail(tint: task.status.tint)
 
-                Spacer(minLength: 6)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(task.title)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                        .help(task.title)
 
-                Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
-                    .font(.caption)
-                    .foregroundStyle(task.status.tint)
-                    .padding(4)
-                    .background(task.status.tint.opacity(0.10), in: Circle())
-                    .help("Drag to another status column")
-                    .accessibilityLabel("Drag to another status column")
+                    Spacer(minLength: 6)
+
+                    Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                        .font(.caption)
+                        .foregroundStyle(task.status.tint)
+                        .padding(4)
+                        .background(task.status.tint.opacity(isPointerHovered ? 0.18 : 0.10), in: Circle())
+                        .help("Drag to another status column")
+                        .accessibilityLabel("Drag to another status column")
+                }
+
+                if !task.detail.isEmpty {
+                    Text(task.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                        .truncationMode(.tail)
+                        .help(task.detail)
+                }
+
+                TaskMetadataRow(task: task)
+                TaskStatusMoveControls(task: task, onMove: onMoveStatus)
             }
-
-            if !task.detail.isEmpty {
-                Text(task.detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-                    .truncationMode(.tail)
-                    .help(task.detail)
-            }
-
-            TaskMetadataRow(task: task)
-            TaskStatusMoveControls(task: task, onMove: onMoveStatus)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-        .background(task.status.tint.opacity(isSelected ? 0.14 : 0.05), in: RoundedRectangle(cornerRadius: 8))
+        .background(task.status.tint.opacity(isSelected || isPointerHovered ? 0.14 : 0.05), in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? task.status.tint.opacity(0.7) : Color.secondary.opacity(0.16))
+                .stroke(isSelected || isPointerHovered ? task.status.tint.opacity(0.7) : Color.secondary.opacity(0.16))
         }
-        .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
+        .shadow(color: Color.black.opacity(isPointerHovered ? 0.10 : 0.04), radius: isPointerHovered ? 12 : 8, x: 0, y: isPointerHovered ? 4 : 2)
         .contentShape(RoundedRectangle(cornerRadius: 8))
         .onTapGesture(perform: onSelect)
+        .onHover { isPointerHovered = $0 }
+        .animation(.snappy(duration: 0.16), value: isPointerHovered)
+    }
+}
+
+private struct TaskStatusAccentRail: View {
+    let tint: Color
+
+    var body: some View {
+        Capsule()
+            .fill(tint.opacity(0.92))
+            .frame(width: 4)
+            .frame(height: 44)
+            .accessibilityHidden(true)
     }
 }
 
