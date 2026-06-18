@@ -161,6 +161,7 @@
 - [x] Inboxは未処理入力の分類、Task化、Project化、Schedule化、後で確認の4アクションを1クリックで選べるようにする。
 - [x] Inbox分類後は成功状態、Undo、次のInbox item自動選択を出し、連続triageで迷子にならない。
 - [x] Todayは今日やるタスク、期限、AI提案、時間ブロックを同一画面で確認できるようにする。
+- [x] MenuBarExtraにQuick Addを追加し、Project Boardを開かずにInboxへローカルTaskを作れる。
 - [x] 音声入力後に自動で謎の固定タスクが入らないことをregression testで維持する。
 - [x] 完了条件: ユーザーが「どこに入ったか分からない」状態にならない。
 

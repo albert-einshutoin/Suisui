@@ -49,7 +49,8 @@ Observed strengths:
 - Calendar integration makes Today/Upcoming scheduling visible.
 
 SoloPM implication:
-- Adopt: Inbox quick capture and voice/text capture must remain one of the fastest paths in the app.
+- Adopted: Menu bar Quick Add and Inbox header capture make local Inbox task creation one of the fastest paths in the app.
+- Adopt: voice/text capture must remain one of the fastest paths in the app.
 - Adopt: mouse drag plus card move buttons are the right accessibility pair.
 - Adopt later: natural-language date parsing and calendar reflection only when local scheduling semantics are reliable.
 - Avoid for MVP: broad label/filter taxonomy before the task creation loop is sharp.
@@ -95,6 +96,7 @@ SoloPM implication:
 | --- | --- | --- | --- |
 | Project overview with tasks/artifacts/timeline/suggestions | Adopted | Reduces "what should I inspect next?" after opening a project. | Source tests and screenshot evidence. |
 | Right inspector for task/project edit/delete/suggestion | Adopted | Keeps repeated CRUD in one stable place. | Source tests and VoiceOver focus pass. |
+| Menu bar Quick Add to Inbox | Adopted | Captures a task without opening the Project Board, matching Todoist-like speed while staying local-first. | Source tests; manual smoke capture remains release evidence. |
 | Inbox triage actions | Adopted | Converts capture into task/project/schedule/review-later quickly. | Click-path audit and mutation tests. |
 | Natural-language date parsing | Defer | Valuable for Todoist-like capture, but date semantics must be deterministic. | Parser unit tests for locale/time zone. |
 | Calendar layout / auto-scheduling | Defer | Motion-like value requires real calendar sync and user trust. | Calendar write/read smoke and rollback path. |

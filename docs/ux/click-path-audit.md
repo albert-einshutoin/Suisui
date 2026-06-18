@@ -32,6 +32,7 @@
 | 操作 | 導線 | クリック数 | 判定 | メモ |
 | --- | --- | ---: | --- | --- |
 | menu barからProject Boardを開く | menu bar icon -> `Project Board` | 2 | Pass | 通常起動ではProject Boardが最初に出るため、起動後は0クリック。 |
+| menu bar Quick Add | menu bar icon -> `Quick Add`入力 -> `Add` | 2 | Pass | menu bar Quick AddからInboxへ0画面遷移で実タスクを作れる。Project Boardを開かなくてもlocal DBへ保存し、Board/MenuBar summaryへ変更通知する。 |
 | Project作成 | sidebarの `Add Project` | 1 | Pass | 速い。作成直後にtitle編集が明確である状態は維持したい。 |
 | Project選択 | sidebar project row | 1 | Pass | ネイティブsidebar listで繰り返し操作に向いている。 |
 | Project overview確認 | sidebar project row -> `Overview` | 1-2 | Pass | 初期表示またはView segmentで、進捗、Task snapshot、実artifact、Timeline、Local suggestionを同一画面で確認できる。 |
@@ -91,7 +92,7 @@ PR未作成のため、現時点ではcurrent branchの改善commitとsource tes
 | Task作成 / Task編集 / Task削除 | 選択中Projectのheaderまたはcolumnから2クリックでTaskを追加し、card -> inspectorで編集・削除を完結する。 | `Sources/SoloPMApp/Views/ProjectBoardView.swift`, `Sources/SoloPMCore/App/ProjectBoard.swift` | `ProjectBoardStoreTests.testCreateTaskPersistsRequestedColumnMetadataAndDetail`, `ProjectBoardStoreTests.testUpdateTaskMovesCardAcrossColumnsAndUpdatesMetadata`, `ProjectBoardStoreTests.testDeleteTaskRemovesCardFromPersistentSnapshot` |
 | Task status移動 | card上のchevronで1クリック移動、またはdrag/dropで任意statusへ移動する。 | `Sources/SoloPMApp/Views/ProjectBoardView.swift`, `Sources/SoloPMCore/App/ProjectBoard.swift` | `AppExperienceSourceTests.testKanbanTaskCardsExposeMouseDrivenStatusMoveControls`, `AppExperienceSourceTests.testKanbanCardsUseTaskComponentDragPreview`, `ProjectBoardStoreTests.testProjectBoardViewModelMovesDroppedTaskAndNotifiesOnce` |
 | Task card metadata strip | title、status、priority、due、drag affordanceを分離し、狭いcolumnでも固定chipとadaptive gridで重なりにくくする。 | `Sources/SoloPMApp/Views/ProjectBoardView.swift` | `AppExperienceSourceTests.testTaskCardsUseSampleInspiredNonOverlappingMetadataStrip` |
-| Inbox triage | item選択後にMake Task、Make Project、Schedule Today、Review Laterを1クリックで実mutationへ送る。 | `Sources/SoloPMApp/Views/ProjectWorkflowViews.swift`, `Sources/SoloPMCore/App/ProjectBoard.swift` | `ProjectBoardStoreTests.testProjectBoardViewModelInboxClassificationShowsFeedbackAdvancesSelectionAndUndo`, `ProjectBoardStoreTests.testSQLiteBoardStorePersistsInboxClassificationUndo` |
+| Inbox capture / triage | MenuBar Quick AddまたはInbox headerから実タスクを作り、item選択後にMake Task、Make Project、Schedule Today、Review Laterを1クリックで実mutationへ送る。 | `Sources/SoloPMApp/SoloPMApp.swift`, `Sources/SoloPMApp/Views/ProjectWorkflowViews.swift`, `Sources/SoloPMCore/App/ProjectBoard.swift` | `AppExperienceSourceTests.testMenuBarPanelProvidesFastInboxCaptureWithRuntimeBoardViewModel`, `ProjectBoardStoreTests.testProjectBoardViewModelQuickCapturesInboxTaskAndNotifies`, `ProjectBoardStoreTests.testProjectBoardViewModelQuickCapturePersistsToSQLiteInbox`, `ProjectBoardStoreTests.testProjectBoardViewModelInboxClassificationShowsFeedbackAdvancesSelectionAndUndo`, `ProjectBoardStoreTests.testSQLiteBoardStorePersistsInboxClassificationUndo` |
 | Today planning | sidebarから1クリックでdue/overdue、focus suggestion、time blockを確認する。 | `Sources/SoloPMApp/Views/ProjectWorkflowViews.swift`, `Sources/SoloPMCore/App/ProjectBoard.swift` | `AppExperienceSourceTests.testTodayWorkflowShowsRecommendationDueCountsAndTimeBlocks`, `ProjectBoardStoreTests.testProjectBoardViewModelBuildsDeterministicTodayPlanWithTimeBlocks` |
 | Settings overview / Theme | toolbar gearから1クリックでSettingsを開き、Status OverviewとTheme segmentをSettings内へ集約する。 | `Sources/SoloPMApp/SoloPMApp.swift` | `AppExperienceSourceTests.testSettingsSurfaceStartsWithStatusOverviewForCoreOperationalAreas`, `AppExperienceSourceTests.testAppearanceSelectionIsConfiguredOnlyFromSettings`, `AppExperienceSourceTests.testProjectBoardSidebarAndToolbarDoNotHostThemeControls` |
 | AI provider設定 | provider pickerの選択を自動保存し、選択中providerのfieldだけを表示する。 | `Sources/SoloPMApp/SoloPMApp.swift`, `Sources/SoloPMCore/App/AppSettings.swift`, `Sources/SoloPMCore/App/LLMProviderCatalog.swift` | `AppExperienceSourceTests.testAISettingsTabShowsOnlySelectedProviderFields`, `AppSettingsTests.testAppSettingsViewModelPersistsProviderSelectionWhenSelected` |
@@ -112,6 +113,6 @@ Risk: Artifact表示は実DB rowだけに限定したためmock感はないが�
 
 ## 次の実装候補
 
-1. P11-022: Settingsをcompact overviewに整理し、AI Provider / MCP / Sync / Privacyの状態を深いscrollなしで見えるようにする。
-2. P11-031: Task cardのlight/darkスクリーンショット検証を完了する。
-3. P11-033: keyboard shortcutとfocus orderをboard、inspector、review executionで検証する。
+1. P11-031: Task cardのlight/darkスクリーンショット検証を完了する。
+2. P11-033: 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。
+3. P11-040: Notion / Todoist / Linear / Motion の実操作メモを追加し、desk researchとの差分だけ更新する。

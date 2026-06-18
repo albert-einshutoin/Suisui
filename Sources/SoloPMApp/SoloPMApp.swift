@@ -13,11 +13,13 @@ struct SoloPM: App {
     @NSApplicationDelegateAdaptor(SoloPMAppDelegate.self) private var appDelegate
 #endif
     @StateObject private var menuBarController: MenuBarSummaryController
+    @StateObject private var menuBarQuickCaptureViewModel: ProjectBoardViewModel
     @AppStorage(SoloPMAppearancePreference.storageKey) private var appearancePreference: SoloPMAppearancePreference = .system
 
     @MainActor
     init() {
         _menuBarController = StateObject(wrappedValue: AppRuntimeFactory.makeMenuBarSummaryController())
+        _menuBarQuickCaptureViewModel = StateObject(wrappedValue: AppRuntimeFactory.makeProjectBoardViewModel())
     }
 
     var body: some Scene {
@@ -34,7 +36,7 @@ struct SoloPM: App {
         .defaultSize(width: 560, height: 420)
 
         MenuBarExtra("SoloPM", systemImage: "checklist") {
-            MenuBarPanel(controller: menuBarController)
+            MenuBarPanel(controller: menuBarController, quickCaptureViewModel: menuBarQuickCaptureViewModel)
                 .preferredColorScheme(appearancePreference.colorScheme)
         }
         .menuBarExtraStyle(.window)
@@ -133,6 +135,8 @@ private struct MenuBarPanel: View {
     @Environment(\.openWindow) private var openWindow
 
     @ObservedObject var controller: MenuBarSummaryController
+    @ObservedObject var quickCaptureViewModel: ProjectBoardViewModel
+    @State private var quickCaptureTitle = ""
 
     private var viewModel: MenuBarSummaryViewModel {
         controller.viewModel
@@ -162,6 +166,10 @@ private struct MenuBarPanel: View {
                 Label("Voice Command", systemImage: "mic")
             }
             .keyboardShortcut(.space, modifiers: [.option])
+
+            Divider()
+
+            quickCaptureSection
 
             Divider()
 
@@ -199,8 +207,56 @@ private struct MenuBarPanel: View {
         .frame(width: 320)
         .task {
             controller.refresh()
+            quickCaptureViewModel.load()
         }
         .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
+            controller.refresh()
+            quickCaptureViewModel.load()
+        }
+    }
+
+    private var quickCaptureSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Quick Add")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                TextField("Quick add to Inbox", text: $quickCaptureTitle)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(addQuickCapture)
+                    .accessibilityIdentifier("menu-bar-quick-capture-title")
+                    .accessibilityLabel("Quick add to Inbox")
+                    .accessibilityHint("Creates a local Inbox task without opening the Project Board.")
+
+                Button(action: addQuickCapture) {
+                    Label("Add", systemImage: "plus")
+                }
+                .disabled(quickCaptureTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .keyboardShortcut(.return, modifiers: [.command])
+                .help("Add to Inbox")
+                .accessibilityIdentifier("menu-bar-quick-capture-button")
+                .accessibilityHint("Adds the typed item to the local Inbox.")
+            }
+
+            if let errorMessage = quickCaptureViewModel.errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func addQuickCapture() {
+        let title = quickCaptureTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else {
+            return
+        }
+
+        if quickCaptureViewModel.createInboxTask(title: title) != nil {
+            quickCaptureTitle = ""
             controller.refresh()
         }
     }

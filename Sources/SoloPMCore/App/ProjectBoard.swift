@@ -721,6 +721,55 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     @discardableResult
+    public func createInboxTask(
+        title: String,
+        detail: String = "",
+        priority: ProjectTaskPriority = .medium,
+        dueAt: String? = nil
+    ) -> ProjectBoardTask? {
+        do {
+            let liveSnapshot = try store.loadSnapshot(includeArchived: false)
+            snapshot = liveSnapshot
+            let inboxProject: ProjectBoardProject
+            if let activeInbox = liveSnapshot.projects.first(where: {
+                $0.title.caseInsensitiveCompare("Inbox") == .orderedSame && !$0.isArchived
+            }) {
+                inboxProject = activeInbox
+            } else {
+                inboxProject = try store.createProject(title: "Inbox")
+            }
+            let task = try store.createTask(ProjectBoardTaskDraft(
+                projectID: inboxProject.id,
+                title: title,
+                detail: detail,
+                status: .backlog,
+                priority: priority,
+                dueAt: dueAt
+            ))
+            selectedProjectID = inboxProject.id
+            selectedTaskID = task.id
+            load()
+            selectedProjectID = inboxProject.id
+            selectedTaskID = task.id
+            errorMessage = nil
+            onChange()
+            return task
+        } catch ProjectBoardStoreError.emptyTitle {
+            errorMessage = "Task title is required."
+            return nil
+        } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
+            errorMessage = "Restore the project before adding tasks."
+            return nil
+        } catch ProjectBoardStoreError.emptyProjectTitle {
+            errorMessage = "Project title is required."
+            return nil
+        } catch {
+            errorMessage = String(describing: error)
+            return nil
+        }
+    }
+
+    @discardableResult
     public func createProject(title: String = "Untitled Project") -> ProjectBoardProject? {
         do {
             let project = try store.createProject(title: title)

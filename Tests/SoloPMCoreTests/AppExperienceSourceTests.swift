@@ -543,13 +543,33 @@ final class AppExperienceSourceTests: XCTestCase {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
         XCTAssertTrue(appSource.contains("@StateObject private var menuBarController: MenuBarSummaryController"))
-        XCTAssertTrue(appSource.contains("MenuBarPanel(controller: menuBarController)"))
+        XCTAssertTrue(appSource.contains("MenuBarPanel(controller: menuBarController, quickCaptureViewModel: menuBarQuickCaptureViewModel)"))
         XCTAssertTrue(appSource.contains("makeMenuBarSummaryController()"))
         XCTAssertTrue(appSource.contains(".onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange))"))
         XCTAssertTrue(appSource.contains("controller.emptyStateLabel"))
         XCTAssertFalse(appSource.contains("private let menuBarViewModel = AppRuntimeFactory.makeMenuBarSummaryViewModel()"))
         XCTAssertFalse(appSource.contains("StaticMenuBarSummaryProvider(summary: .empty)"))
         XCTAssertTrue(appSource.contains("UnavailableMenuBarSummaryProvider(error: error)"))
+    }
+
+    func testMenuBarPanelProvidesFastInboxCaptureWithRuntimeBoardViewModel() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+        let audit = try readPackageFile("docs/ux/click-path-audit.md")
+
+        XCTAssertTrue(appSource.contains("@StateObject private var menuBarQuickCaptureViewModel: ProjectBoardViewModel"))
+        XCTAssertTrue(appSource.contains("_menuBarQuickCaptureViewModel = StateObject(wrappedValue: AppRuntimeFactory.makeProjectBoardViewModel())"))
+        XCTAssertTrue(appSource.contains("MenuBarPanel(controller: menuBarController, quickCaptureViewModel: menuBarQuickCaptureViewModel)"))
+        XCTAssertTrue(appSource.contains("@ObservedObject var quickCaptureViewModel: ProjectBoardViewModel"))
+        XCTAssertTrue(appSource.contains("@State private var quickCaptureTitle = \"\""))
+        XCTAssertTrue(appSource.contains("TextField(\"Quick add to Inbox\", text: $quickCaptureTitle)"))
+        XCTAssertTrue(appSource.contains("quickCaptureViewModel.createInboxTask(title: title)"))
+        XCTAssertTrue(appSource.contains(".keyboardShortcut(.return, modifiers: [.command])"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"menu-bar-quick-capture-title\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"menu-bar-quick-capture-button\")"))
+        XCTAssertTrue(appSource.contains("NotificationCenter.default.post(name: .soloPMProjectBoardDidChange, object: nil)"))
+        XCTAssertTrue(audit.contains("menu bar Quick AddからInboxへ0画面遷移で実タスクを作れる"))
+        XCTAssertTrue(phase.contains("[x] MenuBarExtraにQuick Addを追加し、Project Boardを開かずにInboxへローカルTaskを作れる。"))
     }
 
     func testReviewPanelUsesResponsiveLongContentGuards() throws {
@@ -1354,8 +1374,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(benchmark.contains("Custom database schema builder | Reject for MVP"))
         XCTAssertTrue(benchmark.contains("Calendar layout / auto-scheduling | Defer"))
         XCTAssertTrue(benchmark.contains("Project overview with tasks/artifacts/timeline/suggestions | Adopted"))
+        XCTAssertTrue(benchmark.contains("Menu bar Quick Add to Inbox | Adopted"))
         XCTAssertTrue(benchmark.contains("VC-Grade Feature Fit"))
         XCTAssertTrue(phase.contains("[x] 競合benchmarkから採用/非採用判断が残っている。"))
+        XCTAssertTrue(phase.contains("[ ] 完了条件: Notion的な柔軟さ、Linear的な速度、Todoist的な即時入力のうち、SoloPMに必要な部分だけが実装される。"))
     }
 
     func testInvestorReviewTiesFeaturesToRetentionMonetizationAndRisk() throws {

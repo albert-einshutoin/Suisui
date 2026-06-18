@@ -616,6 +616,58 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelQuickCapturesInboxTaskAndNotifies() throws {
+        var changeCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+
+        let task = try XCTUnwrap(viewModel.createInboxTask(title: "Capture pricing follow-up"))
+
+        XCTAssertEqual(task.title, "Capture pricing follow-up")
+        XCTAssertEqual(task.status, .backlog)
+        XCTAssertEqual(viewModel.inboxTasks.first?.id, task.id)
+        XCTAssertEqual(viewModel.selectedProject?.title, "Inbox")
+        XCTAssertEqual(viewModel.selectedTask?.title, "Capture pricing follow-up")
+        XCTAssertEqual(changeCount, 1)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelQuickCapturePersistsToSQLiteInbox() throws {
+        let store = try makeStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+
+        let task = try XCTUnwrap(viewModel.createInboxTask(title: "Persist menu bar capture"))
+
+        let reloadedViewModel = ProjectBoardViewModel(store: store)
+        reloadedViewModel.load()
+        let reloadedTask = try XCTUnwrap(reloadedViewModel.inboxTasks.first { $0.id == task.id })
+        XCTAssertEqual(reloadedTask.title, "Persist menu bar capture")
+        XCTAssertEqual(reloadedTask.status, .backlog)
+        XCTAssertEqual(reloadedViewModel.inboxProject?.title, "Inbox")
+    }
+
+    @MainActor
+    func testProjectBoardViewModelQuickCaptureRejectsBlankInboxTitleWithoutNotifying() {
+        var changeCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+
+        let task = viewModel.createInboxTask(title: "   ")
+
+        XCTAssertNil(task)
+        XCTAssertEqual(viewModel.errorMessage, "Task title is required.")
+        XCTAssertEqual(changeCount, 0)
+    }
+
+    @MainActor
     func testProjectBoardViewModelBuildsDeterministicTodayPlanWithTimeBlocks() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()
