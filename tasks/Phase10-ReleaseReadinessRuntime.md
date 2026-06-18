@@ -542,6 +542,14 @@
 - [x] テスト: Review runtime factory が audit logger を必須化してから write execution registry を構成することを確認する。
 - [x] 完了条件: task/project/knowledge への write 実行が監査なしで成功しない。
 
+### P10-066: SQLite JSON column fail-fast decoding
+
+- [x] `projects.tags_json` の decode failure を `[]` として扱わず、読み込みエラーにする。
+- [x] `knowledge_frames.triggers_json` の decode failure を `[]` として扱わず、読み込みエラーにする。
+- [x] `LocalStoreDecodingError.invalidStringArray(column:)` で破損カラムを特定できるようにする。
+- [x] テスト: corrupted tags / triggers JSON が Project / Knowledge read path で silent drop されないことを確認する。
+- [x] 完了条件: DB 破損や migration bug が、UI/CLI 上でタグやトリガーの消失として見えない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

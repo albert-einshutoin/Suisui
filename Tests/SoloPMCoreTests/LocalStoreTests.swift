@@ -24,6 +24,18 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(projects.first?.tags, ["oss"])
     }
 
+    func testProjectStoreRejectsCorruptedTagsJSONInsteadOfDroppingTags() throws {
+        let connection = try migratedConnection()
+        let store = SQLiteProjectStore(connection: connection)
+        let project = try store.create(title: "Tagged", tags: ["oss", "alpha"])
+
+        try connection.execute("UPDATE projects SET tags_json = 'not-json' WHERE id = \(project.id);")
+
+        XCTAssertThrowsError(try store.get(id: project.id)) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .invalidStringArray(column: "projects.tags_json"))
+        }
+    }
+
     func testProjectStoreNormalizesAndRejectsBlankTitles() throws {
         let connection = try migratedConnection()
         let store = SQLiteProjectStore(connection: connection)
@@ -270,6 +282,18 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(try store.get(id: frame.id).name, "Investor memo")
         XCTAssertEqual(try store.get(id: frame.id).body, "  Updated body  ")
         XCTAssertEqual(try store.list().map(\.name), ["Investor memo"])
+    }
+
+    func testKnowledgeFrameStoreRejectsCorruptedTriggersJSONInsteadOfDroppingTriggers() throws {
+        let connection = try migratedConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let frame = try store.create(name: "Runbook", body: "Use release checklist", triggers: ["release", "alpha"])
+
+        try connection.execute("UPDATE knowledge_frames SET triggers_json = 'not-json' WHERE id = \(frame.id);")
+
+        XCTAssertThrowsError(try store.get(id: frame.id)) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .invalidStringArray(column: "knowledge_frames.triggers_json"))
+        }
     }
 
     func testKnowledgeFrameStoreSearchesWithFTS5() throws {

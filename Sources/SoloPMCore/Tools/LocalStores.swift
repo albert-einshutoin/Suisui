@@ -103,6 +103,10 @@ public struct ReminderLinkRecord: Equatable, Sendable {
     public var title: String?
 }
 
+public enum LocalStoreDecodingError: Error, Equatable, Sendable {
+    case invalidStringArray(column: String)
+}
+
 public final class SQLiteProjectStore: @unchecked Sendable {
     private let connection: SQLiteConnection
     private let lock = NSLock()
@@ -200,7 +204,7 @@ public final class SQLiteProjectStore: @unchecked Sendable {
             throw ToolExecutionError.executionFailed(.projectGet, "Project \(id) was not found.")
         }
 
-        return ProjectRecord(row: row)
+        return try ProjectRecord(row: row)
     }
 }
 
@@ -682,12 +686,12 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
             throw ToolExecutionError.executionFailed(.frameGet, "Knowledge frame \(id) was not found.")
         }
 
-        return KnowledgeFrameRecord(row: row)
+        return try KnowledgeFrameRecord(row: row)
     }
 }
 
 private extension ProjectRecord {
-    init(row: [String: String]) {
+    init(row: [String: String]) throws {
         self.init(
             id: Int64(row["id"] ?? "") ?? 0,
             title: row["title"] ?? "",
@@ -695,7 +699,7 @@ private extension ProjectRecord {
             priority: SQL.nilIfEmpty(row["priority"]),
             deadline: SQL.nilIfEmpty(row["deadline"]),
             workspacePath: SQL.nilIfEmpty(row["workspace_path"]),
-            tags: SQL.parseStringArray(row["tags_json"] ?? "[]"),
+            tags: try SQL.parseStringArray(row["tags_json"] ?? "[]", column: "projects.tags_json"),
             sourceCommand: SQL.nilIfEmpty(row["source_command"])
         )
     }
@@ -717,12 +721,12 @@ private extension TaskRecord {
 }
 
 private extension KnowledgeFrameRecord {
-    init(row: [String: String]) {
+    init(row: [String: String]) throws {
         self.init(
             id: Int64(row["id"] ?? "") ?? 0,
             name: row["name"] ?? "",
             body: row["body"] ?? "",
-            triggers: SQL.parseStringArray(row["triggers_json"] ?? "[]")
+            triggers: try SQL.parseStringArray(row["triggers_json"] ?? "[]", column: "knowledge_frames.triggers_json")
         )
     }
 }
@@ -857,10 +861,10 @@ private enum SQL {
         return String(data: data, encoding: .utf8) ?? "[]"
     }
 
-    static func parseStringArray(_ value: String) -> [String] {
+    static func parseStringArray(_ value: String, column: String) throws -> [String] {
         guard let data = value.data(using: .utf8),
               let decoded = try? JSONDecoder().decode([String].self, from: data) else {
-            return []
+            throw LocalStoreDecodingError.invalidStringArray(column: column)
         }
         return decoded
     }
