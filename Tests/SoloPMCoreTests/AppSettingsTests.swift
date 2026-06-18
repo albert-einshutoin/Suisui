@@ -85,6 +85,40 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testAppSettingsViewModelReportsInvalidStoredOpenAIKeyInsteadOfConfigured() throws {
+        let suiteName = "SoloPM.AppSettingsInvalidStoredOpenAIKey.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(values: [.openAIAPIKey: "sk-live invalid"])
+        )
+
+        XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Invalid")
+        XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Not configured")
+        XCTAssertEqual(viewModel.errorMessage, "Stored API key is invalid. Re-enter it in Settings.")
+        XCTAssertFalse(viewModel.errorMessage?.contains("sk-live") ?? true)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelReportsInvalidStoredOpenRouterKeyInsteadOfConfigured() throws {
+        let suiteName = "SoloPM.AppSettingsInvalidStoredOpenRouterKey.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(values: [.openRouterAPIKey: "sk-or-live\ninvalid"])
+        )
+
+        XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Not configured")
+        XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Invalid")
+        XCTAssertEqual(viewModel.errorMessage, "Stored API key is invalid. Re-enter it in Settings.")
+        XCTAssertFalse(viewModel.errorMessage?.contains("sk-or-live") ?? true)
+    }
+
+    @MainActor
     func testAppSettingsViewModelDoesNotReportOpenAIKeySaveSuccessWhenStatusRefreshFails() throws {
         let suiteName = "SoloPM.AppSettingsOpenAISaveRefreshFailure.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

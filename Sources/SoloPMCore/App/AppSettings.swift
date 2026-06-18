@@ -336,8 +336,11 @@ public final class AppSettingsViewModel: ObservableObject {
     @discardableResult
     public func refreshOpenAIAPIKeyStatus() -> Bool {
         do {
-            let stored = try secretStore.read(.openAIAPIKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            openAIAPIKeyStatusLabel = stored?.isEmpty == false ? "Configured" : "Not configured"
+            openAIAPIKeyStatusLabel = try apiKeyStatusLabel(for: .openAIAPIKey)
+            if openAIAPIKeyStatusLabel == "Invalid" {
+                reportInvalidStoredAPIKey()
+                return false
+            }
             return true
         } catch {
             openAIAPIKeyStatusLabel = "Unavailable"
@@ -350,8 +353,11 @@ public final class AppSettingsViewModel: ObservableObject {
     @discardableResult
     public func refreshOpenRouterAPIKeyStatus() -> Bool {
         do {
-            let stored = try secretStore.read(.openRouterAPIKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            openRouterAPIKeyStatusLabel = stored?.isEmpty == false ? "Configured" : "Not configured"
+            openRouterAPIKeyStatusLabel = try apiKeyStatusLabel(for: .openRouterAPIKey)
+            if openRouterAPIKeyStatusLabel == "Invalid" {
+                reportInvalidStoredAPIKey()
+                return false
+            }
             return true
         } catch {
             openRouterAPIKeyStatusLabel = "Unavailable"
@@ -363,6 +369,22 @@ public final class AppSettingsViewModel: ObservableObject {
 
     private func clearMessages() {
         errorMessage = nil
+        successMessage = nil
+    }
+
+    private func apiKeyStatusLabel(for key: SecretKey) throws -> String {
+        do {
+            _ = try APIKeyValidator.normalize(try secretStore.read(key))
+            return "Configured"
+        } catch APIKeyValidationError.empty {
+            return "Not configured"
+        } catch APIKeyValidationError.containsWhitespace {
+            return "Invalid"
+        }
+    }
+
+    private func reportInvalidStoredAPIKey() {
+        errorMessage = "Stored API key is invalid. Re-enter it in Settings."
         successMessage = nil
     }
 

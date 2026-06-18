@@ -1036,6 +1036,14 @@
 - [x] 共通 validator を使い、Settings 保存時 validation と runtime provider validation の条件を分岐させない。
 - [x] 完了条件: 過去バージョンや破損 Keychain 値が残っていても、secret を malformed Authorization header や transcript request に流さない。
 
+### P10-134: Settings does not show malformed stored API keys as configured
+
+- [x] `AppSettingsViewModel.refreshOpenAIAPIKeyStatus()` は Keychain に内部 whitespace 入り key が残っている場合、`Configured` ではなく `Invalid` を表示する。
+- [x] `AppSettingsViewModel.refreshOpenRouterAPIKeyStatus()` は Keychain に内部 whitespace 入り key が残っている場合、`Configured` ではなく `Invalid` を表示する。
+- [x] UI error message は秘密値を含めず、Settings で再入力すべきことを伝える。
+- [x] Settings 保存時 validation と runtime provider validation と同じ `APIKeyValidator` を status refresh でも使う。
+- [x] 完了条件: 破損 Keychain 値が残っていても、ユーザーが「設定済み」と誤認して AI / STT 実行に進まない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
