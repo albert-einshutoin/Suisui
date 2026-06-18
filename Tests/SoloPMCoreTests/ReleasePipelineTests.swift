@@ -2006,6 +2006,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("UI screenshot appears blank or too low contrast"))
         XCTAssertTrue(script.contains("missing UI screenshot file"))
         XCTAssertTrue(script.contains("UI screenshot is unexpectedly small"))
+        XCTAssertTrue(script.contains("NEXT: run script/capture_ui_evidence.sh on a visible macOS session with Screen Recording permission"))
         XCTAssertTrue(script.contains("section \"VoiceOver accessibility evidence\""))
         XCTAssertTrue(script.contains("docs/release/evidence/accessibility-voiceover.md"))
         XCTAssertTrue(script.contains("Status: passed"))
@@ -2015,6 +2016,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("missing VoiceOver accessibility evidence file"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence is not marked passed"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence still contains pending/template/placeholder text"))
+        XCTAssertTrue(script.contains("NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass"))
         XCTAssertTrue(script.contains("section \"MCP Inspector evidence\""))
         XCTAssertTrue(script.contains("docs/release/evidence/mcp-inspector.md"))
         XCTAssertTrue(script.contains("Stable baseline: `2025-11-25`"))
@@ -2181,6 +2183,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("== UI screenshot evidence =="))
         XCTAssertTrue(result.output.contains("missing UI screenshot file: docs/release/evidence/ui-screenshots/project-board-light.png"))
+        XCTAssertTrue(result.output.contains("NEXT: run script/capture_ui_evidence.sh on a visible macOS session with Screen Recording permission"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
     }
 
@@ -2385,6 +2388,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence is not marked passed"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence still contains pending/template/placeholder text"))
+        XCTAssertTrue(result.output.contains("NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
     }
 
