@@ -768,6 +768,13 @@
 - [x] 不正な task due date は `LocalStoreDecodingError.invalidDate` として検出を止める。
 - [x] 完了条件: Boardで日付だけを入れたタスクの成果物未作成が、期限前チェックから消えない。
 
+### P10-097: MCP tool schemas fail fast when malformed
+
+- [x] `MCPToolDefinition.parse` は `inputSchema` が object でない tools/list response を default schema に丸めない。
+- [x] `inputSchema.required` に string 以外が含まれる場合は、壊れた tool schema として tools/list を失敗させる。
+- [x] Catalog summary も不正 schema を `No arguments` や部分的な required list として正常表示しない。
+- [x] 完了条件: 壊れた MCP tool schema を信用して、UI や実行前レビューが安全そうに表示されない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

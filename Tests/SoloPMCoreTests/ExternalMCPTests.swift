@@ -479,6 +479,27 @@ final class ExternalMCPTests: XCTestCase {
         }
     }
 
+    func testCatalogSummaryDoesNotHideMalformedRequiredSchema() {
+        let descriptor = ExternalMCPToolDescriptor(
+            origin: .externalMCP(serverID: "fake", toolName: "bad_required"),
+            server: MCPRegisteredServerDescriptor(id: "fake", displayName: "Fake MCP"),
+            definition: MCPToolDefinition(
+                name: "bad_required",
+                description: "Malformed schema",
+                inputSchema: [
+                    "type": .string("object"),
+                    "properties": .object(["title": .object(["type": .string("string")])]),
+                    "required": .array([.string("title"), .number(42)])
+                ]
+            ),
+            permissionLevel: .read
+        )
+
+        let row = ExternalMCPToolCatalogRow(descriptor: descriptor)
+
+        XCTAssertEqual(row.inputSchemaSummary, "Invalid schema: required must be an array of strings")
+    }
+
     func testExecutionPreviewRedactsSecretsAndWriteRequiresApproval() async throws {
         let transport = ExternalMCPTestKit.makeFakeServerTransport()
         let executor = makeExecutor(transport: transport, policies: ["write_issue": .writeWithApproval])
@@ -614,6 +635,71 @@ final class ExternalMCPTests: XCTestCase {
             XCTFail("invalid response should fail")
         } catch let error as MCPClientError {
             XCTAssertEqual(error, .invalidResponse(serverID: "fake", method: "tools/list", reason: "Missing result.tools array."))
+        }
+    }
+
+    func testToolsListRejectsInvalidToolInputSchema() async throws {
+        let invalidSchemaTransport = RecordingMCPTransport { request in
+            if request.method == "tools/list" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "tools": .array([
+                            .object([
+                                "name": .string("bad_schema"),
+                                "description": .string("Malformed schema"),
+                                "inputSchema": .string("not-an-object")
+                            ])
+                        ])
+                    ])
+                )
+            }
+            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+        }
+        let client = MCPClient(serverID: "fake", transport: invalidSchemaTransport)
+
+        do {
+            _ = try await client.listTools()
+            XCTFail("invalid inputSchema should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(serverID: "fake", method: "tools/list", reason: "Tool entry inputSchema must be an object.")
+            )
+        }
+    }
+
+    func testToolsListRejectsMalformedRequiredSchema() async throws {
+        let malformedRequiredTransport = RecordingMCPTransport { request in
+            if request.method == "tools/list" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "tools": .array([
+                            .object([
+                                "name": .string("bad_required"),
+                                "description": .string("Malformed required schema"),
+                                "inputSchema": .object([
+                                    "type": .string("object"),
+                                    "required": .array([.string("title"), .number(42)])
+                                ])
+                            ])
+                        ])
+                    ])
+                )
+            }
+            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+        }
+        let client = MCPClient(serverID: "fake", transport: malformedRequiredTransport)
+
+        do {
+            _ = try await client.listTools()
+            XCTFail("malformed required schema should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(serverID: "fake", method: "tools/list", reason: "Tool entry inputSchema.required must be an array of strings.")
+            )
         }
     }
 

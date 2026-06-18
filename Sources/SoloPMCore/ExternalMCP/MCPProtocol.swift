@@ -95,13 +95,49 @@ public struct MCPToolDefinition: Equatable, Sendable {
             throw MCPClientError.invalidResponse(serverID: "", method: "tools/list", reason: "Tool entry missing name.")
         }
         let description = object["description"]?.stringValue ?? ""
-        let inputSchema = object["inputSchema"]?.objectValue ?? ["type": .string("object")]
+        let inputSchema: [String: JSONValue]
+        if let inputSchemaValue = object["inputSchema"] {
+            guard let schemaObject = inputSchemaValue.objectValue else {
+                throw MCPClientError.invalidResponse(serverID: "", method: "tools/list", reason: "Tool entry inputSchema must be an object.")
+            }
+            try validateInputSchema(schemaObject)
+            inputSchema = schemaObject
+        } else {
+            inputSchema = ["type": .string("object")]
+        }
         return MCPToolDefinition(
             name: name,
             title: object["title"]?.stringValue,
             description: description,
             inputSchema: inputSchema
         )
+    }
+
+    private static func validateInputSchema(_ inputSchema: [String: JSONValue]) throws {
+        if let required = inputSchema["required"] {
+            guard case .array(let values) = required else {
+                throw MCPClientError.invalidResponse(
+                    serverID: "",
+                    method: "tools/list",
+                    reason: "Tool entry inputSchema.required must be an array of strings."
+                )
+            }
+            for value in values where value.stringValue == nil {
+                throw MCPClientError.invalidResponse(
+                    serverID: "",
+                    method: "tools/list",
+                    reason: "Tool entry inputSchema.required must be an array of strings."
+                )
+            }
+        }
+
+        if let properties = inputSchema["properties"], properties.objectValue == nil {
+            throw MCPClientError.invalidResponse(
+                serverID: "",
+                method: "tools/list",
+                reason: "Tool entry inputSchema.properties must be an object."
+            )
+        }
     }
 }
 

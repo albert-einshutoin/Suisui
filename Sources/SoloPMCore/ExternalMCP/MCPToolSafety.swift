@@ -75,8 +75,34 @@ public struct ExternalMCPToolCatalogRow: Equatable, Sendable {
     }
 
     private static func schemaSummary(_ inputSchema: [String: JSONValue]) -> String {
-        let required = inputSchema["required"]?.arrayValue?.compactMap(\.stringValue) ?? []
-        let properties = inputSchema["properties"]?.objectValue?.keys.sorted() ?? []
+        let required: [String]
+        if let requiredValue = inputSchema["required"] {
+            guard case .array(let values) = requiredValue else {
+                return "Invalid schema: required must be an array of strings"
+            }
+            var requiredValues: [String] = []
+            requiredValues.reserveCapacity(values.count)
+            for value in values {
+                guard let stringValue = value.stringValue else {
+                    return "Invalid schema: required must be an array of strings"
+                }
+                requiredValues.append(stringValue)
+            }
+            required = requiredValues
+        } else {
+            required = []
+        }
+
+        let properties: [String]
+        if let propertiesValue = inputSchema["properties"] {
+            guard let propertyObject = propertiesValue.objectValue else {
+                return "Invalid schema: properties must be an object"
+            }
+            properties = propertyObject.keys.sorted()
+        } else {
+            properties = []
+        }
+
         if required.isEmpty && properties.isEmpty {
             return "No arguments"
         }
