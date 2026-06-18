@@ -42,6 +42,88 @@ final class DeadlineRuleStoreTests: XCTestCase {
         XCTAssertEqual(try store.list(for: .task(20)).map(\.kind), [.dayOf])
         XCTAssertEqual(try store.list().map(\.id), [projectRule.id, taskRule.id])
     }
+
+    func testDeadlineRuleStoreThrowsWhenListFindsCorruptRuleKind() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase4)
+        try connection.execute(
+            """
+            INSERT INTO deadline_rules (target_type, target_id, kind)
+            VALUES ('task', 20, 'bogus');
+            """
+        )
+        let store = SQLiteDeadlineRuleStore(connection: connection)
+
+        XCTAssertThrowsError(try store.list()) { error in
+            XCTAssertEqual(
+                error as? LocalStoreDecodingError,
+                .invalidEnum(column: "deadline_rules.kind", value: "bogus")
+            )
+        }
+        XCTAssertThrowsError(try store.list(for: .task(20))) { error in
+            XCTAssertEqual(
+                error as? LocalStoreDecodingError,
+                .invalidEnum(column: "deadline_rules.kind", value: "bogus")
+            )
+        }
+    }
+
+    func testDeadlineRuleStoreThrowsWhenGetFindsCorruptRuleKind() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase4)
+        try connection.execute(
+            """
+            INSERT INTO deadline_rules (target_type, target_id, kind)
+            VALUES ('project', 10, 'bogus');
+            """
+        )
+        let store = SQLiteDeadlineRuleStore(connection: connection)
+
+        XCTAssertThrowsError(try store.get(id: connection.lastInsertedRowID)) { error in
+            XCTAssertEqual(
+                error as? LocalStoreDecodingError,
+                .invalidEnum(column: "deadline_rules.kind", value: "bogus")
+            )
+        }
+    }
+
+    func testDeadlineRuleStoreThrowsWhenListFindsCorruptTargetID() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase4)
+        try connection.execute(
+            """
+            INSERT INTO deadline_rules (target_type, target_id, kind)
+            VALUES ('task', 'oops', 'day_of');
+            """
+        )
+        let store = SQLiteDeadlineRuleStore(connection: connection)
+
+        XCTAssertThrowsError(try store.list()) { error in
+            XCTAssertEqual(
+                error as? LocalStoreDecodingError,
+                .invalidInt64(column: "deadline_rules.target_id", value: "oops")
+            )
+        }
+    }
+
+    func testDeadlineRuleStoreThrowsWhenListFindsCorruptCustomDate() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase4)
+        try connection.execute(
+            """
+            INSERT INTO deadline_rules (target_type, target_id, kind, custom_notify_at)
+            VALUES ('task', 20, 'custom', 'not-a-date');
+            """
+        )
+        let store = SQLiteDeadlineRuleStore(connection: connection)
+
+        XCTAssertThrowsError(try store.list()) { error in
+            XCTAssertEqual(
+                error as? LocalStoreDecodingError,
+                .invalidDate(column: "deadline_rules.custom_notify_at", value: "not-a-date")
+            )
+        }
+    }
 }
 
 private enum TestMigrationRunner {

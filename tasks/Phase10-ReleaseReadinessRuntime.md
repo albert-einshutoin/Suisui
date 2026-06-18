@@ -733,6 +733,13 @@
 - [x] `ProjectBoardStoreTests` で CLI / AI 経由など Board UI 外で作られたタスクが Inbox に出ることを確認する。
 - [x] 完了条件: ローカルDBに存在するタスクが、project 未指定という理由だけでタスク管理UIから消えない。
 
+### P10-092: Deadline rules do not disappear when persisted rows are corrupt
+
+- [x] `SQLiteDeadlineRuleStore` は `deadline_rules` の decode に `compactMap` を使って破損行を捨てない。
+- [x] `list` / `list(for:)` / `get` は不正な `kind`、target、date を `LocalStoreDecodingError` として呼び出し元へ返す。
+- [x] `DeadlineRuleStoreTests` で破損した rule が「0件」や「not found」ではなく decode failure になることを確認する。
+- [x] 完了条件: 期限通知の rule 設定が、DB上の不正値によって静かに消えたように見えない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
