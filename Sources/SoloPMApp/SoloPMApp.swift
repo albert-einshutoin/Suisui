@@ -878,6 +878,24 @@ private struct SettingsView: View {
             }
 
             Section("External MCP") {
+                HStack {
+                    Picker("Server", selection: Binding(
+                        get: { externalMCPViewModel.selectedRegistrationID ?? externalMCPViewModel.registration.id },
+                        set: { externalMCPViewModel.selectRegistration(id: $0) }
+                    )) {
+                        ForEach(externalMCPViewModel.registrationRows) { row in
+                            Text(row.displayName)
+                                .tag(row.id)
+                        }
+                    }
+
+                    Button {
+                        externalMCPViewModel.createRegistration()
+                    } label: {
+                        Label("Add Server", systemImage: "plus")
+                    }
+                }
+
                 Toggle(
                     isOn: Binding(
                         get: { externalMCPViewModel.registration.isEnabled },

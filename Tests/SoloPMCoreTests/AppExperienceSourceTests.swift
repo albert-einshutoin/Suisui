@@ -367,9 +367,16 @@ final class AppExperienceSourceTests: XCTestCase {
         let mcpRegistrationSource = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")
 
         XCTAssertTrue(appSource.contains("SQLiteMCPServerRegistrationStore(connection:"))
+        XCTAssertTrue(appSource.contains("Picker(\"Server\""))
+        XCTAssertTrue(appSource.contains("externalMCPViewModel.registrationRows"))
+        XCTAssertTrue(appSource.contains("externalMCPViewModel.selectRegistration(id: $0)"))
+        XCTAssertTrue(appSource.contains("externalMCPViewModel.createRegistration()"))
+        XCTAssertTrue(appSource.contains("Add Server"))
         XCTAssertTrue(appSource.contains("isConfirmingMCPRegistrationDeletion = true"))
         XCTAssertTrue(appSource.contains(#"confirmationDialog("#))
         XCTAssertTrue(appSource.contains("externalMCPViewModel.deleteRegistration()"))
+        XCTAssertTrue(mcpRegistrationSource.contains("MCPServerRegistrationRow"))
+        XCTAssertTrue(mcpRegistrationSource.contains("selectedRegistrationID"))
         XCTAssertFalse(appSource.contains("store: UserDefaultsMCPServerRegistrationStore()"))
         XCTAssertFalse(mcpRegistrationSource.contains("UserDefaultsMCPServerRegistrationStore"))
     }

@@ -102,6 +102,7 @@
 - [x] enabled server に対して initialize / tools/list を試せる。
 - [x] tool catalog と audit history を Settings に表示する。
 - [x] テスト: disabled、missing binary、invalid response、successful tools/list を確認する。
+- [x] Settings から複数の MCP server 登録を選択し、新規登録ドラフトを作成して既存登録を落とさず保存できる。
 - [x] 完了条件: fake MCP server ではなく、ユーザー登録 server の接続可否が UI で分かる。
 
 ### P10-009: Release safety pass

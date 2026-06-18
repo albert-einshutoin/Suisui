@@ -60,6 +60,20 @@ public struct MCPServerRegistration: Codable, Equatable, Sendable {
     }
 }
 
+public struct MCPServerRegistrationRow: Equatable, Identifiable, Sendable {
+    public var id: String
+    public var displayName: String
+    public var commandLine: String
+    public var statusLabel: String
+
+    public init(registration: MCPServerRegistration) {
+        self.id = registration.id
+        self.displayName = registration.displayName
+        self.commandLine = MCPArgumentTextCodec.format([registration.command] + registration.arguments)
+        self.statusLabel = registration.isEnabled ? "Enabled" : "Disabled"
+    }
+}
+
 public enum MCPRegistrationStoreError: Error, Equatable, Sendable {
     case encodingFailed
     case decodingFailed
@@ -191,6 +205,8 @@ public final class SQLiteMCPServerRegistrationStore: MCPServerRegistrationStore,
 @MainActor
 public final class ExternalMCPSettingsViewModel: ObservableObject {
     @Published public private(set) var registration: MCPServerRegistration
+    @Published public private(set) var registrationRows: [MCPServerRegistrationRow]
+    @Published public private(set) var selectedRegistrationID: String?
     @Published public private(set) var toolRows: [ExternalMCPToolCatalogRow]
     @Published public private(set) var auditRows: [ExternalMCPAuditHistoryRow]
     @Published public private(set) var auditErrorMessage: String?
@@ -219,7 +235,9 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         self.errorMessage = nil
         self.isCheckingConnection = false
         self.registrations = []
-        self.registration = Self.blankRegistration()
+        self.registration = Self.blankRegistration(existingIDs: [])
+        self.registrationRows = []
+        self.selectedRegistrationID = nil
         refresh()
     }
 
@@ -233,30 +251,63 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
 
     public func refresh() {
         do {
-            registrations = try store.loadRegistrations()
-            registration = registrations.first ?? Self.blankRegistration()
+            let loadedRegistrations = try store.loadRegistrations()
+            registrations = loadedRegistrations
+            let preferredID = selectedRegistrationID ?? registration.id
+            if let selected = loadedRegistrations.first(where: { $0.id == preferredID }) ?? loadedRegistrations.first {
+                registration = selected
+                selectedRegistrationID = selected.id
+            } else {
+                registration = Self.blankRegistration(existingIDs: [])
+                selectedRegistrationID = registration.id
+            }
+            refreshRegistrationRows()
             errorMessage = nil
         } catch {
             errorMessage = Self.storeErrorMessage(error)
         }
     }
 
+    public func selectRegistration(id: String) {
+        guard let selected = registrations.first(where: { $0.id == id }) else {
+            errorMessage = "MCP registration was not found."
+            return
+        }
+
+        registration = selected
+        selectedRegistrationID = selected.id
+        toolRows = []
+        refreshRegistrationRows()
+        errorMessage = nil
+    }
+
+    public func createRegistration() {
+        registration = Self.blankRegistration(existingIDs: Set(registrations.map(\.id)))
+        selectedRegistrationID = registration.id
+        toolRows = []
+        refreshRegistrationRows()
+        errorMessage = nil
+    }
+
     public func updateEnabled(_ isEnabled: Bool) {
         var updated = registration
         updated.isEnabled = isEnabled
         registration = updated
+        refreshRegistrationRows()
     }
 
     public func updateDisplayName(_ displayName: String) {
         var updated = registration
         updated.displayName = displayName
         registration = updated
+        refreshRegistrationRows()
     }
 
     public func updateCommand(_ command: String) {
         var updated = registration
         updated.command = command
         registration = updated
+        refreshRegistrationRows()
     }
 
     public func updateArgumentsText(_ argumentsText: String) {
@@ -264,6 +315,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             var updated = registration
             updated.arguments = try MCPArgumentTextCodec.parse(argumentsText)
             registration = updated
+            refreshRegistrationRows()
             errorMessage = nil
         } catch {
             errorMessage = Self.argumentErrorMessage(error)
@@ -275,6 +327,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         var updated = registration
         updated.workingDirectory = trimmed.isEmpty ? nil : trimmed
         registration = updated
+        refreshRegistrationRows()
     }
 
     public func save() {
@@ -283,6 +336,8 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             let updatedRegistrations = Self.replacing(registration, in: registrations)
             try store.saveRegistrations(updatedRegistrations)
             registrations = updatedRegistrations
+            selectedRegistrationID = registration.id
+            refreshRegistrationRows()
             errorMessage = nil
         } catch let error as MCPRegistrationStoreError {
             errorMessage = Self.storeErrorMessage(error)
@@ -296,7 +351,9 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             let remainingRegistrations = registrations.filter { $0.id != registration.id }
             try store.saveRegistrations(remainingRegistrations)
             registrations = remainingRegistrations
-            registration = remainingRegistrations.first ?? Self.blankRegistration()
+            registration = remainingRegistrations.first ?? Self.blankRegistration(existingIDs: [])
+            selectedRegistrationID = registration.id
+            refreshRegistrationRows()
             toolRows = []
             errorMessage = nil
         } catch let error as MCPRegistrationStoreError {
@@ -330,9 +387,21 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         }
     }
 
-    private static func blankRegistration() -> MCPServerRegistration {
-        MCPServerRegistration(
-            id: "custom-mcp",
+    private static func blankRegistration(existingIDs: Set<String>) -> MCPServerRegistration {
+        let baseID = "custom-mcp"
+        let id: String
+        if existingIDs.contains(baseID) {
+            var suffix = 2
+            while existingIDs.contains("\(baseID)-\(suffix)") {
+                suffix += 1
+            }
+            id = "\(baseID)-\(suffix)"
+        } else {
+            id = baseID
+        }
+
+        return MCPServerRegistration(
+            id: id,
             displayName: "Custom MCP",
             command: "",
             arguments: [],
@@ -340,6 +409,18 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             workingDirectory: nil,
             isEnabled: false
         )
+    }
+
+    private func refreshRegistrationRows() {
+        var rows = registrations.map { saved in
+            saved.id == registration.id
+                ? MCPServerRegistrationRow(registration: registration)
+                : MCPServerRegistrationRow(registration: saved)
+        }
+        if !registrations.contains(where: { $0.id == registration.id }) {
+            rows.append(MCPServerRegistrationRow(registration: registration))
+        }
+        registrationRows = rows
     }
 
     private static func connectionErrorMessage(_ error: Error) -> String {

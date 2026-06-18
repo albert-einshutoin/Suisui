@@ -410,6 +410,72 @@ final class ExternalMCPTests: XCTestCase {
     }
 
     @MainActor
+    func testExternalMCPSettingsViewModelSelectsPersistedRegistration() throws {
+        let first = MCPServerRegistration(
+            id: "first",
+            displayName: "First MCP",
+            command: "/usr/bin/env",
+            arguments: ["node", "first.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let second = MCPServerRegistration(
+            id: "second",
+            displayName: "Second MCP",
+            command: "/usr/bin/env",
+            arguments: ["node", "second.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: false
+        )
+        let store = InMemoryMCPServerRegistrationStore(registrations: [first, second])
+        let viewModel = ExternalMCPSettingsViewModel(store: store)
+
+        XCTAssertEqual(viewModel.registrationRows.map(\.id), ["first", "second"])
+        XCTAssertEqual(viewModel.selectedRegistrationID, "first")
+
+        viewModel.selectRegistration(id: "second")
+
+        XCTAssertEqual(viewModel.selectedRegistrationID, "second")
+        XCTAssertEqual(viewModel.registration, second)
+        XCTAssertEqual(viewModel.argumentsText, "node second.js")
+    }
+
+    @MainActor
+    func testExternalMCPSettingsViewModelCreatesNewRegistrationDraftWithoutDroppingExisting() throws {
+        let existing = MCPServerRegistration(
+            id: "custom-mcp",
+            displayName: "First MCP",
+            command: "/usr/bin/env",
+            arguments: ["node", "first.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let store = InMemoryMCPServerRegistrationStore(registrations: [existing])
+        let viewModel = ExternalMCPSettingsViewModel(store: store)
+
+        viewModel.createRegistration()
+
+        XCTAssertEqual(viewModel.registration.displayName, "Custom MCP")
+        XCTAssertEqual(viewModel.registration.id, "custom-mcp-2")
+        XCTAssertEqual(try store.loadRegistrations(), [existing])
+
+        viewModel.updateDisplayName("Local Docs MCP")
+        viewModel.updateCommand("/usr/bin/env")
+        viewModel.updateArgumentsText("node docs-server.js")
+        viewModel.updateEnabled(true)
+        viewModel.save()
+
+        let saved = try store.loadRegistrations()
+        XCTAssertEqual(saved.map(\.id), [existing.id, viewModel.registration.id])
+        XCTAssertEqual(saved.map(\.displayName), ["First MCP", "Local Docs MCP"])
+        XCTAssertEqual(viewModel.registrationRows.map(\.displayName), ["First MCP", "Local Docs MCP"])
+        XCTAssertEqual(viewModel.selectedRegistrationID, viewModel.registration.id)
+    }
+
+    @MainActor
     func testExternalMCPSettingsViewModelParsesQuotedArgumentsWithoutBreakingSpacePaths() throws {
         let store = InMemoryMCPServerRegistrationStore()
         let viewModel = ExternalMCPSettingsViewModel(store: store)
