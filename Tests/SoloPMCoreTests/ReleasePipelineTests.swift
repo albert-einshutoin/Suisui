@@ -486,6 +486,59 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("missing release package evidence manifest"))
     }
 
+    func testReleasePreflightRejectsAmbiguousReleaseArtifactChecksums() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-ambiguous-artifact.json")
+        let releaseDirectory = packageRoot()
+            .appendingPathComponent("dist/releases", isDirectory: true)
+        let dmgChecksumURL = releaseDirectory
+            .appendingPathComponent("SoloPM-0.1.0+1.ambiguous-a.dmg.sha256")
+        let zipChecksumURL = releaseDirectory
+            .appendingPathComponent("SoloPM-0.1.0+1.ambiguous-b.zip.sha256")
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: releaseDirectory,
+            withIntermediateDirectories: true
+        )
+        try """
+        {
+          "release": {
+            "version": "0.1.0",
+            "buildNumber": "1",
+            "appBundlePath": "dist/SoloPM.app",
+            "artifactPath": "dist/releases/SoloPM-0.1.0+1.ambiguous-a.dmg",
+            "artifactSha256": "actual-sha"
+          },
+          "manualChecks": {
+            "cleanEnvironmentLaunch": true,
+            "loginItemToggle": true,
+            "environment": "macOS 15.5 clean user on arm64"
+          }
+        }
+        """.write(to: evidenceURL, atomically: true, encoding: .utf8)
+        try "actual-sha  dist/releases/SoloPM-0.1.0+1.ambiguous-a.dmg\n"
+            .write(to: dmgChecksumURL, atomically: true, encoding: .utf8)
+        try "other-sha  dist/releases/SoloPM-0.1.0+1.ambiguous-b.zip\n"
+            .write(to: zipChecksumURL, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: dmgChecksumURL)
+            try? FileManager.default.removeItem(at: zipChecksumURL)
+        }
+
+        let result = try runScript(
+            "script/verify_release_environment.sh",
+            environment: ["SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("multiple release artifact checksum files found"))
+        XCTAssertTrue(result.output.contains("SOLOPM_RELEASE_ARTIFACT_SHA256_FILE"))
+    }
+
     func testReleasePreflightRejectsSmokePackageEvidence() throws {
         let evidenceURL = packageRoot()
             .appendingPathComponent(".build/test-release-evidence-preflight-smoke-package.json")

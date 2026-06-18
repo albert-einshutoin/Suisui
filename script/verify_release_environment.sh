@@ -7,6 +7,7 @@ SIGNING_ENV_FILE="$ROOT_DIR/packaging/signing.env"
 NOTARIZATION_ENV_FILE="$ROOT_DIR/packaging/notarization.env"
 RELEASE_EVIDENCE_FILE="${SOLOPM_RELEASE_EVIDENCE_FILE:-$ROOT_DIR/packaging/release-evidence.json}"
 PLIST_BUDDY="/usr/libexec/PlistBuddy"
+MULTIPLE_RELEASE_ARTIFACT_CHECKSUMS="__multiple_release_artifact_checksums__"
 
 BLOCKERS=()
 WARNINGS=()
@@ -186,18 +187,28 @@ require_evidence_non_empty() {
 }
 
 release_artifact_checksum_file() {
+  local checksum_files
+  local checksum_count
+
   if [[ -n "$RELEASE_ARTIFACT_SHA256_FILE" ]]; then
     printf "%s" "$RELEASE_ARTIFACT_SHA256_FILE"
     return
   fi
 
-  find "$ROOT_DIR/dist/releases" \
+  checksum_files="$(find "$ROOT_DIR/dist/releases" \
     -maxdepth 1 \
     -type f \
     -name "$ARTIFACT_BASENAME.*.sha256" \
     2>/dev/null \
-    | sort \
-    | head -n 1
+    | sort || true)"
+  checksum_count="$(printf "%s\n" "$checksum_files" | sed '/^$/d' | wc -l | tr -d ' ')"
+
+  if [[ "$checksum_count" -gt 1 ]]; then
+    printf "%s" "$MULTIPLE_RELEASE_ARTIFACT_CHECKSUMS"
+    return
+  fi
+
+  printf "%s" "$checksum_files"
 }
 
 require_release_package_evidence() {
@@ -293,6 +304,11 @@ require_evidence_artifact_sha256() {
   esac
 
   checksum_file="$(release_artifact_checksum_file)"
+  if [[ "$checksum_file" == "$MULTIPLE_RELEASE_ARTIFACT_CHECKSUMS" ]]; then
+    add_blocker "multiple release artifact checksum files found; set SOLOPM_RELEASE_ARTIFACT_SHA256_FILE to the exact package checksum"
+    return
+  fi
+
   if [[ -z "$checksum_file" || ! -f "$checksum_file" ]]; then
     add_blocker "missing release artifact checksum file: run ./script/package_release.sh before final release validation"
     return

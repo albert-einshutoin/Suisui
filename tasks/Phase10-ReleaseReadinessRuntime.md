@@ -387,6 +387,12 @@
 - [x] `verify_release_environment.sh` は Apple Development / Mac Developer など release 不可の identity を release blocker にする。
 - [x] 完了条件: public alpha release path は Apple Developer ID distribution identity 以外の signing identity を受け付けない。
 
+### P10-048: Release artifact checksum disambiguation
+
+- [x] `verify_release_environment.sh` は `dist/releases` に同一 version/build の `.sha256` が複数ある場合、自動選択せず release blocker にする。
+- [x] 複数 package artifact を作った場合は `SOLOPM_RELEASE_ARTIFACT_SHA256_FILE` で証跡対象を明示する。
+- [x] 完了条件: release evidence / manual evidence は曖昧な DMG/ZIP 自動選択ではなく、明示された package checksum に紐づく。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
