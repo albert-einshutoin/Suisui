@@ -404,6 +404,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("externalMCPViewModel.updateEnvironmentText($0)"))
         XCTAssertTrue(appSource.contains("Protocol Version"))
         XCTAssertTrue(appSource.contains("externalMCPViewModel.protocolVersionLabel"))
+        XCTAssertTrue(appSource.contains("Check Result"))
+        XCTAssertTrue(appSource.contains("externalMCPViewModel.connectionCheckResultLabel"))
         XCTAssertTrue(appSource.contains("LabeledContent(\"Resources\", value: \"Not supported in this release\")"))
         XCTAssertTrue(appSource.contains("LabeledContent(\"Prompts\", value: \"Not supported in this release\")"))
         XCTAssertTrue(appSource.contains("MCP Keychain Secret"))

@@ -33,6 +33,7 @@ Primary references:
 | Prompts | Not implemented | No `prompts/list` or prompt get path is exposed; Settings displays "Not supported in this release". |
 | Streamable HTTP | Not implemented | Architecture leaves transport protocol extensibility, but only stdio is release path. |
 | Official Inspector evidence | Recorded | `script/verify_mcp_compliance.sh` runs the official MCP Inspector CLI against `fixtures/mcp/stdio-fixture-server.mjs`; `docs/release/evidence/mcp-inspector.md` records `tools/list`, `tools/call`, and failure taxonomy smoke output. |
+| Settings failure taxonomy | Implemented | Settings `Check Connection` exposes `malformed-json`, `mismatched-id`, `invalid-schema`, and `timeout` through `connectionCheckResultLabel` and prefixes matching user-facing errors with the same taxonomy. |
 
 ## Tests That Currently Guard Compliance
 
@@ -50,6 +51,7 @@ Primary references:
 - `ExternalMCPTests.testClientRejectsNonStringToolDescription`
 - `ExternalMCPTests.testClientRejectsNonStringToolTitle`
 - `ExternalMCPTests.testClientRejectsMismatchedResponseIDAndInvalidJSONRPCVersion`
+- `ExternalMCPTests.testExternalMCPSettingsViewModelDisplaysInspectorFailureTaxonomy`
 - `MCPInspectorEvidenceTests.testInspectorVerificationScriptUsesOfficialCLIAndFixturePaths`
 - `MCPInspectorEvidenceTests.testMCPFixtureServerCoversSuccessAndFailureModesOutsideRuntimeSources`
 - `MCPInspectorEvidenceTests.testInspectorEvidenceRecordsSuccessAndFailureTaxonomy`

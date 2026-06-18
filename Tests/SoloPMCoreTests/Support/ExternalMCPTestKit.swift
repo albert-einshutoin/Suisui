@@ -115,6 +115,48 @@ public enum ExternalMCPTestKit {
         }
     }
 
+    public static func makeMalformedJSONTransport() -> RecordingMCPTransport {
+        RecordingMCPTransport { request in
+            if request.method == "initialize" {
+                throw MCPClientError.invalidResponse(
+                    serverID: "fake",
+                    method: "initialize",
+                    reason: "Malformed JSON-RPC response."
+                )
+            }
+            return fakeResponse(for: request)
+        }
+    }
+
+    public static func makeInvalidToolSchemaTransport() -> RecordingMCPTransport {
+        RecordingMCPTransport { request in
+            if request.method == "tools/list" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "tools": .array([
+                            .object([
+                                "name": .string("bad_schema"),
+                                "description": .string("Invalid schema."),
+                                "inputSchema": .string("not-an-object")
+                            ])
+                        ])
+                    ])
+                )
+            }
+            return fakeResponse(for: request)
+        }
+    }
+
+    public static func makeListTimeoutTransport() -> RecordingMCPTransport {
+        RecordingMCPTransport { request in
+            if request.method == "tools/list" {
+                throw MCPClientError.timeout(serverID: "fake", method: "tools/list")
+            }
+            return fakeResponse(for: request)
+        }
+    }
+
     public static func makeMismatchedIDTransport() -> RecordingMCPTransport {
         RecordingMCPTransport { request in
             MCPJSONRPCResponse(id: request.id + 1, result: .object(["tools": .array([])]))

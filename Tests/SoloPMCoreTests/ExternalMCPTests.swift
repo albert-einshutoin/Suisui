@@ -869,6 +869,8 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertNil(viewModel.errorMessage)
         XCTAssertFalse(viewModel.isCheckingConnection)
         XCTAssertEqual(viewModel.protocolVersionLabel, "2025-11-25")
+        XCTAssertEqual(viewModel.connectionCheckResultLabel, "Connected")
+        XCTAssertNil(viewModel.connectionFailureTaxonomyLabel)
         XCTAssertEqual(viewModel.toolRows.map(\.toolName), ["danger_delete", "invalid_response", "read_status", "slow_tool", "write_issue"])
         XCTAssertEqual(viewModel.toolRows.first { $0.toolName == "read_status" }?.serverName, "Fake MCP")
         XCTAssertEqual(transport.recordedMethods, ["initialize", "notifications/initialized", "tools/list"])
@@ -896,6 +898,8 @@ final class ExternalMCPTests: XCTestCase {
         await disabledViewModel.checkConnection()
 
         XCTAssertEqual(disabledViewModel.errorMessage, "MCP server is disabled.")
+        XCTAssertEqual(disabledViewModel.connectionCheckResultLabel, "Failed")
+        XCTAssertNil(disabledViewModel.connectionFailureTaxonomyLabel)
         XCTAssertTrue(disabledViewModel.toolRows.isEmpty)
 
         let missingStore = InMemoryMCPServerRegistrationStore(registrations: [
@@ -914,6 +918,8 @@ final class ExternalMCPTests: XCTestCase {
         await missingViewModel.checkConnection()
 
         XCTAssertEqual(missingViewModel.errorMessage, "MCP command binary was not found: missing-node")
+        XCTAssertEqual(missingViewModel.connectionCheckResultLabel, "Failed")
+        XCTAssertNil(missingViewModel.connectionFailureTaxonomyLabel)
         XCTAssertTrue(missingViewModel.toolRows.isEmpty)
     }
 
@@ -937,9 +943,62 @@ final class ExternalMCPTests: XCTestCase {
 
         await viewModel.checkConnection()
 
-        XCTAssertEqual(viewModel.errorMessage, "MCP tools/list response was invalid: Missing result.tools array.")
+        XCTAssertEqual(viewModel.errorMessage, "[invalid-schema] MCP tools/list response was invalid: Missing result.tools array.")
+        XCTAssertEqual(viewModel.connectionFailureTaxonomyLabel, "invalid-schema")
+        XCTAssertEqual(viewModel.connectionCheckResultLabel, "Failed: invalid-schema")
         XCTAssertEqual(viewModel.protocolVersionLabel, "2025-11-25")
         XCTAssertTrue(viewModel.toolRows.isEmpty)
+    }
+
+    @MainActor
+    func testExternalMCPSettingsViewModelDisplaysInspectorFailureTaxonomy() async throws {
+        let cases: [(name: String, transport: RecordingMCPTransport, taxonomy: String)] = [
+            (
+                "malformed-json",
+                ExternalMCPTestKit.makeMalformedJSONTransport(),
+                "malformed-json"
+            ),
+            (
+                "mismatched-id",
+                ExternalMCPTestKit.makeMismatchedIDTransport(),
+                "mismatched-id"
+            ),
+            (
+                "invalid-schema",
+                ExternalMCPTestKit.makeInvalidToolSchemaTransport(),
+                "invalid-schema"
+            ),
+            (
+                "timeout",
+                ExternalMCPTestKit.makeListTimeoutTransport(),
+                "timeout"
+            )
+        ]
+
+        for testCase in cases {
+            let registration = MCPServerRegistration(
+                id: "fake-\(testCase.name)",
+                displayName: "Fake MCP",
+                command: "node",
+                arguments: [],
+                environment: [:],
+                workingDirectory: nil,
+                isEnabled: true
+            )
+            let store = InMemoryMCPServerRegistrationStore(registrations: [registration])
+            let launcher = MCPStdioServerLauncher(
+                validator: MCPServerRegistrationValidator(binaryLocator: StaticBinaryLocator(availableCommands: ["node"])),
+                transportFactory: { _ in testCase.transport }
+            )
+            let viewModel = ExternalMCPSettingsViewModel(store: store, launcher: launcher)
+
+            await viewModel.checkConnection()
+
+            XCTAssertEqual(viewModel.connectionFailureTaxonomyLabel, testCase.taxonomy, testCase.name)
+            XCTAssertEqual(viewModel.connectionCheckResultLabel, "Failed: \(testCase.taxonomy)", testCase.name)
+            XCTAssertTrue(viewModel.errorMessage?.contains("[\(testCase.taxonomy)]") == true, testCase.name)
+            XCTAssertTrue(viewModel.toolRows.isEmpty, testCase.name)
+        }
     }
 
     func testPermissionMappingDisablesUnknownAndBlocksDangerousTools() throws {

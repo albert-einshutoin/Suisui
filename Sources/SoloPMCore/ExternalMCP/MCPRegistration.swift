@@ -320,6 +320,8 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var isCheckingConnection: Bool
     @Published public private(set) var protocolVersionLabel: String
+    @Published public private(set) var connectionCheckResultLabel: String
+    @Published public private(set) var connectionFailureTaxonomyLabel: String?
 
     private let store: any MCPServerRegistrationStore
     private let launcher: MCPStdioServerLauncher
@@ -343,6 +345,8 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         self.errorMessage = nil
         self.isCheckingConnection = false
         self.protocolVersionLabel = "Not checked"
+        self.connectionCheckResultLabel = "Not checked"
+        self.connectionFailureTaxonomyLabel = nil
         self.registrations = []
         self.registration = Self.blankRegistration(existingIDs: [])
         self.registrationRows = []
@@ -502,6 +506,8 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
 
     public func checkConnection() async {
         isCheckingConnection = true
+        connectionCheckResultLabel = "Checking"
+        connectionFailureTaxonomyLabel = nil
         defer {
             isCheckingConnection = false
         }
@@ -519,6 +525,8 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
                 classifier: ExternalMCPToolClassifier()
             )
             protocolVersionLabel = initialize.protocolVersion
+            connectionCheckResultLabel = "Connected"
+            connectionFailureTaxonomyLabel = nil
             toolRows = ExternalMCPToolCatalog.rows(from: registry.allDescriptors)
             errorMessage = nil
         } catch {
@@ -526,7 +534,10 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             if let negotiatedProtocolVersion {
                 protocolVersionLabel = negotiatedProtocolVersion
             }
-            errorMessage = Self.connectionErrorMessage(error)
+            let failureTaxonomy = Self.inspectorFailureTaxonomy(for: error)
+            connectionFailureTaxonomyLabel = failureTaxonomy
+            connectionCheckResultLabel = failureTaxonomy.map { "Failed: \($0)" } ?? "Failed"
+            errorMessage = Self.connectionErrorMessage(error, failureTaxonomy: failureTaxonomy)
         }
     }
 
@@ -572,33 +583,59 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
 
     private func resetConnectionSnapshot() {
         protocolVersionLabel = "Not checked"
+        connectionCheckResultLabel = "Not checked"
+        connectionFailureTaxonomyLabel = nil
         toolRows = []
     }
 
-    private static func connectionErrorMessage(_ error: Error) -> String {
+    private static func connectionErrorMessage(_ error: Error, failureTaxonomy: String? = nil) -> String {
+        let message: String
         switch error {
         case MCPRegistrationError.serverDisabled:
-            return "MCP server is disabled."
+            message = "MCP server is disabled."
         case MCPRegistrationError.invalidCommand:
-            return "MCP command is required."
+            message = "MCP command is required."
         case MCPRegistrationError.missingBinary(let command):
-            return "MCP command binary was not found: \(command)"
+            message = "MCP command binary was not found: \(command)"
         case MCPRegistrationError.invalidWorkingDirectory(let path):
-            return "MCP working directory was not found: \(path)"
+            message = "MCP working directory was not found: \(path)"
         case MCPRegistrationError.missingSecret(let name):
-            return "MCP environment secret is missing: \(name)"
+            message = "MCP environment secret is missing: \(name)"
         case MCPClientError.invalidResponse(_, "tools/list", let reason):
-            return "MCP tools/list response was invalid: \(reason)"
+            message = "MCP tools/list response was invalid: \(reason)"
         case MCPClientError.invalidResponse(_, "initialize", let reason):
-            return "MCP initialize response was invalid: \(reason)"
-        case MCPClientError.protocolError(_, let method, _, let message):
-            return "MCP \(method) failed: \(message)"
+            message = "MCP initialize response was invalid: \(reason)"
+        case MCPClientError.protocolError(_, let method, _, let protocolMessage):
+            message = "MCP \(method) failed: \(protocolMessage)"
         case MCPClientError.timeout(_, let method):
-            return "MCP \(method) timed out."
-        case MCPClientError.transportFailed(_, let method, let message):
-            return "MCP \(method) transport failed: \(message)"
+            message = "MCP \(method) timed out."
+        case MCPClientError.transportFailed(_, let method, let transportMessage):
+            message = "MCP \(method) transport failed: \(transportMessage)"
         default:
-            return String(describing: error)
+            message = String(describing: error)
+        }
+
+        if let failureTaxonomy {
+            return "[\(failureTaxonomy)] \(message)"
+        }
+        return message
+    }
+
+    private static func inspectorFailureTaxonomy(for error: Error) -> String? {
+        switch error {
+        case MCPClientError.timeout:
+            return "timeout"
+        case MCPClientError.invalidResponse(_, _, let reason) where reason == "Malformed JSON-RPC response.":
+            return "malformed-json"
+        case MCPClientError.invalidResponse(_, _, let reason) where reason == "Mismatched response id.":
+            return "mismatched-id"
+        case MCPClientError.invalidResponse(_, "tools/list", let reason)
+            where reason.contains("result.tools") ||
+            reason.contains("Tool entry") ||
+            reason.contains("inputSchema"):
+            return "invalid-schema"
+        default:
+            return nil
         }
     }
 
