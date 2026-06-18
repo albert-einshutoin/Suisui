@@ -118,7 +118,8 @@ public struct TaskTool: Tool {
                 projectID: projectID,
                 dueAt: try args.optionalTrimmedString("dueAt"),
                 priority: try args.optionalTrimmedString("priority"),
-                sourceCommand: try args.optionalTrimmedString("sourceCommand")
+                sourceCommand: try args.optionalTrimmedString("sourceCommand"),
+                detail: try args.optionalTrimmedString("detail")
             )
             return ToolResult(
                 tool: name,
@@ -140,7 +141,8 @@ public struct TaskTool: Tool {
                     projectID: try taskArgs.optionalInt64("projectId"),
                     dueAt: try taskArgs.optionalTrimmedString("dueAt"),
                     priority: try taskArgs.optionalTrimmedString("priority"),
-                    sourceCommand: try taskArgs.optionalTrimmedString("sourceCommand")
+                    sourceCommand: try taskArgs.optionalTrimmedString("sourceCommand"),
+                    detail: try taskArgs.optionalTrimmedString("detail")
                 )
             }
             try drafts.forEach { try rejectArchivedProject(projectID: $0.projectID) }
@@ -151,8 +153,17 @@ public struct TaskTool: Tool {
             let taskID = try args.requiredInt64("id")
             let current = try store.get(id: taskID)
             let nextStatus = try args.optionalTrimmedString("status") ?? current.status
-            try prepareProjectForTaskMutation(projectID: current.projectID, status: nextStatus)
-            let record = try store.update(id: taskID, title: try args.optionalTrimmedString("title"), status: nextStatus)
+            let nextProjectID = try args.optionalInt64("projectId") ?? current.projectID
+            try prepareProjectForTaskMutation(projectID: nextProjectID, status: nextStatus)
+            let record = try store.update(
+                id: taskID,
+                title: try args.optionalTrimmedString("title"),
+                status: nextStatus,
+                detail: try args.optionalTrimmedString("detail"),
+                dueAt: try args.optionalTrimmedString("dueAt"),
+                priority: try args.optionalTrimmedString("priority"),
+                projectID: try args.optionalInt64("projectId")
+            )
             return ToolResult(tool: name, status: .succeeded, summary: "Updated task \(record.title)", output: ["taskId": .number(Double(record.id))])
         case .taskComplete:
             let record = try store.update(id: try args.requiredInt64("id"), status: "completed")
@@ -207,8 +218,8 @@ public struct TaskTool: Tool {
         case .taskCreate:
             ToolInputSchema(
                 required: ["title"],
-                properties: ["title": "string", "projectId": "integer", "dueAt": "string", "priority": "string", "sourceCommand": "string"],
-                nonBlank: ["dueAt", "priority", "sourceCommand"]
+                properties: ["title": "string", "projectId": "integer", "detail": "string", "dueAt": "string", "priority": "string", "sourceCommand": "string"],
+                nonBlank: ["detail", "dueAt", "priority", "sourceCommand"]
             )
         case .taskBulkCreate:
             ToolInputSchema(
@@ -217,16 +228,16 @@ public struct TaskTool: Tool {
                 arrayItems: [
                     "tasks": ToolInputSchema(
                         required: ["title"],
-                        properties: ["title": "string", "projectId": "integer", "dueAt": "string", "priority": "string", "sourceCommand": "string"],
-                        nonBlank: ["dueAt", "priority", "sourceCommand"]
+                        properties: ["title": "string", "projectId": "integer", "detail": "string", "dueAt": "string", "priority": "string", "sourceCommand": "string"],
+                        nonBlank: ["detail", "dueAt", "priority", "sourceCommand"]
                     )
                 ]
             )
         case .taskUpdate:
             ToolInputSchema(
                 required: ["id"],
-                properties: ["id": "integer", "title": "string", "status": "string"],
-                nonBlank: ["title", "status"]
+                properties: ["id": "integer", "title": "string", "projectId": "integer", "status": "string", "detail": "string", "dueAt": "string", "priority": "string"],
+                nonBlank: ["title", "status", "detail", "dueAt", "priority"]
             )
         case .taskComplete:
             ToolInputSchema(required: ["id"], properties: ["id": "integer"])

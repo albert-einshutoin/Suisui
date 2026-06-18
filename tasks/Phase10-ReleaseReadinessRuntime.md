@@ -1186,6 +1186,14 @@
 - [x] source regression test で `ProjectBoardViewModel.moveDroppedTasks` が atomic bulk API を使い続けることを確認する。
 - [x] 完了条件: Notion / GitHub Projects 風の複数カード移動で、失敗時にUIとSQLite永続状態が分岐しない。
 
+### P10-153: Task tool CRUD covers scheduling and detail metadata
+
+- [x] `task.create` / `task.bulk_create` は title だけでなく detail、dueAt、priority、projectId を SQLite task row に永続化する。
+- [x] `task.update` は title / status だけでなく detail、dueAt、priority、projectId を更新できる。
+- [x] Tool input schema は create / bulk_create / update の editable metadata を公開し、Review UI validation が unknown argument として落とさない。
+- [x] focused tests で create、bulk create、update、schema export の metadata coverage を固定する。
+- [x] 完了条件: AI-generated Action Plan からでも、UI task card と同じ主要メタデータを失わずCRUDできる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

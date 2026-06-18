@@ -149,6 +149,30 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(try stores.tasks.listAll().map(\.title), ["Address release review"])
     }
 
+    func testTaskCreateToolPersistsDetailAndSchedulingMetadata() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "Launch Readiness")
+        let tool = TaskTool(name: .taskCreate, store: stores.tasks, projectStore: stores.projects)
+
+        let result = try tool.execute(
+            arguments: [
+                "title": .string("Draft release notes"),
+                "projectId": .number(Double(project.id)),
+                "detail": .string("Summarize working CRUD and local-first data."),
+                "dueAt": .string("2026-06-21T09:00:00Z"),
+                "priority": .string("high")
+            ],
+            context: approvedContext()
+        )
+        let taskID = try XCTUnwrap(result.output["taskId"]?.int64Value)
+        let task = try stores.tasks.get(id: taskID)
+
+        XCTAssertEqual(task.projectID, project.id)
+        XCTAssertEqual(task.detail, "Summarize working CRUD and local-first data.")
+        XCTAssertEqual(task.dueAt, "2026-06-21T09:00:00Z")
+        XCTAssertEqual(task.priority, "high")
+    }
+
     func testTaskCreateRejectsNonStringOptionalFieldsWithoutCreatingTask() throws {
         let stores = try makeStores()
         let tool = TaskTool(name: .taskCreate, store: stores.tasks, projectStore: stores.projects)
@@ -216,6 +240,41 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
 
         XCTAssertEqual(try stores.projects.get(id: project.id).status, "completed")
         XCTAssertEqual(try stores.tasks.get(id: task.id).status, "completed")
+    }
+
+    func testTaskUpdateToolPersistsEditableTaskMetadataAndMovesProject() throws {
+        let stores = try makeStores()
+        let sourceProject = try stores.projects.create(title: "Inbox")
+        let targetProject = try stores.projects.create(title: "Launch Readiness")
+        let task = try stores.tasks.create(
+            title: "Draft release notes",
+            projectID: sourceProject.id,
+            dueAt: "2026-06-20T09:00:00Z",
+            priority: "medium",
+            detail: "Initial detail"
+        )
+        let tool = TaskTool(name: .taskUpdate, store: stores.tasks, projectStore: stores.projects)
+
+        _ = try tool.execute(
+            arguments: [
+                "id": .number(Double(task.id)),
+                "title": .string("Finalize release notes"),
+                "projectId": .number(Double(targetProject.id)),
+                "status": .string("in_progress"),
+                "detail": .string("Include rollback evidence and release blockers."),
+                "dueAt": .string("2026-06-22T09:00:00Z"),
+                "priority": .string("high")
+            ],
+            context: approvedContext()
+        )
+
+        let updated = try stores.tasks.get(id: task.id)
+        XCTAssertEqual(updated.title, "Finalize release notes")
+        XCTAssertEqual(updated.projectID, targetProject.id)
+        XCTAssertEqual(updated.status, "in_progress")
+        XCTAssertEqual(updated.detail, "Include rollback evidence and release blockers.")
+        XCTAssertEqual(updated.dueAt, "2026-06-22T09:00:00Z")
+        XCTAssertEqual(updated.priority, "high")
     }
 
     func testTaskCreateWithProjectIDRequiresProjectStore() throws {
@@ -336,6 +395,54 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         }
 
         XCTAssertEqual(try stores.tasks.listAll(), [])
+    }
+
+    func testTaskBulkCreatePersistsDetailAndSchedulingMetadata() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "Launch Readiness")
+        let tool = TaskTool(name: .taskBulkCreate, store: stores.tasks, projectStore: stores.projects)
+
+        _ = try tool.execute(
+            arguments: [
+                "tasks": .array([
+                    .object([
+                        "title": .string("Draft checklist"),
+                        "projectId": .number(Double(project.id)),
+                        "detail": .string("Cover signing and notarization."),
+                        "dueAt": .string("2026-06-21T09:00:00Z"),
+                        "priority": .string("high")
+                    ])
+                ])
+            ],
+            context: approvedContext()
+        )
+
+        let task = try XCTUnwrap(stores.tasks.listAll().first)
+        XCTAssertEqual(task.projectID, project.id)
+        XCTAssertEqual(task.detail, "Cover signing and notarization.")
+        XCTAssertEqual(task.dueAt, "2026-06-21T09:00:00Z")
+        XCTAssertEqual(task.priority, "high")
+    }
+
+    func testTaskToolSchemasExposeEditableTaskMetadata() throws {
+        let stores = try makeStores()
+        let create = TaskTool(name: .taskCreate, store: stores.tasks, projectStore: stores.projects)
+        let bulkCreate = TaskTool(name: .taskBulkCreate, store: stores.tasks, projectStore: stores.projects)
+        let update = TaskTool(name: .taskUpdate, store: stores.tasks, projectStore: stores.projects)
+
+        XCTAssertEqual(create.inputSchema.properties["detail"], "string")
+        XCTAssertEqual(create.inputSchema.properties["dueAt"], "string")
+        XCTAssertEqual(create.inputSchema.properties["priority"], "string")
+
+        let taskItemSchema = try XCTUnwrap(bulkCreate.inputSchema.arrayItems["tasks"])
+        XCTAssertEqual(taskItemSchema.properties["detail"], "string")
+        XCTAssertEqual(taskItemSchema.properties["dueAt"], "string")
+        XCTAssertEqual(taskItemSchema.properties["priority"], "string")
+
+        XCTAssertEqual(update.inputSchema.properties["projectId"], "integer")
+        XCTAssertEqual(update.inputSchema.properties["detail"], "string")
+        XCTAssertEqual(update.inputSchema.properties["dueAt"], "string")
+        XCTAssertEqual(update.inputSchema.properties["priority"], "string")
     }
 
     func testKnowledgeFrameCreateAndSearchUseSameStore() throws {
