@@ -832,6 +832,13 @@
 - [x] `ExternalMCPTests` で引数なし監査と arguments metadata 欠落の両方を固定する。
 - [x] 完了条件: MCP外部呼び出しの監査履歴で、引数なしと監査欠落が同じ空表示に見えない。
 
+### P10-106: External MCP audit identity metadata is required
+
+- [x] `ExternalMCPAuditHistory.rows` は `server_name` 欠落を `External MCP` に丸めない。
+- [x] `ExternalMCPAuditHistory.rows` は `tool_name` 欠落を `AuditEvent.action` に丸めない。
+- [x] `ExternalMCPTests` で server / tool identity metadata 欠落が audit history decode failure になることを確認する。
+- [x] 完了条件: MCP外部呼び出しの監査履歴で、どのserver/toolか不明な履歴が正常な履歴として表示されない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

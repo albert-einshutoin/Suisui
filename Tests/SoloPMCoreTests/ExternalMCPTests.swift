@@ -701,6 +701,46 @@ final class ExternalMCPTests: XCTestCase {
         }
     }
 
+    func testAuditHistoryRejectsMissingServerNameInsteadOfShowingGenericExternalMCP() {
+        let events = [
+            AuditEvent(
+                category: "external_mcp",
+                action: "fake.read_status",
+                status: .succeeded,
+                metadata: [
+                    "tool_name": "read_status",
+                    "risk": "read",
+                    "approval": "missing",
+                    "arguments": "No arguments"
+                ]
+            )
+        ]
+
+        XCTAssertThrowsError(try ExternalMCPAuditHistory.rows(from: events)) { error in
+            XCTAssertEqual(error as? ExternalMCPAuditHistoryError, .missingMetadata("server_name"))
+        }
+    }
+
+    func testAuditHistoryRejectsMissingToolNameInsteadOfFallingBackToAction() {
+        let events = [
+            AuditEvent(
+                category: "external_mcp",
+                action: "fake.read_status",
+                status: .succeeded,
+                metadata: [
+                    "server_name": "Fake MCP",
+                    "risk": "read",
+                    "approval": "missing",
+                    "arguments": "No arguments"
+                ]
+            )
+        ]
+
+        XCTAssertThrowsError(try ExternalMCPAuditHistory.rows(from: events)) { error in
+            XCTAssertEqual(error as? ExternalMCPAuditHistoryError, .missingMetadata("tool_name"))
+        }
+    }
+
     func testInvalidJSONRPCResponseFailsWithoutCrashing() async throws {
         let client = MCPClient(serverID: "fake", transport: ExternalMCPTestKit.makeInvalidListTransport())
 

@@ -41,8 +41,8 @@ public enum ExternalMCPAuditHistory {
     private static func row(from event: AuditEvent) throws -> ExternalMCPAuditHistoryRow {
         ExternalMCPAuditHistoryRow(
             timestamp: event.timestamp,
-            serverName: event.metadata["server_name"] ?? event.metadata["server_id"] ?? "External MCP",
-            toolName: event.metadata["tool_name"] ?? event.action,
+            serverName: try requiredMetadata(event, key: "server_name"),
+            toolName: try requiredMetadata(event, key: "tool_name"),
             risk: try requiredMetadata(event, key: "risk"),
             approval: try requiredMetadata(event, key: "approval"),
             durationMilliseconds: event.metadata["duration_ms"],
