@@ -19,13 +19,14 @@ final class ExternalMCPTests: XCTestCase {
 
     func testServerRegistrationValidatesCommandBinaryDisabledAndKeychainEnvReferences() async throws {
         let validator = MCPServerRegistrationValidator(binaryLocator: StaticBinaryLocator(availableCommands: ["node"]))
+        let workingDirectory = try temporaryDirectory()
         let valid = MCPServerRegistration(
             id: "github",
             displayName: "GitHub MCP",
             command: "node",
             arguments: ["server.js"],
             environment: ["GITHUB_TOKEN": .keychain(.githubToken)],
-            workingDirectory: "/repo",
+            workingDirectory: workingDirectory.path,
             isEnabled: true
         )
 
@@ -139,6 +140,36 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(saved.arguments, ["node", "server.js"])
         XCTAssertEqual(saved.workingDirectory, "/tmp")
         XCTAssertTrue(saved.isEnabled)
+    }
+
+    @MainActor
+    func testExternalMCPSettingsViewModelRejectsInvalidCommandBeforeSaving() throws {
+        let store = InMemoryMCPServerRegistrationStore()
+        let viewModel = ExternalMCPSettingsViewModel(store: store)
+
+        viewModel.updateDisplayName("Local Files")
+        viewModel.updateCommand("  ")
+        viewModel.updateEnabled(true)
+        viewModel.save()
+
+        XCTAssertEqual(viewModel.errorMessage, "MCP command is required.")
+        XCTAssertEqual(try store.loadRegistrations(), [])
+    }
+
+    @MainActor
+    func testExternalMCPSettingsViewModelRejectsMissingWorkingDirectoryBeforeSaving() throws {
+        let store = InMemoryMCPServerRegistrationStore()
+        let viewModel = ExternalMCPSettingsViewModel(store: store)
+        let missingDirectory = try temporaryDirectory().appendingPathComponent("missing")
+
+        viewModel.updateDisplayName("Local Files")
+        viewModel.updateCommand("/usr/bin/env")
+        viewModel.updateWorkingDirectory(missingDirectory.path)
+        viewModel.updateEnabled(true)
+        viewModel.save()
+
+        XCTAssertEqual(viewModel.errorMessage, "MCP working directory was not found: \(missingDirectory.path)")
+        XCTAssertEqual(try store.loadRegistrations(), [])
     }
 
     @MainActor

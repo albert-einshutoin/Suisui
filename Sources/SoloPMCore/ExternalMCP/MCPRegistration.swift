@@ -198,16 +198,19 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
 
     private let store: any MCPServerRegistrationStore
     private let launcher: MCPStdioServerLauncher
+    private let registrationValidator: MCPServerRegistrationValidator
     private var registrations: [MCPServerRegistration]
 
     public init(
         store: any MCPServerRegistrationStore,
         launcher: MCPStdioServerLauncher = MCPStdioServerLauncher(),
+        registrationValidator: MCPServerRegistrationValidator = MCPServerRegistrationValidator(),
         toolRows: [ExternalMCPToolCatalogRow] = [],
         auditRows: [ExternalMCPAuditHistoryRow] = []
     ) {
         self.store = store
         self.launcher = launcher
+        self.registrationValidator = registrationValidator
         self.toolRows = toolRows
         self.auditRows = auditRows
         self.errorMessage = nil
@@ -275,12 +278,13 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
 
     public func save() {
         do {
+            try registrationValidator.validate(registration)
             let updatedRegistrations = Self.replacing(registration, in: registrations)
             try store.saveRegistrations(updatedRegistrations)
             registrations = updatedRegistrations
             errorMessage = nil
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.connectionErrorMessage(error)
         }
     }
 
@@ -341,6 +345,8 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             return "MCP command is required."
         case MCPRegistrationError.missingBinary(let command):
             return "MCP command binary was not found: \(command)"
+        case MCPRegistrationError.invalidWorkingDirectory(let path):
+            return "MCP working directory was not found: \(path)"
         case MCPRegistrationError.missingSecret(let name):
             return "MCP environment secret is missing: \(name)"
         case MCPClientError.invalidResponse(_, "tools/list", let reason):
@@ -559,6 +565,7 @@ private extension MCPEnvironmentReference {
 public enum MCPRegistrationError: Error, Equatable, Sendable {
     case invalidCommand
     case missingBinary(String)
+    case invalidWorkingDirectory(String)
     case serverDisabled
     case missingSecret(String)
 }
@@ -639,6 +646,13 @@ public struct MCPServerRegistrationValidator: Sendable {
         }
         guard binaryLocator.isExecutableAvailable(command: command) else {
             throw MCPRegistrationError.missingBinary(command)
+        }
+        if let workingDirectory = registration.workingDirectory {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: workingDirectory, isDirectory: &isDirectory),
+                  isDirectory.boolValue else {
+                throw MCPRegistrationError.invalidWorkingDirectory(workingDirectory)
+            }
         }
     }
 }

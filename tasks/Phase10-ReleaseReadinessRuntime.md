@@ -525,6 +525,15 @@
 - [x] テスト: `Sources/SoloPMCore` に external SaaS connector symbols が残らないことを確認する。
 - [x] 完了条件: 外部 SaaS 連携を除外した public alpha runtime に OAuth / Slack post / Notion write 実装が混ざらない。
 
+### P10-064: MCP registration save-time validation
+
+- [x] `ExternalMCPSettingsViewModel.save()` は store へ書く前に command / binary / working directory を検証する。
+- [x] whitespace-only command は保存せず、Settings に `MCP command is required.` を返す。
+- [x] 存在しない working directory は保存せず、Settings に対象 path を含むエラーを返す。
+- [x] `MCPServerRegistrationValidator` は launch 前だけでなく save 前にも再利用できる単一の validation 境界にする。
+- [x] テスト: invalid command / missing working directory が永続 store に入らないことを確認する。
+- [x] 完了条件: MCP 設定が「保存成功に見えるが接続時に必ず失敗する」状態として残らない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
