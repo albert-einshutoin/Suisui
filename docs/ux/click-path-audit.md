@@ -46,7 +46,7 @@
 | boardからSettingsを開く | toolbar gear | 1 | Pass | menu barからも2クリックで開ける。 |
 | Theme変更 | Settings -> `Theme` segment | 2 | Pass | ThemeはSettingsに集約済み。 |
 | AI Provider状態確認 | Settings -> Status Overviewを見る | 1 | Pass | 現在のproviderと認証/承認状態は先頭で分かる。 |
-| AI Provider変更 | Settings -> provider picker -> provider -> `Save Provider Selection` | 4 | Fail | Provider詳細が同じsectionに積まれ、保存操作も分離している。 |
+| AI Provider変更 | Settings -> provider picker -> provider | 2 | Pass | Provider選択時に自動保存されるため、保存ボタンを探す必要がない。追加設定が必要なproviderは既存validationで理由を出す。 |
 | Provider API key保存 | Settings -> API key field -> save key | 3 | Watch | 初期設定としては許容だが、provider別の状態表示が密すぎる。 |
 | OpenCode Local設定 | Settings -> executable/workspace/model入力 -> approval toggle -> save | 5+ | Watch | 複数fieldが必要な設定だが、validation状態はもっと明確に出すべき。 |
 | 選択中MCP serverの接続確認 | Settings -> `Check Connection` | 2 | Pass | すでに対象serverが選ばれていれば目標達成。 |
@@ -64,7 +64,7 @@
 | Inbox画面がない | 思いつきや音声入力の行き先が見えず、capture後に信頼を失いやすい。 | P0 | Inboxをfirst-class navigationにし、Task / Project / Schedule / Laterへ1クリックで分類できるようにする。 |
 | Today作業画面がない | menu bar summaryは存在を知らせるだけで、今日の作業を進められない。 | P0 | Today viewを追加し、今日のTask、overdue、次のactionを表示する。 |
 | Settings詳細Formが長い | Status Overviewで重要状態は見えるが、詳細設定はまだ縦に長い。 | P1 | General / AI / Sync / MCP / Privacy のtabまたは2カラムdetailsに分ける。 |
-| Provider設定が目標クリック数を超える | provider切替と接続状態確認がsetup作業として重く感じる。 | P1 | provider picker、status、model、key状態、保存/確認actionを1つのcompact panelにまとめる。 |
+| Provider詳細設定が長い | provider切替は2クリックになったが、API key、model、local executableなどの詳細設定は同じAI section内に縦積みで残る。 | P1 | providerごとに必要なfieldだけをcompact panelへ出し、他providerのfieldは折りたたむ。 |
 | MCP server切替時の接続確認が重い | 複数serverを持つユーザーが状態確認しづらい。 | P1 | MCP server listにinline statusとrow単位のcheck actionを置く。 |
 | keyboard shortcutが未完了 | 繰り返しのTask入力がpointer依存になる。 | P1 | `Command+N`、`Command+Shift+N`、`Command+,` を追加する。 |
 

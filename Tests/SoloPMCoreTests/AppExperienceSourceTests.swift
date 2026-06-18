@@ -485,7 +485,9 @@ final class AppExperienceSourceTests: XCTestCase {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
         XCTAssertTrue(appSource.contains("settingsViewModel.selectableAIProviders"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.selectAIProviderAndSave($0)"))
         XCTAssertFalse(appSource.contains("ForEach(AIProvider.allCases"))
+        XCTAssertFalse(appSource.contains("Save Provider Selection"))
     }
 
     func testSettingsShowsOpenAIProviderSmokeReadiness() throws {

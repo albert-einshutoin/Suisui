@@ -817,18 +817,13 @@ private struct SettingsView: View {
                     "Provider",
                     selection: Binding(
                         get: { settingsViewModel.settings.aiProvider },
-                        set: { settingsViewModel.setAIProvider($0) }
+                        set: { settingsViewModel.selectAIProviderAndSave($0) }
                     )
                 ) {
                     ForEach(settingsViewModel.selectableAIProviders, id: \.self) { provider in
                         Text(provider.displayName)
                             .tag(provider)
                     }
-                }
-                Button {
-                    settingsViewModel.saveSettings()
-                } label: {
-                    Label("Save Provider Selection", systemImage: "square.and.arrow.down")
                 }
                 LabeledContent("OpenAI API Key", value: settingsViewModel.openAIAPIKeyStatusLabel)
                 LabeledContent("OpenAI Provider Smoke", value: settingsViewModel.openAIProviderSmokeStatusLabel)

@@ -479,6 +479,11 @@ public final class AppSettingsViewModel: ObservableObject {
         clearMessages()
     }
 
+    public func selectAIProviderAndSave(_ provider: AIProvider) {
+        setAIProvider(provider)
+        saveSettings()
+    }
+
     public func setSTTProvider(_ provider: STTProvider) {
         settings.sttProvider = provider.isReleaseReady ? provider : .openAITranscribe
         clearMessages()

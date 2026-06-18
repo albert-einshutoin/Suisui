@@ -630,6 +630,22 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testAppSettingsViewModelPersistsProviderSelectionWhenSelected() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelProviderAutoSave.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        viewModel.selectAIProviderAndSave(.claudeMessages)
+
+        XCTAssertEqual(viewModel.settings.aiProvider, .claudeMessages)
+        XCTAssertEqual(try store.load().aiProvider, .claudeMessages)
+        XCTAssertEqual(viewModel.successMessage, "Settings saved.")
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
     func testAppSettingsViewModelRejectsUnavailableAIProviderSelection() throws {
         let suiteName = "SoloPM.AppSettingsUnavailableAIProvider.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

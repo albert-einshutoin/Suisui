@@ -133,7 +133,7 @@
 
 - [x] `docs/ux/click-path-audit.md` を作り、Inbox、Today、Projects、Project Detail、Settings、Review Executeの主要操作をクリック数で棚卸しする。
 - [x] 目標: タスク作成は2クリック以内、タスクステータス変更はドラッグ1回またはカードボタン1回、Project作成は2クリック以内。
-- [ ] 目標: Provider設定はSettingsを開いて2クリック以内、MCP接続確認はSettingsを開いて2クリック以内、Sync状態確認はSettingsを開いて1クリック以内。
+- [x] 目標: Provider設定はSettingsを開いて2クリック以内、MCP接続確認はSettingsを開いて2クリック以内、Sync状態確認はSettingsを開いて1クリック以内。
 - [x] クリック数だけでなく、次に何をすればよいかが画面上の主要ボタン/状態で分かるかを記録する。
 - [x] 完了条件: UI改善が感覚論ではなく、導線コストとしてレビューできる。
 
@@ -181,8 +181,8 @@
 ## Exit Gate
 
 - [x] `docs/mcp-compliance.md` が公式仕様と実装差分を説明している。
-- [ ] OpenAI / Claude / Gemini / Groq / OpenCode のprovider計画がSettingsとdomain modelに反映されている。
-- [ ] 実装済みprovider以外は保存不可または明確なunavailable表示になっている。
+- [x] OpenAI / Claude / Gemini / Groq / OpenCode のprovider計画がSettingsとdomain modelに反映されている。
+- [x] 実装済みprovider以外は保存不可または明確なunavailable表示になっている。
 - [x] Freeユーザーは外部同期を開始できず、外部通信も発生しない。
 - [x] Proユーザーでもsync backend未構成時はmock successにならない。
 - [ ] UX click-path auditで主要操作のクリック数が記録され、改善PRと紐づいている。
