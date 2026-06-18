@@ -1309,6 +1309,7 @@ private struct ProjectInspectorView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title == project.title)
+                .keyboardShortcut("s", modifiers: [.command])
                 .accessibilityIdentifier("project-inspector-save")
                 .accessibilityHint("Saves edits to the selected project in the local SoloPM database.")
             }
@@ -1345,6 +1346,7 @@ private struct ProjectInspectorView: View {
                 } label: {
                     Label("Delete Project", systemImage: "trash")
                 }
+                .keyboardShortcut(.delete, modifiers: [.command])
                 .accessibilityIdentifier("project-inspector-delete")
                 .accessibilityHint("Deletes the selected project after confirmation.")
             }
@@ -1408,6 +1410,7 @@ private struct ProjectInspectorSuggestionSection: View {
                 Label("Apply Suggestion", systemImage: "wand.and.stars")
             }
             .disabled(suggestionAction == .none)
+            .keyboardShortcut(.return, modifiers: [.command])
         }
     }
 
@@ -1541,6 +1544,7 @@ private struct TaskInspectorView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .keyboardShortcut("s", modifiers: [.command])
                 .accessibilityIdentifier("task-inspector-save")
                 .accessibilityHint("Saves edits to the selected task in the local SoloPM database.")
             }
@@ -1551,6 +1555,7 @@ private struct TaskInspectorView: View {
                 } label: {
                     Label("Delete Task", systemImage: "trash")
                 }
+                .keyboardShortcut(.delete, modifiers: [.command])
                 .accessibilityIdentifier("task-inspector-delete")
                 .accessibilityHint("Deletes the selected task after confirmation.")
             }
@@ -1616,6 +1621,7 @@ private struct TaskInspectorSuggestionSection: View {
                 Label("Apply Suggestion", systemImage: "wand.and.stars")
             }
             .disabled(targetStatus == nil)
+            .keyboardShortcut(.return, modifiers: [.command])
         }
     }
 

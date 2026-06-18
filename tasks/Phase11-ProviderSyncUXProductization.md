@@ -164,6 +164,7 @@
 
 - [x] `Command+N` は選択中ProjectにTask追加、`Command+Shift+N` はProject追加、`Command+,` はSettingsに割り当てる。
 - [x] Drag操作の代替として、カード上のMoveボタンとcontext menuを維持する。
+- [x] Task / Project inspector は `Command+S` で保存、`Command+Return` で提案適用、`Command+Delete` で削除確認を開ける。
 - [ ] VoiceOver label、focus order、button help、destructive confirmationを確認する。
   - [x] Task card、column add、status move controlにVoiceOver label/helpを付け、delete/archiveのconfirmationをsource testで固定する。
   - [x] Task card本体のOpen Detailsとstatus move controlsを別フォーカス対象に分け、支援技術で移動ボタンがカード要約に埋もれないことをsource testで固定する。
