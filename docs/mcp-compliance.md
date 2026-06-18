@@ -20,24 +20,27 @@ Primary references:
 |---|---|---|
 | JSON-RPC 2.0 envelope | Implemented | `MCPJSONRPCRequest` / `MCPJSONRPCNotification` / `MCPJSONRPCResponse` set and validate `jsonrpc = "2.0"`. |
 | Request id matching | Implemented | `MCPClient.send` rejects mismatched response id. |
-| Lifecycle initialize | Implemented | `MCPClient.initialize` sends `initialize` with `protocolVersion = 2025-11-25`, empty client capabilities, and client info. |
-| Initialized notification | Implemented | `MCPClient.initialize` sends `notifications/initialized` only after a successful initialize result. |
+| Lifecycle initialize | Implemented | `MCPClient.initialize` sends `initialize` with `protocolVersion = 2025-11-25`, empty client capabilities, and client info before any normal operation request. |
+| Initialized notification | Implemented | `MCPClient.initialize` sends `notifications/initialized` only after a successful initialize result, and regression tests verify invalid initialize responses do not emit it. |
+| Protocol version negotiation | Implemented for current release | SoloPM offers `2025-11-25`, rejects unsupported server response versions, and shows the accepted server version in Settings after Check Connection. |
 | Tools list | Implemented | `MCPClient.listTools` calls `tools/list` and parses `tools` as an array of tool definitions. |
 | Tools call | Implemented | `MCPClient.callTool` calls `tools/call` with `name` and `arguments`, and parses `content`, `isError`, and `structuredContent`. |
 | Tool schema typing | Partially implemented | `inputSchema` must be an object; `required` must be an array of strings; `properties` must be an object when present. Full JSON Schema validation is not implemented yet. |
 | Tool permission | Implemented for SoloPM policy | Unknown external tools default to disabled; write tools require approval; dangerous tools are blocked. |
 | Audit | Implemented | External MCP execution records server/tool identity, permission, approval state, duration, result/error, and redacted arguments. |
 | stdio transport | Implemented | `MCPStdioTransport` launches a configured command, writes JSON-RPC lines, reads stdout, redacts stderr, times out hung calls, and supports shutdown/kill. |
-| Resources | Not implemented | No `resources/list` or resource read path is exposed. |
-| Prompts | Not implemented | No `prompts/list` or prompt get path is exposed. |
+| Resources | Not implemented | No `resources/list` or resource read path is exposed; Settings displays "Not supported in this release". |
+| Prompts | Not implemented | No `prompts/list` or prompt get path is exposed; Settings displays "Not supported in this release". |
 | Streamable HTTP | Not implemented | Architecture leaves transport protocol extensibility, but only stdio is release path. |
 | Official Inspector evidence | Not complete | Phase 11 adds `script/verify_mcp_compliance.sh` and release evidence as a gate. |
 
 ## Tests That Currently Guard Compliance
 
 - `ExternalMCPTests.testClientInitializesListsAndCallsToolsWith20251125Protocol`
+- `ExternalMCPTests.testClientRejectsUnsupportedInitializeProtocolVersionBeforeInitializedNotification`
 - `ExternalMCPTests.testClientRejectsNonObjectInitializeServerInfo`
 - `ExternalMCPTests.testClientRejectsNonStringInitializeServerName`
+- `ExternalMCPTests.testExternalMCPSettingsViewModelChecksConnectionAndRefreshesToolCatalog`
 - `ExternalMCPTests.testMCPStdioTransportRunsRealProcessAndParsesLineDelimitedResponses`
 - `ExternalMCPTests.testMCPStdioTransportReportsMalformedJSONAsInvalidResponse`
 - `ExternalMCPTests.testClientRejectsNonBooleanToolCallIsError`
@@ -51,8 +54,7 @@ Primary references:
 ## Gaps Before Claiming Full Compliance
 
 - Run official MCP Inspector and store reproducible evidence under `docs/release/evidence/`.
-- Add a compliance matrix that maps every required client behavior in the spec to code/test evidence.
-- Add explicit UI copy for unsupported Resources and Prompts so users do not assume full MCP host coverage.
+- Add a deeper method-by-method matrix for optional capabilities before adding Resources, Prompts, or Streamable HTTP.
 - Validate more of `inputSchema` against JSON Schema rules or document the intentionally limited validation boundary.
 - Add Streamable HTTP only after stdio compliance evidence is stable.
 

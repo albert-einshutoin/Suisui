@@ -319,6 +319,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
     @Published public private(set) var auditErrorMessage: String?
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var isCheckingConnection: Bool
+    @Published public private(set) var protocolVersionLabel: String
 
     private let store: any MCPServerRegistrationStore
     private let launcher: MCPStdioServerLauncher
@@ -341,6 +342,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         self.auditErrorMessage = auditErrorMessage
         self.errorMessage = nil
         self.isCheckingConnection = false
+        self.protocolVersionLabel = "Not checked"
         self.registrations = []
         self.registration = Self.blankRegistration(existingIDs: [])
         self.registrationRows = []
@@ -386,7 +388,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         registration = selected
         selectedRegistrationID = selected.id
         syncEnvironmentTextFromRegistration()
-        toolRows = []
+        resetConnectionSnapshot()
         refreshRegistrationRows()
         errorMessage = nil
     }
@@ -395,7 +397,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         registration = Self.blankRegistration(existingIDs: Set(registrations.map(\.id)))
         selectedRegistrationID = registration.id
         syncEnvironmentTextFromRegistration()
-        toolRows = []
+        resetConnectionSnapshot()
         refreshRegistrationRows()
         errorMessage = nil
     }
@@ -404,6 +406,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         var updated = registration
         updated.isEnabled = isEnabled
         registration = updated
+        resetConnectionSnapshot()
         refreshRegistrationRows()
     }
 
@@ -418,6 +421,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         var updated = registration
         updated.command = command
         registration = updated
+        resetConnectionSnapshot()
         refreshRegistrationRows()
     }
 
@@ -426,6 +430,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             var updated = registration
             updated.arguments = try MCPArgumentTextCodec.parse(argumentsText)
             registration = updated
+            resetConnectionSnapshot()
             refreshRegistrationRows()
             errorMessage = nil
         } catch {
@@ -439,6 +444,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             var updated = registration
             updated.environment = try MCPEnvironmentTextCodec.parse(environmentText)
             registration = updated
+            resetConnectionSnapshot()
             refreshRegistrationRows()
             errorMessage = nil
         } catch {
@@ -451,6 +457,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         var updated = registration
         updated.workingDirectory = trimmed.isEmpty ? nil : trimmed
         registration = updated
+        resetConnectionSnapshot()
         refreshRegistrationRows()
     }
 
@@ -484,7 +491,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             selectedRegistrationID = registration.id
             syncEnvironmentTextFromRegistration()
             refreshRegistrationRows()
-            toolRows = []
+            resetConnectionSnapshot()
             errorMessage = nil
         } catch let error as MCPRegistrationStoreError {
             errorMessage = Self.storeErrorMessage(error)
@@ -499,9 +506,11 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             isCheckingConnection = false
         }
 
+        var negotiatedProtocolVersion: String?
         do {
             let client = try await launcher.client(for: registration)
-            _ = try await client.initialize()
+            let initialize = try await client.initialize()
+            negotiatedProtocolVersion = initialize.protocolVersion
             let tools = try await client.listTools()
             let server = MCPRegisteredServerDescriptor(id: registration.id, displayName: registration.displayName)
             let registry = ExternalMCPToolRegistry(
@@ -509,10 +518,14 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
                 tools: tools,
                 classifier: ExternalMCPToolClassifier()
             )
+            protocolVersionLabel = initialize.protocolVersion
             toolRows = ExternalMCPToolCatalog.rows(from: registry.allDescriptors)
             errorMessage = nil
         } catch {
-            toolRows = []
+            resetConnectionSnapshot()
+            if let negotiatedProtocolVersion {
+                protocolVersionLabel = negotiatedProtocolVersion
+            }
             errorMessage = Self.connectionErrorMessage(error)
         }
     }
@@ -555,6 +568,11 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
 
     private func syncEnvironmentTextFromRegistration() {
         environmentText = MCPEnvironmentTextCodec.format(registration.environment)
+    }
+
+    private func resetConnectionSnapshot() {
+        protocolVersionLabel = "Not checked"
+        toolRows = []
     }
 
     private static func connectionErrorMessage(_ error: Error) -> String {

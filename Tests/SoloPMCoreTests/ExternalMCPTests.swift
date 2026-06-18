@@ -73,6 +73,34 @@ final class ExternalMCPTests: XCTestCase {
         }
     }
 
+    func testClientRejectsUnsupportedInitializeProtocolVersionBeforeInitializedNotification() async throws {
+        let transport = RecordingMCPTransport { request in
+            MCPJSONRPCResponse(
+                id: request.id,
+                result: .object([
+                    "protocolVersion": .string("2024-11-05"),
+                    "serverInfo": .object(["name": .string("legacy-mcp")])
+                ])
+            )
+        }
+        let client = MCPClient(serverID: "legacy", transport: transport)
+
+        do {
+            _ = try await client.initialize()
+            XCTFail("unsupported initialize protocolVersion should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(
+                    serverID: "legacy",
+                    method: "initialize",
+                    reason: "Unsupported result.protocolVersion: 2024-11-05."
+                )
+            )
+        }
+        XCTAssertEqual(transport.recordedMethods, ["initialize"])
+    }
+
     func testServerRegistrationValidatesCommandBinaryDisabledAndKeychainEnvReferences() async throws {
         let validator = MCPServerRegistrationValidator(binaryLocator: StaticBinaryLocator(availableCommands: ["node"]))
         let workingDirectory = try temporaryDirectory()
@@ -834,10 +862,13 @@ final class ExternalMCPTests: XCTestCase {
         )
         let viewModel = ExternalMCPSettingsViewModel(store: store, launcher: launcher)
 
+        XCTAssertEqual(viewModel.protocolVersionLabel, "Not checked")
+
         await viewModel.checkConnection()
 
         XCTAssertNil(viewModel.errorMessage)
         XCTAssertFalse(viewModel.isCheckingConnection)
+        XCTAssertEqual(viewModel.protocolVersionLabel, "2025-11-25")
         XCTAssertEqual(viewModel.toolRows.map(\.toolName), ["danger_delete", "invalid_response", "read_status", "slow_tool", "write_issue"])
         XCTAssertEqual(viewModel.toolRows.first { $0.toolName == "read_status" }?.serverName, "Fake MCP")
         XCTAssertEqual(transport.recordedMethods, ["initialize", "notifications/initialized", "tools/list"])
@@ -907,6 +938,7 @@ final class ExternalMCPTests: XCTestCase {
         await viewModel.checkConnection()
 
         XCTAssertEqual(viewModel.errorMessage, "MCP tools/list response was invalid: Missing result.tools array.")
+        XCTAssertEqual(viewModel.protocolVersionLabel, "2025-11-25")
         XCTAssertTrue(viewModel.toolRows.isEmpty)
     }
 

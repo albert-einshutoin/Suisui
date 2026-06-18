@@ -43,6 +43,13 @@ public final class MCPClient: @unchecked Sendable {
         guard let protocolVersion = object["protocolVersion"]?.stringValue else {
             throw MCPClientError.invalidResponse(serverID: serverID, method: "initialize", reason: "Missing result.protocolVersion.")
         }
+        guard MCPProtocolVersion(rawValue: protocolVersion) != nil else {
+            throw MCPClientError.invalidResponse(
+                serverID: serverID,
+                method: "initialize",
+                reason: "Unsupported result.protocolVersion: \(protocolVersion)."
+            )
+        }
         let serverName: String?
         if let serverInfoValue = object["serverInfo"] {
             guard let serverInfo = serverInfoValue.objectValue else {

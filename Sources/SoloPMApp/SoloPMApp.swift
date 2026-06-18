@@ -1053,6 +1053,9 @@ private struct SettingsView: View {
 
                 LabeledContent("Transport", value: externalMCPViewModel.display.transportLabel)
                 LabeledContent("Status", value: externalMCPViewModel.display.statusLabel)
+                LabeledContent("Protocol Version", value: externalMCPViewModel.protocolVersionLabel)
+                LabeledContent("Resources", value: "Not supported in this release")
+                LabeledContent("Prompts", value: "Not supported in this release")
                 ForEach(externalMCPViewModel.display.environmentRows, id: \.name) { row in
                     LabeledContent(row.name, value: row.sourceLabel)
                 }

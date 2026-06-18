@@ -31,12 +31,12 @@
 ## P11-001: MCP 2025-11-25 compliance matrix
 
 - [x] `docs/mcp-compliance.md` を作り、MCP spec 2025-11-25 のLifecycle、Tools、Resources、Prompts、Transportsごとに実装状態を表にする。
-- [ ] `MCPClient.initialize()` が最初のrequestとして送られることを `ExternalMCPTests` で固定する。
-- [ ] `notifications/initialized` が `initialize` 成功後にだけ送られることをテストする。
-- [ ] `protocolVersion` は `2025-11-25` を提示し、serverが返したversionを監査/Settings表示へ残す。
-- [ ] `tools/list` responseの `name` / `title` / `description` / `inputSchema` 型不一致を fail fast する既存テストを compliance matrix にリンクする。
-- [ ] `resources/list` / `prompts/list` は未対応としてUIとdocsで明示し、対応済みのように表示しない。
-- [ ] 完了条件: 仕様の「実装済み」「未対応」「後続」の境界が投資家/OSS contributorに説明できる。
+- [x] `MCPClient.initialize()` が最初のrequestとして送られることを `ExternalMCPTests` で固定する。
+- [x] `notifications/initialized` が `initialize` 成功後にだけ送られることをテストする。
+- [x] `protocolVersion` は `2025-11-25` を提示し、serverが返したversionを監査/Settings表示へ残す。
+- [x] `tools/list` responseの `name` / `title` / `description` / `inputSchema` 型不一致を fail fast する既存テストを compliance matrix にリンクする。
+- [x] `resources/list` / `prompts/list` は未対応としてUIとdocsで明示し、対応済みのように表示しない。
+- [x] 完了条件: 仕様の「実装済み」「未対応」「後続」の境界が投資家/OSS contributorに説明できる。
 
 ## P11-002: MCP Inspector and external fixture evidence
 
@@ -180,7 +180,7 @@
 
 ## Exit Gate
 
-- [ ] `docs/mcp-compliance.md` が公式仕様と実装差分を説明している。
+- [x] `docs/mcp-compliance.md` が公式仕様と実装差分を説明している。
 - [ ] OpenAI / Claude / Gemini / Groq / OpenCode のprovider計画がSettingsとdomain modelに反映されている。
 - [ ] 実装済みprovider以外は保存不可または明確なunavailable表示になっている。
 - [x] Freeユーザーは外部同期を開始できず、外部通信も発生しない。
@@ -188,7 +188,7 @@
 - [ ] UX click-path auditで主要操作のクリック数が記録され、改善PRと紐づいている。
 - [ ] `ui-samples/` を参考にした画面密度・インスペクタ・Settingsの改善がスクリーンショットで検証されている。
 - [ ] 競合benchmarkから採用/非採用判断が残っている。
-- [ ] `swift test`、`./scripts/ci.sh`、`xcodebuild ... -scheme SoloPM build` がgreen。
+- [x] `swift test`、`./scripts/ci.sh`、`xcodebuild ... -scheme SoloPM build` がgreen。
 
 ## Source Notes
 
