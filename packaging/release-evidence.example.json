@@ -6,7 +6,9 @@
     "artifactPath": "dist/releases/SoloPM-0.1.0+1.dmg",
     "artifactSha256": "replace-after-package",
     "signingIdentity": "Developer ID Application: SoloPM Release Owner (TEAMID)",
-    "notaryProfile": "SoloPMNotaryProfile"
+    "notaryProfile": "SoloPMNotaryProfile",
+    "sparkleFeedURL": "replace-after-sparkle-config",
+    "appcastPath": "dist/releases/appcast.xml"
   },
   "manualChecks": {
     "cleanEnvironmentLaunch": false,

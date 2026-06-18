@@ -422,7 +422,9 @@
 - [x] `create_release_evidence.sh` は `SOLOPM_SIGNING_IDENTITY` / `SOLOPM_NOTARY_PROFILE` がない状態で成功証跡を作らない。
 - [x] release evidence は `release.signingIdentity` / `release.notaryProfile` を記録するが、credential secret は保存しない。
 - [x] `verify_release_environment.sh` は evidence の signing identity / notary profile が現在の release machine 設定と一致することを照合する。
-- [x] 完了条件: manual release evidence は artifact checksum だけでなく、配布署名 context にも紐づく。
+- [x] `create_release_evidence.sh` は missing / invalid な release Sparkle config がある状態で成功証跡を書かない。
+- [x] release evidence は `release.sparkleFeedURL` / `release.appcastPath` を記録し、final preflight で現在の release config と照合する。
+- [x] 完了条件: manual release evidence は artifact checksum だけでなく、配布署名 context と Sparkle update context にも紐づく。
 
 ### P10-054: Release appcast gate
 

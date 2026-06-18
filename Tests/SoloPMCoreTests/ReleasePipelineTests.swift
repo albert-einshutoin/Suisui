@@ -144,6 +144,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("release.appBundlePath"))
         XCTAssertTrue(script.contains("release.artifactSha256"))
         XCTAssertTrue(script.contains("SOLOPM_RELEASE_ARTIFACT_SHA256_FILE"))
+        XCTAssertTrue(script.contains("release.sparkleFeedURL"))
+        XCTAssertTrue(script.contains("release.appcastPath"))
         XCTAssertTrue(script.contains("create_release_evidence.sh"))
         XCTAssertTrue(script.contains("MARKETING_VERSION"))
         XCTAssertTrue(script.contains("CURRENT_PROJECT_VERSION"))
@@ -179,6 +181,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(example.contains("\"appBundlePath\": \"dist/SoloPM.app\""))
         XCTAssertTrue(example.contains("\"signingIdentity\""))
         XCTAssertTrue(example.contains("\"notaryProfile\""))
+        XCTAssertTrue(example.contains("\"sparkleFeedURL\""))
+        XCTAssertTrue(example.contains("\"appcastPath\": \"dist/releases/appcast.xml\""))
         XCTAssertFalse(example.contains("PASSWORD"))
         XCTAssertFalse(example.contains("TOKEN"))
         XCTAssertFalse(example.contains("SECRET"))
@@ -260,7 +264,9 @@ final class ReleasePipelineTests: XCTestCase {
                 "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
                 "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path,
                 "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
-                "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile"
+                "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
 
@@ -273,6 +279,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(evidence.contains("\"artifactSha256\": \"abcdef1234567890\""))
         XCTAssertTrue(evidence.contains("\"signingIdentity\": \"Developer ID Application: SoloPM Test (TEAMID)\""))
         XCTAssertTrue(evidence.contains("\"notaryProfile\": \"SoloPMNotaryProfile\""))
+        XCTAssertTrue(evidence.contains("\"sparkleFeedURL\": \"https://updates.solopm.app/releases/appcast.xml\""))
+        XCTAssertTrue(evidence.contains("\"appcastPath\": \"dist/releases/appcast.xml\""))
         XCTAssertTrue(evidence.contains("\"cleanEnvironmentLaunch\": true"))
         XCTAssertTrue(evidence.contains("\"loginItemToggle\": true"))
         XCTAssertTrue(evidence.contains("\"environment\": \"macOS 15.5 clean user on arm64\""))
@@ -314,13 +322,50 @@ final class ReleasePipelineTests: XCTestCase {
                 "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
                 "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path,
                 "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
-                "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile"
+                "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
 
         XCTAssertEqual(result.exitCode, 0, result.output)
         let evidence = try String(contentsOf: evidenceURL, encoding: .utf8)
         XCTAssertTrue(evidence.contains("\"artifactPath\": \"\(absoluteArtifactPath)\""))
+    }
+
+    func testReleaseEvidenceScriptRequiresSparkleContextForSuccessfulEvidence() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-missing-sparkle-context.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-missing-sparkle-context.dmg.sha256")
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try "abcdef1234567890  dist/releases/SoloPM-0.1.0+1.dmg\n"
+            .write(to: checksumURL, atomically: true, encoding: .utf8)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+        }
+
+        let result = try runScript(
+            "script/create_release_evidence.sh",
+            arguments: ["--force"],
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path,
+                "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
+                "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile"
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release evidence Sparkle config is invalid"))
+        XCTAssertTrue(result.output.contains("SOLOPM_SPARKLE_FEED_URL is required for release builds"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceURL.path))
     }
 
     func testReleaseEvidenceScriptRequiresSigningContextForSuccessfulEvidence() throws {
@@ -612,6 +657,61 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("release evidence signing identity does not match metadata"))
         XCTAssertTrue(result.output.contains("release evidence notary profile does not match metadata"))
+    }
+
+    func testReleasePreflightRejectsEvidenceForDifferentSparkleContext() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-sparkle-context.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-sparkle-context.dmg.sha256")
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        {
+          "release": {
+            "version": "0.1.0",
+            "buildNumber": "1",
+            "appBundlePath": "dist/SoloPM.app",
+            "artifactPath": "dist/releases/SoloPM-0.1.0+1.dmg",
+            "artifactSha256": "actual-sha",
+            "signingIdentity": "Developer ID Application: SoloPM Release Owner (TEAMID)",
+            "notaryProfile": "SoloPMNotaryProfile",
+            "sparkleFeedURL": "https://updates-old.solopm.app/releases/appcast.xml",
+            "appcastPath": "dist/releases/old-appcast.xml"
+          },
+          "manualChecks": {
+            "cleanEnvironmentLaunch": true,
+            "loginItemToggle": true,
+            "environment": "macOS 15.5 clean user on arm64"
+          }
+        }
+        """.write(to: evidenceURL, atomically: true, encoding: .utf8)
+        try "actual-sha  dist/releases/SoloPM-0.1.0+1.dmg\n"
+            .write(to: checksumURL, atomically: true, encoding: .utf8)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+        }
+
+        let result = try runScript(
+            "script/verify_release_environment.sh",
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path,
+                "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Release Owner (TEAMID)",
+                "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release evidence Sparkle feed URL does not match metadata"))
+        XCTAssertTrue(result.output.contains("release evidence appcast path does not match metadata"))
     }
 
     func testReleasePreflightRejectsEvidenceWithoutPackageEvidenceManifest() throws {

@@ -543,12 +543,18 @@ if [[ -f "$RELEASE_EVIDENCE_FILE" ]]; then
     require_evidence_equals "release.appBundlePath" "app bundle path" "$EXPECTED_APP_BUNDLE_PATH"
     require_evidence_non_empty "release.signingIdentity" "signing identity"
     require_evidence_non_empty "release.notaryProfile" "notary profile"
+    require_evidence_non_empty "release.sparkleFeedURL" "Sparkle feed URL"
+    require_evidence_non_empty "release.appcastPath" "appcast path"
     if [[ -n "$SIGNING_IDENTITY" ]]; then
       require_evidence_equals "release.signingIdentity" "signing identity" "$SIGNING_IDENTITY"
     fi
     if [[ -n "$NOTARY_PROFILE" ]]; then
       require_evidence_equals "release.notaryProfile" "notary profile" "$NOTARY_PROFILE"
     fi
+    if [[ -n "$SPARKLE_FEED_URL" ]]; then
+      require_evidence_equals "release.sparkleFeedURL" "Sparkle feed URL" "$SPARKLE_FEED_URL"
+    fi
+    require_evidence_equals "release.appcastPath" "appcast path" "$(artifact_path_for_compare "$RELEASE_APPCAST_FILE")"
     require_evidence_artifact_sha256
     require_evidence_true "manualChecks.cleanEnvironmentLaunch" "clean environment launch"
     require_evidence_true "manualChecks.loginItemToggle" "login item toggle in signed app"

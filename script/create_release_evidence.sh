@@ -5,8 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 SIGNING_ENV_FILE="$ROOT_DIR/packaging/signing.env"
 NOTARIZATION_ENV_FILE="$ROOT_DIR/packaging/notarization.env"
+SPARKLE_ENV_FILE="$ROOT_DIR/packaging/sparkle.env"
 OUTPUT_FILE="${SOLOPM_RELEASE_EVIDENCE_FILE:-$ROOT_DIR/packaging/release-evidence.json}"
 CHECKSUM_FILE="${SOLOPM_RELEASE_ARTIFACT_SHA256_FILE:-}"
+RELEASE_APPCAST_FILE="${SOLOPM_RELEASE_APPCAST_FILE:-$ROOT_DIR/dist/releases/appcast.xml}"
 FORCE=0
 CLEAN_ENVIRONMENT_LAUNCH=false
 LOGIN_ITEM_TOGGLE=false
@@ -107,6 +109,11 @@ if [[ -f "$NOTARIZATION_ENV_FILE" ]]; then
   source "$NOTARIZATION_ENV_FILE"
 fi
 
+if [[ -f "$SPARKLE_ENV_FILE" ]]; then
+  # shellcheck source=/dev/null
+  source "$SPARKLE_ENV_FILE"
+fi
+
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 MARKETING_VERSION="${MARKETING_VERSION:?MARKETING_VERSION is required}"
 CURRENT_PROJECT_VERSION="${CURRENT_PROJECT_VERSION:?CURRENT_PROJECT_VERSION is required}"
@@ -115,6 +122,8 @@ ARTIFACT_BASENAME="$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION"
 CHECKED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 SIGNING_IDENTITY="${SOLOPM_SIGNING_IDENTITY:-}"
 NOTARY_PROFILE="${SOLOPM_NOTARY_PROFILE:-}"
+SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
+SPARKLE_PUBLIC_ED_KEY="${SOLOPM_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
 
 json_escape() {
   local value="$1"
@@ -245,6 +254,20 @@ require_release_signing_context() {
   esac
 }
 
+require_release_sparkle_context() {
+  local validation_output
+  if ! validation_output="$(
+    SOLOPM_BUILD_CONFIGURATION=release \
+      SOLOPM_SPARKLE_CONFIG_QUIET=1 \
+      SOLOPM_SPARKLE_FEED_URL="$SPARKLE_FEED_URL" \
+      SOLOPM_SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" \
+      "$ROOT_DIR/script/validate_sparkle_release_config.sh" 2>&1
+  )"; then
+    printf "release evidence Sparkle config is invalid: %s\n" "$validation_output" >&2
+    exit 2
+  fi
+}
+
 if [[ "${#NOTES[@]}" -eq 0 ]]; then
   NOTES+=("Generated from packaging/app_metadata.env. Set manual check flags only after testing the signed and notarized build.")
 fi
@@ -253,6 +276,7 @@ mkdir -p "$(dirname "$OUTPUT_FILE")"
 tmp_file="$OUTPUT_FILE.tmp"
 artifact_sha="$(read_artifact_sha256)"
 artifact_path="$(read_artifact_path)"
+appcast_path="$(artifact_path_for_compare "$RELEASE_APPCAST_FILE")"
 if [[ "$artifact_sha" == "missing-release-artifact" || "$artifact_path" == "missing-release-artifact" ]]; then
   echo "release evidence requires a packaged artifact checksum; run ./script/package_release.sh first or set SOLOPM_RELEASE_ARTIFACT_SHA256_FILE" >&2
   exit 2
@@ -266,6 +290,7 @@ if [[ "$CLEAN_ENVIRONMENT_LAUNCH" == "true" || "$LOGIN_ITEM_TOGGLE" == "true" ]]
   fi
 fi
 require_release_signing_context
+require_release_sparkle_context
 
 {
   printf '{\n'
@@ -276,7 +301,9 @@ require_release_signing_context
   printf '    "artifactPath": "%s",\n' "$(json_escape "$artifact_path")"
   printf '    "artifactSha256": "%s",\n' "$(json_escape "$artifact_sha")"
   printf '    "signingIdentity": "%s",\n' "$(json_escape "$SIGNING_IDENTITY")"
-  printf '    "notaryProfile": "%s"\n' "$(json_escape "$NOTARY_PROFILE")"
+  printf '    "notaryProfile": "%s",\n' "$(json_escape "$NOTARY_PROFILE")"
+  printf '    "sparkleFeedURL": "%s",\n' "$(json_escape "$SPARKLE_FEED_URL")"
+  printf '    "appcastPath": "%s"\n' "$(json_escape "$appcast_path")"
   printf '  },\n'
   printf '  "manualChecks": {\n'
   printf '    "cleanEnvironmentLaunch": %s,\n' "$CLEAN_ENVIRONMENT_LAUNCH"
