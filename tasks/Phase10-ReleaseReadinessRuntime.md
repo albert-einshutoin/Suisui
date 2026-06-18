@@ -534,6 +534,14 @@
 - [x] テスト: invalid command / missing working directory が永続 store に入らないことを確認する。
 - [x] 完了条件: MCP 設定が「保存成功に見えるが接続時に必ず失敗する」状態として残らない。
 
+### P10-065: Review execution audit logger fail-closed
+
+- [x] Runtime の `makeReviewSessionViewModel` は `try? makeAuditLogger()` で監査失敗を握りつぶさない。
+- [x] audit logger または local data store を開けない場合、Review execution tools を unavailable registry に倒す。
+- [x] UI には `Review execution tools are unavailable because audit logging or local data stores could not be opened.` を validation issue として出す。
+- [x] テスト: Review runtime factory が audit logger を必須化してから write execution registry を構成することを確認する。
+- [x] 完了条件: task/project/knowledge への write 実行が監査なしで成功しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

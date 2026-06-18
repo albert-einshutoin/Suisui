@@ -108,7 +108,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertFalse(appSource.contains("registry = ToolRegistry()"))
         XCTAssertTrue(appSource.contains("runtimeValidationMessage: reviewRuntimeValidationMessage"))
-        XCTAssertTrue(appSource.contains("Review execution tools are unavailable because local data stores could not be opened."))
+        XCTAssertTrue(appSource.contains("Review execution tools are unavailable because audit logging or local data stores could not be opened."))
     }
 
     func testWatcherDiagnosticsUsesRuntimeStateStoreAndNotificationPermissions() throws {
@@ -365,6 +365,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("KeychainSecretStore"))
         XCTAssertTrue(appSource.contains("OpenAIResponsesProvider(secretStore:"))
         XCTAssertTrue(appSource.contains("ToolRegistry.phase2MVP("))
+    }
+
+    func testReviewRuntimeRequiresAuditLoggerBeforeWriteExecution() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let reviewFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeReviewSessionViewModel(plan: ActionPlan)"))
+        let nextFactoryStart = try XCTUnwrap(appSource.range(of: "private static func migratedConnection()", range: reviewFactoryStart.upperBound..<appSource.endIndex))
+        let reviewFactory = String(appSource[reviewFactoryStart.lowerBound..<nextFactoryStart.lowerBound])
+
+        XCTAssertFalse(reviewFactory.contains("try? makeAuditLogger()"))
+        XCTAssertTrue(reviewFactory.contains("let auditLogger = try makeAuditLogger()"))
+        XCTAssertTrue(reviewFactory.contains("logger = auditLogger"))
+        XCTAssertTrue(reviewFactory.contains("Review execution tools are unavailable because audit logging or local data stores could not be opened."))
     }
 
     func testSettingsSurfaceCanPersistOpenAIKeyThroughViewModel() throws {

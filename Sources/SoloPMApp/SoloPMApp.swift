@@ -1149,10 +1149,11 @@ private enum AppRuntimeFactory {
 
     @MainActor
     static func makeReviewSessionViewModel(plan: ActionPlan) -> ReviewSessionViewModel {
-        let logger = try? makeAuditLogger()
+        let logger: (any AuditLogger)?
         let registry: ToolRegistry
         let reviewRuntimeValidationMessage: String?
         do {
+            let auditLogger = try makeAuditLogger()
             let connection = try migratedConnection()
             registry = try ToolRegistry.phase2MVP(
                 projectStore: SQLiteProjectStore(connection: connection),
@@ -1166,11 +1167,13 @@ private enum AppRuntimeFactory {
                 notificationRequestStore: SQLiteNotificationRequestStore(connection: connection),
                 calendarLinkStore: SQLiteCalendarLinkStore(connection: connection),
                 reminderLinkStore: SQLiteReminderLinkStore(connection: connection),
-                auditLogger: logger
+                auditLogger: auditLogger
             )
+            logger = auditLogger
             reviewRuntimeValidationMessage = nil
         } catch {
-            reviewRuntimeValidationMessage = "Review execution tools are unavailable because local data stores could not be opened."
+            logger = nil
+            reviewRuntimeValidationMessage = "Review execution tools are unavailable because audit logging or local data stores could not be opened."
             registry = unavailableReviewRegistry(for: plan, message: reviewRuntimeValidationMessage ?? "Review execution tools are unavailable.")
         }
 
