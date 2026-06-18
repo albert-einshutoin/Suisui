@@ -49,6 +49,27 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertFalse(evidence.contains("TBD"))
     }
 
+    func testComplianceReviewAndEvidenceRecordStableSpecAndDraftBoundary() throws {
+        let complianceReview = try readPackageFile("docs/mcp-compliance.md")
+        let evidence = try readPackageFile("docs/release/evidence/mcp-inspector.md")
+        let script = try readPackageFile("script/verify_mcp_compliance.sh")
+
+        for content in [complianceReview, evidence] {
+            XCTAssertTrue(content.contains("Stable baseline: `2025-11-25`"))
+            XCTAssertTrue(content.contains("Draft watchlist: `2026-07-28`"))
+            XCTAssertTrue(content.contains("not a full MCP host"))
+        }
+        XCTAssertTrue(script.contains("Stable baseline:"))
+        XCTAssertTrue(script.contains("2025-11-25"))
+        XCTAssertTrue(script.contains("Draft watchlist:"))
+        XCTAssertTrue(script.contains("2026-07-28"))
+        XCTAssertTrue(script.contains("not a full MCP host"))
+        XCTAssertTrue(complianceReview.contains("SoloPM does not send per-request protocol metadata"))
+        XCTAssertTrue(complianceReview.contains("server/discover"))
+        XCTAssertTrue(complianceReview.contains("will not claim draft or full-host compatibility"))
+        XCTAssertTrue(complianceReview.contains("MCPInspectorEvidenceTests.testComplianceReviewAndEvidenceRecordStableSpecAndDraftBoundary"))
+    }
+
     func testInspectorVerificationScriptRunsWithFakeInspectorWithoutNetwork() throws {
         let temporaryDirectory = packageRoot()
             .appendingPathComponent(".build/test-mcp-inspector-\(UUID().uuidString)", isDirectory: true)

@@ -67,6 +67,12 @@ Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and SoloPM's local JSON-RPC smoke checks.
 
+Stable baseline: \`2025-11-25\`
+
+Draft watchlist: \`2026-07-28\`
+
+Release positioning: SoloPM is not a full MCP host; this evidence covers stable client-side stdio Tools only. Resources, Prompts, Streamable HTTP, OAuth/remote MCP, draft per-request protocol metadata, and draft server/discover are not release targets.
+
 Fixture: \`fixtures/mcp/stdio-fixture-server.mjs\`
 
 Success path: \`initialize -> tools/list -> tools/call\`

@@ -36,6 +36,7 @@
 - [x] `protocolVersion` は `2025-11-25` を提示し、serverが返したversionを監査/Settings表示へ残す。
 - [x] `tools/list` responseの `name` / `title` / `description` / `inputSchema` 型不一致を fail fast する既存テストを compliance matrix にリンクする。
 - [x] `resources/list` / `prompts/list` は未対応としてUIとdocsで明示し、対応済みのように表示しない。
+- [x] `2026-07-28` draft / release-candidate の per-request protocol metadata と `server/discover` は今回のrelease target外として、`docs/mcp-compliance.md` と `docs/release/evidence/mcp-inspector.md` に明記する。
 - [x] 完了条件: 仕様の「実装済み」「未対応」「後続」の境界が投資家/OSS contributorに説明できる。
 
 ## P11-002: MCP Inspector and external fixture evidence

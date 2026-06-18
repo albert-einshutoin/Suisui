@@ -6,6 +6,12 @@ Last reviewed: 2026-06-19
 
 SoloPM の外部MCP実装は、MCP specification `2025-11-25` を基準にする。現時点の実装対象は **client-side stdio Tools** に限定し、Resources、Prompts、Streamable HTTP、OAuth/remote MCP は未対応として扱う。
 
+- Stable baseline: `2025-11-25`
+- Draft watchlist: `2026-07-28`
+- Release positioning: SoloPM is not a full MCP host; it supports the stable stdio Tools subset described in this document.
+
+`2026-07-28` は draft / release-candidate として監視するが、今回の release target には含めない。SoloPM does not send per-request protocol metadata, does not implement draft `server/discover`, and will not claim draft or full-host compatibility until those paths are implemented, tested, and inspector-backed.
+
 Primary references:
 
 - MCP specification 2025-11-25: https://modelcontextprotocol.io/specification/2025-11-25
@@ -13,6 +19,8 @@ Primary references:
 - Tools: https://modelcontextprotocol.io/specification/2025-11-25/server/tools
 - Architecture: https://modelcontextprotocol.io/docs/learn/architecture
 - Inspector: https://modelcontextprotocol.io/docs/tools/inspector
+- Draft versioning watchlist: https://modelcontextprotocol.io/specification/draft/basic/versioning
+- Draft discovery watchlist: https://modelcontextprotocol.io/specification/draft/server/discover
 
 ## Current Status
 
@@ -33,6 +41,8 @@ Primary references:
 | Resources | Not implemented | No `resources/list` or resource read path is exposed; Settings displays "Not supported in this release". |
 | Prompts | Not implemented | No `prompts/list` or prompt get path is exposed; Settings displays "Not supported in this release". |
 | Streamable HTTP | Not implemented | Architecture leaves transport protocol extensibility, but only stdio is release path. |
+| Draft modern protocol metadata | Not implemented | The draft `2026-07-28` path uses modern per-request protocol metadata and discovery. SoloPM remains on the stable `2025-11-25` initialize lifecycle for this release. |
+| Draft server discovery | Not implemented | `server/discover` is draft-only for SoloPM's current release boundary and must not be advertised as supported. |
 | Official Inspector evidence | Recorded | `script/verify_mcp_compliance.sh` runs the official MCP Inspector CLI against `fixtures/mcp/stdio-fixture-server.mjs`; `docs/release/evidence/mcp-inspector.md` records `tools/list`, `tools/call`, and failure taxonomy smoke output. |
 | Settings failure taxonomy | Implemented | Settings `Check Connection` exposes `malformed-json`, `mismatched-id`, `invalid-schema`, and `timeout` through `connectionCheckResultLabel` and prefixes matching user-facing errors with the same taxonomy. |
 
@@ -58,12 +68,14 @@ Primary references:
 - `MCPInspectorEvidenceTests.testInspectorVerificationScriptUsesOfficialCLIAndFixturePaths`
 - `MCPInspectorEvidenceTests.testMCPFixtureServerCoversSuccessAndFailureModesOutsideRuntimeSources`
 - `MCPInspectorEvidenceTests.testInspectorEvidenceRecordsSuccessAndFailureTaxonomy`
+- `MCPInspectorEvidenceTests.testComplianceReviewAndEvidenceRecordStableSpecAndDraftBoundary`
 - `MCPInspectorEvidenceTests.testInspectorVerificationScriptRunsWithFakeInspectorWithoutNetwork`
 
 ## Gaps Before Claiming Full Compliance
 
 - Add a deeper method-by-method matrix for optional capabilities before adding Resources, Prompts, or Streamable HTTP.
 - Validate more of `inputSchema` against JSON Schema rules or document the intentionally limited validation boundary.
+- Track the draft `2026-07-28` discovery / metadata model separately from the release baseline.
 - Add Streamable HTTP only after stdio compliance evidence is stable.
 
 ## Product Decision
