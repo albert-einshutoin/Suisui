@@ -337,6 +337,12 @@
 - [x] unit tests は test support の `RecordingMCPProcessController` を明示利用し、timeout failure が process cleanup request を出すことを維持する。
 - [x] 完了条件: 外部 MCP tool call は監査 logger と実 process cleanup controller の両方を明示しない限り runtime API として構成できない。
 
+### P10-040: Release evidence fail-fast hardening
+
+- [x] `create_release_evidence.sh` は manual check flag を true にする場合、`--manual-environment` を必須にする。
+- [x] manual release evidence は packaged artifact checksum が無い状態では作成できない。
+- [x] 完了条件: clean environment / login item の手動確認は、署名・公証後に生成された配布 artifact と確認環境が結び付かない限り証跡として保存されない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

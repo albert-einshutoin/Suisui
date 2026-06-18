@@ -159,6 +159,17 @@ mkdir -p "$(dirname "$OUTPUT_FILE")"
 tmp_file="$OUTPUT_FILE.tmp"
 artifact_sha="$(read_artifact_sha256)"
 artifact_path="$(read_artifact_path)"
+if [[ "$CLEAN_ENVIRONMENT_LAUNCH" == "true" || "$LOGIN_ITEM_TOGGLE" == "true" ]]; then
+  if [[ -z "$MANUAL_ENVIRONMENT" ]]; then
+    echo "manual release evidence requires --manual-environment when manual check flags are set" >&2
+    exit 2
+  fi
+
+  if [[ "$artifact_sha" == "missing-release-artifact" || "$artifact_path" == "missing-release-artifact" ]]; then
+    echo "manual release evidence requires a packaged artifact checksum; run ./script/package_release.sh first or set SOLOPM_RELEASE_ARTIFACT_SHA256_FILE" >&2
+    exit 2
+  fi
+fi
 
 {
   printf '{\n'
