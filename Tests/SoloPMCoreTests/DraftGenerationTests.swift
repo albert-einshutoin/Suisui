@@ -58,4 +58,16 @@ final class DraftGenerationTests: XCTestCase {
         XCTAssertEqual(redaction.text, "[REDACTED_SECRET],title=string(\"Secret task\")")
         XCTAssertEqual(redaction.report.matchedPatternNames, ["assignment"])
     }
+
+    func testInvalidRedactionPatternFailsClosedWithoutLeakingInput() {
+        let redactor = DeveloperSecretRedactor(patternDefinitions: [
+            SecretRedactionPatternDefinition(name: "broken", expression: "[")
+        ])
+
+        let redaction = redactor.redact("token=secret-value")
+
+        XCTAssertEqual(redaction.text, "[REDACTED_SECRET]")
+        XCTAssertEqual(redaction.report.replacementCount, 1)
+        XCTAssertEqual(redaction.report.matchedPatternNames, ["redactor_initialization_failed"])
+    }
 }

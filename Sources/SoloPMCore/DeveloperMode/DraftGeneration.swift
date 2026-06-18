@@ -20,27 +20,65 @@ public struct SecretRedactionResult: Equatable, Sendable {
     }
 }
 
+struct SecretRedactionPatternDefinition: Equatable, Sendable {
+    var name: String
+    var expression: String
+
+    init(name: String, expression: String) {
+        self.name = name
+        self.expression = expression
+    }
+}
+
 public struct DeveloperSecretRedactor: Sendable {
     private struct CompiledPattern: @unchecked Sendable {
         var name: String
         var regex: NSRegularExpression
     }
 
-    private static let defaultCompiledPatterns: [CompiledPattern] = [
-        compiledPattern(name: "github_pat", expression: #"github_pat_[A-Za-z0-9_]{8,}"#),
-        compiledPattern(name: "ghp", expression: #"ghp_[A-Za-z0-9_]{6,}"#),
-        compiledPattern(name: "openai", expression: #"sk-(?:proj-)?[A-Za-z0-9_-]{8,}"#),
-        compiledPattern(name: "aws_access_key", expression: #"AKIA[0-9A-Z]{16}"#),
-        compiledPattern(name: "assignment", expression: #"(?i)\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*(?!\[REDACTED_SECRET\])[^\s,;]+"#)
+    private static let initializationFailurePatternName = "redactor_initialization_failed"
+
+    private static let defaultPatternDefinitions: [SecretRedactionPatternDefinition] = [
+        SecretRedactionPatternDefinition(name: "github_pat", expression: #"github_pat_[A-Za-z0-9_]{8,}"#),
+        SecretRedactionPatternDefinition(name: "ghp", expression: #"ghp_[A-Za-z0-9_]{6,}"#),
+        SecretRedactionPatternDefinition(name: "openai", expression: #"sk-(?:proj-)?[A-Za-z0-9_-]{8,}"#),
+        SecretRedactionPatternDefinition(name: "aws_access_key", expression: #"AKIA[0-9A-Z]{16}"#),
+        SecretRedactionPatternDefinition(name: "assignment", expression: #"(?i)\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*(?!\[REDACTED_SECRET\])[^\s,;]+"#)
     ]
 
     private let patterns: [CompiledPattern]
+    private let compilationFailure: String?
 
     public init() {
-        self.patterns = Self.defaultCompiledPatterns
+        self.init(compilation: Result { try Self.compileDefaultPatterns() })
+    }
+
+    init(patternDefinitions: [SecretRedactionPatternDefinition]) {
+        self.init(compilation: Result { try Self.compilePatterns(patternDefinitions) })
+    }
+
+    private init(compilation: Result<[CompiledPattern], any Error>) {
+        switch compilation {
+        case .success(let patterns):
+            self.patterns = patterns
+            self.compilationFailure = nil
+        case .failure(let error):
+            self.patterns = []
+            self.compilationFailure = String(describing: error)
+        }
     }
 
     public func redact(_ text: String) -> SecretRedactionResult {
+        if compilationFailure != nil {
+            return SecretRedactionResult(
+                text: text.isEmpty ? "" : "[REDACTED_SECRET]",
+                report: SecretRedactionReport(
+                    replacementCount: text.isEmpty ? 0 : 1,
+                    matchedPatternNames: [Self.initializationFailurePatternName]
+                )
+            )
+        }
+
         var redacted = text
         var replacementCount = 0
         var matchedPatternNames: [String] = []
@@ -70,10 +108,20 @@ public struct DeveloperSecretRedactor: Sendable {
         )
     }
 
-    private static func compiledPattern(name: String, expression: String) -> CompiledPattern {
-        CompiledPattern(
+    private static func compileDefaultPatterns() throws -> [CompiledPattern] {
+        try compilePatterns(defaultPatternDefinitions)
+    }
+
+    private static func compilePatterns(_ patternDefinitions: [SecretRedactionPatternDefinition]) throws -> [CompiledPattern] {
+        try patternDefinitions.map { pattern in
+            try compiledPattern(name: pattern.name, expression: pattern.expression)
+        }
+    }
+
+    private static func compiledPattern(name: String, expression: String) throws -> CompiledPattern {
+        try CompiledPattern(
             name: name,
-            regex: try! NSRegularExpression(pattern: expression)
+            regex: NSRegularExpression(pattern: expression)
         )
     }
 }

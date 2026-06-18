@@ -338,6 +338,9 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(source.contains("CompiledPattern"))
         XCTAssertFalse(source.contains("try? NSRegularExpression(pattern: pattern.expression)"))
+        XCTAssertFalse(source.contains("try! NSRegularExpression(pattern: expression)"))
+        XCTAssertTrue(source.contains("compileDefaultPatterns()"))
+        XCTAssertTrue(source.contains("redactor_initialization_failed"))
     }
 
     func testLocalStoresDoNotDefaultArrayEncodingToEmptyJSON() throws {

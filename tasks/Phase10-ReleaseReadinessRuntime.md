@@ -1135,6 +1135,14 @@
 - [x] `ReleasePipelineTests` で manual flags without note と missing review notes evidence を固定する。
 - [x] 完了条件: Gatekeeper / clean install / login item などの manual gate が、理由や判断根拠のない boilerplate review note だけで release ready にならない。
 
+### P10-146: Secret redaction pattern initialization fails closed
+
+- [x] `DeveloperSecretRedactor` は default pattern 初期化で `try! NSRegularExpression` を使わず、regex compile failure を runtime crash にしない。
+- [x] invalid redaction pattern が混入した場合は入力本文を丸ごと `[REDACTED_SECRET]` に置き換え、secret leak より過剰秘匿を優先する。
+- [x] `DraftGenerationTests` で壊れた regex pattern を注入し、fail-closed redaction と `redactor_initialization_failed` report を固定する。
+- [x] source regression test で `try?` による silent skip と `try!` による crash path の復活を防ぐ。
+- [x] 完了条件: secret redaction pattern の破損が、runtime crash または secret を無検知で通す成功 path にならない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
