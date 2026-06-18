@@ -150,6 +150,36 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(try stores.tasks.get(id: task.id).title, "Draft release notes")
     }
 
+    func testTaskUpdateRejectsInvalidStatusWithoutReopeningCompletedProject() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "Completed Initiative")
+        _ = try stores.projects.update(id: project.id, status: "completed")
+        let task = try stores.tasks.create(
+            title: "Already shipped",
+            projectID: project.id,
+            status: "completed"
+        )
+        let tool = TaskTool(name: .taskUpdate, store: stores.tasks, projectStore: stores.projects)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "id": .number(Double(task.id)),
+                    "status": .string("parked")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .validationFailed(.taskUpdate, "Argument 'status' must be one of open, backlog, planned, in_progress, blocked, completed.")
+            )
+        }
+
+        XCTAssertEqual(try stores.projects.get(id: project.id).status, "completed")
+        XCTAssertEqual(try stores.tasks.get(id: task.id).status, "completed")
+    }
+
     func testTaskCreateWithProjectIDRequiresProjectStore() throws {
         let stores = try makeStores()
         let project = try stores.projects.create(title: "Launch Readiness")

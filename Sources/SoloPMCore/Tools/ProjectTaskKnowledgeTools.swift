@@ -195,8 +195,9 @@ public struct TaskTool: Tool {
             throw ToolExecutionError.executionFailed(name, "Project store is required to validate project task mutations.")
         }
 
+        let normalizedStatus = try StoreFieldValidation.taskStatus(status, tool: name)
         let project = try projectStore.get(id: projectID)
-        if project.status == "completed", ProjectTaskStatus.normalized(status) != .done {
+        if project.status == "completed", normalizedStatus != "completed" {
             _ = try projectStore.restore(id: projectID)
         }
     }

@@ -797,7 +797,7 @@ private extension ReminderLinkRecord {
     }
 }
 
-private enum StoreFieldValidation {
+enum StoreFieldValidation {
     private static let projectStatuses = ["active", "completed", "archived"]
     private static let taskStatuses = ["open", "backlog", "planned", "in_progress", "blocked", "completed"]
     private static let notificationStatuses = ["pending", "scheduled", "failed"]

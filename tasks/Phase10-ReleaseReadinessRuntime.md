@@ -903,6 +903,13 @@
 - [x] `ToolArgumentsTests` と `ToolRegistryTests` で fractional number が mutation 前に validation failure になることを固定する。
 - [x] 完了条件: LLM が `1.9` のような値を返しても `1` に丸めて別 Project / Task / Frame を更新しない。
 
+### P10-116: Invalid task status does not partially reopen completed projects
+
+- [x] `task.update` は completed project の復元前に status を `StoreFieldValidation.taskStatus` で検証する。
+- [x] 不正 status で task 更新が失敗した場合、task row だけでなく project status も変更しない。
+- [x] `ProjectTaskKnowledgeToolTests` で invalid status が completed project を active に戻さないことを固定する。
+- [x] 完了条件: Review 実行で不正な task status が混ざっても、失敗した action が project 状態だけを部分変更しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
