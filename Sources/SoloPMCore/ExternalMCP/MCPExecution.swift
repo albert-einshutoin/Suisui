@@ -137,9 +137,29 @@ public struct ExternalMCPToolExecutor: Sendable {
         }
         let summary = arguments
             .sorted { $0.key < $1.key }
-            .map { "\($0.key)=\(String(describing: $0.value))" }
+            .map { "\($0.key)=\(argumentValueSummary(key: $0.key, value: $0.value))" }
             .joined(separator: ",")
         return redactor.redact(summary).text
+    }
+
+    private func argumentValueSummary(key: String, value: JSONValue) -> String {
+        Self.isSensitiveArgumentKey(key) ? "[REDACTED_SECRET]" : String(describing: value)
+    }
+
+    private static func isSensitiveArgumentKey(_ key: String) -> Bool {
+        let normalized = key
+            .lowercased()
+            .filter { $0.isLetter || $0.isNumber }
+        return [
+            "apikey",
+            "authorization",
+            "bearer",
+            "credential",
+            "password",
+            "privatekey",
+            "secret",
+            "token"
+        ].contains { normalized.contains($0) }
     }
 }
 

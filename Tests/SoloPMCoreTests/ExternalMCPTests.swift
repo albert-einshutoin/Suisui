@@ -732,6 +732,27 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(transport.recordedMethods, [])
     }
 
+    func testExecutionPreviewRedactsSensitiveArgumentKeyEvenWhenValueHasSpaces() throws {
+        let transport = ExternalMCPTestKit.makeFakeServerTransport()
+        let executor = makeExecutor(transport: transport, policies: ["read_status": .read])
+        let malformedSecret = "alpha beta gamma"
+
+        let preview = try executor.preview(
+            toolName: "read_status",
+            arguments: [
+                "api-key": .string(malformedSecret),
+                "apiKey": .string(malformedSecret),
+                "title": .string("Safe title")
+            ]
+        )
+
+        XCTAssertFalse(preview.redactedArgumentSummary.contains("alpha"))
+        XCTAssertFalse(preview.redactedArgumentSummary.contains("beta gamma"))
+        XCTAssertTrue(preview.redactedArgumentSummary.contains("api-key=[REDACTED_SECRET]"))
+        XCTAssertTrue(preview.redactedArgumentSummary.contains("apiKey=[REDACTED_SECRET]"))
+        XCTAssertTrue(preview.redactedArgumentSummary.contains("title=string(\"Safe title\")"))
+    }
+
     func testReadExecutionAuditsSuccessWithRedactedArguments() async throws {
         let logger = InMemoryAuditLogger()
         let transport = ExternalMCPTestKit.makeFakeServerTransport()
@@ -752,8 +773,36 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(logger.recordedEvents.first?.category, "external_mcp")
         XCTAssertEqual(logger.recordedEvents.first?.metadata["server_name"], "Fake MCP")
         XCTAssertEqual(logger.recordedEvents.first?.metadata["risk"], "read")
-        XCTAssertEqual(logger.recordedEvents.first?.metadata["arguments"], "[REDACTED_SECRET]")
+        XCTAssertEqual(logger.recordedEvents.first?.metadata["arguments"], "[REDACTED]")
         XCTAssertEqual(logger.recordedEvents.last?.metadata["result"], "succeeded")
+    }
+
+    func testReadExecutionAuditsSensitiveArgumentKeyEvenWhenValueHasSpaces() async throws {
+        let logger = InMemoryAuditLogger()
+        let transport = ExternalMCPTestKit.makeFakeServerTransport()
+        let executor = makeExecutor(
+            transport: transport,
+            policies: ["read_status": .read],
+            auditLogger: logger
+        )
+        let malformedSecret = "alpha beta gamma"
+
+        _ = try await executor.call(
+            toolName: "read_status",
+            arguments: [
+                "api-key": .string(malformedSecret),
+                "apiKey": .string(malformedSecret),
+                "title": .string("Safe title")
+            ],
+            context: ToolExecutionContext(source: .developerTool)
+        )
+
+        let arguments = try XCTUnwrap(logger.recordedEvents.first?.metadata["arguments"])
+        XCTAssertFalse(arguments.contains("alpha"))
+        XCTAssertFalse(arguments.contains("beta gamma"))
+        XCTAssertTrue(arguments.contains("api-key=[REDACTED_SECRET]"))
+        XCTAssertTrue(arguments.contains("apiKey=[REDACTED_SECRET]"))
+        XCTAssertTrue(arguments.contains("title=string(\"Safe title\")"))
     }
 
     func testReadExecutionAuditsNoArgumentsExplicitly() async throws {

@@ -1078,6 +1078,14 @@
 - [x] `ActionExecutorTests` で success summary と failure error の両方を regression test にする。
 - [x] 完了条件: Review execution の永続 audit path が logger 構成ミスで tool result / error 由来の secret を SQLite audit log に保存しない。
 
+### P10-139: External MCP argument redaction does not depend on value shape
+
+- [x] `ExternalMCPToolExecutor.preview` の argument summary は `apiKey` / `api-key` / `token` / `password` / `secret` などの sensitive key を値の形式とキー表記揺れに関係なく置換する。
+- [x] `ExternalMCPToolExecutor.call` の audit metadata も同じ key-based redaction を通す。
+- [x] Safe field は残し、MCP tool call の監査ログが完全にデバッグ不能な文字列にならないようにする。
+- [x] `ExternalMCPTests` で空白を含む壊れた secret 値が preview / audit log の両方に残らないことを固定する。
+- [x] 完了条件: ユーザー登録 MCP server への tool arguments が壊れた provider token / API key を含み、キーが camelCase / kebab-case で揺れても、MCP preview / SQLite audit log に保存しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
