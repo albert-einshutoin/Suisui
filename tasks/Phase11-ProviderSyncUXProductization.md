@@ -172,6 +172,7 @@
   - [x] Task card本体のOpen Detailsとstatus move controlsを別フォーカス対象に分け、支援技術で移動ボタンがカード要約に埋もれないことをsource testで固定する。
   - [x] Sidebar -> board detail -> task card -> inspector edit/save/delete のsource-level focus anchorsを固定する。
   - [x] `release_readiness_report.sh` は `docs/release/evidence/accessibility-voiceover.md` の `Status: passed` と必須focus path markerを検証し、pending証跡をblockerにする。
+  - [x] `docs/release/evidence/accessibility-voiceover.md` は実機確認者がmacOS/build/checked-by/failure notesを埋められる形にする。
   - [ ] 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。
 - [x] `script/capture_ui_evidence.sh` は一時HOME、seed済みProject board、Light/Dark/System切替、window captureを使う。
   - [x] `capture_ui_evidence.sh` はcapture前にappを前面化し、黒画面/低情報量PNGをrelease evidenceとして残さず失敗させる。

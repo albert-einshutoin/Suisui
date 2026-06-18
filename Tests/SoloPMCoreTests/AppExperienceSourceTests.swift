@@ -440,6 +440,31 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(phase.contains("[ ] 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。"))
     }
 
+    func testVoiceOverEvidenceTemplateCapturesReleaseCandidateContextAndFailureNotes() throws {
+        let evidence = try readPackageFile("docs/release/evidence/accessibility-voiceover.md")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+
+        XCTAssertTrue(evidence.contains("Status: pending"))
+        XCTAssertTrue(evidence.contains("Do not set `Status: passed` until every item below is verified"))
+        XCTAssertTrue(evidence.contains("## Release Candidate Context"))
+        XCTAssertTrue(evidence.contains("- macOS version:"))
+        XCTAssertTrue(evidence.contains("- App build:"))
+        XCTAssertTrue(evidence.contains("- Bundle identifier:"))
+        XCTAssertTrue(evidence.contains("- Checked by:"))
+        XCTAssertTrue(evidence.contains("- Check date:"))
+        XCTAssertTrue(evidence.contains("## Setup"))
+        XCTAssertTrue(evidence.contains("Seed the Project Board with at least one active project and one task with a due date."))
+        XCTAssertTrue(evidence.contains("## Required Focus Path"))
+        XCTAssertTrue(evidence.contains("[ ] Project navigation"))
+        XCTAssertTrue(evidence.contains("[ ] Task inspector"))
+        XCTAssertTrue(evidence.contains("## Failure Notes"))
+        XCTAssertTrue(evidence.contains("- Blocker observed:"))
+        XCTAssertTrue(evidence.contains("- Follow-up source/test link:"))
+        XCTAssertTrue(evidence.contains("## Completion Instructions"))
+        XCTAssertTrue(evidence.contains("Remove all `pending` and unchecked `[ ]` markers."))
+        XCTAssertTrue(phase.contains("[x] `docs/release/evidence/accessibility-voiceover.md` は実機確認者がmacOS/build/checked-by/failure notesを埋められる形にする。"))
+    }
+
     func testTodayWorkflowShowsRecommendationDueCountsAndTimeBlocks() throws {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
