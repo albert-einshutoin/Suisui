@@ -331,8 +331,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
 
     @discardableResult
     public func completeProject(id: Int64) throws -> ProjectBoardProject {
-        let record = try projectStore.update(id: id, status: "completed")
-        _ = try taskStore.completeOpenTasks(projectID: id)
+        let record = try projectStore.complete(id: id, taskStore: taskStore)
         let boardData = try loadBoardData(includeArchived: true)
         return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts)
     }

@@ -217,6 +217,33 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(try stores.tasks.get(id: task.id).status, "completed")
     }
 
+    func testProjectCompleteToolRollsBackProjectStatusWhenTaskCompletionFails() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "Atomic Tool Completion")
+        let task = try stores.tasks.create(title: "Must remain planned", projectID: project.id, status: "planned")
+        try stores.connection.execute(
+            """
+            CREATE TRIGGER fail_tool_task_completion
+            BEFORE UPDATE OF status ON tasks
+            WHEN NEW.status = 'completed'
+            BEGIN
+                SELECT RAISE(ABORT, 'task completion failed');
+            END;
+            """
+        )
+        let tool = ProjectTool(name: .projectComplete, store: stores.projects, taskStore: stores.tasks)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: ["id": .number(Double(project.id))],
+                context: approvedContext()
+            )
+        )
+
+        XCTAssertEqual(try stores.projects.get(id: project.id).status, "active")
+        XCTAssertEqual(try stores.tasks.get(id: task.id).status, "planned")
+    }
+
     func testProjectCompleteToolRequiresTaskStore() throws {
         let stores = try makeStores()
         let project = try stores.projects.create(title: "Launch Readiness")
@@ -913,10 +940,16 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertTrue(registry.contains(.frameDelete))
     }
 
-    private func makeStores() throws -> (projects: SQLiteProjectStore, tasks: SQLiteTaskStore, knowledge: SQLiteKnowledgeFrameStore) {
+    private func makeStores() throws -> (
+        connection: SQLiteConnection,
+        projects: SQLiteProjectStore,
+        tasks: SQLiteTaskStore,
+        knowledge: SQLiteKnowledgeFrameStore
+    ) {
         let connection = try SQLiteConnection(path: ":memory:")
         try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase2)
         return (
+            connection,
             SQLiteProjectStore(connection: connection),
             SQLiteTaskStore(connection: connection),
             SQLiteKnowledgeFrameStore(connection: connection)

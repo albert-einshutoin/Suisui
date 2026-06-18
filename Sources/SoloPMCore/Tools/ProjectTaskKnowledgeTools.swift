@@ -55,8 +55,7 @@ public struct ProjectTool: Tool {
             guard let taskStore else {
                 throw ToolExecutionError.executionFailed(name, "Task store is required to complete project tasks.")
             }
-            let record = try store.update(id: try args.requiredInt64("id"), status: "completed")
-            _ = try taskStore.completeOpenTasks(projectID: record.id)
+            let record = try store.complete(id: try args.requiredInt64("id"), taskStore: taskStore)
             return ToolResult(tool: name, status: .succeeded, summary: "Completed project \(record.title)", output: ["projectId": .number(Double(record.id))])
         case .projectDelete:
             let deletion = try store.delete(id: try args.requiredInt64("id"))

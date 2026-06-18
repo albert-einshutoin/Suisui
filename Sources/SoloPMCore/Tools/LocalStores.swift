@@ -293,6 +293,25 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         try update(id: id, status: "active")
     }
 
+    public func complete(id: Int64, taskStore: SQLiteTaskStore) throws -> ProjectRecord {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return try connection.transaction {
+            try connection.execute(
+                """
+                UPDATE projects
+                SET status = 'completed',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = \(id);
+                """
+            )
+            let record = try getLocked(id: id)
+            _ = try taskStore.completeOpenTasks(projectID: id)
+            return record
+        }
+    }
+
     @discardableResult
     public func delete(id: Int64) throws -> ProjectDeletionResult {
         lock.lock()

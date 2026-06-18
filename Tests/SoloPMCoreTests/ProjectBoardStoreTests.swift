@@ -293,6 +293,32 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(completed.subtitle, "0 open / 1 total")
     }
 
+    func testCompletingProjectRollsBackProjectStatusWhenTaskCompletionFails() throws {
+        let stores = try makeStoreBundle()
+        let project = try stores.board.createProject(title: "Atomic Completion")
+        let task = try stores.board.createTask(ProjectBoardTaskDraft(
+            projectID: project.id,
+            title: "Must remain planned",
+            status: .planned,
+            priority: .medium
+        ))
+        try stores.connection.execute(
+            """
+            CREATE TRIGGER fail_task_completion
+            BEFORE UPDATE OF status ON tasks
+            WHEN NEW.status = 'completed'
+            BEGIN
+                SELECT RAISE(ABORT, 'task completion failed');
+            END;
+            """
+        )
+
+        XCTAssertThrowsError(try stores.board.completeProject(id: project.id))
+
+        XCTAssertEqual(try stores.projects.get(id: project.id).status, "active")
+        XCTAssertEqual(try stores.tasks.get(id: task.id).status, "planned")
+    }
+
     func testCreatingOpenTaskReopensCompletedProject() throws {
         let store = try makeStore()
         let project = try store.createProject(title: "Launch Readiness")
@@ -886,6 +912,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     private func makeStoreBundle() throws -> (
+        connection: SQLiteConnection,
         board: SQLiteProjectBoardStore,
         projects: SQLiteProjectStore,
         tasks: SQLiteTaskStore,
@@ -894,6 +921,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         return (
+            connection,
             SQLiteProjectBoardStore(connection: connection),
             SQLiteProjectStore(connection: connection),
             SQLiteTaskStore(connection: connection),
