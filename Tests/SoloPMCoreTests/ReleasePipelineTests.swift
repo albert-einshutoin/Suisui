@@ -772,6 +772,78 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceURL.path))
     }
 
+    func testReleaseEvidenceScriptRejectsBlankReviewer() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-blank-reviewer.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-blank-reviewer.dmg.sha256")
+        let artifactPath = ".build/test-release-artifact-blank-reviewer.dmg"
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let artifactURL = try writeArtifactChecksum(to: checksumURL, artifactPath: artifactPath)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: artifactPath)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: artifactURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+        }
+
+        let result = try runScript(
+            "script/create_release_evidence.sh",
+            arguments: [
+                "--force",
+                "--checked-by", "   "
+            ],
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release evidence requires --checked-by"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceURL.path))
+    }
+
+    func testReleaseEvidenceScriptRejectsBlankReviewNote() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-blank-review-note.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-blank-review-note.dmg.sha256")
+        let artifactPath = ".build/test-release-artifact-blank-review-note.dmg"
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let artifactURL = try writeArtifactChecksum(to: checksumURL, artifactPath: artifactPath)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: artifactPath)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: artifactURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+        }
+
+        let result = try runScript(
+            "script/create_release_evidence.sh",
+            arguments: [
+                "--force",
+                "--note", "   "
+            ],
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release evidence review notes cannot be blank"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceURL.path))
+    }
+
     func testReleaseEvidenceScriptRejectsSmokePackageEvidence() throws {
         let evidenceURL = packageRoot()
             .appendingPathComponent(".build/test-release-evidence-smoke-package.json")
@@ -1442,6 +1514,61 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("release evidence manual check environment is not concrete"))
     }
 
+    func testReleasePreflightRejectsEvidenceWithoutReviewMetadata() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-missing-review.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-missing-review.dmg.sha256")
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        {
+          "release": {
+            "version": "0.1.0",
+            "buildNumber": "1",
+            "appBundlePath": "dist/SoloPM.app",
+            "artifactPath": "dist/releases/SoloPM-0.1.0+1.dmg",
+            "artifactSha256": "actual-sha",
+            "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
+            "notaryProfile": "SoloPMNotaryProfile",
+            "sparkleFeedURL": "https://updates.solopm.app/releases/appcast.xml",
+            "appcastPath": "dist/releases/appcast.xml"
+          },
+          "manualChecks": {
+            "releaseMachineLaunch": true,
+            "checksumVerification": true,
+            "cleanDmgInstall": true,
+            "applicationsFolderInstall": true,
+            "gatekeeperAccepted": true,
+            "cleanEnvironmentLaunch": true,
+            "loginItemToggle": true,
+            "sparkleAppcastMetadata": true,
+            "environment": "macOS 15.5 clean user on arm64"
+          }
+        }
+        """.write(to: evidenceURL, atomically: true, encoding: .utf8)
+        try "actual-sha  dist/releases/SoloPM-0.1.0+1.dmg\n"
+            .write(to: checksumURL, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+        }
+
+        let result = try runScript(
+            "script/verify_release_environment.sh",
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release evidence missing reviewer"))
+        XCTAssertTrue(result.output.contains("release evidence missing review timestamp"))
+    }
+
     func testReleaseChecklistRequiresEvidenceBeforeFinalReport() throws {
         let checklist = try readPackageFile("docs/release/checklist.md")
 
@@ -1453,6 +1580,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("packaging/release-evidence.json"))
         XCTAssertTrue(checklist.contains("manual release evidence"))
         XCTAssertTrue(checklist.contains("reject blank, placeholder, sample, example, todo, or replace-style environment descriptions"))
+        XCTAssertTrue(checklist.contains("blank reviewer names or blank review notes are rejected"))
         XCTAssertTrue(checklist.contains("SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml"))
         XCTAssertFalse(checklist.contains("./script/verify_appcast.sh packaging/appcast.sample.xml"))
         XCTAssertTrue(checklist.contains("./script/verify_notarization_setup.sh"))

@@ -1108,6 +1108,14 @@
 - [x] `ReleasePipelineTests` で blank / template manual environment の生成拒否と preflight 拒否を固定する。
 - [x] 完了条件: clean environment / login item の manual evidence が、テンプレートをそのままコピーしただけの証跡で release ready にならない。
 
+### P10-143: Manual release review metadata must identify the reviewer
+
+- [x] `create_release_evidence.sh` は `--checked-by` が空白の場合、release evidence を作成しない。
+- [x] `create_release_evidence.sh` は `--note` が空白の場合、review note を保存しない。
+- [x] `verify_release_environment.sh` は hand-written evidence の `review.checkedBy` / `review.checkedAt` 欠落を blocker にする。
+- [x] `ReleasePipelineTests` で blank reviewer、blank note、missing review metadata を固定する。
+- [x] 完了条件: release evidence が「誰がいつ確認したか」を欠いた状態で release ready にならない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

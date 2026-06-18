@@ -660,6 +660,8 @@ if [[ -f "$RELEASE_EVIDENCE_FILE" ]]; then
     require_evidence_true "manualChecks.loginItemToggle" "login item toggle in signed app"
     require_evidence_true "manualChecks.sparkleAppcastMetadata" "Sparkle appcast metadata check"
     require_evidence_concrete_manual_environment
+    require_evidence_non_empty "review.checkedBy" "reviewer"
+    require_evidence_non_empty "review.checkedAt" "review timestamp"
   else
     add_blocker "release evidence is not valid JSON or plist: $RELEASE_EVIDENCE_FILE"
   fi

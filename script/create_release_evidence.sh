@@ -380,6 +380,20 @@ if [[ "${#NOTES[@]}" -eq 0 ]]; then
   NOTES+=("Generated from packaging/app_metadata.env. Set manual check flags only after testing the signed and notarized build.")
 fi
 
+CHECKED_BY="$(trim_text "$CHECKED_BY")"
+if [[ -z "$CHECKED_BY" ]]; then
+  echo "release evidence requires --checked-by to name the reviewer" >&2
+  exit 2
+fi
+
+for index in "${!NOTES[@]}"; do
+  NOTES[$index]="$(trim_text "${NOTES[$index]}")"
+  if [[ -z "${NOTES[$index]}" ]]; then
+    echo "release evidence review notes cannot be blank" >&2
+    exit 2
+  fi
+done
+
 mkdir -p "$(dirname "$OUTPUT_FILE")"
 tmp_file="$OUTPUT_FILE.tmp"
 artifact_sha="$(read_artifact_sha256)"
