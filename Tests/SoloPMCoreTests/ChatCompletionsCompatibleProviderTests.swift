@@ -98,6 +98,36 @@ final class ChatCompletionsCompatibleProviderTests: XCTestCase {
         XCTAssertEqual(text, #"{"id":"plan-1"}"#)
     }
 
+    func testOutputTextExtractorRejectsBlankChoiceContentInsteadOfDroppingIt() throws {
+        let data = Data(
+            """
+            {
+              "choices": [
+                {
+                  "message": {
+                    "role": "assistant",
+                    "content": "   "
+                  }
+                },
+                {
+                  "message": {
+                    "role": "assistant",
+                    "content": "{\\"id\\":\\"plan-1\\"}"
+                  }
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        XCTAssertThrowsError(try ChatCompletionsOutputTextExtractor().extractText(from: data)) { error in
+            XCTAssertEqual(
+                error as? LLMProviderError,
+                .invalidResponse("Chat completion choice did not contain message content.")
+            )
+        }
+    }
+
     func testOpenRouterProviderRejectsMissingAPIKeyBeforeHTTP() async throws {
         let provider = ChatCompletionsCompatibleProvider(
             configuration: .openRouter(model: "openai/gpt-latest"),

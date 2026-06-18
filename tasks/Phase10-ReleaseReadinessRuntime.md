@@ -1014,6 +1014,13 @@
 - [x] `OpenAIResponsesProviderTests` で欠損 `message.content` と正常 message が混在する response が成功扱いにならないことを固定する。
 - [x] 完了条件: OpenAI Responses の壊れた message item が、別の正常 chunk によって隠れない。
 
+### P10-131: Chat completions blank choice content must not be silently dropped
+
+- [x] `ChatCompletionsOutputTextExtractor` は空白だけの `message.content` が含まれる choice を別 choice の正常 content で隠さない。
+- [x] `ChatCompletionsCompatibleProviderTests` で空白 content と正常 content が混在する response が `LLMProviderError.invalidResponse` になることを固定する。
+- [x] OpenAI Responses / Chat Completions / ActionPlan parser の focused tests が green であることを確認する。
+- [x] 完了条件: Chat Completions 互換 provider の壊れた response choice が action plan 生成の成功経路に紛れ込まない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

@@ -105,8 +105,14 @@ public struct ChatCompletionsOutputTextExtractor: Sendable {
 
     public func extractText(from data: Data) throws -> String {
         let response = try JSONDecoder().decode(ChatCompletionsResponseBody.self, from: data)
-        let content = response.choices
-            .compactMap(\.message.content)
+        let contents = try response.choices.map { choice in
+            let content = choice.message.content
+            guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw LLMProviderError.invalidResponse("Chat completion choice did not contain message content.")
+            }
+            return content
+        }
+        let content = contents
             .joined(separator: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
