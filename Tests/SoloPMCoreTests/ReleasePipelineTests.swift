@@ -1,4 +1,6 @@
 import Foundation
+import CoreGraphics
+import ImageIO
 import XCTest
 
 final class ReleasePipelineTests: XCTestCase {
@@ -1972,6 +1974,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("docs/release/evidence/ui-screenshots.md"))
         XCTAssertTrue(script.contains("project-board-light.png"))
         XCTAssertTrue(script.contains("sips -g pixelWidth -g pixelHeight"))
+        XCTAssertTrue(script.contains("assert_screenshot_has_visible_content"))
+        XCTAssertTrue(script.contains("CGImageSourceCreateWithURL"))
+        XCTAssertTrue(script.contains("UI screenshot appears blank or too low contrast"))
         XCTAssertTrue(script.contains("missing UI screenshot file"))
         XCTAssertTrue(script.contains("UI screenshot is unexpectedly small"))
         XCTAssertTrue(script.contains("section \"VoiceOver accessibility evidence\""))
@@ -2139,6 +2144,97 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("== UI screenshot evidence =="))
         XCTAssertTrue(result.output.contains("missing UI screenshot file: docs/release/evidence/ui-screenshots/project-board-light.png"))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+    }
+
+    func testReleaseReadinessReportFailsWhenUIScreenshotEvidenceIsBlank() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-blank-ui-evidence", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let evidenceDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("release", isDirectory: true)
+            .appendingPathComponent("evidence", isDirectory: true)
+        let screenshotDirectory = evidenceDirectory.appendingPathComponent("ui-screenshots", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: screenshotDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: preflightURL, atomically: true, encoding: .utf8)
+        try """
+        # UI Screenshot Evidence
+
+        Generated with `script/capture_ui_evidence.sh`.
+
+        - Generated at: `2026-06-19T00:00:00Z`
+
+        ## Screenshots
+
+        - Light: `docs/release/evidence/ui-screenshots/project-board-light.png`
+        - Dark: `docs/release/evidence/ui-screenshots/project-board-dark.png`
+        - System: `docs/release/evidence/ui-screenshots/project-board-system.png`
+        """.write(to: evidenceDirectory.appendingPathComponent("ui-screenshots.md"), atomically: true, encoding: .utf8)
+        try """
+        # VoiceOver Accessibility Evidence
+
+        Status: passed
+
+        - Project navigation
+        - Project board detail
+        - Open task
+        - Status controls
+        - Task inspector
+        - Save Changes
+        - Delete Task confirmation
+        - No keyboard trap
+        - No unlabeled primary CRUD controls
+        """.write(to: evidenceDirectory.appendingPathComponent("accessibility-voiceover.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        for screenshotFilename in ["project-board-light.png", "project-board-dark.png", "project-board-system.png"] {
+            try writeSolidPNG(
+                to: screenshotDirectory.appendingPathComponent(screenshotFilename),
+                width: 800,
+                height: 600,
+                red: 0,
+                green: 0,
+                blue: 0,
+                trailingBytes: 60_000
+            )
+        }
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: preflightURL.path)
+
+        let result = try runTool(["bash", reportURL.path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/project-board-light.png"))
+        XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/project-board-dark.png"))
+        XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/project-board-system.png"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
     }
 
@@ -2470,6 +2566,52 @@ final class ReleasePipelineTests: XCTestCase {
         </rss>
         """.write(to: appcastURL, atomically: true, encoding: .utf8)
         return appcastURL
+    }
+
+    private func writeSolidPNG(
+        to url: URL,
+        width: Int,
+        height: Int,
+        red: UInt8,
+        green: UInt8,
+        blue: UInt8,
+        trailingBytes: Int = 0
+    ) throws {
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        for offset in stride(from: 0, to: pixels.count, by: 4) {
+            pixels[offset] = red
+            pixels[offset + 1] = green
+            pixels[offset + 2] = blue
+            pixels[offset + 3] = 255
+        }
+
+        guard let context = CGContext(
+            data: &pixels,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ), let image = context.makeImage() else {
+            XCTFail("Could not create PNG fixture context.")
+            return
+        }
+
+        guard let destination = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else {
+            XCTFail("Could not create PNG fixture destination.")
+            return
+        }
+
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+
+        if trailingBytes > 0 {
+            let handle = try FileHandle(forWritingTo: url)
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data(repeating: 0, count: trailingBytes))
+            try handle.close()
+        }
     }
 
     private func readPackageFile(_ relativePath: String) throws -> String {
