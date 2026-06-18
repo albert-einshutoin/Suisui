@@ -74,6 +74,25 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testAppSettingsViewModelRejectsOpenAIKeyWithInternalWhitespace() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelInvalidOpenAIKey.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settingsStore = UserDefaultsAppSettingsStore(defaults: defaults)
+        let secretStore = InMemorySecretStore()
+        let viewModel = AppSettingsViewModel(settingsStore: settingsStore, secretStore: secretStore)
+
+        let keyPrefix = "sk" + "-live"
+        viewModel.updateOpenAIAPIKeyInput("\(keyPrefix) invalid")
+        viewModel.saveOpenAIAPIKey()
+
+        XCTAssertNil(try secretStore.read(.openAIAPIKey))
+        XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Not configured")
+        XCTAssertEqual(viewModel.errorMessage, "API key cannot contain whitespace.")
+        XCTAssertFalse(viewModel.errorMessage?.contains(keyPrefix) ?? true)
+    }
+
+    @MainActor
     func testAppSettingsViewModelSavesAndDeletesOpenRouterKeyInSecretStoreOnly() throws {
         let suiteName = "SoloPM.AppSettingsViewModelOpenRouterTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -93,6 +112,25 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertNil(try secretStore.read(.openRouterAPIKey))
         XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Not configured")
+    }
+
+    @MainActor
+    func testAppSettingsViewModelRejectsOpenRouterKeyWithInternalWhitespace() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelInvalidOpenRouterKey.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settingsStore = UserDefaultsAppSettingsStore(defaults: defaults)
+        let secretStore = InMemorySecretStore()
+        let viewModel = AppSettingsViewModel(settingsStore: settingsStore, secretStore: secretStore)
+
+        let keyPrefix = "sk" + "-or-live"
+        viewModel.updateOpenRouterAPIKeyInput("\(keyPrefix)\ninvalid")
+        viewModel.saveOpenRouterAPIKey()
+
+        XCTAssertNil(try secretStore.read(.openRouterAPIKey))
+        XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Not configured")
+        XCTAssertEqual(viewModel.errorMessage, "API key cannot contain whitespace.")
+        XCTAssertFalse(viewModel.errorMessage?.contains(keyPrefix) ?? true)
     }
 
     @MainActor

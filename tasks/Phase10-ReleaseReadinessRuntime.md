@@ -490,6 +490,14 @@
 - [x] テスト: save / delete の両方で hidden registration が消えないことを確認する。
 - [x] 完了条件: app update や将来の複数 MCP UI 追加時に、既存 SQLite registration を Settings 操作で失わない。
 
+### P10-060: Keychain API key whitespace validation
+
+- [x] OpenAI / OpenRouter API key 保存時は前後空白を trim し、内部 whitespace / newline を拒否する。
+- [x] 無効な key は Keychain に保存せず、status を Configured にしない。
+- [x] validation error は秘密値を含めない。
+- [x] テスト: OpenAI / OpenRouter の whitespace 入り key が保存されないことを確認する。
+- [x] 完了条件: API key 入力ミスで「設定済み」に見える偽状態を作らない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

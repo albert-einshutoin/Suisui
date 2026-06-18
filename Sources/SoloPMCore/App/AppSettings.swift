@@ -252,6 +252,9 @@ public final class AppSettingsViewModel: ObservableObject {
             deleteOpenAIAPIKey()
             return
         }
+        guard validateAPIKey(trimmed) else {
+            return
+        }
 
         do {
             try secretStore.save(trimmed, for: .openAIAPIKey)
@@ -269,6 +272,9 @@ public final class AppSettingsViewModel: ObservableObject {
         let trimmed = openRouterAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             deleteOpenRouterAPIKey()
+            return
+        }
+        guard validateAPIKey(trimmed) else {
             return
         }
 
@@ -323,5 +329,15 @@ public final class AppSettingsViewModel: ObservableObject {
     private func clearMessages() {
         errorMessage = nil
         successMessage = nil
+    }
+
+    private func validateAPIKey(_ apiKey: String) -> Bool {
+        guard apiKey.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
+            errorMessage = "API key cannot contain whitespace."
+            successMessage = nil
+            return false
+        }
+
+        return true
     }
 }
