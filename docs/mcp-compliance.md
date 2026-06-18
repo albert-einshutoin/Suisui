@@ -32,7 +32,7 @@ Primary references:
 | Resources | Not implemented | No `resources/list` or resource read path is exposed; Settings displays "Not supported in this release". |
 | Prompts | Not implemented | No `prompts/list` or prompt get path is exposed; Settings displays "Not supported in this release". |
 | Streamable HTTP | Not implemented | Architecture leaves transport protocol extensibility, but only stdio is release path. |
-| Official Inspector evidence | Not complete | Phase 11 adds `script/verify_mcp_compliance.sh` and release evidence as a gate. |
+| Official Inspector evidence | Recorded | `script/verify_mcp_compliance.sh` runs the official MCP Inspector CLI against `fixtures/mcp/stdio-fixture-server.mjs`; `docs/release/evidence/mcp-inspector.md` records `tools/list`, `tools/call`, and failure taxonomy smoke output. |
 
 ## Tests That Currently Guard Compliance
 
@@ -50,10 +50,13 @@ Primary references:
 - `ExternalMCPTests.testClientRejectsNonStringToolDescription`
 - `ExternalMCPTests.testClientRejectsNonStringToolTitle`
 - `ExternalMCPTests.testClientRejectsMismatchedResponseIDAndInvalidJSONRPCVersion`
+- `MCPInspectorEvidenceTests.testInspectorVerificationScriptUsesOfficialCLIAndFixturePaths`
+- `MCPInspectorEvidenceTests.testMCPFixtureServerCoversSuccessAndFailureModesOutsideRuntimeSources`
+- `MCPInspectorEvidenceTests.testInspectorEvidenceRecordsSuccessAndFailureTaxonomy`
+- `MCPInspectorEvidenceTests.testInspectorVerificationScriptRunsWithFakeInspectorWithoutNetwork`
 
 ## Gaps Before Claiming Full Compliance
 
-- Run official MCP Inspector and store reproducible evidence under `docs/release/evidence/`.
 - Add a deeper method-by-method matrix for optional capabilities before adding Resources, Prompts, or Streamable HTTP.
 - Validate more of `inputSchema` against JSON Schema rules or document the intentionally limited validation boundary.
 - Add Streamable HTTP only after stdio compliance evidence is stable.

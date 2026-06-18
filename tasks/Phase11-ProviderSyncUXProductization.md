@@ -40,10 +40,10 @@
 
 ## P11-002: MCP Inspector and external fixture evidence
 
-- [ ] 公式 MCP Inspector を使った手動/自動 smoke 手順を `script/verify_mcp_compliance.sh` にまとめる。
-- [ ] smoke対象は production source にfake serverを入れず、`Tests/Support` か `fixtures/mcp/` の検証用stdio serverに隔離する。
-- [ ] `initialize -> tools/list -> tools/call` の成功ログを `docs/release/evidence/mcp-inspector.md` に記録する。
-- [ ] malformed JSON-RPC、mismatched id、invalid schema、timeout の失敗ログも証跡に含める。
+- [x] 公式 MCP Inspector を使った手動/自動 smoke 手順を `script/verify_mcp_compliance.sh` にまとめる。
+- [x] smoke対象は production source にfake serverを入れず、`Tests/Support` か `fixtures/mcp/` の検証用stdio serverに隔離する。
+- [x] `initialize -> tools/list -> tools/call` の成功ログを `docs/release/evidence/mcp-inspector.md` に記録する。
+- [x] malformed JSON-RPC、mismatched id、invalid schema、timeout の失敗ログも証跡に含める。
 - [ ] Settings の Check Connection は Inspector結果と同じfailure taxonomyを表示する。
 - [ ] 完了条件: MCP互換性が「テストでなんとなく通る」ではなく、公式ツールで再現可能な証跡になる。
 
