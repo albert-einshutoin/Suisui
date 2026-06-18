@@ -278,13 +278,27 @@ public final class SQLiteKnowledgeVectorIndex: KnowledgeVectorIndex, @unchecked 
     }
 
     private func vector(row: [String: String]) throws -> KnowledgeEmbeddingVector {
-        let values = try values(from: row["vector_json"] ?? "[]")
+        let dimensions = try KnowledgeSQL.requiredInt(
+            row["dimensions"],
+            column: "knowledge_frame_vectors.dimensions"
+        )
+        let values = try values(
+            from: try KnowledgeSQL.requiredString(row["vector_json"], column: "knowledge_frame_vectors.vector_json"),
+            column: "knowledge_frame_vectors.vector_json"
+        )
+        guard dimensions == values.count else {
+            throw LocalStoreDecodingError.inconsistentDimensions(
+                column: "knowledge_frame_vectors.dimensions",
+                expected: dimensions,
+                actual: values.count
+            )
+        }
         try validate(values)
         return KnowledgeEmbeddingVector(
-            frameID: Int64(row["frame_id"] ?? "") ?? 0,
+            frameID: try KnowledgeSQL.requiredInt64(row["frame_id"], column: "knowledge_frame_vectors.frame_id"),
             values: values,
-            providerID: row["provider_id"] ?? "",
-            redactedPreview: row["redacted_preview"] ?? ""
+            providerID: try KnowledgeSQL.requiredString(row["provider_id"], column: "knowledge_frame_vectors.provider_id"),
+            redactedPreview: try KnowledgeSQL.presentString(row["redacted_preview"], column: "knowledge_frame_vectors.redacted_preview")
         )
     }
 }
@@ -665,14 +679,48 @@ private func jsonString(_ values: [Double]) throws -> String {
     return String(data: data, encoding: .utf8) ?? "[]"
 }
 
-private func values(from json: String) throws -> [Double] {
+private func values(from json: String, column: String) throws -> [Double] {
     let data = Data(json.utf8)
-    return try JSONDecoder().decode([Double].self, from: data)
+    do {
+        return try JSONDecoder().decode([Double].self, from: data)
+    } catch {
+        throw LocalStoreDecodingError.invalidDoubleArray(column: column)
+    }
 }
 
 private enum KnowledgeSQL {
     static func escape(_ value: String) -> String {
         value.replacingOccurrences(of: "'", with: "''")
+    }
+
+    static func requiredString(_ value: String?, column: String) throws -> String {
+        guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw LocalStoreDecodingError.missingRequiredColumn(column: column)
+        }
+        return value
+    }
+
+    static func presentString(_ value: String?, column: String) throws -> String {
+        guard let value else {
+            throw LocalStoreDecodingError.missingRequiredColumn(column: column)
+        }
+        return value
+    }
+
+    static func requiredInt64(_ value: String?, column: String) throws -> Int64 {
+        let rawValue = try requiredString(value, column: column)
+        guard let intValue = Int64(rawValue) else {
+            throw LocalStoreDecodingError.invalidInt64(column: column, value: rawValue)
+        }
+        return intValue
+    }
+
+    static func requiredInt(_ value: String?, column: String) throws -> Int {
+        let rawValue = try requiredString(value, column: column)
+        guard let intValue = Int(rawValue) else {
+            throw LocalStoreDecodingError.invalidInt64(column: column, value: rawValue)
+        }
+        return intValue
     }
 }
 

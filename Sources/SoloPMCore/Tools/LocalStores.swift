@@ -105,7 +105,9 @@ public struct ReminderLinkRecord: Equatable, Sendable {
 
 public enum LocalStoreDecodingError: Error, Equatable, Sendable {
     case invalidStringArray(column: String)
+    case invalidDoubleArray(column: String)
     case invalidStringMap(column: String)
+    case inconsistentDimensions(column: String, expected: Int, actual: Int)
     case missingRequiredColumn(column: String)
     case invalidInt64(column: String, value: String)
     case invalidEnum(column: String, value: String)

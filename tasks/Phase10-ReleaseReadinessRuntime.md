@@ -614,6 +614,14 @@
 - [x] 不正 `metadata_json` を `{}` に丸めず decode error にする。
 - [x] 完了条件: 監査ログ破損が失敗イベントや空 metadata として隠れない。
 
+### P10-075: Knowledge vector row decode fail-fast fields
+
+- [x] `SQLiteKnowledgeVectorIndex` は `frame_id` / `dimensions` / `provider_id` / `vector_json` を必須 decode する。
+- [x] 不正 `vector_json` を空 vector に丸めず decode error にする。
+- [x] 空 `provider_id` を匿名 provider として検索結果に出さない。
+- [x] `dimensions` と `vector_json` の配列長不整合を decode error にする。
+- [x] 完了条件: 破損した embedding row が semantic search の ranking に静かに混ざらない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

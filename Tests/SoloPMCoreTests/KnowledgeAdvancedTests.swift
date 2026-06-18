@@ -92,6 +92,51 @@ final class KnowledgeAdvancedTests: XCTestCase {
         XCTAssertNil(try vectorIndex.vector(frameID: created.id))
     }
 
+    func testSQLiteVectorIndexRejectsCorruptedVectorJSONInsteadOfUsingEmptyVector() throws {
+        let connection = try migratedPhase9Connection()
+        let frameStore = SQLiteKnowledgeFrameStore(connection: connection)
+        let vectorIndex = SQLiteKnowledgeVectorIndex(connection: connection, expectedDimensions: 4)
+        let frame = try frameStore.create(name: "Billing", body: "Invoice follow-up", triggers: [])
+        try vectorIndex.upsert(KnowledgeEmbeddingVector(frameID: frame.id, values: [1, 0, 0, 0], providerID: "local", redactedPreview: "Billing"))
+
+        try connection.execute("UPDATE knowledge_frame_vectors SET vector_json = 'not-json' WHERE frame_id = \(frame.id);")
+
+        XCTAssertThrowsError(try vectorIndex.vector(frameID: frame.id)) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .invalidDoubleArray(column: "knowledge_frame_vectors.vector_json"))
+        }
+    }
+
+    func testSQLiteVectorIndexRejectsBlankProviderIDInsteadOfReturningAnonymousVector() throws {
+        let connection = try migratedPhase9Connection()
+        let frameStore = SQLiteKnowledgeFrameStore(connection: connection)
+        let vectorIndex = SQLiteKnowledgeVectorIndex(connection: connection, expectedDimensions: 4)
+        let frame = try frameStore.create(name: "Billing", body: "Invoice follow-up", triggers: [])
+        try vectorIndex.upsert(KnowledgeEmbeddingVector(frameID: frame.id, values: [1, 0, 0, 0], providerID: "local", redactedPreview: "Billing"))
+
+        try connection.execute("UPDATE knowledge_frame_vectors SET provider_id = '' WHERE frame_id = \(frame.id);")
+
+        XCTAssertThrowsError(try vectorIndex.search(queryVector: [1, 0, 0, 0], topK: 1, threshold: 0.10)) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .missingRequiredColumn(column: "knowledge_frame_vectors.provider_id"))
+        }
+    }
+
+    func testSQLiteVectorIndexRejectsStoredDimensionMismatchInsteadOfIgnoringColumn() throws {
+        let connection = try migratedPhase9Connection()
+        let frameStore = SQLiteKnowledgeFrameStore(connection: connection)
+        let vectorIndex = SQLiteKnowledgeVectorIndex(connection: connection, expectedDimensions: 4)
+        let frame = try frameStore.create(name: "Billing", body: "Invoice follow-up", triggers: [])
+        try vectorIndex.upsert(KnowledgeEmbeddingVector(frameID: frame.id, values: [1, 0, 0, 0], providerID: "local", redactedPreview: "Billing"))
+
+        try connection.execute("UPDATE knowledge_frame_vectors SET dimensions = 2 WHERE frame_id = \(frame.id);")
+
+        XCTAssertThrowsError(try vectorIndex.vector(frameID: frame.id)) { error in
+            XCTAssertEqual(
+                error as? LocalStoreDecodingError,
+                .inconsistentDimensions(column: "knowledge_frame_vectors.dimensions", expected: 2, actual: 4)
+            )
+        }
+    }
+
     func testHybridRetrieverExplainsExactSemanticNoMatchAndLowConfidence() throws {
         let exact = KnowledgeFrameRecord(id: 1, name: "QZT", body: "QZT launch checklist", triggers: ["qzt"])
         let semantic = KnowledgeFrameRecord(id: 2, name: "Billing", body: "Invoice follow-up", triggers: ["invoice"])
