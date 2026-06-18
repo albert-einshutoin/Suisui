@@ -52,6 +52,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("ProjectHeaderActions"))
         XCTAssertTrue(source.contains("TaskMetadataRow"))
         XCTAssertTrue(source.contains("ScrollView([.horizontal, .vertical])"))
+        XCTAssertTrue(source.contains(".defaultScrollAnchor(.topLeading)"))
         XCTAssertTrue(source.contains(".scrollIndicators(.visible)"))
         XCTAssertTrue(source.contains(".help(task.title)"))
         XCTAssertTrue(source.contains(".help(task.detail)"))
@@ -74,6 +75,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains("makeProjectBoardSnapshot()"))
         XCTAssertTrue(boardSource.contains("@StateObject private var viewModel: ProjectBoardViewModel"))
         XCTAssertTrue(boardSource.contains("createTask("))
+    }
+
+    func testProjectBoardAppearanceControlDoesNotRenderCrampedPickerLabel() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        let pickerRange = try XCTUnwrap(boardSource.range(of: "Picker(\"Appearance\", selection: $preference)"))
+        let hiddenRange = try XCTUnwrap(boardSource.range(of: ".labelsHidden()", range: pickerRange.lowerBound..<boardSource.endIndex))
+        let segmentedRange = try XCTUnwrap(boardSource.range(of: ".pickerStyle(.segmented)", range: pickerRange.lowerBound..<boardSource.endIndex))
+
+        XCTAssertLessThan(hiddenRange.lowerBound, segmentedRange.lowerBound)
     }
 
     func testProjectBoardDropPayloadsAreValidatedByViewModel() throws {
@@ -125,6 +136,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("Drop to move to"))
         XCTAssertTrue(source.contains("isDropTargeted"))
         XCTAssertTrue(source.contains(".dropDestination(for: String.self)"))
+    }
+
+    func testKanbanBoardUsesAdaptiveSampleInspiredCardStyling() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(source.contains("StatusCountBadge"))
+        XCTAssertTrue(source.contains("column.status.tint"))
+        XCTAssertTrue(source.contains("task.status.tint"))
+        XCTAssertTrue(source.contains(".frame(width: 244"))
+        XCTAssertTrue(source.contains(".background(.regularMaterial, in: RoundedRectangle"))
+        XCTAssertTrue(source.contains(".shadow(color: Color.black.opacity(0.04)"))
     }
 
     func testAppAndCLIShareDefaultDatabaseLocation() throws {

@@ -874,6 +874,14 @@
 - [x] OpenAI / OpenRouter の両方で保存後 status refresh failure の regression test を追加する。
 - [x] 完了条件: API key が保存できたように見えても、直後に Keychain から状態確認できない場合は成功扱いしない。
 
+### P10-112: Project board appearance and mouse-driven status movement polish
+
+- [x] Project Board は `System` / `Light` / `Dark` の永続 appearance preference を board と Settings の両方から切り替えられる。
+- [x] Task card はマウス操作で前後ステータスへ移動でき、別カラムへの drag and drop でも SQLite の task status を更新する。
+- [x] `ui-samples/` の方向性に合わせ、Kanban column / task card は system-adaptive material、ステータス色、安定幅、drag handle、drop target affordance を持つ。
+- [x] `AppExperienceSourceTests` と `ProjectBoardStoreTests` で appearance selection、mouse move controls、drag payload validation、adaptive card styling の regression を固定する。
+- [x] 完了条件: ライト/ダークどちらでもタスクの状態変更がポインタ操作だけで直感的に完了する。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

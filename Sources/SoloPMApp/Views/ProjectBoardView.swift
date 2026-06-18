@@ -414,6 +414,7 @@ private struct AppearancePicker: View {
                     .tag(preference)
             }
         }
+        .labelsHidden()
         .pickerStyle(.segmented)
         .frame(width: 210)
         .help("Switch between system, light, and dark appearance")
@@ -458,6 +459,7 @@ private struct ProjectKanbanBoard: View {
             }
             .padding(.bottom, 4)
         }
+        .defaultScrollAnchor(.topLeading)
         .scrollIndicators(.visible)
     }
 }
@@ -480,10 +482,9 @@ private struct BoardColumnView: View {
             HStack(spacing: 8) {
                 Label(column.title, systemImage: column.status.systemImage)
                     .font(.headline)
+                    .foregroundStyle(column.status.tint)
                 Spacer()
-                Text("\(column.tasks.count)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                StatusCountBadge(count: column.tasks.count, tint: column.status.tint)
                 Button(action: onStartComposing) {
                     Label("Add", systemImage: "plus")
                 }
@@ -494,12 +495,12 @@ private struct BoardColumnView: View {
             if isDropTargeted {
                 Label("Drop to move to \(column.title)", systemImage: "arrow.down.doc")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(column.status.tint)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
-                    .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
+                    .background(column.status.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
             }
 
             if isComposing {
@@ -514,13 +515,18 @@ private struct BoardColumnView: View {
                 Button(action: onStartComposing) {
                     VStack(alignment: .leading, spacing: 6) {
                         Image(systemName: "plus.circle")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(column.status.tint)
                         Text("No tasks")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, minHeight: 82, alignment: .topLeading)
                     .padding(10)
+                    .background(column.status.tint.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(column.status.tint.opacity(0.18), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                    }
                 }
                 .buttonStyle(.plain)
             } else {
@@ -554,15 +560,35 @@ private struct BoardColumnView: View {
                 }
             }
         }
-        .frame(width: 190, alignment: .topLeading)
-        .padding(8)
-        .background(isDropTargeted ? Color.accentColor.opacity(0.08) : Color.clear)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .frame(width: 244, alignment: .topLeading)
+        .padding(10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isDropTargeted ? column.status.tint.opacity(0.72) : Color.secondary.opacity(0.14), lineWidth: isDropTargeted ? 1.5 : 1)
+        }
+        .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
         .dropDestination(for: String.self) { taskIDs, _ in
             onMoveDroppedTasks(taskIDs, column.status)
         } isTargeted: { isTargeted in
             isDropTargeted = isTargeted
         }
+    }
+}
+
+private struct StatusCountBadge: View {
+    let count: Int
+    let tint: Color
+
+    var body: some View {
+        Text("\(count)")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(tint)
+            .monospacedDigit()
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(tint.opacity(0.12), in: Capsule())
+            .accessibilityLabel("\(count) tasks")
     }
 }
 
@@ -654,7 +680,9 @@ private struct BoardTaskCard: View {
 
                 Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(task.status.tint)
+                    .padding(4)
+                    .background(task.status.tint.opacity(0.10), in: Circle())
                     .help("Drag to another status column")
                     .accessibilityLabel("Drag to another status column")
             }
@@ -673,12 +701,13 @@ private struct BoardTaskCard: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(isSelected ? Color.accentColor.opacity(0.14) : Color.secondary.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .background(task.status.tint.opacity(isSelected ? 0.14 : 0.05), in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.16))
+                .stroke(isSelected ? task.status.tint.opacity(0.7) : Color.secondary.opacity(0.16))
         }
+        .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
         .contentShape(RoundedRectangle(cornerRadius: 8))
         .onTapGesture(perform: onSelect)
     }
@@ -925,6 +954,21 @@ private extension ProjectTaskPriority {
 }
 
 private extension ProjectTaskStatus {
+    var tint: Color {
+        switch self {
+        case .backlog:
+            .secondary
+        case .planned:
+            .blue
+        case .inProgress:
+            .purple
+        case .blocked:
+            .orange
+        case .done:
+            .green
+        }
+    }
+
     var systemImage: String {
         switch self {
         case .backlog:
