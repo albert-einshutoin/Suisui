@@ -186,12 +186,21 @@ public final class AppSettingsViewModel: ObservableObject {
     public init(settingsStore: any AppSettingsStore, secretStore: any SecretStore) {
         self.settingsStore = settingsStore
         self.secretStore = secretStore
-        self.settings = ((try? settingsStore.load()) ?? .default).normalizedForRuntime
+        let loadedSettings: AppSettings
+        let initialErrorMessage: String?
+        do {
+            loadedSettings = try settingsStore.load()
+            initialErrorMessage = nil
+        } catch {
+            loadedSettings = .default
+            initialErrorMessage = "App settings could not be loaded. Defaults are shown until settings are saved again."
+        }
+        self.settings = loadedSettings.normalizedForRuntime
         self.openAIAPIKeyInput = ""
         self.openAIAPIKeyStatusLabel = "Not configured"
         self.openRouterAPIKeyInput = ""
         self.openRouterAPIKeyStatusLabel = "Not configured"
-        self.errorMessage = nil
+        self.errorMessage = initialErrorMessage
         self.successMessage = nil
         refreshOpenAIAPIKeyStatus()
         refreshOpenRouterAPIKeyStatus()

@@ -52,6 +52,23 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testAppSettingsViewModelReportsCorruptedStoredSettingsInsteadOfSilentDefault() throws {
+        let suiteName = "SoloPM.AppSettingsCorrupted.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(Data("not-json".utf8), forKey: "app.settings")
+
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore()
+        )
+
+        XCTAssertEqual(viewModel.settings, .default)
+        XCTAssertEqual(viewModel.errorMessage, "App settings could not be loaded. Defaults are shown until settings are saved again.")
+        XCTAssertNil(viewModel.successMessage)
+    }
+
+    @MainActor
     func testAppSettingsViewModelSavesAndDeletesOpenAIKeyInSecretStoreOnly() throws {
         let suiteName = "SoloPM.AppSettingsViewModelTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

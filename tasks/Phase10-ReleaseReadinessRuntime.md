@@ -550,6 +550,13 @@
 - [x] テスト: corrupted tags / triggers JSON が Project / Knowledge read path で silent drop されないことを確認する。
 - [x] 完了条件: DB 破損や migration bug が、UI/CLI 上でタグやトリガーの消失として見えない。
 
+### P10-067: App settings load failure visibility
+
+- [x] `AppSettingsViewModel` は settings store の decode failure を `try?` で握りつぶして無言で default に戻さない。
+- [x] 壊れた `app.settings` を読み込んだ場合、default を表示しつつ `App settings could not be loaded. Defaults are shown until settings are saved again.` を出す。
+- [x] テスト: corrupted UserDefaults settings が silent default fallback にならないことを確認する。
+- [x] 完了条件: provider / workspace / notification 設定の破損が、ユーザーから見て設定消失のように見えない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
