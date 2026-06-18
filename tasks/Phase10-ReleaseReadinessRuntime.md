@@ -761,6 +761,13 @@
 - [x] `ProjectBoardStoreTests` で未紐付けタスクの move が `project_id` を Inbox に保存することを確認する。
 - [x] 完了条件: CLI / AI / 外部経路で作られた未紐付けタスクを、Board UI 上で普通のタスクとして移動できる。
 
+### P10-096: Artifact deadline detection uses board date-only deadlines
+
+- [x] `ArtifactProgressDetector` は task due date / project deadline の parse failure を `nil` に丸めない。
+- [x] Board UI と同じ `YYYY-MM-DD` date-only deadline を、タイムゾーン付きで incomplete-before-deadline 判定に使う。
+- [x] 不正な task due date は `LocalStoreDecodingError.invalidDate` として検出を止める。
+- [x] 完了条件: Boardで日付だけを入れたタスクの成果物未作成が、期限前チェックから消えない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

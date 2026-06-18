@@ -250,17 +250,20 @@ public final class ArtifactProgressDetector: @unchecked Sendable {
     private let projectStore: SQLiteProjectStore
     private let taskStore: SQLiteTaskStore
     private let dateProvider: any DateProvider
+    private let timeZoneIdentifier: String
 
     public init(
         artifactStore: SQLiteArtifactStore,
         projectStore: SQLiteProjectStore,
         taskStore: SQLiteTaskStore,
-        dateProvider: any DateProvider = SystemDateProvider()
+        dateProvider: any DateProvider = SystemDateProvider(),
+        timeZoneIdentifier: String = TimeZone.current.identifier
     ) {
         self.artifactStore = artifactStore
         self.projectStore = projectStore
         self.taskStore = taskStore
         self.dateProvider = dateProvider
+        self.timeZoneIdentifier = timeZoneIdentifier
     }
 
     public func detectIssues(staleAfter: TimeInterval, deadlineLeadTime: TimeInterval) throws -> [ArtifactProgressIssue] {
@@ -323,12 +326,25 @@ public final class ArtifactProgressDetector: @unchecked Sendable {
 
     private func deadlineDate(for artifact: ArtifactRecord) throws -> Date? {
         if let taskID = artifact.taskID {
-            return try taskStore.get(id: taskID).dueAt.flatMap(DeadlineDateParser.date(from:))
+            guard let dueAt = try taskStore.get(id: taskID).dueAt else {
+                return nil
+            }
+            return try parseDeadlineDate(dueAt, column: "tasks.due_at")
         }
         if let projectID = artifact.projectID {
-            return try projectStore.get(id: projectID).deadline.flatMap(DeadlineDateParser.date(from:))
+            guard let deadline = try projectStore.get(id: projectID).deadline else {
+                return nil
+            }
+            return try parseDeadlineDate(deadline, column: "projects.deadline")
         }
         return nil
+    }
+
+    private func parseDeadlineDate(_ value: String, column: String) throws -> Date {
+        guard let date = DeadlineDateParser.date(from: value, timeZoneIdentifier: timeZoneIdentifier) else {
+            throw LocalStoreDecodingError.invalidDate(column: column, value: value)
+        }
+        return date
     }
 }
 
