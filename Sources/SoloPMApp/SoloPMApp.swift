@@ -335,15 +335,14 @@ private struct ActionReviewPanel: View {
     @ViewBuilder
     private var actionButtons: some View {
         Button {
-            try? viewModel.approve()
+            viewModel.approveOrReportError()
         } label: {
             Label("Approve", systemImage: "checkmark.seal")
         }
         .disabled(!viewModel.canApprove)
 
         Button {
-            try? viewModel.execute()
-            if viewModel.session.executionStatus == .completed {
+            if viewModel.executeOrReportError(), viewModel.session.executionStatus == .completed {
                 onExecutionFinished()
             }
         } label: {

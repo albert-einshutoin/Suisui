@@ -74,6 +74,17 @@ public final class ReviewSessionViewModel: ObservableObject {
         recordAudit(action: "session.approve", status: .succeeded)
     }
 
+    @discardableResult
+    public func approveOrReportError() -> Bool {
+        do {
+            try approve()
+            return true
+        } catch {
+            errorMessage = String(describing: error)
+            return false
+        }
+    }
+
     public func execute() throws {
         guard canExecute else {
             if !validationIssuesByActionID.isEmpty {
@@ -96,6 +107,17 @@ public final class ReviewSessionViewModel: ObservableObject {
             errorMessage = String(describing: error)
             recordAudit(action: "session.execute", status: .failed)
             throw error
+        }
+    }
+
+    @discardableResult
+    public func executeOrReportError() -> Bool {
+        do {
+            try execute()
+            return true
+        } catch {
+            errorMessage = String(describing: error)
+            return false
         }
     }
 

@@ -379,6 +379,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(reviewFactory.contains("Review execution tools are unavailable because audit logging or local data stores could not be opened."))
     }
 
+    func testReviewActionButtonsDoNotDropViewModelErrors() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertFalse(appSource.contains("try? viewModel.approve()"))
+        XCTAssertFalse(appSource.contains("try? viewModel.execute()"))
+        XCTAssertTrue(appSource.contains("viewModel.approveOrReportError()"))
+        XCTAssertTrue(appSource.contains("viewModel.executeOrReportError()"))
+    }
+
     func testRuntimeSettingsLoadDoesNotSilentlyDefaultOnDecodeFailure() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let runtimeFactoryStart = try XCTUnwrap(appSource.range(of: "private enum AppRuntimeFactory"))

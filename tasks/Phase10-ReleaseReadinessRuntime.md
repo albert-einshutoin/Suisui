@@ -650,6 +650,13 @@
 - [x] scan failure と audit failure が別々に戻ることを unit test で確認する。
 - [x] 完了条件: daily deadline check の実行結果と監査欠落が同じ `failed` に丸め込まれない。
 
+### P10-080: Review action button errors are visible
+
+- [x] `ActionReviewPanel` は approve / execute の失敗を `try?` で握りつぶさない。
+- [x] `ReviewSessionViewModel` は UI 操作用の approve / execute wrapper で失敗を `errorMessage` に残す。
+- [x] execute preflight failure と success-after-stale-error を unit test で固定する。
+- [x] 完了条件: ボタン操作が失敗した場合、ユーザーが原因を画面上で確認できる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

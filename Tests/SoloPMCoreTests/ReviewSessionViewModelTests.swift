@@ -29,6 +29,64 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertTrue(logger.recordedEvents.contains { $0.action == "session.approve" })
     }
 
+    func testApproveOrReportErrorSurfacesDisabledApprovalFailure() throws {
+        let registry = try ToolRegistry(tools: [
+            StaticTool(name: .projectList, description: "read", inputSchema: ToolInputSchema(), permissionLevel: .read) { _, _ in
+                ToolResult(tool: .projectList, status: .succeeded, summary: "ok")
+            }
+        ])
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(id: "read", tool: .projectList)
+            ]),
+            executor: ActionExecutor(registry: registry)
+        )
+
+        XCTAssertFalse(viewModel.canApprove)
+
+        XCTAssertFalse(viewModel.approveOrReportError())
+        XCTAssertEqual(viewModel.errorMessage, "approvalNotRequired")
+    }
+
+    func testExecuteOrReportErrorSurfacesApprovalPreflightFailure() throws {
+        let registry = try ToolRegistry(tools: [
+            StaticTool(name: .taskCreate, description: "create", inputSchema: ToolInputSchema(required: ["title"]), permissionLevel: .writeWithApproval) { _, _ in
+                ToolResult(tool: .taskCreate, status: .succeeded, summary: "created")
+            }
+        ])
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+            ]),
+            executor: ActionExecutor(registry: registry)
+        )
+
+        XCTAssertFalse(viewModel.executeOrReportError())
+        XCTAssertEqual(viewModel.errorMessage, "approvalRequired")
+        XCTAssertEqual(viewModel.session.executionStatus, .notStarted)
+    }
+
+    func testExecuteOrReportErrorClearsStaleActionErrorOnSuccess() throws {
+        let registry = try ToolRegistry(tools: [
+            StaticTool(name: .projectList, description: "read", inputSchema: ToolInputSchema(), permissionLevel: .read) { _, _ in
+                ToolResult(tool: .projectList, status: .succeeded, summary: "ok")
+            }
+        ])
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(id: "read", tool: .projectList)
+            ]),
+            executor: ActionExecutor(registry: registry)
+        )
+
+        XCTAssertFalse(viewModel.approveOrReportError())
+        XCTAssertEqual(viewModel.errorMessage, "approvalNotRequired")
+
+        XCTAssertTrue(viewModel.executeOrReportError())
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(viewModel.session.executionStatus, .completed)
+    }
+
     func testCancelSessionRecordsAuditEventAndDisablesExecution() throws {
         let logger = InMemoryAuditLogger()
         let registry = ToolRegistry()
