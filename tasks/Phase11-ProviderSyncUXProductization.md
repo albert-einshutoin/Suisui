@@ -167,6 +167,7 @@
   - [x] Task card、column add、status move controlにVoiceOver label/helpを付け、delete/archiveのconfirmationをsource testで固定する。
   - [x] Task card本体のOpen Detailsとstatus move controlsを別フォーカス対象に分け、支援技術で移動ボタンがカード要約に埋もれないことをsource testで固定する。
   - [ ] 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。
+- [x] `script/capture_ui_evidence.sh` は一時HOME、seed済みProject board、Light/Dark/System切替、window captureを使う。
 - [ ] Light/Dark/System切替後にカード、サイドバー、インスペクタのコントラストが破綻しないことをスクリーンショットで確認する。
 - [ ] 完了条件: マウス、キーボード、支援技術のどれでも主要CRUDが完結する。
 

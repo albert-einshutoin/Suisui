@@ -71,11 +71,11 @@
 | --- | --- | --- | --- |
 | Inbox分類後の自動遷移が粗い | Project化などの実mutationは動くが、分類後にユーザーへ次の最適画面を案内する余地がある。 | P1 | 分類結果のsuccess state、undo、次のitem選択を追加する。 |
 | Today time blockはlocal plan止まり | Today viewはdue/overdue task、local focus suggestion、30分time blockを表示できるが、Calendarへの適用や自動再配置はまだしない。 | P2 | Calendar連携をrelease scopeに入れる場合だけ、適用前確認つきのschedule actionを追加する。 |
-| Task card screenshot検証が未完 | Task cardのtitle/status/priority/due/drag affordanceは実装済みだが、light/dark両方で重なりがないことはスクリーンショット evidence がまだ弱い。 | P1 | app起動後にProject boardをlight/darkで撮り、`docs/release/evidence/` に保存する。 |
+| Task card screenshot証跡は自動生成フローを追加済み | Task cardのtitle/status/priority/due/drag affordanceは実装済み。Light/Dark/System screenshot evidence scriptは追加済みで、一時HOME、seed済みProject board、window captureとして生成する。 | P1 | Screen Recording権限のある実機で生成PNGを目視し、崩れがあればUIを修正する。 |
 | Settings詳細Formはtab分割済み | Settings詳細FormはOverview / AI / MCP / Sync / Privacyのtabへ分割済み。Status OverviewとThemeはOverview、provider詳細はAI、MCP登録/権限/auditはMCP、同期はSync、通知/起動/WatcherはPrivacyに分けた。 | P2 | 次の改善ではproviderごとのvalidation stateを短いstatus rowへ集約する。 |
 | Provider詳細設定は選択中providerだけを表示するcompact panelへ分離済み | Provider pickerの下に選択中providerに必要なfieldだけを出すため、他providerのAPI key、model、local executableは同時表示されない。 | P2 | 次はproviderごとのvalidation stateを短いstatus rowへ集約する。 |
 | MCP server別の接続状態証跡はsource test中心 | 複数server rowのinline statusとrow単位Checkは実装済みだが、実アプリで複数serverを並べたスクリーンショット証跡はまだ弱い。 | P1 | MCP server listを含むSettings screenshotをlight/darkで保存する。 |
-| accessibility検証が未完了 | Task card、column add、status move、destructive confirmationのlabel/helpはsource testで固定し、Task cardのOpen Detailsとstatus move controlsも別フォーカス対象に分離した。実機VoiceOver focus orderとLight/Darkのスクリーンショット確認は残る。 | P1 | 支援技術とテーマ別コントラストを実機で確認し、崩れを修正する。 |
+| accessibility検証が未完了 | Task card、column add、status move、destructive confirmationのlabel/helpはsource testで固定し、Task cardのOpen Detailsとstatus move controlsも別フォーカス対象に分離した。Light/Dark/System screenshot evidence scriptは追加済み。実機VoiceOver focus order確認は残る。 | P1 | VoiceOverでProject board -> card -> inspectorの順序を確認し、崩れを修正する。 |
 
 ## プロダクトレビュー
 
