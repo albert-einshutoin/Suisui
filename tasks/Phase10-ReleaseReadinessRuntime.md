@@ -1000,6 +1000,13 @@
 - [x] `LocalStoreTests` で FTS write failure、base update failure、base delete failure のいずれでも base row と検索 index が片方だけ更新されないことを固定する。
 - [x] 完了条件: Knowledge CRUD の途中失敗で、実データと検索結果が分岐したまま残らない。
 
+### P10-129: OpenAI Responses output_text must not be silently dropped
+
+- [x] `OpenAIResponsesOutputTextExtractor` は `output_text` content に `text` が欠落している場合、`compactMap` で捨てて別の content だけを成功扱いにしない。
+- [x] `OpenAIResponsesProviderTests` で欠損 `output_text` と正常 `output_text` が混在する response が `LLMProviderError.invalidResponse` になることを固定する。
+- [x] OpenAI Responses / Chat Completions / ActionPlan parser の focused tests が green であることを確認する。
+- [x] 完了条件: LLM provider の壊れた response chunk が action plan 生成の成功経路に紛れ込まない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

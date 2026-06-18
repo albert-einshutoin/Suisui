@@ -76,13 +76,16 @@ public struct OpenAIResponsesOutputTextExtractor: Sendable {
             return outputText
         }
 
-        let outputText = response.output?
+        let outputText = try response.output?
             .flatMap { $0.content ?? [] }
-            .compactMap { content -> String? in
+            .reduce(into: [String]()) { texts, content in
                 guard content.type == "output_text" else {
-                    return nil
+                    return
                 }
-                return content.text
+                guard let text = content.text else {
+                    throw LLMProviderError.invalidResponse("Response output_text item did not contain text.")
+                }
+                texts.append(text)
             }
             .joined(separator: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
