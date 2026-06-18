@@ -881,6 +881,49 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("settingsViewModel.settings.notificationsEnabled"))
     }
 
+    func testSettingsSurfaceUsesTabbedCategoriesInsteadOfOneLongForm() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let audit = try readPackageFile("docs/ux/click-path-audit.md")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+
+        XCTAssertTrue(appSource.contains("TabView {"))
+        XCTAssertTrue(appSource.contains("private var overviewSettingsTab: some View"))
+        XCTAssertTrue(appSource.contains("private var aiSettingsTab: some View"))
+        XCTAssertTrue(appSource.contains("private var mcpSettingsTab: some View"))
+        XCTAssertTrue(appSource.contains("private var syncSettingsTab: some View"))
+        XCTAssertTrue(appSource.contains("private var privacySettingsTab: some View"))
+        XCTAssertTrue(appSource.contains("Label(\"Overview\", systemImage: \"gauge.with.dots.needle.bottom.50percent\")"))
+        XCTAssertTrue(appSource.contains("Label(\"AI\", systemImage: \"brain.head.profile\")"))
+        XCTAssertTrue(appSource.contains("Label(\"MCP\", systemImage: \"externaldrive.connected.to.line.below\")"))
+        XCTAssertTrue(appSource.contains("Label(\"Sync\", systemImage: \"arrow.triangle.2.circlepath\")"))
+        XCTAssertTrue(appSource.contains("Label(\"Privacy\", systemImage: \"lock.shield\")"))
+
+        let overviewStart = try XCTUnwrap(appSource.range(of: "private var overviewSettingsTab"))
+        let aiStart = try XCTUnwrap(appSource.range(of: "private var aiSettingsTab"))
+        let syncStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab"))
+        let privacyStart = try XCTUnwrap(appSource.range(of: "private var privacySettingsTab"))
+        let mcpStart = try XCTUnwrap(appSource.range(of: "private var mcpSettingsTab"))
+
+        let overviewSource = String(appSource[overviewStart.lowerBound..<aiStart.lowerBound])
+        let aiSource = String(appSource[aiStart.lowerBound..<syncStart.lowerBound])
+        let syncSource = String(appSource[syncStart.lowerBound..<privacyStart.lowerBound])
+        let privacySource = String(appSource[privacyStart.lowerBound..<mcpStart.lowerBound])
+        let mcpSource = String(appSource[mcpStart.lowerBound..<appSource.endIndex])
+
+        XCTAssertTrue(overviewSource.contains("Section(\"Status Overview\")"))
+        XCTAssertTrue(overviewSource.contains("Section(\"Appearance\")"))
+        XCTAssertTrue(aiSource.contains("Section(\"AI\")"))
+        XCTAssertTrue(aiSource.contains("Section(\"Voice\")"))
+        XCTAssertTrue(mcpSource.contains("Section(\"External MCP\")"))
+        XCTAssertTrue(mcpSource.contains("Section(\"MCP Tool Permissions\")"))
+        XCTAssertTrue(mcpSource.contains("Section(\"MCP Audit\")"))
+        XCTAssertTrue(syncSource.contains("Section(\"Sync\")"))
+        XCTAssertTrue(privacySource.contains("Section(\"Privacy\")"))
+        XCTAssertTrue(privacySource.contains("Section(\"Watcher\")"))
+        XCTAssertTrue(audit.contains("Settings詳細FormはOverview / AI / MCP / Sync / Privacyのtabへ分割済み"))
+        XCTAssertTrue(phase.contains("[x] Settings詳細FormをOverview / AI / MCP / Sync / Privacyのtabへ分割し"))
+    }
+
     func testRuntimeLLMFactoryUsesClaudeMessagesProviderWithoutOpenAIFallback() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let factoryStart = try XCTUnwrap(appSource.range(of: "private static func makeLLMProvider"))

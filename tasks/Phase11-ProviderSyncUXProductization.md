@@ -127,6 +127,7 @@
 - [x] Freeでは同期toggleをdisabledにし、押した時も外部通信を発火しない。
 - [x] Pro未構成では「Sync backend is not configured」と表示し、成功バッジを出さない。
 - [x] `ui-samples/07.png` の設定密度を参考に、AI Provider / MCP / Sync / Privacy が一画面で状態確認できるよう整理する。
+- [x] Settings詳細FormをOverview / AI / MCP / Sync / Privacyのtabへ分割し、Status確認・Theme変更・provider設定・MCP登録・Sync gate・Privacy設定の到達先を明確にする。
 - [x] 完了条件: ユーザーは自分のデータが同期されているか、なぜ同期できないかを1画面で理解できる。
 
 ## P11-030: UX click-path audit

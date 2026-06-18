@@ -784,6 +784,41 @@ private struct SettingsView: View {
     }
 
     var body: some View {
+        TabView {
+            overviewSettingsTab
+                .tabItem { Label("Overview", systemImage: "gauge.with.dots.needle.bottom.50percent") }
+
+            aiSettingsTab
+                .tabItem { Label("AI", systemImage: "brain.head.profile") }
+
+            mcpSettingsTab
+                .tabItem { Label("MCP", systemImage: "externaldrive.connected.to.line.below") }
+
+            syncSettingsTab
+                .tabItem { Label("Sync", systemImage: "arrow.triangle.2.circlepath") }
+
+            privacySettingsTab
+                .tabItem { Label("Privacy", systemImage: "lock.shield") }
+        }
+        .frame(width: 680, height: 620)
+        .scenePadding()
+        .onAppear {
+            launchAtLoginViewModel.refresh()
+        }
+        .confirmationDialog(
+            "Delete MCP Server",
+            isPresented: $isConfirmingMCPRegistrationDeletion
+        ) {
+            Button("Delete", role: .destructive) {
+                externalMCPViewModel.deleteRegistration()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the saved registration from SoloPM.")
+        }
+    }
+
+    private var overviewSettingsTab: some View {
         Form {
             Section("Status Overview") {
                 SettingsStatusOverview(
@@ -812,6 +847,12 @@ private struct SettingsView: View {
                 .pickerStyle(.segmented)
             }
 
+        }
+        .formStyle(.grouped)
+    }
+
+    private var aiSettingsTab: some View {
+        Form {
             Section("AI") {
                 Picker(
                     "Provider",
@@ -1009,6 +1050,12 @@ private struct SettingsView: View {
                 LabeledContent("Shortcut", value: "Option + Space")
             }
 
+        }
+        .formStyle(.grouped)
+    }
+
+    private var syncSettingsTab: some View {
+        Form {
             Section("Sync") {
                 LabeledContent("Plan", value: syncViewModel.planLabel)
                 LabeledContent("Status", value: syncViewModel.statusLabel)
@@ -1041,6 +1088,12 @@ private struct SettingsView: View {
                 }
             }
 
+        }
+        .formStyle(.grouped)
+    }
+
+    private var privacySettingsTab: some View {
+        Form {
             Section("Privacy") {
                 Toggle(
                     "Notifications",
@@ -1104,6 +1157,12 @@ private struct SettingsView: View {
                 }
             }
 
+        }
+        .formStyle(.grouped)
+    }
+
+    private var mcpSettingsTab: some View {
+        Form {
             Section("External MCP") {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -1289,22 +1348,6 @@ private struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding()
-        .frame(width: 620, height: 720)
-        .onAppear {
-            launchAtLoginViewModel.refresh()
-        }
-        .confirmationDialog(
-            "Delete MCP Server",
-            isPresented: $isConfirmingMCPRegistrationDeletion
-        ) {
-            Button("Delete", role: .destructive) {
-                externalMCPViewModel.deleteRegistration()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes the saved registration from SoloPM.")
-        }
     }
 
     private var activeAIProviderStatusLabel: String {

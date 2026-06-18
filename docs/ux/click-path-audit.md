@@ -72,7 +72,7 @@
 | Inbox分類後の自動遷移が粗い | Project化などの実mutationは動くが、分類後にユーザーへ次の最適画面を案内する余地がある。 | P1 | 分類結果のsuccess state、undo、次のitem選択を追加する。 |
 | Today time blockはlocal plan止まり | Today viewはdue/overdue task、local focus suggestion、30分time blockを表示できるが、Calendarへの適用や自動再配置はまだしない。 | P2 | Calendar連携をrelease scopeに入れる場合だけ、適用前確認つきのschedule actionを追加する。 |
 | Task card screenshot検証が未完 | Task cardのtitle/status/priority/due/drag affordanceは実装済みだが、light/dark両方で重なりがないことはスクリーンショット evidence がまだ弱い。 | P1 | app起動後にProject boardをlight/darkで撮り、`docs/release/evidence/` に保存する。 |
-| Settings詳細Formが長い | Status Overviewで重要状態は見えるが、詳細設定はまだ縦に長い。 | P1 | General / AI / Sync / MCP / Privacy のtabまたは2カラムdetailsに分ける。 |
+| Settings詳細Formはtab分割済み | Settings詳細FormはOverview / AI / MCP / Sync / Privacyのtabへ分割済み。Status OverviewとThemeはOverview、provider詳細はAI、MCP登録/権限/auditはMCP、同期はSync、通知/起動/WatcherはPrivacyに分けた。 | P2 | 次の改善ではAI tab内でproviderごとのfieldを折りたたむ。 |
 | Provider詳細設定が長い | provider切替は2クリックになったが、API key、model、local executableなどの詳細設定は同じAI section内に縦積みで残る。 | P1 | providerごとに必要なfieldだけをcompact panelへ出し、他providerのfieldは折りたたむ。 |
 | MCP server別の接続状態証跡はsource test中心 | 複数server rowのinline statusとrow単位Checkは実装済みだが、実アプリで複数serverを並べたスクリーンショット証跡はまだ弱い。 | P1 | MCP server listを含むSettings screenshotをlight/darkで保存する。 |
 | accessibility検証が未完了 | Task card、column add、status move、destructive confirmationのlabel/helpはsource testで固定し、Task cardのOpen Detailsとstatus move controlsも別フォーカス対象に分離した。実機VoiceOver focus orderとLight/Darkのスクリーンショット確認は残る。 | P1 | 支援技術とテーマ別コントラストを実機で確認し、崩れを修正する。 |
