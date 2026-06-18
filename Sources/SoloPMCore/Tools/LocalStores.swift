@@ -70,6 +70,23 @@ public struct TaskCreateDraft: Equatable, Sendable {
     }
 }
 
+public enum NullableFieldUpdate<Value: Equatable & Sendable>: Equatable, Sendable {
+    case unchanged
+    case set(Value)
+    case clear
+
+    public func applying(to currentValue: Value?) -> Value? {
+        switch self {
+        case .unchanged:
+            currentValue
+        case .set(let value):
+            value
+        case .clear:
+            nil
+        }
+    }
+}
+
 public struct KnowledgeFrameRecord: Equatable, Sendable {
     public var id: Int64
     public var name: String
@@ -289,6 +306,26 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         priority: String? = nil,
         projectID: Int64? = nil
     ) throws -> TaskRecord {
+        try updateFields(
+            id: id,
+            title: title,
+            status: status,
+            detail: detail.map { .set($0) } ?? .unchanged,
+            dueAt: dueAt.map { .set($0) } ?? .unchanged,
+            priority: priority.map { .set($0) } ?? .unchanged,
+            projectID: projectID.map { .set($0) } ?? .unchanged
+        )
+    }
+
+    public func updateFields(
+        id: Int64,
+        title: String? = nil,
+        status: String? = nil,
+        detail: NullableFieldUpdate<String> = .unchanged,
+        dueAt: NullableFieldUpdate<String> = .unchanged,
+        priority: NullableFieldUpdate<String> = .unchanged,
+        projectID: NullableFieldUpdate<Int64> = .unchanged
+    ) throws -> TaskRecord {
         lock.lock()
         defer { lock.unlock() }
 
@@ -301,17 +338,37 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             let normalizedStatus = try StoreFieldValidation.taskStatus(status, tool: .taskUpdate)
             assignments.append("status = '\(SQL.escape(normalizedStatus))'")
         }
-        if let detail {
+        switch detail {
+        case .unchanged:
+            break
+        case .set(let detail):
             assignments.append("detail = '\(SQL.escape(detail))'")
+        case .clear:
+            assignments.append("detail = NULL")
         }
-        if let dueAt {
+        switch dueAt {
+        case .unchanged:
+            break
+        case .set(let dueAt):
             assignments.append("due_at = '\(SQL.escape(dueAt))'")
+        case .clear:
+            assignments.append("due_at = NULL")
         }
-        if let priority {
+        switch priority {
+        case .unchanged:
+            break
+        case .set(let priority):
             assignments.append("priority = '\(SQL.escape(priority))'")
+        case .clear:
+            assignments.append("priority = NULL")
         }
-        if let projectID {
+        switch projectID {
+        case .unchanged:
+            break
+        case .set(let projectID):
             assignments.append("project_id = \(projectID)")
+        case .clear:
+            assignments.append("project_id = NULL")
         }
         assignments.append("updated_at = CURRENT_TIMESTAMP")
 

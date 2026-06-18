@@ -277,6 +277,39 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(updated.priority, "high")
     }
 
+    func testTaskUpdateToolClearsEditableTaskMetadataWithNullArguments() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "Launch Readiness")
+        let task = try stores.tasks.create(
+            title: "Draft release notes",
+            projectID: project.id,
+            dueAt: "2026-06-20T09:00:00Z",
+            priority: "high",
+            status: "planned",
+            detail: "Initial detail"
+        )
+        let tool = TaskTool(name: .taskUpdate, store: stores.tasks, projectStore: stores.projects)
+
+        _ = try tool.execute(
+            arguments: [
+                "id": .number(Double(task.id)),
+                "projectId": .null,
+                "detail": .null,
+                "dueAt": .null,
+                "priority": .null
+            ],
+            context: approvedContext()
+        )
+
+        let updated = try stores.tasks.get(id: task.id)
+        XCTAssertEqual(updated.title, "Draft release notes")
+        XCTAssertEqual(updated.status, "planned")
+        XCTAssertNil(updated.projectID)
+        XCTAssertNil(updated.detail)
+        XCTAssertNil(updated.dueAt)
+        XCTAssertNil(updated.priority)
+    }
+
     func testTaskCreateWithProjectIDRequiresProjectStore() throws {
         let stores = try makeStores()
         let project = try stores.projects.create(title: "Launch Readiness")
@@ -439,10 +472,28 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(taskItemSchema.properties["dueAt"], "string")
         XCTAssertEqual(taskItemSchema.properties["priority"], "string")
 
-        XCTAssertEqual(update.inputSchema.properties["projectId"], "integer")
-        XCTAssertEqual(update.inputSchema.properties["detail"], "string")
-        XCTAssertEqual(update.inputSchema.properties["dueAt"], "string")
-        XCTAssertEqual(update.inputSchema.properties["priority"], "string")
+        XCTAssertEqual(update.inputSchema.properties["projectId"], "integer|null")
+        XCTAssertEqual(update.inputSchema.properties["detail"], "string|null")
+        XCTAssertEqual(update.inputSchema.properties["dueAt"], "string|null")
+        XCTAssertEqual(update.inputSchema.properties["priority"], "string|null")
+    }
+
+    func testTaskUpdateSchemaAcceptsNullForClearableTaskMetadata() throws {
+        let stores = try makeStores()
+        let update = TaskTool(name: .taskUpdate, store: stores.tasks, projectStore: stores.projects)
+
+        let issues = update.inputSchema.validate(
+            arguments: [
+                "id": .number(1),
+                "projectId": .null,
+                "detail": .null,
+                "dueAt": .null,
+                "priority": .null
+            ],
+            tool: .taskUpdate
+        )
+
+        XCTAssertEqual(issues, [])
     }
 
     func testKnowledgeFrameCreateAndSearchUseSameStore() throws {

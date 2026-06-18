@@ -54,6 +54,23 @@ public struct ToolArguments: Sendable {
         return trimmed
     }
 
+    public func nullableTrimmedString(_ key: String) throws -> NullableFieldUpdate<String> {
+        switch raw[key] {
+        case .string(let value):
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                throw ToolExecutionError.validationFailed(tool, "Argument '\(key)' cannot be blank.")
+            }
+            return .set(trimmed)
+        case .null:
+            return .clear
+        case nil:
+            return .unchanged
+        default:
+            throw invalidNullableString(key)
+        }
+    }
+
     public func optionalNonBlankString(_ key: String) throws -> String? {
         guard let value = try optionalString(key) else {
             return nil
@@ -93,12 +110,37 @@ public struct ToolArguments: Sendable {
         }
     }
 
+    public func nullableInt64(_ key: String) throws -> NullableFieldUpdate<Int64> {
+        switch raw[key] {
+        case .number(let value):
+            guard let intValue = Int64(exactly: value) else {
+                throw invalidInt64(key)
+            }
+            return .set(intValue)
+        case .string(let value):
+            guard let intValue = Int64(value) else {
+                throw invalidInt64(key)
+            }
+            return .set(intValue)
+        case .null:
+            return .clear
+        case nil:
+            return .unchanged
+        default:
+            throw invalidInt64(key)
+        }
+    }
+
     private func invalidInt64(_ key: String) -> ToolExecutionError {
         .validationFailed(tool, "Argument '\(key)' must be a 64-bit integer.")
     }
 
     private func invalidString(_ key: String) -> ToolExecutionError {
         .validationFailed(tool, "Argument '\(key)' must be string.")
+    }
+
+    private func invalidNullableString(_ key: String) -> ToolExecutionError {
+        .validationFailed(tool, "Argument '\(key)' must be string or null.")
     }
 
     public func stringArray(_ key: String) throws -> [String] {

@@ -369,6 +369,13 @@ private extension JSONValue {
     }
 
     func matchesSchemaType(_ expectedType: String) -> Bool {
+        let alternatives = expectedType
+            .split(separator: "|")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if alternatives.count > 1 {
+            return alternatives.contains { matchesSchemaType($0) }
+        }
+
         switch expectedType {
         case "string":
             if case .string = self {
@@ -405,6 +412,11 @@ private extension JSONValue {
             return false
         case "bool", "boolean":
             if case .bool = self {
+                return true
+            }
+            return false
+        case "null":
+            if case .null = self {
                 return true
             }
             return false

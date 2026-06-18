@@ -151,6 +151,33 @@ final class LocalStoreTests: XCTestCase {
         }
     }
 
+    func testTaskStoreCanExplicitlyClearNullableMetadataFields() throws {
+        let connection = try migratedConnection()
+        let projects = SQLiteProjectStore(connection: connection)
+        let tasks = SQLiteTaskStore(connection: connection)
+        let project = try projects.create(title: "Launch alpha")
+        let task = try tasks.create(
+            title: "Ship alpha",
+            projectID: project.id,
+            dueAt: "2026-06-21",
+            priority: "high",
+            detail: "Initial detail"
+        )
+
+        let updated = try tasks.updateFields(
+            id: task.id,
+            detail: .clear,
+            dueAt: .clear,
+            priority: .clear,
+            projectID: .clear
+        )
+
+        XCTAssertNil(updated.projectID)
+        XCTAssertNil(updated.detail)
+        XCTAssertNil(updated.dueAt)
+        XCTAssertNil(updated.priority)
+    }
+
     func testTaskStoreNormalizesAndRejectsBlankTitles() throws {
         let connection = try migratedConnection()
         let store = SQLiteTaskStore(connection: connection)

@@ -1194,6 +1194,14 @@
 - [x] focused tests で create、bulk create、update、schema export の metadata coverage を固定する。
 - [x] 完了条件: AI-generated Action Plan からでも、UI task card と同じ主要メタデータを失わずCRUDできる。
 
+### P10-154: Task tool CRUD can explicitly clear optional metadata
+
+- [x] `task.update` は `projectId` / `detail` / `dueAt` / `priority` の `JSON null` を、未指定ではなく明示クリアとして扱う。
+- [x] SQLite task store は nullable field update で unchanged / set / clear を区別し、既存の `update` 呼び出し互換を保つ。
+- [x] Tool input schema は `integer|null` / `string|null` を表現し、Review UI validation が clear 操作を拒否しない。
+- [x] `ProjectTaskKnowledgeToolTests` / `LocalStoreTests` / `ToolArgumentsTests` で null clear、schema、永続層、引数層の責務を固定する。
+- [x] 完了条件: AI-generated Action Plan と Review UI から、タスクカードの主要メタデータを設定するだけでなく安全に削除できる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

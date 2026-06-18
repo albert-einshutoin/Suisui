@@ -153,16 +153,17 @@ public struct TaskTool: Tool {
             let taskID = try args.requiredInt64("id")
             let current = try store.get(id: taskID)
             let nextStatus = try args.optionalTrimmedString("status") ?? current.status
-            let nextProjectID = try args.optionalInt64("projectId") ?? current.projectID
+            let projectIDUpdate = try args.nullableInt64("projectId")
+            let nextProjectID = projectIDUpdate.applying(to: current.projectID)
             try prepareProjectForTaskMutation(projectID: nextProjectID, status: nextStatus)
-            let record = try store.update(
+            let record = try store.updateFields(
                 id: taskID,
                 title: try args.optionalTrimmedString("title"),
                 status: nextStatus,
-                detail: try args.optionalTrimmedString("detail"),
-                dueAt: try args.optionalTrimmedString("dueAt"),
-                priority: try args.optionalTrimmedString("priority"),
-                projectID: try args.optionalInt64("projectId")
+                detail: try args.nullableTrimmedString("detail"),
+                dueAt: try args.nullableTrimmedString("dueAt"),
+                priority: try args.nullableTrimmedString("priority"),
+                projectID: projectIDUpdate
             )
             return ToolResult(tool: name, status: .succeeded, summary: "Updated task \(record.title)", output: ["taskId": .number(Double(record.id))])
         case .taskComplete:
@@ -236,7 +237,7 @@ public struct TaskTool: Tool {
         case .taskUpdate:
             ToolInputSchema(
                 required: ["id"],
-                properties: ["id": "integer", "title": "string", "projectId": "integer", "status": "string", "detail": "string", "dueAt": "string", "priority": "string"],
+                properties: ["id": "integer", "title": "string", "projectId": "integer|null", "status": "string", "detail": "string|null", "dueAt": "string|null", "priority": "string|null"],
                 nonBlank: ["title", "status", "detail", "dueAt", "priority"]
             )
         case .taskComplete:

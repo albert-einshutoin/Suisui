@@ -35,6 +35,34 @@ final class ToolArgumentsTests: XCTestCase {
         }
     }
 
+    func testNullableTrimmedStringTreatsNullAsClearAndOmissionAsUnchanged() throws {
+        let arguments = ToolArguments(
+            [
+                "detail": .null,
+                "dueAt": .string("  2026-06-21  ")
+            ],
+            tool: .taskUpdate
+        )
+
+        XCTAssertEqual(try arguments.nullableTrimmedString("detail"), .clear)
+        XCTAssertEqual(try arguments.nullableTrimmedString("dueAt"), .set("2026-06-21"))
+        XCTAssertEqual(try arguments.nullableTrimmedString("priority"), .unchanged)
+    }
+
+    func testNullableInt64TreatsNullAsClearAndOmissionAsUnchanged() throws {
+        let arguments = ToolArguments(
+            [
+                "projectId": .null,
+                "taskId": .string("42")
+            ],
+            tool: .taskUpdate
+        )
+
+        XCTAssertEqual(try arguments.nullableInt64("projectId"), .clear)
+        XCTAssertEqual(try arguments.nullableInt64("taskId"), .set(42))
+        XCTAssertEqual(try arguments.nullableInt64("frameId"), .unchanged)
+    }
+
     func testTrimmedStringArrayRejectsBlankElementsInsteadOfDroppingThem() throws {
         let arguments = ToolArguments(["tags": .array([.string("oss"), .string("  ")])], tool: .projectCreate)
 
