@@ -1116,6 +1116,14 @@
 - [x] `ReleasePipelineTests` で blank reviewer、blank note、missing review metadata を固定する。
 - [x] 完了条件: release evidence が「誰がいつ確認したか」を欠いた状態で release ready にならない。
 
+### P10-144: Release evidence must be bound to the packaged source commit
+
+- [x] `package_release.sh` は artifact ごとの package evidence manifest に current git commit を記録する。
+- [x] `create_release_evidence.sh` は release evidence に current git commit を記録し、package evidence の git commit と一致しない場合は evidence を作らない。
+- [x] `verify_release_environment.sh` は release evidence / package evidence の git commit が current checkout と一致しない場合、release blocker にする。
+- [x] `ReleasePipelineTests` で stale package source commit と stale release source commit を固定する。
+- [x] 完了条件: 古い artifact や別 revision の manual evidence が、現在の source checkout の release ready 証跡として扱われない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

@@ -352,6 +352,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(evidence.contains("\"notaryProfile\": \"SoloPMNotaryProfile\""))
         XCTAssertTrue(evidence.contains("\"sparkleFeedURL\": \"https://updates.solopm.app/releases/appcast.xml\""))
         XCTAssertTrue(evidence.contains("\"appcastPath\": \".build/test-release-appcast.xml\""))
+        XCTAssertTrue(evidence.contains("\"source\""))
+        XCTAssertTrue(evidence.contains("\"gitCommit\": \"\(try currentGitCommit())\""))
         XCTAssertTrue(evidence.contains("\"releaseMachineLaunch\": true"))
         XCTAssertTrue(evidence.contains("\"checksumVerification\": true"))
         XCTAssertTrue(evidence.contains("\"cleanDmgInstall\": true"))
@@ -415,6 +417,53 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual(result.exitCode, 0, result.output)
         let evidence = try String(contentsOf: evidenceURL, encoding: .utf8)
         XCTAssertTrue(evidence.contains("\"artifactPath\": \"\(absoluteArtifactPath)\""))
+    }
+
+    func testReleaseEvidenceScriptRejectsPackageEvidenceFromDifferentSourceCommit() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-stale-source.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-stale-source.dmg.sha256")
+        let artifactPath = ".build/test-release-artifact-stale-source.dmg"
+        let appcastURL = packageRoot()
+            .appendingPathComponent(".build/test-release-appcast-stale-source.xml")
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let artifactURL = try writeArtifactChecksum(to: checksumURL, artifactPath: artifactPath)
+        let packageEvidenceURL = try writePackageEvidence(
+            for: checksumURL,
+            artifactPath: artifactPath,
+            gitCommit: "0000000000000000000000000000000000000000"
+        )
+        try writeReleaseAppcastFixture(at: appcastURL)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: artifactURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+            try? FileManager.default.removeItem(at: appcastURL)
+        }
+
+        let result = try runScript(
+            "script/create_release_evidence.sh",
+            arguments: ["--force"],
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path,
+                "SOLOPM_RELEASE_APPCAST_FILE": appcastURL.path,
+                "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
+                "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases/",
+                "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("package evidence source commit does not match current git commit"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceURL.path))
     }
 
     func testReleaseEvidenceScriptRejectsInvalidReleaseAppcast() throws {
@@ -1569,6 +1618,77 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("release evidence missing review timestamp"))
     }
 
+    func testReleasePreflightRejectsEvidenceForDifferentSourceCommit() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-source-commit.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-source-commit.dmg.sha256")
+        let artifactPath = ".build/test-release-artifact-source-commit.dmg"
+        let staleCommit = "1111111111111111111111111111111111111111"
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let artifactURL = try writeArtifactChecksum(to: checksumURL, artifactPath: artifactPath)
+        let packageEvidenceURL = try writePackageEvidence(
+            for: checksumURL,
+            artifactPath: artifactPath,
+            gitCommit: staleCommit
+        )
+        try """
+        {
+          "release": {
+            "version": "0.1.0",
+            "buildNumber": "1",
+            "appBundlePath": "dist/SoloPM.app",
+            "artifactPath": "\(artifactPath)",
+            "artifactSha256": "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98",
+            "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
+            "notaryProfile": "SoloPMNotaryProfile",
+            "sparkleFeedURL": "https://updates.solopm.app/releases/appcast.xml",
+            "appcastPath": "dist/releases/appcast.xml"
+          },
+          "source": {
+            "gitCommit": "\(staleCommit)"
+          },
+          "manualChecks": {
+            "releaseMachineLaunch": true,
+            "checksumVerification": true,
+            "cleanDmgInstall": true,
+            "applicationsFolderInstall": true,
+            "gatekeeperAccepted": true,
+            "cleanEnvironmentLaunch": true,
+            "loginItemToggle": true,
+            "sparkleAppcastMetadata": true,
+            "environment": "macOS 15.5 clean user on arm64"
+          },
+          "review": {
+            "checkedBy": "release-owner",
+            "checkedAt": "2026-06-18T00:00:00Z",
+            "notes": ["Manual checks completed."]
+          }
+        }
+        """.write(to: evidenceURL, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: artifactURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+        }
+
+        let result = try runScript(
+            "script/verify_release_environment.sh",
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release evidence source commit does not match current git commit"))
+        XCTAssertTrue(result.output.contains("release package evidence source commit does not match current git commit"))
+    }
+
     func testReleaseChecklistRequiresEvidenceBeforeFinalReport() throws {
         let checklist = try readPackageFile("docs/release/checklist.md")
 
@@ -1581,6 +1701,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("manual release evidence"))
         XCTAssertTrue(checklist.contains("reject blank, placeholder, sample, example, todo, or replace-style environment descriptions"))
         XCTAssertTrue(checklist.contains("blank reviewer names or blank review notes are rejected"))
+        XCTAssertTrue(checklist.contains("source git commit is recorded in release evidence"))
         XCTAssertTrue(checklist.contains("SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml"))
         XCTAssertFalse(checklist.contains("./script/verify_appcast.sh packaging/appcast.sample.xml"))
         XCTAssertTrue(checklist.contains("./script/verify_notarization_setup.sh"))
@@ -1802,10 +1923,12 @@ final class ReleasePipelineTests: XCTestCase {
         for checksumURL: URL,
         artifactPath: String? = "dist/releases/SoloPM-0.1.0+1.dmg",
         signedPackageRequired: Bool = true,
-        notarizedPackageRequired: Bool = true
+        notarizedPackageRequired: Bool = true,
+        gitCommit: String? = nil
     ) throws -> URL {
         let manifestPath = checksumURL.path.replacingOccurrences(of: ".sha256", with: ".package-evidence.json")
         let manifestURL = URL(fileURLWithPath: manifestPath)
+        let sourceCommit = try gitCommit ?? currentGitCommit()
         var jsonLines = [
             "{",
             "  \"package\": {"
@@ -1818,12 +1941,31 @@ final class ReleasePipelineTests: XCTestCase {
             "    \"createdAt\": \"2026-06-18T00:00:00Z\",",
             "    \"signedPackageRequired\": \(signedPackageRequired ? "true" : "false"),",
             "    \"notarizedPackageRequired\": \(notarizedPackageRequired ? "true" : "false")",
+            "  },",
+            "  \"source\": {",
+            "    \"gitCommit\": \"\(sourceCommit)\"",
             "  }",
             "}"
         ]
         try (jsonLines.joined(separator: "\n") + "\n")
             .write(to: manifestURL, atomically: true, encoding: .utf8)
         return manifestURL
+    }
+
+    private func currentGitCommit() throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["git", "-C", packageRoot().path, "rev-parse", "HEAD"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        try process.run()
+        process.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        XCTAssertEqual(process.terminationStatus, 0, output)
+        return output
     }
 
     private func writeArtifactChecksum(

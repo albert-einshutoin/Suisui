@@ -10,6 +10,9 @@
     "sparkleFeedURL": "replace-after-sparkle-config",
     "appcastPath": "dist/releases/appcast.xml"
   },
+  "source": {
+    "gitCommit": "replace-with-release-source-git-commit"
+  },
   "manualChecks": {
     "releaseMachineLaunch": false,
     "checksumVerification": false,

@@ -161,6 +161,14 @@ NOTARY_PROFILE="${SOLOPM_NOTARY_PROFILE:-}"
 SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
 SPARKLE_PUBLIC_ED_KEY="${SOLOPM_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
 
+current_git_commit() {
+  if [[ -d "$ROOT_DIR/.git" ]] && command -v git >/dev/null 2>&1; then
+    git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || true
+  fi
+}
+
+SOURCE_GIT_COMMIT="$(current_git_commit)"
+
 json_escape() {
   local value="$1"
   value="${value//\\/\\\\}"
@@ -268,6 +276,7 @@ require_release_package_evidence() {
   local expected_artifact_path
   local signed_required
   local notarized_required
+  local manifest_git_commit
   manifest_path="$(package_evidence_file)"
 
   if [[ -z "$manifest_path" || ! -f "$manifest_path" ]]; then
@@ -283,10 +292,12 @@ require_release_package_evidence() {
     manifest_artifact_path="$(plutil -extract "package.artifactPath" raw -o - "$manifest_path" 2>/dev/null || true)"
     signed_required="$(plutil -extract "package.signedPackageRequired" raw -o - "$manifest_path" 2>/dev/null || true)"
     notarized_required="$(plutil -extract "package.notarizedPackageRequired" raw -o - "$manifest_path" 2>/dev/null || true)"
+    manifest_git_commit="$(plutil -extract "source.gitCommit" raw -o - "$manifest_path" 2>/dev/null || true)"
   else
     manifest_artifact_path="$(awk -F': ' '/"artifactPath"/ { gsub(/[",]/, "", $2); print $2; exit }' "$manifest_path")"
     signed_required="$(awk -F': ' '/"signedPackageRequired"/ { gsub(/[ ,]/, "", $2); print $2; exit }' "$manifest_path")"
     notarized_required="$(awk -F': ' '/"notarizedPackageRequired"/ { gsub(/[ ,]/, "", $2); print $2; exit }' "$manifest_path")"
+    manifest_git_commit="$(awk -F': ' '/"gitCommit"/ { gsub(/[",]/, "", $2); print $2; exit }' "$manifest_path")"
   fi
 
   expected_artifact_path="$(read_artifact_path)"
@@ -302,6 +313,16 @@ require_release_package_evidence() {
 
   if [[ "$signed_required" != "true" || "$notarized_required" != "true" ]]; then
     echo "release evidence requires an artifact packaged with signed and notarized gates enabled" >&2
+    exit 2
+  fi
+
+  if [[ -z "$manifest_git_commit" ]]; then
+    echo "package evidence manifest is missing source git commit" >&2
+    exit 2
+  fi
+
+  if [[ -n "$SOURCE_GIT_COMMIT" && "$manifest_git_commit" != "$SOURCE_GIT_COMMIT" ]]; then
+    echo "package evidence source commit does not match current git commit" >&2
     exit 2
   fi
 }
@@ -403,6 +424,10 @@ if [[ "$artifact_sha" == "missing-release-artifact" || "$artifact_path" == "miss
   echo "release evidence requires a packaged artifact checksum; run ./script/package_release.sh first or set SOLOPM_RELEASE_ARTIFACT_SHA256_FILE" >&2
   exit 2
 fi
+if [[ -z "$SOURCE_GIT_COMMIT" ]]; then
+  echo "release evidence requires a git commit from the release source checkout" >&2
+  exit 2
+fi
 require_release_package_evidence
 require_artifact_file_integrity "$artifact_sha" "$artifact_path"
 
@@ -436,6 +461,9 @@ require_release_appcast
   printf '    "notaryProfile": "%s",\n' "$(json_escape "$NOTARY_PROFILE")"
   printf '    "sparkleFeedURL": "%s",\n' "$(json_escape "$SPARKLE_FEED_URL")"
   printf '    "appcastPath": "%s"\n' "$(json_escape "$appcast_path")"
+  printf '  },\n'
+  printf '  "source": {\n'
+  printf '    "gitCommit": "%s"\n' "$(json_escape "$SOURCE_GIT_COMMIT")"
   printf '  },\n'
   printf '  "manualChecks": {\n'
   printf '    "releaseMachineLaunch": %s,\n' "$RELEASE_MACHINE_LAUNCH"

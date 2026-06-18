@@ -29,6 +29,14 @@ DMG_PATH="$RELEASE_DIR/$ARTIFACT_BASENAME.dmg"
 ZIP_PATH="$RELEASE_DIR/$ARTIFACT_BASENAME.zip"
 PACKAGE_CREATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
+current_git_commit() {
+  if [[ -d "$ROOT_DIR/.git" ]] && command -v git >/dev/null 2>&1; then
+    git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || true
+  fi
+}
+
+SOURCE_GIT_COMMIT="$(current_git_commit)"
+
 case "$PACKAGE_FORMAT" in
   dmg|zip|all)
     ;;
@@ -102,6 +110,9 @@ create_package_evidence() {
     printf '    "createdAt": "%s",\n' "$PACKAGE_CREATED_AT"
     printf '    "signedPackageRequired": %s,\n' "$([[ "$REQUIRE_SIGNED_PACKAGE" == "1" ]] && printf true || printf false)"
     printf '    "notarizedPackageRequired": %s\n' "$([[ "$REQUIRE_NOTARIZED_PACKAGE" == "1" ]] && printf true || printf false)"
+    printf '  },\n'
+    printf '  "source": {\n'
+    printf '    "gitCommit": "%s"\n' "$(json_escape "$SOURCE_GIT_COMMIT")"
     printf '  }\n'
     printf '}\n'
   } >"$manifest_path"

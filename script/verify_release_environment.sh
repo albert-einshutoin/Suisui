@@ -82,6 +82,12 @@ require_clean_source_tree() {
   fi
 }
 
+current_git_commit() {
+  if [[ -d "$ROOT_DIR/.git" ]] && command -v git >/dev/null 2>&1; then
+    git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || true
+  fi
+}
+
 validate_release_sparkle_config() {
   local validation_output
 
@@ -382,6 +388,24 @@ require_evidence_concrete_manual_environment() {
   fi
 }
 
+require_evidence_current_git_commit() {
+  local value
+
+  if [[ -z "$CURRENT_GIT_COMMIT" ]]; then
+    add_blocker "release evidence cannot be tied to a git commit from the current checkout"
+    return
+  fi
+
+  if ! value="$(plutil -extract "source.gitCommit" raw -o - "$RELEASE_EVIDENCE_FILE" 2>/dev/null)"; then
+    add_blocker "release evidence missing source git commit: source.gitCommit"
+    return
+  fi
+
+  if [[ "$value" != "$CURRENT_GIT_COMMIT" ]]; then
+    add_blocker "release evidence source commit does not match current git commit: expected '$CURRENT_GIT_COMMIT', got '$value'"
+  fi
+}
+
 release_artifact_checksum_file() {
   local checksum_files
   local checksum_count
@@ -414,6 +438,7 @@ require_release_package_evidence() {
   local manifest_artifact_path
   local signed_required
   local notarized_required
+  local manifest_git_commit
 
   manifest_path="${checksum_file%.sha256}.package-evidence.json"
   if [[ ! -f "$manifest_path" ]]; then
@@ -429,6 +454,7 @@ require_release_package_evidence() {
   manifest_artifact_path="$(plutil -extract "package.artifactPath" raw -o - "$manifest_path" 2>/dev/null || true)"
   signed_required="$(plutil -extract "package.signedPackageRequired" raw -o - "$manifest_path" 2>/dev/null || true)"
   notarized_required="$(plutil -extract "package.notarizedPackageRequired" raw -o - "$manifest_path" 2>/dev/null || true)"
+  manifest_git_commit="$(plutil -extract "source.gitCommit" raw -o - "$manifest_path" 2>/dev/null || true)"
 
   if [[ -z "$manifest_artifact_path" ]]; then
     add_blocker "release package evidence manifest is missing artifact path"
@@ -438,6 +464,12 @@ require_release_package_evidence() {
 
   if [[ "$signed_required" != "true" || "$notarized_required" != "true" ]]; then
     add_blocker "release package evidence requires signed and notarized gates enabled"
+  fi
+
+  if [[ -z "$manifest_git_commit" ]]; then
+    add_blocker "release package evidence manifest is missing source git commit"
+  elif [[ -n "$CURRENT_GIT_COMMIT" && "$manifest_git_commit" != "$CURRENT_GIT_COMMIT" ]]; then
+    add_blocker "release package evidence source commit does not match current git commit: expected '$CURRENT_GIT_COMMIT', got '$manifest_git_commit'"
   fi
 }
 
@@ -579,6 +611,7 @@ NOTARY_PROFILE="${SOLOPM_NOTARY_PROFILE:-}"
 SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
 SPARKLE_PUBLIC_ED_KEY="${SOLOPM_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
 ONLINE_PREFLIGHT="${SOLOPM_RELEASE_PREFLIGHT_ONLINE:-0}"
+CURRENT_GIT_COMMIT="$(current_git_commit)"
 
 validate_release_sparkle_config
 
@@ -636,6 +669,7 @@ if [[ -f "$RELEASE_EVIDENCE_FILE" ]]; then
     require_evidence_equals "release.version" "version" "${MARKETING_VERSION:-}"
     require_evidence_equals "release.buildNumber" "build number" "${CURRENT_PROJECT_VERSION:-}"
     require_evidence_equals "release.appBundlePath" "app bundle path" "$EXPECTED_APP_BUNDLE_PATH"
+    require_evidence_current_git_commit
     require_evidence_non_empty "release.signingIdentity" "signing identity"
     require_evidence_non_empty "release.notaryProfile" "notary profile"
     require_evidence_non_empty "release.sparkleFeedURL" "Sparkle feed URL"
