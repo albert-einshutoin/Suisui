@@ -83,6 +83,8 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(appSource.contains("Section(\"Appearance\")"))
         XCTAssertTrue(appSource.contains("Picker(\"Theme\", selection: $appearancePreference)"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-theme-picker\")"))
+        XCTAssertEqual(appSource.components(separatedBy: "settings-theme-picker").count - 1, 1)
         XCTAssertEqual(appSource.components(separatedBy: "Section(\"Appearance\")").count - 1, 1)
         XCTAssertEqual(appSource.components(separatedBy: "Picker(\"Theme\"").count - 1, 1)
         let settingsRange = try XCTUnwrap(appSource.range(of: "Settings {"))

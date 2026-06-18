@@ -845,6 +845,8 @@ private struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                .accessibilityIdentifier("settings-theme-picker")
+                .accessibilityHint("Changes the appearance for all SoloPM windows.")
             }
 
         }
