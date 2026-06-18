@@ -931,6 +931,13 @@
 - [x] 実プロセス stdio script を使う `ExternalMCPTests` で malformed JSON 応答の分類を固定する。
 - [x] 完了条件: 外部連携を release scope から外していても、ユーザーが登録した MCP server の壊れた応答を通信障害や空の tool list と誤認しない。
 
+### P10-120: Action plan schema must load from packaged resources only
+
+- [x] `ActionPlanSchema.loadData()` は bundle / SwiftPM resource に action-plan schema がない場合、source tree の `Resources` へ fallback しない。
+- [x] `PlanningPromptBuilder.loadDefault()` は packaged schema が欠落していれば明示的に失敗し、開発 checkout 上だけ成功する状態を作らない。
+- [x] `ActionPlanSchemaTests` / `PlanningPromptBuilderTests` / `AppExperienceSourceTests` で packaged schema load と source-tree fallback absence を固定する。
+- [x] 完了条件: 配布 app bundle の resource packaging 不備が、開発環境の source tree によって隠れない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

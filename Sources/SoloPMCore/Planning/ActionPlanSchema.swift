@@ -21,10 +21,6 @@ public enum ActionPlanSchema: Sendable {
         }
 #endif
 
-        if let data = try? loadDataFromSourceTree() {
-            return data
-        }
-
         throw ActionPlanSchemaError.resourceNotFound
     }
 
@@ -63,20 +59,4 @@ public enum ActionPlanSchema: Sendable {
         return schema
     }
 
-    private static func loadDataFromSourceTree() throws -> Data {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-        let coreRootURL = sourceURL
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let resourceURL = coreRootURL
-            .appendingPathComponent("Resources")
-            .appendingPathComponent(subdirectory)
-            .appendingPathComponent("\(fileName).\(fileExtension)")
-
-        guard FileManager.default.fileExists(atPath: resourceURL.path) else {
-            throw ActionPlanSchemaError.resourceNotFound
-        }
-
-        return try Data(contentsOf: resourceURL)
-    }
 }

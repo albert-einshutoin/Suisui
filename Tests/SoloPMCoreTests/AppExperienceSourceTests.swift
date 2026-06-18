@@ -329,6 +329,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains(#"String(data: data, encoding: .utf8) ?? "[]""#))
     }
 
+    func testActionPlanSchemaDoesNotFallBackToSourceTreeAtRuntime() throws {
+        let source = try readPackageFile("Sources/SoloPMCore/Planning/ActionPlanSchema.swift")
+
+        XCTAssertFalse(source.contains("loadDataFromSourceTree"))
+        XCTAssertFalse(source.contains("#filePath"))
+        XCTAssertFalse(source.contains("Sources/SoloPMCore/Resources"))
+    }
+
     func testExternalMCPLauncherDoesNotDefaultToInMemorySecretStore() throws {
         let source = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")
 
