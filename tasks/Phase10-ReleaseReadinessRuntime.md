@@ -789,6 +789,13 @@
 - [x] 未設定 priority のみ、既存仕様どおり `.medium` として扱う。
 - [x] 完了条件: DB破損や外部経路由来の不正 priority が、UI上で正常な Medium priority に見えない。
 
+### P10-100: FSEvents monitor reports malformed callback payloads
+
+- [x] `FSEventsFileMonitorClient` は callback の path payload cast 失敗や event count 不整合を空イベントに丸めない。
+- [x] 不整合時は `eventPayloadMismatch` を queue し、次の `nextEvent()` で呼び出し側へ error として返す。
+- [x] Source regression test で `compactMap` による部分 drop の復活を検出する。
+- [x] 完了条件: ファイル監視の OS callback 異常で成果物更新が「何も起きなかった」ように見えない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

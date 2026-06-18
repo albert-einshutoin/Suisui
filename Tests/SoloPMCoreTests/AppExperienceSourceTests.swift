@@ -181,6 +181,14 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
+    func testFSEventsMonitorDoesNotDropMismatchedEventPayloads() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Adapters/FSEventsFileMonitorClient.swift")
+
+        XCTAssertFalse(source.contains("compactMap"))
+        XCTAssertTrue(source.contains("eventPayloadMismatch"))
+        XCTAssertTrue(source.contains("queuedErrors"))
+    }
+
     func testRuntimeSourcesDoNotShipLocalInMemoryStoresAndSystemClients() throws {
         let sourceFiles = try allSwiftFiles(under: "Sources")
         let forbiddenTypeNames = [

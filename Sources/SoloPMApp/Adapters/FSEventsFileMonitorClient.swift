@@ -5,6 +5,7 @@ import SoloPMCore
 public enum FSEventsFileMonitorClientError: Error, Equatable {
     case streamCreationFailed
     case streamStartFailed
+    case eventPayloadMismatch(expected: Int, actual: Int)
 }
 
 public final class FSEventsFileMonitorClient: FileMonitorClient, @unchecked Sendable {
@@ -13,6 +14,7 @@ public final class FSEventsFileMonitorClient: FileMonitorClient, @unchecked Send
     private let eventQueue = DispatchQueue(label: "dev.solopm.fsevents")
     private let lock = NSLock()
     private var queuedEvents: [FileMonitorEvent] = []
+    private var queuedErrors: [FSEventsFileMonitorClientError] = []
     private var stream: FSEventStreamRef?
 
     public init(paths: [String], latency: CFTimeInterval = 0.5) throws {
@@ -28,6 +30,10 @@ public final class FSEventsFileMonitorClient: FileMonitorClient, @unchecked Send
     public func nextEvent() throws -> FileMonitorEvent? {
         lock.lock()
         defer { lock.unlock() }
+
+        if !queuedErrors.isEmpty {
+            throw queuedErrors.removeFirst()
+        }
 
         guard !queuedEvents.isEmpty else {
             return nil
@@ -87,24 +93,36 @@ public final class FSEventsFileMonitorClient: FileMonitorClient, @unchecked Send
         queuedEvents.append(contentsOf: events)
     }
 
+    private func enqueue(_ error: FSEventsFileMonitorClientError) {
+        lock.lock()
+        defer { lock.unlock() }
+        queuedErrors.append(error)
+    }
+
     private static let handleEvents: FSEventStreamCallback = { _, info, eventCount, eventPaths, eventFlags, _ in
         guard let info else {
             return
         }
 
         let client = Unmanaged<FSEventsFileMonitorClient>.fromOpaque(info).takeUnretainedValue()
-        let paths = unsafeBitCast(eventPaths, to: NSArray.self) as? [String] ?? []
-        let now = Date()
-        let events = (0..<eventCount).compactMap { index -> FileMonitorEvent? in
-            guard index < paths.count else {
-                return nil
-            }
+        guard let paths = unsafeBitCast(eventPaths, to: NSArray.self) as? [String] else {
+            client.enqueue(.eventPayloadMismatch(expected: eventCount, actual: 0))
+            return
+        }
+        guard paths.count >= eventCount else {
+            client.enqueue(.eventPayloadMismatch(expected: eventCount, actual: paths.count))
+            return
+        }
 
-            return FileMonitorEvent(
+        let now = Date()
+        var events: [FileMonitorEvent] = []
+        events.reserveCapacity(eventCount)
+        for index in 0..<eventCount {
+            events.append(FileMonitorEvent(
                 path: paths[index],
                 kind: eventKind(from: eventFlags[index]),
                 modifiedAt: now
-            )
+            ))
         }
         client.enqueue(events)
     }
