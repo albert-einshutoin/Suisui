@@ -363,6 +363,12 @@
 - [x] `verify_release_environment.sh` は git checkout 上で tracked file に未コミット変更がある場合、release blocker にする。
 - [x] 完了条件: release preflight は ignore 済み local artifact では止まらず、source code / release script / task doc の未コミット変更だけを release 前に止める。
 
+### P10-044: Developer ID signature identity binding
+
+- [x] `verify_release_environment.sh` は `codesign --verify` だけでなく、`codesign -dv --verbose=4` の Authority chain に設定済み Developer ID identity が含まれることを確認する。
+- [x] ad-hoc 署名や別 identity で署名された app bundle は Gatekeeper / notarization の前に release blocker にする。
+- [x] 完了条件: release owner が意図した Developer ID identity で署名された bundle だけが public alpha packaging evidence へ進める。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

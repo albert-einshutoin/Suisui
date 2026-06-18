@@ -181,6 +181,21 @@ require_release_package_evidence() {
   fi
 }
 
+require_app_signature_identity() {
+  local app_bundle="$1"
+  local signing_identity="$2"
+  local signature_details
+
+  if [[ -z "$signing_identity" || ! -d "$app_bundle" ]]; then
+    return
+  fi
+
+  signature_details="$(codesign -dv --verbose=4 "$app_bundle" 2>&1 || true)"
+  if ! grep -F "Authority=$signing_identity" <<<"$signature_details" >/dev/null; then
+    add_blocker "release app signature does not include configured Developer ID identity: $signing_identity"
+  fi
+}
+
 require_evidence_artifact_sha256() {
   local evidence_sha
   local evidence_path
@@ -292,6 +307,7 @@ if [[ -d "$APP_BUNDLE" ]]; then
   if ! codesign --verify --strict --deep --verbose=2 "$APP_BUNDLE" >/dev/null 2>&1; then
     add_blocker "dist app failed codesign verification: $APP_BUNDLE"
   fi
+  require_app_signature_identity "$APP_BUNDLE" "$SIGNING_IDENTITY"
 
   if ! spctl -a -vv "$APP_BUNDLE" >/dev/null 2>&1; then
     add_blocker "dist app failed Gatekeeper assessment: $APP_BUNDLE"

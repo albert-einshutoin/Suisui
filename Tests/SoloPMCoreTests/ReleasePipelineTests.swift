@@ -37,6 +37,14 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("source tree has uncommitted tracked changes"))
     }
 
+    func testReleasePreflightRequiresConfiguredDeveloperIDSignature() throws {
+        let script = try readPackageFile("script/verify_release_environment.sh")
+
+        XCTAssertTrue(script.contains("codesign -dv --verbose=4"))
+        XCTAssertTrue(script.contains("Authority="))
+        XCTAssertTrue(script.contains("release app signature does not include configured Developer ID identity"))
+    }
+
     func testReleasePreflightRequiresLocalEvidenceFileForManualChecks() throws {
         let script = try readPackageFile("script/verify_release_environment.sh")
 
