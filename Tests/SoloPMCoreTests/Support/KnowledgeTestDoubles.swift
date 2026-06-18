@@ -38,6 +38,7 @@ final class InMemoryKnowledgeVectorIndex: KnowledgeVectorIndex, @unchecked Senda
 
     func upsert(_ vector: KnowledgeEmbeddingVector) throws {
         try validate(vector.values)
+        try KnowledgeVectorValidator.validateProviderID(vector.providerID)
         lock.lock()
         defer { lock.unlock() }
         vectors[vector.frameID] = vector

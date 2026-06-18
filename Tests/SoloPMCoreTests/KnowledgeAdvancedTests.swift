@@ -115,6 +115,26 @@ final class KnowledgeAdvancedTests: XCTestCase {
         }
     }
 
+    func testSQLiteVectorIndexRejectsBlankProviderIDBeforePersistingVector() throws {
+        let connection = try migratedPhase9Connection()
+        let frameStore = SQLiteKnowledgeFrameStore(connection: connection)
+        let vectorIndex = SQLiteKnowledgeVectorIndex(connection: connection, expectedDimensions: 4)
+        let frame = try frameStore.create(name: "Billing", body: "Invoice follow-up", triggers: [])
+
+        XCTAssertThrowsError(
+            try vectorIndex.upsert(KnowledgeEmbeddingVector(
+                frameID: frame.id,
+                values: [1, 0, 0, 0],
+                providerID: "   ",
+                redactedPreview: "Billing"
+            ))
+        ) { error in
+            XCTAssertEqual(error as? KnowledgeVectorIndexError, .invalidProviderID)
+        }
+
+        XCTAssertNil(try vectorIndex.vector(frameID: frame.id))
+    }
+
     func testSQLiteVectorIndexRejectsStoredDimensionMismatchInsteadOfIgnoringColumn() throws {
         let connection = try migratedPhase9Connection()
         let frameStore = SQLiteKnowledgeFrameStore(connection: connection)

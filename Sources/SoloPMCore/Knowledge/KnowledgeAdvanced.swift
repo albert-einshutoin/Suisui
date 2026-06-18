@@ -167,6 +167,7 @@ public struct KnowledgeVectorSearchResult: Equatable, Sendable {
 
 public enum KnowledgeVectorIndexError: Error, Equatable, Sendable {
     case dimensionMismatch(expected: Int, actual: Int)
+    case invalidProviderID
 }
 
 public protocol KnowledgeVectorIndex: Sendable {
@@ -188,7 +189,7 @@ public final class SQLiteKnowledgeVectorIndex: KnowledgeVectorIndex, @unchecked 
     }
 
     public func upsert(_ vector: KnowledgeEmbeddingVector) throws {
-        try validate(vector.values)
+        try validate(vector)
         let valuesJSON = try jsonString(vector.values)
         try lock.withLock {
             try connection.execute(
@@ -258,6 +259,11 @@ public final class SQLiteKnowledgeVectorIndex: KnowledgeVectorIndex, @unchecked 
         }
     }
 
+    private func validate(_ vector: KnowledgeEmbeddingVector) throws {
+        try validate(vector.values)
+        try KnowledgeVectorValidator.validateProviderID(vector.providerID)
+    }
+
     private func vector(row: [String: String]) throws -> KnowledgeEmbeddingVector {
         let dimensions = try KnowledgeSQL.requiredInt(
             row["dimensions"],
@@ -281,6 +287,14 @@ public final class SQLiteKnowledgeVectorIndex: KnowledgeVectorIndex, @unchecked 
             providerID: try KnowledgeSQL.requiredString(row["provider_id"], column: "knowledge_frame_vectors.provider_id"),
             redactedPreview: try KnowledgeSQL.presentString(row["redacted_preview"], column: "knowledge_frame_vectors.redacted_preview")
         )
+    }
+}
+
+enum KnowledgeVectorValidator {
+    static func validateProviderID(_ providerID: String) throws {
+        guard !providerID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw KnowledgeVectorIndexError.invalidProviderID
+        }
     }
 }
 

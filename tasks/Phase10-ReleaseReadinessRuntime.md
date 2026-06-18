@@ -976,6 +976,14 @@
 - [x] `AppExperienceSourceTests` でサイドバーの appearance control と task component drag preview の存在を固定する。
 - [x] 完了条件: `ui-samples/` の3ペインUIに近い導線で、Light/Dark切替とマウスによるステータス移動が初見でも見つけやすい。
 
+### P10-126: Knowledge vector provider identity must be valid before persistence
+
+- [x] `SQLiteKnowledgeVectorIndex.upsert` は blank `providerID` を `knowledge_frame_vectors` に保存しない。
+- [x] `KnowledgeVectorIndexError.invalidProviderID` を追加し、保存時点で provider identity の欠落を fail fast にする。
+- [x] test support の in-memory vector index も同じ provider identity validation を使い、unit test と runtime の不変条件を分岐させない。
+- [x] `KnowledgeAdvancedTests` で blank provider ID が保存前に拒否され、vector row が残らないことを固定する。
+- [x] 完了条件: ローカルKnowledge retrieval が匿名/出所不明のembedding vectorを保存して、後続の検索や説明で壊れる状態を作らない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
