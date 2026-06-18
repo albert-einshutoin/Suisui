@@ -464,6 +464,50 @@ public final class ProjectBoardViewModel: ObservableObject {
             .first { $0.id == selectedTaskID }
     }
 
+    public var inboxTasks: [ProjectBoardTask] {
+        inboxProject?
+            .tasks
+            .filter { $0.status != .done }
+            .sorted { $0.id > $1.id } ?? []
+    }
+
+    public var inboxProject: ProjectBoardProject? {
+        snapshot.projects
+            .first { $0.title.caseInsensitiveCompare("Inbox") == .orderedSame && !$0.isArchived }
+    }
+
+    public func todayTasks(on referenceDate: Date = Date(), calendar: Calendar = .current) -> [ProjectBoardTask] {
+        guard let endOfToday = calendar.dateInterval(of: .day, for: referenceDate)?.end else {
+            return []
+        }
+
+        return snapshot.projects
+            .filter { !$0.isArchived }
+            .flatMap(\.tasks)
+            .filter { task in
+                task.status != .done && dueDate(for: task.dueAt).map { $0 < endOfToday } == true
+            }
+            .sorted { lhs, rhs in
+                switch (dueDate(for: lhs.dueAt), dueDate(for: rhs.dueAt)) {
+                case let (lhsDate?, rhsDate?):
+                    if lhsDate == rhsDate {
+                        return lhs.id > rhs.id
+                    }
+                    return lhsDate < rhsDate
+                case (_?, nil):
+                    return true
+                case (nil, _?):
+                    return false
+                case (nil, nil):
+                    return lhs.id > rhs.id
+                }
+            }
+    }
+
+    public func projectTitle(for task: ProjectBoardTask) -> String {
+        snapshot.projects.first { $0.id == task.projectID }?.title ?? "Unknown Project"
+    }
+
     public var isEmptyProjectStateVisible: Bool {
         errorMessage == nil && selectedProject == nil
     }
@@ -661,6 +705,93 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    public func markSelectedTaskAsTask() {
+        guard let selectedTask else {
+            return
+        }
+
+        updateTask(
+            id: selectedTask.id,
+            ProjectBoardTaskDraft(
+                projectID: selectedTask.projectID,
+                title: selectedTask.title,
+                detail: selectedTask.detail,
+                status: .backlog,
+                priority: selectedTask.priority,
+                dueAt: selectedTask.dueAt
+            )
+        )
+    }
+
+    public func convertSelectedTaskToProject() {
+        guard let selectedTask else {
+            return
+        }
+
+        do {
+            let project = try store.createProject(title: selectedTask.title)
+            _ = try store.updateTask(
+                id: selectedTask.id,
+                ProjectBoardTaskDraft(
+                    projectID: project.id,
+                    title: selectedTask.title,
+                    detail: selectedTask.detail,
+                    status: .planned,
+                    priority: selectedTask.priority,
+                    dueAt: selectedTask.dueAt
+                )
+            )
+            load()
+            selectedProjectID = project.id
+            selectedTaskID = selectedTask.id
+            onChange()
+        } catch ProjectBoardStoreError.emptyProjectTitle {
+            errorMessage = "Project title is required."
+        } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
+            errorMessage = "Restore the project before editing tasks."
+        } catch ProjectBoardStoreError.emptyTitle {
+            errorMessage = "Task title is required."
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
+    public func scheduleSelectedTaskForToday(referenceDate: Date = Date()) {
+        guard let selectedTask else {
+            return
+        }
+
+        updateTask(
+            id: selectedTask.id,
+            ProjectBoardTaskDraft(
+                projectID: selectedTask.projectID,
+                title: selectedTask.title,
+                detail: selectedTask.detail,
+                status: .planned,
+                priority: selectedTask.priority,
+                dueAt: ISO8601DateFormatter().string(from: referenceDate)
+            )
+        )
+    }
+
+    public func deferSelectedTaskForLater() {
+        guard let selectedTask else {
+            return
+        }
+
+        updateTask(
+            id: selectedTask.id,
+            ProjectBoardTaskDraft(
+                projectID: selectedTask.projectID,
+                title: selectedTask.title,
+                detail: selectedTask.detail,
+                status: .backlog,
+                priority: selectedTask.priority,
+                dueAt: nil
+            )
+        )
+    }
+
     public func moveSelectedTask(to status: ProjectTaskStatus) {
         guard let selectedTask else {
             return
@@ -745,6 +876,39 @@ public final class ProjectBoardViewModel: ObservableObject {
         } catch {
             errorMessage = String(describing: error)
         }
+    }
+
+    private func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) {
+        do {
+            let updatedTask = try store.updateTask(id: id, draft)
+            load()
+            selectedProjectID = updatedTask.projectID
+            selectedTaskID = updatedTask.id
+            onChange()
+        } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
+            errorMessage = "Restore the project before editing tasks."
+        } catch ProjectBoardStoreError.emptyTitle {
+            errorMessage = "Task title is required."
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
+    private func dueDate(for rawDueAt: String?) -> Date? {
+        guard let rawDueAt else {
+            return nil
+        }
+
+        if let date = ISO8601DateFormatter().date(from: rawDueAt) {
+            return date
+        }
+
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: rawDueAt)
     }
 }
 

@@ -189,6 +189,24 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".help(\"Open Settings\")"))
     }
 
+    func testProjectBoardPromotesInboxAndTodayAsFirstClassDestinations() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+
+        XCTAssertTrue(source.contains("ProjectBoardSidebarDestination"))
+        XCTAssertTrue(source.contains("ProjectBoardSidebarDestinationRow(destination: .inbox"))
+        XCTAssertTrue(source.contains("ProjectBoardSidebarDestinationRow(destination: .today"))
+        XCTAssertTrue(source.contains("InboxWorkflowView("))
+        XCTAssertTrue(source.contains("TodayWorkflowView("))
+        XCTAssertTrue(workflowSource.contains("InboxActionPanel("))
+        XCTAssertTrue(workflowSource.contains("viewModel.convertSelectedTaskToProject()"))
+        XCTAssertTrue(workflowSource.contains("viewModel.scheduleSelectedTaskForToday()"))
+        XCTAssertTrue(workflowSource.contains("viewModel.deferSelectedTaskForLater()"))
+        XCTAssertTrue(coreSource.contains("public var inboxTasks"))
+        XCTAssertTrue(coreSource.contains("public func todayTasks("))
+    }
+
     func testAppAndCLIShareDefaultDatabaseLocation() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let cliSource = try readPackageFile("Sources/SoloPMCLI/SoloPMCLIEntrypoint.swift")

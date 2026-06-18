@@ -147,10 +147,10 @@
 
 ## P11-032: Today and Inbox workflow
 
-- [ ] `ui-samples/01.png` / `02.png` を基準に、TodayとInboxの情報設計を分ける。
-- [ ] Inboxは未処理入力の分類、Task化、Project化、Schedule化、後で確認の4アクションを1クリックで選べるようにする。
+- [x] `ui-samples/01.png` / `02.png` を基準に、TodayとInboxの情報設計を分ける。
+- [x] Inboxは未処理入力の分類、Task化、Project化、Schedule化、後で確認の4アクションを1クリックで選べるようにする。
 - [ ] Todayは今日やるタスク、期限、AI提案、時間ブロックを同一画面で確認できるようにする。
-- [ ] 音声入力後に自動で謎の固定タスクが入らないことをregression testで維持する。
+- [x] 音声入力後に自動で謎の固定タスクが入らないことをregression testで維持する。
 - [ ] 完了条件: ユーザーが「どこに入ったか分からない」状態にならない。
 
 ## P11-033: Keyboard and accessibility pass

@@ -6,6 +6,7 @@ struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
     @StateObject private var viewModel: ProjectBoardViewModel
     @State private var displayMode: ProjectBoardDisplayMode = .board
+    @State private var selectedDestination: ProjectBoardSidebarDestination? = .today
 
     init(viewModel: ProjectBoardViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -14,10 +15,19 @@ struct ProjectBoardView: View {
     var body: some View {
         NavigationSplitView {
             VStack(spacing: 0) {
-                List(selection: $viewModel.selectedProjectID) {
-                    ForEach(viewModel.snapshot.projects) { project in
-                        ProjectSidebarRow(project: project)
-                            .tag(project.id)
+                List(selection: $selectedDestination) {
+                    Section {
+                        ProjectBoardSidebarDestinationRow(destination: .inbox, count: viewModel.inboxTasks.count)
+                            .tag(ProjectBoardSidebarDestination.inbox)
+                        ProjectBoardSidebarDestinationRow(destination: .today, count: viewModel.todayTasks().count)
+                            .tag(ProjectBoardSidebarDestination.today)
+                    }
+
+                    Section("Projects") {
+                        ForEach(viewModel.snapshot.projects.filter { $0.id != viewModel.inboxProject?.id }) { project in
+                            ProjectSidebarRow(project: project)
+                                .tag(ProjectBoardSidebarDestination.project(project.id))
+                        }
                     }
                 }
                 .listStyle(.sidebar)
@@ -36,7 +46,9 @@ struct ProjectBoardView: View {
                 .padding(.top, 8)
 
                 Button {
-                    viewModel.createProject()
+                    if let project = viewModel.createProject() {
+                        selectedDestination = .project(project.id)
+                    }
                 } label: {
                     Label("Add Project", systemImage: "folder.badge.plus")
                 }
@@ -46,43 +58,56 @@ struct ProjectBoardView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
             }
-            .navigationTitle("Projects")
+            .navigationTitle("SoloPM")
         } detail: {
-            if let project = viewModel.selectedProject {
-                ProjectBoardDetail(
-                    project: project,
-                    displayMode: $displayMode,
-                    viewModel: viewModel
-                )
-                .toolbar {
-                    ToolbarItemGroup {
-                        Button {
-                            openWindow(id: "voice-capture")
-                        } label: {
-                            Label("Voice Command", systemImage: "mic")
+            Group {
+                if let errorMessage = viewModel.errorMessage {
+                    ContentUnavailableView(
+                        "Project Board Unavailable",
+                        systemImage: "exclamationmark.triangle",
+                        description: Text(errorMessage)
+                    )
+                } else {
+                    switch selectedDestination ?? .today {
+                    case .inbox:
+                        InboxWorkflowView(viewModel: viewModel)
+                    case .today:
+                        TodayWorkflowView(viewModel: viewModel)
+                    case .project(let projectID):
+                        if let project = viewModel.snapshot.projects.first(where: { $0.id == projectID }) {
+                            ProjectBoardDetail(
+                                project: project,
+                                displayMode: $displayMode,
+                                viewModel: viewModel
+                            )
+                        } else if viewModel.isEmptyProjectStateVisible {
+                            ContentUnavailableView("No Projects", systemImage: "folder")
+                        } else {
+                            ContentUnavailableView("Project Not Found", systemImage: "folder.badge.questionmark")
                         }
+                    }
+                }
+            }
+            .toolbar {
+                ToolbarItemGroup {
+                    Button {
+                        openWindow(id: "voice-capture")
+                    } label: {
+                        Label("Voice Command", systemImage: "mic")
+                    }
 
-                        SettingsLink {
-                            Label("Settings", systemImage: "gearshape")
-                        }
-                        .keyboardShortcut(",", modifiers: [.command])
-                        .help("Open Settings")
+                    SettingsLink {
+                        Label("Settings", systemImage: "gearshape")
                     }
+                    .keyboardShortcut(",", modifiers: [.command])
+                    .help("Open Settings")
                 }
-                .inspector(isPresented: inspectorBinding) {
-                    if let task = viewModel.selectedTask {
-                        TaskInspectorView(task: task, viewModel: viewModel)
-                            .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
-                    }
+            }
+            .inspector(isPresented: inspectorBinding) {
+                if let task = viewModel.selectedTask {
+                    TaskInspectorView(task: task, viewModel: viewModel)
+                        .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
                 }
-            } else if let errorMessage = viewModel.errorMessage {
-                ContentUnavailableView(
-                    "Project Board Unavailable",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(errorMessage)
-                )
-            } else if viewModel.isEmptyProjectStateVisible {
-                ContentUnavailableView("No Projects", systemImage: "folder")
             }
         }
         .navigationTitle("SoloPM")
@@ -91,6 +116,15 @@ struct ProjectBoardView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
             viewModel.load()
+        }
+        .onChange(of: selectedDestination) { _, destination in
+            switch destination {
+            case .project(let projectID):
+                viewModel.selectedProjectID = projectID
+                viewModel.selectedTaskID = nil
+            case .inbox, .today, .none:
+                viewModel.selectedTaskID = nil
+            }
         }
     }
 
@@ -1011,7 +1045,7 @@ private struct TaskInspectorView: View {
     }
 }
 
-private extension ProjectTaskPriority {
+extension ProjectTaskPriority {
     var color: Color {
         switch self {
         case .low:
@@ -1024,7 +1058,7 @@ private extension ProjectTaskPriority {
     }
 }
 
-private extension ProjectTaskStatus {
+extension ProjectTaskStatus {
     var tint: Color {
         switch self {
         case .backlog:

@@ -532,6 +532,79 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelBuildsInboxAndTodayWorkflowTasksFromLiveSnapshot() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let inboxID = try XCTUnwrap(viewModel.snapshot.projects.first?.id)
+        _ = viewModel.createTask(title: "Triage captured note", projectID: inboxID, status: .backlog)
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        _ = viewModel.createTask(
+            title: "Fix overdue blocker",
+            projectID: launch.id,
+            status: .inProgress,
+            priority: .high,
+            dueAt: "2026-06-18T09:00:00Z"
+        )
+        _ = viewModel.createTask(
+            title: "Ship today update",
+            projectID: launch.id,
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-19T12:00:00Z"
+        )
+        _ = viewModel.createTask(
+            title: "Completed today task",
+            projectID: launch.id,
+            status: .done,
+            dueAt: "2026-06-19T10:00:00Z"
+        )
+        _ = viewModel.createTask(
+            title: "Future follow-up",
+            projectID: launch.id,
+            status: .planned,
+            dueAt: "2026-06-20T12:00:00Z"
+        )
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+
+        let today = viewModel.todayTasks(
+            on: try isoDate("2026-06-19T13:00:00Z"),
+            calendar: calendar
+        )
+
+        XCTAssertEqual(viewModel.inboxTasks.map(\.title), ["Triage captured note"])
+        XCTAssertEqual(today.map(\.title), ["Fix overdue blocker", "Ship today update"])
+        XCTAssertEqual(viewModel.projectTitle(for: try XCTUnwrap(today.first)), "Launch")
+    }
+
+    @MainActor
+    func testProjectBoardViewModelClassifiesInboxTasksWithRealMutations() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let inboxID = try XCTUnwrap(viewModel.snapshot.projects.first?.id)
+        let captured = try XCTUnwrap(viewModel.createTask(
+            title: "Turn idea into project",
+            projectID: inboxID,
+            status: .backlog,
+            priority: .high
+        ))
+
+        viewModel.selectedTaskID = captured.id
+        viewModel.convertSelectedTaskToProject()
+
+        let project = try XCTUnwrap(viewModel.snapshot.projects.first { $0.title == "Turn idea into project" })
+        XCTAssertEqual(viewModel.selectedTask?.projectID, project.id)
+        XCTAssertEqual(viewModel.selectedTask?.status, .planned)
+
+        viewModel.scheduleSelectedTaskForToday(referenceDate: try isoDate("2026-06-19T09:00:00Z"))
+        XCTAssertEqual(viewModel.selectedTask?.dueAt, "2026-06-19T09:00:00Z")
+
+        viewModel.deferSelectedTaskForLater()
+        XCTAssertEqual(viewModel.selectedTask?.status, .backlog)
+        XCTAssertNil(viewModel.selectedTask?.dueAt)
+    }
+
+    @MainActor
     func testProjectBoardViewModelDoesNotNotifyAfterFailedMutation() {
         var changeCount = 0
         let viewModel = ProjectBoardViewModel(
@@ -558,6 +631,11 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     private func makeStore() throws -> SQLiteProjectBoardStore {
         try makeStoreBundle().board
+    }
+
+    private func isoDate(_ value: String) throws -> Date {
+        let formatter = ISO8601DateFormatter()
+        return try XCTUnwrap(formatter.date(from: value))
     }
 
     private func makeStoreBundle() throws -> (
