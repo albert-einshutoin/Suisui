@@ -782,6 +782,13 @@
 - [x] Source regression test で `BYOKOpenAIEmbeddingProvider` / `openai_byok_fallback` の復活を検出する。
 - [x] 完了条件: ユーザーや投資家に、外部AI embedding が実働しているように誤解される mock 成功経路を出荷しない。
 
+### P10-099: Board task priority corruption is not defaulted
+
+- [x] `ProjectTaskPriority.normalized` は不正な永続 priority を `.medium` に丸めない。
+- [x] Board snapshot load は `tasks.priority` の破損を `LocalStoreDecodingError.invalidEnum` として返す。
+- [x] 未設定 priority のみ、既存仕様どおり `.medium` として扱う。
+- [x] 完了条件: DB破損や外部経路由来の不正 priority が、UI上で正常な Medium priority に見えない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

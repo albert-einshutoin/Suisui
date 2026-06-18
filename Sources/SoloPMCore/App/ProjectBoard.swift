@@ -52,12 +52,16 @@ public enum ProjectTaskPriority: String, CaseIterable, Identifiable, Sendable {
         rawValue.capitalized
     }
 
-    public static func normalized(_ rawPriority: String?) -> ProjectTaskPriority {
+    public static func normalized(_ rawPriority: String?, column: String) throws -> ProjectTaskPriority {
         guard let rawPriority else {
             return .medium
         }
 
-        return ProjectTaskPriority(rawValue: rawPriority.lowercased()) ?? .medium
+        let normalized = rawPriority.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard let priority = ProjectTaskPriority(rawValue: normalized) else {
+            throw LocalStoreDecodingError.invalidEnum(column: column, value: rawPriority)
+        }
+        return priority
     }
 }
 
@@ -393,7 +397,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         return ProjectBoardProject(id: project.id, title: project.title, status: project.status, subtitle: subtitle, columns: columns)
     }
 
-    private func makeBoardTask(_ record: TaskRecord, fallbackProjectID: Int64? = nil) -> ProjectBoardTask? {
+    private func makeBoardTask(_ record: TaskRecord, fallbackProjectID: Int64? = nil) throws -> ProjectBoardTask? {
         guard let projectID = record.projectID ?? fallbackProjectID else {
             return nil
         }
@@ -404,7 +408,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             title: record.title,
             detail: record.detail ?? "",
             status: ProjectTaskStatus.normalized(record.status),
-            priority: ProjectTaskPriority.normalized(record.priority),
+            priority: try ProjectTaskPriority.normalized(record.priority, column: "tasks.priority"),
             dueAt: record.dueAt
         )
     }

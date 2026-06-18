@@ -64,6 +64,21 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(try stores.tasks.get(id: orphan.id).projectID, inbox.id)
     }
 
+    func testLoadSnapshotRejectsCorruptedTaskPriorityInsteadOfDefaultingToMedium() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let board = SQLiteProjectBoardStore(connection: connection)
+        let tasks = SQLiteTaskStore(connection: connection)
+        let inbox = try XCTUnwrap(board.loadSnapshot().projects.first)
+        let task = try tasks.create(title: "Review launch risk", projectID: inbox.id, priority: "high")
+
+        try connection.execute("UPDATE tasks SET priority = 'urgent' WHERE id = \(task.id);")
+
+        XCTAssertThrowsError(try board.loadSnapshot()) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .invalidEnum(column: "tasks.priority", value: "urgent"))
+        }
+    }
+
     func testUpdateTaskMovesCardAcrossColumnsAndUpdatesMetadata() throws {
         let store = try makeStore()
         let projectID = try XCTUnwrap(store.loadSnapshot().projects.first?.id)
