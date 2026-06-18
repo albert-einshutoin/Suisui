@@ -525,6 +525,7 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(logger.recordedEvents.map(\.status), [.started, .succeeded])
         XCTAssertEqual(logger.recordedEvents.first?.category, "external_mcp")
         XCTAssertEqual(logger.recordedEvents.first?.metadata["server_name"], "Fake MCP")
+        XCTAssertEqual(logger.recordedEvents.first?.metadata["risk"], "read")
         XCTAssertEqual(logger.recordedEvents.first?.metadata["arguments"], "[REDACTED_SECRET]")
         XCTAssertEqual(logger.recordedEvents.last?.metadata["result"], "succeeded")
     }

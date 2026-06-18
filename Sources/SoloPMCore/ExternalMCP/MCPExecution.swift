@@ -63,6 +63,7 @@ public struct ExternalMCPToolExecutor: Sendable {
         arguments: [String: JSONValue],
         context: ToolExecutionContext
     ) async throws -> MCPToolCallResult {
+        let descriptor = try registry.descriptor(named: toolName)
         try registry.assertExecutable(toolName: toolName, context: context)
 
         let startedAt = Date()
@@ -74,13 +75,20 @@ public struct ExternalMCPToolExecutor: Sendable {
                 toolName: toolName,
                 arguments: arguments,
                 context: context,
+                descriptor: descriptor,
                 startedAt: startedAt
             )
         ))
 
         do {
             let result = try await client.callTool(name: toolName, arguments: arguments)
-            var metadata = auditMetadata(toolName: toolName, arguments: arguments, context: context, startedAt: startedAt)
+            var metadata = auditMetadata(
+                toolName: toolName,
+                arguments: arguments,
+                context: context,
+                descriptor: descriptor,
+                startedAt: startedAt
+            )
             metadata["result"] = result.isError ? "tool_error" : "succeeded"
             metadata["duration_ms"] = "\(Int(Date().timeIntervalSince(startedAt) * 1_000))"
             try auditLogger.record(AuditEvent(category: "external_mcp", action: "\(server.id).\(toolName)", status: .succeeded, metadata: metadata))
@@ -90,7 +98,13 @@ public struct ExternalMCPToolExecutor: Sendable {
                 await processController.kill(serverID: serverID, reason: .timeout)
             }
 
-            var metadata = auditMetadata(toolName: toolName, arguments: arguments, context: context, startedAt: startedAt)
+            var metadata = auditMetadata(
+                toolName: toolName,
+                arguments: arguments,
+                context: context,
+                descriptor: descriptor,
+                startedAt: startedAt
+            )
             metadata["duration_ms"] = "\(Int(Date().timeIntervalSince(startedAt) * 1_000))"
             metadata["error"] = redactor.redact(String(describing: error)).text
             try auditLogger.record(AuditEvent(category: "external_mcp", action: "\(server.id).\(toolName)", status: .failed, metadata: metadata))
@@ -102,14 +116,14 @@ public struct ExternalMCPToolExecutor: Sendable {
         toolName: String,
         arguments: [String: JSONValue],
         context: ToolExecutionContext,
+        descriptor: ExternalMCPToolDescriptor,
         startedAt: Date
     ) -> [String: String] {
-        let descriptor = try? registry.descriptor(named: toolName)
         return [
             "server_id": server.id,
             "server_name": server.displayName,
             "tool_name": toolName,
-            "risk": descriptor?.permissionLevel.rawValueForAudit ?? "unknown",
+            "risk": descriptor.permissionLevel.rawValueForAudit,
             "approval": context.approvalToken == nil ? "missing" : "present",
             "source": context.source.rawValue,
             "started_at": ISO8601DateFormatter().string(from: startedAt),

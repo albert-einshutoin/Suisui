@@ -235,6 +235,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains("struct NoopMCPProcessController"))
         XCTAssertFalse(source.contains("RecordingMCPProcessController"))
         XCTAssertFalse(source.contains("MCPProcessKillRequest"))
+        XCTAssertFalse(source.contains("let descriptor = try? registry.descriptor(named: toolName)"))
+        XCTAssertTrue(source.contains("descriptor: ExternalMCPToolDescriptor"))
     }
 
     func testToolExecutionContextRequiresExplicitSource() throws {

@@ -684,6 +684,13 @@
 - [x] OpenAI Responses / Chat Completions providers は schema load failure を plan generation failure として返す。
 - [x] 完了条件: AI planning prompt が完全な ActionPlan schema なしに成功しない。
 
+### P10-085: External MCP audit metadata uses verified descriptor
+
+- [x] `ExternalMCPToolExecutor` は audit metadata 作成時に `try? registry.descriptor` で risk を `unknown` に丸めない。
+- [x] 実行前に取得した `ExternalMCPToolDescriptor` を started / succeeded / failed audit metadata へ渡す。
+- [x] external MCP read execution audit に `risk=read` が残ることを unit test で確認する。
+- [x] 完了条件: MCP 実行ログが tool permission metadata を欠落させず、レビュー可能な監査証跡になる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
