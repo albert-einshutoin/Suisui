@@ -111,7 +111,7 @@ private struct MenuBarPanel: View {
                 SummaryRow(row: row)
             }
 
-            if let emptyStateLabel = viewModel.emptyStateLabel {
+            if let emptyStateLabel = controller.emptyStateLabel {
                 Text(emptyStateLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)

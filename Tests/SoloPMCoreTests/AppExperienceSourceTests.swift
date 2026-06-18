@@ -133,6 +133,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("MenuBarPanel(controller: menuBarController)"))
         XCTAssertTrue(appSource.contains("makeMenuBarSummaryController()"))
         XCTAssertTrue(appSource.contains(".onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange))"))
+        XCTAssertTrue(appSource.contains("controller.emptyStateLabel"))
         XCTAssertFalse(appSource.contains("private let menuBarViewModel = AppRuntimeFactory.makeMenuBarSummaryViewModel()"))
         XCTAssertFalse(appSource.contains("StaticMenuBarSummaryProvider(summary: .empty)"))
         XCTAssertTrue(appSource.contains("UnavailableMenuBarSummaryProvider(error: error)"))

@@ -846,6 +846,13 @@
 - [x] started event は実行開始証跡として duration / error なしを許可する。
 - [x] 完了条件: MCP外部呼び出しの終端履歴が、所要時間や失敗理由を欠いたまま正常な監査履歴として表示されない。
 
+### P10-108: Menu bar summary load failure is not rendered as empty state
+
+- [x] `MenuBarSummaryController` は初回読込失敗時に空 summary の `No deadlines need attention` を表示用 empty state として返さない。
+- [x] Menu bar UI は `viewModel.emptyStateLabel` を直接読まず、controller の error-aware empty state を使う。
+- [x] `MenuBarSummaryViewModelTests` と `AppExperienceSourceTests` で読込失敗と UI wiring の regression を固定する。
+- [x] 完了条件: DB / local store が開けない状態を、締切がない正常状態として menu bar に表示しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

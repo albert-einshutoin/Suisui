@@ -50,6 +50,16 @@ final class MenuBarSummaryViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testMenuBarSummaryControllerHidesEmptyStateWhenInitialRefreshFails() {
+        let controller = MenuBarSummaryController(provider: AlwaysFailingMenuBarSummaryProvider())
+
+        controller.refresh()
+
+        XCTAssertEqual(controller.errorMessage, "Menu bar summary is unavailable.")
+        XCTAssertNil(controller.emptyStateLabel)
+    }
+
+    @MainActor
     func testMenuBarSummaryControllerRefreshesFromProvider() {
         let provider = MutableMenuBarSummaryProvider(summary: MenuBarSummary(todayTaskCount: 1))
         let controller = MenuBarSummaryController(provider: provider)
@@ -123,5 +133,11 @@ private final class FailingAfterFirstMenuBarSummaryProvider: MenuBarSummaryProvi
             throw DatabaseError.stepFailed("summary unavailable")
         }
         return summary
+    }
+}
+
+private struct AlwaysFailingMenuBarSummaryProvider: MenuBarSummaryProviding {
+    func loadMenuBarSummary() throws -> MenuBarSummary {
+        throw DatabaseError.stepFailed("summary unavailable")
     }
 }

@@ -147,6 +147,13 @@ public final class MenuBarSummaryController: ObservableObject {
         self.viewModel = initialViewModel
     }
 
+    public var emptyStateLabel: String? {
+        guard errorMessage == nil else {
+            return nil
+        }
+        return viewModel.emptyStateLabel
+    }
+
     public func refresh() {
         do {
             viewModel = MenuBarSummaryViewModel(summary: try provider.loadMenuBarSummary())
