@@ -1202,6 +1202,15 @@
 - [x] `ProjectTaskKnowledgeToolTests` / `LocalStoreTests` / `ToolArgumentsTests` で null clear、schema、永続層、引数層の責務を固定する。
 - [x] 完了条件: AI-generated Action Plan と Review UI から、タスクカードの主要メタデータを設定するだけでなく安全に削除できる。
 
+### P10-155: Project tool CRUD covers editable metadata updates and clears
+
+- [x] `project.update` は create で保存できる editable metadata のうち、`priority` / `deadline` / `workspacePath` / `tags` を更新できる。
+- [x] `project.update` は `priority` / `deadline` / `workspacePath` の `JSON null` を `NULL` クリアとして扱い、`tags` の `JSON null` を空タグ配列として扱う。
+- [x] SQLite project store は nullable field update で unchanged / set / clear を区別し、既存の `update` / `archive` / `restore` 呼び出し互換を保つ。
+- [x] Tool input schema は `string|null` / `array|null` を表現し、Review UI validation が metadata update / clear 操作を拒否しない。
+- [x] `sourceCommand` は作成時来歴として更新対象から外し、Review UI から provenance を上書きしない。
+- [x] 完了条件: AI-generated Action Plan と Review UI から、Project の主要メタデータを作成後も編集・クリアできる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

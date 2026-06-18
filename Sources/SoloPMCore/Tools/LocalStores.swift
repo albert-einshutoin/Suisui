@@ -171,6 +171,18 @@ public final class SQLiteProjectStore: @unchecked Sendable {
     }
 
     public func update(id: Int64, title: String? = nil, status: String? = nil) throws -> ProjectRecord {
+        try updateFields(id: id, title: title, status: status)
+    }
+
+    public func updateFields(
+        id: Int64,
+        title: String? = nil,
+        status: String? = nil,
+        priority: NullableFieldUpdate<String> = .unchanged,
+        deadline: NullableFieldUpdate<String> = .unchanged,
+        workspacePath: NullableFieldUpdate<String> = .unchanged,
+        tags: NullableFieldUpdate<[String]> = .unchanged
+    ) throws -> ProjectRecord {
         lock.lock()
         defer { lock.unlock() }
 
@@ -182,6 +194,43 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         if let status {
             let normalizedStatus = try StoreFieldValidation.projectStatus(status, tool: .projectUpdate)
             assignments.append("status = '\(SQL.escape(normalizedStatus))'")
+        }
+        switch priority {
+        case .unchanged:
+            break
+        case .set(let priority):
+            let normalizedPriority = try StoreFieldValidation.requiredTrimmed(priority, argument: "priority", tool: .projectUpdate)
+            assignments.append("priority = '\(SQL.escape(normalizedPriority))'")
+        case .clear:
+            assignments.append("priority = NULL")
+        }
+        switch deadline {
+        case .unchanged:
+            break
+        case .set(let deadline):
+            let normalizedDeadline = try StoreFieldValidation.requiredTrimmed(deadline, argument: "deadline", tool: .projectUpdate)
+            assignments.append("deadline = '\(SQL.escape(normalizedDeadline))'")
+        case .clear:
+            assignments.append("deadline = NULL")
+        }
+        switch workspacePath {
+        case .unchanged:
+            break
+        case .set(let workspacePath):
+            let normalizedWorkspacePath = try StoreFieldValidation.requiredTrimmed(workspacePath, argument: "workspacePath", tool: .projectUpdate)
+            assignments.append("workspace_path = '\(SQL.escape(normalizedWorkspacePath))'")
+        case .clear:
+            assignments.append("workspace_path = NULL")
+        }
+        switch tags {
+        case .unchanged:
+            break
+        case .set(let tags):
+            let normalizedTags = try StoreFieldValidation.trimmedStringArray(tags, argument: "tags", tool: .projectUpdate)
+            let tagsJSON = try SQL.jsonArray(normalizedTags, column: "projects.tags_json")
+            assignments.append("tags_json = '\(SQL.escape(tagsJSON))'")
+        case .clear:
+            assignments.append("tags_json = '[]'")
         }
         assignments.append("updated_at = CURRENT_TIMESTAMP")
 
@@ -879,6 +928,16 @@ enum StoreFieldValidation {
             throw ToolExecutionError.validationFailed(tool, "Argument '\(argument)' cannot be blank.")
         }
         return value
+    }
+
+    static func trimmedStringArray(_ values: [String], argument: String, tool: ActionTool) throws -> [String] {
+        try values.enumerated().map { index, value in
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                throw ToolExecutionError.validationFailed(tool, "Argument '\(argument)[\(index)]' cannot be blank.")
+            }
+            return trimmed
+        }
     }
 
     static func projectStatus(_ value: String, tool: ActionTool) throws -> String {

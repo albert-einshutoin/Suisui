@@ -41,10 +41,14 @@ public struct ProjectTool: Tool {
                 compensationHint: "Project can be completed or deleted by a future cleanup flow."
             )
         case .projectUpdate:
-            let record = try store.update(
+            let record = try store.updateFields(
                 id: try args.requiredInt64("id"),
                 title: try args.optionalTrimmedString("title"),
-                status: try args.optionalTrimmedString("status")
+                status: try args.optionalTrimmedString("status"),
+                priority: try args.nullableTrimmedString("priority"),
+                deadline: try args.nullableTrimmedString("deadline"),
+                workspacePath: try args.nullableTrimmedString("workspacePath"),
+                tags: try args.nullableTrimmedStringArray("tags")
             )
             return ToolResult(tool: name, status: .succeeded, summary: "Updated project \(record.title)", output: ["projectId": .number(Double(record.id))])
         case .projectComplete:
@@ -76,8 +80,8 @@ public struct ProjectTool: Tool {
         case .projectUpdate:
             ToolInputSchema(
                 required: ["id"],
-                properties: ["id": "integer", "title": "string", "status": "string"],
-                nonBlank: ["title", "status"]
+                properties: ["id": "integer", "title": "string", "status": "string", "priority": "string|null", "deadline": "string|null", "workspacePath": "string|null", "tags": "array|null"],
+                nonBlank: ["title", "status", "priority", "deadline", "workspacePath"]
             )
         case .projectGet, .projectComplete:
             ToolInputSchema(required: ["id"], properties: ["id": "integer"])

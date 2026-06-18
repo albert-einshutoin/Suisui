@@ -163,6 +163,19 @@ public struct ToolArguments: Sendable {
         return try trimmedStringArrayValues(values, key: key)
     }
 
+    public func nullableTrimmedStringArray(_ key: String) throws -> NullableFieldUpdate<[String]> {
+        switch raw[key] {
+        case .array:
+            return .set(try trimmedStringArray(key))
+        case .null:
+            return .clear
+        case nil:
+            return .unchanged
+        default:
+            throw ToolExecutionError.validationFailed(tool, "Argument '\(key)' must be array or null.")
+        }
+    }
+
     public func optionalStringArray(_ key: String) throws -> [String]? {
         guard let rawValue = raw[key] else {
             return nil

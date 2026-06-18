@@ -74,6 +74,81 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(try stores.projects.get(id: project.id).title, "Launch Readiness")
     }
 
+    func testProjectUpdateToolPersistsEditableMetadata() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "Launch Readiness")
+        let tool = ProjectTool(name: .projectUpdate, store: stores.projects)
+
+        _ = try tool.execute(
+            arguments: [
+                "id": .number(Double(project.id)),
+                "priority": .string("high"),
+                "deadline": .string("2026-06-30"),
+                "workspacePath": .string("/tmp/solopm-launch"),
+                "tags": .array([.string("release"), .string("alpha")])
+            ],
+            context: approvedContext()
+        )
+
+        let updated = try stores.projects.get(id: project.id)
+        XCTAssertEqual(updated.priority, "high")
+        XCTAssertEqual(updated.deadline, "2026-06-30")
+        XCTAssertEqual(updated.workspacePath, "/tmp/solopm-launch")
+        XCTAssertEqual(updated.tags, ["release", "alpha"])
+    }
+
+    func testProjectUpdateToolClearsEditableMetadataWithNullArguments() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(
+            title: "Launch Readiness",
+            priority: "high",
+            deadline: "2026-06-30",
+            workspacePath: "/tmp/solopm-launch",
+            tags: ["release", "alpha"]
+        )
+        let tool = ProjectTool(name: .projectUpdate, store: stores.projects)
+
+        _ = try tool.execute(
+            arguments: [
+                "id": .number(Double(project.id)),
+                "priority": .null,
+                "deadline": .null,
+                "workspacePath": .null,
+                "tags": .null
+            ],
+            context: approvedContext()
+        )
+
+        let updated = try stores.projects.get(id: project.id)
+        XCTAssertNil(updated.priority)
+        XCTAssertNil(updated.deadline)
+        XCTAssertNil(updated.workspacePath)
+        XCTAssertEqual(updated.tags, [])
+    }
+
+    func testProjectUpdateSchemaAcceptsMetadataUpdateAndClearArguments() throws {
+        let stores = try makeStores()
+        let update = ProjectTool(name: .projectUpdate, store: stores.projects)
+
+        XCTAssertEqual(update.inputSchema.properties["priority"], "string|null")
+        XCTAssertEqual(update.inputSchema.properties["deadline"], "string|null")
+        XCTAssertEqual(update.inputSchema.properties["workspacePath"], "string|null")
+        XCTAssertEqual(update.inputSchema.properties["tags"], "array|null")
+
+        let issues = update.inputSchema.validate(
+            arguments: [
+                "id": .number(1),
+                "priority": .null,
+                "deadline": .null,
+                "workspacePath": .null,
+                "tags": .null
+            ],
+            tool: .projectUpdate
+        )
+
+        XCTAssertEqual(issues, [])
+    }
+
     func testTaskBulkCreatePersistsTasksTransactionallyEnoughForMVP() throws {
         let stores = try makeStores()
         let tool = TaskTool(name: .taskBulkCreate, store: stores.tasks)

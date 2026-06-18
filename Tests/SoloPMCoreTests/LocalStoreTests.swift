@@ -123,6 +123,38 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(try store.list().map(\.title), ["Paused Launch"])
     }
 
+    func testProjectStoreUpdatesAndClearsEditableMetadata() throws {
+        let connection = try migratedConnection()
+        let store = SQLiteProjectStore(connection: connection)
+        let project = try store.create(title: "Launch alpha")
+
+        let updated = try store.updateFields(
+            id: project.id,
+            priority: .set("high"),
+            deadline: .set("2026-06-30"),
+            workspacePath: .set("/tmp/solopm-launch"),
+            tags: .set(["release", "alpha"])
+        )
+
+        XCTAssertEqual(updated.priority, "high")
+        XCTAssertEqual(updated.deadline, "2026-06-30")
+        XCTAssertEqual(updated.workspacePath, "/tmp/solopm-launch")
+        XCTAssertEqual(updated.tags, ["release", "alpha"])
+
+        let cleared = try store.updateFields(
+            id: project.id,
+            priority: .clear,
+            deadline: .clear,
+            workspacePath: .clear,
+            tags: .clear
+        )
+
+        XCTAssertNil(cleared.priority)
+        XCTAssertNil(cleared.deadline)
+        XCTAssertNil(cleared.workspacePath)
+        XCTAssertEqual(cleared.tags, [])
+    }
+
     func testTaskStoreCreatesAndQueriesDueTasks() throws {
         let connection = try migratedConnection()
         let store = SQLiteTaskStore(connection: connection)

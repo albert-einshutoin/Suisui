@@ -63,6 +63,20 @@ final class ToolArgumentsTests: XCTestCase {
         XCTAssertEqual(try arguments.nullableInt64("frameId"), .unchanged)
     }
 
+    func testNullableTrimmedStringArrayTreatsNullAsClearAndOmissionAsUnchanged() throws {
+        let arguments = ToolArguments(
+            [
+                "tags": .array([.string(" release "), .string("alpha")]),
+                "triggers": .null
+            ],
+            tool: .projectUpdate
+        )
+
+        XCTAssertEqual(try arguments.nullableTrimmedStringArray("tags"), .set(["release", "alpha"]))
+        XCTAssertEqual(try arguments.nullableTrimmedStringArray("triggers"), .clear)
+        XCTAssertEqual(try arguments.nullableTrimmedStringArray("tasks"), .unchanged)
+    }
+
     func testTrimmedStringArrayRejectsBlankElementsInsteadOfDroppingThem() throws {
         let arguments = ToolArguments(["tags": .array([.string("oss"), .string("  ")])], tool: .projectCreate)
 
