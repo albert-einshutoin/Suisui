@@ -50,7 +50,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("ViewThatFits(in: .horizontal)"))
         XCTAssertTrue(source.contains("ProjectHeaderSummary"))
         XCTAssertTrue(source.contains("ProjectHeaderActions"))
-        XCTAssertTrue(source.contains("TaskMetadataRow"))
+        XCTAssertTrue(source.contains("TaskCardMetadataStrip"))
         XCTAssertTrue(source.contains("ScrollView([.horizontal, .vertical])"))
         XCTAssertTrue(source.contains(".defaultScrollAnchor(.topLeading)"))
         XCTAssertTrue(source.contains(".scrollIndicators(.visible)"))
@@ -231,6 +231,26 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".onHover { isPointerHovered = $0 }"))
         XCTAssertTrue(source.contains(".shadow(color: Color.black.opacity(isPointerHovered ? 0.10 : 0.04)"))
         XCTAssertTrue(source.contains(".animation(.snappy(duration: 0.16), value: isPointerHovered)"))
+    }
+
+    func testTaskCardsUseSampleInspiredNonOverlappingMetadataStrip() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+        let audit = try readPackageFile("docs/ux/click-path-audit.md")
+
+        XCTAssertTrue(source.contains("TaskCardMetadataStrip(task: task)"))
+        XCTAssertTrue(source.contains("private struct TaskCardMetadataStrip"))
+        XCTAssertTrue(source.contains("private struct TaskMetadataChip"))
+        XCTAssertTrue(source.contains("GridItem(.adaptive(minimum: 72), spacing: 6)"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"task-card-metadata-strip\")"))
+        XCTAssertTrue(source.contains(".accessibilityValue(\"\\(task.status.title), \\(task.priority.label), \\(dueValue)\")"))
+        XCTAssertTrue(source.contains("No due date"))
+        XCTAssertTrue(source.contains(".minimumScaleFactor(0.82)"))
+        XCTAssertTrue(source.contains(".frame(minWidth: 64, maxWidth: .infinity, minHeight: 24, alignment: .leading)"))
+        XCTAssertTrue(phase.contains("[x] `ui-samples/01.png`、`03.png`、`04.png` を基準に、左サイドバー、中央ボード/リスト、右インスペクタの情報密度を見直す。"))
+        XCTAssertTrue(phase.contains("[x] Task card metadata strip はstatus / priority / dueを固定寸法chipに分離し、狭いKanban列ではadaptive gridへ逃がす。"))
+        XCTAssertTrue(audit.contains("Task card metadata strip"))
+        XCTAssertTrue(audit.contains("status / priority / dueを固定寸法chip"))
     }
 
     func testProjectBoardExposesPrimaryCRUDKeyboardShortcuts() throws {

@@ -1073,7 +1073,7 @@ private struct TaskCardSelectableSummary: View {
                         .help(task.detail)
                 }
 
-                TaskMetadataRow(task: task)
+                TaskCardMetadataStrip(task: task)
             }
         }
     }
@@ -1195,41 +1195,77 @@ private struct TaskStatusMoveControls: View {
     }
 }
 
-private struct TaskMetadataRow: View {
+private struct TaskCardMetadataStrip: View {
     let task: ProjectBoardTask
+
+    private var compactColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: 72), spacing: 6)]
+    }
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                priorityLabel
-
-                Spacer(minLength: 8)
-
-                dueLabel
+            HStack(spacing: 6) {
+                metadataChips
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                priorityLabel
-                dueLabel
+            LazyVGrid(columns: compactColumns, alignment: .leading, spacing: 6) {
+                metadataChips
             }
         }
-        .font(.caption)
-    }
-
-    private var priorityLabel: some View {
-        Label(task.priority.label, systemImage: "flag")
-            .foregroundStyle(task.priority.color)
-            .lineLimit(1)
+        .font(.caption2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Task metadata")
+        .accessibilityValue("\(task.status.title), \(task.priority.label), \(dueValue)")
+        .accessibilityIdentifier("task-card-metadata-strip")
     }
 
     @ViewBuilder
-    private var dueLabel: some View {
-        if let dueLabel = task.dueLabel {
-            Label(dueLabel, systemImage: "calendar")
+    private var metadataChips: some View {
+        TaskMetadataChip(
+            value: task.status.title,
+            systemImage: task.status.systemImage,
+            tint: task.status.tint
+        )
+
+        TaskMetadataChip(
+            value: task.priority.label,
+            systemImage: "flag",
+            tint: task.priority.color
+        )
+
+        TaskMetadataChip(
+            value: dueValue,
+            systemImage: "calendar",
+            tint: task.dueLabel == nil ? .secondary : .blue
+        )
+    }
+
+    private var dueValue: String {
+        task.dueLabel ?? "No due date"
+    }
+}
+
+private struct TaskMetadataChip: View {
+    let value: String
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        Label {
+            Text(value)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .help(dueLabel)
+                .minimumScaleFactor(0.82)
+        } icon: {
+            Image(systemName: systemImage)
+                .frame(width: 12)
         }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .frame(minWidth: 64, maxWidth: .infinity, minHeight: 24, alignment: .leading)
+        .background(tint.opacity(0.10), in: Capsule())
+        .help(value)
     }
 }
 

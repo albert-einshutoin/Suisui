@@ -142,8 +142,9 @@
 
 ## P11-031: Board and inspector UX upgrade
 
-- [ ] `ui-samples/01.png`、`03.png`、`04.png` を基準に、左サイドバー、中央ボード/リスト、右インスペクタの情報密度を見直す。
+- [x] `ui-samples/01.png`、`03.png`、`04.png` を基準に、左サイドバー、中央ボード/リスト、右インスペクタの情報密度を見直す。
 - [x] Task cardの選択領域を `Open task` のキーボードフォーカス可能なButtonにし、status移動コントロールとdrag affordanceが同じアクセシビリティ要素に潰れないよう分離する。
+- [x] Task card metadata strip はstatus / priority / dueを固定寸法chipに分離し、狭いKanban列ではadaptive gridへ逃がす。
 - [x] Project Detailではタスク一覧、成果物、タイムライン、AI提案をタブまたはセクションとして整理する。
 - [ ] Task cardはタイトル、状態、優先度、期限、ドラッグ affordance が重ならず表示されることをスクリーンショットで確認する。
 - [x] 右インスペクタは選択中タスク/プロジェクトの編集、削除、AI提案の適用を一箇所に集約する。
