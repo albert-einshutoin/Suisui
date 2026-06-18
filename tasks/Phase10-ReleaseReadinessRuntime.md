@@ -1240,6 +1240,15 @@
 - [x] `ExternalMCPTests` でupsert、append、single delete、ViewModel経由保存/削除を固定する。
 - [x] 完了条件: 外部MCPサーバに接続しなくても、ローカルSQLite上のMCP設定CRUDが行単位で実働し、他の登録を巻き込まない。
 
+### P10-159: Project Board is visible on normal macOS launch
+
+- [x] `script/build_and_run.sh --verify` は保存済みウィンドウ状態に引きずられず、Project Board を表示して起動確認できる。
+- [x] generated `Info.plist` は `NSQuitAlwaysKeepsWindows=false` を持ち、macOS Resume が「ウィンドウなし」状態を復元しない。
+- [x] `SoloPMAppDelegate` は通常起動時に regular app として activate し、ウィンドウが見えていない場合は `WindowGroup` の New Window action を送る。
+- [x] Dock 再クリックなど `applicationShouldHandleReopen` で visible window がない場合も Project Board を復帰する。
+- [x] `LaunchExperienceTests` で build script と AppDelegate の起動復帰契約を固定する。
+- [x] 完了条件: ビルド成功後にプロセスだけ残り、ユーザーが Project Board を触れない状態で止まらない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

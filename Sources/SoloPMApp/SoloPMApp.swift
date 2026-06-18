@@ -1,14 +1,16 @@
 import SoloPMCore
 import SwiftUI
-#if canImport(Sparkle)
+#if canImport(AppKit)
 import AppKit
+#endif
+#if canImport(Sparkle)
 import Sparkle
 #endif
 
 @main
 struct SoloPM: App {
-#if canImport(Sparkle)
-    @NSApplicationDelegateAdaptor(SparkleAppDelegate.self) private var sparkleAppDelegate
+#if canImport(AppKit)
+    @NSApplicationDelegateAdaptor(SoloPMAppDelegate.self) private var appDelegate
 #endif
     @StateObject private var menuBarController: MenuBarSummaryController
     @AppStorage(SoloPMAppearancePreference.storageKey) private var appearancePreference: SoloPMAppearancePreference = .system
@@ -49,14 +51,20 @@ struct SoloPM: App {
     }
 }
 
+#if canImport(AppKit)
+@MainActor
+private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
 #if canImport(Sparkle)
-private final class SparkleAppDelegate: NSObject, NSApplicationDelegate {
     private var updaterController: SPUStandardUpdaterController?
+#endif
+    private var projectBoardWindowRestoreAttempts = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        ensureProjectBoardWindowIsVisible()
 
+#if canImport(Sparkle)
         guard Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String != nil,
               Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String != nil else {
             return
@@ -67,6 +75,55 @@ private final class SparkleAppDelegate: NSObject, NSApplicationDelegate {
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
+#endif
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            ensureProjectBoardWindowIsVisible()
+            return false
+        }
+        return true
+    }
+
+    private func ensureProjectBoardWindowIsVisible() {
+        projectBoardWindowRestoreAttempts = 0
+        attemptEnsureProjectBoardWindowIsVisible(after: 0.25)
+    }
+
+    private func attemptEnsureProjectBoardWindowIsVisible(after delay: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            NSApp.activate(ignoringOtherApps: true)
+            guard self.visibleProjectBoardWindows.isEmpty else {
+                return
+            }
+
+            let didRequestWindow = self.performNewProjectBoardWindowMenuItem()
+                || NSApp.sendAction(#selector(NSWindow.newWindowForTab(_:)), to: nil, from: nil)
+
+            self.projectBoardWindowRestoreAttempts += 1
+            guard self.projectBoardWindowRestoreAttempts < 12 else {
+                return
+            }
+
+            self.attemptEnsureProjectBoardWindowIsVisible(after: didRequestWindow ? 0.75 : 0.25)
+        }
+    }
+
+    private func performNewProjectBoardWindowMenuItem() -> Bool {
+        guard let fileMenu = NSApp.mainMenu?.item(withTitle: "File")?.submenu,
+              let itemIndex = fileMenu.items.firstIndex(where: { $0.title == "New SoloPM Window" && $0.isEnabled }) else {
+            return false
+        }
+
+        fileMenu.performActionForItem(at: itemIndex)
+        return true
+    }
+
+    private var visibleProjectBoardWindows: [NSWindow] {
+        NSApp.windows.filter { window in
+            window.isVisible && !window.isMiniaturized && window.title == "SoloPM"
+        }
     }
 }
 #endif

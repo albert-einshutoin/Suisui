@@ -113,6 +113,8 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$MIN_SYSTEM_VERSION</string>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
+  <key>NSQuitAlwaysKeepsWindows</key>
+  <false/>
   <key>NSMicrophoneUsageDescription</key>
   <string>SoloPM uses the microphone when you explicitly start voice capture.</string>
   <key>NSHumanReadableCopyright</key>
@@ -131,7 +133,7 @@ if [[ "$BUILD_CONFIGURATION" == "debug" ]]; then
 fi
 
 open_app() {
-  /usr/bin/open -n "$APP_BUNDLE"
+  /usr/bin/open -n -F "$APP_BUNDLE"
   /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 || true
 }
 
