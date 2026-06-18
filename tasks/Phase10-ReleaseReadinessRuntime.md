@@ -867,6 +867,13 @@
 - [x] `ProjectBoardStoreTests` と `AppExperienceSourceTests` で load failure と UI state ordering の regression を固定する。
 - [x] 完了条件: CRUD の永続DBが開けない状態を、単にプロジェクトが未作成な正常状態として表示しない。
 
+### P10-111: API key save does not hide Keychain status refresh failure
+
+- [x] `AppSettingsViewModel` は API key 保存 / 削除後の Keychain status refresh 成否を判定する。
+- [x] status refresh が失敗した場合、`Unavailable` と error message を残し、成功メッセージで上書きしない。
+- [x] OpenAI / OpenRouter の両方で保存後 status refresh failure の regression test を追加する。
+- [x] 完了条件: API key が保存できたように見えても、直後に Keychain から状態確認できない場合は成功扱いしない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

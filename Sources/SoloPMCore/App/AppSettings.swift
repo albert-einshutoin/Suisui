@@ -268,7 +268,9 @@ public final class AppSettingsViewModel: ObservableObject {
         do {
             try secretStore.save(trimmed, for: .openAIAPIKey)
             openAIAPIKeyInput = ""
-            refreshOpenAIAPIKeyStatus()
+            guard refreshOpenAIAPIKeyStatus() else {
+                return
+            }
             errorMessage = nil
             successMessage = "API key saved to Keychain."
         } catch {
@@ -290,7 +292,9 @@ public final class AppSettingsViewModel: ObservableObject {
         do {
             try secretStore.save(trimmed, for: .openRouterAPIKey)
             openRouterAPIKeyInput = ""
-            refreshOpenRouterAPIKeyStatus()
+            guard refreshOpenRouterAPIKeyStatus() else {
+                return
+            }
             errorMessage = nil
             successMessage = "OpenRouter API key saved to Keychain."
         } catch {
@@ -303,7 +307,9 @@ public final class AppSettingsViewModel: ObservableObject {
         do {
             try secretStore.delete(.openAIAPIKey)
             openAIAPIKeyInput = ""
-            refreshOpenAIAPIKeyStatus()
+            guard refreshOpenAIAPIKeyStatus() else {
+                return
+            }
             errorMessage = nil
             successMessage = "API key removed."
         } catch {
@@ -316,7 +322,9 @@ public final class AppSettingsViewModel: ObservableObject {
         do {
             try secretStore.delete(.openRouterAPIKey)
             openRouterAPIKeyInput = ""
-            refreshOpenRouterAPIKeyStatus()
+            guard refreshOpenRouterAPIKeyStatus() else {
+                return
+            }
             errorMessage = nil
             successMessage = "OpenRouter API key removed."
         } catch {
@@ -325,25 +333,31 @@ public final class AppSettingsViewModel: ObservableObject {
         }
     }
 
-    public func refreshOpenAIAPIKeyStatus() {
+    @discardableResult
+    public func refreshOpenAIAPIKeyStatus() -> Bool {
         do {
             let stored = try secretStore.read(.openAIAPIKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
             openAIAPIKeyStatusLabel = stored?.isEmpty == false ? "Configured" : "Not configured"
+            return true
         } catch {
             openAIAPIKeyStatusLabel = "Unavailable"
             errorMessage = "API key status could not be read from Keychain."
             successMessage = nil
+            return false
         }
     }
 
-    public func refreshOpenRouterAPIKeyStatus() {
+    @discardableResult
+    public func refreshOpenRouterAPIKeyStatus() -> Bool {
         do {
             let stored = try secretStore.read(.openRouterAPIKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
             openRouterAPIKeyStatusLabel = stored?.isEmpty == false ? "Configured" : "Not configured"
+            return true
         } catch {
             openRouterAPIKeyStatusLabel = "Unavailable"
             errorMessage = "API key status could not be read from Keychain."
             successMessage = nil
+            return false
         }
     }
 

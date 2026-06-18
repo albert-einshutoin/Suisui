@@ -85,6 +85,42 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testAppSettingsViewModelDoesNotReportOpenAIKeySaveSuccessWhenStatusRefreshFails() throws {
+        let suiteName = "SoloPM.AppSettingsOpenAISaveRefreshFailure.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: ThrowingReadSecretStore()
+        )
+
+        viewModel.updateOpenAIAPIKeyInput("sk-test")
+        viewModel.saveOpenAIAPIKey()
+
+        XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Unavailable")
+        XCTAssertEqual(viewModel.errorMessage, "API key status could not be read from Keychain.")
+        XCTAssertNil(viewModel.successMessage)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelDoesNotReportOpenRouterKeySaveSuccessWhenStatusRefreshFails() throws {
+        let suiteName = "SoloPM.AppSettingsOpenRouterSaveRefreshFailure.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: ThrowingReadSecretStore()
+        )
+
+        viewModel.updateOpenRouterAPIKeyInput("sk-or-test")
+        viewModel.saveOpenRouterAPIKey()
+
+        XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Unavailable")
+        XCTAssertEqual(viewModel.errorMessage, "API key status could not be read from Keychain.")
+        XCTAssertNil(viewModel.successMessage)
+    }
+
+    @MainActor
     func testAppSettingsViewModelSavesAndDeletesOpenAIKeyInSecretStoreOnly() throws {
         let suiteName = "SoloPM.AppSettingsViewModelTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
