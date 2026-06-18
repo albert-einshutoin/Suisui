@@ -54,6 +54,14 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("release app signature is missing hardened runtime"))
     }
 
+    func testReleasePreflightRequiresSignedEntitlementsToMatchManifest() throws {
+        let script = try readPackageFile("script/verify_release_environment.sh")
+
+        XCTAssertTrue(script.contains("packaging/SoloPM.entitlements"))
+        XCTAssertTrue(script.contains("codesign -d --entitlements :-"))
+        XCTAssertTrue(script.contains("release app entitlements do not match packaging/SoloPM.entitlements"))
+    }
+
     func testReleasePreflightRequiresAppBundleMetadataToMatchReleaseMetadata() throws {
         let script = try readPackageFile("script/verify_release_environment.sh")
 

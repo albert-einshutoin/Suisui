@@ -393,6 +393,12 @@
 - [x] 複数 package artifact を作った場合は `SOLOPM_RELEASE_ARTIFACT_SHA256_FILE` で証跡対象を明示する。
 - [x] 完了条件: release evidence / manual evidence は曖昧な DMG/ZIP 自動選択ではなく、明示された package checksum に紐づく。
 
+### P10-049: Release app entitlements gate
+
+- [x] `verify_release_environment.sh` は signed app から `codesign -d --entitlements :-` で entitlements を読み、`packaging/SoloPM.entitlements` と照合する。
+- [x] 現在の空 entitlements は signed app の空 entitlements として扱い、将来 entitlement を追加した場合は mismatch を release blocker にする。
+- [x] 完了条件: public alpha 用 app bundle は repository の entitlements manifest と一致した署名だけを release path として扱う。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

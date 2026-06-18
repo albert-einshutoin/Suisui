@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 SIGNING_ENV_FILE="$ROOT_DIR/packaging/signing.env"
 NOTARIZATION_ENV_FILE="$ROOT_DIR/packaging/notarization.env"
+ENTITLEMENTS_FILE="$ROOT_DIR/packaging/SoloPM.entitlements"
 RELEASE_EVIDENCE_FILE="${SOLOPM_RELEASE_EVIDENCE_FILE:-$ROOT_DIR/packaging/release-evidence.json}"
 PLIST_BUDDY="/usr/libexec/PlistBuddy"
 MULTIPLE_RELEASE_ARTIFACT_CHECKSUMS="__multiple_release_artifact_checksums__"
@@ -121,8 +122,53 @@ require_app_bundle_metadata() {
   fi
 }
 
+normalized_entitlements_json() {
+  local entitlements_path="$1"
+  plutil -convert json -o - "$entitlements_path" 2>/dev/null
+}
+
+signed_entitlements_json() {
+  local app_bundle="$1"
+  local signed_entitlements
+
+  signed_entitlements="$(codesign -d --entitlements :- "$app_bundle" 2>/dev/null || true)"
+  if [[ -z "$signed_entitlements" ]]; then
+    printf "{}"
+    return
+  fi
+
+  printf "%s" "$signed_entitlements" | plutil -convert json -o - - 2>/dev/null
+}
+
+require_app_entitlements() {
+  local app_bundle="$1"
+  local expected_entitlements
+  local actual_entitlements
+
+  if [[ ! -f "$ENTITLEMENTS_FILE" ]]; then
+    return
+  fi
+
+  expected_entitlements="$(normalized_entitlements_json "$ENTITLEMENTS_FILE" || true)"
+  actual_entitlements="$(signed_entitlements_json "$app_bundle" || true)"
+
+  if [[ -z "$expected_entitlements" ]]; then
+    add_blocker "packaging/SoloPM.entitlements is not valid plist"
+    return
+  fi
+
+  if [[ -z "$actual_entitlements" ]]; then
+    add_blocker "release app entitlements could not be read: $app_bundle"
+    return
+  fi
+
+  if [[ "$actual_entitlements" != "$expected_entitlements" ]]; then
+    add_blocker "release app entitlements do not match packaging/SoloPM.entitlements"
+  fi
+}
+
 require_file "$METADATA_FILE" "app metadata"
-require_file "$ROOT_DIR/packaging/SoloPM.entitlements" "entitlements"
+require_file "$ENTITLEMENTS_FILE" "entitlements"
 require_file "$ROOT_DIR/packaging/signing.env.example" "signing env example"
 require_file "$ROOT_DIR/packaging/notarization.env.example" "notarization env example"
 require_executable "$ROOT_DIR/script/create_release_evidence.sh" "release evidence script"
@@ -390,6 +436,7 @@ fi
 
 if [[ -d "$APP_BUNDLE" ]]; then
   require_app_bundle_metadata "$APP_BUNDLE" "$BUNDLE_IDENTIFIER" "${MARKETING_VERSION:-}" "${CURRENT_PROJECT_VERSION:-}"
+  require_app_entitlements "$APP_BUNDLE"
 
   if ! codesign --verify --strict --deep --verbose=2 "$APP_BUNDLE" >/dev/null 2>&1; then
     add_blocker "dist app failed codesign verification: $APP_BUNDLE"
