@@ -54,7 +54,24 @@ if [[ ! -d "$APP_BUNDLE" ]]; then
   exit 2
 fi
 
+require_distribution_signature() {
+  local app_bundle="$1"
+  local signature_details
+
+  signature_details="$(codesign -dv --verbose=4 "$app_bundle" 2>&1 || true)"
+  if ! grep -F "Authority=Developer ID Application:" <<<"$signature_details" >/dev/null; then
+    echo "app bundle is not signed with a Developer ID Application identity: $app_bundle" >&2
+    exit 2
+  fi
+
+  if ! grep -E "flags=.*runtime" <<<"$signature_details" >/dev/null; then
+    echo "app bundle signature is missing hardened runtime: $app_bundle" >&2
+    exit 2
+  fi
+}
+
 codesign --verify --strict --deep --verbose=2 "$APP_BUNDLE"
+require_distribution_signature "$APP_BUNDLE"
 
 rm -rf "$NOTARY_DIR"
 mkdir -p "$NOTARY_DIR"

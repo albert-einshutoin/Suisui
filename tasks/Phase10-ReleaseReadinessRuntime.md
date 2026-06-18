@@ -405,6 +405,12 @@
 - [x] `sign_app.sh` / `verify_release_environment.sh` / `verify_signing_setup.sh` の Developer ID 条件を揃える。
 - [x] 完了条件: release operator は Apple Development / Mac Developer identity を setup check green と誤認しない。
 
+### P10-051: Notarization submit signature gate
+
+- [x] `notarize_app.sh` は notary submit 前に app bundle の signature details を読み、Developer ID Application 署名でない場合は失敗する。
+- [x] `notarize_app.sh` は hardened runtime flag がない app bundle を notary submit 前に失敗させる。
+- [x] 完了条件: release operator は notarization 前に署名種別 / hardened runtime 不備をローカルで検出できる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

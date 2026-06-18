@@ -15,6 +15,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("AC_PASSWORD"))
     }
 
+    func testNotarizationRequiresDeveloperIDAndHardenedRuntimeBeforeSubmit() throws {
+        let script = try readPackageFile("script/notarize_app.sh")
+
+        XCTAssertTrue(script.contains("codesign -dv --verbose=4"))
+        XCTAssertTrue(script.contains("Authority=Developer ID Application:"))
+        XCTAssertTrue(script.contains("flags=.*runtime"))
+        XCTAssertTrue(script.contains("not signed with a Developer ID Application identity"))
+        XCTAssertTrue(script.contains("signature is missing hardened runtime"))
+    }
+
     func testReleasePreflightReportsExternalReleaseBlockersWithoutSecrets() throws {
         let script = try readPackageFile("script/verify_release_environment.sh")
 
