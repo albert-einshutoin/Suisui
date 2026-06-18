@@ -1093,6 +1093,13 @@
 - [x] `ReleasePipelineTests` で一時 release root に runtime source 欠落 fixture を作り、missing source で non-zero exit になることを固定する。
 - [x] 完了条件: runtime mock/fake scan の対象ディレクトリが typo / move / delete で欠けた状態を release ready と誤判定しない。
 
+### P10-141: Runtime marker scan command errors are release blockers
+
+- [x] `release_readiness_report.sh` は `rg` exit code `0` / `1` / その他を分け、scan error を marker なしとして扱わない。
+- [x] `rg` が権限・I/O・内部エラーで失敗した場合は scan output を表示し、`runtime mock/fake scan failed` blocker を出す。
+- [x] `ReleasePipelineTests` で fake `rg` を `PATH` に差し込み、scan command error で release report が non-zero になることを固定する。
+- [x] 完了条件: runtime source scan が実行不能な状態で `READY` を出さず、リリース前に検出可能な blocker として残す。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

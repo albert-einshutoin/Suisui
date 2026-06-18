@@ -34,11 +34,26 @@ else
   done
 
   if [[ "$missing_runtime_source" -eq 0 ]]; then
-    if rg -n "$MOCK_PATTERN" "${RUNTIME_SOURCE_DIRS[@]}"; then
-      blocker "runtime source contains mock/fake/demo/test-only markers"
-    else
-      printf "OK: no runtime mock/fake/demo markers in Sources/SoloPMCore Sources/SoloPMApp Sources/SoloPMCLI\n"
-    fi
+    set +e
+    scan_output="$(rg -n "$MOCK_PATTERN" "${RUNTIME_SOURCE_DIRS[@]}" 2>&1)"
+    scan_status=$?
+    set -e
+
+    case "$scan_status" in
+      0)
+        printf "%s\n" "$scan_output"
+        blocker "runtime source contains mock/fake/demo/test-only markers"
+        ;;
+      1)
+        printf "OK: no runtime mock/fake/demo markers in Sources/SoloPMCore Sources/SoloPMApp Sources/SoloPMCLI\n"
+        ;;
+      *)
+        if [[ -n "$scan_output" ]]; then
+          printf "%s\n" "$scan_output"
+        fi
+        blocker "runtime mock/fake scan failed"
+        ;;
+    esac
   fi
 fi
 

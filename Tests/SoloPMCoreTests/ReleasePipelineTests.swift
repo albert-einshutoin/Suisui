@@ -1344,6 +1344,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("tasks/README.md"))
         XCTAssertTrue(script.contains("verify_release_environment.sh"))
         XCTAssertTrue(script.contains("missing runtime source directory"))
+        XCTAssertTrue(script.contains("runtime mock/fake scan failed"))
         XCTAssertTrue(script.contains("BLOCKER"))
     }
 
@@ -1385,6 +1386,60 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("missing runtime source directory: Sources/SoloPMApp"))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+    }
+
+    func testReleaseReadinessReportFailsClosedWhenRuntimeScanCommandErrors() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-runtime-scan-error", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let fakeBinDirectory = fixtureRoot.appendingPathComponent("bin", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+        let fakeRgURL = fakeBinDirectory.appendingPathComponent("rg")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: fakeBinDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: preflightURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        printf "rg exploded\\n" >&2
+        exit 2
+        """.write(to: fakeRgURL, atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: preflightURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fakeRgURL.path)
+
+        let path = "\(fakeBinDirectory.path):\(ProcessInfo.processInfo.environment["PATH"] ?? "")"
+        let result = try runTool(["bash", reportURL.path], environment: ["PATH": path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("rg exploded"))
+        XCTAssertTrue(result.output.contains("runtime mock/fake scan failed"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
     }
 
@@ -1584,11 +1639,15 @@ final class ReleasePipelineTests: XCTestCase {
         return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
     }
 
-    private func runTool(_ arguments: [String]) throws -> (exitCode: Int32, output: String) {
+    private func runTool(
+        _ arguments: [String],
+        environment: [String: String] = [:]
+    ) throws -> (exitCode: Int32, output: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = arguments
         process.currentDirectoryURL = packageRoot()
+        process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
 
         let output = Pipe()
         process.standardOutput = output
