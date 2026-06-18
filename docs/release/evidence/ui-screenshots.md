@@ -19,5 +19,5 @@ Run `script/capture_ui_evidence.sh` on a host with Screen Recording permission t
 
 - The script seeds only deterministic local Project/Task data into the isolated SQLite database.
 - API keys and provider tokens are not read, written, logged, or rendered.
-- The capture host must grant Screen Recording permission to the terminal/Codex app; otherwise the script fails before treating screenshots as evidence.
+- The capture host must grant Screen Recording permission to the terminal/Codex app and return visible pixels; locked or headless sessions that capture black frames are rejected before treating screenshots as evidence.
 - VoiceOver focus order still requires a manual assistive-technology pass.

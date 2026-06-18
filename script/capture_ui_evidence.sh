@@ -66,6 +66,10 @@ open_evidence_app() {
   xargs -0 /usr/bin/open -n -F "$APP_BUNDLE" < <(app_env_args)
 }
 
+activate_evidence_app() {
+  /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 || true
+}
+
 wait_for_process() {
   for _ in {1..40}; do
     if pgrep -x "$APP_NAME" >/dev/null; then
@@ -140,6 +144,82 @@ print("\(candidate.id) \(candidate.x) \(candidate.y) \(candidate.width) \(candid
 SWIFT
 }
 
+assert_screenshot_has_visible_content() {
+  local image_path="$1"
+
+  /usr/bin/swift - "$image_path" <<'SWIFT'
+import CoreGraphics
+import Foundation
+import ImageIO
+
+guard CommandLine.arguments.count == 2 else {
+    fputs("screenshot content check requires an image path.\n", stderr)
+    exit(2)
+}
+
+let imagePath = CommandLine.arguments[1]
+let imageURL = URL(fileURLWithPath: imagePath)
+
+guard let source = CGImageSourceCreateWithURL(imageURL as CFURL, nil),
+      let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+    fputs("screenshot content check could not read image: \(imagePath)\n", stderr)
+    exit(2)
+}
+
+let sampleWidth = min(max(image.width, 1), 160)
+let sampleHeight = min(max(image.height, 1), 100)
+let bytesPerPixel = 4
+let bytesPerRow = sampleWidth * bytesPerPixel
+var pixels = [UInt8](repeating: 0, count: sampleHeight * bytesPerRow)
+
+guard let context = CGContext(
+    data: &pixels,
+    width: sampleWidth,
+    height: sampleHeight,
+    bitsPerComponent: 8,
+    bytesPerRow: bytesPerRow,
+    space: CGColorSpaceCreateDeviceRGB(),
+    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+) else {
+    fputs("screenshot content check could not create sampling context.\n", stderr)
+    exit(2)
+}
+
+context.interpolationQuality = .low
+context.draw(image, in: CGRect(x: 0, y: 0, width: sampleWidth, height: sampleHeight))
+
+var minimumLuminance = 255
+var maximumLuminance = 0
+var visiblePixelCount = 0
+
+for offset in stride(from: 0, to: pixels.count, by: bytesPerPixel) {
+    let alpha = Int(pixels[offset + 3])
+    guard alpha > 16 else { continue }
+
+    let red = Int(pixels[offset])
+    let green = Int(pixels[offset + 1])
+    let blue = Int(pixels[offset + 2])
+    let luminance = (red * 2_126 + green * 7_152 + blue * 722) / 10_000
+
+    minimumLuminance = min(minimumLuminance, luminance)
+    maximumLuminance = max(maximumLuminance, luminance)
+    visiblePixelCount += 1
+}
+
+let minimumVisiblePixels = max(1, (sampleWidth * sampleHeight) / 20)
+guard visiblePixelCount >= minimumVisiblePixels else {
+    fputs("Screenshot appears blank or too low contrast: \(imagePath)\n", stderr)
+    exit(1)
+}
+
+let luminanceRange = maximumLuminance - minimumLuminance
+if luminanceRange < 12 {
+    fputs("Screenshot appears blank or too low contrast: \(imagePath)\n", stderr)
+    exit(1)
+}
+SWIFT
+}
+
 write_appearance_preference() {
   local appearance="$1"
   HOME="$EVIDENCE_HOME" CFFIXED_USER_HOME="$EVIDENCE_HOME" \
@@ -177,6 +257,7 @@ capture_appearance() {
   pkill -x "$APP_NAME" >/dev/null 2>&1 || true
   open_evidence_app
   wait_for_process
+  activate_evidence_app
   sleep 1.5
 
   local window_metadata
@@ -205,6 +286,14 @@ capture_appearance() {
     exit 1
   fi
 
+  /usr/bin/sips -g pixelWidth -g pixelHeight "$output_path" >/dev/null
+
+  if ! assert_screenshot_has_visible_content "$output_path"; then
+    echo "This usually means Screen Recording permission is missing, the display is locked/headless, or the captured image is blank." >&2
+    rm -f "$output_path"
+    exit 1
+  fi
+
   local bytes
   bytes="$(wc -c <"$output_path" | tr -d '[:space:]')"
   if [[ "$bytes" -lt 50000 ]]; then
@@ -213,8 +302,6 @@ capture_appearance() {
     rm -f "$output_path"
     exit 1
   fi
-
-  /usr/bin/sips -g pixelWidth -g pixelHeight "$output_path" >/dev/null
 }
 
 write_evidence_file() {
@@ -253,6 +340,7 @@ require_command sqlite3
 require_command screencapture
 require_command swift
 require_command sips
+require_command osascript
 
 mkdir -p "$SCREENSHOT_DIR"
 mkdir -p "$EVIDENCE_HOME/Library/Application Support"
@@ -270,6 +358,7 @@ fi
 
 open_evidence_app
 wait_for_process
+activate_evidence_app
 DATABASE_PATH="$EVIDENCE_HOME/Library/Application Support/SoloPM/SoloPM.sqlite"
 wait_for_database "$DATABASE_PATH"
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
