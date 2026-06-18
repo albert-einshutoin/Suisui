@@ -50,6 +50,27 @@ final class SparkleUpdateFoundationTests: XCTestCase {
         XCTAssertTrue(appcast.contains("url=\"https://example.com/solopm/SoloPM-\(metadata["MARKETING_VERSION"] ?? "")+\(metadata["CURRENT_PROJECT_VERSION"] ?? "").zip\""))
     }
 
+    func testReleaseAppcastVerifierRejectsSamplePlaceholderSignature() throws {
+        let releaseLikeAppcastURL = packageRoot()
+            .appendingPathComponent(".build/test-release-appcast-placeholder.xml")
+        try FileManager.default.createDirectory(
+            at: releaseLikeAppcastURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try readPackageFile("packaging/appcast.sample.xml")
+            .write(to: releaseLikeAppcastURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: releaseLikeAppcastURL) }
+
+        let result = try runScript(
+            "script/verify_appcast.sh",
+            arguments: [releaseLikeAppcastURL.path],
+            environment: ["SOLOPM_REQUIRE_RELEASE_APPCAST": "1"]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release appcast still contains local smoke placeholder signature"))
+    }
+
     func testLocalSparkleEnvironmentFileIsIgnored() throws {
         let gitignore = try readPackageFile(".gitignore")
         let ignoredPaths = gitignore
@@ -78,6 +99,28 @@ final class SparkleUpdateFoundationTests: XCTestCase {
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func runScript(
+        _ relativePath: String,
+        arguments: [String] = [],
+        environment: [String: String] = [:]
+    ) throws -> (exitCode: Int32, output: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["bash", packageRoot().appendingPathComponent(relativePath).path] + arguments
+        process.currentDirectoryURL = packageRoot()
+        process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
+
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+
+        try process.run()
+        process.waitUntilExit()
+
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
     }
 
     private func packageRoot() -> URL {

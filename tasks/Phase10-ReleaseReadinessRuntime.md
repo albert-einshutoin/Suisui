@@ -424,6 +424,13 @@
 - [x] `verify_release_environment.sh` は evidence の signing identity / notary profile が現在の release machine 設定と一致することを照合する。
 - [x] 完了条件: manual release evidence は artifact checksum だけでなく、配布署名 context にも紐づく。
 
+### P10-054: Release appcast gate
+
+- [x] `verify_appcast.sh` は release mode で `packaging/appcast.sample.xml`、placeholder signature、example URL を拒否する。
+- [x] release checklist は generated `dist/releases/appcast.xml` を `SOLOPM_REQUIRE_RELEASE_APPCAST=1` で検証する。
+- [x] `verify_release_environment.sh` は generated release appcast が存在し、release mode の appcast verification を通ることを release blocker にする。
+- [x] 完了条件: sample appcast smoke を通しただけでは public alpha release ready にならない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

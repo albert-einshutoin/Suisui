@@ -124,6 +124,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("SOLOPM_LOGIN_ITEM_TOGGLE_CONFIRMED"))
     }
 
+    func testReleasePreflightRequiresGeneratedReleaseAppcast() throws {
+        let script = try readPackageFile("script/verify_release_environment.sh")
+
+        XCTAssertTrue(script.contains("RELEASE_APPCAST_FILE"))
+        XCTAssertTrue(script.contains("dist/releases/appcast.xml"))
+        XCTAssertTrue(script.contains("SOLOPM_REQUIRE_RELEASE_APPCAST=1"))
+        XCTAssertTrue(script.contains("verify_appcast.sh"))
+        XCTAssertTrue(script.contains("release appcast verification failed"))
+    }
+
     func testReleaseEvidenceExampleContainsNoSecretsAndIsIgnored() throws {
         let gitignore = try readPackageFile(".gitignore")
         let example = try readPackageFile("packaging/release-evidence.example.json")
@@ -869,6 +879,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("./script/create_release_evidence.sh"))
         XCTAssertTrue(checklist.contains("packaging/release-evidence.json"))
         XCTAssertTrue(checklist.contains("manual release evidence"))
+        XCTAssertTrue(checklist.contains("SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml"))
+        XCTAssertFalse(checklist.contains("./script/verify_appcast.sh packaging/appcast.sample.xml"))
         XCTAssertTrue(checklist.contains("./script/verify_notarization_setup.sh"))
         XCTAssertTrue(checklist.contains("./script/verify_release_environment.sh"))
         XCTAssertTrue(checklist.contains("./script/release_readiness_report.sh"))

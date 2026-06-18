@@ -7,6 +7,7 @@ SIGNING_ENV_FILE="$ROOT_DIR/packaging/signing.env"
 NOTARIZATION_ENV_FILE="$ROOT_DIR/packaging/notarization.env"
 ENTITLEMENTS_FILE="$ROOT_DIR/packaging/SoloPM.entitlements"
 RELEASE_EVIDENCE_FILE="${SOLOPM_RELEASE_EVIDENCE_FILE:-$ROOT_DIR/packaging/release-evidence.json}"
+RELEASE_APPCAST_FILE="${SOLOPM_RELEASE_APPCAST_FILE:-$ROOT_DIR/dist/releases/appcast.xml}"
 PLIST_BUDDY="/usr/libexec/PlistBuddy"
 MULTIPLE_RELEASE_ARTIFACT_CHECKSUMS="__multiple_release_artifact_checksums__"
 
@@ -175,6 +176,7 @@ require_executable "$ROOT_DIR/script/create_release_evidence.sh" "release eviden
 require_executable "$ROOT_DIR/script/sign_app.sh" "signing script"
 require_executable "$ROOT_DIR/script/notarize_app.sh" "notarization script"
 require_executable "$ROOT_DIR/script/package_release.sh" "packaging script"
+require_executable "$ROOT_DIR/script/verify_appcast.sh" "appcast verification script"
 require_command codesign
 require_command security
 require_command spctl
@@ -478,10 +480,19 @@ else
   add_blocker "missing local release evidence: run ./script/create_release_evidence.sh after packaging and manual checks"
 fi
 
+if [[ -f "$RELEASE_APPCAST_FILE" ]]; then
+  if ! SOLOPM_REQUIRE_RELEASE_APPCAST=1 "$ROOT_DIR/script/verify_appcast.sh" "$RELEASE_APPCAST_FILE" >/dev/null 2>&1; then
+    add_blocker "release appcast verification failed: $RELEASE_APPCAST_FILE"
+  fi
+else
+  add_blocker "missing release appcast: run ./script/generate_appcast.sh before final release validation"
+fi
+
 printf "SoloPM release environment preflight\n"
 printf "app bundle: %s\n" "$APP_BUNDLE"
 printf "online notary check: %s\n" "$ONLINE_PREFLIGHT"
 printf "release evidence: %s\n" "$RELEASE_EVIDENCE_FILE"
+printf "release appcast: %s\n" "$RELEASE_APPCAST_FILE"
 
 if [[ "${#WARNINGS[@]}" -gt 0 ]]; then
   printf "\nWarnings:\n"

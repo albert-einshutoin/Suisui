@@ -40,4 +40,10 @@ Sparkle tools が SwiftPM artifact 配下にある場合、`script/generate_appc
 ./script/verify_appcast.sh
 ```
 
+release appcast は generated `dist/releases/appcast.xml` を対象にし、sample placeholder signature や example URL が残っていないことを確認する。
+
+```bash
+SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml
+```
+
 本物の update check smoke は、Developer ID signed / notarized の古い app と、新しい appcast artifact が揃った状態で行う。Sparkle の private key、Developer ID certificate、notary profile が必要になる。

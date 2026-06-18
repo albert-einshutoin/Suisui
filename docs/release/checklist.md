@@ -56,7 +56,7 @@ cat dist/releases/*.sha256
 
 ```bash
 ./script/generate_appcast.sh
-./script/verify_appcast.sh packaging/appcast.sample.xml
+SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml
 ```
 
 8. manual release evidence
