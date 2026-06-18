@@ -311,6 +311,8 @@ final class AppExperienceSourceTests: XCTestCase {
             "struct StaticEmbeddingProvider",
             "class InMemoryKnowledgeVectorIndex",
             "struct StaticKnowledgeTextSearch",
+            "struct BYOKOpenAIEmbeddingProvider",
+            "openai_byok_fallback",
             "class InMemoryWeKnoraClient"
         ]
 

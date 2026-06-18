@@ -44,14 +44,9 @@ final class KnowledgeAdvancedTests: XCTestCase {
         let local = LocalHashEmbeddingProvider(dimensions: 4)
         let vector = try local.embed(EmbeddingRequest(frameID: 1, text: "api_key=sk-secret value", userApproved: true))
 
+        XCTAssertEqual(vector.providerID, "local_hash")
         XCTAssertEqual(vector.values.count, 4)
         XCTAssertFalse(vector.redactedPreview.contains("sk-secret"))
-
-        let byok = BYOKOpenAIEmbeddingProvider(
-            secretStore: InMemorySecretStore(values: [.openAIAPIKey: "sk-test"]),
-            fallback: local
-        )
-        XCTAssertEqual(try byok.embed(EmbeddingRequest(frameID: 2, text: "fallback", userApproved: true)).values.count, 4)
 
         let index = InMemoryKnowledgeVectorIndex(expectedDimensions: 4)
         try index.upsert(vector)

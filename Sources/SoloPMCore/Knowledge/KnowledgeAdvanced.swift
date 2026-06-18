@@ -159,25 +159,6 @@ public struct LocalHashEmbeddingProvider: EmbeddingProvider {
     }
 }
 
-public struct BYOKOpenAIEmbeddingProvider: EmbeddingProvider {
-    public let providerID = "openai_byok_fallback"
-    public var dimensions: Int { fallback.dimensions }
-    private let secretStore: any SecretStore
-    private let fallback: any EmbeddingProvider
-
-    public init(secretStore: any SecretStore, fallback: any EmbeddingProvider) {
-        self.secretStore = secretStore
-        self.fallback = fallback
-    }
-
-    public func embed(_ request: EmbeddingRequest) throws -> KnowledgeEmbeddingVector {
-        guard let apiKey = try secretStore.read(.openAIAPIKey), !apiKey.isEmpty else {
-            throw EmbeddingError.providerUnavailable(providerID)
-        }
-        return try fallback.embed(request)
-    }
-}
-
 public struct KnowledgeVectorSearchResult: Equatable, Sendable {
     public var frameID: Int64
     public var score: Double

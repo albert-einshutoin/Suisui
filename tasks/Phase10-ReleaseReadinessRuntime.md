@@ -775,6 +775,13 @@
 - [x] Catalog summary も不正 schema を `No arguments` や部分的な required list として正常表示しない。
 - [x] 完了条件: 壊れた MCP tool schema を信用して、UI や実行前レビューが安全そうに表示されない。
 
+### P10-098: Knowledge embedding does not ship OpenAI-labeled local fallback
+
+- [x] `BYOKOpenAIEmbeddingProvider` のような、API key の存在だけで local hash embedding を OpenAI BYOK 成功に見せる provider を Sources から除去する。
+- [x] Release path では外部 embedding 連携を除外し、local-only hash embedding は `local_hash` として明示する。
+- [x] Source regression test で `BYOKOpenAIEmbeddingProvider` / `openai_byok_fallback` の復活を検出する。
+- [x] 完了条件: ユーザーや投資家に、外部AI embedding が実働しているように誤解される mock 成功経路を出荷しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
