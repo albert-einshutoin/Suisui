@@ -574,7 +574,10 @@ final class AppExperienceSourceTests: XCTestCase {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
         XCTAssertFalse(appSource.contains("try? target.register(UnavailableReviewTool"))
-        XCTAssertTrue(appSource.contains("try! target.register(UnavailableReviewTool"))
+        XCTAssertFalse(appSource.contains("try! target.register(UnavailableReviewTool"))
+        XCTAssertTrue(appSource.contains("registrationFailures.append(action.tool.rawValue)"))
+        XCTAssertTrue(appSource.contains("Fallback unavailable tools could not be registered"))
+        XCTAssertTrue(appSource.contains("UnavailableReviewRegistryResult"))
     }
 
     func testVoicePlanningRequiresAuditLoggerBeforeGeneration() throws {

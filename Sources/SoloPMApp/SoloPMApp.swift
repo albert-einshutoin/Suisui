@@ -1290,8 +1290,10 @@ private enum AppRuntimeFactory {
             reviewRuntimeValidationMessage = nil
         } catch {
             logger = nil
-            reviewRuntimeValidationMessage = "Review execution tools are unavailable because audit logging or local data stores could not be opened."
-            registry = unavailableReviewRegistry(for: plan, message: reviewRuntimeValidationMessage ?? "Review execution tools are unavailable.")
+            let baseMessage = "Review execution tools are unavailable because audit logging or local data stores could not be opened."
+            let unavailableRegistry = unavailableReviewRegistry(for: plan, message: baseMessage)
+            reviewRuntimeValidationMessage = unavailableRegistry.message
+            registry = unavailableRegistry.registry
         }
 
         return ReviewSessionViewModel(
@@ -1338,14 +1340,25 @@ private enum AppRuntimeFactory {
         return directory
     }
 
-    private static func unavailableReviewRegistry(for plan: ActionPlan, message: String) -> ToolRegistry {
+    private static func unavailableReviewRegistry(for plan: ActionPlan, message: String) -> UnavailableReviewRegistryResult {
         let target = ToolRegistry()
         var registeredTools: [ActionTool] = []
+        var registrationFailures: [String] = []
         for action in plan.actions where !registeredTools.contains(action.tool) {
-            try! target.register(UnavailableReviewTool(name: action.tool, message: message))
-            registeredTools.append(action.tool)
+            do {
+                try target.register(UnavailableReviewTool(name: action.tool, message: message))
+                registeredTools.append(action.tool)
+            } catch {
+                registrationFailures.append(action.tool.rawValue)
+            }
         }
-        return target
+        let finalMessage: String
+        if registrationFailures.isEmpty {
+            finalMessage = message
+        } else {
+            finalMessage = "\(message) Fallback unavailable tools could not be registered: \(registrationFailures.joined(separator: ", "))."
+        }
+        return UnavailableReviewRegistryResult(registry: target, message: finalMessage)
     }
 
     private static func applicationDatabaseURL() throws -> URL {
@@ -1375,6 +1388,11 @@ private struct ExternalMCPAuditLoadResult {
         self.rows = rows
         self.errorMessage = errorMessage
     }
+}
+
+private struct UnavailableReviewRegistryResult {
+    let registry: ToolRegistry
+    let message: String
 }
 
 private struct UnavailableProjectBoardStore: ProjectBoardStore {

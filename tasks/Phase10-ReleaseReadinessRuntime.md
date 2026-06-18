@@ -712,7 +712,7 @@
 ### P10-088: Review unavailable-tool registry does not drop registration failures
 
 - [x] `unavailableReviewRegistry` は `try? target.register` で fallback tool registration failure を捨てない。
-- [x] 重複登録を避ける既存 invariant を `try!` で明示し、source regression test で `try?` 復活を防ぐ。
+- [x] fallback tool registration failure は `try!` でクラッシュさせず、runtime validation message に登録失敗 tool を含める。
 - [x] `ReviewSessionViewModelTests` で runtime validation message による execution block を維持する。
 - [x] 完了条件: review runtime unavailable 時に、必要な unavailable tool が静かに欠落しない。
 
