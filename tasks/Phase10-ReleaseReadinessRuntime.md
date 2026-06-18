@@ -992,6 +992,14 @@
 - [x] 既存の Project / Task / Knowledge CRUD test が FK 有効化後も green であることを確認する。
 - [x] 完了条件: ローカルDBの参照整合性がDDL上の飾りではなく、runtime connectionで強制される。
 
+### P10-128: Knowledge frame CRUD must update FTS atomically
+
+- [x] `SQLiteKnowledgeFrameStore.create` は `knowledge_frames` と `knowledge_frames_fts` の insert を同一 transaction にする。
+- [x] `SQLiteKnowledgeFrameStore.update` は FTS delete、base row update、FTS insert を同一 transaction にする。
+- [x] `SQLiteKnowledgeFrameStore.delete` は FTS delete と base row delete を同一 transaction にする。
+- [x] `LocalStoreTests` で FTS write failure、base update failure、base delete failure のいずれでも base row と検索 index が片方だけ更新されないことを固定する。
+- [x] 完了条件: Knowledge CRUD の途中失敗で、実データと検索結果が分岐したまま残らない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

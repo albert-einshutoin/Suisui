@@ -589,21 +589,23 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         let validatedBody = try StoreFieldValidation.requiredNonBlank(body, argument: "body", tool: .frameCreate)
         let triggersJSON = try SQL.jsonArray(triggers, column: "knowledge_frames.triggers_json")
 
-        try connection.execute(
-            """
-            INSERT INTO knowledge_frames (name, body, triggers_json)
-            VALUES ('\(SQL.escape(normalizedName))', '\(SQL.escape(validatedBody))', '\(SQL.escape(triggersJSON))');
-            """
-        )
-        let id = connection.lastInsertedRowID
-        try connection.execute(
-            """
-            INSERT INTO knowledge_frames_fts (rowid, name, body)
-            VALUES (\(id), '\(SQL.escape(normalizedName))', '\(SQL.escape(validatedBody))');
-            """
-        )
+        return try connection.transaction {
+            try connection.execute(
+                """
+                INSERT INTO knowledge_frames (name, body, triggers_json)
+                VALUES ('\(SQL.escape(normalizedName))', '\(SQL.escape(validatedBody))', '\(SQL.escape(triggersJSON))');
+                """
+            )
+            let id = connection.lastInsertedRowID
+            try connection.execute(
+                """
+                INSERT INTO knowledge_frames_fts (rowid, name, body)
+                VALUES (\(id), '\(SQL.escape(normalizedName))', '\(SQL.escape(validatedBody))');
+                """
+            )
 
-        return try getLocked(id: id)
+            return try getLocked(id: id)
+        }
     }
 
     public func update(id: Int64, name: String? = nil, body: String? = nil, triggers: [String]? = nil) throws -> KnowledgeFrameRecord {
@@ -626,21 +628,23 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         }
         assignments.append("updated_at = CURRENT_TIMESTAMP")
 
-        try connection.execute(
-            """
-            INSERT INTO knowledge_frames_fts (knowledge_frames_fts, rowid, name, body)
-            VALUES ('delete', \(id), '\(SQL.escape(oldRecord.name))', '\(SQL.escape(oldRecord.body))');
-            """
-        )
-        try connection.execute("UPDATE knowledge_frames SET \(assignments.joined(separator: ", ")) WHERE id = \(id);")
-        let record = try getLocked(id: id)
-        try connection.execute(
-            """
-            INSERT INTO knowledge_frames_fts (rowid, name, body)
-            VALUES (\(id), '\(SQL.escape(record.name))', '\(SQL.escape(record.body))');
-            """
-        )
-        return record
+        return try connection.transaction {
+            try connection.execute(
+                """
+                INSERT INTO knowledge_frames_fts (knowledge_frames_fts, rowid, name, body)
+                VALUES ('delete', \(id), '\(SQL.escape(oldRecord.name))', '\(SQL.escape(oldRecord.body))');
+                """
+            )
+            try connection.execute("UPDATE knowledge_frames SET \(assignments.joined(separator: ", ")) WHERE id = \(id);")
+            let record = try getLocked(id: id)
+            try connection.execute(
+                """
+                INSERT INTO knowledge_frames_fts (rowid, name, body)
+                VALUES (\(id), '\(SQL.escape(record.name))', '\(SQL.escape(record.body))');
+                """
+            )
+            return record
+        }
     }
 
     public func get(id: Int64) throws -> KnowledgeFrameRecord {
@@ -661,13 +665,15 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         defer { lock.unlock() }
 
         let record = try getLocked(id: id)
-        try connection.execute(
-            """
-            INSERT INTO knowledge_frames_fts (knowledge_frames_fts, rowid, name, body)
-            VALUES ('delete', \(id), '\(SQL.escape(record.name))', '\(SQL.escape(record.body))');
-            """
-        )
-        try connection.execute("DELETE FROM knowledge_frames WHERE id = \(id);")
+        try connection.transaction {
+            try connection.execute(
+                """
+                INSERT INTO knowledge_frames_fts (knowledge_frames_fts, rowid, name, body)
+                VALUES ('delete', \(id), '\(SQL.escape(record.name))', '\(SQL.escape(record.body))');
+                """
+            )
+            try connection.execute("DELETE FROM knowledge_frames WHERE id = \(id);")
+        }
     }
 
     public func search(query: String) throws -> [KnowledgeFrameRecord] {

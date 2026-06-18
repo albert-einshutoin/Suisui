@@ -345,6 +345,63 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(results.map(\.name), ["QZT article"])
     }
 
+    func testKnowledgeFrameCreateRollsBackBaseRowWhenFTSWriteFails() throws {
+        let connection = try migratedConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        try connection.execute("DROP TABLE knowledge_frames_fts;")
+
+        XCTAssertThrowsError(
+            try store.create(name: "Atomic frame", body: "Should not leave a base row")
+        )
+
+        XCTAssertEqual(try connection.queryRows("SELECT * FROM knowledge_frames;").count, 0)
+    }
+
+    func testKnowledgeFrameUpdateKeepsFTSIndexWhenBaseUpdateFails() throws {
+        let connection = try migratedConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let frame = try store.create(name: "Release notes", body: "Indexed before failure")
+        XCTAssertEqual(try store.search(query: "Release").map(\.id), [frame.id])
+        try connection.execute(
+            """
+            CREATE TRIGGER reject_knowledge_frame_updates
+            BEFORE UPDATE ON knowledge_frames
+            BEGIN
+                SELECT RAISE(ABORT, 'blocked knowledge frame update');
+            END;
+            """
+        )
+
+        XCTAssertThrowsError(
+            try store.update(id: frame.id, name: "Mutated", body: "Should not apply")
+        )
+
+        XCTAssertEqual(try store.get(id: frame.id).name, "Release notes")
+        XCTAssertEqual(try store.search(query: "Release").map(\.id), [frame.id])
+    }
+
+    func testKnowledgeFrameDeleteKeepsFTSIndexWhenBaseDeleteFails() throws {
+        let connection = try migratedConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let frame = try store.create(name: "Protected frame", body: "Delete should roll back")
+        XCTAssertEqual(try store.search(query: "Protected").map(\.id), [frame.id])
+        try connection.execute(
+            """
+            CREATE TABLE guarded_knowledge_frame_refs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                frame_id INTEGER NOT NULL,
+                FOREIGN KEY(frame_id) REFERENCES knowledge_frames(id) ON DELETE RESTRICT
+            );
+            INSERT INTO guarded_knowledge_frame_refs (frame_id) VALUES (\(frame.id));
+            """
+        )
+
+        XCTAssertThrowsError(try store.delete(id: frame.id))
+
+        XCTAssertEqual(try store.get(id: frame.id).name, "Protected frame")
+        XCTAssertEqual(try store.search(query: "Protected").map(\.id), [frame.id])
+    }
+
     private func migratedConnection() throws -> SQLiteConnection {
         let connection = try SQLiteConnection(path: ":memory:")
         let database = TestDatabaseClient(connection: connection)
