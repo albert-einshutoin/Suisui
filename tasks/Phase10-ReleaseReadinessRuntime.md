@@ -1170,6 +1170,14 @@
 - [x] `ReleasePipelineTests` で evidence generation と preflight の boilerplate note rejection を固定する。
 - [x] 完了条件: Gatekeeper / clean install / login item の manual evidence が、具体的な検証内容を含まないレビュー文だけで release ready に見えない。
 
+### P10-151: AI provider malformed HTTP error bodies stay actionable and redacted
+
+- [x] OpenAI Responses / Chat Completions compatible provider は、HTTP error body が期待 JSON でない場合も `No error message` へ落とさず、短い redacted preview を返す。
+- [x] malformed error body preview は `DeveloperSecretRedactor` を通し、API key / token 形式の値を出さない。
+- [x] provider tests で malformed 500 response の status、request id、redaction、`No error message` 不使用を固定する。
+- [x] source regression test で provider が `LLMHTTPErrorMessageExtractor` を使い続けることを確認する。
+- [x] 完了条件: BYOK AI provider の upstream failure が、secret を漏らさず調査可能な runtime error として表示される。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

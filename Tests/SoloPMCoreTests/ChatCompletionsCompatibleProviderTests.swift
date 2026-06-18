@@ -220,6 +220,34 @@ final class ChatCompletionsCompatibleProviderTests: XCTestCase {
             XCTAssertEqual(error as? LLMProviderError, .rateLimited)
         }
     }
+
+    func testProviderIncludesRedactedMalformedHTTPErrorBodyPreview() async throws {
+        let store = InMemorySecretStore(values: [.openRouterAPIKey: "sk-router"])
+        let secret = "sk-" + "routerSecret123"
+        let provider = ChatCompletionsCompatibleProvider(
+            configuration: .openRouter(model: "openai/gpt-latest"),
+            secretStore: store,
+            httpClient: StubHTTPDataClient(
+                data: Data("provider exploded token=\(secret) request-id=chat-500".utf8),
+                statusCode: 500
+            )
+        )
+
+        do {
+            _ = try await provider.generatePlan(for: PlanningRequest(userInput: "Create a task"))
+            XCTFail("Expected malformed HTTP error body to fail.")
+        } catch {
+            guard case .network(let message) = error as? LLMProviderError else {
+                return XCTFail("Expected network error, got \(error)")
+            }
+            XCTAssertTrue(message.contains("HTTP 500"))
+            XCTAssertTrue(message.contains("Unexpected error body"))
+            XCTAssertTrue(message.contains("request-id=chat-500"))
+            XCTAssertFalse(message.contains("No error message"))
+            XCTAssertFalse(message.contains(secret))
+            XCTAssertTrue(message.contains("[REDACTED_SECRET]"))
+        }
+    }
 }
 
 private struct StubHTTPDataClient: HTTPDataClient {

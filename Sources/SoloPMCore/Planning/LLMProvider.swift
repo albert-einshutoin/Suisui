@@ -28,3 +28,58 @@ public enum LLMProviderError: Error, Equatable, Sendable {
         }
     }
 }
+
+enum LLMHTTPErrorMessageExtractor {
+    private static let maxPreviewCharacters = 240
+
+    static func message(from data: Data) -> String? {
+        if let decodedMessage = decodedErrorMessage(from: data) {
+            return decodedMessage
+        }
+
+        return redactedBodyPreview(from: data)
+    }
+
+    private static func decodedErrorMessage(from data: Data) -> String? {
+        guard let errorBody = try? JSONDecoder().decode(ProviderErrorResponseBody.self, from: data) else {
+            return nil
+        }
+
+        let message = errorBody.error.message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !message.isEmpty else {
+            return nil
+        }
+        return DeveloperSecretRedactor().redact(message).text
+    }
+
+    private static func redactedBodyPreview(from data: Data) -> String? {
+        guard !data.isEmpty else {
+            return nil
+        }
+
+        guard let rawBody = String(data: data, encoding: .utf8) else {
+            return "Non-UTF-8 error body (\(data.count) bytes)."
+        }
+
+        let collapsedBody = rawBody
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !collapsedBody.isEmpty else {
+            return nil
+        }
+
+        let redacted = DeveloperSecretRedactor().redact(collapsedBody).text
+        let suffix = redacted.count > maxPreviewCharacters ? "..." : ""
+        let preview = String(redacted.prefix(maxPreviewCharacters))
+        return "Unexpected error body: \(preview)\(suffix)"
+    }
+}
+
+private struct ProviderErrorResponseBody: Decodable {
+    var error: ProviderErrorBody
+}
+
+private struct ProviderErrorBody: Decodable {
+    var message: String
+}

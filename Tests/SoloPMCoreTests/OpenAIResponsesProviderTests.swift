@@ -231,6 +231,33 @@ final class OpenAIResponsesProviderTests: XCTestCase {
         }
     }
 
+    func testProviderIncludesRedactedMalformedHTTPErrorBodyPreview() async throws {
+        let store = InMemorySecretStore(values: [.openAIAPIKey: "sk-test"])
+        let secret = "sk-" + "serverSecret123"
+        let provider = OpenAIResponsesProvider(
+            secretStore: store,
+            httpClient: StubHTTPDataClient(
+                data: Data("upstream failed api_key=\(secret) request-id=resp-500".utf8),
+                statusCode: 500
+            )
+        )
+
+        do {
+            _ = try await provider.generatePlan(for: PlanningRequest(userInput: "Create a task"))
+            XCTFail("Expected malformed HTTP error body to fail.")
+        } catch {
+            guard case .network(let message) = error as? LLMProviderError else {
+                return XCTFail("Expected network error, got \(error)")
+            }
+            XCTAssertTrue(message.contains("HTTP 500"))
+            XCTAssertTrue(message.contains("Unexpected error body"))
+            XCTAssertTrue(message.contains("request-id=resp-500"))
+            XCTAssertFalse(message.contains("No error message"))
+            XCTAssertFalse(message.contains(secret))
+            XCTAssertTrue(message.contains("[REDACTED_SECRET]"))
+        }
+    }
+
     func testProviderParsesSuccessfulResponse() async throws {
         let store = InMemorySecretStore(values: [.openAIAPIKey: "sk-test"])
         let provider = OpenAIResponsesProvider(

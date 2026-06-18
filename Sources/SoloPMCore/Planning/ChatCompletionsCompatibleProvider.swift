@@ -206,16 +206,8 @@ public struct ChatCompletionsCompatibleProvider: LLMProvider {
         case 429:
             .rateLimited
         default:
-            .network("HTTP \(statusCode): \(errorMessage(from: data) ?? "No error message.")")
+            .network("HTTP \(statusCode): \(LLMHTTPErrorMessageExtractor.message(from: data) ?? "Empty error body.")")
         }
-    }
-
-    private func errorMessage(from data: Data) -> String? {
-        guard let errorBody = try? JSONDecoder().decode(ChatCompletionsErrorResponseBody.self, from: data) else {
-            return nil
-        }
-
-        return errorBody.error.message
     }
 }
 
@@ -236,12 +228,4 @@ private struct ChatCompletionsResponseBody: Decodable {
 
 private struct ChatCompletionsChoice: Decodable {
     var message: ChatCompletionsMessage
-}
-
-private struct ChatCompletionsErrorResponseBody: Decodable {
-    var error: ChatCompletionsErrorBody
-}
-
-private struct ChatCompletionsErrorBody: Decodable {
-    var message: String
 }

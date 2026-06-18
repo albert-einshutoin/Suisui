@@ -651,6 +651,20 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains("WhisperCppProvider()"))
     }
 
+    func testLLMHTTPErrorMappingDoesNotDropMalformedErrorBodies() throws {
+        let llmProviderSource = try readPackageFile("Sources/SoloPMCore/Planning/LLMProvider.swift")
+        let responsesSource = try readPackageFile("Sources/SoloPMCore/Planning/OpenAIResponsesProvider.swift")
+        let chatSource = try readPackageFile("Sources/SoloPMCore/Planning/ChatCompletionsCompatibleProvider.swift")
+
+        XCTAssertTrue(llmProviderSource.contains("LLMHTTPErrorMessageExtractor"))
+        XCTAssertTrue(llmProviderSource.contains("Unexpected error body"))
+        XCTAssertTrue(llmProviderSource.contains("DeveloperSecretRedactor().redact"))
+        XCTAssertTrue(responsesSource.contains("LLMHTTPErrorMessageExtractor.message(from: data)"))
+        XCTAssertTrue(chatSource.contains("LLMHTTPErrorMessageExtractor.message(from: data)"))
+        XCTAssertFalse(responsesSource.contains("No error message."))
+        XCTAssertFalse(chatSource.contains("No error message."))
+    }
+
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)

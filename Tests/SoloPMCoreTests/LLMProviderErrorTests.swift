@@ -23,4 +23,13 @@ final class LLMProviderErrorTests: XCTestCase {
         XCTAssertTrue(LLMProviderError.network("offline").userMessage.contains("offline"))
         XCTAssertTrue(LLMProviderError.invalidResponse("missing JSON").userMessage.contains("missing JSON"))
     }
+
+    func testHTTPErrorMessageExtractorRedactsStructuredErrorMessages() {
+        let secret = "sk-" + "providerSecret123"
+        let data = Data(#"{"error":{"message":"provider rejected token=\#(secret) for request req-1"}}"#.utf8)
+
+        let message = LLMHTTPErrorMessageExtractor.message(from: data)
+
+        XCTAssertEqual(message, "provider rejected token=[REDACTED_SECRET] for request req-1")
+    }
 }

@@ -173,16 +173,8 @@ public struct OpenAIResponsesProvider: LLMProvider {
         case 429:
             .rateLimited
         default:
-            .network("HTTP \(statusCode): \(errorMessage(from: data) ?? "No error message.")")
+            .network("HTTP \(statusCode): \(LLMHTTPErrorMessageExtractor.message(from: data) ?? "Empty error body.")")
         }
-    }
-
-    private func errorMessage(from data: Data) -> String? {
-        guard let errorBody = try? JSONDecoder().decode(OpenAIErrorResponseBody.self, from: data) else {
-            return nil
-        }
-
-        return errorBody.error.message
     }
 }
 
@@ -235,12 +227,4 @@ private struct OpenAIResponsesOutputItem: Decodable {
 private struct OpenAIResponsesOutputContent: Decodable {
     var type: String
     var text: String?
-}
-
-private struct OpenAIErrorResponseBody: Decodable {
-    var error: OpenAIErrorBody
-}
-
-private struct OpenAIErrorBody: Decodable {
-    var message: String
 }
