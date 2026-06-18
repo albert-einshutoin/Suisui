@@ -17,6 +17,7 @@ Sparkle appcast 用、または notarization submission 用には ZIP も生成�
 ```text
 SoloPM-0.1.0+1.dmg
 SoloPM-0.1.0+1.dmg.sha256
+SoloPM-0.1.0+1.dmg.package-evidence.json
 ```
 
 ZIP も同時に作る場合は次を使う。
@@ -34,6 +35,8 @@ SOLOPM_REQUIRE_NOTARIZED_PACKAGE=0 \
 ```
 
 release artifact を作る通常実行では、`SOLOPM_REQUIRE_SIGNED_PACKAGE=1` と `SOLOPM_REQUIRE_NOTARIZED_PACKAGE=1` が既定値になる。つまり `codesign --verify`、`xcrun stapler validate`、`spctl -a -vv` を通らない app bundle からは配布用 DMG / ZIP を作らない。
+
+上記の smoke mode は `dist/package-smoke/` に出力し、`dist/releases/` には置かない。`packaging/release-evidence.json` は `dist/releases/*.package-evidence.json` で signed / notarized gate が有効だったことを確認するため、smoke artifact は release evidence として使えない。
 
 ## Checksum
 

@@ -349,6 +349,13 @@
 - [x] 開発機の packaging smoke は `SOLOPM_REQUIRE_SIGNED_PACKAGE=0` と `SOLOPM_REQUIRE_NOTARIZED_PACKAGE=0` の両方を明示した場合だけ通せる。
 - [x] 完了条件: public alpha 用 DMG / ZIP は notarization / stapler / Gatekeeper validation を通った app bundle からだけ作成される。
 
+### P10-042: Release evidence artifact binding hardening
+
+- [x] `create_release_evidence.sh` は manual check flag の有無に関わらず、packaged artifact checksum が無い状態では evidence を作成しない。
+- [x] `release.artifactPath` / `release.artifactSha256` に `missing-release-artifact` sentinel が入った JSON をローカル証跡として残さない。
+- [x] `create_release_evidence.sh` は package evidence manifest を読み、signed / notarized gate を明示的に通した artifact だけを証跡化する。
+- [x] 完了条件: release evidence は必ず `package_release.sh` が signed / notarized gate 有効で作った artifact checksum に紐づく。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

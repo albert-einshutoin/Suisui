@@ -22,10 +22,12 @@ REQUIRE_NOTARIZED_PACKAGE="${SOLOPM_REQUIRE_NOTARIZED_PACKAGE:-1}"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 RELEASE_DIR="$DIST_DIR/releases"
+SMOKE_RELEASE_DIR="$DIST_DIR/package-smoke"
 STAGING_DIR="$DIST_DIR/package-staging"
 ARTIFACT_BASENAME="$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION"
 DMG_PATH="$RELEASE_DIR/$ARTIFACT_BASENAME.dmg"
 ZIP_PATH="$RELEASE_DIR/$ARTIFACT_BASENAME.zip"
+PACKAGE_CREATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 case "$PACKAGE_FORMAT" in
   dmg|zip|all)
@@ -67,8 +69,43 @@ if [[ "$REQUIRE_NOTARIZED_PACKAGE" == "1" ]]; then
   spctl -a -vv "$APP_BUNDLE"
 fi
 
+if [[ "$REQUIRE_SIGNED_PACKAGE" == "0" || "$REQUIRE_NOTARIZED_PACKAGE" == "0" ]]; then
+  RELEASE_DIR="$SMOKE_RELEASE_DIR"
+  DMG_PATH="$RELEASE_DIR/$ARTIFACT_BASENAME.dmg"
+  ZIP_PATH="$RELEASE_DIR/$ARTIFACT_BASENAME.zip"
+fi
+
 rm -rf "$RELEASE_DIR" "$STAGING_DIR"
 mkdir -p "$RELEASE_DIR" "$STAGING_DIR"
+
+json_escape() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//$'\n'/\\n}"
+  value="${value//$'\r'/\\r}"
+  value="${value//$'\t'/\\t}"
+  printf "%s" "$value"
+}
+
+create_package_evidence() {
+  local artifact_path="$1"
+  local package_format="$2"
+  local manifest_path="$artifact_path.package-evidence.json"
+  local artifact_relative_path="${artifact_path#"$ROOT_DIR/"}"
+
+  {
+    printf '{\n'
+    printf '  "package": {\n'
+    printf '    "artifactPath": "%s",\n' "$(json_escape "$artifact_relative_path")"
+    printf '    "format": "%s",\n' "$(json_escape "$package_format")"
+    printf '    "createdAt": "%s",\n' "$PACKAGE_CREATED_AT"
+    printf '    "signedPackageRequired": %s,\n' "$([[ "$REQUIRE_SIGNED_PACKAGE" == "1" ]] && printf true || printf false)"
+    printf '    "notarizedPackageRequired": %s\n' "$([[ "$REQUIRE_NOTARIZED_PACKAGE" == "1" ]] && printf true || printf false)"
+    printf '  }\n'
+    printf '}\n'
+  } >"$manifest_path"
+}
 
 create_checksum() {
   local artifact_path="$1"
@@ -85,11 +122,13 @@ if [[ "$PACKAGE_FORMAT" == "dmg" || "$PACKAGE_FORMAT" == "all" ]]; then
     -format UDZO \
     "$DMG_PATH"
   create_checksum "$DMG_PATH"
+  create_package_evidence "$DMG_PATH" "dmg"
 fi
 
 if [[ "$PACKAGE_FORMAT" == "zip" || "$PACKAGE_FORMAT" == "all" ]]; then
   ditto -c -k --keepParent "$APP_BUNDLE" "$ZIP_PATH"
   create_checksum "$ZIP_PATH"
+  create_package_evidence "$ZIP_PATH" "zip"
 fi
 
 echo "Release artifacts:"

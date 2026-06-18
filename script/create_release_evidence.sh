@@ -151,6 +151,46 @@ read_artifact_path() {
   awk 'NF >= 2 { print $2; exit }' "$checksum_path"
 }
 
+package_evidence_file() {
+  local checksum_path
+  checksum_path="$(find_checksum_file)"
+
+  if [[ -z "$checksum_path" || ! -f "$checksum_path" ]]; then
+    return
+  fi
+
+  printf "%s" "${checksum_path%.sha256}.package-evidence.json"
+}
+
+require_release_package_evidence() {
+  local manifest_path
+  local signed_required
+  local notarized_required
+  manifest_path="$(package_evidence_file)"
+
+  if [[ -z "$manifest_path" || ! -f "$manifest_path" ]]; then
+    echo "release evidence requires package evidence manifest from ./script/package_release.sh" >&2
+    exit 2
+  fi
+
+  if command -v plutil >/dev/null 2>&1; then
+    if ! plutil -convert json -o /dev/null "$manifest_path" 2>/dev/null; then
+      echo "package evidence manifest is not valid JSON or plist: $manifest_path" >&2
+      exit 2
+    fi
+    signed_required="$(plutil -extract "package.signedPackageRequired" raw -o - "$manifest_path" 2>/dev/null || true)"
+    notarized_required="$(plutil -extract "package.notarizedPackageRequired" raw -o - "$manifest_path" 2>/dev/null || true)"
+  else
+    signed_required="$(awk -F': ' '/"signedPackageRequired"/ { gsub(/[ ,]/, "", $2); print $2; exit }' "$manifest_path")"
+    notarized_required="$(awk -F': ' '/"notarizedPackageRequired"/ { gsub(/[ ,]/, "", $2); print $2; exit }' "$manifest_path")"
+  fi
+
+  if [[ "$signed_required" != "true" || "$notarized_required" != "true" ]]; then
+    echo "release evidence requires an artifact packaged with signed and notarized gates enabled" >&2
+    exit 2
+  fi
+}
+
 if [[ "${#NOTES[@]}" -eq 0 ]]; then
   NOTES+=("Generated from packaging/app_metadata.env. Set manual check flags only after testing the signed and notarized build.")
 fi
@@ -159,14 +199,15 @@ mkdir -p "$(dirname "$OUTPUT_FILE")"
 tmp_file="$OUTPUT_FILE.tmp"
 artifact_sha="$(read_artifact_sha256)"
 artifact_path="$(read_artifact_path)"
+if [[ "$artifact_sha" == "missing-release-artifact" || "$artifact_path" == "missing-release-artifact" ]]; then
+  echo "release evidence requires a packaged artifact checksum; run ./script/package_release.sh first or set SOLOPM_RELEASE_ARTIFACT_SHA256_FILE" >&2
+  exit 2
+fi
+require_release_package_evidence
+
 if [[ "$CLEAN_ENVIRONMENT_LAUNCH" == "true" || "$LOGIN_ITEM_TOGGLE" == "true" ]]; then
   if [[ -z "$MANUAL_ENVIRONMENT" ]]; then
     echo "manual release evidence requires --manual-environment when manual check flags are set" >&2
-    exit 2
-  fi
-
-  if [[ "$artifact_sha" == "missing-release-artifact" || "$artifact_path" == "missing-release-artifact" ]]; then
-    echo "manual release evidence requires a packaged artifact checksum; run ./script/package_release.sh first or set SOLOPM_RELEASE_ARTIFACT_SHA256_FILE" >&2
     exit 2
   fi
 fi
