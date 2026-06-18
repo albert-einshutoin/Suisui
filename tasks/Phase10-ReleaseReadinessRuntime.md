@@ -426,6 +426,7 @@
 
 ### P10-054: Release appcast gate
 
+- [x] `generate_appcast.sh` は release mode で `SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX` を必須にし、HTTPS 以外、予約ドメイン、ローカルドメインを拒否する。
 - [x] `verify_appcast.sh` は release mode で `packaging/appcast.sample.xml`、placeholder signature、example URL を拒否する。
 - [x] `verify_appcast.sh` は release mode で enclosure URL が `https://` でない appcast を拒否する。
 - [x] `verify_appcast.sh` は release mode で `sparkle:edSignature` 欠落と `length="0"` enclosure を拒否する。

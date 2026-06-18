@@ -54,8 +54,10 @@ cat dist/releases/*.sha256
 
 7. appcast
 
+`SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX` は environment か `packaging/sparkle.env` に production HTTPS artifact URL prefix を設定する。
+
 ```bash
-./script/generate_appcast.sh
+SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/generate_appcast.sh
 SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml
 ```
 

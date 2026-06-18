@@ -132,6 +132,67 @@ final class SparkleUpdateFoundationTests: XCTestCase {
         XCTAssertTrue(result.output.contains("release appcast enclosure URL must use https"))
     }
 
+    func testReleaseAppcastGeneratorRequiresProductionHTTPSPrefix() throws {
+        let missingPrefix = try runScript(
+            "script/generate_appcast.sh",
+            environment: [
+                "SOLOPM_REQUIRE_RELEASE_APPCAST": "1",
+                "SOLOPM_REQUIRE_SPARKLE_TOOLS": "0"
+            ]
+        )
+
+        XCTAssertNotEqual(missingPrefix.exitCode, 0)
+        XCTAssertTrue(missingPrefix.output.contains("SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX is required for release appcast"))
+
+        let httpPrefix = try runScript(
+            "script/generate_appcast.sh",
+            environment: [
+                "SOLOPM_REQUIRE_RELEASE_APPCAST": "1",
+                "SOLOPM_REQUIRE_SPARKLE_TOOLS": "0",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "http://updates.example.invalid/solopm"
+            ]
+        )
+
+        XCTAssertNotEqual(httpPrefix.exitCode, 0)
+        XCTAssertTrue(httpPrefix.output.contains("SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX must use https for release appcast"))
+
+        let examplePrefix = try runScript(
+            "script/generate_appcast.sh",
+            environment: [
+                "SOLOPM_REQUIRE_RELEASE_APPCAST": "1",
+                "SOLOPM_REQUIRE_SPARKLE_TOOLS": "0",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://example.com/solopm"
+            ]
+        )
+
+        XCTAssertNotEqual(examplePrefix.exitCode, 0)
+        XCTAssertTrue(examplePrefix.output.contains("SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX must not use placeholder or local domains for release appcast"))
+
+        let reservedPrefix = try runScript(
+            "script/generate_appcast.sh",
+            environment: [
+                "SOLOPM_REQUIRE_RELEASE_APPCAST": "1",
+                "SOLOPM_REQUIRE_SPARKLE_TOOLS": "0",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.example.invalid/solopm"
+            ]
+        )
+
+        XCTAssertNotEqual(reservedPrefix.exitCode, 0)
+        XCTAssertTrue(reservedPrefix.output.contains("SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX must not use placeholder or local domains for release appcast"))
+
+        let validPrefixMissingTool = try runScript(
+            "script/generate_appcast.sh",
+            environment: [
+                "SOLOPM_REQUIRE_RELEASE_APPCAST": "1",
+                "SOLOPM_REQUIRE_SPARKLE_TOOLS": "0",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases"
+            ]
+        )
+
+        XCTAssertNotEqual(validPrefixMissingTool.exitCode, 0)
+        XCTAssertTrue(validPrefixMissingTool.output.contains("SOLOPM_REQUIRE_SPARKLE_TOOLS must be 1 for release appcast generation"))
+    }
+
     func testLocalSparkleEnvironmentFileIsIgnored() throws {
         let gitignore = try readPackageFile(".gitignore")
         let ignoredPaths = gitignore
