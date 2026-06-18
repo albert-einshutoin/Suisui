@@ -454,6 +454,34 @@ final class ExternalMCPTests: XCTestCase {
     }
 
     @MainActor
+    func testExternalMCPSettingsViewModelUsesRowLevelCrudForSaveAndDelete() throws {
+        let persisted = MCPServerRegistration(
+            id: "first",
+            displayName: "First MCP",
+            command: "/usr/bin/env",
+            arguments: ["node", "first.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let store = RowLevelOnlyMCPServerRegistrationStore(registrations: [persisted])
+        let viewModel = ExternalMCPSettingsViewModel(store: store)
+
+        viewModel.updateDisplayName("Updated First MCP")
+        viewModel.save()
+
+        XCTAssertEqual(try store.loadRegistrations().first?.displayName, "Updated First MCP")
+        XCTAssertEqual(store.savedRegistrationIDs, ["first"])
+        XCTAssertEqual(store.wholeTableSaveCount, 0)
+
+        viewModel.deleteRegistration()
+
+        XCTAssertEqual(try store.loadRegistrations(), [])
+        XCTAssertEqual(store.deletedRegistrationIDs, ["first"])
+        XCTAssertEqual(store.wholeTableSaveCount, 0)
+    }
+
+    @MainActor
     func testExternalMCPSettingsViewModelSelectsPersistedRegistration() throws {
         let first = MCPServerRegistration(
             id: "first",
@@ -646,6 +674,90 @@ final class ExternalMCPTests: XCTestCase {
 
             XCTAssertEqual(try SQLiteMCPServerRegistrationStore(connection: reopenedConnection).loadRegistrations(), [registration])
         }
+    }
+
+    func testSQLiteMCPRegistrationStoreUpsertsSingleRegistrationWithoutRewritingOtherRows() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteMCPServerRegistrationStore(connection: connection)
+        let first = MCPServerRegistration(
+            id: "first",
+            displayName: "First MCP",
+            command: "/usr/bin/env",
+            arguments: ["node", "first.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let second = MCPServerRegistration(
+            id: "second",
+            displayName: "Second MCP",
+            command: "/usr/bin/env",
+            arguments: ["node", "second.js"],
+            environment: ["SECOND_TOKEN": .keychain(.githubToken)],
+            workingDirectory: "/tmp",
+            isEnabled: false
+        )
+        try store.saveRegistrations([first, second])
+
+        let updatedFirst = MCPServerRegistration(
+            id: "first",
+            displayName: "Updated First MCP",
+            command: "/usr/bin/env",
+            arguments: ["python3", "first.py"],
+            environment: ["FIRST_TOKEN": .keychain(.openAIAPIKey)],
+            workingDirectory: "/tmp",
+            isEnabled: false
+        )
+        try store.saveRegistration(updatedFirst)
+
+        XCTAssertEqual(try store.loadRegistrations(), [updatedFirst, second])
+
+        let third = MCPServerRegistration(
+            id: "third",
+            displayName: "Third MCP",
+            command: "/usr/bin/env",
+            arguments: ["ruby", "third.rb"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        try store.saveRegistration(third)
+
+        XCTAssertEqual(try store.loadRegistrations(), [updatedFirst, second, third])
+    }
+
+    func testSQLiteMCPRegistrationStoreDeletesSingleRegistrationWithoutTouchingOthers() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteMCPServerRegistrationStore(connection: connection)
+        let first = MCPServerRegistration(
+            id: "first",
+            displayName: "First MCP",
+            command: "/usr/bin/env",
+            arguments: ["node", "first.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let second = MCPServerRegistration(
+            id: "second",
+            displayName: "Second MCP",
+            command: "/usr/bin/env",
+            arguments: ["node", "second.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        try store.saveRegistrations([first, second])
+
+        try store.deleteRegistration(id: "first")
+
+        XCTAssertEqual(try store.loadRegistrations(), [second])
+
+        try store.deleteRegistration(id: "missing")
+
+        XCTAssertEqual(try store.loadRegistrations(), [second])
     }
 
     @MainActor
@@ -1469,5 +1581,48 @@ private final class ToggleFailingMCPServerRegistrationStore: MCPServerRegistrati
             throw MCPRegistrationStoreError.encodingFailed
         }
         self.registrations = registrations
+    }
+}
+
+private final class RowLevelOnlyMCPServerRegistrationStore: MCPServerRegistrationStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var registrations: [MCPServerRegistration]
+    private(set) var savedRegistrationIDs: [String] = []
+    private(set) var deletedRegistrationIDs: [String] = []
+    private(set) var wholeTableSaveCount = 0
+
+    init(registrations: [MCPServerRegistration]) {
+        self.registrations = registrations
+    }
+
+    func loadRegistrations() throws -> [MCPServerRegistration] {
+        lock.lock()
+        defer { lock.unlock() }
+        return registrations
+    }
+
+    func saveRegistrations(_ registrations: [MCPServerRegistration]) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        wholeTableSaveCount += 1
+        throw MCPRegistrationStoreError.encodingFailed
+    }
+
+    func saveRegistration(_ registration: MCPServerRegistration) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        savedRegistrationIDs.append(registration.id)
+        if let index = registrations.firstIndex(where: { $0.id == registration.id }) {
+            registrations[index] = registration
+        } else {
+            registrations.append(registration)
+        }
+    }
+
+    func deleteRegistration(id: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        deletedRegistrationIDs.append(id)
+        registrations.removeAll { $0.id == id }
     }
 }

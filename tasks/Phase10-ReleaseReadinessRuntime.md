@@ -1231,6 +1231,15 @@
 - [x] `ProjectTaskKnowledgeToolTests` / `ActionPlanDomainTests` / `ActionPlanSchemaTests` で read/write risk、schema、registry、永続削除を固定する。
 - [x] 完了条件: 外部連携なしでも、AI ReviewからLocal Task / Knowledge FrameのCreate/Read/Update/Deleteが承認付きで成立する。
 
+### P10-158: MCP registration store uses row-level local CRUD
+
+- [x] `MCPServerRegistrationStore` は全件置換だけでなく `saveRegistration` / `deleteRegistration` を公開する。
+- [x] `SQLiteMCPServerRegistrationStore.saveRegistration` は既存 `sort_order` を保持して1件upsertし、新規登録は末尾に追加する。
+- [x] `SQLiteMCPServerRegistrationStore.deleteRegistration` は対象IDだけを削除し、存在しないIDはno-opとして扱う。
+- [x] `ExternalMCPSettingsViewModel.save` / `deleteRegistration` は全件保存ではなく行単位CRUD APIを使う。
+- [x] `ExternalMCPTests` でupsert、append、single delete、ViewModel経由保存/削除を固定する。
+- [x] 完了条件: 外部MCPサーバに接続しなくても、ローカルSQLite上のMCP設定CRUDが行単位で実働し、他の登録を巻き込まない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

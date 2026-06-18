@@ -82,6 +82,32 @@ public enum MCPRegistrationStoreError: Error, Equatable, Sendable {
 public protocol MCPServerRegistrationStore: Sendable {
     func loadRegistrations() throws -> [MCPServerRegistration]
     func saveRegistrations(_ registrations: [MCPServerRegistration]) throws
+    func saveRegistration(_ registration: MCPServerRegistration) throws
+    func deleteRegistration(id: String) throws
+}
+
+public extension MCPServerRegistrationStore {
+    func saveRegistration(_ registration: MCPServerRegistration) throws {
+        let updatedRegistrations = replacing(registration, in: try loadRegistrations())
+        try saveRegistrations(updatedRegistrations)
+    }
+
+    func deleteRegistration(id: String) throws {
+        try saveRegistrations(try loadRegistrations().filter { $0.id != id })
+    }
+
+    private func replacing(
+        _ registration: MCPServerRegistration,
+        in registrations: [MCPServerRegistration]
+    ) -> [MCPServerRegistration] {
+        guard let index = registrations.firstIndex(where: { $0.id == registration.id }) else {
+            return registrations + [registration]
+        }
+
+        var updatedRegistrations = registrations
+        updatedRegistrations[index] = registration
+        return updatedRegistrations
+    }
 }
 
 public final class SQLiteMCPServerRegistrationStore: MCPServerRegistrationStore, @unchecked Sendable {
@@ -125,6 +151,35 @@ public final class SQLiteMCPServerRegistrationStore: MCPServerRegistrationStore,
         }
     }
 
+    public func saveRegistration(_ registration: MCPServerRegistration) throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        do {
+            try connection.transaction {
+                let sortOrder = try sortOrderLocked(for: registration.id)
+                try upsertLocked(registration, sortOrder: sortOrder)
+            }
+        } catch let error as MCPRegistrationStoreError {
+            throw error
+        } catch {
+            throw MCPRegistrationStoreError.encodingFailed
+        }
+    }
+
+    public func deleteRegistration(id: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        do {
+            try connection.execute(
+                "DELETE FROM mcp_server_registrations WHERE id = '\(MCPRegistrationSQL.escape(id))';"
+            )
+        } catch {
+            throw MCPRegistrationStoreError.encodingFailed
+        }
+    }
+
     private func insertLocked(_ registration: MCPServerRegistration, sortOrder: Int) throws {
         let argumentsJSON = try Self.jsonString(registration.arguments)
         let environmentJSON = try Self.jsonString(registration.environment)
@@ -152,6 +207,57 @@ public final class SQLiteMCPServerRegistrationStore: MCPServerRegistrationStore,
             );
             """
         )
+    }
+
+    private func upsertLocked(_ registration: MCPServerRegistration, sortOrder: Int) throws {
+        let argumentsJSON = try Self.jsonString(registration.arguments)
+        let environmentJSON = try Self.jsonString(registration.environment)
+        try connection.execute(
+            """
+            INSERT INTO mcp_server_registrations (
+              id,
+              sort_order,
+              display_name,
+              command,
+              arguments_json,
+              environment_json,
+              working_directory,
+              is_enabled
+            )
+            VALUES (
+              '\(MCPRegistrationSQL.escape(registration.id))',
+              \(sortOrder),
+              '\(MCPRegistrationSQL.escape(registration.displayName))',
+              '\(MCPRegistrationSQL.escape(registration.command))',
+              '\(MCPRegistrationSQL.escape(argumentsJSON))',
+              '\(MCPRegistrationSQL.escape(environmentJSON))',
+              \(MCPRegistrationSQL.optional(registration.workingDirectory)),
+              \(registration.isEnabled ? 1 : 0)
+            )
+            ON CONFLICT(id) DO UPDATE SET
+              display_name = excluded.display_name,
+              command = excluded.command,
+              arguments_json = excluded.arguments_json,
+              environment_json = excluded.environment_json,
+              working_directory = excluded.working_directory,
+              is_enabled = excluded.is_enabled,
+              updated_at = CURRENT_TIMESTAMP;
+            """
+        )
+    }
+
+    private func sortOrderLocked(for id: String) throws -> Int {
+        if let existingValue = try connection
+            .queryRows("SELECT sort_order FROM mcp_server_registrations WHERE id = '\(MCPRegistrationSQL.escape(id))' LIMIT 1;")
+            .first?["sort_order"],
+           let existingSortOrder = Int(existingValue) {
+            return existingSortOrder
+        }
+
+        let maxValue = try connection
+            .queryRows("SELECT COALESCE(MAX(sort_order), -1) AS max_sort_order FROM mcp_server_registrations;")
+            .first?["max_sort_order"]
+        return (Int(maxValue ?? "-1") ?? -1) + 1
     }
 
     private static func registration(row: [String: String]) throws -> MCPServerRegistration {
@@ -353,9 +459,8 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             var registrationToSave = registration
             registrationToSave.environment = try MCPEnvironmentTextCodec.parse(environmentText)
             try registrationValidator.validate(registrationToSave)
-            let updatedRegistrations = Self.replacing(registrationToSave, in: registrations)
-            try store.saveRegistrations(updatedRegistrations)
-            registrations = updatedRegistrations
+            try store.saveRegistration(registrationToSave)
+            registrations = Self.replacing(registrationToSave, in: registrations)
             registration = registrationToSave
             selectedRegistrationID = registrationToSave.id
             syncEnvironmentTextFromRegistration()
@@ -373,7 +478,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
     public func deleteRegistration() {
         do {
             let remainingRegistrations = registrations.filter { $0.id != registration.id }
-            try store.saveRegistrations(remainingRegistrations)
+            try store.deleteRegistration(id: registration.id)
             registrations = remainingRegistrations
             registration = remainingRegistrations.first ?? Self.blankRegistration(existingIDs: [])
             selectedRegistrationID = registration.id
