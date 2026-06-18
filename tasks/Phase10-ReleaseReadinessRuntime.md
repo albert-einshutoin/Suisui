@@ -381,6 +381,12 @@
 - [x] stale build や別 bundle identifier の app bundle は package evidence / manual evidence に進む前に release blocker にする。
 - [x] 完了条件: release package は app metadata と一致する app bundle からだけ作成される。
 
+### P10-047: Developer ID identity format gate
+
+- [x] `sign_app.sh` は `SOLOPM_SIGNING_IDENTITY` が `Developer ID Application:` で始まらない場合、codesign 実行前に失敗する。
+- [x] `verify_release_environment.sh` は Apple Development / Mac Developer など release 不可の identity を release blocker にする。
+- [x] 完了条件: public alpha release path は Apple Developer ID distribution identity 以外の signing identity を受け付けない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

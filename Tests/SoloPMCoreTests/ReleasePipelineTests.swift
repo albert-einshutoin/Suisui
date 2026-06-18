@@ -40,6 +40,8 @@ final class ReleasePipelineTests: XCTestCase {
     func testReleasePreflightRequiresConfiguredDeveloperIDSignature() throws {
         let script = try readPackageFile("script/verify_release_environment.sh")
 
+        XCTAssertTrue(script.contains("Developer ID Application:"))
+        XCTAssertTrue(script.contains("SOLOPM_SIGNING_IDENTITY must be a Developer ID Application identity"))
         XCTAssertTrue(script.contains("codesign -dv --verbose=4"))
         XCTAssertTrue(script.contains("Authority="))
         XCTAssertTrue(script.contains("release app signature does not include configured Developer ID identity"))

@@ -44,6 +44,18 @@ case "$REQUIRE_SIGNING" in
     ;;
 esac
 
+require_developer_id_application_identity() {
+  local signing_identity="$1"
+  case "$signing_identity" in
+    "Developer ID Application:"*)
+      ;;
+    *)
+      echo "SOLOPM_SIGNING_IDENTITY must be a Developer ID Application identity: $signing_identity" >&2
+      exit 2
+      ;;
+  esac
+}
+
 if [[ -z "$SIGNING_IDENTITY" ]]; then
   if [[ "$REQUIRE_SIGNING" == "0" ]]; then
     echo "SOLOPM_SIGNING_IDENTITY is empty; signing skipped because SOLOPM_REQUIRE_SIGNING=0."
@@ -54,6 +66,8 @@ if [[ -z "$SIGNING_IDENTITY" ]]; then
   echo "Run 'security find-identity -p codesigning -v' and use a Developer ID Application identity." >&2
   exit 2
 fi
+
+require_developer_id_application_identity "$SIGNING_IDENTITY"
 
 if ! security find-identity -p codesigning -v | grep -F "$SIGNING_IDENTITY" >/dev/null; then
   echo "Developer ID signing identity was not found in the available keychains: $SIGNING_IDENTITY" >&2

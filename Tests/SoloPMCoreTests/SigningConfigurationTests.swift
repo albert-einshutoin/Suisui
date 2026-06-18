@@ -10,6 +10,8 @@ final class SigningConfigurationTests: XCTestCase {
         XCTAssertTrue(script.contains("--timestamp"))
         XCTAssertTrue(script.contains("--options"))
         XCTAssertTrue(script.contains("runtime"))
+        XCTAssertTrue(script.contains("Developer ID Application:"))
+        XCTAssertTrue(script.contains("SOLOPM_SIGNING_IDENTITY must be a Developer ID Application identity"))
         XCTAssertTrue(script.contains("SOLOPM_BUILD_CONFIGURATION=release"))
         XCTAssertTrue(script.contains("codesign --verify --strict --deep"))
         XCTAssertFalse(script.contains("APPLE_ID_PASSWORD"))

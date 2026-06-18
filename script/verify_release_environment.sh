@@ -69,6 +69,19 @@ require_clean_source_tree() {
   fi
 }
 
+require_developer_id_application_identity() {
+  local signing_identity="$1"
+  case "$signing_identity" in
+    "Developer ID Application:"*)
+      return 0
+      ;;
+    *)
+      add_blocker "SOLOPM_SIGNING_IDENTITY must be a Developer ID Application identity: $signing_identity"
+      return 1
+      ;;
+  esac
+}
+
 read_app_info_plist_key() {
   local app_bundle="$1"
   local key="$2"
@@ -230,6 +243,14 @@ require_app_signature_identity() {
     return
   fi
 
+  case "$signing_identity" in
+    "Developer ID Application:"*)
+      ;;
+    *)
+      return
+      ;;
+  esac
+
   signature_details="$(codesign -dv --verbose=4 "$app_bundle" 2>&1 || true)"
   if ! grep -F "Authority=$signing_identity" <<<"$signature_details" >/dev/null; then
     add_blocker "release app signature does not include configured Developer ID identity: $signing_identity"
@@ -334,8 +355,11 @@ esac
 
 if [[ -z "$SIGNING_IDENTITY" ]]; then
   add_blocker "SOLOPM_SIGNING_IDENTITY is not set; Developer ID Application signing cannot run"
-elif ! security find-identity -p codesigning -v | grep -F "$SIGNING_IDENTITY" >/dev/null; then
-  add_blocker "configured Developer ID signing identity is unavailable: $SIGNING_IDENTITY"
+else
+  if require_developer_id_application_identity "$SIGNING_IDENTITY" \
+    && ! security find-identity -p codesigning -v | grep -F "$SIGNING_IDENTITY" >/dev/null; then
+    add_blocker "configured Developer ID signing identity is unavailable: $SIGNING_IDENTITY"
+  fi
 fi
 
 if [[ -z "$NOTARY_PROFILE" ]]; then
