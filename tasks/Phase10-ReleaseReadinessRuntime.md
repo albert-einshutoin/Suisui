@@ -629,6 +629,13 @@
 - [x] Action Review UI は audit warning を通常の execution error とは別に表示する。
 - [x] 完了条件: レビュー操作や実行の履歴欠落がユーザーから見えない状態で進行しない。
 
+### P10-077: Action executor audit failure does not lose executed state
+
+- [x] `ActionExecutor` は `execution.start` の audit failure は副作用前に block する。
+- [x] tool 実行後の audit failure は throw で session result を失わず、`ReviewSession.auditErrorMessage` に残す。
+- [x] `ReviewSessionViewModel` は executor 由来の audit warning を `auditErrorMessage` に反映する。
+- [x] 完了条件: 実際には tool が成功したのに、audit write failure だけで UI 上の実行結果が消えない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

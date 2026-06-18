@@ -42,13 +42,23 @@ public struct ActionExecutor: Sendable {
         for item in working.items {
             guard item.isEnabled else {
                 working.markAction(id: item.id, status: .skipped)
-                try recordToolEvent(tool: item.editedAction.tool, status: .skipped, actionID: item.id)
+                recordToolEventOrMarkAuditFailure(
+                    tool: item.editedAction.tool,
+                    status: .skipped,
+                    actionID: item.id,
+                    session: &working
+                )
                 continue
             }
 
             if failurePolicy == .stopOnFailure, hasFailure {
                 working.markAction(id: item.id, status: .skipped)
-                try recordToolEvent(tool: item.editedAction.tool, status: .skipped, actionID: item.id)
+                recordToolEventOrMarkAuditFailure(
+                    tool: item.editedAction.tool,
+                    status: .skipped,
+                    actionID: item.id,
+                    session: &working
+                )
                 continue
             }
 
@@ -63,7 +73,13 @@ public struct ActionExecutor: Sendable {
                     context: ToolExecutionContext(approvalToken: working.approvalToken, now: now, source: .reviewUI)
                 )
                 working.markAction(id: item.id, status: .succeeded, result: result)
-                try recordToolEvent(tool: action.tool, status: .succeeded, actionID: item.id, result: result)
+                recordToolEventOrMarkAuditFailure(
+                    tool: action.tool,
+                    status: .succeeded,
+                    actionID: item.id,
+                    result: result,
+                    session: &working
+                )
 
                 if action.tool == .projectCreate, let projectID = result.output["projectId"] {
                     latestProjectID = projectID
@@ -76,12 +92,22 @@ public struct ActionExecutor: Sendable {
                     errorMessage: String(describing: error),
                     failureRecovery: Self.failureRecovery(for: error)
                 )
-                try recordToolEvent(tool: action.tool, status: .failed, actionID: item.id, error: error)
+                recordToolEventOrMarkAuditFailure(
+                    tool: action.tool,
+                    status: .failed,
+                    actionID: item.id,
+                    error: error,
+                    session: &working
+                )
             }
         }
 
         working.executionStatus = hasFailure ? .failed : .completed
-        try recordReviewEvent(action: "execution.complete", status: hasFailure ? .failed : .succeeded, session: working)
+        recordReviewEventOrMarkAuditFailure(
+            action: "execution.complete",
+            status: hasFailure ? .failed : .succeeded,
+            session: &working
+        )
         return working
     }
 
@@ -187,5 +213,32 @@ public struct ActionExecutor: Sendable {
         }
 
         try auditLogger?.record(AuditEvent(category: "tool", action: tool.rawValue, status: status, metadata: metadata))
+    }
+
+    private func recordReviewEventOrMarkAuditFailure(
+        action: String,
+        status: AuditStatus,
+        session: inout ReviewSession
+    ) {
+        do {
+            try recordReviewEvent(action: action, status: status, session: session)
+        } catch {
+            session.auditErrorMessage = "Action audit log failed: \(String(describing: error))"
+        }
+    }
+
+    private func recordToolEventOrMarkAuditFailure(
+        tool: ActionTool,
+        status: AuditStatus,
+        actionID: String,
+        result: ToolResult? = nil,
+        error: Error? = nil,
+        session: inout ReviewSession
+    ) {
+        do {
+            try recordToolEvent(tool: tool, status: status, actionID: actionID, result: result, error: error)
+        } catch {
+            session.auditErrorMessage = "Action audit log failed: \(String(describing: error))"
+        }
     }
 }

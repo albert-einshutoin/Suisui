@@ -121,6 +121,7 @@ public struct ReviewSession: Equatable, Sendable {
     public var items: [ReviewActionItem]
     public var approvalState: ApprovalState
     public var executionStatus: ReviewExecutionStatus
+    public var auditErrorMessage: String?
     public var createdAt: Date
 
     public init(id: String = UUID().uuidString, plan: ActionPlan, createdAt: Date = Date()) {
@@ -129,6 +130,7 @@ public struct ReviewSession: Equatable, Sendable {
         self.items = plan.actions.map { ReviewActionItem(action: $0) }
         self.approvalState = Self.initialApprovalState(for: plan.actions)
         self.executionStatus = .notStarted
+        self.auditErrorMessage = nil
         self.createdAt = createdAt
     }
 

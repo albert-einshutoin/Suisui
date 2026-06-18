@@ -228,6 +228,25 @@ final class ActionExecutorTests: XCTestCase {
         XCTAssertEqual(executed.items.first?.executionStatus, .skipped)
         XCTAssertTrue(logger.recordedEvents.contains { $0.status == .skipped && $0.action == "project.list" })
     }
+
+    func testExecutorPreservesSucceededToolStateWhenAuditFailsAfterExecutionStarts() throws {
+        let logger = SequencedActionAuditLogger(failOnCall: 2)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(name: .projectList, description: "success", inputSchema: ToolInputSchema(), permissionLevel: .read) { _, _ in
+                ToolResult(tool: .projectList, status: .succeeded, summary: "ok")
+            }
+        ])
+        let session = ReviewSession(plan: .reviewFixture(actions: [
+            PlanAction(id: "read", tool: .projectList)
+        ]))
+
+        let executed = try ActionExecutor(registry: registry, auditLogger: logger).execute(session)
+
+        XCTAssertEqual(executed.executionStatus, .completed)
+        XCTAssertEqual(executed.items.first?.executionStatus, .succeeded)
+        XCTAssertEqual(executed.items.first?.result?.summary, "ok")
+        XCTAssertEqual(executed.auditErrorMessage, "Action audit log failed: unavailable")
+    }
 }
 
 private final class ToolCallTracker: @unchecked Sendable {
@@ -244,6 +263,33 @@ private final class ToolCallTracker: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         isCalled = true
+    }
+}
+
+private enum ActionExecutorAuditTestError: Error, CustomStringConvertible {
+    case unavailable
+
+    var description: String {
+        "unavailable"
+    }
+}
+
+private final class SequencedActionAuditLogger: AuditLogger, @unchecked Sendable {
+    private let failOnCall: Int
+    private var callCount = 0
+    private let lock = NSLock()
+
+    init(failOnCall: Int) {
+        self.failOnCall = failOnCall
+    }
+
+    func record(_ event: AuditEvent) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        callCount += 1
+        if callCount >= failOnCall {
+            throw ActionExecutorAuditTestError.unavailable
+        }
     }
 }
 

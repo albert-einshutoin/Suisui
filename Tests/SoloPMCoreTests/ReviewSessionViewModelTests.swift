@@ -165,6 +165,29 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.auditErrorMessage, "Review audit log failed: unavailable")
     }
 
+    func testExecutorAuditFailureAfterToolSuccessIsSurfacedWithoutLosingSessionResult() throws {
+        let executorAuditLogger = SequencedFailingAuditLogger(failOnCall: 2)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(name: .projectList, description: "read", inputSchema: ToolInputSchema(), permissionLevel: .read) { _, _ in
+                ToolResult(tool: .projectList, status: .succeeded, summary: "ok")
+            }
+        ])
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(id: "read", tool: .projectList)
+            ]),
+            executor: ActionExecutor(registry: registry, auditLogger: executorAuditLogger),
+            auditLogger: InMemoryAuditLogger()
+        )
+
+        try viewModel.execute()
+
+        XCTAssertEqual(viewModel.session.executionStatus, .completed)
+        XCTAssertEqual(viewModel.session.items.first?.executionStatus, .succeeded)
+        XCTAssertEqual(viewModel.session.items.first?.result?.summary, "ok")
+        XCTAssertEqual(viewModel.auditErrorMessage, "Action audit log failed: unavailable")
+    }
+
     func testBlankOptionalCRUDFieldDisablesExecutionBeforeApproval() throws {
         let stores = try makeStores()
         let task = try stores.tasks.create(title: "Draft release notes")

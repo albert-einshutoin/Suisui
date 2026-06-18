@@ -87,7 +87,11 @@ public final class ReviewSessionViewModel: ObservableObject {
         defer { isExecuting = false }
 
         do {
-            session = try executor.execute(session)
+            let executedSession = try executor.execute(session)
+            session = executedSession
+            if let auditErrorMessage = executedSession.auditErrorMessage {
+                self.auditErrorMessage = auditErrorMessage
+            }
         } catch {
             errorMessage = String(describing: error)
             recordAudit(action: "session.execute", status: .failed)
