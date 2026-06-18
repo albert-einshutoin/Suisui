@@ -94,7 +94,32 @@ public struct MCPToolDefinition: Equatable, Sendable {
         guard let name = object["name"]?.stringValue, !name.isEmpty else {
             throw MCPClientError.invalidResponse(serverID: "", method: "tools/list", reason: "Tool entry missing name.")
         }
-        let description = object["description"]?.stringValue ?? ""
+        let description: String
+        if let descriptionValue = object["description"] {
+            guard let parsedDescription = descriptionValue.stringValue else {
+                throw MCPClientError.invalidResponse(
+                    serverID: "",
+                    method: "tools/list",
+                    reason: "Tool entry description must be a string when present."
+                )
+            }
+            description = parsedDescription
+        } else {
+            description = ""
+        }
+        let title: String?
+        if let titleValue = object["title"] {
+            guard let parsedTitle = titleValue.stringValue else {
+                throw MCPClientError.invalidResponse(
+                    serverID: "",
+                    method: "tools/list",
+                    reason: "Tool entry title must be a string when present."
+                )
+            }
+            title = parsedTitle
+        } else {
+            title = nil
+        }
         let inputSchema: [String: JSONValue]
         if let inputSchemaValue = object["inputSchema"] {
             guard let schemaObject = inputSchemaValue.objectValue else {
@@ -107,7 +132,7 @@ public struct MCPToolDefinition: Equatable, Sendable {
         }
         return MCPToolDefinition(
             name: name,
-            title: object["title"]?.stringValue,
+            title: title,
             description: description,
             inputSchema: inputSchema
         )

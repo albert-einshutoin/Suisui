@@ -952,6 +952,14 @@
 - [x] `ExternalMCPTests` で number `text` が invalid response になることを固定する。
 - [x] 完了条件: MCP tool の壊れた出力本文が空本文として review / audit path に流れない。
 
+### P10-123: MCP tool metadata must not hide wrong JSON types
+
+- [x] `MCPToolDefinition.parse` は tool `description` が存在する場合、string 以外を空文字に丸めない。
+- [x] `MCPToolDefinition.parse` は tool `title` が存在する場合、string 以外を `nil` に丸めない。
+- [x] `description` / `title` 欠落時だけ MCP 互換の optional metadata として扱い、型不一致は `MCPClientError.invalidResponse` にする。
+- [x] `ExternalMCPTests` で number `description` と array `title` が invalid response になることを固定する。
+- [x] 完了条件: ユーザー登録 MCP server の壊れた tool metadata を空説明 / name fallback として catalog や review UI に表示しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

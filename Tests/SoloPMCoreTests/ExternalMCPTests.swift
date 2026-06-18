@@ -978,6 +978,69 @@ final class ExternalMCPTests: XCTestCase {
         }
     }
 
+    func testToolsListRejectsNonStringDescriptionMetadata() async throws {
+        let transport = RecordingMCPTransport { request in
+            if request.method == "tools/list" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "tools": .array([
+                            .object([
+                                "name": .string("bad_description"),
+                                "description": .number(42),
+                                "inputSchema": .object(["type": .string("object")])
+                            ])
+                        ])
+                    ])
+                )
+            }
+            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+        }
+        let client = MCPClient(serverID: "fake", transport: transport)
+
+        do {
+            _ = try await client.listTools()
+            XCTFail("non-string tool description should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(serverID: "fake", method: "tools/list", reason: "Tool entry description must be a string when present.")
+            )
+        }
+    }
+
+    func testToolsListRejectsNonStringTitleMetadata() async throws {
+        let transport = RecordingMCPTransport { request in
+            if request.method == "tools/list" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "tools": .array([
+                            .object([
+                                "name": .string("bad_title"),
+                                "title": .array([.string("Bad Title")]),
+                                "description": .string("Bad title metadata."),
+                                "inputSchema": .object(["type": .string("object")])
+                            ])
+                        ])
+                    ])
+                )
+            }
+            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+        }
+        let client = MCPClient(serverID: "fake", transport: transport)
+
+        do {
+            _ = try await client.listTools()
+            XCTFail("non-string tool title should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(serverID: "fake", method: "tools/list", reason: "Tool entry title must be a string when present.")
+            )
+        }
+    }
+
     func testMismatchedJSONRPCResponseIDAndVersionAreRejected() async throws {
         let mismatchedIDClient = MCPClient(serverID: "fake", transport: ExternalMCPTestKit.makeMismatchedIDTransport())
         do {
