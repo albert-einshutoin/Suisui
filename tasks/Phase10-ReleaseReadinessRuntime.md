@@ -1143,6 +1143,12 @@
 - [x] source regression test で `try?` による silent skip と `try!` による crash path の復活を防ぐ。
 - [x] 完了条件: secret redaction pattern の破損が、runtime crash または secret を無検知で通す成功 path にならない。
 
+### P10-147: Audit metadata encoding does not fall back to empty JSON
+
+- [x] `SQLiteAuditLogger.record` は metadata JSON の UTF-8 string 化に失敗した場合、`{}` へ置き換えず `DatabaseError.executeFailed` を投げる。
+- [x] source regression test で `String(data: metadataData, encoding: .utf8) ?? "{}"` の復活を防ぐ。
+- [x] 完了条件: audit metadata persistence が、encoding failure 時に監査 context を空 object として保存成功に見せない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

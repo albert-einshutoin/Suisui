@@ -53,7 +53,9 @@ public final class SQLiteAuditLogger: AuditLogger, @unchecked Sendable {
         defer { lock.unlock() }
 
         let metadataData = try JSONEncoder().encode(event.metadata)
-        let metadata = String(data: metadataData, encoding: .utf8) ?? "{}"
+        guard let metadata = String(data: metadataData, encoding: .utf8) else {
+            throw DatabaseError.executeFailed("Could not encode audit_logs.metadata_json as UTF-8 JSON.")
+        }
         try connection.execute(
             """
             INSERT INTO audit_logs (timestamp, category, action, status, metadata_json)

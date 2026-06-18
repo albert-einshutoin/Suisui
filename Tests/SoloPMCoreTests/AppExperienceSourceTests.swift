@@ -351,6 +351,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains(#"String(data: data, encoding: .utf8) ?? "[]""#))
     }
 
+    func testAuditLoggerDoesNotDefaultMetadataEncodingToEmptyJSON() throws {
+        let source = try readPackageFile("Sources/SoloPMCore/Audit/AuditLogger.swift")
+
+        XCTAssertFalse(source.contains(#"String(data: metadataData, encoding: .utf8) ?? "{}""#))
+        XCTAssertTrue(source.contains("Could not encode audit_logs.metadata_json as UTF-8 JSON."))
+    }
+
     func testActionPlanSchemaDoesNotFallBackToSourceTreeAtRuntime() throws {
         let source = try readPackageFile("Sources/SoloPMCore/Planning/ActionPlanSchema.swift")
 
