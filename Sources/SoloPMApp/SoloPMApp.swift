@@ -836,6 +836,28 @@ private struct SettingsView: View {
                         Label("Delete Key", systemImage: "trash")
                     }
                 }
+                LabeledContent("Anthropic API Key", value: settingsViewModel.anthropicAPIKeyStatusLabel)
+                SecureField(
+                    "Anthropic API Key",
+                    text: Binding(
+                        get: { settingsViewModel.anthropicAPIKeyInput },
+                        set: { settingsViewModel.updateAnthropicAPIKeyInput($0) }
+                    )
+                )
+                HStack {
+                    Button {
+                        settingsViewModel.saveAnthropicAPIKey()
+                    } label: {
+                        Label("Save Claude Key", systemImage: "key")
+                    }
+                    .disabled(settingsViewModel.anthropicAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    Button(role: .destructive) {
+                        settingsViewModel.deleteAnthropicAPIKey()
+                    } label: {
+                        Label("Delete Claude Key", systemImage: "trash")
+                    }
+                }
                 LabeledContent("OpenRouter API Key", value: settingsViewModel.openRouterAPIKeyStatusLabel)
                 SecureField(
                     "OpenRouter API Key",
@@ -1344,7 +1366,6 @@ private enum AppRuntimeFactory {
     private static func makeLLMProvider(settings: AppSettings, secretStore: any SecretStore) -> any LLMProvider {
         switch settings.normalizedForRuntime.aiProvider {
         case .openaiResponses,
-             .claudeMessages,
              .geminiDirect,
              .geminiOpenAICompatible,
              .groqOpenAICompatible,
@@ -1352,6 +1373,10 @@ private enum AppRuntimeFactory {
             let entry = LLMProviderCatalog.entry(for: .openaiResponses)
             let configuration = OpenAIResponsesConfiguration(model: entry.defaultModelID)
             return OpenAIResponsesProvider(secretStore: secretStore, configuration: configuration)
+        case .claudeMessages:
+            let entry = LLMProviderCatalog.entry(for: .claudeMessages)
+            let configuration = ClaudeMessagesConfiguration(model: entry.defaultModelID)
+            return ClaudeMessagesProvider(secretStore: secretStore, configuration: configuration)
         case .openRouterCompatible:
             let entry = LLMProviderCatalog.entry(for: .openRouterCompatible)
             return ChatCompletionsCompatibleProvider(

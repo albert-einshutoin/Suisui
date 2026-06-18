@@ -130,7 +130,7 @@ AI モデルは BYOK を前提にする。
 OpenAI API Key
 OpenRouter API Key
 Ollama local endpoint
-Anthropic API Key later
+Anthropic API Key
 Gemini API Key later
 ```
 
@@ -368,6 +368,8 @@ MVP では TTS に時間を使わない。
 最初は **OpenAI Responses API adapter** を作る。OpenAI公式は新規プロジェクトではChat CompletionsよりResponses APIを推奨しているため、Action Plan生成・Structured Outputs・将来のremote MCP/agentic primitivesに備える。OpenAI-compatible Chat CompletionsはOpenRouter/Ollama互換のfallbackとして維持する。
 
 OpenAI Responses adapter の既定 model id は `LLMProviderCatalog` と `OpenAIResponsesConfiguration` で `gpt-5.2` に固定する。model id が未設定・未移行の場合も、provider 側の暗黙 default や高額 model へ落とさず、この catalog default を使う。
+
+Claude Messages adapter は Anthropic Messages API `POST /v1/messages` を使い、`x-api-key` / `anthropic-version` header、top-level `system`、user `messages`、`max_tokens` を明示する。既定 model id は `LLMProviderCatalog` と `ClaudeMessagesConfiguration` で `claude-opus-4-6` に固定し、Claude固有のtool use loopはAction Plan生成では実行しない。
 
 ```text
 LLMProvider
@@ -688,7 +690,7 @@ Keychain Services
 ```text
 OpenAI API Key
 OpenRouter API Key
-Anthropic API Key later
+Anthropic API Key
 Gemini API Key later
 GitHub Token later
 Google OAuth token later
@@ -1082,8 +1084,9 @@ TTS:
 LLM:
   OpenAI Responses API adapter first
   OpenAI-compatible Chat fallback
-  OpenRouter / Ollama next
-  Anthropic / Gemini later
+  OpenRouter / Ollama
+  Anthropic Messages API
+  Gemini later
   Foundation Models later
 
 Tool Execution:

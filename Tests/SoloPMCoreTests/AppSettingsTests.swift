@@ -80,6 +80,7 @@ final class AppSettingsTests: XCTestCase {
         )
 
         XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Unavailable")
+        XCTAssertEqual(viewModel.anthropicAPIKeyStatusLabel, "Unavailable")
         XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Unavailable")
         XCTAssertEqual(viewModel.openAIProviderSmokeStatusLabel, "unavailable")
         XCTAssertEqual(viewModel.errorMessage, "API key status could not be read from Keychain.")
@@ -98,6 +99,7 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Invalid")
         XCTAssertEqual(viewModel.openAIProviderSmokeStatusLabel, "invalidConfiguration")
+        XCTAssertEqual(viewModel.anthropicAPIKeyStatusLabel, "Not configured")
         XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Not configured")
         XCTAssertEqual(viewModel.errorMessage, "Stored API key is invalid. Re-enter it in Settings.")
         XCTAssertFalse(viewModel.errorMessage?.contains("sk-live") ?? true)
@@ -116,6 +118,7 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Not configured")
         XCTAssertEqual(viewModel.openAIProviderSmokeStatusLabel, "notConfigured")
+        XCTAssertEqual(viewModel.anthropicAPIKeyStatusLabel, "Not configured")
         XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Invalid")
         XCTAssertEqual(viewModel.errorMessage, "Stored API key is invalid. Re-enter it in Settings.")
         XCTAssertFalse(viewModel.errorMessage?.contains("sk-or-live") ?? true)
@@ -154,6 +157,24 @@ final class AppSettingsTests: XCTestCase {
         viewModel.saveOpenRouterAPIKey()
 
         XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Unavailable")
+        XCTAssertEqual(viewModel.errorMessage, "API key status could not be read from Keychain.")
+        XCTAssertNil(viewModel.successMessage)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelDoesNotReportAnthropicKeySaveSuccessWhenStatusRefreshFails() throws {
+        let suiteName = "SoloPM.AppSettingsAnthropicSaveRefreshFailure.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: ThrowingReadSecretStore()
+        )
+
+        viewModel.updateAnthropicAPIKeyInput("sk-ant-test")
+        viewModel.saveAnthropicAPIKey()
+
+        XCTAssertEqual(viewModel.anthropicAPIKeyStatusLabel, "Unavailable")
         XCTAssertEqual(viewModel.errorMessage, "API key status could not be read from Keychain.")
         XCTAssertNil(viewModel.successMessage)
     }
@@ -237,6 +258,28 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertNil(try secretStore.read(.openRouterAPIKey))
         XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Not configured")
+    }
+
+    @MainActor
+    func testAppSettingsViewModelSavesAndDeletesAnthropicKeyInSecretStoreOnly() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelAnthropicTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settingsStore = UserDefaultsAppSettingsStore(defaults: defaults)
+        let secretStore = InMemorySecretStore()
+        let viewModel = AppSettingsViewModel(settingsStore: settingsStore, secretStore: secretStore)
+
+        viewModel.updateAnthropicAPIKeyInput(" sk-ant-test-secret ")
+        viewModel.saveAnthropicAPIKey()
+
+        XCTAssertEqual(try secretStore.read(.anthropicAPIKey), "sk-ant-test-secret")
+        XCTAssertEqual(viewModel.anthropicAPIKeyStatusLabel, "Configured")
+        XCTAssertNil(defaults.data(forKey: "app.settings"))
+
+        viewModel.deleteAnthropicAPIKey()
+
+        XCTAssertNil(try secretStore.read(.anthropicAPIKey))
+        XCTAssertEqual(viewModel.anthropicAPIKeyStatusLabel, "Not configured")
     }
 
     @MainActor
@@ -330,6 +373,25 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testAppSettingsViewModelRejectsAnthropicKeyWithInternalWhitespace() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelInvalidAnthropicKey.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settingsStore = UserDefaultsAppSettingsStore(defaults: defaults)
+        let secretStore = InMemorySecretStore()
+        let viewModel = AppSettingsViewModel(settingsStore: settingsStore, secretStore: secretStore)
+
+        let keyPrefix = "sk-ant" + "-live"
+        viewModel.updateAnthropicAPIKeyInput("\(keyPrefix)\ninvalid")
+        viewModel.saveAnthropicAPIKey()
+
+        XCTAssertNil(try secretStore.read(.anthropicAPIKey))
+        XCTAssertEqual(viewModel.anthropicAPIKeyStatusLabel, "Not configured")
+        XCTAssertEqual(viewModel.errorMessage, "API key cannot contain whitespace.")
+        XCTAssertFalse(viewModel.errorMessage?.contains(keyPrefix) ?? true)
+    }
+
+    @MainActor
     func testAppSettingsViewModelPersistsNonSecretSettings() throws {
         let suiteName = "SoloPM.AppSettingsViewModelSettings.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -355,13 +417,13 @@ final class AppSettingsTests: XCTestCase {
         let store = UserDefaultsAppSettingsStore(defaults: defaults)
         let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
 
-        viewModel.setAIProvider(.openRouterCompatible)
+        viewModel.setAIProvider(.claudeMessages)
         viewModel.setSTTProvider(.openAITranscribe)
         viewModel.saveSettings()
 
         let loaded = try store.load()
 
-        XCTAssertEqual(loaded.aiProvider, .openRouterCompatible)
+        XCTAssertEqual(loaded.aiProvider, .claudeMessages)
         XCTAssertEqual(loaded.sttProvider, .openAITranscribe)
     }
 
@@ -373,13 +435,13 @@ final class AppSettingsTests: XCTestCase {
         let store = UserDefaultsAppSettingsStore(defaults: defaults)
         let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
 
-        XCTAssertEqual(viewModel.selectableAIProviders, [.openaiResponses, .openRouterCompatible, .ollamaCompatible])
+        XCTAssertEqual(viewModel.selectableAIProviders, [.openaiResponses, .claudeMessages, .openRouterCompatible, .ollamaCompatible])
 
-        viewModel.setAIProvider(.claudeMessages)
+        viewModel.setAIProvider(.geminiDirect)
         viewModel.saveSettings()
 
         XCTAssertEqual(viewModel.settings.aiProvider, .openaiResponses)
-        XCTAssertEqual(viewModel.errorMessage, "Claude Messages is not available in this build.")
+        XCTAssertEqual(viewModel.errorMessage, "Gemini Direct is not available in this build.")
         XCTAssertNil(defaults.data(forKey: "app.settings"))
     }
 

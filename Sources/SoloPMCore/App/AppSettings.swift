@@ -169,6 +169,8 @@ public final class AppSettingsViewModel: ObservableObject {
     @Published public private(set) var openAIAPIKeyInput: String
     @Published public private(set) var openAIAPIKeyStatusLabel: String
     @Published public private(set) var openAIProviderSmokeStatusLabel: String
+    @Published public private(set) var anthropicAPIKeyInput: String
+    @Published public private(set) var anthropicAPIKeyStatusLabel: String
     @Published public private(set) var openRouterAPIKeyInput: String
     @Published public private(set) var openRouterAPIKeyStatusLabel: String
     @Published public private(set) var keychainSecretKeyInput: String
@@ -197,6 +199,8 @@ public final class AppSettingsViewModel: ObservableObject {
         self.openAIAPIKeyInput = ""
         self.openAIAPIKeyStatusLabel = "Not configured"
         self.openAIProviderSmokeStatusLabel = "notConfigured"
+        self.anthropicAPIKeyInput = ""
+        self.anthropicAPIKeyStatusLabel = "Not configured"
         self.openRouterAPIKeyInput = ""
         self.openRouterAPIKeyStatusLabel = "Not configured"
         self.keychainSecretKeyInput = ""
@@ -206,6 +210,7 @@ public final class AppSettingsViewModel: ObservableObject {
         self.successMessage = nil
         self.rejectedAIProvider = nil
         refreshOpenAIAPIKeyStatus()
+        refreshAnthropicAPIKeyStatus()
         refreshOpenRouterAPIKeyStatus()
     }
 
@@ -243,6 +248,11 @@ public final class AppSettingsViewModel: ObservableObject {
 
     public func updateOpenAIAPIKeyInput(_ value: String) {
         openAIAPIKeyInput = value
+        clearMessages()
+    }
+
+    public func updateAnthropicAPIKeyInput(_ value: String) {
+        anthropicAPIKeyInput = value
         clearMessages()
     }
 
@@ -380,6 +390,30 @@ public final class AppSettingsViewModel: ObservableObject {
         }
     }
 
+    public func saveAnthropicAPIKey() {
+        let trimmed = anthropicAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            deleteAnthropicAPIKey()
+            return
+        }
+        guard validateAPIKey(trimmed) else {
+            return
+        }
+
+        do {
+            try secretStore.save(trimmed, for: .anthropicAPIKey)
+            anthropicAPIKeyInput = ""
+            guard refreshAnthropicAPIKeyStatus() else {
+                return
+            }
+            errorMessage = nil
+            successMessage = "Anthropic API key saved to Keychain."
+        } catch {
+            errorMessage = String(describing: error)
+            successMessage = nil
+        }
+    }
+
     public func deleteOpenAIAPIKey() {
         do {
             try secretStore.delete(.openAIAPIKey)
@@ -404,6 +438,21 @@ public final class AppSettingsViewModel: ObservableObject {
             }
             errorMessage = nil
             successMessage = "OpenRouter API key removed."
+        } catch {
+            errorMessage = String(describing: error)
+            successMessage = nil
+        }
+    }
+
+    public func deleteAnthropicAPIKey() {
+        do {
+            try secretStore.delete(.anthropicAPIKey)
+            anthropicAPIKeyInput = ""
+            guard refreshAnthropicAPIKeyStatus() else {
+                return
+            }
+            errorMessage = nil
+            successMessage = "Anthropic API key removed."
         } catch {
             errorMessage = String(describing: error)
             successMessage = nil
@@ -445,6 +494,23 @@ public final class AppSettingsViewModel: ObservableObject {
             return true
         } catch {
             openRouterAPIKeyStatusLabel = "Unavailable"
+            errorMessage = "API key status could not be read from Keychain."
+            successMessage = nil
+            return false
+        }
+    }
+
+    @discardableResult
+    public func refreshAnthropicAPIKeyStatus() -> Bool {
+        do {
+            anthropicAPIKeyStatusLabel = try apiKeyStatusLabel(for: .anthropicAPIKey)
+            if anthropicAPIKeyStatusLabel == "Invalid" {
+                reportInvalidStoredAPIKey()
+                return false
+            }
+            return true
+        } catch {
+            anthropicAPIKeyStatusLabel = "Unavailable"
             errorMessage = "API key status could not be read from Keychain."
             successMessage = nil
             return false

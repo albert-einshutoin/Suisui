@@ -659,13 +659,27 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(runtimeFactory.contains("Runtime app settings could not be loaded. Defaults are shown until settings are saved again."))
     }
 
-    func testSettingsSurfaceCanPersistOpenAIKeyThroughViewModel() throws {
+    func testSettingsSurfaceCanPersistProviderKeysThroughViewModel() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
         XCTAssertTrue(appSource.contains("AppSettingsViewModel"))
         XCTAssertTrue(appSource.contains("settingsViewModel.saveOpenAIAPIKey()"))
         XCTAssertTrue(appSource.contains("settingsViewModel.deleteOpenAIAPIKey()"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.saveAnthropicAPIKey()"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.deleteAnthropicAPIKey()"))
+        XCTAssertTrue(appSource.contains("Anthropic API Key"))
         XCTAssertFalse(appSource.contains("SecureField(\"API Key\", text: .constant(\"\"))"))
+    }
+
+    func testRuntimeLLMFactoryUsesClaudeMessagesProviderWithoutOpenAIFallback() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let factoryStart = try XCTUnwrap(appSource.range(of: "private static func makeLLMProvider"))
+        let factorySource = String(appSource[factoryStart.lowerBound..<appSource.endIndex])
+
+        XCTAssertTrue(factorySource.contains("case .claudeMessages:"))
+        XCTAssertTrue(factorySource.contains("ClaudeMessagesConfiguration(model: entry.defaultModelID)"))
+        XCTAssertTrue(factorySource.contains("ClaudeMessagesProvider(secretStore: secretStore, configuration: configuration)"))
+        XCTAssertFalse(factorySource.contains(".openaiResponses,\n             .claudeMessages"))
     }
 
     func testSettingsSurfaceOnlyShowsReleaseReadySTTProviders() throws {
@@ -696,14 +710,18 @@ final class AppExperienceSourceTests: XCTestCase {
         let llmProviderSource = try readPackageFile("Sources/SoloPMCore/Planning/LLMProvider.swift")
         let responsesSource = try readPackageFile("Sources/SoloPMCore/Planning/OpenAIResponsesProvider.swift")
         let chatSource = try readPackageFile("Sources/SoloPMCore/Planning/ChatCompletionsCompatibleProvider.swift")
+        let claudeSource = try readPackageFile("Sources/SoloPMCore/Planning/ClaudeMessagesProvider.swift")
 
         XCTAssertTrue(llmProviderSource.contains("LLMHTTPErrorMessageExtractor"))
         XCTAssertTrue(llmProviderSource.contains("Unexpected error body"))
         XCTAssertTrue(llmProviderSource.contains("DeveloperSecretRedactor().redact"))
         XCTAssertTrue(responsesSource.contains("LLMHTTPErrorMessageExtractor.message(from: data)"))
         XCTAssertTrue(chatSource.contains("LLMHTTPErrorMessageExtractor.message(from: data)"))
+        XCTAssertTrue(claudeSource.contains("LLMHTTPErrorMessageExtractor.message(from: data)"))
+        XCTAssertTrue(claudeSource.contains("Claude Messages HTTP"))
         XCTAssertFalse(responsesSource.contains("No error message."))
         XCTAssertFalse(chatSource.contains("No error message."))
+        XCTAssertFalse(claudeSource.contains("No error message."))
     }
 
     private func readPackageFile(_ relativePath: String) throws -> String {

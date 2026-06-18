@@ -73,12 +73,12 @@
 
 ## P11-012: Claude Messages adapter
 
-- [ ] `ClaudeMessagesProvider` を追加し、Anthropic Messages APIの `POST /v1/messages` 形に合わせる。
-- [ ] system prompt、user prompt、max tokens、model id、JSON extractionをOpenAI Responses adapterと同じ `PlanningResponse` へ変換する。
-- [ ] Claude固有のtool use loopは本タスクでは実装せず、Action Plan生成だけに限定する。
-- [ ] HTTP error bodyをprovider名つきのuser-facing errorへ変換し、raw response bodyをログに残さない。
-- [ ] `ClaudeMessagesProviderTests` で正常/HTTP error/schema mismatch/空contentを固定する。
-- [ ] 完了条件: ClaudeユーザーがBYOKでAction Plan生成を実利用できる。
+- [x] `ClaudeMessagesProvider` を追加し、Anthropic Messages APIの `POST /v1/messages` 形に合わせる。
+- [x] system prompt、user prompt、max tokens、model id、JSON extractionをOpenAI Responses adapterと同じ `PlanningResponse` へ変換する。
+- [x] Claude固有のtool use loopは本タスクでは実装せず、Action Plan生成だけに限定する。
+- [x] HTTP error bodyをprovider名つきのuser-facing errorへ変換し、raw response bodyをログに残さない。
+- [x] `ClaudeMessagesProviderTests` で正常/HTTP error/schema mismatch/空contentを固定する。
+- [x] 完了条件: ClaudeユーザーがBYOKでAction Plan生成を実利用できる。
 
 ## P11-013: Gemini adapter
 

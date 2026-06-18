@@ -42,6 +42,7 @@ final class LLMProviderCatalogTests: XCTestCase {
         let claude = LLMProviderCatalog.entry(for: .claudeMessages)
         XCTAssertEqual(claude.apiKeySecretKey, .anthropicAPIKey)
         XCTAssertEqual(claude.baseURL?.absoluteString, "https://api.anthropic.com/v1")
+        XCTAssertEqual(claude.defaultModelID, "claude-opus-4-6")
         XCTAssertEqual(claude.requestFamily, .anthropicMessages)
 
         let openCode = LLMProviderCatalog.entry(for: .opencodeLocal)
@@ -55,6 +56,7 @@ final class LLMProviderCatalogTests: XCTestCase {
             LLMProviderCatalog.settingsSelectableIDs,
             [
                 .openaiResponses,
+                .claudeMessages,
                 .openRouterCompatible,
                 .ollamaCompatible
             ]

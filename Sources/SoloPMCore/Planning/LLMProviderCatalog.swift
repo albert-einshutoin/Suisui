@@ -120,11 +120,10 @@ public enum LLMProviderCatalog {
         LLMProviderCatalogEntry(
             id: .claudeMessages,
             displayName: "Claude Messages",
-            isAvailableInCurrentBuild: false,
-            unavailableReason: unavailableReason,
+            isAvailableInCurrentBuild: true,
             apiKeySecretKey: .anthropicAPIKey,
             baseURL: URL(string: "https://api.anthropic.com/v1")!,
-            defaultModelID: "claude-sonnet-4-6",
+            defaultModelID: "claude-opus-4-6",
             requestFamily: .anthropicMessages,
             supportsStreaming: true,
             supportsStructuredOutput: true
