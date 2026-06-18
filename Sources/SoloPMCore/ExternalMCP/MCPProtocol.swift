@@ -163,7 +163,20 @@ public struct MCPContentItem: Equatable, Sendable {
         guard let type = object["type"]?.stringValue else {
             throw MCPClientError.invalidResponse(serverID: "", method: "tools/call", reason: "Content entry missing type.")
         }
-        return MCPContentItem(type: type, text: object["text"]?.stringValue)
+        let text: String?
+        if let textValue = object["text"] {
+            guard let parsedText = textValue.stringValue else {
+                throw MCPClientError.invalidResponse(
+                    serverID: "",
+                    method: "tools/call",
+                    reason: "Content entry text must be a string when present."
+                )
+            }
+            text = parsedText
+        } else {
+            text = nil
+        }
+        return MCPContentItem(type: type, text: text)
     }
 }
 

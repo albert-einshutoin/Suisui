@@ -945,6 +945,13 @@
 - [x] `ExternalMCPTests` で string `isError` が `MCPClientError.invalidResponse` になることを固定する。
 - [x] 完了条件: ユーザー登録 MCP server の壊れた error flag を成功結果として audit / review path に流さない。
 
+### P10-122: MCP text content must not drop wrong JSON types
+
+- [x] `MCPContentItem.parse` は content `text` が存在する場合、string 以外を `nil` に丸めない。
+- [x] `text` 欠落時だけ optional content として扱い、型不一致は `MCPClientError.invalidResponse` にする。
+- [x] `ExternalMCPTests` で number `text` が invalid response になることを固定する。
+- [x] 完了条件: MCP tool の壊れた出力本文が空本文として review / audit path に流れない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

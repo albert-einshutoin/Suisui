@@ -182,6 +182,41 @@ final class ExternalMCPTests: XCTestCase {
         }
     }
 
+    func testClientRejectsNonStringToolCallTextContent() async throws {
+        let transport = RecordingMCPTransport { request in
+            if request.method == "tools/call" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "content": .array([
+                            .object([
+                                "type": .string("text"),
+                                "text": .number(42)
+                            ])
+                        ])
+                    ])
+                )
+            }
+
+            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+        }
+        let client = MCPClient(serverID: "invalid-text-content", transport: transport)
+
+        do {
+            _ = try await client.callTool(name: "read_status", arguments: [:])
+            XCTFail("non-string text content should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(
+                    serverID: "invalid-text-content",
+                    method: "tools/call",
+                    reason: "Content entry text must be a string when present."
+                )
+            )
+        }
+    }
+
     @MainActor
     func testExternalMCPSettingsViewModelPersistsRegistration() throws {
         let store = InMemoryMCPServerRegistrationStore()
