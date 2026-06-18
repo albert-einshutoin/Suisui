@@ -598,6 +598,14 @@
 - [x] テスト: corrupted notification title、corrupted calendar task_id、corrupted reminder project_id が silent fallback されないことを確認する。
 - [x] 完了条件: notification / calendar / reminder の永続リンク破損が、空 request やリンク消失として UI/CLI に流れない。
 
+### P10-073: Artifact monitoring row decode fail-fast fields
+
+- [x] `ArtifactRecord(row:)` は `id` / `workspace_path` / `expected_path` / `created_state` を必須 decode する。
+- [x] `project_id` / `task_id` の不正値を `nil` にせず decode error にする。
+- [x] `last_modified_at` の不正日時を `nil` にせず decode error にする。
+- [x] テスト: corrupted task_id、empty expected_path、corrupted last_modified_at が silent fallback されないことを確認する。
+- [x] 完了条件: 成果物監視のリンクや更新日時破損が、missing/stale 判定の誤判定として流れない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

@@ -21,6 +21,47 @@ final class ArtifactMonitoringTests: XCTestCase {
         XCTAssertEqual(artifact.lastModifiedAt, lastModifiedAt)
     }
 
+    func testArtifactStoreRejectsCorruptedTaskIDInsteadOfDroppingLink() throws {
+        let connection = try makeConnection()
+        let store = SQLiteArtifactStore(connection: connection)
+        let artifact = try store.create(taskID: 42, workspacePath: "/tmp/solopm", expectedPath: "/tmp/solopm/reports/status.md")
+
+        try connection.execute("UPDATE artifacts SET task_id = 'not-int' WHERE id = \(artifact.id);")
+
+        XCTAssertThrowsError(try store.get(id: artifact.id)) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .invalidInt64(column: "artifacts.task_id", value: "not-int"))
+        }
+    }
+
+    func testArtifactStoreRejectsCorruptedExpectedPathInsteadOfReturningEmptyPath() throws {
+        let connection = try makeConnection()
+        let store = SQLiteArtifactStore(connection: connection)
+        let artifact = try store.create(workspacePath: "/tmp/solopm", expectedPath: "/tmp/solopm/reports/status.md")
+
+        try connection.execute("UPDATE artifacts SET expected_path = '' WHERE id = \(artifact.id);")
+
+        XCTAssertThrowsError(try store.get(id: artifact.id)) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .missingRequiredColumn(column: "artifacts.expected_path"))
+        }
+    }
+
+    func testArtifactStoreRejectsCorruptedLastModifiedAtInsteadOfDroppingTimestamp() throws {
+        let connection = try makeConnection()
+        let store = SQLiteArtifactStore(connection: connection)
+        let artifact = try store.create(
+            workspacePath: "/tmp/solopm",
+            expectedPath: "/tmp/solopm/reports/status.md",
+            createdState: .created,
+            lastModifiedAt: try Date.iso8601("2026-06-10T09:30:00Z")
+        )
+
+        try connection.execute("UPDATE artifacts SET last_modified_at = 'not-a-date' WHERE id = \(artifact.id);")
+
+        XCTAssertThrowsError(try store.get(id: artifact.id)) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .invalidDate(column: "artifacts.last_modified_at", value: "not-a-date"))
+        }
+    }
+
     func testFakeFileMonitorUpdatesArtifactInsideWorkspace() throws {
         let connection = try makeConnection()
         let store = SQLiteArtifactStore(connection: connection)

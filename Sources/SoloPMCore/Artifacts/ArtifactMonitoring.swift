@@ -126,7 +126,7 @@ public final class SQLiteArtifactStore: @unchecked Sendable {
             throw ArtifactStoreError.notFound(id)
         }
 
-        return ArtifactRecord(row: row)
+        return try ArtifactRecord(row: row)
     }
 
     private func listByWorkspaceAndExpectedPathLocked(workspacePath: String, path: String) throws -> [ArtifactRecord] {
@@ -352,15 +352,19 @@ public enum WorkspacePathPolicy {
 }
 
 private extension ArtifactRecord {
-    init(row: [String: String]) {
+    init(row: [String: String]) throws {
+        let createdState = try ArtifactSQL.createdState(
+            try ArtifactSQL.requiredString(row["created_state"], column: "artifacts.created_state"),
+            column: "artifacts.created_state"
+        )
         self.init(
-            id: Int64(row["id"] ?? "") ?? 0,
-            projectID: Int64(row["project_id"] ?? ""),
-            taskID: Int64(row["task_id"] ?? ""),
-            workspacePath: row["workspace_path"] ?? "",
-            expectedPath: row["expected_path"] ?? "",
-            createdState: ArtifactCreatedState(rawValue: row["created_state"] ?? "") ?? .expected,
-            lastModifiedAt: row["last_modified_at"].flatMap(DeadlineDateParser.date(from:))
+            id: try ArtifactSQL.requiredInt64(row["id"], column: "artifacts.id"),
+            projectID: try ArtifactSQL.optionalInt64(row["project_id"], column: "artifacts.project_id"),
+            taskID: try ArtifactSQL.optionalInt64(row["task_id"], column: "artifacts.task_id"),
+            workspacePath: try ArtifactSQL.requiredString(row["workspace_path"], column: "artifacts.workspace_path"),
+            expectedPath: try ArtifactSQL.requiredString(row["expected_path"], column: "artifacts.expected_path"),
+            createdState: createdState,
+            lastModifiedAt: try ArtifactSQL.optionalDate(row["last_modified_at"], column: "artifacts.last_modified_at")
         )
     }
 }
@@ -379,5 +383,49 @@ private enum ArtifactSQL {
             return "NULL"
         }
         return "'\(DeadlineDateParser.string(from: value))'"
+    }
+
+    static func requiredString(_ value: String?, column: String) throws -> String {
+        guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw LocalStoreDecodingError.missingRequiredColumn(column: column)
+        }
+        return value
+    }
+
+    static func requiredInt64(_ value: String?, column: String) throws -> Int64 {
+        let required = try requiredString(value, column: column)
+        guard let int = Int64(required) else {
+            throw LocalStoreDecodingError.invalidInt64(column: column, value: required)
+        }
+        return int
+    }
+
+    static func optionalInt64(_ value: String?, column: String) throws -> Int64? {
+        let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !normalized.isEmpty else {
+            return nil
+        }
+        guard let int = Int64(normalized) else {
+            throw LocalStoreDecodingError.invalidInt64(column: column, value: normalized)
+        }
+        return int
+    }
+
+    static func createdState(_ value: String, column: String) throws -> ArtifactCreatedState {
+        guard let state = ArtifactCreatedState(rawValue: value) else {
+            throw LocalStoreDecodingError.invalidEnum(column: column, value: value)
+        }
+        return state
+    }
+
+    static func optionalDate(_ value: String?, column: String) throws -> Date? {
+        let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !normalized.isEmpty else {
+            return nil
+        }
+        guard let date = DeadlineDateParser.date(from: normalized) else {
+            throw LocalStoreDecodingError.invalidDate(column: column, value: normalized)
+        }
+        return date
     }
 }

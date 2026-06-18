@@ -108,6 +108,7 @@ public enum LocalStoreDecodingError: Error, Equatable, Sendable {
     case missingRequiredColumn(column: String)
     case invalidInt64(column: String, value: String)
     case invalidEnum(column: String, value: String)
+    case invalidDate(column: String, value: String)
 }
 
 public final class SQLiteProjectStore: @unchecked Sendable {
