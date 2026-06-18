@@ -122,6 +122,30 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(result.content.first?.text, "status: ok")
     }
 
+    func testStdioTransportReportsMalformedJSONAsInvalidResponse() async throws {
+        let scriptURL = try makeMalformedStdioServerScript()
+        let registration = MCPServerRegistration(
+            id: "stdio",
+            displayName: "Malformed Stdio MCP",
+            command: scriptURL.path,
+            arguments: [],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let client = try await MCPStdioServerLauncher().client(for: registration)
+
+        do {
+            _ = try await client.listTools()
+            XCTFail("malformed stdio response should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(serverID: "stdio", method: "tools/list", reason: "Malformed JSON-RPC response.")
+            )
+        }
+    }
+
     @MainActor
     func testExternalMCPSettingsViewModelPersistsRegistration() throws {
         let store = InMemoryMCPServerRegistrationStore()
@@ -953,6 +977,24 @@ final class ExternalMCPTests: XCTestCase {
               ;;
             *\\"id\\":3*)
               printf '%s\\n' '{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"status: ok"}],"isError":false}}'
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+        return scriptURL
+    }
+
+    private func makeMalformedStdioServerScript() throws -> URL {
+        let directory = try temporaryDirectory()
+        let scriptURL = directory.appendingPathComponent("malformed-mcp.sh")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          case "$line" in
+            *\\"id\\":1*)
+              printf '%s\\n' '{not json'
               ;;
           esac
         done

@@ -64,7 +64,15 @@ public final class MCPStdioTransport: MCPClientTransport, MCPServerProcess, MCPP
         return try lock.withLock {
             try stdinPipe.fileHandleForWriting.write(contentsOf: data)
             let line = try readLine(timeout: timeout, method: request.method)
-            return try decoder.decode(MCPJSONRPCResponse.self, from: line)
+            do {
+                return try decoder.decode(MCPJSONRPCResponse.self, from: line)
+            } catch {
+                throw MCPClientError.invalidResponse(
+                    serverID: registration.id,
+                    method: request.method,
+                    reason: "Malformed JSON-RPC response."
+                )
+            }
         }
     }
 

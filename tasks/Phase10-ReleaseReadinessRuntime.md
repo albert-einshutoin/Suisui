@@ -924,6 +924,13 @@
 - [x] `ToolArgumentsTests` と `ProjectTaskKnowledgeToolTests` で blank array element が silently dropped されないことを固定する。
 - [x] 完了条件: LLM / MCP / JSON 経由の tags / triggers が空白要素を含んでも、一部欠落の成功として保存されない。
 
+### P10-119: MCP stdio malformed responses are reported as invalid protocol responses
+
+- [x] `MCPStdioTransport` は stdout の malformed JSON-RPC line を generic transport failure に丸めず、`MCPClientError.invalidResponse` として返す。
+- [x] raw response / DecodingError の詳細は UI や audit metadata に流さず、ユーザー登録 MCP server の protocol 不正として切り分ける。
+- [x] 実プロセス stdio script を使う `ExternalMCPTests` で malformed JSON 応答の分類を固定する。
+- [x] 完了条件: 外部連携を release scope から外していても、ユーザーが登録した MCP server の壊れた応答を通信障害や空の tool list と誤認しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
