@@ -754,6 +754,13 @@
 - [x] 成功時は drop されたタスクを移動し、`onChange` は一度だけ通知する。
 - [x] 完了条件: Drag/drop の壊れた payload によって、ユーザーの意図と違う一部タスクだけが移動しない。
 
+### P10-095: Unassigned board tasks can be moved after Inbox fallback
+
+- [x] `SQLiteProjectBoardStore.loadSnapshot` で Inbox に見せた `project_id == nil` タスクを、移動時にも拒否しない。
+- [x] `moveTask` は未紐付けタスクを active Inbox に永続的に割り当ててから status を更新する。
+- [x] `ProjectBoardStoreTests` で未紐付けタスクの move が `project_id` を Inbox に保存することを確認する。
+- [x] 完了条件: CLI / AI / 外部経路で作られた未紐付けタスクを、Board UI 上で普通のタスクとして移動できる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

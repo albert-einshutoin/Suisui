@@ -51,6 +51,19 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(inbox.subtitle, "1 open / 1 total")
     }
 
+    func testMoveTaskAssignsUnassignedPersistentTaskToInbox() throws {
+        let stores = try makeStoreBundle()
+        let orphan = try stores.tasks.create(title: "Move loose task", projectID: nil, status: "planned")
+        let snapshot = try stores.board.loadSnapshot()
+        let inbox = try XCTUnwrap(snapshot.projects.first { $0.title == "Inbox" })
+
+        let moved = try stores.board.moveTask(id: orphan.id, to: .inProgress)
+
+        XCTAssertEqual(moved.projectID, inbox.id)
+        XCTAssertEqual(moved.status, .inProgress)
+        XCTAssertEqual(try stores.tasks.get(id: orphan.id).projectID, inbox.id)
+    }
+
     func testUpdateTaskMovesCardAcrossColumnsAndUpdatesMetadata() throws {
         let store = try makeStore()
         let projectID = try XCTUnwrap(store.loadSnapshot().projects.first?.id)

@@ -294,11 +294,9 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     @discardableResult
     public func moveTask(id: Int64, to status: ProjectTaskStatus) throws -> ProjectBoardTask {
         let current = try taskStore.get(id: id)
-        guard let projectID = current.projectID else {
-            throw DatabaseError.stepFailed("Task \(id) did not have a project.")
-        }
+        let projectID = try current.projectID ?? ensureActiveInboxProject().id
         try prepareProjectForTaskMutation(projectID: projectID, taskStatus: status)
-        let record = try taskStore.update(id: id, status: status.rawValue)
+        let record = try taskStore.update(id: id, status: status.rawValue, projectID: projectID)
         return try makeBoardTask(record).requiredTask()
     }
 
