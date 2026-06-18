@@ -825,6 +825,13 @@
 - [x] Settings の MCP Audit 読込は metadata decode failure を空履歴ではなく warning path に流す。
 - [x] 完了条件: MCP監査履歴が権限リスクや承認状態を欠いたまま、正常な外部呼び出し履歴として表示されない。
 
+### P10-105: External MCP audit arguments are explicit and required
+
+- [x] `ExternalMCPToolExecutor` は引数なし実行を空文字ではなく `No arguments` として監査metadataに残す。
+- [x] `ExternalMCPAuditHistory.rows` は `arguments` metadata 欠落/空文字を blank summary に丸めない。
+- [x] `ExternalMCPTests` で引数なし監査と arguments metadata 欠落の両方を固定する。
+- [x] 完了条件: MCP外部呼び出しの監査履歴で、引数なしと監査欠落が同じ空表示に見えない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

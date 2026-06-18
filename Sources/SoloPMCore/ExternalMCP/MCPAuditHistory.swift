@@ -47,7 +47,7 @@ public enum ExternalMCPAuditHistory {
             approval: try requiredMetadata(event, key: "approval"),
             durationMilliseconds: event.metadata["duration_ms"],
             status: event.status,
-            redactedArgumentSummary: event.metadata["arguments"] ?? "",
+            redactedArgumentSummary: try requiredMetadata(event, key: "arguments"),
             errorSummary: event.metadata["error"]
         )
     }

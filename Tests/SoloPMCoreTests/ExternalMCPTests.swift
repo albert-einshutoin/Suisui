@@ -568,6 +568,24 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(logger.recordedEvents.last?.metadata["result"], "succeeded")
     }
 
+    func testReadExecutionAuditsNoArgumentsExplicitly() async throws {
+        let logger = InMemoryAuditLogger()
+        let transport = ExternalMCPTestKit.makeFakeServerTransport()
+        let executor = makeExecutor(
+            transport: transport,
+            policies: ["read_status": .read],
+            auditLogger: RedactingAuditLogger(base: logger)
+        )
+
+        _ = try await executor.call(
+            toolName: "read_status",
+            arguments: [:],
+            context: ToolExecutionContext(source: .developerTool)
+        )
+
+        XCTAssertEqual(logger.recordedEvents.first?.metadata["arguments"], "No arguments")
+    }
+
     func testTimeoutKillsProcessAndAuditsFailure() async throws {
         let logger = InMemoryAuditLogger()
         let transport = ExternalMCPTestKit.makeHangingTransport()
@@ -660,6 +678,26 @@ final class ExternalMCPTests: XCTestCase {
 
         XCTAssertThrowsError(try ExternalMCPAuditHistory.rows(from: events)) { error in
             XCTAssertEqual(error as? ExternalMCPAuditHistoryError, .missingMetadata("risk"))
+        }
+    }
+
+    func testAuditHistoryRejectsMissingArgumentsMetadataInsteadOfShowingBlankSummary() {
+        let events = [
+            AuditEvent(
+                category: "external_mcp",
+                action: "fake.read_status",
+                status: .succeeded,
+                metadata: [
+                    "server_name": "Fake MCP",
+                    "tool_name": "read_status",
+                    "risk": "read",
+                    "approval": "missing"
+                ]
+            )
+        ]
+
+        XCTAssertThrowsError(try ExternalMCPAuditHistory.rows(from: events)) { error in
+            XCTAssertEqual(error as? ExternalMCPAuditHistoryError, .missingMetadata("arguments"))
         }
     }
 

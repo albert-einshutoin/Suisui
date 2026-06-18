@@ -132,6 +132,9 @@ public struct ExternalMCPToolExecutor: Sendable {
     }
 
     private func redactedArgumentSummary(_ arguments: [String: JSONValue]) -> String {
+        guard !arguments.isEmpty else {
+            return "No arguments"
+        }
         let summary = arguments
             .sorted { $0.key < $1.key }
             .map { "\($0.key)=\(String(describing: $0.value))" }
