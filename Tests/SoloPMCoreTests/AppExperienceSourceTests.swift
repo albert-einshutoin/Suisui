@@ -993,6 +993,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("KeychainSecretStore"))
         XCTAssertTrue(appSource.contains("OpenAIResponsesProvider(secretStore:"))
         XCTAssertTrue(appSource.contains("ToolRegistry.phase2MVP("))
+        XCTAssertTrue(appSource.contains("artifactStore: SQLiteArtifactStore(connection: connection)"))
     }
 
     func testReviewRuntimeRequiresAuditLoggerBeforeWriteExecution() throws {

@@ -95,7 +95,7 @@ SoloPM implication:
 | Item | Decision | Product reason | Evidence needed before release claim |
 | --- | --- | --- | --- |
 | Project overview with tasks/artifacts/timeline/suggestions | Adopted | Reduces "what should I inspect next?" after opening a project. | Source tests and screenshot evidence. |
-| Project expected artifact links | Adopted | Keeps Notion-like flexible project evidence without adding arbitrary database schemas; link removal stays safe by not deleting local files. | Local SQLite mutation tests and Project Overview source tests. |
+| Project expected artifact links | Adopted | Keeps Notion-like flexible project evidence without adding arbitrary database schemas; Review Execute-created files also return to the project artifact list, while link removal stays safe by not deleting local files. | Local SQLite mutation tests, filesystem tool mutation tests, and Project Overview source tests. |
 | Right inspector for task/project edit/delete/suggestion | Adopted | Keeps repeated CRUD in one stable place. | Source tests and VoiceOver focus pass. |
 | Menu bar Quick Add to Inbox | Adopted | Captures a task without opening the Project Board, matching Todoist-like speed while staying local-first. | Source tests; manual smoke capture remains release evidence. |
 | Inbox triage actions | Adopted | Converts capture into task/project/schedule/review-later quickly. | Click-path audit and mutation tests. |

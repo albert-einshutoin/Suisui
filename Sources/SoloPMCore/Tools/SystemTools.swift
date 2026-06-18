@@ -315,13 +315,15 @@ public struct FileSystemTool: Tool {
     public let inputSchema: ToolInputSchema
     public let permissionLevel: ToolPermissionLevel
     private let client: any FileAccessClient
+    private let artifactStore: SQLiteArtifactStore?
 
-    public init(name: ActionTool, client: any FileAccessClient) {
+    public init(name: ActionTool, client: any FileAccessClient, artifactStore: SQLiteArtifactStore? = nil) {
         self.name = name
         self.description = name.rawValue
         self.inputSchema = FileSystemTool.schema(for: name)
         self.permissionLevel = name.defaultRiskLevel >= .write ? .writeWithApproval : .read
         self.client = client
+        self.artifactStore = artifactStore
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
@@ -329,20 +331,21 @@ public struct FileSystemTool: Tool {
         try validateRequiredArguments(arguments)
 
         let args = ToolArguments(arguments, tool: name)
+        try preflightArtifactLinkRequest(args)
         do {
             switch name {
             case .filesystemCreateDirectory:
                 let artifact = try client.createDirectory(relativePath: try args.requiredString("relativePath"))
-                return artifactResult(artifact, summary: "Created directory \(artifact.relativePath)")
+                return try artifactResult(artifact, args: args, summary: "Created directory \(artifact.relativePath)")
             case .filesystemCreateMarkdownFile:
                 let artifact = try client.createMarkdownFile(relativePath: try args.requiredString("relativePath"), contents: try args.requiredString("contents"))
-                return artifactResult(artifact, summary: "Created file \(artifact.relativePath)")
+                return try artifactResult(artifact, args: args, summary: "Created file \(artifact.relativePath)")
             case .filesystemCreateArtifactsFromFrame:
                 let directory = try args.optionalString("directory") ?? "."
                 let filename = "\(Self.slug(try args.requiredString("frameName"))).md"
                 let relativePath = directory == "." ? filename : "\(directory)/\(filename)"
                 let artifact = try client.createMarkdownFile(relativePath: relativePath, contents: try args.requiredString("body"))
-                return artifactResult(artifact, summary: "Created frame artifact \(artifact.relativePath)")
+                return try artifactResult(artifact, args: args, summary: "Created frame artifact \(artifact.relativePath)")
             case .filesystemScanProjectArtifacts:
                 let artifacts = try client.scan(relativePath: try args.optionalString("relativePath") ?? ".")
                 return ToolResult(tool: name, status: .succeeded, summary: "\(artifacts.count) artifacts", output: ["count": .number(Double(artifacts.count))])
@@ -354,14 +357,72 @@ public struct FileSystemTool: Tool {
         }
     }
 
-    private func artifactResult(_ artifact: FileArtifact, summary: String) -> ToolResult {
-        ToolResult(
+    private func artifactResult(_ artifact: FileArtifact, args: ToolArguments, summary: String) throws -> ToolResult {
+        let projectID = try args.optionalInt64("projectId")
+        let taskID = try args.optionalInt64("taskId")
+        guard supportsArtifactLinking, projectID != nil || taskID != nil else {
+            return ToolResult(
+                tool: name,
+                status: .succeeded,
+                summary: summary,
+                output: ["relativePath": .string(artifact.relativePath)],
+                rollbackMetadata: ["relativePath": .string(artifact.relativePath)]
+            )
+        }
+
+        guard let artifactStore else {
+            throw ToolExecutionError.executionFailed(name, "Artifact store is required to link created artifacts.")
+        }
+        guard let workspacePath = artifact.workspacePath, let expectedPath = artifact.absolutePath else {
+            throw ToolExecutionError.executionFailed(name, "File access client did not report an absolute artifact path.")
+        }
+
+        let record = try artifactStore.create(
+            projectID: projectID,
+            taskID: taskID,
+            workspacePath: workspacePath,
+            expectedPath: expectedPath,
+            createdState: .created
+        )
+
+        return ToolResult(
             tool: name,
             status: .succeeded,
             summary: summary,
-            output: ["relativePath": .string(artifact.relativePath)],
-            rollbackMetadata: ["relativePath": .string(artifact.relativePath)]
+            output: [
+                "relativePath": .string(artifact.relativePath),
+                "artifactId": .number(Double(record.id))
+            ],
+            rollbackMetadata: [
+                "relativePath": .string(artifact.relativePath),
+                "artifactId": .number(Double(record.id))
+            ]
         )
+    }
+
+    private func preflightArtifactLinkRequest(_ args: ToolArguments) throws {
+        guard supportsArtifactLinking else {
+            return
+        }
+
+        let projectID = try args.optionalInt64("projectId")
+        let taskID = try args.optionalInt64("taskId")
+        guard projectID != nil || taskID != nil else {
+            return
+        }
+
+        guard artifactStore != nil else {
+            throw ToolExecutionError.executionFailed(name, "Artifact store is required to link created artifacts.")
+        }
+    }
+
+    private var supportsArtifactLinking: Bool {
+        switch name {
+        case .filesystemCreateMarkdownFile, .filesystemCreateArtifactsFromFrame:
+            true
+        default:
+            false
+        }
     }
 
     private static func schema(for name: ActionTool) -> ToolInputSchema {
@@ -369,9 +430,9 @@ public struct FileSystemTool: Tool {
         case .filesystemCreateDirectory:
             ToolInputSchema(required: ["relativePath"], properties: ["relativePath": "string"])
         case .filesystemCreateMarkdownFile:
-            ToolInputSchema(required: ["relativePath", "contents"], properties: ["relativePath": "string", "contents": "string"])
+            ToolInputSchema(required: ["relativePath", "contents"], properties: ["relativePath": "string", "contents": "string", "projectId": "integer", "taskId": "integer"])
         case .filesystemCreateArtifactsFromFrame:
-            ToolInputSchema(required: ["frameName", "body"], properties: ["frameName": "string", "body": "string", "directory": "string"])
+            ToolInputSchema(required: ["frameName", "body"], properties: ["frameName": "string", "body": "string", "directory": "string", "projectId": "integer", "taskId": "integer"])
         case .filesystemScanProjectArtifacts:
             ToolInputSchema(required: [], properties: ["relativePath": "string"])
         default:

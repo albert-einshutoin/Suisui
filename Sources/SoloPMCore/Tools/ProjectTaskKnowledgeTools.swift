@@ -426,6 +426,7 @@ public extension ToolRegistry {
         notificationRequestStore: SQLiteNotificationRequestStore? = nil,
         calendarLinkStore: SQLiteCalendarLinkStore? = nil,
         reminderLinkStore: SQLiteReminderLinkStore? = nil,
+        artifactStore: SQLiteArtifactStore? = nil,
         auditLogger: (any AuditLogger)? = nil
     ) throws -> ToolRegistry {
         var tools = phase2CoreTools(projectStore: projectStore, taskStore: taskStore, knowledgeStore: knowledgeStore)
@@ -442,8 +443,8 @@ public extension ToolRegistry {
             ReminderTool(name: .remindersBulkCreate, client: reminderClient, linkStore: reminderLinkStore),
             ReminderTool(name: .remindersMarkComplete, client: reminderClient, linkStore: reminderLinkStore),
             FileSystemTool(name: .filesystemCreateDirectory, client: fileAccessClient),
-            FileSystemTool(name: .filesystemCreateMarkdownFile, client: fileAccessClient),
-            FileSystemTool(name: .filesystemCreateArtifactsFromFrame, client: fileAccessClient),
+            FileSystemTool(name: .filesystemCreateMarkdownFile, client: fileAccessClient, artifactStore: artifactStore),
+            FileSystemTool(name: .filesystemCreateArtifactsFromFrame, client: fileAccessClient, artifactStore: artifactStore),
             FileSystemTool(name: .filesystemScanProjectArtifacts, client: fileAccessClient),
             MailDraftTool(client: mailDraftClient)
         ]

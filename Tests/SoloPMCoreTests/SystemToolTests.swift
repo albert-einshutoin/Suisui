@@ -297,6 +297,81 @@ final class SystemToolTests: XCTestCase {
         )
     }
 
+    func testFileSystemToolPersistsCreatedArtifactLinkWhenProjectIDIsProvided() throws {
+        let root = temporaryDirectory()
+        let connection = try currentMigratedConnection()
+        let projects = SQLiteProjectStore(connection: connection)
+        let artifactStore = SQLiteArtifactStore(connection: connection)
+        let project = try projects.create(title: "Launch Readiness")
+        let tool = FileSystemTool(
+            name: .filesystemCreateArtifactsFromFrame,
+            client: LocalFileAccessClient(workspaceRoot: root),
+            artifactStore: artifactStore
+        )
+
+        let arguments: [String: JSONValue] = [
+            "frameName": .string("Release Notes"),
+            "body": .string("# Release Notes"),
+            "directory": .string("docs/release"),
+            "projectId": .number(Double(project.id))
+        ]
+        let result = try tool.execute(
+            arguments: arguments,
+            context: approvedContext()
+        )
+
+        let artifactURL = root.appendingPathComponent("docs/release/release-notes.md")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: artifactURL.path))
+        XCTAssertEqual(result.output["relativePath"], JSONValue.string("docs/release/release-notes.md"))
+        XCTAssertEqual(result.output["artifactId"], JSONValue.number(1))
+        XCTAssertEqual(result.rollbackMetadata["artifactId"], JSONValue.number(1))
+
+        let artifacts = try artifactStore.list()
+        XCTAssertEqual(artifacts.count, 1)
+        XCTAssertEqual(artifacts.first?.projectID, project.id)
+        XCTAssertNil(artifacts.first?.taskID)
+        XCTAssertEqual(artifacts.first?.workspacePath, root.standardizedFileURL.path)
+        XCTAssertEqual(artifacts.first?.expectedPath, artifactURL.standardizedFileURL.path)
+        XCTAssertEqual(artifacts.first?.createdState, .created)
+    }
+
+    func testFileSystemToolRejectsArtifactLinkRequestBeforeWritingWhenStoreIsMissing() throws {
+        let root = temporaryDirectory()
+        let tool = FileSystemTool(
+            name: .filesystemCreateMarkdownFile,
+            client: LocalFileAccessClient(workspaceRoot: root)
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "relativePath": .string("docs/plan.md"),
+                    "contents": .string("# Plan"),
+                    "projectId": .number(1)
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.filesystemCreateMarkdownFile, "Artifact store is required to link created artifacts.")
+            )
+        }
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("docs/plan.md").path))
+    }
+
+    func testFileSystemDirectoryToolDoesNotExposeArtifactLinkFields() throws {
+        let tool = FileSystemTool(
+            name: .filesystemCreateDirectory,
+            client: LocalFileAccessClient(workspaceRoot: temporaryDirectory())
+        )
+
+        XCTAssertEqual(tool.inputSchema.properties["relativePath"], "string")
+        XCTAssertNil(tool.inputSchema.properties["projectId"])
+        XCTAssertNil(tool.inputSchema.properties["taskId"])
+    }
+
     func testMailDraftToolCreatesTextOnlyDraftWithoutSendTool() throws {
         let client = InMemoryMailDraftClient()
         let tool = MailDraftTool(client: client)
@@ -447,6 +522,12 @@ final class SystemToolTests: XCTestCase {
     private func migratedConnection() throws -> SQLiteConnection {
         let connection = try SQLiteConnection(path: ":memory:")
         try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase2)
+        return connection
+    }
+
+    private func currentMigratedConnection() throws -> SQLiteConnection {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         return connection
     }
 

@@ -124,6 +124,20 @@ public protocol ReminderClient: Sendable {
 public struct FileArtifact: Equatable, Sendable {
     public var relativePath: String
     public var kind: String
+    public var absolutePath: String?
+    public var workspacePath: String?
+
+    public init(
+        relativePath: String,
+        kind: String,
+        absolutePath: String? = nil,
+        workspacePath: String? = nil
+    ) {
+        self.relativePath = relativePath
+        self.kind = kind
+        self.absolutePath = absolutePath
+        self.workspacePath = workspacePath
+    }
 }
 
 public protocol FileAccessClient: Sendable {
@@ -148,7 +162,7 @@ public final class LocalFileAccessClient: FileAccessClient, @unchecked Sendable 
         }
 
         try fileManager.createDirectory(at: target, withIntermediateDirectories: true)
-        return FileArtifact(relativePath: normalizedRelativePath(for: target), kind: "directory")
+        return makeArtifact(for: target, kind: "directory")
     }
 
     public func createMarkdownFile(relativePath: String, contents: String) throws -> FileArtifact {
@@ -162,7 +176,7 @@ public final class LocalFileAccessClient: FileAccessClient, @unchecked Sendable 
 
         try fileManager.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
         try contents.write(to: target, atomically: true, encoding: .utf8)
-        return FileArtifact(relativePath: normalizedRelativePath(for: target), kind: "markdown")
+        return makeArtifact(for: target, kind: "markdown")
     }
 
     public func scan(relativePath: String) throws -> [FileArtifact] {
@@ -177,7 +191,7 @@ public final class LocalFileAccessClient: FileAccessClient, @unchecked Sendable 
             .map { url in
                 var isDirectory: ObjCBool = false
                 _ = fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory)
-                return FileArtifact(relativePath: normalizedRelativePath(for: url), kind: isDirectory.boolValue ? "directory" : "file")
+                return makeArtifact(for: url, kind: isDirectory.boolValue ? "directory" : "file")
             }
     }
 
@@ -203,6 +217,15 @@ public final class LocalFileAccessClient: FileAccessClient, @unchecked Sendable 
             return "."
         }
         return String(path.dropFirst(rootPath.count + 1))
+    }
+
+    private func makeArtifact(for url: URL, kind: String) -> FileArtifact {
+        FileArtifact(
+            relativePath: normalizedRelativePath(for: url),
+            kind: kind,
+            absolutePath: url.standardizedFileURL.path,
+            workspacePath: workspaceRoot.path
+        )
     }
 }
 

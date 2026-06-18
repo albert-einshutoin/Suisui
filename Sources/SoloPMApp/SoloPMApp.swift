@@ -2028,6 +2028,7 @@ private enum AppRuntimeFactory {
                 notificationRequestStore: SQLiteNotificationRequestStore(connection: connection),
                 calendarLinkStore: SQLiteCalendarLinkStore(connection: connection),
                 reminderLinkStore: SQLiteReminderLinkStore(connection: connection),
+                artifactStore: SQLiteArtifactStore(connection: connection),
                 auditLogger: auditLogger
             )
             logger = auditLogger
