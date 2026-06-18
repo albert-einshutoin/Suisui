@@ -96,7 +96,7 @@ public struct ToolExecutionContext: Sendable {
     public var now: Date
     public var source: ToolExecutionSource
 
-    public init(approvalToken: ApprovalToken? = nil, now: Date = Date(), source: ToolExecutionSource = .developerHarness) {
+    public init(approvalToken: ApprovalToken? = nil, now: Date = Date(), source: ToolExecutionSource) {
         self.approvalToken = approvalToken
         self.now = now
         self.source = source

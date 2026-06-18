@@ -219,6 +219,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains("MCPProcessKillRequest"))
     }
 
+    func testToolExecutionContextRequiresExplicitSource() throws {
+        let source = try readPackageFile("Sources/SoloPMCore/Tools/Tooling.swift")
+
+        XCTAssertFalse(source.contains("source: ToolExecutionSource = .developerHarness"))
+        XCTAssertTrue(source.contains("source: ToolExecutionSource)"))
+    }
+
     func testAIProvidersDoNotDefaultToInMemorySecretStore() throws {
         let chatSource = try readPackageFile("Sources/SoloPMCore/Planning/ChatCompletionsCompatibleProvider.swift")
         let sttSource = try readPackageFile("Sources/SoloPMCore/Voice/STTProviders.swift")
