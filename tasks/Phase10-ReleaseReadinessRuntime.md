@@ -474,6 +474,14 @@
 - [x] `project.create` 直後の `task.bulk_create` は新規 project ID を各 task item に注入し、bulk task を project に紐付ける。
 - [x] 完了条件: UI だけでなく review tool / AI plan 経由でも空白だけの project / task / knowledge data が永続化されない。
 
+### P10-058: MCP argument text round-trip
+
+- [x] Settings の MCP `Arguments` は単純な whitespace split ではなく、single quote / double quote / backslash を解釈する。
+- [x] 空白入り path を含む MCP server 引数は 1 引数として保持され、SQLite registration に壊れた形で保存されない。
+- [x] 無効な quote 入力では既存の arguments を壊さず、UI に validation error を出す。
+- [x] Settings UI は保存済み arguments を quote 付き text として round-trip 表示する。
+- [x] 完了条件: macOS の空白入り directory 配下に置いた stdio MCP server を UI から実用的に登録できる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

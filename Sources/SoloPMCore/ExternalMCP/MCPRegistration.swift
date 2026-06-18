@@ -219,6 +219,10 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         MCPServerRegistrationDisplayModel(registration: registration)
     }
 
+    public var argumentsText: String {
+        MCPArgumentTextCodec.format(registration.arguments)
+    }
+
     public func refresh() {
         do {
             registration = try store.loadRegistrations().first ?? Self.blankRegistration()
@@ -248,11 +252,14 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
     }
 
     public func updateArgumentsText(_ argumentsText: String) {
-        var updated = registration
-        updated.arguments = argumentsText
-            .split(separator: " ")
-            .map(String.init)
-        registration = updated
+        do {
+            var updated = registration
+            updated.arguments = try MCPArgumentTextCodec.parse(argumentsText)
+            registration = updated
+            errorMessage = nil
+        } catch {
+            errorMessage = Self.argumentErrorMessage(error)
+        }
     }
 
     public func updateWorkingDirectory(_ workingDirectory: String) {
@@ -342,6 +349,125 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             return String(describing: error)
         }
     }
+
+    private static func argumentErrorMessage(_ error: Error) -> String {
+        switch error {
+        case MCPArgumentTextError.unterminatedDoubleQuote:
+            return "MCP arguments are invalid: missing closing double quote."
+        case MCPArgumentTextError.unterminatedSingleQuote:
+            return "MCP arguments are invalid: missing closing single quote."
+        case MCPArgumentTextError.danglingEscape:
+            return "MCP arguments are invalid: trailing escape character."
+        default:
+            return "MCP arguments are invalid: \(error)"
+        }
+    }
+}
+
+public enum MCPArgumentTextError: Error, Equatable, Sendable {
+    case unterminatedSingleQuote
+    case unterminatedDoubleQuote
+    case danglingEscape
+}
+
+public enum MCPArgumentTextCodec {
+    public static func parse(_ text: String) throws -> [String] {
+        enum QuoteMode {
+            case single
+            case double
+        }
+
+        var arguments: [String] = []
+        var current = ""
+        var quoteMode: QuoteMode?
+        var isEscaping = false
+        var hasCurrentArgument = false
+
+        for character in text {
+            if isEscaping {
+                current.append(character)
+                isEscaping = false
+                hasCurrentArgument = true
+                continue
+            }
+
+            switch quoteMode {
+            case .single:
+                if character == "'" {
+                    quoteMode = nil
+                } else {
+                    current.append(character)
+                    hasCurrentArgument = true
+                }
+            case .double:
+                if character == "\"" {
+                    quoteMode = nil
+                } else if character == "\\" {
+                    isEscaping = true
+                    hasCurrentArgument = true
+                } else {
+                    current.append(character)
+                    hasCurrentArgument = true
+                }
+            case nil:
+                if character == "'" {
+                    quoteMode = .single
+                    hasCurrentArgument = true
+                } else if character == "\"" {
+                    quoteMode = .double
+                    hasCurrentArgument = true
+                } else if character == "\\" {
+                    isEscaping = true
+                    hasCurrentArgument = true
+                } else if character.isWhitespace {
+                    if hasCurrentArgument {
+                        arguments.append(current)
+                        current = ""
+                        hasCurrentArgument = false
+                    }
+                } else {
+                    current.append(character)
+                    hasCurrentArgument = true
+                }
+            }
+        }
+
+        if isEscaping {
+            throw MCPArgumentTextError.danglingEscape
+        }
+        switch quoteMode {
+        case .single:
+            throw MCPArgumentTextError.unterminatedSingleQuote
+        case .double:
+            throw MCPArgumentTextError.unterminatedDoubleQuote
+        case nil:
+            break
+        }
+        if hasCurrentArgument {
+            arguments.append(current)
+        }
+
+        return arguments
+    }
+
+    public static func format(_ arguments: [String]) -> String {
+        arguments.map(formatArgument).joined(separator: " ")
+    }
+
+    private static func formatArgument(_ argument: String) -> String {
+        if argument.isEmpty {
+            return "''"
+        }
+
+        let needsQuoting = argument.contains { character in
+            character.isWhitespace || character == "'" || character == "\"" || character == "\\"
+        }
+        guard needsQuoting else {
+            return argument
+        }
+
+        return "'\(argument.replacingOccurrences(of: "'", with: "'\\''"))'"
+    }
 }
 
 private enum MCPRegistrationSQL {
@@ -387,9 +513,7 @@ public struct MCPServerRegistrationDisplayModel: Equatable, Sendable {
     public init(registration: MCPServerRegistration) {
         self.id = registration.id
         self.displayName = registration.displayName
-        self.commandLine = ([registration.command] + registration.arguments)
-            .map(Self.displayArgument)
-            .joined(separator: " ")
+        self.commandLine = MCPArgumentTextCodec.format([registration.command] + registration.arguments)
         self.transportLabel = "stdio"
         self.workingDirectoryLabel = registration.workingDirectory ?? "Default"
         self.environmentRows = registration.environment
@@ -399,13 +523,6 @@ public struct MCPServerRegistrationDisplayModel: Equatable, Sendable {
             .sorted { $0.name < $1.name }
         self.isEnabled = registration.isEnabled
         self.statusLabel = registration.isEnabled ? "Enabled" : "Disabled"
-    }
-
-    private static func displayArgument(_ argument: String) -> String {
-        guard argument.rangeOfCharacter(from: .whitespacesAndNewlines) != nil else {
-            return argument
-        }
-        return "'\(argument.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 }
 

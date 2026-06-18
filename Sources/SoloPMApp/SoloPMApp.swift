@@ -865,7 +865,7 @@ private struct SettingsView: View {
                     set: { externalMCPViewModel.updateCommand($0) }
                 ))
                 TextField("Arguments", text: Binding(
-                    get: { externalMCPViewModel.registration.arguments.joined(separator: " ") },
+                    get: { externalMCPViewModel.argumentsText },
                     set: { externalMCPViewModel.updateArgumentsText($0) }
                 ))
                 TextField("Working Directory", text: Binding(

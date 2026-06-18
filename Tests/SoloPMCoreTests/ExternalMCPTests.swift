@@ -141,6 +141,35 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertTrue(saved.isEnabled)
     }
 
+    @MainActor
+    func testExternalMCPSettingsViewModelParsesQuotedArgumentsWithoutBreakingSpacePaths() throws {
+        let store = InMemoryMCPServerRegistrationStore()
+        let viewModel = ExternalMCPSettingsViewModel(store: store)
+
+        viewModel.updateArgumentsText(#"node "/Users/me/MCP Servers/server.js" --label 'Alpha Project'"#)
+
+        XCTAssertEqual(viewModel.registration.arguments, [
+            "node",
+            "/Users/me/MCP Servers/server.js",
+            "--label",
+            "Alpha Project"
+        ])
+        XCTAssertEqual(viewModel.argumentsText, #"node '/Users/me/MCP Servers/server.js' --label 'Alpha Project'"#)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testExternalMCPSettingsViewModelKeepsExistingArgumentsWhenQuotedInputIsInvalid() throws {
+        let store = InMemoryMCPServerRegistrationStore()
+        let viewModel = ExternalMCPSettingsViewModel(store: store)
+        viewModel.updateArgumentsText("node server.js")
+
+        viewModel.updateArgumentsText(#"node "unterminated path"#)
+
+        XCTAssertEqual(viewModel.registration.arguments, ["node", "server.js"])
+        XCTAssertEqual(viewModel.errorMessage, "MCP arguments are invalid: missing closing double quote.")
+    }
+
     func testSQLiteMCPRegistrationStorePersistsRegistrationsWithoutRawSecrets() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)

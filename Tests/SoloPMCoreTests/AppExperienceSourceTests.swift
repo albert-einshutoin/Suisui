@@ -217,6 +217,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(mcpRegistrationSource.contains("UserDefaultsMCPServerRegistrationStore"))
     }
 
+    func testExternalMCPArgumentsUseQuotedRoundTripTextInsteadOfSpaceSplitDisplay() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let mcpRegistrationSource = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")
+
+        XCTAssertTrue(appSource.contains("externalMCPViewModel.argumentsText"))
+        XCTAssertFalse(appSource.contains("registration.arguments.joined(separator: \" \")"))
+        XCTAssertTrue(mcpRegistrationSource.contains("MCPArgumentTextCodec.parse"))
+        XCTAssertTrue(mcpRegistrationSource.contains("MCPArgumentTextCodec.format"))
+    }
+
     func testExternalMCPExecutorDoesNotDefaultToInMemoryAuditLogger() throws {
         let source = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPExecution.swift")
 
