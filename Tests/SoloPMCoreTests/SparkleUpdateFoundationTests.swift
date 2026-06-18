@@ -140,7 +140,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             withIntermediateDirectories: true
         )
         let zeroLengthAppcast = try readPackageFile("packaging/appcast.sample.xml")
-            .replacingOccurrences(of: "https://example.com/solopm/", with: "https://updates.example.invalid/solopm/")
+            .replacingOccurrences(of: "https://example.com/solopm/", with: "https://updates.solopm.app/solopm/")
             .replacingOccurrences(of: "local-smoke-signature-placeholder", with: "release-signature-smoke-value")
         try zeroLengthAppcast.write(to: releaseLikeAppcastURL, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: releaseLikeAppcastURL) }
@@ -191,6 +191,69 @@ final class SparkleUpdateFoundationTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("release appcast enclosure URL must use https"))
+
+        let mixedSchemeAppcast = try readPackageFile("packaging/appcast.sample.xml")
+            .replacingOccurrences(of: "https://example.com/solopm/", with: "https://updates.solopm.app/solopm/")
+            .replacingOccurrences(of: "local-smoke-signature-placeholder", with: "release-signature-smoke-value")
+            .replacingOccurrences(of: #" length="0""#, with: #" length="12345""#)
+            .replacingOccurrences(
+                of: "    </item>",
+                with: """
+                      <enclosure
+                        url="http://updates.solopm.app/solopm/legacy.zip"
+                        length="12345"
+                        type="application/octet-stream" />
+                    </item>
+                """
+            )
+        try mixedSchemeAppcast.write(to: releaseLikeAppcastURL, atomically: true, encoding: .utf8)
+
+        let mixedSchemeResult = try runScript(
+            "script/verify_appcast.sh",
+            arguments: [releaseLikeAppcastURL.path],
+            environment: ["SOLOPM_REQUIRE_RELEASE_APPCAST": "1"]
+        )
+
+        XCTAssertNotEqual(mixedSchemeResult.exitCode, 0)
+        XCTAssertTrue(mixedSchemeResult.output.contains("release appcast enclosure URL must use https"))
+    }
+
+    func testReleaseAppcastVerifierRejectsPlaceholderOrLocalDomains() throws {
+        let releaseLikeAppcastURL = packageRoot()
+            .appendingPathComponent(".build/test-release-appcast-placeholder-url.xml")
+        try FileManager.default.createDirectory(
+            at: releaseLikeAppcastURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let releaseLikeAppcast = try readPackageFile("packaging/appcast.sample.xml")
+            .replacingOccurrences(of: "local-smoke-signature-placeholder", with: "release-signature-smoke-value")
+            .replacingOccurrences(of: #" length="0""#, with: #" length="12345""#)
+        try releaseLikeAppcast
+            .replacingOccurrences(of: "https://example.com/solopm/", with: "https://updates.example.invalid/solopm/")
+            .write(to: releaseLikeAppcastURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: releaseLikeAppcastURL) }
+
+        let reservedDomainResult = try runScript(
+            "script/verify_appcast.sh",
+            arguments: [releaseLikeAppcastURL.path],
+            environment: ["SOLOPM_REQUIRE_RELEASE_APPCAST": "1"]
+        )
+
+        XCTAssertNotEqual(reservedDomainResult.exitCode, 0)
+        XCTAssertTrue(reservedDomainResult.output.contains("release appcast enclosure URL must not use placeholder or local domains"))
+
+        try releaseLikeAppcast
+            .replacingOccurrences(of: "https://example.com/solopm/", with: "https://localhost/solopm/")
+            .write(to: releaseLikeAppcastURL, atomically: true, encoding: .utf8)
+
+        let localDomainResult = try runScript(
+            "script/verify_appcast.sh",
+            arguments: [releaseLikeAppcastURL.path],
+            environment: ["SOLOPM_REQUIRE_RELEASE_APPCAST": "1"]
+        )
+
+        XCTAssertNotEqual(localDomainResult.exitCode, 0)
+        XCTAssertTrue(localDomainResult.output.contains("release appcast enclosure URL must not use placeholder or local domains"))
     }
 
     func testReleaseAppcastGeneratorRequiresProductionHTTPSPrefix() throws {

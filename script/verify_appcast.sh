@@ -35,6 +35,8 @@ grep -F "sparkle:shortVersionString=\"$MARKETING_VERSION\"" "$APPCAST_FILE" >/de
 grep -F "$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.zip" "$APPCAST_FILE" >/dev/null
 
 if [[ "$REQUIRE_RELEASE_APPCAST" == "1" ]]; then
+  enclosure_urls="$(grep -Eo 'url="[^"]+"' "$APPCAST_FILE" || true)"
+
   sample_path="$(cd "$(dirname "$SAMPLE_APPCAST_FILE")" && pwd)/$(basename "$SAMPLE_APPCAST_FILE")"
   appcast_path="$(cd "$(dirname "$APPCAST_FILE")" && pwd)/$(basename "$APPCAST_FILE")"
   if [[ "$appcast_path" == "$sample_path" ]]; then
@@ -52,8 +54,18 @@ if [[ "$REQUIRE_RELEASE_APPCAST" == "1" ]]; then
     exit 2
   fi
 
-  if ! grep -E 'url="https://[^"]+"' "$APPCAST_FILE" >/dev/null; then
+  if [[ -z "$enclosure_urls" ]] || ! grep -E '^url="https://[^"]+"$' <<<"$enclosure_urls" >/dev/null; then
     echo "release appcast enclosure URL must use https" >&2
+    exit 2
+  fi
+
+  if grep -Ev '^url="https://[^"]+"$' <<<"$enclosure_urls" >/dev/null; then
+    echo "release appcast enclosure URL must use https" >&2
+    exit 2
+  fi
+
+  if grep -E 'url="https://([^"/]+\.)?(example\.com|example\.org|example\.net)(/|")|url="https://[^"/]+\.(invalid|test)(/|")|url="https://(localhost|127\.0\.0\.1|0\.0\.0\.0)(/|")' <<<"$enclosure_urls" >/dev/null; then
+    echo "release appcast enclosure URL must not use placeholder or local domains" >&2
     exit 2
   fi
 
