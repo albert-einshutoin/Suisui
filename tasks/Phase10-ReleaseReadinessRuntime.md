@@ -1100,6 +1100,14 @@
 - [x] `ReleasePipelineTests` で fake `rg` を `PATH` に差し込み、scan command error で release report が non-zero になることを固定する。
 - [x] 完了条件: runtime source scan が実行不能な状態で `READY` を出さず、リリース前に検出可能な blocker として残す。
 
+### P10-142: Manual release environment evidence must be concrete
+
+- [x] `create_release_evidence.sh` は manual check flag がある場合、空白だけの `--manual-environment` を拒否する。
+- [x] `create_release_evidence.sh` は `macOS version, hardware, clean user/install notes` などの template / placeholder 文言を release evidence として保存しない。
+- [x] `verify_release_environment.sh` は手書き evidence の `manualChecks.environment` も同じ concrete 判定で検査する。
+- [x] `ReleasePipelineTests` で blank / template manual environment の生成拒否と preflight 拒否を固定する。
+- [x] 完了条件: clean environment / login item の manual evidence が、テンプレートをそのままコピーしただけの証跡で release ready にならない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

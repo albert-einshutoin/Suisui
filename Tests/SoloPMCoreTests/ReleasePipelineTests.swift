@@ -692,7 +692,83 @@ final class ReleasePipelineTests: XCTestCase {
         )
 
         XCTAssertNotEqual(result.exitCode, 0)
-        XCTAssertTrue(result.output.contains("manual release evidence requires --manual-environment"))
+        XCTAssertTrue(result.output.contains("manual release evidence requires a concrete --manual-environment"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceURL.path))
+    }
+
+    func testReleaseEvidenceScriptRejectsBlankManualEnvironment() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-blank-manual-environment.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-blank-manual-environment.dmg.sha256")
+        let artifactPath = ".build/test-release-artifact-blank-manual-environment.dmg"
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let artifactURL = try writeArtifactChecksum(to: checksumURL, artifactPath: artifactPath)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: artifactPath)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: artifactURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+        }
+
+        let result = try runScript(
+            "script/create_release_evidence.sh",
+            arguments: [
+                "--force",
+                "--clean-environment-launch",
+                "--login-item-toggle",
+                "--manual-environment", "   "
+            ],
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("manual release evidence requires a concrete --manual-environment"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceURL.path))
+    }
+
+    func testReleaseEvidenceScriptRejectsTemplateManualEnvironment() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-template-manual-environment.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-template-manual-environment.dmg.sha256")
+        let artifactPath = ".build/test-release-artifact-template-manual-environment.dmg"
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let artifactURL = try writeArtifactChecksum(to: checksumURL, artifactPath: artifactPath)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: artifactPath)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: artifactURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+        }
+
+        let result = try runScript(
+            "script/create_release_evidence.sh",
+            arguments: [
+                "--force",
+                "--clean-environment-launch",
+                "--login-item-toggle",
+                "--manual-environment", "macOS version, hardware, clean user/install notes"
+            ],
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("manual release evidence requires a concrete --manual-environment"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceURL.path))
     }
 
@@ -1312,6 +1388,60 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("release evidence missing manual check environment"))
     }
 
+    func testReleasePreflightRejectsTemplateManualEnvironment() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-template-environment.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-template-environment.dmg.sha256")
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        {
+          "release": {
+            "version": "0.1.0",
+            "buildNumber": "1",
+            "appBundlePath": "dist/SoloPM.app",
+            "artifactPath": "dist/releases/SoloPM-0.1.0+1.dmg",
+            "artifactSha256": "actual-sha",
+            "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
+            "notaryProfile": "SoloPMNotaryProfile",
+            "sparkleFeedURL": "https://updates.solopm.app/releases/appcast.xml",
+            "appcastPath": "dist/releases/appcast.xml"
+          },
+          "manualChecks": {
+            "releaseMachineLaunch": true,
+            "checksumVerification": true,
+            "cleanDmgInstall": true,
+            "applicationsFolderInstall": true,
+            "gatekeeperAccepted": true,
+            "cleanEnvironmentLaunch": true,
+            "loginItemToggle": true,
+            "sparkleAppcastMetadata": true,
+            "environment": "macOS version, hardware, clean user/install notes"
+          }
+        }
+        """.write(to: evidenceURL, atomically: true, encoding: .utf8)
+        try "actual-sha  dist/releases/SoloPM-0.1.0+1.dmg\n"
+            .write(to: checksumURL, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+        }
+
+        let result = try runScript(
+            "script/verify_release_environment.sh",
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release evidence manual check environment is not concrete"))
+    }
+
     func testReleaseChecklistRequiresEvidenceBeforeFinalReport() throws {
         let checklist = try readPackageFile("docs/release/checklist.md")
 
@@ -1322,6 +1452,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("./script/create_release_evidence.sh"))
         XCTAssertTrue(checklist.contains("packaging/release-evidence.json"))
         XCTAssertTrue(checklist.contains("manual release evidence"))
+        XCTAssertTrue(checklist.contains("reject blank, placeholder, sample, example, todo, or replace-style environment descriptions"))
         XCTAssertTrue(checklist.contains("SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml"))
         XCTAssertFalse(checklist.contains("./script/verify_appcast.sh packaging/appcast.sample.xml"))
         XCTAssertTrue(checklist.contains("./script/verify_notarization_setup.sh"))

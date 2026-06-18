@@ -171,6 +171,29 @@ json_escape() {
   printf "%s" "$value"
 }
 
+trim_text() {
+  printf "%s" "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+is_placeholder_manual_environment() {
+  local normalized
+  normalized="$(trim_text "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$normalized" in
+    ""|\
+    "macos version, hardware, clean user/install notes"|\
+    *placeholder*|\
+    *replace*|\
+    *sample*|\
+    *example*|\
+    *todo*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 artifact_path_for_compare() {
   local artifact_path="$1"
   if [[ "$artifact_path" == "$ROOT_DIR/"* ]]; then
@@ -377,8 +400,9 @@ if [[ "$RELEASE_MACHINE_LAUNCH" == "true" \
   || "$CLEAN_ENVIRONMENT_LAUNCH" == "true" \
   || "$LOGIN_ITEM_TOGGLE" == "true" \
   || "$SPARKLE_APPCAST_METADATA" == "true" ]]; then
-  if [[ -z "$MANUAL_ENVIRONMENT" ]]; then
-    echo "manual release evidence requires --manual-environment when manual check flags are set" >&2
+  MANUAL_ENVIRONMENT="$(trim_text "$MANUAL_ENVIRONMENT")"
+  if is_placeholder_manual_environment "$MANUAL_ENVIRONMENT"; then
+    echo "manual release evidence requires a concrete --manual-environment when manual check flags are set" >&2
     exit 2
   fi
 fi

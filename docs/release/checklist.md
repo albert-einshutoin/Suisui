@@ -91,6 +91,7 @@ export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERS
 ```
 
 Set manual check flags only for that signed and notarized build. Each flag maps to a Manual Checks bullet below; do not set a flag unless that exact check was performed on the same release artifact. Record the OS, hardware, install location, and clean user/profile details in `--manual-environment`.
+Do not leave the template text in `--manual-environment`; `create_release_evidence.sh` and `verify_release_environment.sh` reject blank, placeholder, sample, example, todo, or replace-style environment descriptions.
 Use `packaging/release-evidence.example.json` only as the schema template; do not copy it as final evidence without running the script.
 
 9. release environment preflight

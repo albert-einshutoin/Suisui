@@ -346,6 +346,42 @@ require_evidence_non_empty() {
   fi
 }
 
+trim_text() {
+  printf "%s" "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+is_placeholder_manual_environment() {
+  local normalized
+  normalized="$(trim_text "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$normalized" in
+    ""|\
+    "macos version, hardware, clean user/install notes"|\
+    *placeholder*|\
+    *replace*|\
+    *sample*|\
+    *example*|\
+    *todo*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+require_evidence_concrete_manual_environment() {
+  local value
+
+  if ! value="$(plutil -extract "manualChecks.environment" raw -o - "$RELEASE_EVIDENCE_FILE" 2>/dev/null)"; then
+    add_blocker "release evidence missing manual check environment: manualChecks.environment"
+    return
+  fi
+
+  if is_placeholder_manual_environment "$value"; then
+    add_blocker "release evidence manual check environment is not concrete: manualChecks.environment"
+  fi
+}
+
 release_artifact_checksum_file() {
   local checksum_files
   local checksum_count
@@ -623,7 +659,7 @@ if [[ -f "$RELEASE_EVIDENCE_FILE" ]]; then
     require_evidence_true "manualChecks.cleanEnvironmentLaunch" "clean environment launch"
     require_evidence_true "manualChecks.loginItemToggle" "login item toggle in signed app"
     require_evidence_true "manualChecks.sparkleAppcastMetadata" "Sparkle appcast metadata check"
-    require_evidence_non_empty "manualChecks.environment" "manual check environment"
+    require_evidence_concrete_manual_environment
   else
     add_blocker "release evidence is not valid JSON or plist: $RELEASE_EVIDENCE_FILE"
   fi
