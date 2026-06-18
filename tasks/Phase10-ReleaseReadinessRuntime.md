@@ -498,6 +498,15 @@
 - [x] テスト: OpenAI / OpenRouter の whitespace 入り key が保存されないことを確認する。
 - [x] 完了条件: API key 入力ミスで「設定済み」に見える偽状態を作らない。
 
+### P10-061: SQLite CRUD store boundary validation
+
+- [x] `SQLiteProjectStore` は title を trim して保存し、空白 title の create / update を拒否する。
+- [x] `SQLiteTaskStore` は title を trim して保存し、単体 create / update / bulk create の空白 title を拒否する。
+- [x] `SQLiteKnowledgeFrameStore` は name を trim して保存し、空白 name / body の create / update を拒否する。
+- [x] bulk create で無効 task が混ざる場合は transaction rollback により途中 row を残さない。
+- [x] テスト: LocalStoreTests で store 直下からの空白 project / task / knowledge data が永続化されないことを確認する。
+- [x] 完了条件: UI / review tool 以外の Core API 利用経路でも空白だけの CRUD データが SQLite に入らない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

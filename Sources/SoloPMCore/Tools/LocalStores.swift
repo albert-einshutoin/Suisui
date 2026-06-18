@@ -121,12 +121,13 @@ public final class SQLiteProjectStore: @unchecked Sendable {
     ) throws -> ProjectRecord {
         lock.lock()
         defer { lock.unlock() }
+        let normalizedTitle = try StoreFieldValidation.requiredTrimmed(title, argument: "title", tool: .projectCreate)
 
         try connection.execute(
             """
             INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command)
             VALUES (
-              '\(SQL.escape(title))',
+              '\(SQL.escape(normalizedTitle))',
               'active',
               \(SQL.optional(priority)),
               \(SQL.optional(deadline)),
@@ -146,7 +147,8 @@ public final class SQLiteProjectStore: @unchecked Sendable {
 
         var assignments: [String] = []
         if let title {
-            assignments.append("title = '\(SQL.escape(title))'")
+            let normalizedTitle = try StoreFieldValidation.requiredTrimmed(title, argument: "title", tool: .projectUpdate)
+            assignments.append("title = '\(SQL.escape(normalizedTitle))'")
         }
         if let status {
             assignments.append("status = '\(SQL.escape(status))'")
@@ -230,7 +232,8 @@ public final class SQLiteTaskStore: @unchecked Sendable {
                 sourceCommand: sourceCommand,
                 status: status,
                 detail: detail
-            )
+            ),
+            tool: .taskCreate
         )
     }
 
@@ -239,17 +242,18 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         defer { lock.unlock() }
 
         return try connection.transaction {
-            try drafts.map(insertLocked)
+            try drafts.map { try insertLocked($0, tool: .taskBulkCreate) }
         }
     }
 
-    private func insertLocked(_ draft: TaskCreateDraft) throws -> TaskRecord {
+    private func insertLocked(_ draft: TaskCreateDraft, tool: ActionTool) throws -> TaskRecord {
+        let normalizedTitle = try StoreFieldValidation.requiredTrimmed(draft.title, argument: "title", tool: tool)
         try connection.execute(
             """
             INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command)
             VALUES (
               \(draft.projectID.map(String.init) ?? "NULL"),
-              '\(SQL.escape(draft.title))',
+              '\(SQL.escape(normalizedTitle))',
               '\(SQL.escape(draft.status))',
               \(SQL.optional(draft.detail)),
               \(SQL.optional(draft.dueAt)),
@@ -276,7 +280,8 @@ public final class SQLiteTaskStore: @unchecked Sendable {
 
         var assignments: [String] = []
         if let title {
-            assignments.append("title = '\(SQL.escape(title))'")
+            let normalizedTitle = try StoreFieldValidation.requiredTrimmed(title, argument: "title", tool: .taskUpdate)
+            assignments.append("title = '\(SQL.escape(normalizedTitle))'")
         }
         if let status {
             assignments.append("status = '\(SQL.escape(status))'")
@@ -565,18 +570,20 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
     public func create(name: String, body: String, triggers: [String] = []) throws -> KnowledgeFrameRecord {
         lock.lock()
         defer { lock.unlock() }
+        let normalizedName = try StoreFieldValidation.requiredTrimmed(name, argument: "name", tool: .frameCreate)
+        let validatedBody = try StoreFieldValidation.requiredNonBlank(body, argument: "body", tool: .frameCreate)
 
         try connection.execute(
             """
             INSERT INTO knowledge_frames (name, body, triggers_json)
-            VALUES ('\(SQL.escape(name))', '\(SQL.escape(body))', '\(SQL.escape(SQL.jsonArray(triggers)))');
+            VALUES ('\(SQL.escape(normalizedName))', '\(SQL.escape(validatedBody))', '\(SQL.escape(SQL.jsonArray(triggers)))');
             """
         )
         let id = connection.lastInsertedRowID
         try connection.execute(
             """
             INSERT INTO knowledge_frames_fts (rowid, name, body)
-            VALUES (\(id), '\(SQL.escape(name))', '\(SQL.escape(body))');
+            VALUES (\(id), '\(SQL.escape(normalizedName))', '\(SQL.escape(validatedBody))');
             """
         )
 
@@ -590,10 +597,12 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         let oldRecord = try getLocked(id: id)
         var assignments: [String] = []
         if let name {
-            assignments.append("name = '\(SQL.escape(name))'")
+            let normalizedName = try StoreFieldValidation.requiredTrimmed(name, argument: "name", tool: .frameUpdate)
+            assignments.append("name = '\(SQL.escape(normalizedName))'")
         }
         if let body {
-            assignments.append("body = '\(SQL.escape(body))'")
+            let validatedBody = try StoreFieldValidation.requiredNonBlank(body, argument: "body", tool: .frameUpdate)
+            assignments.append("body = '\(SQL.escape(validatedBody))'")
         }
         if let triggers {
             assignments.append("triggers_json = '\(SQL.escape(SQL.jsonArray(triggers)))'")
@@ -750,6 +759,23 @@ private extension ReminderLinkRecord {
             taskID: Int64(row["task_id"] ?? ""),
             title: SQL.nilIfEmpty(row["title"])
         )
+    }
+}
+
+private enum StoreFieldValidation {
+    static func requiredTrimmed(_ value: String, argument: String, tool: ActionTool) throws -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw ToolExecutionError.validationFailed(tool, "Argument '\(argument)' cannot be blank.")
+        }
+        return trimmed
+    }
+
+    static func requiredNonBlank(_ value: String, argument: String, tool: ActionTool) throws -> String {
+        guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ToolExecutionError.validationFailed(tool, "Argument '\(argument)' cannot be blank.")
+        }
+        return value
     }
 }
 

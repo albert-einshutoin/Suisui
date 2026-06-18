@@ -24,6 +24,35 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(projects.first?.tags, ["oss"])
     }
 
+    func testProjectStoreNormalizesAndRejectsBlankTitles() throws {
+        let connection = try migratedConnection()
+        let store = SQLiteProjectStore(connection: connection)
+
+        let project = try store.create(title: "  Launch alpha  ")
+
+        XCTAssertEqual(project.title, "Launch alpha")
+
+        do {
+            _ = try store.create(title: " \n\t ")
+            XCTFail("Blank project title should not be persisted.")
+        } catch {
+            XCTAssertEqual(error as? ToolExecutionError, .validationFailed(.projectCreate, "Argument 'title' cannot be blank."))
+        }
+
+        let updated = try store.update(id: project.id, title: "  Investor demo  ")
+
+        XCTAssertEqual(updated.title, "Investor demo")
+
+        do {
+            _ = try store.update(id: project.id, title: " \n ")
+            XCTFail("Blank project title should not replace an existing title.")
+        } catch {
+            XCTAssertEqual(error as? ToolExecutionError, .validationFailed(.projectUpdate, "Argument 'title' cannot be blank."))
+        }
+        XCTAssertEqual(try store.get(id: project.id).title, "Investor demo")
+        XCTAssertEqual(try store.list(includeArchived: true).map(\.title), ["Investor demo"])
+    }
+
     func testProjectStoreArchivesProjectsWithoutDeletingRows() throws {
         let connection = try migratedConnection()
         let store = SQLiteProjectStore(connection: connection)
@@ -62,6 +91,46 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(due.map(\.title), ["Soon"])
     }
 
+    func testTaskStoreNormalizesAndRejectsBlankTitles() throws {
+        let connection = try migratedConnection()
+        let store = SQLiteTaskStore(connection: connection)
+
+        let task = try store.create(title: "  Ship alpha  ")
+
+        XCTAssertEqual(task.title, "Ship alpha")
+
+        do {
+            _ = try store.create(title: " \n\t ")
+            XCTFail("Blank task title should not be persisted.")
+        } catch {
+            XCTAssertEqual(error as? ToolExecutionError, .validationFailed(.taskCreate, "Argument 'title' cannot be blank."))
+        }
+
+        let updated = try store.update(id: task.id, title: "  Fix onboarding  ")
+
+        XCTAssertEqual(updated.title, "Fix onboarding")
+
+        do {
+            _ = try store.update(id: task.id, title: " \n ")
+            XCTFail("Blank task title should not replace an existing title.")
+        } catch {
+            XCTAssertEqual(error as? ToolExecutionError, .validationFailed(.taskUpdate, "Argument 'title' cannot be blank."))
+        }
+
+        do {
+            _ = try store.createMany([
+                TaskCreateDraft(title: "Keep me out of rollback"),
+                TaskCreateDraft(title: " \n ")
+            ])
+            XCTFail("Bulk create should reject blank task titles.")
+        } catch {
+            XCTAssertEqual(error as? ToolExecutionError, .validationFailed(.taskBulkCreate, "Argument 'title' cannot be blank."))
+        }
+
+        XCTAssertEqual(try store.get(id: task.id).title, "Fix onboarding")
+        XCTAssertEqual(try store.listAll().map(\.title), ["Fix onboarding"])
+    }
+
     func testTaskStoreDueQueriesExcludeArchivedProjectTasks() throws {
         let connection = try migratedConnection()
         let projects = SQLiteProjectStore(connection: connection)
@@ -96,6 +165,53 @@ final class LocalStoreTests: XCTestCase {
 
         XCTAssertEqual(due.map(\.title), ["Visible task"])
         XCTAssertEqual(deadlineCandidates.map(\.title), ["Visible task"])
+    }
+
+    func testKnowledgeFrameStoreNormalizesNamesAndRejectsBlankCoreFields() throws {
+        let connection = try migratedConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+
+        let frame = try store.create(name: "  Runbook  ", body: "  Use release checklist  ")
+
+        XCTAssertEqual(frame.name, "Runbook")
+        XCTAssertEqual(frame.body, "  Use release checklist  ")
+
+        do {
+            _ = try store.create(name: " \n ", body: "Body")
+            XCTFail("Blank knowledge frame name should not be persisted.")
+        } catch {
+            XCTAssertEqual(error as? ToolExecutionError, .validationFailed(.frameCreate, "Argument 'name' cannot be blank."))
+        }
+
+        do {
+            _ = try store.create(name: "Frame", body: " \n ")
+            XCTFail("Blank knowledge frame body should not be persisted.")
+        } catch {
+            XCTAssertEqual(error as? ToolExecutionError, .validationFailed(.frameCreate, "Argument 'body' cannot be blank."))
+        }
+
+        let updated = try store.update(id: frame.id, name: "  Investor memo  ", body: "  Updated body  ")
+
+        XCTAssertEqual(updated.name, "Investor memo")
+        XCTAssertEqual(updated.body, "  Updated body  ")
+
+        do {
+            _ = try store.update(id: frame.id, name: " \n ")
+            XCTFail("Blank knowledge frame name should not replace an existing name.")
+        } catch {
+            XCTAssertEqual(error as? ToolExecutionError, .validationFailed(.frameUpdate, "Argument 'name' cannot be blank."))
+        }
+
+        do {
+            _ = try store.update(id: frame.id, body: " \n ")
+            XCTFail("Blank knowledge frame body should not replace an existing body.")
+        } catch {
+            XCTAssertEqual(error as? ToolExecutionError, .validationFailed(.frameUpdate, "Argument 'body' cannot be blank."))
+        }
+
+        XCTAssertEqual(try store.get(id: frame.id).name, "Investor memo")
+        XCTAssertEqual(try store.get(id: frame.id).body, "  Updated body  ")
+        XCTAssertEqual(try store.list().map(\.name), ["Investor memo"])
     }
 
     func testKnowledgeFrameStoreSearchesWithFTS5() throws {
