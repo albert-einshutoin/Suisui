@@ -53,6 +53,21 @@ public struct ChatCompletionsCompatibleConfiguration: Equatable, Sendable {
         )
     }
 
+    public static func groq(
+        model: String,
+        baseURL: URL = URL(string: "https://api.groq.com/openai/v1")!,
+        timeoutInterval: TimeInterval = 60
+    ) -> ChatCompletionsCompatibleConfiguration {
+        ChatCompletionsCompatibleConfiguration(
+            providerID: "groq.chat",
+            baseURL: baseURL,
+            model: model,
+            apiKeySecretKey: .groqAPIKey,
+            requiresAPIKey: true,
+            timeoutInterval: timeoutInterval
+        )
+    }
+
     public static func ollama(
         model: String,
         baseURL: URL = URL(string: "http://localhost:11434/v1")!,

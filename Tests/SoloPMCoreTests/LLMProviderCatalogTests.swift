@@ -40,6 +40,8 @@ final class LLMProviderCatalogTests: XCTestCase {
         let groq = LLMProviderCatalog.entry(for: .groqOpenAICompatible)
         XCTAssertEqual(groq.apiKeySecretKey, .groqAPIKey)
         XCTAssertEqual(groq.baseURL?.absoluteString, "https://api.groq.com/openai/v1")
+        XCTAssertEqual(groq.defaultModelID, "llama-3.3-70b-versatile")
+        XCTAssertTrue(groq.isAvailableInCurrentBuild)
         XCTAssertEqual(groq.requestFamily, .openAIChatCompletions)
 
         let claude = LLMProviderCatalog.entry(for: .claudeMessages)
@@ -61,6 +63,7 @@ final class LLMProviderCatalogTests: XCTestCase {
                 .openaiResponses,
                 .claudeMessages,
                 .geminiDirect,
+                .groqOpenAICompatible,
                 .openRouterCompatible,
                 .ollamaCompatible
             ]

@@ -20,6 +20,18 @@ final class ChatCompletionsCompatibleProviderTests: XCTestCase {
         XCTAssertTrue(configuration.requiresAPIKey)
     }
 
+    func testGroqConfigurationUsesGroqDefaultsWithoutMixingOpenAISecrets() {
+        let configuration = ChatCompletionsCompatibleConfiguration.groq(model: "llama-3.3-70b-versatile")
+
+        XCTAssertEqual(configuration.providerID, "groq.chat")
+        XCTAssertEqual(configuration.baseURL.absoluteString, "https://api.groq.com/openai/v1")
+        XCTAssertEqual(configuration.model, "llama-3.3-70b-versatile")
+        XCTAssertEqual(configuration.apiKeySecretKey, .groqAPIKey)
+        XCTAssertTrue(configuration.requiresAPIKey)
+        XCTAssertNotEqual(configuration.apiKeySecretKey, .openAIAPIKey)
+        XCTAssertNotEqual(configuration.apiKeySecretKey, .openRouterAPIKey)
+    }
+
     func testOllamaConfigurationDoesNotRequireAPIKey() {
         let configuration = ChatCompletionsCompatibleConfiguration.ollama(model: "llama3.2")
 
@@ -42,6 +54,18 @@ final class ChatCompletionsCompatibleProviderTests: XCTestCase {
         XCTAssertEqual(request.timeoutInterval, 15)
         XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer sk-router")
+    }
+
+    func testGroqRequestBuilderUsesExplicitOpenAICompatibleChatCompletionsPath() throws {
+        let request = try ChatCompletionsCompatibleRequestBuilder(
+            configuration: .groq(model: "llama-3.3-70b-versatile")
+        ).makeRequest(
+            apiKey: "gsk-test",
+            prompt: PlanningPrompt(system: "system prompt", user: "user prompt")
+        )
+
+        XCTAssertEqual(request.url?.absoluteString, "https://api.groq.com/openai/v1/chat/completions")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer gsk-test")
     }
 
     func testRequestBuilderOmitsAuthorizationForLocalProvider() throws {
@@ -218,6 +242,44 @@ final class ChatCompletionsCompatibleProviderTests: XCTestCase {
             XCTFail("Expected rate limit to fail.")
         } catch {
             XCTAssertEqual(error as? LLMProviderError, .rateLimited)
+        }
+    }
+
+    func testGroqProviderMapsRateLimitStatusWithGroqKey() async throws {
+        let store = InMemorySecretStore(values: [.groqAPIKey: "gsk-test"])
+        let provider = ChatCompletionsCompatibleProvider(
+            configuration: .groq(model: "llama-3.3-70b-versatile"),
+            secretStore: store,
+            httpClient: StubHTTPDataClient(data: Data(#"{"error":{"message":"Rate limit reached"}}"#.utf8), statusCode: 429)
+        )
+
+        do {
+            _ = try await provider.generatePlan(for: PlanningRequest(userInput: "Create a task"))
+            XCTFail("Expected Groq rate limit to fail.")
+        } catch {
+            XCTAssertEqual(error as? LLMProviderError, .rateLimited)
+        }
+    }
+
+    func testGroqProviderRejectsSchemaMismatchAsInvalidResponse() async throws {
+        let store = InMemorySecretStore(values: [.groqAPIKey: "gsk-test"])
+        let provider = ChatCompletionsCompatibleProvider(
+            configuration: .groq(model: "llama-3.3-70b-versatile"),
+            secretStore: store,
+            httpClient: StubHTTPDataClient(
+                data: Data(#"{"id":"chatcmpl-1","choices":{"message":{"content":"{}"}}}"#.utf8),
+                statusCode: 200
+            )
+        )
+
+        do {
+            _ = try await provider.generatePlan(for: PlanningRequest(userInput: "Create a task"))
+            XCTFail("Expected Groq schema mismatch to fail.")
+        } catch {
+            XCTAssertEqual(
+                error as? LLMProviderError,
+                .invalidResponse("Chat completion response could not be decoded.")
+            )
         }
     }
 

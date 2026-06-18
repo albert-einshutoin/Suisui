@@ -373,6 +373,8 @@ Claude Messages adapter は Anthropic Messages API `POST /v1/messages` を使い
 
 Gemini Direct adapter は Google Gemini API の native `models/{model}:generateContent` endpointを使い、`x-goog-api-key`、`system_instruction`、user `contents`、`generationConfig.responseFormat.text.mimeType = application/json` を明示する。既定 model id は `gemini-3.5-flash` で、Settings から model id を上書きできる。OpenAI-compatible Gemini は別 provider ID のまま未実装扱いにして、direct endpoint と混ぜない。
 
+Groq OpenAI-compatible adapter は Groq公式の `https://api.groq.com/openai/v1` base URL と `chat/completions` request pathを専用presetで固定し、既定 model id は production model の `llama-3.3-70b-versatile` にする。Settings では Groq API key を Keychain の `groq_api_key`、Groq base URL を app settings に保存し、OpenAI / OpenRouter のAPI keyや課金経路と混ぜない。
+
 ```text
 LLMProvider
 ├─ OpenAIResponsesAdapter
@@ -1156,6 +1158,9 @@ Business:
 - OpenAI Speech to Text: https://developers.openai.com/api/docs/guides/speech-to-text
 - OpenAI TTS: https://developers.openai.com/api/docs/guides/text-to-speech
 - OpenRouter: https://openrouter.ai/docs/quickstart
+- Groq OpenAI compatibility: https://console.groq.com/docs/openai
+- Groq Text Generation: https://console.groq.com/docs/text-chat
+- Groq Models: https://console.groq.com/docs/models
 - Ollama OpenAI compatibility: https://docs.ollama.com/api/openai-compatibility
 - Xcode releases: https://developer.apple.com/news/releases/
 - Xcode system requirements: https://developer.apple.com/xcode/system-requirements/

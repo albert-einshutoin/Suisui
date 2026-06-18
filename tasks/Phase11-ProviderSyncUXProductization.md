@@ -91,11 +91,11 @@
 
 ## P11-014: Groq OpenAI-compatible adapter
 
-- [ ] GroqはOpenAI-compatible providerとしてbase URLとrequest pathを明示設定する。
-- [ ] Groq固有のmodel id、rate limit、response schema mismatchを `ChatCompletionsCompatibleProviderTests` に追加する。
-- [ ] OpenAI-compatible汎用adapterにGroq専用defaultを混ぜず、provider presetで注入する。
-- [ ] SettingsはGroq API keyとbase URLをKeychain/設定に分離する。
-- [ ] 完了条件: 高速/低コストproviderとしてGroqを選べるが、OpenAI本体と認証/課金を混同しない。
+- [x] GroqはOpenAI-compatible providerとしてbase URLとrequest pathを明示設定する。
+- [x] Groq固有のmodel id、rate limit、response schema mismatchを `ChatCompletionsCompatibleProviderTests` に追加する。
+- [x] OpenAI-compatible汎用adapterにGroq専用defaultを混ぜず、provider presetで注入する。
+- [x] SettingsはGroq API keyとbase URLをKeychain/設定に分離する。
+- [x] 完了条件: 高速/低コストproviderとしてGroqを選べるが、OpenAI本体と認証/課金を混同しない。
 
 ## P11-015: OpenCode local provider integration
 

@@ -891,6 +891,40 @@ private struct SettingsView: View {
                         Label("Delete Gemini Key", systemImage: "trash")
                     }
                 }
+                LabeledContent("Groq API Key", value: settingsViewModel.groqAPIKeyStatusLabel)
+                LabeledContent("Groq Provider Smoke", value: settingsViewModel.groqProviderSmokeStatusLabel)
+                TextField(
+                    "Groq Base URL",
+                    text: Binding(
+                        get: {
+                            settingsViewModel.settings.groqBaseURLString
+                                ?? LLMProviderCatalog.entry(for: .groqOpenAICompatible).baseURL?.absoluteString
+                                ?? "https://api.groq.com/openai/v1"
+                        },
+                        set: { settingsViewModel.setGroqBaseURLString($0) }
+                    )
+                )
+                SecureField(
+                    "Groq API Key",
+                    text: Binding(
+                        get: { settingsViewModel.groqAPIKeyInput },
+                        set: { settingsViewModel.updateGroqAPIKeyInput($0) }
+                    )
+                )
+                HStack {
+                    Button {
+                        settingsViewModel.saveGroqAPIKey()
+                    } label: {
+                        Label("Save Groq Key", systemImage: "key")
+                    }
+                    .disabled(settingsViewModel.groqAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    Button(role: .destructive) {
+                        settingsViewModel.deleteGroqAPIKey()
+                    } label: {
+                        Label("Delete Groq Key", systemImage: "trash")
+                    }
+                }
                 LabeledContent("OpenRouter API Key", value: settingsViewModel.openRouterAPIKeyStatusLabel)
                 SecureField(
                     "OpenRouter API Key",
@@ -1400,7 +1434,6 @@ private enum AppRuntimeFactory {
         switch settings.normalizedForRuntime.aiProvider {
         case .openaiResponses,
              .geminiOpenAICompatible,
-             .groqOpenAICompatible,
              .opencodeLocal:
             let entry = LLMProviderCatalog.entry(for: .openaiResponses)
             let configuration = OpenAIResponsesConfiguration(model: entry.defaultModelID)
@@ -1417,6 +1450,17 @@ private enum AppRuntimeFactory {
             let entry = LLMProviderCatalog.entry(for: .openRouterCompatible)
             return ChatCompletionsCompatibleProvider(
                 configuration: .openRouter(model: entry.defaultModelID),
+                secretStore: secretStore
+            )
+        case .groqOpenAICompatible:
+            let entry = LLMProviderCatalog.entry(for: .groqOpenAICompatible)
+            let defaultBaseURL = entry.baseURL
+                ?? ChatCompletionsCompatibleConfiguration.groq(model: entry.defaultModelID).baseURL
+            return ChatCompletionsCompatibleProvider(
+                configuration: .groq(
+                    model: entry.defaultModelID,
+                    baseURL: settings.normalizedForRuntime.resolvedGroqBaseURL(defaultBaseURL: defaultBaseURL)
+                ),
                 secretStore: secretStore
             )
         case .ollamaCompatible:

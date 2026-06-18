@@ -8,6 +8,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var defaultWorkspacePath: String?
     public var timeZoneIdentifier: String
     public var geminiModelID: String?
+    public var groqBaseURLString: String?
 
     public init(
         aiProvider: AIProvider = .openaiResponses,
@@ -15,7 +16,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         notificationsEnabled: Bool = false,
         defaultWorkspacePath: String? = nil,
         timeZoneIdentifier: String = TimeZone.current.identifier,
-        geminiModelID: String? = nil
+        geminiModelID: String? = nil,
+        groqBaseURLString: String? = nil
     ) {
         self.aiProvider = aiProvider
         self.sttProvider = sttProvider
@@ -23,6 +25,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.defaultWorkspacePath = defaultWorkspacePath
         self.timeZoneIdentifier = timeZoneIdentifier
         self.geminiModelID = geminiModelID
+        self.groqBaseURLString = groqBaseURLString
     }
 
     public static let `default` = AppSettings()
@@ -38,7 +41,19 @@ public struct AppSettings: Codable, Equatable, Sendable {
         if let geminiModelID = copy.geminiModelID?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.geminiModelID = geminiModelID.isEmpty ? nil : geminiModelID
         }
+        if let groqBaseURLString = copy.groqBaseURLString?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            copy.groqBaseURLString = groqBaseURLString.isEmpty ? nil : groqBaseURLString
+        }
         return copy
+    }
+
+    public func resolvedGroqBaseURL(defaultBaseURL: URL) -> URL {
+        guard let groqBaseURLString = normalizedForRuntime.groqBaseURLString,
+              let url = URL(string: groqBaseURLString),
+              url.isHTTPSAPIBaseURL else {
+            return defaultBaseURL
+        }
+        return url
     }
 
     public func validate() -> [ValidationIssue] {
@@ -95,7 +110,34 @@ public struct AppSettings: Codable, Equatable, Sendable {
             }
         }
 
+        if let groqBaseURLString {
+            let trimmedBaseURL = groqBaseURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedBaseURL.isEmpty {
+                issues.append(
+                    ValidationIssue(
+                        field: "groqBaseURLString",
+                        message: "Groq base URL cannot be blank.",
+                        severity: .error
+                    )
+                )
+            } else if URL(string: trimmedBaseURL)?.isHTTPSAPIBaseURL != true {
+                issues.append(
+                    ValidationIssue(
+                        field: "groqBaseURLString",
+                        message: "Groq base URL must be an HTTPS URL with a host.",
+                        severity: .error
+                    )
+                )
+            }
+        }
+
         return issues
+    }
+}
+
+private extension URL {
+    var isHTTPSAPIBaseURL: Bool {
+        scheme?.lowercased() == "https" && host?.isEmpty == false
     }
 }
 
@@ -201,6 +243,9 @@ public final class AppSettingsViewModel: ObservableObject {
     @Published public private(set) var geminiAPIKeyInput: String
     @Published public private(set) var geminiAPIKeyStatusLabel: String
     @Published public private(set) var geminiProviderSmokeStatusLabel: String
+    @Published public private(set) var groqAPIKeyInput: String
+    @Published public private(set) var groqAPIKeyStatusLabel: String
+    @Published public private(set) var groqProviderSmokeStatusLabel: String
     @Published public private(set) var openRouterAPIKeyInput: String
     @Published public private(set) var openRouterAPIKeyStatusLabel: String
     @Published public private(set) var keychainSecretKeyInput: String
@@ -234,6 +279,9 @@ public final class AppSettingsViewModel: ObservableObject {
         self.geminiAPIKeyInput = ""
         self.geminiAPIKeyStatusLabel = "Not configured"
         self.geminiProviderSmokeStatusLabel = "notConfigured"
+        self.groqAPIKeyInput = ""
+        self.groqAPIKeyStatusLabel = "Not configured"
+        self.groqProviderSmokeStatusLabel = "notConfigured"
         self.openRouterAPIKeyInput = ""
         self.openRouterAPIKeyStatusLabel = "Not configured"
         self.keychainSecretKeyInput = ""
@@ -245,6 +293,7 @@ public final class AppSettingsViewModel: ObservableObject {
         refreshOpenAIAPIKeyStatus()
         refreshAnthropicAPIKeyStatus()
         refreshGeminiAPIKeyStatus()
+        refreshGroqAPIKeyStatus()
         refreshOpenRouterAPIKeyStatus()
     }
 
@@ -286,6 +335,12 @@ public final class AppSettingsViewModel: ObservableObject {
         clearMessages()
     }
 
+    public func setGroqBaseURLString(_ baseURLString: String) {
+        let trimmed = baseURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.groqBaseURLString = trimmed.isEmpty ? nil : trimmed
+        clearMessages()
+    }
+
     public func updateOpenAIAPIKeyInput(_ value: String) {
         openAIAPIKeyInput = value
         clearMessages()
@@ -298,6 +353,11 @@ public final class AppSettingsViewModel: ObservableObject {
 
     public func updateGeminiAPIKeyInput(_ value: String) {
         geminiAPIKeyInput = value
+        clearMessages()
+    }
+
+    public func updateGroqAPIKeyInput(_ value: String) {
+        groqAPIKeyInput = value
         clearMessages()
     }
 
@@ -483,6 +543,30 @@ public final class AppSettingsViewModel: ObservableObject {
         }
     }
 
+    public func saveGroqAPIKey() {
+        let trimmed = groqAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            deleteGroqAPIKey()
+            return
+        }
+        guard validateAPIKey(trimmed) else {
+            return
+        }
+
+        do {
+            try secretStore.save(trimmed, for: .groqAPIKey)
+            groqAPIKeyInput = ""
+            guard refreshGroqAPIKeyStatus() else {
+                return
+            }
+            errorMessage = nil
+            successMessage = "Groq API key saved to Keychain."
+        } catch {
+            errorMessage = String(describing: error)
+            successMessage = nil
+        }
+    }
+
     public func deleteOpenAIAPIKey() {
         do {
             try secretStore.delete(.openAIAPIKey)
@@ -537,6 +621,21 @@ public final class AppSettingsViewModel: ObservableObject {
             }
             errorMessage = nil
             successMessage = "Gemini API key removed."
+        } catch {
+            errorMessage = String(describing: error)
+            successMessage = nil
+        }
+    }
+
+    public func deleteGroqAPIKey() {
+        do {
+            try secretStore.delete(.groqAPIKey)
+            groqAPIKeyInput = ""
+            guard refreshGroqAPIKeyStatus() else {
+                return
+            }
+            errorMessage = nil
+            successMessage = "Groq API key removed."
         } catch {
             errorMessage = String(describing: error)
             successMessage = nil
@@ -614,6 +713,25 @@ public final class AppSettingsViewModel: ObservableObject {
         } catch {
             geminiAPIKeyStatusLabel = "Unavailable"
             geminiProviderSmokeStatusLabel = "unavailable"
+            errorMessage = "API key status could not be read from Keychain."
+            successMessage = nil
+            return false
+        }
+    }
+
+    @discardableResult
+    public func refreshGroqAPIKeyStatus() -> Bool {
+        do {
+            groqAPIKeyStatusLabel = try apiKeyStatusLabel(for: .groqAPIKey)
+            groqProviderSmokeStatusLabel = providerSmokeStatusLabel(forAPIKeyStatusLabel: groqAPIKeyStatusLabel)
+            if groqAPIKeyStatusLabel == "Invalid" {
+                reportInvalidStoredAPIKey()
+                return false
+            }
+            return true
+        } catch {
+            groqAPIKeyStatusLabel = "Unavailable"
+            groqProviderSmokeStatusLabel = "unavailable"
             errorMessage = "API key status could not be read from Keychain."
             successMessage = nil
             return false

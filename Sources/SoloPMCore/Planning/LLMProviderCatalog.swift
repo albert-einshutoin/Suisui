@@ -154,8 +154,7 @@ public enum LLMProviderCatalog {
         LLMProviderCatalogEntry(
             id: .groqOpenAICompatible,
             displayName: "Groq OpenAI-compatible",
-            isAvailableInCurrentBuild: false,
-            unavailableReason: unavailableReason,
+            isAvailableInCurrentBuild: true,
             apiKeySecretKey: .groqAPIKey,
             baseURL: URL(string: "https://api.groq.com/openai/v1")!,
             defaultModelID: "llama-3.3-70b-versatile",

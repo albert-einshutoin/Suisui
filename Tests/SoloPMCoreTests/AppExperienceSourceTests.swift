@@ -676,6 +676,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("settingsViewModel.deleteGeminiAPIKey()"))
         XCTAssertTrue(appSource.contains("Gemini API Key"))
         XCTAssertTrue(appSource.contains("Gemini Model ID"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.saveGroqAPIKey()"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.deleteGroqAPIKey()"))
+        XCTAssertTrue(appSource.contains("Groq API Key"))
+        XCTAssertTrue(appSource.contains("Groq Base URL"))
         XCTAssertFalse(appSource.contains("SecureField(\"API Key\", text: .constant(\"\"))"))
     }
 
@@ -698,8 +702,21 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(factorySource.contains("case .geminiDirect:"))
         XCTAssertTrue(factorySource.contains("GeminiDirectConfiguration(model: settings.normalizedForRuntime.geminiModelID ?? entry.defaultModelID)"))
         XCTAssertTrue(factorySource.contains("GeminiDirectProvider(secretStore: secretStore, configuration: configuration)"))
-        XCTAssertTrue(factorySource.contains(".geminiOpenAICompatible,\n             .groqOpenAICompatible"))
+        XCTAssertTrue(factorySource.contains(".geminiOpenAICompatible,\n             .opencodeLocal"))
         XCTAssertFalse(factorySource.contains(".claudeMessages,\n             .geminiDirect"))
+    }
+
+    func testRuntimeLLMFactoryUsesGroqCompatibleProviderWithoutOpenAIFallback() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let factoryStart = try XCTUnwrap(appSource.range(of: "private static func makeLLMProvider"))
+        let factorySource = String(appSource[factoryStart.lowerBound..<appSource.endIndex])
+
+        XCTAssertTrue(factorySource.contains("case .groqOpenAICompatible:"))
+        XCTAssertTrue(factorySource.contains("let defaultBaseURL = entry.baseURL"))
+        XCTAssertTrue(factorySource.contains("configuration: .groq("))
+        XCTAssertTrue(factorySource.contains("settings.normalizedForRuntime.resolvedGroqBaseURL(defaultBaseURL: defaultBaseURL)"))
+        XCTAssertTrue(factorySource.contains("secretStore: secretStore"))
+        XCTAssertFalse(factorySource.contains(".openaiResponses,\n             .groqOpenAICompatible"))
     }
 
     func testSettingsSurfaceOnlyShowsReleaseReadySTTProviders() throws {

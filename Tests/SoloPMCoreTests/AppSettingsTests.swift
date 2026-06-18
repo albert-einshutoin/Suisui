@@ -83,6 +83,8 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(viewModel.anthropicAPIKeyStatusLabel, "Unavailable")
         XCTAssertEqual(viewModel.geminiAPIKeyStatusLabel, "Unavailable")
         XCTAssertEqual(viewModel.geminiProviderSmokeStatusLabel, "unavailable")
+        XCTAssertEqual(viewModel.groqAPIKeyStatusLabel, "Unavailable")
+        XCTAssertEqual(viewModel.groqProviderSmokeStatusLabel, "unavailable")
         XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Unavailable")
         XCTAssertEqual(viewModel.openAIProviderSmokeStatusLabel, "unavailable")
         XCTAssertEqual(viewModel.errorMessage, "API key status could not be read from Keychain.")
@@ -103,6 +105,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(viewModel.openAIProviderSmokeStatusLabel, "invalidConfiguration")
         XCTAssertEqual(viewModel.anthropicAPIKeyStatusLabel, "Not configured")
         XCTAssertEqual(viewModel.geminiAPIKeyStatusLabel, "Not configured")
+        XCTAssertEqual(viewModel.groqAPIKeyStatusLabel, "Not configured")
         XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Not configured")
         XCTAssertEqual(viewModel.errorMessage, "Stored API key is invalid. Re-enter it in Settings.")
         XCTAssertFalse(viewModel.errorMessage?.contains("sk-live") ?? true)
@@ -123,6 +126,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(viewModel.openAIProviderSmokeStatusLabel, "notConfigured")
         XCTAssertEqual(viewModel.anthropicAPIKeyStatusLabel, "Not configured")
         XCTAssertEqual(viewModel.geminiAPIKeyStatusLabel, "Not configured")
+        XCTAssertEqual(viewModel.groqAPIKeyStatusLabel, "Not configured")
         XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Invalid")
         XCTAssertEqual(viewModel.errorMessage, "Stored API key is invalid. Re-enter it in Settings.")
         XCTAssertFalse(viewModel.errorMessage?.contains("sk-or-live") ?? true)
@@ -198,6 +202,25 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertEqual(viewModel.geminiAPIKeyStatusLabel, "Unavailable")
         XCTAssertEqual(viewModel.geminiProviderSmokeStatusLabel, "unavailable")
+        XCTAssertEqual(viewModel.errorMessage, "API key status could not be read from Keychain.")
+        XCTAssertNil(viewModel.successMessage)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelDoesNotReportGroqKeySaveSuccessWhenStatusRefreshFails() throws {
+        let suiteName = "SoloPM.AppSettingsGroqSaveRefreshFailure.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: ThrowingReadSecretStore()
+        )
+
+        viewModel.updateGroqAPIKeyInput("gsk-test")
+        viewModel.saveGroqAPIKey()
+
+        XCTAssertEqual(viewModel.groqAPIKeyStatusLabel, "Unavailable")
+        XCTAssertEqual(viewModel.groqProviderSmokeStatusLabel, "unavailable")
         XCTAssertEqual(viewModel.errorMessage, "API key status could not be read from Keychain.")
         XCTAssertNil(viewModel.successMessage)
     }
@@ -330,6 +353,30 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testAppSettingsViewModelSavesAndDeletesGroqKeyInSecretStoreOnly() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelGroqTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settingsStore = UserDefaultsAppSettingsStore(defaults: defaults)
+        let secretStore = InMemorySecretStore()
+        let viewModel = AppSettingsViewModel(settingsStore: settingsStore, secretStore: secretStore)
+
+        viewModel.updateGroqAPIKeyInput(" gsk-test-secret ")
+        viewModel.saveGroqAPIKey()
+
+        XCTAssertEqual(try secretStore.read(.groqAPIKey), "gsk-test-secret")
+        XCTAssertEqual(viewModel.groqAPIKeyStatusLabel, "Configured")
+        XCTAssertEqual(viewModel.groqProviderSmokeStatusLabel, "readyForManualSmoke")
+        XCTAssertNil(defaults.data(forKey: "app.settings"))
+
+        viewModel.deleteGroqAPIKey()
+
+        XCTAssertNil(try secretStore.read(.groqAPIKey))
+        XCTAssertEqual(viewModel.groqAPIKeyStatusLabel, "Not configured")
+        XCTAssertEqual(viewModel.groqProviderSmokeStatusLabel, "notConfigured")
+    }
+
+    @MainActor
     func testAppSettingsViewModelSavesAndDeletesCustomKeychainSecretForMCPReferences() throws {
         let suiteName = "SoloPM.AppSettingsViewModelCustomSecretTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -459,6 +506,26 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testAppSettingsViewModelRejectsGroqKeyWithInternalWhitespace() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelInvalidGroqKey.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settingsStore = UserDefaultsAppSettingsStore(defaults: defaults)
+        let secretStore = InMemorySecretStore()
+        let viewModel = AppSettingsViewModel(settingsStore: settingsStore, secretStore: secretStore)
+
+        let keyPrefix = "gsk-live"
+        viewModel.updateGroqAPIKeyInput("\(keyPrefix)\ninvalid")
+        viewModel.saveGroqAPIKey()
+
+        XCTAssertNil(try secretStore.read(.groqAPIKey))
+        XCTAssertEqual(viewModel.groqAPIKeyStatusLabel, "Not configured")
+        XCTAssertEqual(viewModel.groqProviderSmokeStatusLabel, "notConfigured")
+        XCTAssertEqual(viewModel.errorMessage, "API key cannot contain whitespace.")
+        XCTAssertFalse(viewModel.errorMessage?.contains(keyPrefix) ?? true)
+    }
+
+    @MainActor
     func testAppSettingsViewModelPersistsNonSecretSettings() throws {
         let suiteName = "SoloPM.AppSettingsViewModelSettings.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -469,6 +536,7 @@ final class AppSettingsTests: XCTestCase {
         viewModel.setNotificationsEnabled(true)
         viewModel.setDefaultWorkspacePath("/tmp/SoloPM")
         viewModel.setGeminiModelID(" gemini-3.5-flash ")
+        viewModel.setGroqBaseURLString(" https://api.groq.com/openai/v1 ")
         viewModel.saveSettings()
 
         let loaded = try store.load()
@@ -476,6 +544,19 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(loaded.notificationsEnabled)
         XCTAssertEqual(loaded.defaultWorkspacePath, "/tmp/SoloPM")
         XCTAssertEqual(loaded.geminiModelID, "gemini-3.5-flash")
+        XCTAssertEqual(loaded.groqBaseURLString, "https://api.groq.com/openai/v1")
+    }
+
+    func testAppSettingsValidatesGroqBaseURLBeforeSaving() {
+        let blank = AppSettings(groqBaseURLString: "   ")
+        let insecure = AppSettings(groqBaseURLString: "http://api.groq.com/openai/v1")
+        let missingHost = AppSettings(groqBaseURLString: "https:///openai/v1")
+        let valid = AppSettings(groqBaseURLString: "https://api.groq.com/openai/v1")
+
+        XCTAssertEqual(blank.validate().first?.field, "groqBaseURLString")
+        XCTAssertEqual(insecure.validate().first?.message, "Groq base URL must be an HTTPS URL with a host.")
+        XCTAssertEqual(missingHost.validate().first?.message, "Groq base URL must be an HTTPS URL with a host.")
+        XCTAssertTrue(valid.validate().isEmpty)
     }
 
     @MainActor
@@ -486,13 +567,13 @@ final class AppSettingsTests: XCTestCase {
         let store = UserDefaultsAppSettingsStore(defaults: defaults)
         let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
 
-        viewModel.setAIProvider(.claudeMessages)
+        viewModel.setAIProvider(.groqOpenAICompatible)
         viewModel.setSTTProvider(.openAITranscribe)
         viewModel.saveSettings()
 
         let loaded = try store.load()
 
-        XCTAssertEqual(loaded.aiProvider, .claudeMessages)
+        XCTAssertEqual(loaded.aiProvider, .groqOpenAICompatible)
         XCTAssertEqual(loaded.sttProvider, .openAITranscribe)
     }
 
@@ -504,7 +585,10 @@ final class AppSettingsTests: XCTestCase {
         let store = UserDefaultsAppSettingsStore(defaults: defaults)
         let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
 
-        XCTAssertEqual(viewModel.selectableAIProviders, [.openaiResponses, .claudeMessages, .geminiDirect, .openRouterCompatible, .ollamaCompatible])
+        XCTAssertEqual(
+            viewModel.selectableAIProviders,
+            [.openaiResponses, .claudeMessages, .geminiDirect, .groqOpenAICompatible, .openRouterCompatible, .ollamaCompatible]
+        )
 
         viewModel.setAIProvider(.geminiOpenAICompatible)
         viewModel.saveSettings()
