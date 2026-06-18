@@ -142,6 +142,38 @@ final class ExternalMCPTests: XCTestCase {
     }
 
     @MainActor
+    func testExternalMCPSettingsViewModelSavePreservesOtherPersistedRegistrations() throws {
+        let first = MCPServerRegistration(
+            id: "first",
+            displayName: "First MCP",
+            command: "/usr/bin/env",
+            arguments: ["node", "first.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let second = MCPServerRegistration(
+            id: "second",
+            displayName: "Second MCP",
+            command: "/usr/bin/env",
+            arguments: ["node", "second.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: false
+        )
+        let store = InMemoryMCPServerRegistrationStore(registrations: [first, second])
+        let viewModel = ExternalMCPSettingsViewModel(store: store)
+
+        viewModel.updateDisplayName("Updated First MCP")
+        viewModel.save()
+
+        let saved = try store.loadRegistrations()
+        XCTAssertEqual(saved.map(\.id), ["first", "second"])
+        XCTAssertEqual(saved.first?.displayName, "Updated First MCP")
+        XCTAssertEqual(saved.last, second)
+    }
+
+    @MainActor
     func testExternalMCPSettingsViewModelParsesQuotedArgumentsWithoutBreakingSpacePaths() throws {
         let store = InMemoryMCPServerRegistrationStore()
         let viewModel = ExternalMCPSettingsViewModel(store: store)
@@ -253,6 +285,37 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(try store.loadRegistrations(), [])
         XCTAssertEqual(viewModel.registration.displayName, "Custom MCP")
         XCTAssertEqual(viewModel.registration.command, "")
+        XCTAssertEqual(viewModel.toolRows, [])
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testExternalMCPSettingsViewModelDeleteRemovesOnlyCurrentRegistration() throws {
+        let first = MCPServerRegistration(
+            id: "first",
+            displayName: "First MCP",
+            command: "/usr/bin/env",
+            arguments: ["node", "first.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let second = MCPServerRegistration(
+            id: "second",
+            displayName: "Second MCP",
+            command: "/usr/bin/env",
+            arguments: ["node", "second.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let store = InMemoryMCPServerRegistrationStore(registrations: [first, second])
+        let viewModel = ExternalMCPSettingsViewModel(store: store)
+
+        viewModel.deleteRegistration()
+
+        XCTAssertEqual(try store.loadRegistrations(), [second])
+        XCTAssertEqual(viewModel.registration, second)
         XCTAssertEqual(viewModel.toolRows, [])
         XCTAssertNil(viewModel.errorMessage)
     }

@@ -482,6 +482,14 @@
 - [x] Settings UI は保存済み arguments を quote 付き text として round-trip 表示する。
 - [x] 完了条件: macOS の空白入り directory 配下に置いた stdio MCP server を UI から実用的に登録できる。
 
+### P10-059: MCP registration data preservation
+
+- [x] Settings の単一登録編集 UI は、既存 store に複数 MCP registration がある場合でも後続 registration を削除しない。
+- [x] `save()` は現在編集中の registration id だけを差し替え、同じ store 内の他 registration の順序と内容を保持する。
+- [x] `deleteRegistration()` は現在編集中の registration id だけを削除し、残りがあれば次の registration を表示する。
+- [x] テスト: save / delete の両方で hidden registration が消えないことを確認する。
+- [x] 完了条件: app update や将来の複数 MCP UI 追加時に、既存 SQLite registration を Settings 操作で失わない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

@@ -198,6 +198,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
 
     private let store: any MCPServerRegistrationStore
     private let launcher: MCPStdioServerLauncher
+    private var registrations: [MCPServerRegistration]
 
     public init(
         store: any MCPServerRegistrationStore,
@@ -211,6 +212,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         self.auditRows = auditRows
         self.errorMessage = nil
         self.isCheckingConnection = false
+        self.registrations = []
         self.registration = Self.blankRegistration()
         refresh()
     }
@@ -225,9 +227,11 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
 
     public func refresh() {
         do {
-            registration = try store.loadRegistrations().first ?? Self.blankRegistration()
+            registrations = try store.loadRegistrations()
+            registration = registrations.first ?? Self.blankRegistration()
             errorMessage = nil
         } catch {
+            registrations = []
             registration = Self.blankRegistration()
             errorMessage = String(describing: error)
         }
@@ -271,7 +275,9 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
 
     public func save() {
         do {
-            try store.saveRegistrations([registration])
+            let updatedRegistrations = Self.replacing(registration, in: registrations)
+            try store.saveRegistrations(updatedRegistrations)
+            registrations = updatedRegistrations
             errorMessage = nil
         } catch {
             errorMessage = String(describing: error)
@@ -280,8 +286,10 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
 
     public func deleteRegistration() {
         do {
-            try store.saveRegistrations([])
-            registration = Self.blankRegistration()
+            let remainingRegistrations = registrations.filter { $0.id != registration.id }
+            try store.saveRegistrations(remainingRegistrations)
+            registrations = remainingRegistrations
+            registration = remainingRegistrations.first ?? Self.blankRegistration()
             toolRows = []
             errorMessage = nil
         } catch {
@@ -361,6 +369,19 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         default:
             return "MCP arguments are invalid: \(error)"
         }
+    }
+
+    private static func replacing(
+        _ registration: MCPServerRegistration,
+        in registrations: [MCPServerRegistration]
+    ) -> [MCPServerRegistration] {
+        guard let index = registrations.firstIndex(where: { $0.id == registration.id }) else {
+            return registrations + [registration]
+        }
+
+        var updatedRegistrations = registrations
+        updatedRegistrations[index] = registration
+        return updatedRegistrations
     }
 }
 
