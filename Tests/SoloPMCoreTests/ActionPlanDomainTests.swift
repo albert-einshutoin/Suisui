@@ -5,9 +5,17 @@ final class ActionPlanDomainTests: XCTestCase {
     func testActionToolMapsToActionType() {
         XCTAssertEqual(ActionTool.projectCreate.actionType, .project)
         XCTAssertEqual(ActionTool.taskCreate.actionType, .task)
+        XCTAssertEqual(ActionTool.taskDelete.actionType, .task)
         XCTAssertEqual(ActionTool.calendarCreateEvent.actionType, .calendar)
+        XCTAssertEqual(ActionTool.frameDelete.actionType, .knowledgeFrame)
         XCTAssertEqual(ActionTool.mailDraftCreateText.actionType, .mailDraft)
         XCTAssertEqual(ActionTool.gitStatus.actionType, .developer)
+    }
+
+    func testLocalReadAndDeleteToolsUseExpectedRiskLevels() {
+        XCTAssertEqual(ActionTool.taskGet.defaultRiskLevel, .read)
+        XCTAssertEqual(ActionTool.taskDelete.defaultRiskLevel, .write)
+        XCTAssertEqual(ActionTool.frameDelete.defaultRiskLevel, .write)
     }
 
     func testApprovalRequirementUsesHighestActionRisk() {

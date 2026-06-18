@@ -161,6 +161,9 @@ public struct TaskTool: Tool {
             try drafts.forEach { try reopenCompletedProjectIfNeeded(projectID: $0.projectID, status: $0.status) }
             let created = try store.createMany(drafts).map { JSONValue.number(Double($0.id)) }
             return ToolResult(tool: name, status: .succeeded, summary: "Created \(created.count) tasks", output: ["taskIds": .array(created)])
+        case .taskGet:
+            let record = try store.get(id: try args.requiredInt64("id"))
+            return ToolResult(tool: name, status: .succeeded, summary: record.title, output: record.output)
         case .taskUpdate:
             let taskID = try args.requiredInt64("id")
             let current = try store.get(id: taskID)
@@ -181,6 +184,11 @@ public struct TaskTool: Tool {
         case .taskComplete:
             let record = try store.update(id: try args.requiredInt64("id"), status: "completed")
             return ToolResult(tool: name, status: .succeeded, summary: "Completed task \(record.title)", output: ["taskId": .number(Double(record.id))])
+        case .taskDelete:
+            let taskID = try args.requiredInt64("id")
+            let record = try store.get(id: taskID)
+            try store.delete(id: taskID)
+            return ToolResult(tool: name, status: .succeeded, summary: "Deleted task \(record.title)", output: ["taskId": .number(Double(record.id))])
         case .taskListDue:
             let tasks = try store.listDue(onOrBefore: try args.optionalString("cutoff") ?? ISO8601DateFormatter().string(from: context.now))
             return ToolResult(
@@ -262,6 +270,8 @@ public struct TaskTool: Tool {
                     )
                 ]
             )
+        case .taskGet, .taskDelete:
+            ToolInputSchema(required: ["id"], properties: ["id": "integer"])
         case .taskUpdate:
             ToolInputSchema(
                 required: ["id"],
@@ -314,6 +324,11 @@ public struct KnowledgeFrameTool: Tool {
                 triggers: try args.optionalTrimmedStringArray("triggers")
             )
             return ToolResult(tool: name, status: .succeeded, summary: "Updated frame \(frame.name)", output: ["frameId": .number(Double(frame.id))])
+        case .frameDelete:
+            let frameID = try args.requiredInt64("id")
+            let frame = try store.get(id: frameID)
+            try store.delete(id: frameID)
+            return ToolResult(tool: name, status: .succeeded, summary: "Deleted frame \(frame.name)", output: ["frameId": .number(Double(frame.id))])
         case .frameGet:
             let frame = try store.get(id: try args.requiredInt64("id"))
             return ToolResult(tool: name, status: .succeeded, summary: frame.name, output: frame.output)
@@ -355,6 +370,8 @@ public struct KnowledgeFrameTool: Tool {
                 nonBlank: ["name", "body"]
             )
         case .frameGet:
+            ToolInputSchema(required: ["id"], properties: ["id": "integer"])
+        case .frameDelete:
             ToolInputSchema(required: ["id"], properties: ["id": "integer"])
         case .frameSearch:
             ToolInputSchema(required: ["query"], properties: ["query": "string"])
@@ -428,15 +445,18 @@ public extension ToolRegistry {
             ProjectTool(name: .projectComplete, store: projectStore, taskStore: taskStore),
             TaskTool(name: .taskCreate, store: taskStore, projectStore: projectStore),
             TaskTool(name: .taskBulkCreate, store: taskStore, projectStore: projectStore),
+            TaskTool(name: .taskGet, store: taskStore, projectStore: projectStore),
             TaskTool(name: .taskUpdate, store: taskStore, projectStore: projectStore),
             TaskTool(name: .taskComplete, store: taskStore),
+            TaskTool(name: .taskDelete, store: taskStore),
             TaskTool(name: .taskListDue, store: taskStore),
             TaskTool(name: .taskListOverdue, store: taskStore),
             KnowledgeFrameTool(name: .frameSearch, store: knowledgeStore),
             KnowledgeFrameTool(name: .frameList, store: knowledgeStore),
             KnowledgeFrameTool(name: .frameGet, store: knowledgeStore),
             KnowledgeFrameTool(name: .frameCreate, store: knowledgeStore),
-            KnowledgeFrameTool(name: .frameUpdate, store: knowledgeStore)
+            KnowledgeFrameTool(name: .frameUpdate, store: knowledgeStore),
+            KnowledgeFrameTool(name: .frameDelete, store: knowledgeStore)
         ]
     }
 }

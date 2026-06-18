@@ -96,8 +96,10 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
     case projectComplete = "project.complete"
     case taskCreate = "task.create"
     case taskBulkCreate = "task.bulk_create"
+    case taskGet = "task.get"
     case taskUpdate = "task.update"
     case taskComplete = "task.complete"
+    case taskDelete = "task.delete"
     case taskListDue = "task.list_due"
     case taskListOverdue = "task.list_overdue"
     case notificationSchedule = "notification.schedule"
@@ -120,6 +122,7 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
     case frameGet = "frame.get"
     case frameCreate = "frame.create"
     case frameUpdate = "frame.update"
+    case frameDelete = "frame.delete"
     case mailDraftCreateText = "maildraft.create_text"
     case gitStatus = "git.status"
     case gitBranch = "git.branch"
@@ -130,6 +133,7 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
         switch self {
         case .projectList,
              .projectGet,
+             .taskGet,
              .taskListDue,
              .taskListOverdue,
              .notificationList,
@@ -151,6 +155,7 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
              .taskBulkCreate,
              .taskUpdate,
              .taskComplete,
+             .taskDelete,
              .notificationSchedule,
              .notificationScheduleRelative,
              .notificationScheduleOverdueRule,
@@ -165,7 +170,8 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
              .filesystemCreateMarkdownFile,
              .filesystemCreateArtifactsFromFrame,
              .frameCreate,
-             .frameUpdate:
+             .frameUpdate,
+             .frameDelete:
             .write
         }
     }
@@ -174,7 +180,7 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
         switch self {
         case .projectCreate, .projectUpdate, .projectList, .projectGet, .projectComplete:
             .project
-        case .taskCreate, .taskBulkCreate, .taskUpdate, .taskComplete, .taskListDue, .taskListOverdue:
+        case .taskCreate, .taskBulkCreate, .taskGet, .taskUpdate, .taskComplete, .taskDelete, .taskListDue, .taskListOverdue:
             .task
         case .notificationSchedule, .notificationScheduleRelative, .notificationScheduleOverdueRule, .notificationCancel, .notificationList:
             .notification
@@ -187,7 +193,7 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
              .filesystemCreateArtifactsFromFrame,
              .filesystemScanProjectArtifacts:
             .filesystem
-        case .frameSearch, .frameList, .frameGet, .frameCreate, .frameUpdate:
+        case .frameSearch, .frameList, .frameGet, .frameCreate, .frameUpdate, .frameDelete:
             .knowledgeFrame
         case .mailDraftCreateText:
             .mailDraft

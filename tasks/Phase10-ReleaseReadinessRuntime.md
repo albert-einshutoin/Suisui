@@ -1221,6 +1221,16 @@
 - [x] `ProjectTaskKnowledgeToolTests` で Project / Task / Knowledge の read output が実永続データを含むことを固定する。
 - [x] 完了条件: 外部連携なしでも、local SQLite の既存データをAI Reviewが再利用できる粒度で読み取れる。
 
+### P10-157: Review tools expose local Task and Knowledge delete CRUD
+
+- [x] `ActionTool` / packaged `action-plan.schema.json` に `task.get` / `task.delete` / `frame.delete` を追加し、schema と enum のズレを防ぐ。
+- [x] `task.get` は read tool としてSQLite taskの `id` / `projectId` / `title` / `status` / detail / due / priority を返す。
+- [x] `task.delete` は承認付き write tool としてSQLite task rowを削除し、UI-only delete pathに閉じない。
+- [x] `frame.delete` は承認付き write tool としてKnowledge Frame本体とFTS indexを既存store transaction経由で削除する。
+- [x] `ToolRegistry.phase2Core` は新しいTask/Knowledge CRUD toolsを登録し、Review executionで利用できる。
+- [x] `ProjectTaskKnowledgeToolTests` / `ActionPlanDomainTests` / `ActionPlanSchemaTests` で read/write risk、schema、registry、永続削除を固定する。
+- [x] 完了条件: 外部連携なしでも、AI ReviewからLocal Task / Knowledge FrameのCreate/Read/Update/Deleteが承認付きで成立する。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

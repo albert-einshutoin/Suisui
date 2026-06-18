@@ -278,6 +278,49 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(task.priority, "high")
     }
 
+    func testTaskGetToolReturnsPersistentTaskRecord() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "Launch Readiness")
+        let task = try stores.tasks.create(
+            title: "Inspect task",
+            projectID: project.id,
+            dueAt: "2026-06-21T09:00:00Z",
+            priority: "high",
+            status: "blocked",
+            detail: "Confirm local CRUD read path."
+        )
+        let tool = TaskTool(name: .taskGet, store: stores.tasks, projectStore: stores.projects)
+
+        let result = try tool.execute(
+            arguments: ["id": .number(Double(task.id))],
+            context: ToolExecutionContext(source: .developerTool)
+        )
+
+        XCTAssertEqual(result.summary, "Inspect task")
+        XCTAssertEqual(result.output["id"], .number(Double(task.id)))
+        XCTAssertEqual(result.output["projectId"], .number(Double(project.id)))
+        XCTAssertEqual(result.output["title"], .string("Inspect task"))
+        XCTAssertEqual(result.output["status"], .string("blocked"))
+        XCTAssertEqual(result.output["detail"], .string("Confirm local CRUD read path."))
+        XCTAssertEqual(result.output["dueAt"], .string("2026-06-21T09:00:00Z"))
+        XCTAssertEqual(result.output["priority"], .string("high"))
+    }
+
+    func testTaskDeleteToolDeletesPersistentTaskWithApproval() throws {
+        let stores = try makeStores()
+        let task = try stores.tasks.create(title: "Remove stale task")
+        let tool = TaskTool(name: .taskDelete, store: stores.tasks, projectStore: stores.projects)
+
+        let result = try tool.execute(
+            arguments: ["id": .number(Double(task.id))],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .succeeded)
+        XCTAssertEqual(result.output["taskId"], .number(Double(task.id)))
+        XCTAssertThrowsError(try stores.tasks.get(id: task.id))
+    }
+
     func testTaskCreateRejectsNonStringOptionalFieldsWithoutCreatingTask() throws {
         let stores = try makeStores()
         let tool = TaskTool(name: .taskCreate, store: stores.tasks, projectStore: stores.projects)
@@ -567,6 +610,8 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         let create = TaskTool(name: .taskCreate, store: stores.tasks, projectStore: stores.projects)
         let bulkCreate = TaskTool(name: .taskBulkCreate, store: stores.tasks, projectStore: stores.projects)
         let update = TaskTool(name: .taskUpdate, store: stores.tasks, projectStore: stores.projects)
+        let get = TaskTool(name: .taskGet, store: stores.tasks, projectStore: stores.projects)
+        let delete = TaskTool(name: .taskDelete, store: stores.tasks, projectStore: stores.projects)
 
         XCTAssertEqual(create.inputSchema.properties["detail"], "string")
         XCTAssertEqual(create.inputSchema.properties["dueAt"], "string")
@@ -581,6 +626,8 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(update.inputSchema.properties["detail"], "string|null")
         XCTAssertEqual(update.inputSchema.properties["dueAt"], "string|null")
         XCTAssertEqual(update.inputSchema.properties["priority"], "string|null")
+        XCTAssertEqual(get.inputSchema.required, ["id"])
+        XCTAssertEqual(delete.inputSchema.required, ["id"])
     }
 
     func testTaskListDueAndOverdueToolsReturnPersistentTaskRecords() throws {
@@ -696,6 +743,32 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(frame["triggers"], .array([.string("release"), .string("alpha")]))
     }
 
+    func testKnowledgeFrameDeleteToolDeletesFrameAndSearchIndexWithApproval() throws {
+        let stores = try makeStores()
+        let frame = try stores.knowledge.create(
+            name: "Stale frame",
+            body: "Remove this stale launch note.",
+            triggers: ["release"]
+        )
+        let delete = KnowledgeFrameTool(name: .frameDelete, store: stores.knowledge)
+        let search = KnowledgeFrameTool(name: .frameSearch, store: stores.knowledge)
+
+        let result = try delete.execute(
+            arguments: ["id": .number(Double(frame.id))],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .succeeded)
+        XCTAssertEqual(result.output["frameId"], .number(Double(frame.id)))
+        XCTAssertThrowsError(try stores.knowledge.get(id: frame.id))
+        let searchResult = try search.execute(
+            arguments: ["query": .string("stale")],
+            context: ToolExecutionContext(source: .developerTool)
+        )
+        XCTAssertEqual(searchResult.output["count"], .number(0))
+        XCTAssertEqual(searchResult.output["frames"], .array([]))
+    }
+
     func testKnowledgeFrameCreateRejectsNonStringTriggersWithoutCreatingFrame() throws {
         let stores = try makeStores()
         let create = KnowledgeFrameTool(name: .frameCreate, store: stores.knowledge)
@@ -809,8 +882,11 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         )
 
         XCTAssertTrue(registry.contains(.projectCreate))
+        XCTAssertTrue(registry.contains(.taskGet))
         XCTAssertTrue(registry.contains(.taskCreate))
+        XCTAssertTrue(registry.contains(.taskDelete))
         XCTAssertTrue(registry.contains(.frameSearch))
+        XCTAssertTrue(registry.contains(.frameDelete))
     }
 
     private func makeStores() throws -> (projects: SQLiteProjectStore, tasks: SQLiteTaskStore, knowledge: SQLiteKnowledgeFrameStore) {
