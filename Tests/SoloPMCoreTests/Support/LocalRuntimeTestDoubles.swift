@@ -159,6 +159,22 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         return task
     }
 
+    func moveTask(id: Int64, to status: ProjectTaskStatus) throws -> ProjectBoardTask {
+        let task = try findTask(id: id)
+        try prepareProjectForTaskMutation(projectID: task.projectID, taskStatus: status)
+        let movedTask = ProjectBoardTask(
+            id: task.id,
+            projectID: task.projectID,
+            title: task.title,
+            detail: task.detail,
+            status: status,
+            priority: task.priority,
+            dueAt: task.dueAt
+        )
+        upsert(movedTask)
+        return movedTask
+    }
+
     func deleteTask(id: Int64) throws {
         for projectIndex in snapshot.projects.indices {
             for columnIndex in snapshot.projects[projectIndex].columns.indices {
@@ -183,6 +199,16 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
 
         snapshot.projects[projectIndex].columns[columnIndex].tasks.insert(task, at: 0)
         refreshProjectSubtitle(at: projectIndex)
+    }
+
+    private func findTask(id: Int64) throws -> ProjectBoardTask {
+        for project in snapshot.projects {
+            if let task = project.tasks.first(where: { $0.id == id }) {
+                return task
+            }
+        }
+
+        throw DatabaseError.stepFailed("Task \(id) was not found.")
     }
 
     private func prepareProjectForTaskMutation(projectID: Int64, taskStatus: ProjectTaskStatus) throws {

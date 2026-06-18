@@ -413,7 +413,10 @@ private struct ProjectKanbanBoard: View {
                             )
                             composingStatus = nil
                         },
-                        onSelectTask: { viewModel.selectedTaskID = $0 }
+                        onSelectTask: { viewModel.selectedTaskID = $0 },
+                        onMoveTask: { taskID, status in
+                            viewModel.moveTask(id: taskID, to: status)
+                        }
                     )
                 }
             }
@@ -431,6 +434,9 @@ private struct BoardColumnView: View {
     let onCancelComposing: () -> Void
     let onCreateTask: (String, String, ProjectTaskPriority, String?) -> Void
     let onSelectTask: (Int64) -> Void
+    let onMoveTask: (Int64, ProjectTaskStatus) -> Void
+
+    @State private var isDropTargeted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -477,17 +483,42 @@ private struct BoardColumnView: View {
                         BoardTaskCard(task: task, isSelected: selectedTaskID == task.id)
                     }
                     .buttonStyle(.plain)
+                    .draggable(String(task.id))
                     .contextMenu {
                         Button {
                             onSelectTask(task.id)
                         } label: {
                             Label("Open Details", systemImage: "sidebar.right")
                         }
+
+                        Menu {
+                            ForEach(ProjectTaskStatus.allCases.filter { $0 != task.status }) { status in
+                                Button {
+                                    onMoveTask(task.id, status)
+                                } label: {
+                                    Label(status.title, systemImage: status.systemImage)
+                                }
+                            }
+                        } label: {
+                            Label("Move To", systemImage: "arrow.right.arrow.left")
+                        }
                     }
                 }
             }
         }
         .frame(width: 190, alignment: .topLeading)
+        .padding(8)
+        .background(isDropTargeted ? Color.accentColor.opacity(0.08) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .dropDestination(for: String.self) { taskIDs, _ in
+            let movedTaskIDs = taskIDs.compactMap(Int64.init)
+            for taskID in movedTaskIDs {
+                onMoveTask(taskID, column.status)
+            }
+            return !movedTaskIDs.isEmpty
+        } isTargeted: { isTargeted in
+            isDropTargeted = isTargeted
+        }
     }
 }
 

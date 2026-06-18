@@ -54,6 +54,7 @@
 
 - [x] Task delete / archive の store API を追加する。
 - [x] Board card / inspector から task を削除できる。
+- [x] Board card を context menu / drag and drop で列移動でき、SQLite の task status に永続化される。
 - [x] 削除前に確認し、取り消せないことを明示する。
 - [x] テスト: create / read / update / delete が SQLite で通る。
 - [x] 完了条件: task board が CRUD として閉じている。

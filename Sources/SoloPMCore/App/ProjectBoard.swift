@@ -189,6 +189,7 @@ public protocol ProjectBoardStore {
     func restoreProject(id: Int64) throws -> ProjectBoardProject
     func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask
     func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask
+    func moveTask(id: Int64, to status: ProjectTaskStatus) throws -> ProjectBoardTask
     func deleteTask(id: Int64) throws
 }
 
@@ -288,6 +289,17 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             priority: normalized.priority.rawValue,
             projectID: normalized.projectID
         )
+        return try makeBoardTask(record).requiredTask()
+    }
+
+    @discardableResult
+    public func moveTask(id: Int64, to status: ProjectTaskStatus) throws -> ProjectBoardTask {
+        let current = try taskStore.get(id: id)
+        guard let projectID = current.projectID else {
+            throw DatabaseError.stepFailed("Task \(id) did not have a project.")
+        }
+        try prepareProjectForTaskMutation(projectID: projectID, taskStatus: status)
+        let record = try taskStore.update(id: id, status: status.rawValue)
         return try makeBoardTask(record).requiredTask()
     }
 
@@ -584,6 +596,29 @@ public final class ProjectBoardViewModel: ObservableObject {
             errorMessage = "Restore the project before editing tasks."
         } catch ProjectBoardStoreError.emptyTitle {
             errorMessage = "Task title is required."
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
+    public func moveSelectedTask(to status: ProjectTaskStatus) {
+        guard let selectedTask else {
+            return
+        }
+
+        moveTask(id: selectedTask.id, to: status)
+    }
+
+    public func moveTask(id: Int64, to status: ProjectTaskStatus) {
+        do {
+            let task = try store.moveTask(id: id, to: status)
+            selectedProjectID = task.projectID
+            load()
+            selectedProjectID = task.projectID
+            selectedTaskID = id
+            onChange()
+        } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
+            errorMessage = "Restore the project before moving tasks."
         } catch {
             errorMessage = String(describing: error)
         }

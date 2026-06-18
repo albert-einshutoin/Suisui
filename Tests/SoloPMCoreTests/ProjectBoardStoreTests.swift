@@ -68,6 +68,31 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(inProgressTasks.first?.dueLabel, "2026-06-21")
     }
 
+    func testMoveTaskPersistsNewStatusWithoutLosingMetadata() throws {
+        let store = try makeStore()
+        let projectID = try XCTUnwrap(store.loadSnapshot().projects.first?.id)
+        let task = try store.createTask(ProjectBoardTaskDraft(
+            projectID: projectID,
+            title: "Wire task drag flow",
+            detail: "Keep details while changing columns.",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-22"
+        ))
+
+        _ = try store.moveTask(id: task.id, to: .inProgress)
+
+        let snapshot = try store.loadSnapshot()
+
+        XCTAssertEqual(snapshot.projects.first?.column(.planned)?.tasks, [])
+        let moved = try XCTUnwrap(snapshot.projects.first?.column(.inProgress)?.tasks.first)
+        XCTAssertEqual(moved.id, task.id)
+        XCTAssertEqual(moved.title, "Wire task drag flow")
+        XCTAssertEqual(moved.detail, "Keep details while changing columns.")
+        XCTAssertEqual(moved.priority, .high)
+        XCTAssertEqual(moved.dueAt, "2026-06-22")
+    }
+
     func testDeleteTaskRemovesCardFromPersistentSnapshot() throws {
         let store = try makeStore()
         let projectID = try XCTUnwrap(store.loadSnapshot().projects.first?.id)
@@ -236,6 +261,34 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         XCTAssertEqual(changeCount, 6)
         XCTAssertEqual(viewModel.selectedProject?.title, "Inbox")
+    }
+
+    @MainActor
+    func testProjectBoardViewModelMovesSelectedTaskAndNotifies() {
+        var changeCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+        let task = viewModel.createTask(
+            title: "Move card by context menu",
+            detail: "This should keep metadata.",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-22"
+        )
+        changeCount = 0
+
+        viewModel.moveSelectedTask(to: .inProgress)
+
+        XCTAssertEqual(changeCount, 1)
+        XCTAssertEqual(viewModel.selectedTaskID, task?.id)
+        XCTAssertEqual(viewModel.selectedTask?.status, .inProgress)
+        XCTAssertEqual(viewModel.selectedTask?.title, "Move card by context menu")
+        XCTAssertEqual(viewModel.selectedTask?.detail, "This should keep metadata.")
+        XCTAssertEqual(viewModel.selectedTask?.priority, .high)
+        XCTAssertEqual(viewModel.selectedTask?.dueAt, "2026-06-22")
     }
 
     @MainActor
