@@ -121,6 +121,7 @@ final class AppExperienceSourceTests: XCTestCase {
             let source = try String(contentsOf: sourceFile, encoding: .utf8)
             XCTAssertFalse(source.contains("ExternalMCPTestKit"), "\(sourceFile.path) ships the fake MCP server test kit.")
             XCTAssertFalse(source.contains("makeFakeServerTransport"), "\(sourceFile.path) ships fake MCP transport helpers.")
+            XCTAssertFalse(source.contains("RecordingMCPServerProcess"), "\(sourceFile.path) ships a test-only MCP server process.")
         }
     }
 
