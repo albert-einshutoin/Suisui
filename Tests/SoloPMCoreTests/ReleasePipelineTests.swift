@@ -248,6 +248,29 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(example.contains("SECRET"))
     }
 
+    func testReleaseManualEvidenceDocsMapEveryFlagToConcreteProof() throws {
+        let script = try readPackageFile("script/create_release_evidence.sh")
+        let checklist = try readPackageFile("docs/release/checklist.md")
+        let example = try readPackageFile("packaging/release-evidence.example.json")
+
+        XCTAssertTrue(script.contains("Manual flag evidence requirements:"))
+        XCTAssertTrue(script.contains("--release-machine-launch: signed/notarized app opens from dist/SoloPM.app on the release machine"))
+        XCTAssertTrue(script.contains("--checksum-verification: shasum -a 256 matches the generated *.sha256 artifact"))
+        XCTAssertTrue(script.contains("--clean-dmg-install: DMG downloads and opens in a clean user or VM"))
+        XCTAssertTrue(script.contains("--applications-folder-install: app is dragged to /Applications and launches there"))
+        XCTAssertTrue(script.contains("--gatekeeper-accepted: spctl/Gatekeeper accepts the stapled app"))
+        XCTAssertTrue(script.contains("--clean-environment-launch: first launch succeeds in the clean user or VM"))
+        XCTAssertTrue(script.contains("--login-item-toggle: Settings toggles launch-at-login on and off in the signed app"))
+        XCTAssertTrue(script.contains("--sparkle-appcast-metadata: release appcast metadata points to this version/build"))
+
+        XCTAssertTrue(checklist.contains("Manual flag evidence requirements"))
+        XCTAssertTrue(checklist.contains("| `--login-item-toggle` | Settings toggles launch-at-login on and off in the signed app. |"))
+        XCTAssertTrue(checklist.contains("The `--note` value must name the observed result for each true manual flag."))
+
+        XCTAssertTrue(example.contains("Manual flag evidence requirements are documented in docs/release/checklist.md."))
+        XCTAssertTrue(example.contains("Do not copy this example as final release evidence."))
+    }
+
     func testLocalVisualQAArtifactsAndMacMetadataAreIgnored() throws {
         let gitignore = try readPackageFile(".gitignore")
         let ignoredPaths = gitignore

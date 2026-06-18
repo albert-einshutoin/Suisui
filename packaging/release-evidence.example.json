@@ -28,7 +28,8 @@
     "checkedBy": "release-owner",
     "checkedAt": "YYYY-MM-DDTHH:MM:SSZ",
     "notes": [
-      "Set booleans true only after the signed and notarized build is tested."
+      "Do not copy this example as final release evidence.",
+      "Manual flag evidence requirements are documented in docs/release/checklist.md."
     ]
   }
 }

@@ -96,6 +96,21 @@ Keep `--checked-by` and `--note` concrete as well; blank reviewer names, blank r
 The source git commit is recorded in release evidence and checked against package evidence during final preflight, so regenerate the signed package and evidence after any source commit changes.
 Use `packaging/release-evidence.example.json` only as the schema template; do not copy it as final evidence without running the script.
 
+Manual flag evidence requirements:
+
+| Flag | Required proof in `--note` |
+| --- | --- |
+| `--release-machine-launch` | Signed/notarized app opens from `dist/SoloPM.app` on the release machine. |
+| `--checksum-verification` | `shasum -a 256` matches the generated `*.sha256` artifact. |
+| `--clean-dmg-install` | DMG downloads and opens in a clean user or VM. |
+| `--applications-folder-install` | App is dragged to `/Applications` and launches there. |
+| `--gatekeeper-accepted` | `spctl`/Gatekeeper accepts the stapled app. |
+| `--clean-environment-launch` | First launch succeeds in the clean user or VM. |
+| `--login-item-toggle` | Settings toggles launch-at-login on and off in the signed app. |
+| `--sparkle-appcast-metadata` | Release appcast metadata points to this version/build. |
+
+The `--note` value must name the observed result for each true manual flag.
+
 9. release environment preflight
 
 ```bash

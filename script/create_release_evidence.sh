@@ -44,6 +44,16 @@ Options:
 
 The script records metadata and artifact checksum evidence only. Pass manual
 check flags only after testing the signed and notarized build.
+
+Manual flag evidence requirements:
+  --release-machine-launch: signed/notarized app opens from dist/SoloPM.app on the release machine
+  --checksum-verification: shasum -a 256 matches the generated *.sha256 artifact
+  --clean-dmg-install: DMG downloads and opens in a clean user or VM
+  --applications-folder-install: app is dragged to /Applications and launches there
+  --gatekeeper-accepted: spctl/Gatekeeper accepts the stapled app
+  --clean-environment-launch: first launch succeeds in the clean user or VM
+  --login-item-toggle: Settings toggles launch-at-login on and off in the signed app
+  --sparkle-appcast-metadata: release appcast metadata points to this version/build
 USAGE
 }
 
