@@ -201,9 +201,19 @@ public struct TaskTool: Tool {
             return ToolResult(tool: name, status: .succeeded, summary: "Completed task \(record.title)", output: ["taskId": .number(Double(record.id))])
         case .taskDelete:
             let taskID = try args.requiredInt64("id")
-            let record = try store.get(id: taskID)
-            try store.delete(id: taskID)
-            return ToolResult(tool: name, status: .succeeded, summary: "Deleted task \(record.title)", output: ["taskId": .number(Double(record.id))])
+            let deletion = try store.delete(id: taskID)
+            return ToolResult(
+                tool: name,
+                status: .succeeded,
+                summary: "Deleted task \(deletion.task.title)",
+                output: [
+                    "taskId": .number(Double(deletion.task.id)),
+                    "deletedCalendarLinkCount": .number(Double(deletion.deletedCalendarLinkCount)),
+                    "deletedReminderLinkCount": .number(Double(deletion.deletedReminderLinkCount)),
+                    "deletedDeadlineRuleCount": .number(Double(deletion.deletedDeadlineRuleCount)),
+                    "deletedArtifactCount": .number(Double(deletion.deletedArtifactCount))
+                ]
+            )
         case .taskListDue:
             let tasks = try store.listDue(onOrBefore: try args.optionalString("cutoff") ?? ISO8601DateFormatter().string(from: context.now))
             return ToolResult(

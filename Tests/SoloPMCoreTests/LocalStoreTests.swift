@@ -202,6 +202,61 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(try rowCount("reminder_links", connection: connection), 0)
     }
 
+    func testTaskStoreDeletesLinkedLocalStateWithoutDeletingProjectState() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let projects = SQLiteProjectStore(connection: connection)
+        let tasks = SQLiteTaskStore(connection: connection)
+        let calendarLinks = SQLiteCalendarLinkStore(connection: connection)
+        let reminderLinks = SQLiteReminderLinkStore(connection: connection)
+        let project = try projects.create(title: "Launch Initiative")
+        let deletedTask = try tasks.create(title: "Remove stale task", projectID: project.id)
+        let keptTask = try tasks.create(title: "Keep task", projectID: project.id)
+
+        _ = try calendarLinks.link(eventID: "deleted-task-event", taskID: deletedTask.id, title: "Deleted task event")
+        _ = try calendarLinks.link(eventID: "kept-task-event", taskID: keptTask.id, title: "Kept task event")
+        _ = try calendarLinks.link(eventID: "project-event", projectID: project.id, title: "Project event")
+        _ = try reminderLinks.link(reminderID: "deleted-task-reminder", taskID: deletedTask.id, title: "Deleted task reminder")
+        _ = try reminderLinks.link(reminderID: "kept-task-reminder", taskID: keptTask.id, title: "Kept task reminder")
+        _ = try reminderLinks.link(reminderID: "project-reminder", projectID: project.id, title: "Project reminder")
+        try connection.execute("INSERT INTO deadline_rules (target_type, target_id, kind) VALUES ('task', \(deletedTask.id), 'overdue');")
+        try connection.execute("INSERT INTO deadline_rules (target_type, target_id, kind) VALUES ('task', \(keptTask.id), 'overdue');")
+        try connection.execute("INSERT INTO deadline_rules (target_type, target_id, kind) VALUES ('project', \(project.id), 'overdue');")
+        try connection.execute(
+            """
+            INSERT INTO artifacts (project_id, task_id, workspace_path, expected_path, created_state)
+            VALUES (NULL, \(deletedTask.id), '/tmp/solopm', 'deleted-task.md', 'expected');
+            """
+        )
+        try connection.execute(
+            """
+            INSERT INTO artifacts (project_id, task_id, workspace_path, expected_path, created_state)
+            VALUES (NULL, \(keptTask.id), '/tmp/solopm', 'kept-task.md', 'expected');
+            """
+        )
+        try connection.execute(
+            """
+            INSERT INTO artifacts (project_id, task_id, workspace_path, expected_path, created_state)
+            VALUES (\(project.id), NULL, '/tmp/solopm', 'project.md', 'expected');
+            """
+        )
+
+        let deletion = try tasks.delete(id: deletedTask.id)
+
+        XCTAssertEqual(deletion.task.id, deletedTask.id)
+        XCTAssertEqual(deletion.deletedCalendarLinkCount, 1)
+        XCTAssertEqual(deletion.deletedReminderLinkCount, 1)
+        XCTAssertEqual(deletion.deletedDeadlineRuleCount, 1)
+        XCTAssertEqual(deletion.deletedArtifactCount, 1)
+        XCTAssertThrowsError(try tasks.get(id: deletedTask.id))
+        XCTAssertEqual(try tasks.get(id: keptTask.id).title, "Keep task")
+        XCTAssertEqual(try projects.get(id: project.id).title, "Launch Initiative")
+        XCTAssertEqual(try rowCount("calendar_links", connection: connection), 2)
+        XCTAssertEqual(try rowCount("reminder_links", connection: connection), 2)
+        XCTAssertEqual(try rowCount("deadline_rules", connection: connection), 2)
+        XCTAssertEqual(try rowCount("artifacts", connection: connection), 2)
+    }
+
     func testProjectStoreUpdatesAndClearsEditableMetadata() throws {
         let connection = try migratedConnection()
         let store = SQLiteProjectStore(connection: connection)

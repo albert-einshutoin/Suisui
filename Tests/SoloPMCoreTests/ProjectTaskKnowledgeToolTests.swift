@@ -337,6 +337,10 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
 
         XCTAssertEqual(result.status, .succeeded)
         XCTAssertEqual(result.output["taskId"], .number(Double(task.id)))
+        XCTAssertEqual(result.output["deletedCalendarLinkCount"], .number(0))
+        XCTAssertEqual(result.output["deletedReminderLinkCount"], .number(0))
+        XCTAssertEqual(result.output["deletedDeadlineRuleCount"], .number(0))
+        XCTAssertEqual(result.output["deletedArtifactCount"], .number(0))
         XCTAssertThrowsError(try stores.tasks.get(id: task.id))
     }
 
