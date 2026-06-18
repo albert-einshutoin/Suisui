@@ -28,6 +28,7 @@ public struct ExternalMCPToolExecutor: Sendable {
     private let client: MCPClient
     private let auditLogger: any AuditLogger
     private let processController: any MCPProcessController
+    private let entitlementChecker: EntitlementChecker
     private let redactor: DeveloperSecretRedactor
 
     public init(
@@ -36,6 +37,7 @@ public struct ExternalMCPToolExecutor: Sendable {
         client: MCPClient,
         auditLogger: any AuditLogger,
         processController: any MCPProcessController,
+        entitlementChecker: EntitlementChecker,
         redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()
     ) {
         self.server = server
@@ -43,6 +45,7 @@ public struct ExternalMCPToolExecutor: Sendable {
         self.client = client
         self.auditLogger = auditLogger
         self.processController = processController
+        self.entitlementChecker = entitlementChecker
         self.redactor = redactor
     }
 
@@ -64,6 +67,7 @@ public struct ExternalMCPToolExecutor: Sendable {
         context: ToolExecutionContext
     ) async throws -> MCPToolCallResult {
         let descriptor = try registry.descriptor(named: toolName)
+        try entitlementChecker.require(.advancedMCPExecution)
         try registry.assertExecutable(toolName: toolName, context: context)
 
         let startedAt = Date()
@@ -124,6 +128,7 @@ public struct ExternalMCPToolExecutor: Sendable {
             "server_name": server.displayName,
             "tool_name": toolName,
             "risk": descriptor.permissionLevel.rawValueForAudit,
+            "permission": descriptor.permissionLevel.rawValueForAudit,
             "approval": context.approvalToken == nil ? "missing" : "present",
             "source": context.source.rawValue,
             "started_at": ISO8601DateFormatter().string(from: startedAt),

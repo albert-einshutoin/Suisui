@@ -1082,6 +1082,67 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(transport.recordedMethods, [])
     }
 
+    func testExternalMCPExecutionRequiresPaidEntitlementBeforeToolCall() async throws {
+        let logger = InMemoryAuditLogger()
+        let transport = ExternalMCPTestKit.makeFakeServerTransport()
+        let executor = makeExecutor(
+            transport: transport,
+            policies: ["read_status": .read],
+            auditLogger: logger,
+            entitlementStore: StaticMCPEntitlementStore(plan: .free)
+        )
+
+        do {
+            _ = try await executor.call(
+                toolName: "read_status",
+                arguments: ["project": .string("soloPM")],
+                context: ToolExecutionContext(source: .developerTool)
+            )
+            XCTFail("free plan must not execute external MCP tools")
+        } catch let error as EntitlementError {
+            XCTAssertEqual(error, .upgradeRequired(feature: .advancedMCPExecution, requiredPlan: .pro))
+        }
+
+        XCTAssertEqual(transport.recordedMethods, [])
+        XCTAssertTrue(logger.recordedEvents.isEmpty)
+    }
+
+    func testPaidEntitlementDoesNotBypassDangerousOrApprovalGuards() async throws {
+        let transport = ExternalMCPTestKit.makeFakeServerTransport()
+        let executor = makeExecutor(
+            transport: transport,
+            policies: [
+                "write_issue": .writeWithApproval,
+                "danger_delete": .dangerous
+            ],
+            entitlementStore: StaticMCPEntitlementStore(plan: .pro)
+        )
+
+        do {
+            _ = try await executor.call(
+                toolName: "danger_delete",
+                arguments: [:],
+                context: ToolExecutionContext(approvalToken: ApprovalToken(id: "approved", sessionID: "session"), source: .developerTool)
+            )
+            XCTFail("paid entitlement must not make dangerous tools executable")
+        } catch let error as ExternalMCPExecutionError {
+            XCTAssertEqual(error, .dangerousToolBlocked(serverID: "fake", toolName: "danger_delete"))
+        }
+
+        do {
+            _ = try await executor.call(
+                toolName: "write_issue",
+                arguments: ["title": .string("Bug")],
+                context: ToolExecutionContext(source: .developerTool)
+            )
+            XCTFail("paid entitlement must not bypass write approval")
+        } catch let error as ExternalMCPExecutionError {
+            XCTAssertEqual(error, .approvalRequired(serverID: "fake", toolName: "write_issue"))
+        }
+
+        XCTAssertEqual(transport.recordedMethods, [])
+    }
+
     func testExecutionPreviewRedactsSensitiveArgumentKeyEvenWhenValueHasSpaces() throws {
         let transport = ExternalMCPTestKit.makeFakeServerTransport()
         let executor = makeExecutor(transport: transport, policies: ["read_status": .read])
@@ -1121,9 +1182,14 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(result.content.first?.text, "status: ok")
         XCTAssertEqual(logger.recordedEvents.map(\.status), [.started, .succeeded])
         XCTAssertEqual(logger.recordedEvents.first?.category, "external_mcp")
+        XCTAssertEqual(logger.recordedEvents.first?.metadata["server_id"], "fake")
         XCTAssertEqual(logger.recordedEvents.first?.metadata["server_name"], "Fake MCP")
+        XCTAssertEqual(logger.recordedEvents.first?.metadata["tool_name"], "read_status")
         XCTAssertEqual(logger.recordedEvents.first?.metadata["risk"], "read")
+        XCTAssertEqual(logger.recordedEvents.first?.metadata["permission"], "read")
+        XCTAssertEqual(logger.recordedEvents.first?.metadata["approval"], "missing")
         XCTAssertEqual(logger.recordedEvents.first?.metadata["arguments"], "[REDACTED]")
+        XCTAssertNotNil(logger.recordedEvents.last?.metadata["duration_ms"])
         XCTAssertEqual(logger.recordedEvents.last?.metadata["result"], "succeeded")
     }
 
@@ -1555,13 +1621,15 @@ final class ExternalMCPTests: XCTestCase {
         transport: RecordingMCPTransport,
         policies: [String: ExternalMCPToolPermission],
         auditLogger: any AuditLogger = InMemoryAuditLogger(),
-        processController: any MCPProcessController = RecordingMCPProcessController()
+        processController: any MCPProcessController = RecordingMCPProcessController(),
+        entitlementStore: any EntitlementStore = StaticMCPEntitlementStore(plan: .pro)
     ) -> ExternalMCPToolExecutor {
         makeExecutor(
             client: MCPClient(serverID: "fake", transport: transport),
             policies: policies,
             auditLogger: auditLogger,
-            processController: processController
+            processController: processController,
+            entitlementStore: entitlementStore
         )
     }
 
@@ -1569,7 +1637,8 @@ final class ExternalMCPTests: XCTestCase {
         client: MCPClient,
         policies: [String: ExternalMCPToolPermission],
         auditLogger: any AuditLogger = InMemoryAuditLogger(),
-        processController: any MCPProcessController = RecordingMCPProcessController()
+        processController: any MCPProcessController = RecordingMCPProcessController(),
+        entitlementStore: any EntitlementStore = StaticMCPEntitlementStore(plan: .pro)
     ) -> ExternalMCPToolExecutor {
         let server = MCPRegisteredServerDescriptor(id: "fake", displayName: "Fake MCP")
         let registry = ExternalMCPToolRegistry(
@@ -1582,7 +1651,8 @@ final class ExternalMCPTests: XCTestCase {
             registry: registry,
             client: client,
             auditLogger: auditLogger,
-            processController: processController
+            processController: processController,
+            entitlementChecker: EntitlementChecker(store: entitlementStore)
         )
     }
 
@@ -1635,6 +1705,14 @@ final class ExternalMCPTests: XCTestCase {
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
+    }
+}
+
+private struct StaticMCPEntitlementStore: EntitlementStore {
+    var plan: SubscriptionPlan
+
+    func snapshot() throws -> EntitlementSnapshot {
+        EntitlementSnapshot(plan: plan, source: .localLicense)
     }
 }
 

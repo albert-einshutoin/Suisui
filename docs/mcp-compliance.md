@@ -26,7 +26,8 @@ Primary references:
 | Tools list | Implemented | `MCPClient.listTools` calls `tools/list` and parses `tools` as an array of tool definitions. |
 | Tools call | Implemented | `MCPClient.callTool` calls `tools/call` with `name` and `arguments`, and parses `content`, `isError`, and `structuredContent`. |
 | Tool schema typing | Partially implemented | `inputSchema` must be an object; `required` must be an array of strings; `properties` must be an object when present. Full JSON Schema validation is not implemented yet. |
-| Tool permission | Implemented for SoloPM policy | Unknown external tools default to disabled; write tools require approval; dangerous tools are blocked. |
+| Tool permission | Implemented for SoloPM policy | Unknown external tools default to disabled; write tools require approval; dangerous tools are blocked even after paid entitlement approval. |
+| Paid execution boundary | Implemented | External MCP registrations and diagnostics are available on Free, but `tools/call` execution requires `FeatureGate.advancedMCPExecution`; ADR 0008 records the decision. |
 | Audit | Implemented | External MCP execution records server/tool identity, permission, approval state, duration, result/error, and redacted arguments. |
 | stdio transport | Implemented | `MCPStdioTransport` launches a configured command, writes JSON-RPC lines, reads stdout, redacts stderr, times out hung calls, and supports shutdown/kill. |
 | Resources | Not implemented | No `resources/list` or resource read path is exposed; Settings displays "Not supported in this release". |
@@ -52,6 +53,8 @@ Primary references:
 - `ExternalMCPTests.testClientRejectsNonStringToolTitle`
 - `ExternalMCPTests.testClientRejectsMismatchedResponseIDAndInvalidJSONRPCVersion`
 - `ExternalMCPTests.testExternalMCPSettingsViewModelDisplaysInspectorFailureTaxonomy`
+- `ExternalMCPTests.testExternalMCPExecutionRequiresPaidEntitlementBeforeToolCall`
+- `ExternalMCPTests.testPaidEntitlementDoesNotBypassDangerousOrApprovalGuards`
 - `MCPInspectorEvidenceTests.testInspectorVerificationScriptUsesOfficialCLIAndFixturePaths`
 - `MCPInspectorEvidenceTests.testMCPFixtureServerCoversSuccessAndFailureModesOutsideRuntimeSources`
 - `MCPInspectorEvidenceTests.testInspectorEvidenceRecordsSuccessAndFailureTaxonomy`

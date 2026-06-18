@@ -49,11 +49,11 @@
 
 ## P11-003: MCP permission and paid boundary review
 
-- [ ] 外部MCP tool permissionを `read` / `draft` / `writeWithApproval` / `dangerous` / `disabled` のまま維持し、unknownはdisabledに倒す。
-- [ ] Pro限定MCP機能を追加する場合、Freeでは登録保存は可能でも実行はentitlement gateで止めるか、登録自体をPro gateで止めるかをADRにする。
-- [ ] Write系MCPはユーザー承認なしで `tools/call` へ到達しないことを regression test で固定する。
-- [ ] MCP audit metadataに server id、tool name、permission、approval、duration、redacted arguments が必ず残ることを再確認する。
-- [ ] 完了条件: 有料機能化しても、危険な外部実行が課金状態だけで自動許可されない。
+- [x] 外部MCP tool permissionを `read` / `draft` / `writeWithApproval` / `dangerous` / `disabled` のまま維持し、unknownはdisabledに倒す。
+- [x] Pro限定MCP機能を追加する場合、Freeでは登録保存は可能でも実行はentitlement gateで止めるか、登録自体をPro gateで止めるかをADRにする。
+- [x] Write系MCPはユーザー承認なしで `tools/call` へ到達しないことを regression test で固定する。
+- [x] MCP audit metadataに server id、tool name、permission、approval、duration、redacted arguments が必ず残ることを再確認する。
+- [x] 完了条件: 有料機能化しても、危険な外部実行が課金状態だけで自動許可されない。
 
 ## P11-010: LLM provider catalog contract
 
