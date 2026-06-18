@@ -984,6 +984,14 @@
 - [x] `KnowledgeAdvancedTests` で blank provider ID が保存前に拒否され、vector row が残らないことを固定する。
 - [x] 完了条件: ローカルKnowledge retrieval が匿名/出所不明のembedding vectorを保存して、後続の検索や説明で壊れる状態を作らない。
 
+### P10-127: SQLite foreign keys must be enforced in runtime connections
+
+- [x] `SQLiteConnection` は open 直後に `PRAGMA foreign_keys = ON` を有効化し、schema の `FOREIGN KEY` を実際に強制する。
+- [x] `DatabaseMigrationTests` で orphan child row が SQLite に保存されないことを固定する。
+- [x] `KnowledgeAdvancedTests` で存在しない `knowledge_frames.id` への vector upsert が `knowledge_frame_vectors` に孤立rowを残さないことを固定する。
+- [x] 既存の Project / Task / Knowledge CRUD test が FK 有効化後も green であることを確認する。
+- [x] 完了条件: ローカルDBの参照整合性がDDL上の飾りではなく、runtime connectionで強制される。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

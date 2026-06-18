@@ -18,6 +18,7 @@ public final class SQLiteConnection {
             let message = database.map { String(cString: sqlite3_errmsg($0)) } ?? "Unknown SQLite open error."
             throw DatabaseError.openFailed(message)
         }
+        try enableForeignKeys()
     }
 
     deinit {
@@ -124,6 +125,13 @@ public final class SQLiteConnection {
 
     private var errorMessage: String {
         database.map { String(cString: sqlite3_errmsg($0)) } ?? "Unknown SQLite error."
+    }
+
+    private func enableForeignKeys() throws {
+        let status = sqlite3_exec(database, "PRAGMA foreign_keys = ON;", nil, nil, nil)
+        guard status == SQLITE_OK else {
+            throw DatabaseError.openFailed(errorMessage)
+        }
     }
 }
 

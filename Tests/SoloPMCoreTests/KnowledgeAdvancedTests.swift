@@ -135,6 +135,28 @@ final class KnowledgeAdvancedTests: XCTestCase {
         XCTAssertNil(try vectorIndex.vector(frameID: frame.id))
     }
 
+    func testSQLiteVectorIndexRejectsMissingFrameIDInsteadOfPersistingOrphanVector() throws {
+        let connection = try migratedPhase9Connection()
+        let vectorIndex = SQLiteKnowledgeVectorIndex(connection: connection, expectedDimensions: 4)
+
+        XCTAssertThrowsError(
+            try vectorIndex.upsert(KnowledgeEmbeddingVector(
+                frameID: 404,
+                values: [1, 0, 0, 0],
+                providerID: "local",
+                redactedPreview: "Missing frame"
+            ))
+        ) { error in
+            guard case let DatabaseError.executeFailed(message) = error else {
+                XCTFail("Expected SQLite foreign key enforcement, got \(error).")
+                return
+            }
+            XCTAssertTrue(message.localizedCaseInsensitiveContains("foreign key"))
+        }
+
+        XCTAssertNil(try vectorIndex.vector(frameID: 404))
+    }
+
     func testSQLiteVectorIndexRejectsStoredDimensionMismatchInsteadOfIgnoringColumn() throws {
         let connection = try migratedPhase9Connection()
         let frameStore = SQLiteKnowledgeFrameStore(connection: connection)

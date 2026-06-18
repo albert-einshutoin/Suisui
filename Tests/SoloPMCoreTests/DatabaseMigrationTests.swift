@@ -2,6 +2,32 @@ import XCTest
 @testable import SoloPMCore
 
 final class DatabaseMigrationTests: XCTestCase {
+    func testSQLiteConnectionEnforcesForeignKeyConstraints() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try connection.execute(
+            """
+            CREATE TABLE parent_records (
+                id INTEGER PRIMARY KEY NOT NULL
+            );
+            CREATE TABLE child_records (
+                id INTEGER PRIMARY KEY NOT NULL,
+                parent_id INTEGER NOT NULL,
+                FOREIGN KEY(parent_id) REFERENCES parent_records(id)
+            );
+            """
+        )
+
+        XCTAssertThrowsError(
+            try connection.execute("INSERT INTO child_records (id, parent_id) VALUES (1, 404);")
+        ) { error in
+            guard case let DatabaseError.executeFailed(message) = error else {
+                XCTFail("Expected SQLite foreign key enforcement, got \(error).")
+                return
+            }
+            XCTAssertTrue(message.localizedCaseInsensitiveContains("foreign key"))
+        }
+    }
+
     func testPhase0MigrationsAreIdempotent() throws {
         let database = try SQLiteDatabaseClient(path: ":memory:")
 
