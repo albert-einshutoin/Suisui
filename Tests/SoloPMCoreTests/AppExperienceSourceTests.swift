@@ -76,6 +76,37 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("Could not move task: invalid drag payload."))
     }
 
+    func testProjectBoardSupportsPersistentLightDarkAppearanceSelection() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let appearanceSource = try readPackageFile("Sources/SoloPMApp/Views/SoloPMAppearancePreference.swift")
+
+        XCTAssertTrue(appearanceSource.contains("enum SoloPMAppearancePreference"))
+        XCTAssertTrue(appearanceSource.contains("case system"))
+        XCTAssertTrue(appearanceSource.contains("case light"))
+        XCTAssertTrue(appearanceSource.contains("case dark"))
+        XCTAssertTrue(appearanceSource.contains("static let storageKey = \"solopm.appearancePreference\""))
+        XCTAssertTrue(appearanceSource.contains("var colorScheme: ColorScheme?"))
+        XCTAssertTrue(appSource.contains("@AppStorage(SoloPMAppearancePreference.storageKey)"))
+        XCTAssertTrue(appSource.contains(".preferredColorScheme(appearancePreference.colorScheme)"))
+        XCTAssertTrue(appSource.contains("Section(\"Appearance\")"))
+        XCTAssertTrue(boardSource.contains("AppearancePicker"))
+        XCTAssertTrue(boardSource.contains("appearancePreference: $appearancePreference"))
+    }
+
+    func testKanbanTaskCardsExposeMouseDrivenStatusMoveControls() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(source.contains("TaskStatusMoveControls"))
+        XCTAssertTrue(source.contains("Move to previous status"))
+        XCTAssertTrue(source.contains("Move to next status"))
+        XCTAssertTrue(source.contains("task.status.previousStatus"))
+        XCTAssertTrue(source.contains("task.status.nextStatus"))
+        XCTAssertTrue(source.contains("onMoveTask(task.id, status)"))
+        XCTAssertTrue(source.contains(".draggable(String(task.id))"))
+        XCTAssertFalse(source.contains("Button {\n                        onSelectTask(task.id)\n                    } label: {\n                        BoardTaskCard"))
+    }
+
     func testAppAndCLIShareDefaultDatabaseLocation() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let cliSource = try readPackageFile("Sources/SoloPMCLI/SoloPMCLIEntrypoint.swift")

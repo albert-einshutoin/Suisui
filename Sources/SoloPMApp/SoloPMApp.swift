@@ -11,6 +11,7 @@ struct SoloPM: App {
     @NSApplicationDelegateAdaptor(SparkleAppDelegate.self) private var sparkleAppDelegate
 #endif
     @StateObject private var menuBarController: MenuBarSummaryController
+    @AppStorage(SoloPMAppearancePreference.storageKey) private var appearancePreference: SoloPMAppearancePreference = .system
 
     @MainActor
     init() {
@@ -20,16 +21,19 @@ struct SoloPM: App {
     var body: some Scene {
         WindowGroup("SoloPM", id: "project-board") {
             ProjectBoardView(viewModel: AppRuntimeFactory.makeProjectBoardViewModel())
+                .preferredColorScheme(appearancePreference.colorScheme)
         }
         .defaultSize(width: 1180, height: 760)
 
         Window("Voice Command", id: "voice-capture") {
             VoiceCaptureView(viewModel: AppRuntimeFactory.makeVoiceCaptureViewModel())
+                .preferredColorScheme(appearancePreference.colorScheme)
         }
         .defaultSize(width: 560, height: 420)
 
         MenuBarExtra("SoloPM", systemImage: "checklist") {
             MenuBarPanel(controller: menuBarController)
+                .preferredColorScheme(appearancePreference.colorScheme)
         }
         .menuBarExtraStyle(.window)
 
@@ -40,6 +44,7 @@ struct SoloPM: App {
                 watcherDiagnosticsSnapshot: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot(),
                 externalMCPViewModel: AppRuntimeFactory.makeExternalMCPSettingsViewModel()
             )
+            .preferredColorScheme(appearancePreference.colorScheme)
         }
     }
 }
@@ -703,6 +708,7 @@ private struct SettingsView: View {
     @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
     @StateObject private var externalMCPViewModel: ExternalMCPSettingsViewModel
     @State private var isConfirmingMCPRegistrationDeletion = false
+    @AppStorage(SoloPMAppearancePreference.storageKey) private var appearancePreference: SoloPMAppearancePreference = .system
 
     init(
         settingsViewModel: AppSettingsViewModel,
@@ -718,6 +724,16 @@ private struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("Appearance") {
+                Picker("Theme", selection: $appearancePreference) {
+                    ForEach(SoloPMAppearancePreference.allCases) { preference in
+                        Label(preference.label, systemImage: preference.systemImage)
+                            .tag(preference)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
             Section("AI") {
                 Picker(
                     "Provider",

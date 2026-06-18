@@ -5,6 +5,7 @@ struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
     @StateObject private var viewModel: ProjectBoardViewModel
     @State private var displayMode: ProjectBoardDisplayMode = .board
+    @AppStorage(SoloPMAppearancePreference.storageKey) private var appearancePreference: SoloPMAppearancePreference = .system
 
     init(viewModel: ProjectBoardViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -49,6 +50,7 @@ struct ProjectBoardView: View {
                 ProjectBoardDetail(
                     project: project,
                     displayMode: $displayMode,
+                    appearancePreference: $appearancePreference,
                     viewModel: viewModel
                 )
                 .toolbar {
@@ -81,6 +83,7 @@ struct ProjectBoardView: View {
         .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
             viewModel.load()
         }
+        .preferredColorScheme(appearancePreference.colorScheme)
     }
 
     private var inspectorBinding: Binding<Bool> {
@@ -162,6 +165,7 @@ private struct ProjectSidebarRow: View {
 private struct ProjectBoardDetail: View {
     let project: ProjectBoardProject
     @Binding var displayMode: ProjectBoardDisplayMode
+    @Binding var appearancePreference: SoloPMAppearancePreference
     @ObservedObject var viewModel: ProjectBoardViewModel
     @State private var composingStatus: ProjectTaskStatus?
     @State private var projectTitle = ""
@@ -182,6 +186,7 @@ private struct ProjectBoardDetail: View {
                     ProjectHeaderActions(
                         project: project,
                         displayMode: $displayMode,
+                        appearancePreference: $appearancePreference,
                         onCompleteProject: viewModel.completeSelectedProject,
                         onArchiveProject: { isConfirmingArchive = true },
                         onRestoreProject: viewModel.restoreSelectedProject,
@@ -199,6 +204,7 @@ private struct ProjectBoardDetail: View {
                     ProjectHeaderActions(
                         project: project,
                         displayMode: $displayMode,
+                        appearancePreference: $appearancePreference,
                         onCompleteProject: viewModel.completeSelectedProject,
                         onArchiveProject: { isConfirmingArchive = true },
                         onRestoreProject: viewModel.restoreSelectedProject,
@@ -315,6 +321,7 @@ private struct ProjectHeaderTitleEditor: View {
 private struct ProjectHeaderActions: View {
     let project: ProjectBoardProject
     @Binding var displayMode: ProjectBoardDisplayMode
+    @Binding var appearancePreference: SoloPMAppearancePreference
     let onCompleteProject: () -> Void
     let onArchiveProject: () -> Void
     let onRestoreProject: () -> Void
@@ -323,12 +330,16 @@ private struct ProjectHeaderActions: View {
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 8) {
+                AppearancePicker(preference: $appearancePreference)
                 viewPicker
                 projectActionButtons
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                viewPicker
+                HStack(spacing: 8) {
+                    AppearancePicker(preference: $appearancePreference)
+                    viewPicker
+                }
                 projectActionButtons
             }
         }
@@ -384,6 +395,22 @@ private struct ProjectHeaderActions: View {
         }
         .buttonStyle(.borderedProminent)
         .keyboardShortcut("n", modifiers: [.command])
+    }
+}
+
+private struct AppearancePicker: View {
+    @Binding var preference: SoloPMAppearancePreference
+
+    var body: some View {
+        Picker("Appearance", selection: $preference) {
+            ForEach(SoloPMAppearancePreference.allCases) { preference in
+                Label(preference.label, systemImage: preference.systemImage)
+                    .tag(preference)
+            }
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 210)
+        .help("Switch between system, light, and dark appearance")
     }
 }
 
@@ -481,12 +508,12 @@ private struct BoardColumnView: View {
                 .buttonStyle(.plain)
             } else {
                 ForEach(column.tasks) { task in
-                    Button {
-                        onSelectTask(task.id)
-                    } label: {
-                        BoardTaskCard(task: task, isSelected: selectedTaskID == task.id)
-                    }
-                    .buttonStyle(.plain)
+                    BoardTaskCard(
+                        task: task,
+                        isSelected: selectedTaskID == task.id,
+                        onSelect: { onSelectTask(task.id) },
+                        onMoveStatus: { status in onMoveTask(task.id, status) }
+                    )
                     .draggable(String(task.id))
                     .contextMenu {
                         Button {
@@ -594,6 +621,8 @@ private struct InlineTaskComposer: View {
 private struct BoardTaskCard: View {
     let task: ProjectBoardTask
     let isSelected: Bool
+    let onSelect: () -> Void
+    let onMoveStatus: (ProjectTaskStatus) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -613,6 +642,7 @@ private struct BoardTaskCard: View {
             }
 
             TaskMetadataRow(task: task)
+            TaskStatusMoveControls(task: task, onMove: onMoveStatus)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -622,6 +652,56 @@ private struct BoardTaskCard: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(isSelected ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.16))
         }
+        .contentShape(RoundedRectangle(cornerRadius: 8))
+        .onTapGesture(perform: onSelect)
+    }
+}
+
+private struct TaskStatusMoveControls: View {
+    let task: ProjectBoardTask
+    let onMove: (ProjectTaskStatus) -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            statusMoveButton(
+                title: "Move to previous status",
+                systemImage: "chevron.left",
+                targetStatus: task.status.previousStatus
+            )
+
+            Text(task.status.title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(minWidth: 76)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(.quaternary, in: Capsule())
+                .help(task.status.title)
+
+            statusMoveButton(
+                title: "Move to next status",
+                systemImage: "chevron.right",
+                targetStatus: task.status.nextStatus
+            )
+        }
+        .buttonStyle(.borderless)
+    }
+
+    private func statusMoveButton(title: String, systemImage: String, targetStatus: ProjectTaskStatus?) -> some View {
+        Button {
+            guard let targetStatus else {
+                return
+            }
+            onMove(targetStatus)
+        } label: {
+            Label(title, systemImage: systemImage)
+                .labelStyle(.iconOnly)
+        }
+        .controlSize(.small)
+        .disabled(targetStatus == nil)
+        .help(targetStatus.map { "\(title): \($0.title)" } ?? title)
     }
 }
 
@@ -831,6 +911,24 @@ private extension ProjectTaskStatus {
         case .done:
             "checkmark.circle"
         }
+    }
+
+    var previousStatus: ProjectTaskStatus? {
+        guard let index = Self.allCases.firstIndex(of: self), index > Self.allCases.startIndex else {
+            return nil
+        }
+        return Self.allCases[Self.allCases.index(before: index)]
+    }
+
+    var nextStatus: ProjectTaskStatus? {
+        guard let index = Self.allCases.firstIndex(of: self) else {
+            return nil
+        }
+        let nextIndex = Self.allCases.index(after: index)
+        guard nextIndex < Self.allCases.endIndex else {
+            return nil
+        }
+        return Self.allCases[nextIndex]
     }
 }
 
