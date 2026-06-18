@@ -311,6 +311,43 @@ final class ExternalMCPTests: XCTestCase {
     }
 
     @MainActor
+    func testExternalMCPSettingsViewModelKeepsCurrentRegistrationWhenRefreshFails() throws {
+        let registration = MCPServerRegistration(
+            id: "local",
+            displayName: "Local MCP",
+            command: "/usr/bin/env",
+            arguments: ["node", "server.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let store = ToggleFailingMCPServerRegistrationStore(registrations: [registration])
+        let viewModel = ExternalMCPSettingsViewModel(store: store)
+
+        store.shouldFailLoads = true
+        viewModel.refresh()
+
+        XCTAssertEqual(viewModel.registration, registration)
+        XCTAssertEqual(viewModel.errorMessage, "MCP registrations could not be loaded from the local database.")
+    }
+
+    @MainActor
+    func testExternalMCPSettingsViewModelReportsStoreSaveFailureWithoutInternalErrorName() throws {
+        let store = ToggleFailingMCPServerRegistrationStore(registrations: [])
+        let viewModel = ExternalMCPSettingsViewModel(store: store)
+
+        viewModel.updateDisplayName("Local MCP")
+        viewModel.updateCommand("/usr/bin/env")
+        viewModel.updateEnabled(true)
+
+        store.shouldFailSaves = true
+        viewModel.save()
+
+        XCTAssertEqual(viewModel.errorMessage, "MCP registrations could not be saved to the local database.")
+        XCTAssertEqual(try store.loadRegistrations(), [])
+    }
+
+    @MainActor
     func testExternalMCPSettingsViewModelRejectsInvalidCommandBeforeSaving() throws {
         let store = InMemoryMCPServerRegistrationStore()
         let viewModel = ExternalMCPSettingsViewModel(store: store)
@@ -1207,5 +1244,34 @@ private struct StaticBinaryLocator: MCPBinaryLocator {
 
     func isExecutableAvailable(command: String) -> Bool {
         availableCommands.contains(command)
+    }
+}
+
+private final class ToggleFailingMCPServerRegistrationStore: MCPServerRegistrationStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var registrations: [MCPServerRegistration]
+    var shouldFailLoads = false
+    var shouldFailSaves = false
+
+    init(registrations: [MCPServerRegistration]) {
+        self.registrations = registrations
+    }
+
+    func loadRegistrations() throws -> [MCPServerRegistration] {
+        lock.lock()
+        defer { lock.unlock() }
+        if shouldFailLoads {
+            throw MCPRegistrationStoreError.decodingFailed
+        }
+        return registrations
+    }
+
+    func saveRegistrations(_ registrations: [MCPServerRegistration]) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        if shouldFailSaves {
+            throw MCPRegistrationStoreError.encodingFailed
+        }
+        self.registrations = registrations
     }
 }

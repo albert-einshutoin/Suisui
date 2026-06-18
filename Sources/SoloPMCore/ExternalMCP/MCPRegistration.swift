@@ -237,9 +237,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             registration = registrations.first ?? Self.blankRegistration()
             errorMessage = nil
         } catch {
-            registrations = []
-            registration = Self.blankRegistration()
-            errorMessage = String(describing: error)
+            errorMessage = Self.storeErrorMessage(error)
         }
     }
 
@@ -286,6 +284,8 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             try store.saveRegistrations(updatedRegistrations)
             registrations = updatedRegistrations
             errorMessage = nil
+        } catch let error as MCPRegistrationStoreError {
+            errorMessage = Self.storeErrorMessage(error)
         } catch {
             errorMessage = Self.connectionErrorMessage(error)
         }
@@ -299,6 +299,8 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             registration = remainingRegistrations.first ?? Self.blankRegistration()
             toolRows = []
             errorMessage = nil
+        } catch let error as MCPRegistrationStoreError {
+            errorMessage = Self.storeErrorMessage(error)
         } catch {
             errorMessage = String(describing: error)
         }
@@ -362,6 +364,17 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             return "MCP \(method) timed out."
         case MCPClientError.transportFailed(_, let method, let message):
             return "MCP \(method) transport failed: \(message)"
+        default:
+            return String(describing: error)
+        }
+    }
+
+    private static func storeErrorMessage(_ error: Error) -> String {
+        switch error {
+        case MCPRegistrationStoreError.decodingFailed:
+            return "MCP registrations could not be loaded from the local database."
+        case MCPRegistrationStoreError.encodingFailed:
+            return "MCP registrations could not be saved to the local database."
         default:
             return String(describing: error)
         }

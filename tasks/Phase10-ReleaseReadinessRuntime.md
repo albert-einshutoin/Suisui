@@ -1052,6 +1052,14 @@
 - [x] `AppExperienceSourceTests` と `ProjectBoardStoreTests` で typed drag payload と mouse-driven status move を固定する。
 - [x] 完了条件: 他アプリやテキスト入力由来の偶然の文字列 drop と、SoloPM task card drag operation を UI / code 上で分離する。
 
+### P10-136: MCP registration store failures do not erase the visible server
+
+- [x] `ExternalMCPSettingsViewModel.refresh()` は MCP registration store の decode / load failure 時に、現在表示中の registration を blank に戻さない。
+- [x] MCP registration load failure は `decodingFailed` などの内部 enum 名ではなく、local database から読み込めないことを UI に表示する。
+- [x] MCP registration save / delete failure は `encodingFailed` などの内部 enum 名ではなく、local database に保存できないことを UI に表示する。
+- [x] `ExternalMCPTests` で load failure 時の表示保持と save failure 時の user-facing error を固定する。
+- [x] 完了条件: SQLite 側の破損や保存失敗が起きても、ユーザーが登録済み MCP server を「消えた」と誤認せず、復旧すべき local data 問題として扱える。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
