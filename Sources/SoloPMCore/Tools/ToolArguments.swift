@@ -10,7 +10,7 @@ public struct ToolArguments: Sendable {
     }
 
     public func requiredString(_ key: String) throws -> String {
-        guard let value = optionalString(key), !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard let value = try optionalString(key), !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw ToolExecutionError.validationFailed(tool, "Missing required argument '\(key)'.")
         }
 
@@ -18,7 +18,7 @@ public struct ToolArguments: Sendable {
     }
 
     public func requiredTrimmedString(_ key: String) throws -> String {
-        guard let value = optionalString(key) else {
+        guard let value = try optionalString(key) else {
             throw ToolExecutionError.validationFailed(tool, "Missing required argument '\(key)'.")
         }
 
@@ -30,16 +30,19 @@ public struct ToolArguments: Sendable {
         return trimmed
     }
 
-    public func optionalString(_ key: String) -> String? {
-        guard case .string(let value)? = raw[key] else {
+    public func optionalString(_ key: String) throws -> String? {
+        switch raw[key] {
+        case .string(let value):
+            return value
+        case nil:
             return nil
+        default:
+            throw invalidString(key)
         }
-
-        return value
     }
 
     public func optionalTrimmedString(_ key: String) throws -> String? {
-        guard let value = optionalString(key) else {
+        guard let value = try optionalString(key) else {
             return nil
         }
 
@@ -52,7 +55,7 @@ public struct ToolArguments: Sendable {
     }
 
     public func optionalNonBlankString(_ key: String) throws -> String? {
-        guard let value = optionalString(key) else {
+        guard let value = try optionalString(key) else {
             return nil
         }
 
@@ -92,6 +95,10 @@ public struct ToolArguments: Sendable {
 
     private func invalidInt64(_ key: String) -> ToolExecutionError {
         .validationFailed(tool, "Argument '\(key)' must be a 64-bit integer.")
+    }
+
+    private func invalidString(_ key: String) -> ToolExecutionError {
+        .validationFailed(tool, "Argument '\(key)' must be string.")
     }
 
     public func stringArray(_ key: String) throws -> [String] {

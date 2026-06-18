@@ -158,10 +158,10 @@ public struct TaskTool: Tool {
             let record = try store.update(id: try args.requiredInt64("id"), status: "completed")
             return ToolResult(tool: name, status: .succeeded, summary: "Completed task \(record.title)", output: ["taskId": .number(Double(record.id))])
         case .taskListDue:
-            let tasks = try store.listDue(onOrBefore: args.optionalString("cutoff") ?? ISO8601DateFormatter().string(from: context.now))
+            let tasks = try store.listDue(onOrBefore: try args.optionalString("cutoff") ?? ISO8601DateFormatter().string(from: context.now))
             return ToolResult(tool: name, status: .succeeded, summary: "\(tasks.count) due tasks", output: ["count": .number(Double(tasks.count))])
         case .taskListOverdue:
-            let tasks = try store.listOverdue(before: args.optionalString("cutoff") ?? ISO8601DateFormatter().string(from: context.now))
+            let tasks = try store.listOverdue(before: try args.optionalString("cutoff") ?? ISO8601DateFormatter().string(from: context.now))
             return ToolResult(tool: name, status: .succeeded, summary: "\(tasks.count) overdue tasks", output: ["count": .number(Double(tasks.count))])
         default:
             throw ToolExecutionError.executionFailed(name, "Unsupported task tool.")

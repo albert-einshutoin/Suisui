@@ -910,6 +910,13 @@
 - [x] `ProjectTaskKnowledgeToolTests` で invalid status が completed project を active に戻さないことを固定する。
 - [x] 完了条件: Review 実行で不正な task status が混ざっても、失敗した action が project 状態だけを部分変更しない。
 
+### P10-117: Optional string tool arguments fail closed on wrong JSON types
+
+- [x] `ToolArguments.optionalString` は値が存在するのに string でない場合、missing 扱いにせず validation failure を返す。
+- [x] Notification / Calendar / Reminder / File / Mail / Task tool の optional string call site は `try` で型不一致を caller へ返す。
+- [x] `ToolArgumentsTests` と `ProjectTaskKnowledgeToolTests` で non-string optional field が永続 row 作成前に拒否されることを固定する。
+- [x] 完了条件: LLM / MCP / JSON 経由の number や object が `dueAt` / `body` / `notes` などの任意文字列フィールドで silently dropped されない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

@@ -23,4 +23,15 @@ final class ToolArgumentsTests: XCTestCase {
             )
         }
     }
+
+    func testOptionalStringRejectsNonStringInsteadOfTreatingItAsMissing() throws {
+        let arguments = ToolArguments(["dueAt": .number(1)], tool: .taskCreate)
+
+        XCTAssertThrowsError(try arguments.optionalString("dueAt")) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .validationFailed(.taskCreate, "Argument 'dueAt' must be string.")
+            )
+        }
+    }
 }

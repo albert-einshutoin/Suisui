@@ -28,9 +28,9 @@ public struct NotificationTool: Tool {
                 return try schedule(
                     NotificationDraft(
                         title: try args.requiredString("title"),
-                        body: args.optionalString("body"),
+                        body: try args.optionalString("body"),
                         scheduledAt: try args.requiredString("scheduledAt"),
-                        identifierHint: args.optionalString("id")
+                        identifierHint: try args.optionalString("id")
                     )
                 )
             case .notificationScheduleRelative:
@@ -40,11 +40,11 @@ public struct NotificationTool: Tool {
                 }
                 let offset = TimeInterval(offsetSeconds)
                 let scheduledAt = ISO8601DateFormatter().string(from: context.now.addingTimeInterval(offset))
-                return try schedule(NotificationDraft(title: try args.requiredString("title"), body: args.optionalString("body"), scheduledAt: scheduledAt))
+                return try schedule(NotificationDraft(title: try args.requiredString("title"), body: try args.optionalString("body"), scheduledAt: scheduledAt))
             case .notificationScheduleOverdueRule:
                 let taskID = try args.requiredInt64("taskId")
-                let title = args.optionalString("title") ?? "Task \(taskID) is overdue"
-                return try schedule(NotificationDraft(title: title, body: args.optionalString("body"), scheduledAt: "overdue-rule:task-\(taskID)"))
+                let title = try args.optionalString("title") ?? "Task \(taskID) is overdue"
+                return try schedule(NotificationDraft(title: title, body: try args.optionalString("body"), scheduledAt: "overdue-rule:task-\(taskID)"))
             case .notificationCancel:
                 let id = try args.requiredString("id")
                 try client.cancel(id: id)
@@ -150,7 +150,7 @@ public struct CalendarTool: Tool {
                 draft = try makeEventDraft(args: args)
             case .calendarCreateDeadline:
                 let dueDate = try args.requiredString("dueDate")
-                draft = CalendarEventDraft(title: try args.requiredString("title"), startAt: dueDate, endAt: dueDate, isAllDay: true, notes: args.optionalString("notes"))
+                draft = CalendarEventDraft(title: try args.requiredString("title"), startAt: dueDate, endAt: dueDate, isAllDay: true, notes: try args.optionalString("notes"))
             case .calendarCreateWorkBlock:
                 let startAt = try args.requiredString("startAt")
                 let start = try ToolDateParser.date(from: startAt, tool: name)
@@ -160,7 +160,7 @@ public struct CalendarTool: Tool {
                 }
                 let duration = TimeInterval(durationMinutes * 60)
                 let endAt = ISO8601DateFormatter().string(from: start.addingTimeInterval(duration))
-                draft = CalendarEventDraft(title: try args.requiredString("title"), startAt: startAt, endAt: endAt, notes: args.optionalString("notes"))
+                draft = CalendarEventDraft(title: try args.requiredString("title"), startAt: startAt, endAt: endAt, notes: try args.optionalString("notes"))
             default:
                 throw ToolExecutionError.executionFailed(name, "Unsupported calendar tool.")
             }
@@ -198,7 +198,7 @@ public struct CalendarTool: Tool {
             throw ToolExecutionError.validationFailed(name, "startAt must be before endAt.")
         }
 
-        return CalendarEventDraft(title: try args.requiredString("title"), startAt: startAt, endAt: endAt, notes: args.optionalString("notes"))
+        return CalendarEventDraft(title: try args.requiredString("title"), startAt: startAt, endAt: endAt, notes: try args.optionalString("notes"))
     }
 
     private static func schema(for name: ActionTool) -> ToolInputSchema {
@@ -282,7 +282,7 @@ public struct ReminderTool: Tool {
     }
 
     private func makeDraft(_ args: ToolArguments) throws -> ReminderDraft {
-        ReminderDraft(title: try args.requiredString("title"), dueAt: args.optionalString("dueAt"), listName: args.optionalString("listName"))
+        ReminderDraft(title: try args.requiredString("title"), dueAt: try args.optionalString("dueAt"), listName: try args.optionalString("listName"))
     }
 
     private func createdResult(_ record: ReminderRecord) -> ToolResult {
@@ -338,13 +338,13 @@ public struct FileSystemTool: Tool {
                 let artifact = try client.createMarkdownFile(relativePath: try args.requiredString("relativePath"), contents: try args.requiredString("contents"))
                 return artifactResult(artifact, summary: "Created file \(artifact.relativePath)")
             case .filesystemCreateArtifactsFromFrame:
-                let directory = args.optionalString("directory") ?? "."
+                let directory = try args.optionalString("directory") ?? "."
                 let filename = "\(Self.slug(try args.requiredString("frameName"))).md"
                 let relativePath = directory == "." ? filename : "\(directory)/\(filename)"
                 let artifact = try client.createMarkdownFile(relativePath: relativePath, contents: try args.requiredString("body"))
                 return artifactResult(artifact, summary: "Created frame artifact \(artifact.relativePath)")
             case .filesystemScanProjectArtifacts:
-                let artifacts = try client.scan(relativePath: args.optionalString("relativePath") ?? ".")
+                let artifacts = try client.scan(relativePath: try args.optionalString("relativePath") ?? ".")
                 return ToolResult(tool: name, status: .succeeded, summary: "\(artifacts.count) artifacts", output: ["count": .number(Double(artifacts.count))])
             default:
                 throw ToolExecutionError.executionFailed(name, "Unsupported filesystem tool.")
@@ -406,7 +406,7 @@ public struct MailDraftTool: Tool {
 
         let args = ToolArguments(arguments, tool: name)
         let record = try client.createTextDraft(
-            to: args.optionalString("to"),
+            to: try args.optionalString("to"),
             subject: try args.requiredString("subject"),
             body: try args.requiredString("body")
         )

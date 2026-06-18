@@ -130,6 +130,25 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(try stores.tasks.listAll().map(\.title), ["Address release review"])
     }
 
+    func testTaskCreateRejectsNonStringOptionalFieldsWithoutCreatingTask() throws {
+        let stores = try makeStores()
+        let tool = TaskTool(name: .taskCreate, store: stores.tasks, projectStore: stores.projects)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "title": .string("Ship alpha"),
+                    "dueAt": .number(1)
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(error as? ToolExecutionError, .validationFailed(.taskCreate, "Argument 'dueAt' must be string."))
+        }
+
+        XCTAssertEqual(try stores.tasks.listAll(), [])
+    }
+
     func testTaskUpdateRejectsBlankTitleWithoutMutatingTask() throws {
         let stores = try makeStores()
         let task = try stores.tasks.create(title: "Draft release notes")
