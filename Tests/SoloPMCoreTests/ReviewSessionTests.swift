@@ -87,6 +87,40 @@ final class ActionExecutorTests: XCTestCase {
         XCTAssertEqual(taskRows.first?["project_id"], "1")
     }
 
+    func testExecutorInjectsProjectIDIntoFollowingBulkTasks() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase2)
+        let projectStore = SQLiteProjectStore(connection: connection)
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let registry = try ToolRegistry.phase2Core(
+            projectStore: projectStore,
+            taskStore: taskStore,
+            knowledgeStore: SQLiteKnowledgeFrameStore(connection: connection)
+        )
+        var session = ReviewSession(plan: .reviewFixture(actions: [
+            PlanAction(id: "project", tool: .projectCreate, arguments: ["title": .string("Alpha")]),
+            PlanAction(
+                id: "bulk",
+                tool: .taskBulkCreate,
+                arguments: [
+                    "tasks": .array([
+                        .object(["title": .string("Draft")]),
+                        .object(["title": .string("Review")])
+                    ])
+                ]
+            )
+        ]))
+        try session.approve(token: ApprovalToken(id: "approval-1", sessionID: session.id))
+
+        let executed = try ActionExecutor(registry: registry).execute(session)
+
+        XCTAssertEqual(executed.executionStatus, .completed)
+        XCTAssertEqual(executed.items.map(\.executionStatus), [.succeeded, .succeeded])
+        let taskRows = try connection.queryRows("SELECT title, project_id FROM tasks ORDER BY id;")
+        XCTAssertEqual(taskRows.map { $0["title"] }, ["Draft", "Review"])
+        XCTAssertEqual(taskRows.map { $0["project_id"] }, ["1", "1"])
+    }
+
     func testExecutorStopsOnPartialFailureAndSkipsRemainingActions() throws {
         let registry = try ToolRegistry(tools: [
             StaticTool(name: .projectList, description: "success", inputSchema: ToolInputSchema(), permissionLevel: .read) { _, _ in

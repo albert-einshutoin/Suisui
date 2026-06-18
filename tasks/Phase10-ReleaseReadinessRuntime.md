@@ -470,6 +470,7 @@
 - [x] `frame.update` は空白 body を拒否し、既存 Knowledge Frame を壊さない。
 - [x] Review UI は CRUD update の空白任意フィールドを承認前に validation issue として表示し、実行ボタンを無効化する。
 - [x] Review UI は `task.bulk_create` の配列内 title 欠落 / 空白も `tasks[n].title` として承認前に validation issue 化する。
+- [x] `project.create` 直後の `task.bulk_create` は新規 project ID を各 task item に注入し、bulk task を project に紐付ける。
 - [x] 完了条件: UI だけでなく review tool / AI plan 経由でも空白だけの project / task / knowledge data が永続化されない。
 
 ## PDCA Loop

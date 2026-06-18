@@ -106,13 +106,31 @@ public struct ActionExecutor: Sendable {
     }
 
     private func injectDependencies(into action: inout PlanAction, latestProjectID: JSONValue?) {
-        guard let latestProjectID,
-              (action.tool == .taskCreate || action.tool == .taskBulkCreate),
-              action.arguments["projectId"] == nil else {
+        guard let latestProjectID else {
             return
         }
 
-        action.arguments["projectId"] = latestProjectID
+        switch action.tool {
+        case .taskCreate:
+            if action.arguments["projectId"] == nil {
+                action.arguments["projectId"] = latestProjectID
+            }
+        case .taskBulkCreate:
+            guard case .array(let values)? = action.arguments["tasks"] else {
+                return
+            }
+            action.arguments["tasks"] = .array(values.map { value in
+                guard case .object(var object) = value else {
+                    return value
+                }
+                if object["projectId"] == nil {
+                    object["projectId"] = latestProjectID
+                }
+                return .object(object)
+            })
+        default:
+            return
+        }
     }
 
     private static func failureRecovery(for error: Error) -> ReviewActionFailureRecovery {
