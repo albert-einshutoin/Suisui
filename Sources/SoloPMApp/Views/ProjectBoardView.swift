@@ -772,6 +772,8 @@ private struct BoardColumnView: View {
                 }
                 .labelStyle(.iconOnly)
                 .buttonStyle(.borderless)
+                .help("Add task to \(column.title)")
+                .accessibilityLabel("Add task to \(column.title)")
             }
 
             if isDropTargeted {
@@ -811,6 +813,8 @@ private struct BoardColumnView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .help("Add task to \(column.title)")
+                .accessibilityLabel("Add task to empty \(column.title) column")
             } else {
                 ForEach(column.tasks) { task in
                     BoardTaskCard(
@@ -1013,6 +1017,22 @@ private struct BoardTaskCard: View {
         .onTapGesture(perform: onSelect)
         .onHover { isPointerHovered = $0 }
         .animation(.snappy(duration: 0.16), value: isPointerHovered)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Task \(task.title)")
+        .accessibilityValue(accessibilityValueText)
+        .accessibilityHint("Opens task details in the inspector.")
+        .accessibilityAction(named: "Open Details", onSelect)
+    }
+
+    private var accessibilityValueText: String {
+        var values = [
+            "Status: \(task.status.title)",
+            "Priority: \(task.priority.label)"
+        ]
+        if let dueLabel = task.dueLabel {
+            values.append("Due: \(dueLabel)")
+        }
+        return values.joined(separator: ", ")
     }
 }
 
@@ -1085,6 +1105,7 @@ private struct TaskStatusMoveControls: View {
                 .padding(.vertical, 3)
                 .background(.quaternary, in: Capsule())
                 .help(task.status.title)
+                .accessibilityLabel("Current status: \(task.status.title)")
 
             statusMoveButton(
                 title: "Move to next status",
@@ -1108,6 +1129,8 @@ private struct TaskStatusMoveControls: View {
         .controlSize(.small)
         .disabled(targetStatus == nil)
         .help(targetStatus.map { "\(title): \($0.title)" } ?? title)
+        .accessibilityLabel(targetStatus.map { "\(title) to \($0.title)" } ?? title)
+        .accessibilityHint("Changes \(task.title) status.")
     }
 }
 

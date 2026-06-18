@@ -75,7 +75,7 @@
 | Settings詳細Formが長い | Status Overviewで重要状態は見えるが、詳細設定はまだ縦に長い。 | P1 | General / AI / Sync / MCP / Privacy のtabまたは2カラムdetailsに分ける。 |
 | Provider詳細設定が長い | provider切替は2クリックになったが、API key、model、local executableなどの詳細設定は同じAI section内に縦積みで残る。 | P1 | providerごとに必要なfieldだけをcompact panelへ出し、他providerのfieldは折りたたむ。 |
 | MCP server切替時の接続確認が重い | 複数serverを持つユーザーが状態確認しづらい。 | P1 | MCP server listにinline statusとrow単位のcheck actionを置く。 |
-| accessibility検証が未完了 | `Command+N`、`Command+Shift+N`、`Command+,` はあるが、VoiceOver focus orderとLight/Darkのスクリーンショット確認が残る。 | P1 | 支援技術とテーマ別コントラストを実機で確認し、崩れを修正する。 |
+| accessibility検証が未完了 | Task card、column add、status move、destructive confirmationのlabel/helpはsource testで固定したが、VoiceOver focus orderとLight/Darkのスクリーンショット確認が残る。 | P1 | 支援技術とテーマ別コントラストを実機で確認し、崩れを修正する。 |
 
 ## プロダクトレビュー
 

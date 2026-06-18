@@ -295,6 +295,23 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(headerSource.contains("Complete Project"))
     }
 
+    func testBoardAccessibilityLabelsHelpAndDestructiveConfirmations() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(source.contains(".accessibilityElement(children: .combine)"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Task \\(task.title)\")"))
+        XCTAssertTrue(source.contains(".accessibilityValue(accessibilityValueText)"))
+        XCTAssertTrue(source.contains(".accessibilityHint(\"Opens task details in the inspector.\")"))
+        XCTAssertTrue(source.contains(".accessibilityAction(named: \"Open Details\", onSelect)"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Add task to \\(column.title)\")"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Add task to empty \\(column.title) column\")"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Current status: \\(task.status.title)\")"))
+        XCTAssertTrue(source.contains(".accessibilityHint(\"Changes \\(task.title) status.\")"))
+        XCTAssertTrue(source.contains("\"Archive this project?\""))
+        XCTAssertTrue(source.contains("\"Delete this project?\""))
+        XCTAssertTrue(source.contains("\"Delete this task?\""))
+    }
+
     func testTodayWorkflowShowsRecommendationDueCountsAndTimeBlocks() throws {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
