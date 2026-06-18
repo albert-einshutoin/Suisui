@@ -30,6 +30,7 @@
         "project.list",
         "project.get",
         "project.complete",
+        "project.delete",
         "task.create",
         "task.bulk_create",
         "task.get",

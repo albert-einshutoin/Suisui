@@ -236,6 +236,25 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(try stores.projects.get(id: project.id).status, "active")
     }
 
+    func testProjectDeleteToolDeletesPersistentProjectGraphWithApproval() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "Stale Initiative")
+        let task = try stores.tasks.create(title: "Remove stale task", projectID: project.id)
+        let tool = ProjectTool(name: .projectDelete, store: stores.projects, taskStore: stores.tasks)
+
+        let result = try tool.execute(
+            arguments: ["id": .number(Double(project.id))],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .succeeded)
+        XCTAssertEqual(result.summary, "Deleted project Stale Initiative")
+        XCTAssertEqual(result.output["projectId"], .number(Double(project.id)))
+        XCTAssertEqual(result.output["deletedTaskCount"], .number(1))
+        XCTAssertThrowsError(try stores.projects.get(id: project.id))
+        XCTAssertThrowsError(try stores.tasks.get(id: task.id))
+    }
+
     func testTaskCreateToolReopensCompletedProjectForNewOpenWork() throws {
         let stores = try makeStores()
         let project = try stores.projects.create(title: "Launch Readiness")
@@ -882,6 +901,7 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         )
 
         XCTAssertTrue(registry.contains(.projectCreate))
+        XCTAssertTrue(registry.contains(.projectDelete))
         XCTAssertTrue(registry.contains(.taskGet))
         XCTAssertTrue(registry.contains(.taskCreate))
         XCTAssertTrue(registry.contains(.taskDelete))

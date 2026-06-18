@@ -4,6 +4,7 @@ import XCTest
 final class ActionPlanDomainTests: XCTestCase {
     func testActionToolMapsToActionType() {
         XCTAssertEqual(ActionTool.projectCreate.actionType, .project)
+        XCTAssertEqual(ActionTool.projectDelete.actionType, .project)
         XCTAssertEqual(ActionTool.taskCreate.actionType, .task)
         XCTAssertEqual(ActionTool.taskDelete.actionType, .task)
         XCTAssertEqual(ActionTool.calendarCreateEvent.actionType, .calendar)
@@ -14,6 +15,7 @@ final class ActionPlanDomainTests: XCTestCase {
 
     func testLocalReadAndDeleteToolsUseExpectedRiskLevels() {
         XCTAssertEqual(ActionTool.taskGet.defaultRiskLevel, .read)
+        XCTAssertEqual(ActionTool.projectDelete.defaultRiskLevel, .write)
         XCTAssertEqual(ActionTool.taskDelete.defaultRiskLevel, .write)
         XCTAssertEqual(ActionTool.frameDelete.defaultRiskLevel, .write)
     }

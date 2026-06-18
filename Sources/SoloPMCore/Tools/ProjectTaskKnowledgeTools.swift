@@ -58,6 +58,21 @@ public struct ProjectTool: Tool {
             let record = try store.update(id: try args.requiredInt64("id"), status: "completed")
             _ = try taskStore.completeOpenTasks(projectID: record.id)
             return ToolResult(tool: name, status: .succeeded, summary: "Completed project \(record.title)", output: ["projectId": .number(Double(record.id))])
+        case .projectDelete:
+            let deletion = try store.delete(id: try args.requiredInt64("id"))
+            return ToolResult(
+                tool: name,
+                status: .succeeded,
+                summary: "Deleted project \(deletion.project.title)",
+                output: [
+                    "projectId": .number(Double(deletion.project.id)),
+                    "deletedTaskCount": .number(Double(deletion.deletedTaskCount)),
+                    "deletedCalendarLinkCount": .number(Double(deletion.deletedCalendarLinkCount)),
+                    "deletedReminderLinkCount": .number(Double(deletion.deletedReminderLinkCount)),
+                    "deletedDeadlineRuleCount": .number(Double(deletion.deletedDeadlineRuleCount)),
+                    "deletedArtifactCount": .number(Double(deletion.deletedArtifactCount))
+                ]
+            )
         case .projectGet:
             let record = try store.get(id: try args.requiredInt64("id"))
             return ToolResult(tool: name, status: .succeeded, summary: record.title, output: record.output)
@@ -91,7 +106,7 @@ public struct ProjectTool: Tool {
                 properties: ["id": "integer", "title": "string", "status": "string", "priority": "string|null", "deadline": "string|null", "workspacePath": "string|null", "tags": "array|null"],
                 nonBlank: ["title", "status", "priority", "deadline", "workspacePath"]
             )
-        case .projectGet, .projectComplete:
+        case .projectGet, .projectComplete, .projectDelete:
             ToolInputSchema(required: ["id"], properties: ["id": "integer"])
         default:
             ToolInputSchema()
@@ -443,6 +458,7 @@ public extension ToolRegistry {
             ProjectTool(name: .projectList, store: projectStore, taskStore: taskStore),
             ProjectTool(name: .projectGet, store: projectStore, taskStore: taskStore),
             ProjectTool(name: .projectComplete, store: projectStore, taskStore: taskStore),
+            ProjectTool(name: .projectDelete, store: projectStore, taskStore: taskStore),
             TaskTool(name: .taskCreate, store: taskStore, projectStore: projectStore),
             TaskTool(name: .taskBulkCreate, store: taskStore, projectStore: projectStore),
             TaskTool(name: .taskGet, store: taskStore, projectStore: projectStore),

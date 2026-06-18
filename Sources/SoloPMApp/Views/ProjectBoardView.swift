@@ -179,6 +179,7 @@ private struct ProjectBoardDetail: View {
     @State private var composingStatus: ProjectTaskStatus?
     @State private var projectTitle = ""
     @State private var isConfirmingArchive = false
+    @State private var isConfirmingDelete = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -199,6 +200,7 @@ private struct ProjectBoardDetail: View {
                         onCompleteProject: viewModel.completeSelectedProject,
                         onArchiveProject: { isConfirmingArchive = true },
                         onRestoreProject: viewModel.restoreSelectedProject,
+                        onDeleteProject: { isConfirmingDelete = true },
                         onAddTask: { composingStatus = .backlog }
                     )
                 }
@@ -217,6 +219,7 @@ private struct ProjectBoardDetail: View {
                         onCompleteProject: viewModel.completeSelectedProject,
                         onArchiveProject: { isConfirmingArchive = true },
                         onRestoreProject: viewModel.restoreSelectedProject,
+                        onDeleteProject: { isConfirmingDelete = true },
                         onAddTask: { composingStatus = .backlog }
                     )
                 }
@@ -271,6 +274,18 @@ private struct ProjectBoardDetail: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This hides the project from the active board and deadline summaries. Existing local tasks are kept in the SoloPM database.")
+        }
+        .confirmationDialog(
+            "Delete this project?",
+            isPresented: $isConfirmingDelete,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Project", role: .destructive) {
+                viewModel.deleteSelectedProject()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently removes the project, its local tasks, deadline rules, artifact links, calendar links, and reminder links from SoloPM.")
         }
     }
 }
@@ -334,6 +349,7 @@ private struct ProjectHeaderActions: View {
     let onCompleteProject: () -> Void
     let onArchiveProject: () -> Void
     let onRestoreProject: () -> Void
+    let onDeleteProject: () -> Void
     let onAddTask: () -> Void
 
     var body: some View {
@@ -357,11 +373,15 @@ private struct ProjectHeaderActions: View {
     @ViewBuilder
     private var projectActionButtons: some View {
         if project.isArchived {
-            restoreProjectButton
+            HStack(spacing: 8) {
+                restoreProjectButton
+                deleteProjectButton
+            }
         } else {
             HStack(spacing: 8) {
                 completeProjectButton
                 archiveProjectButton
+                deleteProjectButton
                 addTaskButton
             }
         }
@@ -396,6 +416,12 @@ private struct ProjectHeaderActions: View {
             Label("Restore Project", systemImage: "arrow.uturn.backward")
         }
         .buttonStyle(.borderedProminent)
+    }
+
+    private var deleteProjectButton: some View {
+        Button(role: .destructive, action: onDeleteProject) {
+            Label("Delete Project", systemImage: "trash")
+        }
     }
 
     private var addTaskButton: some View {

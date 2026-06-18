@@ -11,6 +11,31 @@ public struct ProjectRecord: Equatable, Sendable {
     public var sourceCommand: String?
 }
 
+public struct ProjectDeletionResult: Equatable, Sendable {
+    public var project: ProjectRecord
+    public var deletedTaskCount: Int
+    public var deletedCalendarLinkCount: Int
+    public var deletedReminderLinkCount: Int
+    public var deletedDeadlineRuleCount: Int
+    public var deletedArtifactCount: Int
+
+    public init(
+        project: ProjectRecord,
+        deletedTaskCount: Int,
+        deletedCalendarLinkCount: Int,
+        deletedReminderLinkCount: Int,
+        deletedDeadlineRuleCount: Int,
+        deletedArtifactCount: Int
+    ) {
+        self.project = project
+        self.deletedTaskCount = deletedTaskCount
+        self.deletedCalendarLinkCount = deletedCalendarLinkCount
+        self.deletedReminderLinkCount = deletedReminderLinkCount
+        self.deletedDeadlineRuleCount = deletedDeadlineRuleCount
+        self.deletedArtifactCount = deletedArtifactCount
+    }
+}
+
 public struct TaskRecord: Equatable, Sendable {
     public var id: Int64
     public var projectID: Int64?
@@ -246,6 +271,39 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         try update(id: id, status: "active")
     }
 
+    @discardableResult
+    public func delete(id: Int64) throws -> ProjectDeletionResult {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let project = try getLocked(id: id)
+        let childTaskPredicate = "project_id = \(id)"
+        let linkedProjectOrTaskPredicate = "project_id = \(id) OR task_id IN (SELECT id FROM tasks WHERE project_id = \(id))"
+        let taskDeadlinePredicate = "target_type = 'task' AND target_id IN (SELECT id FROM tasks WHERE project_id = \(id))"
+        let projectDeadlinePredicate = "target_type = 'project' AND target_id = \(id)"
+        let artifactPredicate = linkedProjectOrTaskPredicate
+
+        let result = try ProjectDeletionResult(
+            project: project,
+            deletedTaskCount: rowCountLocked(table: "tasks", where: childTaskPredicate),
+            deletedCalendarLinkCount: rowCountIfTableExistsLocked(table: "calendar_links", where: linkedProjectOrTaskPredicate),
+            deletedReminderLinkCount: rowCountIfTableExistsLocked(table: "reminder_links", where: linkedProjectOrTaskPredicate),
+            deletedDeadlineRuleCount: rowCountIfTableExistsLocked(table: "deadline_rules", where: "(\(projectDeadlinePredicate)) OR (\(taskDeadlinePredicate))"),
+            deletedArtifactCount: rowCountIfTableExistsLocked(table: "artifacts", where: artifactPredicate)
+        )
+
+        try connection.transaction {
+            try deleteRowsIfTableExistsLocked(table: "calendar_links", where: linkedProjectOrTaskPredicate)
+            try deleteRowsIfTableExistsLocked(table: "reminder_links", where: linkedProjectOrTaskPredicate)
+            try deleteRowsIfTableExistsLocked(table: "deadline_rules", where: "(\(projectDeadlinePredicate)) OR (\(taskDeadlinePredicate))")
+            try deleteRowsIfTableExistsLocked(table: "artifacts", where: artifactPredicate)
+            try connection.execute("DELETE FROM tasks WHERE \(childTaskPredicate);")
+            try connection.execute("DELETE FROM projects WHERE id = \(id);")
+        }
+
+        return result
+    }
+
     public func list(includeArchived: Bool = false) throws -> [ProjectRecord] {
         lock.lock()
         defer { lock.unlock() }
@@ -279,6 +337,29 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         }
 
         return try ProjectRecord(row: row)
+    }
+
+    private func rowCountLocked(table: String, where predicate: String) throws -> Int {
+        let countValue = try connection
+            .queryRows("SELECT COUNT(*) AS count FROM \(table) WHERE \(predicate);")
+            .first?["count"]
+        return Int(try SQL.requiredInt64(countValue, column: "\(table).count"))
+    }
+
+    private func rowCountIfTableExistsLocked(table: String, where predicate: String) throws -> Int {
+        guard try connection.tableExists(table) else {
+            return 0
+        }
+
+        return try rowCountLocked(table: table, where: predicate)
+    }
+
+    private func deleteRowsIfTableExistsLocked(table: String, where predicate: String) throws {
+        guard try connection.tableExists(table) else {
+            return
+        }
+
+        try connection.execute("DELETE FROM \(table) WHERE \(predicate);")
     }
 }
 

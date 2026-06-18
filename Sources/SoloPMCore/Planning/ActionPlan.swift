@@ -94,6 +94,7 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
     case projectList = "project.list"
     case projectGet = "project.get"
     case projectComplete = "project.complete"
+    case projectDelete = "project.delete"
     case taskCreate = "task.create"
     case taskBulkCreate = "task.bulk_create"
     case taskGet = "task.get"
@@ -151,6 +152,7 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
         case .projectCreate,
              .projectUpdate,
              .projectComplete,
+             .projectDelete,
              .taskCreate,
              .taskBulkCreate,
              .taskUpdate,
@@ -178,7 +180,7 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
 
     public var actionType: ActionType {
         switch self {
-        case .projectCreate, .projectUpdate, .projectList, .projectGet, .projectComplete:
+        case .projectCreate, .projectUpdate, .projectList, .projectGet, .projectComplete, .projectDelete:
             .project
         case .taskCreate, .taskBulkCreate, .taskGet, .taskUpdate, .taskComplete, .taskDelete, .taskListDue, .taskListOverdue:
             .task

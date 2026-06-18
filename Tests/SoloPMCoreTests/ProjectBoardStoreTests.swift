@@ -309,6 +309,26 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertFalse(restoredProject.isArchived)
     }
 
+    func testDeleteProjectRemovesProjectAndTasksFromPersistentBoard() throws {
+        let stores = try makeStoreBundle()
+        let project = try stores.board.createProject(title: "Remove Candidate")
+        let task = try stores.board.createTask(ProjectBoardTaskDraft(
+            projectID: project.id,
+            title: "Remove child task",
+            status: .planned,
+            priority: .medium
+        ))
+
+        try stores.board.deleteProject(id: project.id)
+
+        let snapshot = try stores.board.loadSnapshot()
+
+        XCTAssertFalse(snapshot.projects.contains { $0.id == project.id })
+        XCTAssertFalse(snapshot.projects.flatMap(\.tasks).contains { $0.id == task.id })
+        XCTAssertThrowsError(try stores.projects.get(id: project.id))
+        XCTAssertThrowsError(try stores.tasks.get(id: task.id))
+    }
+
     func testArchivingLastVisibleProjectCreatesFreshInboxForFirstRunContinuity() throws {
         let store = try makeStore()
         let inbox = try XCTUnwrap(store.loadSnapshot().projects.first)
@@ -342,9 +362,30 @@ final class ProjectBoardStoreTests: XCTestCase {
         viewModel.deleteSelectedTask()
         viewModel.completeSelectedProject()
         viewModel.archiveSelectedProject()
+        viewModel.deleteSelectedProject()
 
-        XCTAssertEqual(changeCount, 6)
+        XCTAssertEqual(changeCount, 7)
         XCTAssertEqual(viewModel.selectedProject?.title, "Inbox")
+    }
+
+    @MainActor
+    func testProjectBoardViewModelDeletesSelectedProjectAndNotifies() {
+        var changeCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+        let project = viewModel.createProject(title: "Remove Candidate")
+        _ = viewModel.createTask(title: "Remove child task", status: .planned)
+        changeCount = 0
+
+        viewModel.deleteSelectedProject()
+
+        XCTAssertEqual(changeCount, 1)
+        XCTAssertFalse(viewModel.snapshot.projects.contains { $0.id == project?.id })
+        XCTAssertFalse(viewModel.snapshot.projects.flatMap(\.tasks).contains { $0.title == "Remove child task" })
+        XCTAssertNil(viewModel.selectedTaskID)
     }
 
     @MainActor
@@ -571,6 +612,10 @@ private struct AlwaysFailingProjectBoardStore: ProjectBoardStore {
         throw error
     }
 
+    func deleteProject(id: Int64) throws {
+        throw error
+    }
+
     func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
         throw error
     }
@@ -658,6 +703,10 @@ private final class PartiallyFailingBulkMoveProjectBoardStore: ProjectBoardStore
     }
 
     func restoreProject(id: Int64) throws -> ProjectBoardProject {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func deleteProject(id: Int64) throws {
         throw ProjectBoardStoreTestError.unavailable
     }
 
