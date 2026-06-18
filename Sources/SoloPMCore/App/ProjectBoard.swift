@@ -451,6 +451,10 @@ public final class ProjectBoardViewModel: ObservableObject {
             .first { $0.id == selectedTaskID }
     }
 
+    public var isEmptyProjectStateVisible: Bool {
+        errorMessage == nil && selectedProject == nil
+    }
+
     public func load() {
         do {
             snapshot = try store.loadSnapshot(includeArchived: showsArchivedProjects)

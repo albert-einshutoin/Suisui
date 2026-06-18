@@ -72,7 +72,13 @@ struct ProjectBoardView: View {
                             .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
                     }
                 }
-            } else {
+            } else if let errorMessage = viewModel.errorMessage {
+                ContentUnavailableView(
+                    "Project Board Unavailable",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(errorMessage)
+                )
+            } else if viewModel.isEmptyProjectStateVisible {
                 ContentUnavailableView("No Projects", systemImage: "folder")
             }
         }

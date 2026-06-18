@@ -34,6 +34,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("Done"))
     }
 
+    func testProjectBoardLoadFailureIsNotRenderedAsNoProjects() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(source.contains("Project Board Unavailable"))
+        XCTAssertTrue(source.contains("isEmptyProjectStateVisible"))
+        let unavailableRange = try XCTUnwrap(source.range(of: "Project Board Unavailable"))
+        let noProjectsRange = try XCTUnwrap(source.range(of: "No Projects"))
+        XCTAssertLessThan(unavailableRange.lowerBound, noProjectsRange.lowerBound)
+    }
+
     func testProjectBoardUsesResponsiveLongContentGuards() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 

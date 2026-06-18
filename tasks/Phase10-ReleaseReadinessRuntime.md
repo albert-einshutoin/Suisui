@@ -860,6 +860,13 @@
 - [x] Settings の Watcher section は `watcherDiagnosticsSnapshot.errorMessage` を警告として表示する。
 - [x] 完了条件: daily check state / local DB が読めない状態を、まだ一度もチェックしていないだけの正常状態として表示しない。
 
+### P10-110: Project board load failure is not rendered as no projects
+
+- [x] `ProjectBoardViewModel` は load failure 中に empty project state を表示してよいかを error-aware に判定する。
+- [x] Project Board detail は DB / local store の読込失敗時に `Project Board Unavailable` を表示し、`No Projects` に丸めない。
+- [x] `ProjectBoardStoreTests` と `AppExperienceSourceTests` で load failure と UI state ordering の regression を固定する。
+- [x] 完了条件: CRUD の永続DBが開けない状態を、単にプロジェクトが未作成な正常状態として表示しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

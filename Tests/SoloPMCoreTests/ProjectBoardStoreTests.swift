@@ -443,6 +443,16 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(viewModel.errorMessage, "Task title is required.")
     }
 
+    @MainActor
+    func testProjectBoardViewModelDoesNotShowEmptyProjectStateWhenLoadFails() {
+        let viewModel = ProjectBoardViewModel(store: AlwaysFailingProjectBoardStore())
+
+        viewModel.load()
+
+        XCTAssertEqual(viewModel.errorMessage, "Project board unavailable")
+        XCTAssertFalse(viewModel.isEmptyProjectStateVisible)
+    }
+
     private func makeStore() throws -> SQLiteProjectBoardStore {
         try makeStoreBundle().board
     }
@@ -465,5 +475,61 @@ final class ProjectBoardStoreTests: XCTestCase {
 private extension ProjectBoardProject {
     func column(_ status: ProjectTaskStatus) -> ProjectBoardColumn? {
         columns.first { $0.status == status }
+    }
+}
+
+private struct AlwaysFailingProjectBoardStore: ProjectBoardStore {
+    private var error: Error { ProjectBoardStoreTestError.unavailable }
+
+    func loadSnapshot() throws -> ProjectBoardSnapshot {
+        throw error
+    }
+
+    func loadSnapshot(includeArchived: Bool) throws -> ProjectBoardSnapshot {
+        throw error
+    }
+
+    func createProject(title: String) throws -> ProjectBoardProject {
+        throw error
+    }
+
+    func updateProject(id: Int64, title: String) throws -> ProjectBoardProject {
+        throw error
+    }
+
+    func completeProject(id: Int64) throws -> ProjectBoardProject {
+        throw error
+    }
+
+    func archiveProject(id: Int64) throws -> ProjectBoardProject {
+        throw error
+    }
+
+    func restoreProject(id: Int64) throws -> ProjectBoardProject {
+        throw error
+    }
+
+    func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
+        throw error
+    }
+
+    func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
+        throw error
+    }
+
+    func moveTask(id: Int64, to status: ProjectTaskStatus) throws -> ProjectBoardTask {
+        throw error
+    }
+
+    func deleteTask(id: Int64) throws {
+        throw error
+    }
+}
+
+private enum ProjectBoardStoreTestError: Error, CustomStringConvertible {
+    case unavailable
+
+    var description: String {
+        "Project board unavailable"
     }
 }
