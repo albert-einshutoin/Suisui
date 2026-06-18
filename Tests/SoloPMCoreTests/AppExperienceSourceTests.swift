@@ -83,14 +83,46 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(appSource.contains("Section(\"Appearance\")"))
         XCTAssertTrue(appSource.contains("Picker(\"Theme\", selection: $appearancePreference)"))
+        XCTAssertEqual(appSource.components(separatedBy: "Section(\"Appearance\")").count - 1, 1)
         XCTAssertEqual(appSource.components(separatedBy: "Picker(\"Theme\"").count - 1, 1)
+        let settingsRange = try XCTUnwrap(appSource.range(of: "Settings {"))
+        let appearanceRange = try XCTUnwrap(appSource.range(of: "Section(\"Appearance\")"))
+        XCTAssertLessThan(settingsRange.lowerBound, appearanceRange.lowerBound)
         XCTAssertFalse(boardSource.contains("AppearancePicker"))
         XCTAssertFalse(boardSource.contains("SidebarAppearanceSection"))
+        XCTAssertFalse(boardSource.contains("Section(\"Appearance\")"))
         XCTAssertFalse(boardSource.contains("Picker(\"Theme\""))
         XCTAssertFalse(boardSource.contains("Picker(\"Appearance\""))
+        XCTAssertFalse(boardSource.contains("@AppStorage(SoloPMAppearancePreference.storageKey)"))
         XCTAssertFalse(boardSource.contains("SoloPMAppearancePreference"))
         XCTAssertFalse(boardSource.contains("Theme"))
         XCTAssertFalse(boardSource.contains("appearancePreference: $appearancePreference"))
+    }
+
+    func testProjectBoardSidebarAndToolbarDoNotHostThemeControls() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let sidebarStart = try XCTUnwrap(boardSource.range(of: "NavigationSplitView {"))
+        let detailStart = try XCTUnwrap(boardSource.range(of: "} detail: {"))
+        let sidebarSource = String(boardSource[sidebarStart.upperBound..<detailStart.lowerBound])
+
+        XCTAssertTrue(sidebarSource.contains("Show Archived"))
+        XCTAssertTrue(sidebarSource.contains("Add Project"))
+        XCTAssertFalse(sidebarSource.contains("Theme"))
+        XCTAssertFalse(sidebarSource.contains("Appearance"))
+        XCTAssertFalse(sidebarSource.contains("SoloPMAppearancePreference"))
+        XCTAssertFalse(sidebarSource.contains("Picker(\"Theme\""))
+        XCTAssertFalse(sidebarSource.contains("Picker(\"Appearance\""))
+
+        let toolbarStart = try XCTUnwrap(boardSource.range(of: ".toolbar {"))
+        let inspectorStart = try XCTUnwrap(boardSource.range(of: ".inspector(isPresented: inspectorBinding)"))
+        let toolbarSource = String(boardSource[toolbarStart.lowerBound..<inspectorStart.lowerBound])
+
+        XCTAssertTrue(toolbarSource.contains("SettingsLink"))
+        XCTAssertFalse(toolbarSource.contains("Theme"))
+        XCTAssertFalse(toolbarSource.contains("Appearance"))
+        XCTAssertFalse(toolbarSource.contains("SoloPMAppearancePreference"))
+        XCTAssertFalse(toolbarSource.contains("Picker(\"Theme\""))
+        XCTAssertFalse(toolbarSource.contains("Picker(\"Appearance\""))
     }
 
     func testProjectBoardDropPayloadsAreValidatedByViewModel() throws {
