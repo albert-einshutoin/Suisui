@@ -45,6 +45,13 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("release app signature does not include configured Developer ID identity"))
     }
 
+    func testReleasePreflightRequiresHardenedRuntimeSignatureFlag() throws {
+        let script = try readPackageFile("script/verify_release_environment.sh")
+
+        XCTAssertTrue(script.contains("flags=.*runtime"))
+        XCTAssertTrue(script.contains("release app signature is missing hardened runtime"))
+    }
+
     func testReleasePreflightRequiresLocalEvidenceFileForManualChecks() throws {
         let script = try readPackageFile("script/verify_release_environment.sh")
 

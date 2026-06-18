@@ -369,6 +369,12 @@
 - [x] ad-hoc 署名や別 identity で署名された app bundle は Gatekeeper / notarization の前に release blocker にする。
 - [x] 完了条件: release owner が意図した Developer ID identity で署名された bundle だけが public alpha packaging evidence へ進める。
 
+### P10-045: Hardened runtime signature gate
+
+- [x] `verify_release_environment.sh` は `codesign -dv --verbose=4` の `flags` に hardened runtime が含まれることを確認する。
+- [x] ad-hoc / non-runtime signature は notarization submit 前に release blocker にする。
+- [x] 完了条件: public alpha 用 app bundle は Developer ID identity と hardened runtime の両方を満たした署名だけを release path として扱う。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

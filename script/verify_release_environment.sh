@@ -194,6 +194,10 @@ require_app_signature_identity() {
   if ! grep -F "Authority=$signing_identity" <<<"$signature_details" >/dev/null; then
     add_blocker "release app signature does not include configured Developer ID identity: $signing_identity"
   fi
+
+  if ! grep -E 'flags=.*runtime' <<<"$signature_details" >/dev/null; then
+    add_blocker "release app signature is missing hardened runtime"
+  fi
 }
 
 require_evidence_artifact_sha256() {
