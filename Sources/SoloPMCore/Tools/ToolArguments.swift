@@ -17,9 +17,47 @@ public struct ToolArguments: Sendable {
         return value
     }
 
+    public func requiredTrimmedString(_ key: String) throws -> String {
+        guard let value = optionalString(key) else {
+            throw ToolExecutionError.validationFailed(tool, "Missing required argument '\(key)'.")
+        }
+
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw ToolExecutionError.validationFailed(tool, "Missing required argument '\(key)'.")
+        }
+
+        return trimmed
+    }
+
     public func optionalString(_ key: String) -> String? {
         guard case .string(let value)? = raw[key] else {
             return nil
+        }
+
+        return value
+    }
+
+    public func optionalTrimmedString(_ key: String) throws -> String? {
+        guard let value = optionalString(key) else {
+            return nil
+        }
+
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw ToolExecutionError.validationFailed(tool, "Argument '\(key)' cannot be blank.")
+        }
+
+        return trimmed
+    }
+
+    public func optionalNonBlankString(_ key: String) throws -> String? {
+        guard let value = optionalString(key) else {
+            return nil
+        }
+
+        guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ToolExecutionError.validationFailed(tool, "Argument '\(key)' cannot be blank.")
         }
 
         return value
@@ -46,6 +84,26 @@ public struct ToolArguments: Sendable {
 
     public func stringArray(_ key: String) -> [String] {
         optionalStringArray(key) ?? []
+    }
+
+    public func trimmedStringArray(_ key: String) -> [String] {
+        guard let values = optionalStringArray(key) else {
+            return []
+        }
+
+        return values
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    public func optionalTrimmedStringArray(_ key: String) -> [String]? {
+        guard let values = optionalStringArray(key) else {
+            return nil
+        }
+
+        return values
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     public func optionalStringArray(_ key: String) -> [String]? {

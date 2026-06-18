@@ -463,6 +463,13 @@
 - [x] `packaging/sparkle.env.example` は release 用の `example.com` URL を含まず、production 値は local env または release machine の環境変数から与える。
 - [x] 完了条件: public alpha release build に sample feed URL や Sparkle 無効状態が混入しない。
 
+### P10-057: CRUD tool input normalization
+
+- [x] `project.create` / `task.create` は title の前後空白を正規化して永続化する。
+- [x] `project.update` / `task.update` は空白 title を拒否し、既存 row を壊さない。
+- [x] `frame.update` は空白 body を拒否し、既存 Knowledge Frame を壊さない。
+- [x] 完了条件: UI だけでなく review tool / AI plan 経由でも空白だけの project / task / knowledge data が永続化されない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

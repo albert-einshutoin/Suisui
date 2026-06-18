@@ -25,12 +25,12 @@ public struct ProjectTool: Tool {
         switch name {
         case .projectCreate:
             let record = try store.create(
-                title: try args.requiredString("title"),
-                priority: args.optionalString("priority"),
-                deadline: args.optionalString("deadline"),
-                workspacePath: args.optionalString("workspacePath"),
-                tags: args.stringArray("tags"),
-                sourceCommand: args.optionalString("sourceCommand")
+                title: try args.requiredTrimmedString("title"),
+                priority: try args.optionalTrimmedString("priority"),
+                deadline: try args.optionalTrimmedString("deadline"),
+                workspacePath: try args.optionalTrimmedString("workspacePath"),
+                tags: args.trimmedStringArray("tags"),
+                sourceCommand: try args.optionalTrimmedString("sourceCommand")
             )
             return ToolResult(
                 tool: name,
@@ -43,8 +43,8 @@ public struct ProjectTool: Tool {
         case .projectUpdate:
             let record = try store.update(
                 id: try args.requiredInt64("id"),
-                title: args.optionalString("title"),
-                status: args.optionalString("status")
+                title: try args.optionalTrimmedString("title"),
+                status: try args.optionalTrimmedString("status")
             )
             return ToolResult(tool: name, status: .succeeded, summary: "Updated project \(record.title)", output: ["projectId": .number(Double(record.id))])
         case .projectComplete:
@@ -106,11 +106,11 @@ public struct TaskTool: Tool {
             let projectID = args.optionalInt64("projectId")
             try prepareProjectForTaskMutation(projectID: projectID, status: "open")
             let record = try store.create(
-                title: try args.requiredString("title"),
+                title: try args.requiredTrimmedString("title"),
                 projectID: projectID,
-                dueAt: args.optionalString("dueAt"),
-                priority: args.optionalString("priority"),
-                sourceCommand: args.optionalString("sourceCommand")
+                dueAt: try args.optionalTrimmedString("dueAt"),
+                priority: try args.optionalTrimmedString("priority"),
+                sourceCommand: try args.optionalTrimmedString("sourceCommand")
             )
             return ToolResult(
                 tool: name,
@@ -128,11 +128,11 @@ public struct TaskTool: Tool {
             let drafts = try taskObjects.map { taskObject in
                 let taskArgs = ToolArguments(taskObject, tool: name)
                 return TaskCreateDraft(
-                    title: try taskArgs.requiredString("title"),
+                    title: try taskArgs.requiredTrimmedString("title"),
                     projectID: taskArgs.optionalInt64("projectId"),
-                    dueAt: taskArgs.optionalString("dueAt"),
-                    priority: taskArgs.optionalString("priority"),
-                    sourceCommand: taskArgs.optionalString("sourceCommand")
+                    dueAt: try taskArgs.optionalTrimmedString("dueAt"),
+                    priority: try taskArgs.optionalTrimmedString("priority"),
+                    sourceCommand: try taskArgs.optionalTrimmedString("sourceCommand")
                 )
             }
             try drafts.forEach { try rejectArchivedProject(projectID: $0.projectID) }
@@ -142,9 +142,9 @@ public struct TaskTool: Tool {
         case .taskUpdate:
             let taskID = try args.requiredInt64("id")
             let current = try store.get(id: taskID)
-            let nextStatus = args.optionalString("status") ?? current.status
+            let nextStatus = try args.optionalTrimmedString("status") ?? current.status
             try prepareProjectForTaskMutation(projectID: current.projectID, status: nextStatus)
-            let record = try store.update(id: taskID, title: args.optionalString("title"), status: args.optionalString("status"))
+            let record = try store.update(id: taskID, title: try args.optionalTrimmedString("title"), status: nextStatus)
             return ToolResult(tool: name, status: .succeeded, summary: "Updated task \(record.title)", output: ["taskId": .number(Double(record.id))])
         case .taskComplete:
             let record = try store.update(id: try args.requiredInt64("id"), status: "completed")
@@ -231,7 +231,7 @@ public struct KnowledgeFrameTool: Tool {
         let args = ToolArguments(arguments, tool: name)
         switch name {
         case .frameCreate:
-            let frame = try store.create(name: try args.requiredString("name"), body: try args.requiredString("body"), triggers: args.stringArray("triggers"))
+            let frame = try store.create(name: try args.requiredTrimmedString("name"), body: try args.requiredString("body"), triggers: args.trimmedStringArray("triggers"))
             return ToolResult(
                 tool: name,
                 status: .succeeded,
@@ -242,9 +242,9 @@ public struct KnowledgeFrameTool: Tool {
         case .frameUpdate:
             let frame = try store.update(
                 id: try args.requiredInt64("id"),
-                name: args.optionalString("name"),
-                body: args.optionalString("body"),
-                triggers: args.optionalStringArray("triggers")
+                name: try args.optionalTrimmedString("name"),
+                body: try args.optionalNonBlankString("body"),
+                triggers: args.optionalTrimmedStringArray("triggers")
             )
             return ToolResult(tool: name, status: .succeeded, summary: "Updated frame \(frame.name)", output: ["frameId": .number(Double(frame.id))])
         case .frameGet:
@@ -254,7 +254,7 @@ public struct KnowledgeFrameTool: Tool {
             let frames = try store.list()
             return ToolResult(tool: name, status: .succeeded, summary: "\(frames.count) frames", output: ["count": .number(Double(frames.count))])
         case .frameSearch:
-            let frames = try store.search(query: try args.requiredString("query"))
+            let frames = try store.search(query: try args.requiredTrimmedString("query"))
             return ToolResult(tool: name, status: .succeeded, summary: "\(frames.count) matching frames", output: ["count": .number(Double(frames.count))])
         default:
             throw ToolExecutionError.executionFailed(name, "Unsupported knowledge frame tool.")

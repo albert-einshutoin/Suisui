@@ -7,13 +7,33 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         let tool = ProjectTool(name: .projectCreate, store: stores.projects)
 
         let result = try tool.execute(
-            arguments: ["title": .string("Launch alpha")],
+            arguments: ["title": .string("  Launch alpha  ")],
             context: approvedContext()
         )
 
         XCTAssertEqual(result.status, .succeeded)
         XCTAssertEqual(try stores.projects.list().first?.title, "Launch alpha")
         XCTAssertNotNil(result.rollbackMetadata["projectId"])
+    }
+
+    func testProjectUpdateRejectsBlankTitleWithoutMutatingProject() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "Launch Readiness")
+        let tool = ProjectTool(name: .projectUpdate, store: stores.projects)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "id": .number(Double(project.id)),
+                    "title": .string("   ")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(error as? ToolExecutionError, .validationFailed(.projectUpdate, "Argument 'title' cannot be blank."))
+        }
+
+        XCTAssertEqual(try stores.projects.get(id: project.id).title, "Launch Readiness")
     }
 
     func testTaskBulkCreatePersistsTasksTransactionallyEnoughForMVP() throws {
@@ -81,7 +101,7 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
 
         _ = try tool.execute(
             arguments: [
-                "title": .string("Address release review"),
+                "title": .string("  Address release review  "),
                 "projectId": .number(Double(project.id))
             ],
             context: approvedContext()
@@ -89,6 +109,26 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
 
         XCTAssertEqual(try stores.projects.get(id: project.id).status, "active")
         XCTAssertEqual(try stores.tasks.listAll().map(\.title), ["Address release review"])
+    }
+
+    func testTaskUpdateRejectsBlankTitleWithoutMutatingTask() throws {
+        let stores = try makeStores()
+        let task = try stores.tasks.create(title: "Draft release notes")
+        let tool = TaskTool(name: .taskUpdate, store: stores.tasks, projectStore: stores.projects)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "id": .number(Double(task.id)),
+                    "title": .string("   ")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(error as? ToolExecutionError, .validationFailed(.taskUpdate, "Argument 'title' cannot be blank."))
+        }
+
+        XCTAssertEqual(try stores.tasks.get(id: task.id).title, "Draft release notes")
     }
 
     func testTaskCreateWithProjectIDRequiresProjectStore() throws {
@@ -231,6 +271,34 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         )
 
         XCTAssertEqual(try stores.knowledge.get(id: frameID).triggers, ["writing"])
+    }
+
+    func testKnowledgeFrameUpdateRejectsBlankBodyWithoutMutatingFrame() throws {
+        let stores = try makeStores()
+        let create = KnowledgeFrameTool(name: .frameCreate, store: stores.knowledge)
+        let update = KnowledgeFrameTool(name: .frameUpdate, store: stores.knowledge)
+        let created = try create.execute(
+            arguments: [
+                "name": .string("Release frame"),
+                "body": .string("Initial content")
+            ],
+            context: approvedContext()
+        )
+        let frameID = try XCTUnwrap(created.output["frameId"]?.int64Value)
+
+        XCTAssertThrowsError(
+            try update.execute(
+                arguments: [
+                    "id": .number(Double(frameID)),
+                    "body": .string("   ")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(error as? ToolExecutionError, .validationFailed(.frameUpdate, "Argument 'body' cannot be blank."))
+        }
+
+        XCTAssertEqual(try stores.knowledge.get(id: frameID).body, "Initial content")
     }
 
     func testPhase2CoreRegistryContainsProjectTaskAndKnowledgeTools() throws {
