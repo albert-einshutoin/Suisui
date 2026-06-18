@@ -24,7 +24,7 @@ public struct RetrievalConstraints: Equatable, Sendable {
     }
 }
 
-public struct RetrievalFixture: Equatable, Sendable {
+public struct RetrievalRequirementCase: Equatable, Sendable {
     public var id: String
     public var query: String
     public var expectedFrameIDs: [Int64]
@@ -47,24 +47,24 @@ public struct RetrievalFixture: Equatable, Sendable {
 }
 
 public struct RetrievalRequirementsReview: Equatable, Sendable {
-    public var fixtures: [RetrievalFixture]
+    public var requirementCases: [RetrievalRequirementCase]
     public var constraints: RetrievalConstraints
 
-    public init(fixtures: [RetrievalFixture], constraints: RetrievalConstraints) {
-        self.fixtures = fixtures
+    public init(requirementCases: [RetrievalRequirementCase], constraints: RetrievalConstraints) {
+        self.requirementCases = requirementCases
         self.constraints = constraints
     }
 
-    public var semanticFixtures: [RetrievalFixture] {
-        fixtures.filter(\.requiresSemanticRetrieval)
+    public var semanticRequirementCases: [RetrievalRequirementCase] {
+        requirementCases.filter(\.requiresSemanticRetrieval)
     }
 
     public var hasConcreteFTSGap: Bool {
-        !semanticFixtures.isEmpty
+        !semanticRequirementCases.isEmpty
     }
 
     public var sqliteVecJustification: String {
-        "\(semanticFixtures.count) semantic fixtures exceed FTS5 exact matching."
+        "\(semanticRequirementCases.count) semantic retrieval requirement cases exceed FTS5 exact matching."
     }
 }
 

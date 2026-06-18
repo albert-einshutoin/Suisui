@@ -1300,6 +1300,7 @@
 - API key は `KeychainSecretStore` を使い、UI 表示は saved / not configured の状態だけにする。
 - 外部 SaaS connectors は Phase 10 の release path から外す。既存 protocol / fake tests は regression 用に残す。
 - Core の fake / in-memory 型は unit test と preview fixture として残してよいが、runtime container からは参照しない。
+- Runtime source の scan は `fixture` terminology も blocker とし、production API名では requirement/evaluation case など実運用品質の語彙を使う。
 
 ## Verification
 

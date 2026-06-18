@@ -4,15 +4,15 @@ import XCTest
 final class KnowledgeAdvancedTests: XCTestCase {
     func testRetrievalRequirementsReviewDefinesFTSGapsAndConstraints() {
         let review = RetrievalRequirementsReview(
-            fixtures: [
-                RetrievalFixture(
+            requirementCases: [
+                RetrievalRequirementCase(
                     id: "semantic-1",
                     query: "請求の催促",
                     expectedFrameIDs: [42],
                     allowedAlternativeFrameIDs: [43],
                     requiresSemanticRetrieval: true
                 ),
-                RetrievalFixture(
+                RetrievalRequirementCase(
                     id: "exact-1",
                     query: "QZT",
                     expectedFrameIDs: [1],
@@ -28,8 +28,8 @@ final class KnowledgeAdvancedTests: XCTestCase {
         )
 
         XCTAssertTrue(review.hasConcreteFTSGap)
-        XCTAssertEqual(review.semanticFixtures.map(\.id), ["semantic-1"])
-        XCTAssertEqual(review.sqliteVecJustification, "1 semantic fixtures exceed FTS5 exact matching.")
+        XCTAssertEqual(review.semanticRequirementCases.map(\.id), ["semantic-1"])
+        XCTAssertEqual(review.sqliteVecJustification, "1 semantic retrieval requirement cases exceed FTS5 exact matching.")
         XCTAssertEqual(review.constraints.privacyBoundary, .localOnly)
     }
 

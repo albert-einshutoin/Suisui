@@ -24,7 +24,7 @@
 ### P9-001: Retrieval requirements review
 
 - [x] FTS5 で足りない具体ケースを集める。
-- [x] semantic retrieval が必要な query を fixtures にする。
+- [x] semantic retrieval が必要な query を retrieval requirement cases にする。
 - [x] latency、storage、privacy、model size の制約を定義する。
 - [x] 完了条件: sqlite-vec 導入理由が実データで説明できる。
 

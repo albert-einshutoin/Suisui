@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BLOCKER_COUNT=0
-MOCK_PATTERN="(?i:fake|mock|canned|stub|skeleton|todo|fixme|not[[:space:]_-]*implemented|notimplemented|inmemory)|(?i:(^|[^[:alnum:]_])(demo|sample|placeholder)([^[:alnum:]_]|$))|Static[A-Za-z0-9_]*|:memory:|fatalError|preconditionFailure"
+MOCK_PATTERN="(?i:fake|mock|fixture|canned|stub|skeleton|todo|fixme|not[[:space:]_-]*implemented|notimplemented|inmemory)|(?i:(^|[^[:alnum:]_])(demo|sample|placeholder)([^[:alnum:]_]|$))|Static[A-Za-z0-9_]*|:memory:|fatalError|preconditionFailure"
 UI_EVIDENCE_RELATIVE="docs/release/evidence/ui-screenshots.md"
 UI_SCREENSHOT_RELATIVE_DIR="docs/release/evidence/ui-screenshots"
 UI_SCREENSHOT_MIN_BYTES=50000
@@ -137,7 +137,7 @@ SWIFT
 
 printf "SoloPM release readiness report\n"
 
-section "Runtime mock/fake scan"
+section "Runtime mock/fake/fixture scan"
 if ! command -v rg >/dev/null 2>&1; then
   blocker "rg is required for source scanning"
 else
@@ -158,16 +158,16 @@ else
     case "$scan_status" in
       0)
         printf "%s\n" "$scan_output"
-        blocker "runtime source contains mock/fake/demo/test-only markers"
+        blocker "runtime source contains mock/fake/fixture/demo/test-only markers"
         ;;
       1)
-        printf "OK: no runtime mock/fake/demo markers in Sources/SoloPMCore Sources/SoloPMApp Sources/SoloPMCLI\n"
+        printf "OK: no runtime mock/fake/fixture/demo markers in Sources/SoloPMCore Sources/SoloPMApp Sources/SoloPMCLI\n"
         ;;
       *)
         if [[ -n "$scan_output" ]]; then
           printf "%s\n" "$scan_output"
         fi
-        blocker "runtime mock/fake scan failed"
+        blocker "runtime mock/fake/fixture scan failed"
         ;;
     esac
   fi
