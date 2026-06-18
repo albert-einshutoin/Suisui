@@ -1257,7 +1257,7 @@ private enum AppRuntimeFactory {
     private static func externalMCPAuditLoadResult() -> ExternalMCPAuditLoadResult {
         do {
             let logger = try SQLiteAuditLogger(path: applicationDatabaseURL().path)
-            return ExternalMCPAuditLoadResult(rows: ExternalMCPAuditHistory.rows(from: try logger.list(limit: 50)))
+            return ExternalMCPAuditLoadResult(rows: try ExternalMCPAuditHistory.rows(from: logger.list(limit: 50)))
         } catch {
             return ExternalMCPAuditLoadResult(
                 rows: [],

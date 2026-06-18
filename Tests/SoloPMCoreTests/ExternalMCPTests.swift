@@ -612,7 +612,7 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(process.events, [.started, .healthChecked, .healthChecked, .killed, .shutdown])
     }
 
-    func testAuditHistoryRowsExposeExternalCallHistory() {
+    func testAuditHistoryRowsExposeExternalCallHistory() throws {
         let events = [
             AuditEvent(
                 category: "external_mcp",
@@ -634,7 +634,7 @@ final class ExternalMCPTests: XCTestCase {
             )
         ]
 
-        let rows = ExternalMCPAuditHistory.rows(from: events)
+        let rows = try ExternalMCPAuditHistory.rows(from: events)
 
         XCTAssertEqual(rows.count, 1)
         XCTAssertEqual(rows.first?.serverName, "Fake MCP")
@@ -642,6 +642,25 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(rows.first?.status, .succeeded)
         XCTAssertEqual(rows.first?.redactedArgumentSummary, "[REDACTED_SECRET]")
         XCTAssertEqual(rows.first?.statusLabel, "Succeeded")
+    }
+
+    func testAuditHistoryRejectsMissingRiskMetadataInsteadOfShowingUnknown() {
+        let events = [
+            AuditEvent(
+                category: "external_mcp",
+                action: "fake.read_status",
+                status: .succeeded,
+                metadata: [
+                    "server_name": "Fake MCP",
+                    "tool_name": "read_status",
+                    "approval": "missing"
+                ]
+            )
+        ]
+
+        XCTAssertThrowsError(try ExternalMCPAuditHistory.rows(from: events)) { error in
+            XCTAssertEqual(error as? ExternalMCPAuditHistoryError, .missingMetadata("risk"))
+        }
     }
 
     func testInvalidJSONRPCResponseFailsWithoutCrashing() async throws {

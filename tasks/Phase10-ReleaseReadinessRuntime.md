@@ -818,6 +818,13 @@
 - [x] `KnowledgeAdvancedTests` で FTS hit がある場合でも query embedding 破損が search failure になることを確認する。
 - [x] 完了条件: semantic search が壊れている状態を、通常の全文検索結果だけで成功したように見せない。
 
+### P10-104: External MCP audit history requires verified metadata
+
+- [x] `ExternalMCPAuditHistory.rows` は `risk` / `approval` の欠落を `unknown` に丸めない。
+- [x] MCP audit metadata 欠落は `ExternalMCPAuditHistoryError.missingMetadata` として caller へ返す。
+- [x] Settings の MCP Audit 読込は metadata decode failure を空履歴ではなく warning path に流す。
+- [x] 完了条件: MCP監査履歴が権限リスクや承認状態を欠いたまま、正常な外部呼び出し履歴として表示されない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
