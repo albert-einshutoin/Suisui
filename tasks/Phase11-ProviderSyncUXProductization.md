@@ -107,25 +107,25 @@
 
 ## P11-020: Subscription entitlement domain
 
-- [ ] `SubscriptionPlan` を `free` / `pro` / `founder` で定義し、local license / future billingの両方に対応できるdomain modelにする。
-- [ ] `EntitlementStore` protocolを作り、runtimeはKeychainまたはsigned local licenseから読み、testはfakeを使う。
-- [ ] `FeatureGate` に `externalSync`、`advancedMCPExecution`、`providerPresets` などを定義する。
-- [ ] FreeでPro機能を実行しようとした場合は、外部通信前に `EntitlementError.upgradeRequired` で止める。
-- [ ] 完了条件: UIの表示だけでなくdomain層で有料機能が実行不能になる。
+- [x] `SubscriptionPlan` を `free` / `pro` / `founder` で定義し、local license / future billingの両方に対応できるdomain modelにする。
+- [x] `EntitlementStore` protocolを作り、runtimeはKeychainまたはsigned local licenseから読み、testはfakeを使う。
+- [x] `FeatureGate` に `externalSync`、`advancedMCPExecution`、`providerPresets` などを定義する。
+- [x] FreeでPro機能を実行しようとした場合は、外部通信前に `EntitlementError.upgradeRequired` で止める。
+- [x] 完了条件: UIの表示だけでなくdomain層で有料機能が実行不能になる。
 
 ## P11-021: Paid sync shell without mock success
 
-- [ ] `SyncService` は `status()`、`startSync()`、`stopSync()`、`exportDryRun()` を持つが、バックエンド未構成時は成功扱いしない。
-- [ ] Freeユーザーは `startSync()` が必ず `upgradeRequired` で失敗し、network clientへ到達しないことをテストする。
-- [ ] Proユーザーでもbackend endpoint未設定なら `syncBackendNotConfigured` を返す。
-- [ ] 同期対象はProject / Task / Settingsの分類だけ先に定義し、外部SaaS connectorとは分離する。
-- [ ] 完了条件: 有料同期の入口は存在するが、mock同期や空成功でリリース品質を偽らない。
+- [x] `SyncService` は `status()`、`startSync()`、`stopSync()`、`exportDryRun()` を持つが、バックエンド未構成時は成功扱いしない。
+- [x] Freeユーザーは `startSync()` が必ず `upgradeRequired` で失敗し、network clientへ到達しないことをテストする。
+- [x] Proユーザーでもbackend endpoint未設定なら `syncBackendNotConfigured` を返す。
+- [x] 同期対象はProject / Task / Settingsの分類だけ先に定義し、外部SaaS connectorとは分離する。
+- [x] 完了条件: 有料同期の入口は存在するが、mock同期や空成功でリリース品質を偽らない。
 
 ## P11-022: Sync settings UI
 
-- [ ] Settingsに `Sync` セクションを追加し、Plan、Status、Last attempt、Data included、Upgrade requiredを表示する。
-- [ ] Freeでは同期toggleをdisabledにし、押した時も外部通信を発火しない。
-- [ ] Pro未構成では「Sync backend is not configured」と表示し、成功バッジを出さない。
+- [x] Settingsに `Sync` セクションを追加し、Plan、Status、Last attempt、Data included、Upgrade requiredを表示する。
+- [x] Freeでは同期toggleをdisabledにし、押した時も外部通信を発火しない。
+- [x] Pro未構成では「Sync backend is not configured」と表示し、成功バッジを出さない。
 - [ ] `ui-samples/07.png` の設定密度を参考に、AI Provider / MCP / Sync / Privacy が一画面で状態確認できるよう整理する。
 - [ ] 完了条件: ユーザーは自分のデータが同期されているか、なぜ同期できないかを1画面で理解できる。
 
@@ -183,8 +183,8 @@
 - [ ] `docs/mcp-compliance.md` が公式仕様と実装差分を説明している。
 - [ ] OpenAI / Claude / Gemini / Groq / OpenCode のprovider計画がSettingsとdomain modelに反映されている。
 - [ ] 実装済みprovider以外は保存不可または明確なunavailable表示になっている。
-- [ ] Freeユーザーは外部同期を開始できず、外部通信も発生しない。
-- [ ] Proユーザーでもsync backend未構成時はmock successにならない。
+- [x] Freeユーザーは外部同期を開始できず、外部通信も発生しない。
+- [x] Proユーザーでもsync backend未構成時はmock successにならない。
 - [ ] UX click-path auditで主要操作のクリック数が記録され、改善PRと紐づいている。
 - [ ] `ui-samples/` を参考にした画面密度・インスペクタ・Settingsの改善がスクリーンショットで検証されている。
 - [ ] 競合benchmarkから採用/非採用判断が残っている。

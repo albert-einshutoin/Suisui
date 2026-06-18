@@ -658,6 +658,20 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains("WhisperCppProvider()"))
     }
 
+    func testSettingsSurfaceShowsSyncGateWithoutMockSuccessPath() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let syncSource = try readPackageFile("Sources/SoloPMCore/App/SyncService.swift")
+        let entitlementSource = try readPackageFile("Sources/SoloPMCore/App/Entitlements.swift")
+
+        XCTAssertTrue(appSource.contains("@StateObject private var syncViewModel: SyncSettingsViewModel"))
+        XCTAssertTrue(appSource.contains("Section(\"Sync\")"))
+        XCTAssertTrue(appSource.contains("syncViewModel.startSync()"))
+        XCTAssertTrue(appSource.contains("KeychainEntitlementStore(secretStore: makeSecretStore())"))
+        XCTAssertTrue(syncSource.contains("throw SyncServiceError.syncBackendNotConfigured"))
+        XCTAssertTrue(entitlementSource.contains("case externalSync"))
+        XCTAssertFalse(syncSource.contains("return SyncStartResult(startedAt: Date())"))
+    }
+
     func testLLMHTTPErrorMappingDoesNotDropMalformedErrorBodies() throws {
         let llmProviderSource = try readPackageFile("Sources/SoloPMCore/Planning/LLMProvider.swift")
         let responsesSource = try readPackageFile("Sources/SoloPMCore/Planning/OpenAIResponsesProvider.swift")

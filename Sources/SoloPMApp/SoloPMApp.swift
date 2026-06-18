@@ -44,7 +44,8 @@ struct SoloPM: App {
                 settingsViewModel: AppRuntimeFactory.makeAppSettingsViewModel(),
                 launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
                 watcherDiagnosticsSnapshot: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot(),
-                externalMCPViewModel: AppRuntimeFactory.makeExternalMCPSettingsViewModel()
+                externalMCPViewModel: AppRuntimeFactory.makeExternalMCPSettingsViewModel(),
+                syncViewModel: AppRuntimeFactory.makeSyncSettingsViewModel()
             )
             .preferredColorScheme(appearancePreference.colorScheme)
         }
@@ -764,6 +765,7 @@ private struct SettingsView: View {
     @StateObject private var settingsViewModel: AppSettingsViewModel
     @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
     @StateObject private var externalMCPViewModel: ExternalMCPSettingsViewModel
+    @StateObject private var syncViewModel: SyncSettingsViewModel
     @State private var isConfirmingMCPRegistrationDeletion = false
     @AppStorage(SoloPMAppearancePreference.storageKey) private var appearancePreference: SoloPMAppearancePreference = .system
 
@@ -771,12 +773,14 @@ private struct SettingsView: View {
         settingsViewModel: AppSettingsViewModel,
         launchAtLoginViewModel: LaunchAtLoginSettingsViewModel,
         watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot,
-        externalMCPViewModel: ExternalMCPSettingsViewModel
+        externalMCPViewModel: ExternalMCPSettingsViewModel,
+        syncViewModel: SyncSettingsViewModel
     ) {
         self.watcherDiagnosticsSnapshot = watcherDiagnosticsSnapshot
         _settingsViewModel = StateObject(wrappedValue: settingsViewModel)
         _launchAtLoginViewModel = StateObject(wrappedValue: launchAtLoginViewModel)
         _externalMCPViewModel = StateObject(wrappedValue: externalMCPViewModel)
+        _syncViewModel = StateObject(wrappedValue: syncViewModel)
     }
 
     var body: some View {
@@ -869,6 +873,38 @@ private struct SettingsView: View {
                     }
                 }
                 LabeledContent("Shortcut", value: "Option + Space")
+            }
+
+            Section("Sync") {
+                LabeledContent("Plan", value: syncViewModel.planLabel)
+                LabeledContent("Status", value: syncViewModel.statusLabel)
+                LabeledContent("Last Attempt", value: syncViewModel.lastAttemptLabel)
+                LabeledContent("Data Included", value: syncViewModel.dataIncludedLabel)
+                Toggle(
+                    isOn: Binding(
+                        get: { syncViewModel.isSyncEnabled },
+                        set: { isEnabled in
+                            if isEnabled {
+                                syncViewModel.startSync()
+                            } else {
+                                syncViewModel.stopSync()
+                            }
+                        }
+                    )
+                ) {
+                    Label("External Sync", systemImage: "arrow.triangle.2.circlepath")
+                }
+                .disabled(!syncViewModel.canEnableSync)
+                if !syncViewModel.canEnableSync {
+                    Label("Upgrade required", systemImage: "lock")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let errorMessage = syncViewModel.errorMessage {
+                    Label(errorMessage, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
             }
 
             Section("Privacy") {
@@ -1210,6 +1246,17 @@ private enum AppRuntimeFactory {
     @MainActor
     static func makeLaunchAtLoginSettingsViewModel() -> LaunchAtLoginSettingsViewModel {
         LaunchAtLoginSettingsViewModel(client: SMAppServiceLaunchAtLoginClient())
+    }
+
+    @MainActor
+    static func makeSyncSettingsViewModel() -> SyncSettingsViewModel {
+        SyncSettingsViewModel(
+            service: SyncService(
+                entitlementStore: KeychainEntitlementStore(secretStore: makeSecretStore()),
+                configuration: .notConfigured,
+                networkClient: UnavailableSyncNetworkClient()
+            )
+        )
     }
 
     static func makeWatcherDiagnosticsSnapshot() -> WatcherDiagnosticsSnapshot {
