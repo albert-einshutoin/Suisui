@@ -202,6 +202,17 @@ is_placeholder_manual_environment() {
   esac
 }
 
+manual_checks_requested() {
+  [[ "$RELEASE_MACHINE_LAUNCH" == "true" \
+    || "$CHECKSUM_VERIFICATION" == "true" \
+    || "$CLEAN_DMG_INSTALL" == "true" \
+    || "$APPLICATIONS_FOLDER_INSTALL" == "true" \
+    || "$GATEKEEPER_ACCEPTED" == "true" \
+    || "$CLEAN_ENVIRONMENT_LAUNCH" == "true" \
+    || "$LOGIN_ITEM_TOGGLE" == "true" \
+    || "$SPARKLE_APPCAST_METADATA" == "true" ]]
+}
+
 artifact_path_for_compare() {
   local artifact_path="$1"
   if [[ "$artifact_path" == "$ROOT_DIR/"* ]]; then
@@ -397,7 +408,8 @@ require_release_appcast() {
   fi
 }
 
-if [[ "${#NOTES[@]}" -eq 0 ]]; then
+EXPLICIT_NOTE_COUNT="${#NOTES[@]}"
+if [[ "$EXPLICIT_NOTE_COUNT" -eq 0 ]]; then
   NOTES+=("Generated from packaging/app_metadata.env. Set manual check flags only after testing the signed and notarized build.")
 fi
 
@@ -431,17 +443,14 @@ fi
 require_release_package_evidence
 require_artifact_file_integrity "$artifact_sha" "$artifact_path"
 
-if [[ "$RELEASE_MACHINE_LAUNCH" == "true" \
-  || "$CHECKSUM_VERIFICATION" == "true" \
-  || "$CLEAN_DMG_INSTALL" == "true" \
-  || "$APPLICATIONS_FOLDER_INSTALL" == "true" \
-  || "$GATEKEEPER_ACCEPTED" == "true" \
-  || "$CLEAN_ENVIRONMENT_LAUNCH" == "true" \
-  || "$LOGIN_ITEM_TOGGLE" == "true" \
-  || "$SPARKLE_APPCAST_METADATA" == "true" ]]; then
+if manual_checks_requested; then
   MANUAL_ENVIRONMENT="$(trim_text "$MANUAL_ENVIRONMENT")"
   if is_placeholder_manual_environment "$MANUAL_ENVIRONMENT"; then
     echo "manual release evidence requires a concrete --manual-environment when manual check flags are set" >&2
+    exit 2
+  fi
+  if [[ "$EXPLICIT_NOTE_COUNT" -eq 0 ]]; then
+    echo "manual release evidence requires at least one explicit --note" >&2
     exit 2
   fi
 fi

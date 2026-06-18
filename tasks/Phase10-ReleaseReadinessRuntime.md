@@ -1124,6 +1124,13 @@
 - [x] `ReleasePipelineTests` で stale package source commit と stale release source commit を固定する。
 - [x] 完了条件: 古い artifact や別 revision の manual evidence が、現在の source checkout の release ready 証跡として扱われない。
 
+### P10-145: Manual release evidence must include explicit review notes
+
+- [x] `create_release_evidence.sh` は manual check flag が 1 つでも true の場合、少なくとも 1 つの明示的な `--note` を必須にする。
+- [x] `verify_release_environment.sh` は hand-written release evidence の `review.notes` 欠落を blocker にする。
+- [x] `ReleasePipelineTests` で manual flags without note と missing review notes evidence を固定する。
+- [x] 完了条件: Gatekeeper / clean install / login item などの manual gate が、理由や判断根拠のない boilerplate review note だけで release ready にならない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

@@ -388,6 +388,20 @@ require_evidence_concrete_manual_environment() {
   fi
 }
 
+require_evidence_review_notes() {
+  local value
+
+  if ! value="$(plutil -extract "review.notes.0" raw -o - "$RELEASE_EVIDENCE_FILE" 2>/dev/null)"; then
+    add_blocker "release evidence missing review notes: review.notes must include at least one explicit note"
+    return
+  fi
+
+  value="$(trim_text "$value")"
+  if [[ -z "$value" ]]; then
+    add_blocker "release evidence missing review notes: review.notes must include at least one explicit note"
+  fi
+}
+
 require_evidence_current_git_commit() {
   local value
 
@@ -696,6 +710,7 @@ if [[ -f "$RELEASE_EVIDENCE_FILE" ]]; then
     require_evidence_concrete_manual_environment
     require_evidence_non_empty "review.checkedBy" "reviewer"
     require_evidence_non_empty "review.checkedAt" "review timestamp"
+    require_evidence_review_notes
   else
     add_blocker "release evidence is not valid JSON or plist: $RELEASE_EVIDENCE_FILE"
   fi
