@@ -101,6 +101,65 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(updated.subtitle, "0 open / 0 total")
     }
 
+    func testCompletingProjectMarksOpenTasksDone() throws {
+        let store = try makeStore()
+        let project = try store.createProject(title: "Launch Readiness")
+        _ = try store.createTask(ProjectBoardTaskDraft(
+            projectID: project.id,
+            title: "Prepare launch checklist",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-21T00:00:00Z"
+        ))
+
+        _ = try store.completeProject(id: project.id)
+
+        let snapshot = try store.loadSnapshot()
+        let completed = try XCTUnwrap(snapshot.projects.first { $0.id == project.id })
+
+        XCTAssertTrue(completed.isCompleted)
+        XCTAssertEqual(completed.column(.planned)?.tasks, [])
+        XCTAssertEqual(completed.column(.done)?.tasks.map(\.title), ["Prepare launch checklist"])
+        XCTAssertEqual(completed.subtitle, "0 open / 1 total")
+    }
+
+    func testCreatingOpenTaskReopensCompletedProject() throws {
+        let store = try makeStore()
+        let project = try store.createProject(title: "Launch Readiness")
+        _ = try store.completeProject(id: project.id)
+
+        _ = try store.createTask(ProjectBoardTaskDraft(
+            projectID: project.id,
+            title: "Follow-up from release review",
+            status: .planned,
+            priority: .medium
+        ))
+
+        let snapshot = try store.loadSnapshot()
+        let reopened = try XCTUnwrap(snapshot.projects.first { $0.id == project.id })
+
+        XCTAssertFalse(reopened.isCompleted)
+        XCTAssertEqual(reopened.column(.planned)?.tasks.map(\.title), ["Follow-up from release review"])
+        XCTAssertEqual(reopened.subtitle, "1 open / 1 total")
+    }
+
+    func testArchivedProjectRejectsNewTaskCreation() throws {
+        let store = try makeStore()
+        let project = try store.createProject(title: "Paused Initiative")
+        _ = try store.archiveProject(id: project.id)
+
+        XCTAssertThrowsError(
+            try store.createTask(ProjectBoardTaskDraft(
+                projectID: project.id,
+                title: "Hidden work should not be created",
+                status: .planned,
+                priority: .medium
+            ))
+        ) { error in
+            XCTAssertEqual(error as? ProjectBoardStoreError, .archivedProjectCannotAcceptTasks)
+        }
+    }
+
     func testArchiveProjectRemovesItFromActiveBoardWithoutDeletingRows() throws {
         let stores = try makeStoreBundle()
         let project = try stores.board.createProject(title: "Stale Initiative")

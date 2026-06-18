@@ -311,7 +311,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
                 WHERE tasks.status != 'completed'
                   AND tasks.due_at IS NOT NULL
                   AND tasks.due_at <= '\(SQL.escape(cutoff))'
-                  AND COALESCE(projects.status, 'active') != 'archived'
+                  AND COALESCE(projects.status, 'active') NOT IN ('completed', 'archived')
                 ORDER BY tasks.due_at ASC, tasks.id ASC;
                 """
             )
@@ -337,7 +337,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
                 WHERE tasks.status != 'completed'
                   AND tasks.due_at IS NOT NULL
                   AND tasks.due_at < '\(SQL.escape(cutoff))'
-                  AND COALESCE(projects.status, 'active') != 'archived'
+                  AND COALESCE(projects.status, 'active') NOT IN ('completed', 'archived')
                 ORDER BY tasks.due_at ASC, tasks.id ASC;
                 """
             )
@@ -354,10 +354,29 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             LEFT JOIN projects ON tasks.project_id = projects.id
             WHERE tasks.status != 'completed'
               AND tasks.due_at IS NOT NULL
-              AND COALESCE(projects.status, 'active') != 'archived'
+              AND COALESCE(projects.status, 'active') NOT IN ('completed', 'archived')
             ORDER BY tasks.due_at ASC, tasks.id ASC;
             """
         ).map(TaskRecord.init(row:))
+    }
+
+    public func completeOpenTasks(projectID: Int64) throws -> [TaskRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        try connection.execute(
+            """
+            UPDATE tasks
+            SET status = 'completed',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE project_id = \(projectID)
+              AND status != 'completed';
+            """
+        )
+
+        return try connection
+            .queryRows("SELECT * FROM tasks WHERE project_id = \(projectID) ORDER BY id ASC;")
+            .map(TaskRecord.init(row:))
     }
 
     public func get(id: Int64) throws -> TaskRecord {

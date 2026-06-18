@@ -132,7 +132,7 @@ public struct SoloPMCLIReadOnlyReporter {
         SELECT COUNT(*) AS count FROM tasks
         LEFT JOIN projects ON tasks.project_id = projects.id
         WHERE tasks.status != 'completed'
-          AND COALESCE(projects.status, 'active') != 'archived';
+          AND COALESCE(projects.status, 'active') NOT IN ('completed', 'archived');
         """
     }
 }

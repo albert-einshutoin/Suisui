@@ -77,6 +77,27 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(due.map(\.title), ["Visible task"])
     }
 
+    func testTaskStoreDeadlineQueriesExcludeCompletedProjectTasks() throws {
+        let connection = try migratedConnection()
+        let projects = SQLiteProjectStore(connection: connection)
+        let tasks = SQLiteTaskStore(connection: connection)
+        let completedProject = try projects.create(title: "Completed Project")
+        _ = try projects.update(id: completedProject.id, status: "completed")
+
+        _ = try tasks.create(
+            title: "Completed project task",
+            projectID: completedProject.id,
+            dueAt: "2026-06-17T00:00:00Z"
+        )
+        _ = try tasks.create(title: "Visible task", dueAt: "2026-06-17T00:00:00Z")
+
+        let due = try tasks.listDue(onOrBefore: "2026-06-18T00:00:00Z")
+        let deadlineCandidates = try tasks.listDeadlineCandidates()
+
+        XCTAssertEqual(due.map(\.title), ["Visible task"])
+        XCTAssertEqual(deadlineCandidates.map(\.title), ["Visible task"])
+    }
+
     func testKnowledgeFrameStoreSearchesWithFTS5() throws {
         let connection = try migratedConnection()
         let store = SQLiteKnowledgeFrameStore(connection: connection)

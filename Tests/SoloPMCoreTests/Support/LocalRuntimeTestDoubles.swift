@@ -70,6 +70,25 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         }
 
         snapshot.projects[projectIndex].status = "completed"
+        var completedTasks = snapshot.projects[projectIndex].tasks.map { task in
+            ProjectBoardTask(
+                id: task.id,
+                projectID: task.projectID,
+                title: task.title,
+                detail: task.detail,
+                status: .done,
+                priority: task.priority,
+                dueAt: task.dueAt
+            )
+        }
+        completedTasks.sort { $0.id > $1.id }
+        for columnIndex in snapshot.projects[projectIndex].columns.indices {
+            snapshot.projects[projectIndex].columns[columnIndex].tasks.removeAll()
+        }
+        if let doneIndex = snapshot.projects[projectIndex].columns.firstIndex(where: { $0.status == .done }) {
+            snapshot.projects[projectIndex].columns[doneIndex].tasks = completedTasks
+        }
+        refreshProjectSubtitle(at: projectIndex)
         return snapshot.projects[projectIndex]
     }
 
@@ -103,6 +122,7 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         guard !title.isEmpty else {
             throw ProjectBoardStoreError.emptyTitle
         }
+        try prepareProjectForTaskMutation(projectID: draft.projectID, taskStatus: draft.status)
 
         let task = ProjectBoardTask(
             id: nextTaskID,
@@ -124,6 +144,7 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         guard !title.isEmpty else {
             throw ProjectBoardStoreError.emptyTitle
         }
+        try prepareProjectForTaskMutation(projectID: draft.projectID, taskStatus: draft.status)
 
         let task = ProjectBoardTask(
             id: id,
@@ -162,6 +183,20 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
 
         snapshot.projects[projectIndex].columns[columnIndex].tasks.insert(task, at: 0)
         refreshProjectSubtitle(at: projectIndex)
+    }
+
+    private func prepareProjectForTaskMutation(projectID: Int64, taskStatus: ProjectTaskStatus) throws {
+        guard let projectIndex = snapshot.projects.firstIndex(where: { $0.id == projectID }) else {
+            throw DatabaseError.stepFailed("Project \(projectID) was not found.")
+        }
+
+        if snapshot.projects[projectIndex].isArchived {
+            throw ProjectBoardStoreError.archivedProjectCannotAcceptTasks
+        }
+
+        if snapshot.projects[projectIndex].isCompleted, taskStatus != .done {
+            snapshot.projects[projectIndex].status = "active"
+        }
     }
 
     private func refreshProjectSubtitle(at projectIndex: Int) {

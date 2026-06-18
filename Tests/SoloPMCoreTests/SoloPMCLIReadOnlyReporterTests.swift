@@ -22,7 +22,7 @@ final class SoloPMCLIReadOnlyReporterTests: XCTestCase {
         )
     }
 
-    func testTasksDueReadsDueTasksAndExcludesCompletedOrArchivedProjectTasks() throws {
+    func testTasksDueReadsDueTasksAndExcludesCompletedArchivedOrCompletedProjectTasks() throws {
         let databaseURL = try makeSeededDatabase()
         let reporter = SoloPMCLIReadOnlyReporter(databaseURL: databaseURL, now: fixedNow())
 
@@ -34,6 +34,7 @@ final class SoloPMCLIReadOnlyReporterTests: XCTestCase {
         XCTAssertTrue(lines.contains("- Due Task | due: 2026-06-18T00:00:00Z | priority: high"))
         XCTAssertFalse(lines.joined(separator: "\n").contains("Completed Task"))
         XCTAssertFalse(lines.joined(separator: "\n").contains("Archived Task"))
+        XCTAssertFalse(lines.joined(separator: "\n").contains("Completed Project Task"))
     }
 
     func testFramesSearchReadsKnowledgeFrameFTS() throws {
@@ -75,7 +76,9 @@ final class SoloPMCLIReadOnlyReporterTests: XCTestCase {
 
         let activeProject = try projectStore.create(title: "Active Project")
         let archivedProject = try projectStore.create(title: "Archived Project")
+        let completedProject = try projectStore.create(title: "Completed Project")
         _ = try projectStore.archive(id: archivedProject.id)
+        _ = try projectStore.update(id: completedProject.id, status: "completed")
 
         _ = try taskStore.create(
             title: "Due Task",
@@ -95,6 +98,12 @@ final class SoloPMCLIReadOnlyReporterTests: XCTestCase {
             projectID: archivedProject.id,
             dueAt: "2026-06-18T00:00:00Z",
             priority: "low"
+        )
+        _ = try taskStore.create(
+            title: "Completed Project Task",
+            projectID: completedProject.id,
+            dueAt: "2026-06-18T00:00:00Z",
+            priority: "high"
         )
         _ = try frameStore.create(
             name: "Release readiness frame",

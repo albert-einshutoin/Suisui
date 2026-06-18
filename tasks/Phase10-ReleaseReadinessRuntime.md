@@ -305,6 +305,15 @@
 - [x] `verify_release_environment.sh` は evidence の artifact SHA-256 と package checksum の一致を検査する。
 - [x] 完了条件: release owner が手書き JSON で build metadata / checksum を間違えにくい。
 
+### P10-036: Completed project task consistency
+
+- [x] `ProjectBoardStore.completeProject` は project を completed にするだけでなく、配下の open task を Done column に移す。
+- [x] completed project に新しい open task を追加した場合は project を active に戻し、状態の意味を壊さない。
+- [x] archived project への task 作成は UI / store / tool path で拒否し、hidden work を作らない。
+- [x] `task.list_due` / CLI due / open count / deadline summary は completed project 配下 task を active workload として扱わない。
+- [x] `project.complete` tool は task store を必須にし、voice / review 経由でも ProjectBoard と同じ完了 semantics にする。
+- [x] 完了条件: UI、CLI、review tool、deadline query のすべてで completed / archived project の task 状態が一貫する。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

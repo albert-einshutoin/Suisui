@@ -176,6 +176,7 @@ public struct ProjectBoardTaskDraft: Equatable, Sendable {
 public enum ProjectBoardStoreError: Error, Equatable, Sendable {
     case emptyTitle
     case emptyProjectTitle
+    case archivedProjectCannotAcceptTasks
 }
 
 public protocol ProjectBoardStore {
@@ -239,6 +240,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     @discardableResult
     public func completeProject(id: Int64) throws -> ProjectBoardProject {
         let record = try projectStore.update(id: id, status: "completed")
+        _ = try taskStore.completeOpenTasks(projectID: id)
         let tasks = try taskStore.listAll().compactMap(makeBoardTask)
         return makeBoardProject(project: record, tasks: tasks)
     }
@@ -260,6 +262,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     @discardableResult
     public func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
         let normalized = try normalizedDraft(draft)
+        try prepareProjectForTaskMutation(projectID: normalized.projectID, taskStatus: normalized.status)
         let record = try taskStore.create(
             title: normalized.title,
             projectID: normalized.projectID,
@@ -275,6 +278,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     @discardableResult
     public func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
         let normalized = try normalizedDraft(draft)
+        try prepareProjectForTaskMutation(projectID: normalized.projectID, taskStatus: normalized.status)
         let record = try taskStore.update(
             id: id,
             title: normalized.title,
@@ -289,6 +293,17 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
 
     public func deleteTask(id: Int64) throws {
         try taskStore.delete(id: id)
+    }
+
+    private func prepareProjectForTaskMutation(projectID: Int64, taskStatus: ProjectTaskStatus) throws {
+        let project = try projectStore.get(id: projectID)
+        if project.status == "archived" {
+            throw ProjectBoardStoreError.archivedProjectCannotAcceptTasks
+        }
+
+        if project.status == "completed", taskStatus != .done {
+            _ = try projectStore.restore(id: projectID)
+        }
     }
 
     private func ensureProjects(includeArchived: Bool) throws -> [ProjectRecord] {
@@ -446,6 +461,9 @@ public final class ProjectBoardViewModel: ObservableObject {
             selectedTaskID = task.id
             onChange()
             return task
+        } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
+            errorMessage = "Restore the project before adding tasks."
+            return nil
         } catch ProjectBoardStoreError.emptyTitle {
             errorMessage = "Task title is required."
             return nil
@@ -562,6 +580,8 @@ public final class ProjectBoardViewModel: ObservableObject {
             load()
             selectedTaskID = selectedTask.id
             onChange()
+        } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
+            errorMessage = "Restore the project before editing tasks."
         } catch ProjectBoardStoreError.emptyTitle {
             errorMessage = "Task title is required."
         } catch {

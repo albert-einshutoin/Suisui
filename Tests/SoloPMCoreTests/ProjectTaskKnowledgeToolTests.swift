@@ -34,6 +34,143 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(try stores.tasks.listAll().map(\.title), ["Draft", "Review"])
     }
 
+    func testProjectCompleteToolCompletesOpenProjectTasks() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "Launch Readiness")
+        let task = try stores.tasks.create(
+            title: "Prepare release notes",
+            projectID: project.id,
+            status: "planned"
+        )
+        let tool = ProjectTool(name: .projectComplete, store: stores.projects, taskStore: stores.tasks)
+
+        let result = try tool.execute(
+            arguments: ["id": .number(Double(project.id))],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .succeeded)
+        XCTAssertEqual(try stores.projects.get(id: project.id).status, "completed")
+        XCTAssertEqual(try stores.tasks.get(id: task.id).status, "completed")
+    }
+
+    func testProjectCompleteToolRequiresTaskStore() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "Launch Readiness")
+        let tool = ProjectTool(name: .projectComplete, store: stores.projects)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: ["id": .number(Double(project.id))],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.projectComplete, "Task store is required to complete project tasks.")
+            )
+        }
+        XCTAssertEqual(try stores.projects.get(id: project.id).status, "active")
+    }
+
+    func testTaskCreateToolReopensCompletedProjectForNewOpenWork() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "Launch Readiness")
+        _ = try stores.projects.update(id: project.id, status: "completed")
+        let tool = TaskTool(name: .taskCreate, store: stores.tasks, projectStore: stores.projects)
+
+        _ = try tool.execute(
+            arguments: [
+                "title": .string("Address release review"),
+                "projectId": .number(Double(project.id))
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(try stores.projects.get(id: project.id).status, "active")
+        XCTAssertEqual(try stores.tasks.listAll().map(\.title), ["Address release review"])
+    }
+
+    func testTaskCreateWithProjectIDRequiresProjectStore() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "Launch Readiness")
+        let tool = TaskTool(name: .taskCreate, store: stores.tasks)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "title": .string("Unvalidated project task"),
+                    "projectId": .number(Double(project.id))
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.taskCreate, "Project store is required to validate project task mutations.")
+            )
+        }
+        XCTAssertEqual(try stores.tasks.listAll(), [])
+    }
+
+    func testTaskCreateToolRejectsArchivedProject() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "Paused Initiative")
+        _ = try stores.projects.archive(id: project.id)
+        let tool = TaskTool(name: .taskCreate, store: stores.tasks, projectStore: stores.projects)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "title": .string("Hidden follow-up"),
+                    "projectId": .number(Double(project.id))
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .validationFailed(.taskCreate, "Restore the project before adding tasks.")
+            )
+        }
+        XCTAssertEqual(try stores.tasks.listAll(), [])
+    }
+
+    func testTaskBulkCreateRejectsArchivedProjectWithoutReopeningCompletedProject() throws {
+        let stores = try makeStores()
+        let completedProject = try stores.projects.create(title: "Completed Initiative")
+        let archivedProject = try stores.projects.create(title: "Paused Initiative")
+        _ = try stores.projects.update(id: completedProject.id, status: "completed")
+        _ = try stores.projects.archive(id: archivedProject.id)
+        let tool = TaskTool(name: .taskBulkCreate, store: stores.tasks, projectStore: stores.projects)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "tasks": .array([
+                        .object([
+                            "title": .string("Follow-up work"),
+                            "projectId": .number(Double(completedProject.id))
+                        ]),
+                        .object([
+                            "title": .string("Hidden archived work"),
+                            "projectId": .number(Double(archivedProject.id))
+                        ])
+                    ])
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .validationFailed(.taskBulkCreate, "Restore the project before adding tasks.")
+            )
+        }
+
+        XCTAssertEqual(try stores.projects.get(id: completedProject.id).status, "completed")
+        XCTAssertEqual(try stores.tasks.listAll(), [])
+    }
+
     func testTaskBulkCreateRejectsInvalidBatchWithoutPartialRows() throws {
         let stores = try makeStores()
         let tool = TaskTool(name: .taskBulkCreate, store: stores.tasks)

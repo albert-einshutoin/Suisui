@@ -6,13 +6,15 @@ public struct ProjectTool: Tool {
     public let inputSchema: ToolInputSchema
     public let permissionLevel: ToolPermissionLevel
     private let store: SQLiteProjectStore
+    private let taskStore: SQLiteTaskStore?
 
-    public init(name: ActionTool, store: SQLiteProjectStore) {
+    public init(name: ActionTool, store: SQLiteProjectStore, taskStore: SQLiteTaskStore? = nil) {
         self.name = name
         self.description = name.rawValue
         self.inputSchema = ProjectTool.schema(for: name)
         self.permissionLevel = name.defaultRiskLevel >= .write ? .writeWithApproval : .read
         self.store = store
+        self.taskStore = taskStore
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
@@ -46,7 +48,11 @@ public struct ProjectTool: Tool {
             )
             return ToolResult(tool: name, status: .succeeded, summary: "Updated project \(record.title)", output: ["projectId": .number(Double(record.id))])
         case .projectComplete:
+            guard let taskStore else {
+                throw ToolExecutionError.executionFailed(name, "Task store is required to complete project tasks.")
+            }
             let record = try store.update(id: try args.requiredInt64("id"), status: "completed")
+            _ = try taskStore.completeOpenTasks(projectID: record.id)
             return ToolResult(tool: name, status: .succeeded, summary: "Completed project \(record.title)", output: ["projectId": .number(Double(record.id))])
         case .projectGet:
             let record = try store.get(id: try args.requiredInt64("id"))
@@ -79,13 +85,15 @@ public struct TaskTool: Tool {
     public let inputSchema: ToolInputSchema
     public let permissionLevel: ToolPermissionLevel
     private let store: SQLiteTaskStore
+    private let projectStore: SQLiteProjectStore?
 
-    public init(name: ActionTool, store: SQLiteTaskStore) {
+    public init(name: ActionTool, store: SQLiteTaskStore, projectStore: SQLiteProjectStore? = nil) {
         self.name = name
         self.description = name.rawValue
         self.inputSchema = TaskTool.schema(for: name)
         self.permissionLevel = name.defaultRiskLevel >= .write ? .writeWithApproval : .read
         self.store = store
+        self.projectStore = projectStore
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
@@ -95,9 +103,11 @@ public struct TaskTool: Tool {
         let args = ToolArguments(arguments, tool: name)
         switch name {
         case .taskCreate:
+            let projectID = args.optionalInt64("projectId")
+            try prepareProjectForTaskMutation(projectID: projectID, status: "open")
             let record = try store.create(
                 title: try args.requiredString("title"),
-                projectID: args.optionalInt64("projectId"),
+                projectID: projectID,
                 dueAt: args.optionalString("dueAt"),
                 priority: args.optionalString("priority"),
                 sourceCommand: args.optionalString("sourceCommand")
@@ -125,10 +135,16 @@ public struct TaskTool: Tool {
                     sourceCommand: taskArgs.optionalString("sourceCommand")
                 )
             }
+            try drafts.forEach { try rejectArchivedProject(projectID: $0.projectID) }
+            try drafts.forEach { try reopenCompletedProjectIfNeeded(projectID: $0.projectID, status: $0.status) }
             let created = try store.createMany(drafts).map { JSONValue.number(Double($0.id)) }
             return ToolResult(tool: name, status: .succeeded, summary: "Created \(created.count) tasks", output: ["taskIds": .array(created)])
         case .taskUpdate:
-            let record = try store.update(id: try args.requiredInt64("id"), title: args.optionalString("title"), status: args.optionalString("status"))
+            let taskID = try args.requiredInt64("id")
+            let current = try store.get(id: taskID)
+            let nextStatus = args.optionalString("status") ?? current.status
+            try prepareProjectForTaskMutation(projectID: current.projectID, status: nextStatus)
+            let record = try store.update(id: taskID, title: args.optionalString("title"), status: args.optionalString("status"))
             return ToolResult(tool: name, status: .succeeded, summary: "Updated task \(record.title)", output: ["taskId": .number(Double(record.id))])
         case .taskComplete:
             let record = try store.update(id: try args.requiredInt64("id"), status: "completed")
@@ -141,6 +157,39 @@ public struct TaskTool: Tool {
             return ToolResult(tool: name, status: .succeeded, summary: "\(tasks.count) overdue tasks", output: ["count": .number(Double(tasks.count))])
         default:
             throw ToolExecutionError.executionFailed(name, "Unsupported task tool.")
+        }
+    }
+
+    private func prepareProjectForTaskMutation(projectID: Int64?, status: String) throws {
+        try rejectArchivedProject(projectID: projectID)
+        try reopenCompletedProjectIfNeeded(projectID: projectID, status: status)
+    }
+
+    private func rejectArchivedProject(projectID: Int64?) throws {
+        guard let projectID else {
+            return
+        }
+        guard let projectStore else {
+            throw ToolExecutionError.executionFailed(name, "Project store is required to validate project task mutations.")
+        }
+
+        let project = try projectStore.get(id: projectID)
+        if project.status == "archived" {
+            throw ToolExecutionError.validationFailed(name, "Restore the project before adding tasks.")
+        }
+    }
+
+    private func reopenCompletedProjectIfNeeded(projectID: Int64?, status: String) throws {
+        guard let projectID else {
+            return
+        }
+        guard let projectStore else {
+            throw ToolExecutionError.executionFailed(name, "Project store is required to validate project task mutations.")
+        }
+
+        let project = try projectStore.get(id: projectID)
+        if project.status == "completed", ProjectTaskStatus.normalized(status) != .done {
+            _ = try projectStore.restore(id: projectID)
         }
     }
 
@@ -285,14 +334,14 @@ public extension ToolRegistry {
         knowledgeStore: SQLiteKnowledgeFrameStore
     ) -> [any Tool] {
         [
-            ProjectTool(name: .projectCreate, store: projectStore),
-            ProjectTool(name: .projectUpdate, store: projectStore),
-            ProjectTool(name: .projectList, store: projectStore),
-            ProjectTool(name: .projectGet, store: projectStore),
-            ProjectTool(name: .projectComplete, store: projectStore),
-            TaskTool(name: .taskCreate, store: taskStore),
-            TaskTool(name: .taskBulkCreate, store: taskStore),
-            TaskTool(name: .taskUpdate, store: taskStore),
+            ProjectTool(name: .projectCreate, store: projectStore, taskStore: taskStore),
+            ProjectTool(name: .projectUpdate, store: projectStore, taskStore: taskStore),
+            ProjectTool(name: .projectList, store: projectStore, taskStore: taskStore),
+            ProjectTool(name: .projectGet, store: projectStore, taskStore: taskStore),
+            ProjectTool(name: .projectComplete, store: projectStore, taskStore: taskStore),
+            TaskTool(name: .taskCreate, store: taskStore, projectStore: projectStore),
+            TaskTool(name: .taskBulkCreate, store: taskStore, projectStore: projectStore),
+            TaskTool(name: .taskUpdate, store: taskStore, projectStore: projectStore),
             TaskTool(name: .taskComplete, store: taskStore),
             TaskTool(name: .taskListDue, store: taskStore),
             TaskTool(name: .taskListOverdue, store: taskStore),
