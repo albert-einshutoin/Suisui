@@ -166,6 +166,11 @@ private struct VoiceCaptureView: View {
                 }
 
                 StatusRow(phase: viewModel.phase)
+                if let message = viewModel.auditErrorMessage {
+                    Label(message, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
 
                 TextEditor(
                     text: Binding(

@@ -636,6 +636,13 @@
 - [x] `ReviewSessionViewModel` は executor 由来の audit warning を `auditErrorMessage` に反映する。
 - [x] 完了条件: 実際には tool が成功したのに、audit write failure だけで UI 上の実行結果が消えない。
 
+### P10-078: Voice planning audit failure does not lose generated plan
+
+- [x] `VoiceCaptureViewModel` は planning audit completion failure を `try?` で捨てない。
+- [x] LLM plan 生成後の audit failure は `planningResponse` と `reviewReady` を保持し、`auditErrorMessage` に warning を出す。
+- [x] Voice Command UI は planning audit warning を通常 phase とは別に表示する。
+- [x] 完了条件: 計画生成は成功したのに、audit write failure だけで Review へ進めなくなる状態を作らない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
