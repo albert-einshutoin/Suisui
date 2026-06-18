@@ -445,6 +445,7 @@
 
 - [x] release checklist は user download 用 DMG と Sparkle appcast 用 ZIP を `SOLOPM_PACKAGE_FORMAT=all` で同時生成する。
 - [x] release evidence / final preflight は `SOLOPM_RELEASE_ARTIFACT_SHA256_FILE` で DMG checksum を明示し、複数 checksum の自動選択を避ける。
+- [x] `create_release_evidence.sh` / `verify_release_environment.sh` は checksum file が指す release artifact file の存在と実 SHA-256 を検証し、手書き checksum だけでは evidence 作成 / release ready にしない。
 - [x] 完了条件: checklist 通りに進めた場合、appcast 用 ZIP 不足や evidence checksum の曖昧選択で release が止まらない。
 
 ### P10-056: Release Sparkle feed gate

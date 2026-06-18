@@ -180,6 +180,15 @@ artifact_path_for_compare() {
   fi
 }
 
+artifact_file_for_path() {
+  local artifact_path="$1"
+  if [[ "$artifact_path" == /* ]]; then
+    printf "%s" "$artifact_path"
+  else
+    printf "%s/%s" "$ROOT_DIR" "$artifact_path"
+  fi
+}
+
 find_checksum_file() {
   if [[ -n "$CHECKSUM_FILE" ]]; then
     printf "%s" "$CHECKSUM_FILE"
@@ -274,6 +283,35 @@ require_release_package_evidence() {
   fi
 }
 
+require_artifact_file_integrity() {
+  local expected_sha="$1"
+  local expected_artifact_path="$2"
+  local artifact_file
+  local actual_sha
+
+  if [[ -z "$expected_artifact_path" ]]; then
+    echo "release artifact checksum file is missing artifact path" >&2
+    exit 2
+  fi
+
+  artifact_file="$(artifact_file_for_path "$expected_artifact_path")"
+  if [[ ! -f "$artifact_file" ]]; then
+    echo "missing release artifact file: $expected_artifact_path" >&2
+    exit 2
+  fi
+
+  if ! command -v shasum >/dev/null 2>&1; then
+    echo "release evidence requires shasum to verify artifact checksum" >&2
+    exit 2
+  fi
+
+  actual_sha="$(shasum -a 256 "$artifact_file" | awk 'NF { print $1; exit }')"
+  if [[ "$actual_sha" != "$expected_sha" ]]; then
+    echo "release artifact SHA-256 does not match checksum file: expected '$expected_sha', got '$actual_sha'" >&2
+    exit 2
+  fi
+}
+
 require_release_signing_context() {
   if [[ -z "$SIGNING_IDENTITY" || -z "$NOTARY_PROFILE" ]]; then
     echo "release evidence requires SOLOPM_SIGNING_IDENTITY and SOLOPM_NOTARY_PROFILE" >&2
@@ -318,6 +356,7 @@ if [[ "$artifact_sha" == "missing-release-artifact" || "$artifact_path" == "miss
   exit 2
 fi
 require_release_package_evidence
+require_artifact_file_integrity "$artifact_sha" "$artifact_path"
 
 if [[ "$RELEASE_MACHINE_LAUNCH" == "true" \
   || "$CHECKSUM_VERIFICATION" == "true" \

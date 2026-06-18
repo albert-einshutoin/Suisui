@@ -32,6 +32,15 @@ artifact_path_for_compare() {
   fi
 }
 
+artifact_file_for_path() {
+  local artifact_path="$1"
+  if [[ "$artifact_path" == /* ]]; then
+    printf "%s" "$artifact_path"
+  else
+    printf "%s/%s" "$ROOT_DIR" "$artifact_path"
+  fi
+}
+
 require_file() {
   local path="$1"
   local label="$2"
@@ -285,6 +294,7 @@ require_command spctl
 require_command xcrun
 require_command hdiutil
 require_command ditto
+require_command shasum
 require_command plutil
 require_command "$PLIST_BUDDY"
 
@@ -428,6 +438,8 @@ require_evidence_artifact_sha256() {
   local checksum_file
   local package_sha
   local package_path
+  local package_file
+  local actual_package_sha
 
   if ! evidence_sha="$(plutil -extract "release.artifactSha256" raw -o - "$RELEASE_EVIDENCE_FILE" 2>/dev/null)"; then
     add_blocker "release evidence missing artifact SHA-256: release.artifactSha256"
@@ -469,6 +481,20 @@ require_evidence_artifact_sha256() {
   if [[ -z "$package_sha" ]]; then
     add_blocker "release artifact checksum file is empty: $checksum_file"
     return
+  fi
+  if [[ -z "$package_path" ]]; then
+    add_blocker "release artifact checksum file is missing artifact path: $checksum_file"
+    return
+  fi
+
+  package_file="$(artifact_file_for_path "$package_path")"
+  if [[ ! -f "$package_file" ]]; then
+    add_blocker "missing release artifact file: $package_path"
+  elif command -v shasum >/dev/null 2>&1; then
+    actual_package_sha="$(shasum -a 256 "$package_file" | awk 'NF { print $1; exit }')"
+    if [[ "$actual_package_sha" != "$package_sha" ]]; then
+      add_blocker "release artifact SHA-256 does not match checksum file: expected '$package_sha', got '$actual_package_sha'"
+    fi
   fi
 
   if [[ "$evidence_sha" != "$package_sha" ]]; then

@@ -160,6 +160,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("create_release_evidence.sh"))
         XCTAssertTrue(script.contains("MARKETING_VERSION"))
         XCTAssertTrue(script.contains("CURRENT_PROJECT_VERSION"))
+        XCTAssertTrue(script.contains("missing release artifact file"))
+        XCTAssertTrue(script.contains("release artifact SHA-256 does not match checksum file"))
+        XCTAssertTrue(script.contains("shasum -a 256"))
         XCTAssertTrue(script.contains("manualChecks.releaseMachineLaunch"))
         XCTAssertTrue(script.contains("manualChecks.checksumVerification"))
         XCTAssertTrue(script.contains("manualChecks.cleanDmgInstall"))
@@ -292,16 +295,17 @@ final class ReleasePipelineTests: XCTestCase {
             .appendingPathComponent(".build/test-release-evidence-created.json")
         let checksumURL = packageRoot()
             .appendingPathComponent(".build/test-release-artifact.dmg.sha256")
+        let artifactPath = ".build/test-release-artifact.dmg"
         try FileManager.default.createDirectory(
             at: evidenceURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try "abcdef1234567890  dist/releases/SoloPM-0.1.0+1.dmg\n"
-            .write(to: checksumURL, atomically: true, encoding: .utf8)
-        let packageEvidenceURL = try writePackageEvidence(for: checksumURL)
+        let artifactURL = try writeArtifactChecksum(to: checksumURL, artifactPath: artifactPath)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: artifactPath)
         defer {
             try? FileManager.default.removeItem(at: evidenceURL)
             try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: artifactURL)
             try? FileManager.default.removeItem(at: packageEvidenceURL)
         }
 
@@ -336,8 +340,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(evidence.contains("\"version\": \"0.1.0\""))
         XCTAssertTrue(evidence.contains("\"buildNumber\": \"1\""))
         XCTAssertTrue(evidence.contains("\"appBundlePath\": \"dist/SoloPM.app\""))
-        XCTAssertTrue(evidence.contains("\"artifactPath\": \"dist/releases/SoloPM-0.1.0+1.dmg\""))
-        XCTAssertTrue(evidence.contains("\"artifactSha256\": \"abcdef1234567890\""))
+        XCTAssertTrue(evidence.contains("\"artifactPath\": \"\(artifactPath)\""))
+        XCTAssertTrue(evidence.contains("\"artifactSha256\": \"42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98\""))
         XCTAssertTrue(evidence.contains("\"signingIdentity\": \"Developer ID Application: SoloPM Test (TEAMID)\""))
         XCTAssertTrue(evidence.contains("\"notaryProfile\": \"SoloPMNotaryProfile\""))
         XCTAssertTrue(evidence.contains("\"sparkleFeedURL\": \"https://updates.solopm.app/releases/appcast.xml\""))
@@ -363,22 +367,23 @@ final class ReleasePipelineTests: XCTestCase {
             .appendingPathComponent(".build/test-release-evidence-absolute-checksum.json")
         let checksumURL = packageRoot()
             .appendingPathComponent(".build/test-release-artifact-absolute-checksum.dmg.sha256")
+        let relativeArtifactPath = ".build/test-release-artifact-absolute-checksum.dmg"
         let absoluteArtifactPath = packageRoot()
-            .appendingPathComponent("dist/releases/SoloPM-0.1.0+1.dmg")
+            .appendingPathComponent(relativeArtifactPath)
             .path
         try FileManager.default.createDirectory(
             at: evidenceURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try "abcdef1234567890  \(absoluteArtifactPath)\n"
-            .write(to: checksumURL, atomically: true, encoding: .utf8)
+        let artifactURL = try writeArtifactChecksum(to: checksumURL, artifactPath: absoluteArtifactPath)
         let packageEvidenceURL = try writePackageEvidence(
             for: checksumURL,
-            artifactPath: "dist/releases/SoloPM-0.1.0+1.dmg"
+            artifactPath: relativeArtifactPath
         )
         defer {
             try? FileManager.default.removeItem(at: evidenceURL)
             try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: artifactURL)
             try? FileManager.default.removeItem(at: packageEvidenceURL)
         }
 
@@ -405,16 +410,17 @@ final class ReleasePipelineTests: XCTestCase {
             .appendingPathComponent(".build/test-release-evidence-missing-sparkle-context.json")
         let checksumURL = packageRoot()
             .appendingPathComponent(".build/test-release-artifact-missing-sparkle-context.dmg.sha256")
+        let artifactPath = ".build/test-release-artifact-missing-sparkle-context.dmg"
         try FileManager.default.createDirectory(
             at: evidenceURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try "abcdef1234567890  dist/releases/SoloPM-0.1.0+1.dmg\n"
-            .write(to: checksumURL, atomically: true, encoding: .utf8)
-        let packageEvidenceURL = try writePackageEvidence(for: checksumURL)
+        let artifactURL = try writeArtifactChecksum(to: checksumURL, artifactPath: artifactPath)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: artifactPath)
         defer {
             try? FileManager.default.removeItem(at: evidenceURL)
             try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: artifactURL)
             try? FileManager.default.removeItem(at: packageEvidenceURL)
         }
 
@@ -440,16 +446,17 @@ final class ReleasePipelineTests: XCTestCase {
             .appendingPathComponent(".build/test-release-evidence-missing-signing-context.json")
         let checksumURL = packageRoot()
             .appendingPathComponent(".build/test-release-artifact-missing-signing-context.dmg.sha256")
+        let artifactPath = ".build/test-release-artifact-missing-signing-context.dmg"
         try FileManager.default.createDirectory(
             at: evidenceURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try "abcdef1234567890  dist/releases/SoloPM-0.1.0+1.dmg\n"
-            .write(to: checksumURL, atomically: true, encoding: .utf8)
-        let packageEvidenceURL = try writePackageEvidence(for: checksumURL)
+        let artifactURL = try writeArtifactChecksum(to: checksumURL, artifactPath: artifactPath)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: artifactPath)
         defer {
             try? FileManager.default.removeItem(at: evidenceURL)
             try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: artifactURL)
             try? FileManager.default.removeItem(at: packageEvidenceURL)
         }
 
@@ -494,6 +501,76 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceURL.path))
     }
 
+    func testReleaseEvidenceScriptRejectsMissingArtifactFileReferencedByChecksum() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-missing-artifact-file.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-evidence-missing-file.dmg.sha256")
+        let artifactPath = ".build/test-release-artifact-evidence-missing-file.dmg"
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98  \(artifactPath)\n"
+            .write(to: checksumURL, atomically: true, encoding: .utf8)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: artifactPath)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+        }
+
+        let result = try runScript(
+            "script/create_release_evidence.sh",
+            arguments: ["--force"],
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("missing release artifact file"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceURL.path))
+    }
+
+    func testReleaseEvidenceScriptRejectsArtifactFileHashMismatch() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-artifact-file-hash.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-evidence-file-hash.dmg.sha256")
+        let artifactPath = ".build/test-release-artifact-evidence-file-hash.dmg"
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let artifactURL = try writeArtifactChecksum(
+            to: checksumURL,
+            artifactPath: artifactPath,
+            sha256: "actual-sha"
+        )
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: artifactPath)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: artifactURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+        }
+
+        let result = try runScript(
+            "script/create_release_evidence.sh",
+            arguments: ["--force"],
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release artifact SHA-256 does not match checksum file"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceURL.path))
+    }
+
     func testReleaseEvidenceScriptRejectsManualChecksWithoutPackagedArtifact() throws {
         let evidenceURL = packageRoot()
             .appendingPathComponent(".build/test-release-evidence-missing-artifact.json")
@@ -531,16 +608,17 @@ final class ReleasePipelineTests: XCTestCase {
             .appendingPathComponent(".build/test-release-evidence-missing-manual-environment.json")
         let checksumURL = packageRoot()
             .appendingPathComponent(".build/test-release-artifact-missing-manual-environment.dmg.sha256")
+        let artifactPath = ".build/test-release-artifact-missing-manual-environment.dmg"
         try FileManager.default.createDirectory(
             at: evidenceURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try "abcdef1234567890  dist/releases/SoloPM-0.1.0+1.dmg\n"
-            .write(to: checksumURL, atomically: true, encoding: .utf8)
-        let packageEvidenceURL = try writePackageEvidence(for: checksumURL)
+        let artifactURL = try writeArtifactChecksum(to: checksumURL, artifactPath: artifactPath)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: artifactPath)
         defer {
             try? FileManager.default.removeItem(at: evidenceURL)
             try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: artifactURL)
             try? FileManager.default.removeItem(at: packageEvidenceURL)
         }
 
@@ -673,6 +751,103 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("release evidence artifact SHA-256 does not match package checksum"))
+    }
+
+    func testReleasePreflightRejectsMissingArtifactFileReferencedByChecksum() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-missing-artifact-file.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-missing-file.dmg.sha256")
+        let artifactPath = "dist/releases/SoloPM-0.1.0+1.missing-file.dmg"
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        {
+          "release": {
+            "version": "0.1.0",
+            "buildNumber": "1",
+            "appBundlePath": "dist/SoloPM.app",
+            "artifactPath": "\(artifactPath)",
+            "artifactSha256": "actual-sha"
+          },
+          "manualChecks": {
+            "cleanEnvironmentLaunch": true,
+            "loginItemToggle": true,
+            "environment": "macOS 15.5 clean user on arm64"
+          }
+        }
+        """.write(to: evidenceURL, atomically: true, encoding: .utf8)
+        try "actual-sha  \(artifactPath)\n"
+            .write(to: checksumURL, atomically: true, encoding: .utf8)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: artifactPath)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+        }
+
+        let result = try runScript(
+            "script/verify_release_environment.sh",
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("missing release artifact file"))
+    }
+
+    func testReleasePreflightRejectsArtifactFileHashMismatch() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-artifact-file-hash.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-file-hash.dmg.sha256")
+        let artifactURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-file-hash.dmg")
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try "artifact content".write(to: artifactURL, atomically: true, encoding: .utf8)
+        try """
+        {
+          "release": {
+            "version": "0.1.0",
+            "buildNumber": "1",
+            "appBundlePath": "dist/SoloPM.app",
+            "artifactPath": "\(artifactURL.path)",
+            "artifactSha256": "actual-sha"
+          },
+          "manualChecks": {
+            "cleanEnvironmentLaunch": true,
+            "loginItemToggle": true,
+            "environment": "macOS 15.5 clean user on arm64"
+          }
+        }
+        """.write(to: evidenceURL, atomically: true, encoding: .utf8)
+        try "actual-sha  \(artifactURL.path)\n"
+            .write(to: checksumURL, atomically: true, encoding: .utf8)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: artifactURL.path)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: artifactURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+        }
+
+        let result = try runScript(
+            "script/verify_release_environment.sh",
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release artifact SHA-256 does not match checksum file"))
     }
 
     func testReleasePreflightRejectsEvidenceForDifferentSigningContext() throws {
@@ -981,11 +1156,18 @@ final class ReleasePipelineTests: XCTestCase {
         let checksumURL = packageRoot()
             .appendingPathComponent(".build/test-release-artifact-preflight-absolute-checksum.dmg.sha256")
         let absoluteArtifactPath = packageRoot()
-            .appendingPathComponent("dist/releases/SoloPM-0.1.0+1.dmg")
+            .appendingPathComponent(".build/test-release-artifact-preflight-absolute-checksum.dmg")
             .path
+        let relativeArtifactPath = ".build/test-release-artifact-preflight-absolute-checksum.dmg"
+        let artifactSha = "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98"
         try FileManager.default.createDirectory(
             at: evidenceURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
+        )
+        try "artifact content".write(
+            to: URL(fileURLWithPath: absoluteArtifactPath),
+            atomically: true,
+            encoding: .utf8
         )
         try """
         {
@@ -994,7 +1176,7 @@ final class ReleasePipelineTests: XCTestCase {
             "buildNumber": "1",
             "appBundlePath": "dist/SoloPM.app",
             "artifactPath": "\(absoluteArtifactPath)",
-            "artifactSha256": "actual-sha"
+            "artifactSha256": "\(artifactSha)"
           },
           "manualChecks": {
             "cleanEnvironmentLaunch": true,
@@ -1003,15 +1185,16 @@ final class ReleasePipelineTests: XCTestCase {
           }
         }
         """.write(to: evidenceURL, atomically: true, encoding: .utf8)
-        try "actual-sha  \(absoluteArtifactPath)\n"
+        try "\(artifactSha)  \(absoluteArtifactPath)\n"
             .write(to: checksumURL, atomically: true, encoding: .utf8)
         let packageEvidenceURL = try writePackageEvidence(
             for: checksumURL,
-            artifactPath: "dist/releases/SoloPM-0.1.0+1.dmg"
+            artifactPath: relativeArtifactPath
         )
         defer {
             try? FileManager.default.removeItem(at: evidenceURL)
             try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(atPath: absoluteArtifactPath)
             try? FileManager.default.removeItem(at: packageEvidenceURL)
         }
 
@@ -1026,6 +1209,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertFalse(result.output.contains("release package evidence artifact path does not match checksum"))
         XCTAssertFalse(result.output.contains("release package evidence manifest is missing artifact path"))
+        XCTAssertFalse(result.output.contains("missing release artifact file"))
+        XCTAssertFalse(result.output.contains("release artifact SHA-256 does not match checksum file"))
     }
 
     func testReleasePreflightRejectsManualEvidenceWithoutEnvironment() throws {
@@ -1227,6 +1412,25 @@ final class ReleasePipelineTests: XCTestCase {
         try (jsonLines.joined(separator: "\n") + "\n")
             .write(to: manifestURL, atomically: true, encoding: .utf8)
         return manifestURL
+    }
+
+    private func writeArtifactChecksum(
+        to checksumURL: URL,
+        artifactPath: String,
+        content: String = "artifact content",
+        sha256: String = "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98"
+    ) throws -> URL {
+        let artifactURL = artifactPath.hasPrefix("/")
+            ? URL(fileURLWithPath: artifactPath)
+            : packageRoot().appendingPathComponent(artifactPath)
+        try FileManager.default.createDirectory(
+            at: artifactURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try content.write(to: artifactURL, atomically: true, encoding: .utf8)
+        try "\(sha256)  \(artifactPath)\n"
+            .write(to: checksumURL, atomically: true, encoding: .utf8)
+        return artifactURL
     }
 
     private func readPackageFile(_ relativePath: String) throws -> String {
