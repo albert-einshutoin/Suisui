@@ -2014,6 +2014,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Task inspector"))
         XCTAssertTrue(script.contains("missing VoiceOver accessibility evidence file"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence is not marked passed"))
+        XCTAssertTrue(script.contains("VoiceOver accessibility evidence still contains pending/template/placeholder text"))
         XCTAssertTrue(script.contains("section \"MCP Inspector evidence\""))
         XCTAssertTrue(script.contains("docs/release/evidence/mcp-inspector.md"))
         XCTAssertTrue(script.contains("Stable baseline: `2025-11-25`"))
@@ -2383,7 +2384,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence is not marked passed"))
-        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence still contains placeholder text"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence still contains pending/template/placeholder text"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
     }
 

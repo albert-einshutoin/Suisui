@@ -321,7 +321,7 @@ else
   done
 
   if grep -Eiq '(pending|todo|tbd|placeholder|sample|example|replace me)' "$voiceover_evidence_file"; then
-    blocker "VoiceOver accessibility evidence still contains placeholder text"
+    blocker "VoiceOver accessibility evidence still contains pending/template/placeholder text"
   fi
 fi
 
