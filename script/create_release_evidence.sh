@@ -10,8 +10,14 @@ OUTPUT_FILE="${SOLOPM_RELEASE_EVIDENCE_FILE:-$ROOT_DIR/packaging/release-evidenc
 CHECKSUM_FILE="${SOLOPM_RELEASE_ARTIFACT_SHA256_FILE:-}"
 RELEASE_APPCAST_FILE="${SOLOPM_RELEASE_APPCAST_FILE:-$ROOT_DIR/dist/releases/appcast.xml}"
 FORCE=0
+RELEASE_MACHINE_LAUNCH=false
+CHECKSUM_VERIFICATION=false
+CLEAN_DMG_INSTALL=false
+APPLICATIONS_FOLDER_INSTALL=false
+GATEKEEPER_ACCEPTED=false
 CLEAN_ENVIRONMENT_LAUNCH=false
 LOGIN_ITEM_TOGGLE=false
+SPARKLE_APPCAST_METADATA=false
 MANUAL_ENVIRONMENT=""
 CHECKED_BY="${SOLOPM_RELEASE_CHECKED_BY:-$(id -un 2>/dev/null || printf "release-owner")}"
 NOTES=()
@@ -23,8 +29,14 @@ Usage:
 
 Options:
   --force                         overwrite existing evidence file
+  --release-machine-launch        mark signed/notarized app launch on release machine as checked
+  --checksum-verification         mark release artifact checksum verification as checked
+  --clean-dmg-install             mark clean environment DMG download/open as checked
+  --applications-folder-install   mark Applications folder install flow as checked
+  --gatekeeper-accepted           mark Gatekeeper acceptance as checked
   --clean-environment-launch      mark clean environment launch as manually checked
   --login-item-toggle             mark launch-at-login toggle as manually checked
+  --sparkle-appcast-metadata      mark Sparkle appcast metadata check as checked
   --manual-environment <text>     describe the manual check environment
   --checked-by <name>             reviewer name to record
   --note <text>                   append a review note; can be repeated
@@ -41,12 +53,36 @@ while [[ "$#" -gt 0 ]]; do
       FORCE=1
       shift
       ;;
+    --release-machine-launch)
+      RELEASE_MACHINE_LAUNCH=true
+      shift
+      ;;
+    --checksum-verification)
+      CHECKSUM_VERIFICATION=true
+      shift
+      ;;
+    --clean-dmg-install)
+      CLEAN_DMG_INSTALL=true
+      shift
+      ;;
+    --applications-folder-install)
+      APPLICATIONS_FOLDER_INSTALL=true
+      shift
+      ;;
+    --gatekeeper-accepted)
+      GATEKEEPER_ACCEPTED=true
+      shift
+      ;;
     --clean-environment-launch)
       CLEAN_ENVIRONMENT_LAUNCH=true
       shift
       ;;
     --login-item-toggle)
       LOGIN_ITEM_TOGGLE=true
+      shift
+      ;;
+    --sparkle-appcast-metadata)
+      SPARKLE_APPCAST_METADATA=true
       shift
       ;;
     --manual-environment)
@@ -283,7 +319,14 @@ if [[ "$artifact_sha" == "missing-release-artifact" || "$artifact_path" == "miss
 fi
 require_release_package_evidence
 
-if [[ "$CLEAN_ENVIRONMENT_LAUNCH" == "true" || "$LOGIN_ITEM_TOGGLE" == "true" ]]; then
+if [[ "$RELEASE_MACHINE_LAUNCH" == "true" \
+  || "$CHECKSUM_VERIFICATION" == "true" \
+  || "$CLEAN_DMG_INSTALL" == "true" \
+  || "$APPLICATIONS_FOLDER_INSTALL" == "true" \
+  || "$GATEKEEPER_ACCEPTED" == "true" \
+  || "$CLEAN_ENVIRONMENT_LAUNCH" == "true" \
+  || "$LOGIN_ITEM_TOGGLE" == "true" \
+  || "$SPARKLE_APPCAST_METADATA" == "true" ]]; then
   if [[ -z "$MANUAL_ENVIRONMENT" ]]; then
     echo "manual release evidence requires --manual-environment when manual check flags are set" >&2
     exit 2
@@ -306,8 +349,14 @@ require_release_sparkle_context
   printf '    "appcastPath": "%s"\n' "$(json_escape "$appcast_path")"
   printf '  },\n'
   printf '  "manualChecks": {\n'
+  printf '    "releaseMachineLaunch": %s,\n' "$RELEASE_MACHINE_LAUNCH"
+  printf '    "checksumVerification": %s,\n' "$CHECKSUM_VERIFICATION"
+  printf '    "cleanDmgInstall": %s,\n' "$CLEAN_DMG_INSTALL"
+  printf '    "applicationsFolderInstall": %s,\n' "$APPLICATIONS_FOLDER_INSTALL"
+  printf '    "gatekeeperAccepted": %s,\n' "$GATEKEEPER_ACCEPTED"
   printf '    "cleanEnvironmentLaunch": %s,\n' "$CLEAN_ENVIRONMENT_LAUNCH"
   printf '    "loginItemToggle": %s,\n' "$LOGIN_ITEM_TOGGLE"
+  printf '    "sparkleAppcastMetadata": %s,\n' "$SPARKLE_APPCAST_METADATA"
   printf '    "environment": "%s"\n' "$(json_escape "$MANUAL_ENVIRONMENT")"
   printf '  },\n'
   printf '  "review": {\n'

@@ -556,8 +556,14 @@ if [[ -f "$RELEASE_EVIDENCE_FILE" ]]; then
     fi
     require_evidence_equals "release.appcastPath" "appcast path" "$(artifact_path_for_compare "$RELEASE_APPCAST_FILE")"
     require_evidence_artifact_sha256
+    require_evidence_true "manualChecks.releaseMachineLaunch" "signed and notarized app launch on release machine"
+    require_evidence_true "manualChecks.checksumVerification" "release artifact checksum verification"
+    require_evidence_true "manualChecks.cleanDmgInstall" "clean environment DMG install"
+    require_evidence_true "manualChecks.applicationsFolderInstall" "Applications folder install"
+    require_evidence_true "manualChecks.gatekeeperAccepted" "Gatekeeper acceptance"
     require_evidence_true "manualChecks.cleanEnvironmentLaunch" "clean environment launch"
     require_evidence_true "manualChecks.loginItemToggle" "login item toggle in signed app"
+    require_evidence_true "manualChecks.sparkleAppcastMetadata" "Sparkle appcast metadata check"
     require_evidence_non_empty "manualChecks.environment" "manual check environment"
   else
     add_blocker "release evidence is not valid JSON or plist: $RELEASE_EVIDENCE_FILE"

@@ -11,8 +11,14 @@
     "appcastPath": "dist/releases/appcast.xml"
   },
   "manualChecks": {
+    "releaseMachineLaunch": false,
+    "checksumVerification": false,
+    "cleanDmgInstall": false,
+    "applicationsFolderInstall": false,
+    "gatekeeperAccepted": false,
     "cleanEnvironmentLaunch": false,
     "loginItemToggle": false,
+    "sparkleAppcastMetadata": false,
     "environment": "macOS version, hardware, clean user/install notes"
   },
   "review": {

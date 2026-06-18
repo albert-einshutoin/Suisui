@@ -149,8 +149,14 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("create_release_evidence.sh"))
         XCTAssertTrue(script.contains("MARKETING_VERSION"))
         XCTAssertTrue(script.contains("CURRENT_PROJECT_VERSION"))
+        XCTAssertTrue(script.contains("manualChecks.releaseMachineLaunch"))
+        XCTAssertTrue(script.contains("manualChecks.checksumVerification"))
+        XCTAssertTrue(script.contains("manualChecks.cleanDmgInstall"))
+        XCTAssertTrue(script.contains("manualChecks.applicationsFolderInstall"))
+        XCTAssertTrue(script.contains("manualChecks.gatekeeperAccepted"))
         XCTAssertTrue(script.contains("manualChecks.cleanEnvironmentLaunch"))
         XCTAssertTrue(script.contains("manualChecks.loginItemToggle"))
+        XCTAssertTrue(script.contains("manualChecks.sparkleAppcastMetadata"))
         XCTAssertTrue(script.contains("plutil -extract"))
         XCTAssertTrue(script.contains("plutil -convert json"))
         XCTAssertFalse(script.contains("plutil -lint"))
@@ -206,8 +212,14 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(gitignore.contains("/packaging/release-evidence.json"))
         XCTAssertTrue(example.contains("\"manualChecks\""))
+        XCTAssertTrue(example.contains("\"releaseMachineLaunch\": false"))
+        XCTAssertTrue(example.contains("\"checksumVerification\": false"))
+        XCTAssertTrue(example.contains("\"cleanDmgInstall\": false"))
+        XCTAssertTrue(example.contains("\"applicationsFolderInstall\": false"))
+        XCTAssertTrue(example.contains("\"gatekeeperAccepted\": false"))
         XCTAssertTrue(example.contains("\"cleanEnvironmentLaunch\": false"))
         XCTAssertTrue(example.contains("\"loginItemToggle\": false"))
+        XCTAssertTrue(example.contains("\"sparkleAppcastMetadata\": false"))
         XCTAssertTrue(example.contains("\"version\": \"0.1.0\""))
         XCTAssertTrue(example.contains("\"buildNumber\": \"1\""))
         XCTAssertTrue(example.contains("\"appBundlePath\": \"dist/SoloPM.app\""))
@@ -286,8 +298,14 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_release_evidence.sh",
             arguments: [
                 "--force",
+                "--release-machine-launch",
+                "--checksum-verification",
+                "--clean-dmg-install",
+                "--applications-folder-install",
+                "--gatekeeper-accepted",
                 "--clean-environment-launch",
                 "--login-item-toggle",
+                "--sparkle-appcast-metadata",
                 "--manual-environment", "macOS 15.5 clean user on arm64",
                 "--checked-by", "release-owner",
                 "--note", "Manual checks completed on signed build."
@@ -313,8 +331,14 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(evidence.contains("\"notaryProfile\": \"SoloPMNotaryProfile\""))
         XCTAssertTrue(evidence.contains("\"sparkleFeedURL\": \"https://updates.solopm.app/releases/appcast.xml\""))
         XCTAssertTrue(evidence.contains("\"appcastPath\": \"dist/releases/appcast.xml\""))
+        XCTAssertTrue(evidence.contains("\"releaseMachineLaunch\": true"))
+        XCTAssertTrue(evidence.contains("\"checksumVerification\": true"))
+        XCTAssertTrue(evidence.contains("\"cleanDmgInstall\": true"))
+        XCTAssertTrue(evidence.contains("\"applicationsFolderInstall\": true"))
+        XCTAssertTrue(evidence.contains("\"gatekeeperAccepted\": true"))
         XCTAssertTrue(evidence.contains("\"cleanEnvironmentLaunch\": true"))
         XCTAssertTrue(evidence.contains("\"loginItemToggle\": true"))
+        XCTAssertTrue(evidence.contains("\"sparkleAppcastMetadata\": true"))
         XCTAssertTrue(evidence.contains("\"environment\": \"macOS 15.5 clean user on arm64\""))
         XCTAssertTrue(evidence.contains("\"checkedBy\": \"release-owner\""))
         XCTAssertTrue(evidence.contains("Manual checks completed on signed build."))
