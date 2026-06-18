@@ -22,3 +22,37 @@ public enum SecretStoreError: Error, Equatable {
     case encodingFailed
     case unexpectedStatus(Int32)
 }
+
+public enum SecretKeyNameValidationError: Error, Equatable, Sendable {
+    case empty
+    case invalidCharacters
+}
+
+public enum SecretKeyNameValidator {
+    public static func normalize(_ value: String?) throws -> String {
+        guard let value else {
+            throw SecretKeyNameValidationError.empty
+        }
+
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw SecretKeyNameValidationError.empty
+        }
+
+        let allowedCharacters = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-.")
+        guard trimmed.unicodeScalars.allSatisfy({ allowedCharacters.contains($0) }) else {
+            throw SecretKeyNameValidationError.invalidCharacters
+        }
+
+        return trimmed
+    }
+
+    public static func isValid(_ value: String) -> Bool {
+        do {
+            _ = try normalize(value)
+            return true
+        } catch {
+            return false
+        }
+    }
+}

@@ -926,6 +926,38 @@ private struct SettingsView: View {
                 ), axis: .vertical)
                 .lineLimit(2...4)
                 .help("Use NAME=keychain:secret_key per line. Raw secret values are rejected.")
+
+                Group {
+                    LabeledContent("MCP Keychain Secret", value: settingsViewModel.keychainSecretStatusLabel)
+                    TextField("Secret Key", text: Binding(
+                        get: { settingsViewModel.keychainSecretKeyInput },
+                        set: { settingsViewModel.updateKeychainSecretKeyInput($0) }
+                    ))
+                    .help("Use the same key name referenced by keychain:<secret_key>.")
+                    SecureField("Secret Value", text: Binding(
+                        get: { settingsViewModel.keychainSecretValueInput },
+                        set: { settingsViewModel.updateKeychainSecretValueInput($0) }
+                    ))
+                    HStack {
+                        Button {
+                            settingsViewModel.saveKeychainSecret()
+                        } label: {
+                            Label("Save Secret", systemImage: "key")
+                        }
+                        .disabled(
+                            settingsViewModel.keychainSecretKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                            settingsViewModel.keychainSecretValueInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        )
+
+                        Button(role: .destructive) {
+                            settingsViewModel.deleteKeychainSecret()
+                        } label: {
+                            Label("Delete Secret", systemImage: "trash")
+                        }
+                        .disabled(settingsViewModel.keychainSecretKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+
                 LabeledContent("Transport", value: externalMCPViewModel.display.transportLabel)
                 LabeledContent("Status", value: externalMCPViewModel.display.statusLabel)
                 ForEach(externalMCPViewModel.display.environmentRows, id: \.name) { row in

@@ -192,6 +192,12 @@ final class ExternalMCPTests: XCTestCase {
                 .invalidName(line: 1, name: "トークン")
             )
         }
+        XCTAssertThrowsError(try MCPEnvironmentTextCodec.parse("GITHUB_TOKEN=keychain:github token")) { error in
+            XCTAssertEqual(
+                error as? MCPEnvironmentTextError,
+                .invalidKeychainKey(line: 1, name: "github token")
+            )
+        }
     }
 
     func testStdioLauncherStartsProcessAndCallsTools() async throws {

@@ -177,6 +177,9 @@ public final class AppSettingsViewModel: ObservableObject {
     @Published public private(set) var openAIAPIKeyStatusLabel: String
     @Published public private(set) var openRouterAPIKeyInput: String
     @Published public private(set) var openRouterAPIKeyStatusLabel: String
+    @Published public private(set) var keychainSecretKeyInput: String
+    @Published public private(set) var keychainSecretValueInput: String
+    @Published public private(set) var keychainSecretStatusLabel: String
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var successMessage: String?
 
@@ -200,6 +203,9 @@ public final class AppSettingsViewModel: ObservableObject {
         self.openAIAPIKeyStatusLabel = "Not configured"
         self.openRouterAPIKeyInput = ""
         self.openRouterAPIKeyStatusLabel = "Not configured"
+        self.keychainSecretKeyInput = ""
+        self.keychainSecretValueInput = ""
+        self.keychainSecretStatusLabel = "Enter a secret key"
         self.errorMessage = initialErrorMessage
         self.successMessage = nil
         refreshOpenAIAPIKeyStatus()
@@ -237,6 +243,16 @@ public final class AppSettingsViewModel: ObservableObject {
         clearMessages()
     }
 
+    public func updateKeychainSecretKeyInput(_ value: String) {
+        keychainSecretKeyInput = value
+        refreshKeychainSecretStatus(reportEmptyAsError: false)
+    }
+
+    public func updateKeychainSecretValueInput(_ value: String) {
+        keychainSecretValueInput = value
+        clearMessages()
+    }
+
     public func saveSettings() {
         let issues = settings.validate().filter { $0.severity == .error }
         guard issues.isEmpty else {
@@ -251,6 +267,53 @@ public final class AppSettingsViewModel: ObservableObject {
             successMessage = "Settings saved."
         } catch {
             errorMessage = String(describing: error)
+            successMessage = nil
+        }
+    }
+
+    public func saveKeychainSecret() {
+        guard let keyName = normalizedKeychainSecretKey(reportEmptyAsError: true) else {
+            return
+        }
+
+        let value = keychainSecretValueInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else {
+            errorMessage = "Secret value is required."
+            successMessage = nil
+            return
+        }
+
+        do {
+            try secretStore.save(value, for: SecretKey(keyName))
+            keychainSecretKeyInput = keyName
+            keychainSecretValueInput = ""
+            guard refreshKeychainSecretStatus(reportEmptyAsError: true, clearMessagesOnSuccess: false) else {
+                return
+            }
+            errorMessage = nil
+            successMessage = "Secret saved to Keychain."
+        } catch {
+            errorMessage = "Secret could not be saved to Keychain."
+            successMessage = nil
+        }
+    }
+
+    public func deleteKeychainSecret() {
+        guard let keyName = normalizedKeychainSecretKey(reportEmptyAsError: true) else {
+            return
+        }
+
+        do {
+            try secretStore.delete(SecretKey(keyName))
+            keychainSecretKeyInput = keyName
+            keychainSecretValueInput = ""
+            guard refreshKeychainSecretStatus(reportEmptyAsError: true, clearMessagesOnSuccess: false) else {
+                return
+            }
+            errorMessage = nil
+            successMessage = "Secret removed."
+        } catch {
+            errorMessage = "Secret could not be removed from Keychain."
             successMessage = nil
         }
     }
@@ -334,6 +397,11 @@ public final class AppSettingsViewModel: ObservableObject {
     }
 
     @discardableResult
+    public func refreshKeychainSecretStatus() -> Bool {
+        refreshKeychainSecretStatus(reportEmptyAsError: false)
+    }
+
+    @discardableResult
     public func refreshOpenAIAPIKeyStatus() -> Bool {
         do {
             openAIAPIKeyStatusLabel = try apiKeyStatusLabel(for: .openAIAPIKey)
@@ -370,6 +438,60 @@ public final class AppSettingsViewModel: ObservableObject {
     private func clearMessages() {
         errorMessage = nil
         successMessage = nil
+    }
+
+    @discardableResult
+    private func refreshKeychainSecretStatus(
+        reportEmptyAsError: Bool,
+        clearMessagesOnSuccess: Bool = true
+    ) -> Bool {
+        guard let keyName = normalizedKeychainSecretKey(reportEmptyAsError: reportEmptyAsError) else {
+            return false
+        }
+
+        do {
+            let storedValue = try secretStore.read(SecretKey(keyName))?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if storedValue?.isEmpty != false {
+                keychainSecretStatusLabel = "Not configured"
+            } else {
+                keychainSecretStatusLabel = "Configured"
+            }
+            if clearMessagesOnSuccess {
+                clearMessages()
+            }
+            return true
+        } catch {
+            keychainSecretStatusLabel = "Unavailable"
+            errorMessage = "Secret status could not be read from Keychain."
+            successMessage = nil
+            return false
+        }
+    }
+
+    private func normalizedKeychainSecretKey(reportEmptyAsError: Bool) -> String? {
+        do {
+            return try SecretKeyNameValidator.normalize(keychainSecretKeyInput)
+        } catch SecretKeyNameValidationError.empty {
+            keychainSecretStatusLabel = "Enter a secret key"
+            if reportEmptyAsError {
+                errorMessage = "Secret key is required."
+                successMessage = nil
+            } else {
+                clearMessages()
+            }
+            return nil
+        } catch SecretKeyNameValidationError.invalidCharacters {
+            keychainSecretStatusLabel = "Invalid key"
+            errorMessage = "Secret key can contain letters, numbers, underscore, hyphen, or dot only."
+            successMessage = nil
+            return nil
+        } catch {
+            keychainSecretStatusLabel = "Invalid key"
+            errorMessage = "Secret key is invalid."
+            successMessage = nil
+            return nil
+        }
     }
 
     private func apiKeyStatusLabel(for key: SecretKey) throws -> String {

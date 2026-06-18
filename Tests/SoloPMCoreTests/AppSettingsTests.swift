@@ -218,6 +218,77 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testAppSettingsViewModelSavesAndDeletesCustomKeychainSecretForMCPReferences() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelCustomSecretTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settingsStore = UserDefaultsAppSettingsStore(defaults: defaults)
+        let secretStore = InMemorySecretStore()
+        let viewModel = AppSettingsViewModel(settingsStore: settingsStore, secretStore: secretStore)
+
+        viewModel.updateKeychainSecretKeyInput(" github_token ")
+        viewModel.updateKeychainSecretValueInput(" mcp-custom-secret ")
+        viewModel.saveKeychainSecret()
+
+        XCTAssertEqual(try secretStore.read(.githubToken), "mcp-custom-secret")
+        XCTAssertEqual(viewModel.keychainSecretKeyInput, "github_token")
+        XCTAssertEqual(viewModel.keychainSecretValueInput, "")
+        XCTAssertEqual(viewModel.keychainSecretStatusLabel, "Configured")
+        XCTAssertEqual(viewModel.successMessage, "Secret saved to Keychain.")
+        XCTAssertNil(defaults.data(forKey: "app.settings"))
+        XCTAssertFalse(viewModel.successMessage?.contains("mcp-custom-secret") ?? true)
+
+        viewModel.deleteKeychainSecret()
+
+        XCTAssertNil(try secretStore.read(.githubToken))
+        XCTAssertEqual(viewModel.keychainSecretStatusLabel, "Not configured")
+        XCTAssertEqual(viewModel.successMessage, "Secret removed.")
+    }
+
+    @MainActor
+    func testAppSettingsViewModelRejectsInvalidCustomSecretKeyWithoutSavingRawValue() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelInvalidCustomSecret.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let secretStore = InMemorySecretStore()
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: secretStore
+        )
+
+        viewModel.updateKeychainSecretKeyInput("github token")
+        viewModel.updateKeychainSecretValueInput("mcp-should-not-save")
+        viewModel.saveKeychainSecret()
+
+        XCTAssertNil(try secretStore.read(SecretKey("github token")))
+        XCTAssertEqual(viewModel.keychainSecretStatusLabel, "Invalid key")
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Secret key can contain letters, numbers, underscore, hyphen, or dot only."
+        )
+        XCTAssertFalse(viewModel.errorMessage?.contains("mcp-should-not-save") ?? true)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelReportsCustomSecretStatusWithoutRevealingValue() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelCustomSecretStatus.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let secretStore = InMemorySecretStore(values: [SecretKey("github_token"): "mcp-existing-secret"])
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: secretStore
+        )
+
+        viewModel.updateKeychainSecretKeyInput("github_token")
+
+        XCTAssertEqual(viewModel.keychainSecretStatusLabel, "Configured")
+        XCTAssertEqual(viewModel.keychainSecretValueInput, "")
+        XCTAssertFalse(viewModel.errorMessage?.contains("mcp-existing-secret") ?? false)
+        XCTAssertFalse(viewModel.successMessage?.contains("mcp-existing-secret") ?? false)
+    }
+
+    @MainActor
     func testAppSettingsViewModelRejectsOpenRouterKeyWithInternalWhitespace() throws {
         let suiteName = "SoloPM.AppSettingsViewModelInvalidOpenRouterKey.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

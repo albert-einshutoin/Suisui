@@ -513,6 +513,8 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             return "MCP environment line \(line) has an invalid variable name: \(name)."
         case MCPEnvironmentTextError.missingKeychainKey(let line):
             return "MCP environment line \(line) is missing a Keychain secret key."
+        case MCPEnvironmentTextError.invalidKeychainKey(let line, let name):
+            return "MCP environment line \(line) has an invalid Keychain secret key: \(name)."
         default:
             return "MCP environment references are invalid: \(error)"
         }
@@ -643,6 +645,7 @@ public enum MCPEnvironmentTextError: Error, Equatable, Sendable {
     case invalidName(line: Int, name: String)
     case rawValueNotAllowed(line: Int)
     case missingKeychainKey(line: Int)
+    case invalidKeychainKey(line: Int, name: String)
 }
 
 public enum MCPEnvironmentTextCodec {
@@ -672,10 +675,16 @@ public enum MCPEnvironmentTextCodec {
                 throw MCPEnvironmentTextError.rawValueNotAllowed(line: lineNumber)
             }
 
-            let keyName = String(rawValue.dropFirst("keychain:".count))
+            let rawKeyName = String(rawValue.dropFirst("keychain:".count))
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !keyName.isEmpty else {
+            guard !rawKeyName.isEmpty else {
                 throw MCPEnvironmentTextError.missingKeychainKey(line: lineNumber)
+            }
+            let keyName: String
+            do {
+                keyName = try SecretKeyNameValidator.normalize(rawKeyName)
+            } catch {
+                throw MCPEnvironmentTextError.invalidKeychainKey(line: lineNumber, name: rawKeyName)
             }
 
             environment[rawName] = .keychain(SecretKey(keyName))

@@ -104,6 +104,7 @@
 - [x] テスト: disabled、missing binary、invalid response、successful tools/list を確認する。
 - [x] Settings から複数の MCP server 登録を選択し、新規登録ドラフトを作成して既存登録を落とさず保存できる。
 - [x] MCP server の環境変数は `NAME=keychain:<secret_key>` 形式で編集し、SQLite には raw secret ではなく Keychain 参照だけを保存する。
+- [x] Settings から MCP 用の任意 Keychain secret を保存 / 削除でき、secret value は UserDefaults / SQLite / 画面ステータスに表示しない。
 - [x] 完了条件: fake MCP server ではなく、ユーザー登録 server の接続可否が UI で分かる。
 
 ### P10-009: Release safety pass
