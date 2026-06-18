@@ -222,6 +222,18 @@ public struct TodayWorkflowPlan: Equatable, Sendable {
     }
 }
 
+public struct InboxClassificationFeedback: Equatable, Sendable {
+    public var message: String
+    public var systemImage: String
+    public var canUndo: Bool
+
+    public init(message: String, systemImage: String, canUndo: Bool) {
+        self.message = message
+        self.systemImage = systemImage
+        self.canUndo = canUndo
+    }
+}
+
 public struct ProjectBoardTaskDraft: Equatable, Sendable {
     public var projectID: Int64
     public var title: String
@@ -539,9 +551,11 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public var selectedTaskID: Int64?
     @Published public private(set) var showsArchivedProjects: Bool
     @Published public private(set) var errorMessage: String?
+    @Published public private(set) var inboxClassificationFeedback: InboxClassificationFeedback?
 
     private let store: any ProjectBoardStore
     private let onChange: () -> Void
+    private var lastInboxClassificationUndo: InboxClassificationUndo?
 
     public init(
         store: any ProjectBoardStore,
@@ -843,15 +857,20 @@ public final class ProjectBoardViewModel: ObservableObject {
             return
         }
 
-        updateTask(
-            id: selectedTask.id,
-            ProjectBoardTaskDraft(
+        applyInboxTaskUpdate(
+            originalTask: selectedTask,
+            draft: ProjectBoardTaskDraft(
                 projectID: selectedTask.projectID,
                 title: selectedTask.title,
                 detail: selectedTask.detail,
                 status: .backlog,
                 priority: selectedTask.priority,
                 dueAt: selectedTask.dueAt
+            ),
+            feedback: InboxClassificationFeedback(
+                message: "Kept \"\(selectedTask.title)\" as a task.",
+                systemImage: "checkmark.circle",
+                canUndo: true
             )
         )
     }
@@ -861,9 +880,11 @@ public final class ProjectBoardViewModel: ObservableObject {
             return
         }
 
+        var createdProjectID: Int64?
         do {
             let project = try store.createProject(title: selectedTask.title)
-            _ = try store.updateTask(
+            createdProjectID = project.id
+            let movedTask = try store.updateTask(
                 id: selectedTask.id,
                 ProjectBoardTaskDraft(
                     projectID: project.id,
@@ -874,17 +895,33 @@ public final class ProjectBoardViewModel: ObservableObject {
                     dueAt: selectedTask.dueAt
                 )
             )
-            load()
-            selectedProjectID = project.id
-            selectedTaskID = selectedTask.id
+            finishInboxClassification(
+                originalTask: selectedTask,
+                fallbackTask: movedTask,
+                feedback: InboxClassificationFeedback(
+                    message: "Created project \"\(selectedTask.title)\".",
+                    systemImage: "folder.badge.plus",
+                    canUndo: true
+                ),
+                undo: .restoreTaskAndDeleteProject(originalTask: selectedTask, createdProjectID: project.id)
+            )
             onChange()
         } catch ProjectBoardStoreError.emptyProjectTitle {
             errorMessage = "Project title is required."
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
+            if let createdProjectID {
+                try? store.deleteProject(id: createdProjectID)
+            }
             errorMessage = "Restore the project before editing tasks."
         } catch ProjectBoardStoreError.emptyTitle {
+            if let createdProjectID {
+                try? store.deleteProject(id: createdProjectID)
+            }
             errorMessage = "Task title is required."
         } catch {
+            if let createdProjectID {
+                try? store.deleteProject(id: createdProjectID)
+            }
             errorMessage = String(describing: error)
         }
     }
@@ -894,15 +931,20 @@ public final class ProjectBoardViewModel: ObservableObject {
             return
         }
 
-        updateTask(
-            id: selectedTask.id,
-            ProjectBoardTaskDraft(
+        applyInboxTaskUpdate(
+            originalTask: selectedTask,
+            draft: ProjectBoardTaskDraft(
                 projectID: selectedTask.projectID,
                 title: selectedTask.title,
                 detail: selectedTask.detail,
                 status: .planned,
                 priority: selectedTask.priority,
                 dueAt: ISO8601DateFormatter().string(from: referenceDate)
+            ),
+            feedback: InboxClassificationFeedback(
+                message: "Scheduled \"\(selectedTask.title)\" for today.",
+                systemImage: "calendar.badge.plus",
+                canUndo: true
             )
         )
     }
@@ -912,17 +954,58 @@ public final class ProjectBoardViewModel: ObservableObject {
             return
         }
 
-        updateTask(
-            id: selectedTask.id,
-            ProjectBoardTaskDraft(
+        applyInboxTaskUpdate(
+            originalTask: selectedTask,
+            draft: ProjectBoardTaskDraft(
                 projectID: selectedTask.projectID,
                 title: selectedTask.title,
                 detail: selectedTask.detail,
                 status: .backlog,
                 priority: selectedTask.priority,
                 dueAt: nil
+            ),
+            feedback: InboxClassificationFeedback(
+                message: "Deferred \"\(selectedTask.title)\" for later review.",
+                systemImage: "clock",
+                canUndo: true
             )
         )
+    }
+
+    public func undoLastInboxClassification() {
+        guard let undo = lastInboxClassificationUndo else {
+            return
+        }
+
+        do {
+            let restoredTask: ProjectBoardTask
+            switch undo {
+            case .restoreTask(let originalTask):
+                restoredTask = try store.updateTask(id: originalTask.id, originalTask.classificationDraft)
+            case .restoreTaskAndDeleteProject(let originalTask, let createdProjectID):
+                let recreatedTask = try store.createTask(originalTask.classificationDraft)
+                do {
+                    try store.deleteProject(id: createdProjectID)
+                } catch {
+                    try? store.deleteTask(id: recreatedTask.id)
+                    throw error
+                }
+                restoredTask = recreatedTask
+            }
+            load()
+            selectedProjectID = restoredTask.projectID
+            selectedTaskID = restoredTask.id
+            inboxClassificationFeedback = nil
+            lastInboxClassificationUndo = nil
+            errorMessage = nil
+            onChange()
+        } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
+            errorMessage = "Restore the project before undoing the classification."
+        } catch ProjectBoardStoreError.emptyTitle {
+            errorMessage = "Task title is required."
+        } catch {
+            errorMessage = String(describing: error)
+        }
     }
 
     public func moveSelectedTask(to status: ProjectTaskStatus) {
@@ -1025,6 +1108,50 @@ public final class ProjectBoardViewModel: ObservableObject {
         } catch {
             errorMessage = String(describing: error)
         }
+    }
+
+    private func applyInboxTaskUpdate(
+        originalTask: ProjectBoardTask,
+        draft: ProjectBoardTaskDraft,
+        feedback: InboxClassificationFeedback
+    ) {
+        do {
+            let updatedTask = try store.updateTask(id: originalTask.id, draft)
+            finishInboxClassification(
+                originalTask: originalTask,
+                fallbackTask: updatedTask,
+                feedback: feedback,
+                undo: .restoreTask(originalTask: originalTask)
+            )
+            onChange()
+        } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
+            errorMessage = "Restore the project before editing tasks."
+        } catch ProjectBoardStoreError.emptyTitle {
+            errorMessage = "Task title is required."
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
+    private func finishInboxClassification(
+        originalTask: ProjectBoardTask,
+        fallbackTask: ProjectBoardTask,
+        feedback: InboxClassificationFeedback,
+        undo: InboxClassificationUndo
+    ) {
+        let shouldAdvanceInboxSelection = inboxProject?.id == originalTask.projectID
+        load()
+        selectedProjectID = fallbackTask.projectID
+        selectedTaskID = fallbackTask.id
+
+        if shouldAdvanceInboxSelection, let nextInboxTask = inboxTasks.first(where: { $0.id != originalTask.id }) {
+            selectedProjectID = nextInboxTask.projectID
+            selectedTaskID = nextInboxTask.id
+        }
+
+        inboxClassificationFeedback = feedback
+        lastInboxClassificationUndo = undo
+        errorMessage = nil
     }
 
     private func dueDate(for rawDueAt: String?) -> Date? {
@@ -1130,6 +1257,24 @@ public final class ProjectBoardViewModel: ObservableObject {
         let remainder = elapsed.truncatingRemainder(dividingBy: slotSeconds)
         let roundedElapsed = remainder == 0 ? elapsed : elapsed + (slotSeconds - remainder)
         return hourStart.addingTimeInterval(roundedElapsed)
+    }
+}
+
+private enum InboxClassificationUndo {
+    case restoreTask(originalTask: ProjectBoardTask)
+    case restoreTaskAndDeleteProject(originalTask: ProjectBoardTask, createdProjectID: Int64)
+}
+
+private extension ProjectBoardTask {
+    var classificationDraft: ProjectBoardTaskDraft {
+        ProjectBoardTaskDraft(
+            projectID: projectID,
+            title: title,
+            detail: detail,
+            status: status,
+            priority: priority,
+            dueAt: dueAt
+        )
     }
 }
 

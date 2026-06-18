@@ -686,6 +686,97 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelInboxClassificationShowsFeedbackAdvancesSelectionAndUndo() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let inboxID = try XCTUnwrap(viewModel.inboxProject?.id)
+        let first = try XCTUnwrap(viewModel.createTask(
+            title: "First capture",
+            projectID: inboxID,
+            status: .backlog,
+            priority: .medium
+        ))
+        let second = try XCTUnwrap(viewModel.createTask(
+            title: "Second capture",
+            projectID: inboxID,
+            status: .backlog,
+            priority: .high
+        ))
+
+        viewModel.selectedTaskID = second.id
+        viewModel.convertSelectedTaskToProject()
+
+        XCTAssertEqual(viewModel.inboxClassificationFeedback?.message, "Created project \"Second capture\".")
+        XCTAssertEqual(viewModel.inboxClassificationFeedback?.systemImage, "folder.badge.plus")
+        XCTAssertEqual(viewModel.inboxClassificationFeedback?.canUndo, true)
+        XCTAssertEqual(viewModel.selectedTaskID, first.id)
+        XCTAssertNotNil(viewModel.snapshot.projects.first { $0.title == "Second capture" })
+        XCTAssertEqual(viewModel.inboxTasks.map(\.title), ["First capture"])
+
+        viewModel.undoLastInboxClassification()
+
+        XCTAssertNil(viewModel.inboxClassificationFeedback)
+        XCTAssertEqual(viewModel.selectedTask?.title, "Second capture")
+        XCTAssertEqual(viewModel.selectedTask?.projectID, inboxID)
+        XCTAssertNil(viewModel.snapshot.projects.first { $0.title == "Second capture" && $0.id != inboxID })
+        XCTAssertEqual(Set(viewModel.inboxTasks.map(\.title)), ["First capture", "Second capture"])
+    }
+
+    @MainActor
+    func testProjectBoardViewModelInboxClassificationCanUndoScheduleMutation() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let inboxID = try XCTUnwrap(viewModel.inboxProject?.id)
+        let first = try XCTUnwrap(viewModel.createTask(title: "First capture", projectID: inboxID))
+        let second = try XCTUnwrap(viewModel.createTask(title: "Second capture", projectID: inboxID))
+
+        viewModel.selectedTaskID = second.id
+        viewModel.scheduleSelectedTaskForToday(referenceDate: try isoDate("2026-06-19T09:00:00Z"))
+
+        XCTAssertEqual(viewModel.inboxClassificationFeedback?.message, "Scheduled \"Second capture\" for today.")
+        XCTAssertEqual(viewModel.selectedTaskID, first.id)
+        XCTAssertEqual(viewModel.inboxTasks.first { $0.id == second.id }?.dueAt, "2026-06-19T09:00:00Z")
+
+        viewModel.undoLastInboxClassification()
+
+        XCTAssertNil(viewModel.inboxClassificationFeedback)
+        XCTAssertEqual(viewModel.selectedTaskID, second.id)
+        XCTAssertNil(viewModel.selectedTask?.dueAt)
+    }
+
+    @MainActor
+    func testSQLiteBoardStorePersistsInboxClassificationUndo() throws {
+        let store = try makeStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        let inboxID = try XCTUnwrap(viewModel.inboxProject?.id)
+        let captured = try XCTUnwrap(viewModel.createTask(
+            title: "Persisted capture",
+            detail: "Keep this detail",
+            projectID: inboxID,
+            status: .backlog,
+            priority: .high
+        ))
+
+        viewModel.selectedTaskID = captured.id
+        viewModel.convertSelectedTaskToProject()
+
+        XCTAssertNotNil(viewModel.snapshot.projects.first { $0.title == "Persisted capture" && $0.id != inboxID })
+        XCTAssertTrue(viewModel.inboxTasks.isEmpty)
+
+        viewModel.undoLastInboxClassification()
+
+        let reloadedViewModel = ProjectBoardViewModel(store: store)
+        reloadedViewModel.load()
+
+        XCTAssertNil(reloadedViewModel.snapshot.projects.first { $0.title == "Persisted capture" && $0.id != inboxID })
+        let restoredTask = try XCTUnwrap(reloadedViewModel.inboxTasks.first { $0.title == "Persisted capture" })
+        XCTAssertEqual(restoredTask.detail, "Keep this detail")
+        XCTAssertEqual(restoredTask.priority, .high)
+        XCTAssertEqual(restoredTask.status, .backlog)
+    }
+
+    @MainActor
     func testProjectBoardViewModelDoesNotNotifyAfterFailedMutation() {
         var changeCount = 0
         let viewModel = ProjectBoardViewModel(

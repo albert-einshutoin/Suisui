@@ -261,6 +261,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("public func todayTasks("))
     }
 
+    func testInboxActionPanelSurfacesClassificationFeedbackAndUndo() throws {
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+
+        XCTAssertTrue(coreSource.contains("public struct InboxClassificationFeedback"))
+        XCTAssertTrue(coreSource.contains("@Published public private(set) var inboxClassificationFeedback"))
+        XCTAssertTrue(coreSource.contains("public func undoLastInboxClassification()"))
+        XCTAssertTrue(workflowSource.contains("if let feedback = viewModel.inboxClassificationFeedback"))
+        XCTAssertTrue(workflowSource.contains("Label(feedback.message, systemImage: feedback.systemImage)"))
+        XCTAssertTrue(workflowSource.contains("viewModel.undoLastInboxClassification()"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-classification-feedback\")"))
+    }
+
     func testProjectDetailOrganizesTasksArtifactsTimelineAndSuggestions() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")

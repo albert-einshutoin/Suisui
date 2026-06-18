@@ -69,7 +69,7 @@
 
 | ギャップ | ユーザー影響 | 優先度 | 必要な修正 |
 | --- | --- | --- | --- |
-| Inbox分類後の自動遷移が粗い | Project化などの実mutationは動くが、分類後にユーザーへ次の最適画面を案内する余地がある。 | P1 | 分類結果のsuccess state、undo、次のitem選択を追加する。 |
+| Inbox分類後のsuccess/undo/next selectionを実装済み | Project化、Schedule化、後で確認の実mutation後に結果メッセージ、直前操作のUndo、次のInbox item自動選択を出す。 | Done | 連続triageの実機操作で、Undo後の復元先と選択状態を確認する。 |
 | Today time blockはlocal plan止まり | Today viewはdue/overdue task、local focus suggestion、30分time blockを表示できるが、Calendarへの適用や自動再配置はまだしない。 | P2 | Calendar連携をrelease scopeに入れる場合だけ、適用前確認つきのschedule actionを追加する。 |
 | Task card screenshot証跡は自動生成フローを追加済み | Task cardのtitle/status/priority/due/drag affordanceは実装済み。Light/Dark/System screenshot evidence scriptは追加済みで、一時HOME、seed済みProject board、window captureとして生成する。 | P1 | Screen Recording権限のある実機で生成PNGを目視し、崩れがあればUIを修正する。 |
 | Settings詳細Formはtab分割済み | Settings詳細FormはOverview / AI / MCP / Sync / Privacyのtabへ分割済み。Status OverviewとThemeはOverview、provider詳細はAI、MCP登録/権限/auditはMCP、同期はSync、通知/起動/WatcherはPrivacyに分けた。 | P2 | 次の改善ではproviderごとのvalidation stateを短いstatus rowへ集約する。 |

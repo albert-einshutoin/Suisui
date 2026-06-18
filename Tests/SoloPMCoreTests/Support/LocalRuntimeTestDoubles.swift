@@ -210,8 +210,11 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
             return
         }
 
-        for columnIndex in snapshot.projects[projectIndex].columns.indices {
-            snapshot.projects[projectIndex].columns[columnIndex].tasks.removeAll { $0.id == task.id }
+        for existingProjectIndex in snapshot.projects.indices {
+            for columnIndex in snapshot.projects[existingProjectIndex].columns.indices {
+                snapshot.projects[existingProjectIndex].columns[columnIndex].tasks.removeAll { $0.id == task.id }
+            }
+            refreshProjectSubtitle(at: existingProjectIndex)
         }
 
         guard let columnIndex = snapshot.projects[projectIndex].columns.firstIndex(where: { $0.status == task.status }) else {

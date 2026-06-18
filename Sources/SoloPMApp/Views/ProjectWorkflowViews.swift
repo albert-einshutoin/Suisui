@@ -294,6 +294,31 @@ private struct InboxActionPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Classify Selected Item")
                 .font(.headline)
+            if let feedback = viewModel.inboxClassificationFeedback {
+                HStack(spacing: 8) {
+                    Label(feedback.message, systemImage: feedback.systemImage)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 8)
+
+                    if feedback.canUndo {
+                        Button {
+                            viewModel.undoLastInboxClassification()
+                        } label: {
+                            Label("Undo", systemImage: "arrow.uturn.backward")
+                        }
+                        .controlSize(.small)
+                        .help("Undo the last Inbox classification")
+                    }
+                }
+                .padding(8)
+                .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("inbox-classification-feedback")
+            }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) {
                     actionButtons
