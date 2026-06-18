@@ -1289,6 +1289,10 @@ private struct ProjectInspectorView: View {
 
     var body: some View {
         Form {
+            Section("Summary") {
+                ProjectInspectorMetadataSummary(project: project)
+            }
+
             Section("Edit") {
                 TextField("Title", text: $title)
                     .accessibilityIdentifier("project-inspector-title")
@@ -1390,6 +1394,95 @@ private struct ProjectInspectorView: View {
 
     private func refreshFields(from project: ProjectBoardProject) {
         title = project.title
+    }
+}
+
+private struct ProjectInspectorMetadataSummary: View {
+    let project: ProjectBoardProject
+
+    private var compactColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: 96), spacing: 8)]
+    }
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                metadataPills
+            }
+
+            LazyVGrid(columns: compactColumns, alignment: .leading, spacing: 8) {
+                metadataPills
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Project summary")
+        .accessibilityValue("\(statusLabel), \(openTaskCount) open tasks, \(project.taskCount) total tasks, \(project.artifacts.count) artifacts")
+        .accessibilityIdentifier("project-inspector-metadata-summary")
+    }
+
+    @ViewBuilder
+    private var metadataPills: some View {
+        InspectorMetadataPill(
+            label: "Status",
+            value: statusLabel,
+            systemImage: statusSystemImage,
+            tint: statusTint
+        )
+
+        InspectorMetadataPill(
+            label: "Open",
+            value: "\(openTaskCount)",
+            systemImage: "circle",
+            tint: .blue
+        )
+
+        InspectorMetadataPill(
+            label: "Tasks",
+            value: "\(project.taskCount)",
+            systemImage: "checklist",
+            tint: .secondary
+        )
+
+        InspectorMetadataPill(
+            label: "Artifacts",
+            value: "\(project.artifacts.count)",
+            systemImage: "doc.text",
+            tint: .purple
+        )
+    }
+
+    private var openTaskCount: Int {
+        project.tasks.filter { $0.status != .done }.count
+    }
+
+    private var statusLabel: String {
+        if project.isArchived {
+            return "Archived"
+        }
+        if project.isCompleted {
+            return "Completed"
+        }
+        return "Active"
+    }
+
+    private var statusSystemImage: String {
+        if project.isArchived {
+            return "archivebox"
+        }
+        if project.isCompleted {
+            return "checkmark.seal"
+        }
+        return "circle.fill"
+    }
+
+    private var statusTint: Color {
+        if project.isArchived {
+            return .secondary
+        }
+        if project.isCompleted {
+            return .green
+        }
+        return .blue
     }
 }
 
@@ -1501,6 +1594,10 @@ private struct TaskInspectorView: View {
 
     var body: some View {
         Form {
+            Section("Summary") {
+                TaskInspectorMetadataSummary(task: task, projectTitle: viewModel.projectTitle(for: task))
+            }
+
             Section("Edit") {
                 TextField("Title", text: $title)
                     .accessibilityIdentifier("task-inspector-title")
@@ -1591,6 +1688,106 @@ private struct TaskInspectorView: View {
         status = task.status
         priority = task.priority
         dueAt = task.dueAt ?? ""
+    }
+}
+
+private struct TaskInspectorMetadataSummary: View {
+    let task: ProjectBoardTask
+    let projectTitle: String
+
+    private var compactColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: 96), spacing: 8)]
+    }
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                metadataPills
+            }
+
+            LazyVGrid(columns: compactColumns, alignment: .leading, spacing: 8) {
+                metadataPills
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Task summary")
+        .accessibilityValue("\(task.status.title), \(task.priority.label), \(dueValue), \(projectTitle)")
+        .accessibilityIdentifier("task-inspector-metadata-summary")
+    }
+
+    @ViewBuilder
+    private var metadataPills: some View {
+        InspectorMetadataPill(
+            label: "Status",
+            value: task.status.title,
+            systemImage: task.status.systemImage,
+            tint: task.status.tint
+        )
+
+        InspectorMetadataPill(
+            label: "Priority",
+            value: task.priority.label,
+            systemImage: "flag",
+            tint: task.priority.color
+        )
+
+        InspectorMetadataPill(
+            label: "Due",
+            value: dueValue,
+            systemImage: "calendar",
+            tint: task.dueLabel == nil ? .secondary : .blue
+        )
+
+        InspectorMetadataPill(
+            label: "Project",
+            value: projectTitle,
+            systemImage: "folder",
+            tint: .purple
+        )
+    }
+
+    private var dueValue: String {
+        task.dueLabel ?? "No due date"
+    }
+}
+
+private struct InspectorMetadataPill: View {
+    let label: String
+    let value: String
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .foregroundStyle(tint)
+                .frame(width: 14)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                Text(value)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(tint.opacity(0.22), lineWidth: 1)
+        }
+        .help("\(label): \(value)")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(value)
     }
 }
 

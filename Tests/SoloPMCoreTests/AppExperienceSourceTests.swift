@@ -260,6 +260,22 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(suggestionSource.components(separatedBy: ".keyboardShortcut(.return, modifiers: [.command])").count - 1, 2)
     }
 
+    func testInspectorsExposeCompactMetadataSummaries() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+        let audit = try readPackageFile("docs/ux/click-path-audit.md")
+
+        XCTAssertTrue(source.contains("TaskInspectorMetadataSummary(task: task, projectTitle: viewModel.projectTitle(for: task))"))
+        XCTAssertTrue(source.contains("ProjectInspectorMetadataSummary(project: project)"))
+        XCTAssertTrue(source.contains("private struct InspectorMetadataPill"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"task-inspector-metadata-summary\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-inspector-metadata-summary\")"))
+        XCTAssertTrue(source.contains("ViewThatFits(in: .horizontal)"))
+        XCTAssertTrue(source.contains("GridItem(.adaptive(minimum: 96), spacing: 8)"))
+        XCTAssertTrue(phase.contains("[x] Task / Project inspector はcompact summaryで状態、優先度、期限、件数を先頭表示し、詳細Formの前に文脈が分かる。"))
+        XCTAssertTrue(audit.contains("Task / Project inspector はcompact summaryを先頭に追加済み"))
+    }
+
     func testProjectBoardPromotesInboxAndTodayAsFirstClassDestinations() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
