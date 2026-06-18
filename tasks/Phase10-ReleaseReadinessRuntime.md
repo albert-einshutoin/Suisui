@@ -1007,6 +1007,13 @@
 - [x] OpenAI Responses / Chat Completions / ActionPlan parser の focused tests が green であることを確認する。
 - [x] 完了条件: LLM provider の壊れた response chunk が action plan 生成の成功経路に紛れ込まない。
 
+### P10-130: OpenAI Responses message items must not be silently dropped
+
+- [x] `OpenAIResponsesOutputTextExtractor` は `message` output item に `content` が欠落している場合、reasoning item と同じ扱いで捨てない。
+- [x] `OpenAIResponsesOutputItem` は `type` を decode し、`message` item の content 欠損だけを `LLMProviderError.invalidResponse` として分類する。
+- [x] `OpenAIResponsesProviderTests` で欠損 `message.content` と正常 message が混在する response が成功扱いにならないことを固定する。
+- [x] 完了条件: OpenAI Responses の壊れた message item が、別の正常 chunk によって隠れない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

@@ -77,15 +77,22 @@ public struct OpenAIResponsesOutputTextExtractor: Sendable {
         }
 
         let outputText = try response.output?
-            .flatMap { $0.content ?? [] }
-            .reduce(into: [String]()) { texts, content in
-                guard content.type == "output_text" else {
+            .reduce(into: [String]()) { texts, item in
+                guard item.type == "message" else {
                     return
                 }
-                guard let text = content.text else {
-                    throw LLMProviderError.invalidResponse("Response output_text item did not contain text.")
+                guard let contentItems = item.content else {
+                    throw LLMProviderError.invalidResponse("Response message item did not contain content.")
                 }
-                texts.append(text)
+                for content in contentItems {
+                    guard content.type == "output_text" else {
+                        continue
+                    }
+                    guard let text = content.text else {
+                        throw LLMProviderError.invalidResponse("Response output_text item did not contain text.")
+                    }
+                    texts.append(text)
+                }
             }
             .joined(separator: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -213,6 +220,7 @@ private struct OpenAIResponsesResponseBody: Decodable {
 }
 
 private struct OpenAIResponsesOutputItem: Decodable {
+    var type: String
     var content: [OpenAIResponsesOutputContent]?
 }
 

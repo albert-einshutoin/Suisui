@@ -140,6 +140,37 @@ final class OpenAIResponsesProviderTests: XCTestCase {
         }
     }
 
+    func testOutputTextExtractorRejectsMessageItemWithoutContentInsteadOfDroppingIt() throws {
+        let data = Data(
+            """
+            {
+              "id": "resp_1",
+              "output": [
+                {
+                  "type": "message"
+                },
+                {
+                  "type": "message",
+                  "content": [
+                    {
+                      "type": "output_text",
+                      "text": "{\\"id\\":\\"plan-1\\"}"
+                    }
+                  ]
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        XCTAssertThrowsError(try OpenAIResponsesOutputTextExtractor().extractText(from: data)) { error in
+            XCTAssertEqual(
+                error as? LLMProviderError,
+                .invalidResponse("Response message item did not contain content.")
+            )
+        }
+    }
+
     func testProviderRejectsMissingAPIKeyBeforeHTTP() async throws {
         let provider = OpenAIResponsesProvider(
             secretStore: InMemorySecretStore(),
