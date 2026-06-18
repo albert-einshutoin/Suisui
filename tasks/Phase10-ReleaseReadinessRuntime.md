@@ -839,6 +839,13 @@
 - [x] `ExternalMCPTests` で server / tool identity metadata 欠落が audit history decode failure になることを確認する。
 - [x] 完了条件: MCP外部呼び出しの監査履歴で、どのserver/toolか不明な履歴が正常な履歴として表示されない。
 
+### P10-107: External MCP terminal audit history requires duration and error metadata
+
+- [x] `ExternalMCPAuditHistory.rows` は `succeeded` / `failed` の `duration_ms` 欠落を空 duration に丸めない。
+- [x] failed event の `error` 欠落を blank error summary に丸めない。
+- [x] started event は実行開始証跡として duration / error なしを許可する。
+- [x] 完了条件: MCP外部呼び出しの終端履歴が、所要時間や失敗理由を欠いたまま正常な監査履歴として表示されない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

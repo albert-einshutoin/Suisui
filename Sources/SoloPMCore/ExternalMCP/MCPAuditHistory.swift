@@ -39,17 +39,38 @@ public enum ExternalMCPAuditHistory {
     }
 
     private static func row(from event: AuditEvent) throws -> ExternalMCPAuditHistoryRow {
-        ExternalMCPAuditHistoryRow(
+        let durationMilliseconds = try durationMetadata(for: event)
+        let errorSummary = try errorMetadata(for: event)
+
+        return ExternalMCPAuditHistoryRow(
             timestamp: event.timestamp,
             serverName: try requiredMetadata(event, key: "server_name"),
             toolName: try requiredMetadata(event, key: "tool_name"),
             risk: try requiredMetadata(event, key: "risk"),
             approval: try requiredMetadata(event, key: "approval"),
-            durationMilliseconds: event.metadata["duration_ms"],
+            durationMilliseconds: durationMilliseconds,
             status: event.status,
             redactedArgumentSummary: try requiredMetadata(event, key: "arguments"),
-            errorSummary: event.metadata["error"]
+            errorSummary: errorSummary
         )
+    }
+
+    private static func durationMetadata(for event: AuditEvent) throws -> String? {
+        switch event.status {
+        case .succeeded, .failed:
+            try requiredMetadata(event, key: "duration_ms")
+        case .started, .skipped:
+            event.metadata["duration_ms"]
+        }
+    }
+
+    private static func errorMetadata(for event: AuditEvent) throws -> String? {
+        switch event.status {
+        case .failed:
+            try requiredMetadata(event, key: "error")
+        case .started, .succeeded, .skipped:
+            event.metadata["error"]
+        }
     }
 
     private static func requiredMetadata(_ event: AuditEvent, key: String) throws -> String {

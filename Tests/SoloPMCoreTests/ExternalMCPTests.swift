@@ -662,6 +662,72 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(rows.first?.statusLabel, "Succeeded")
     }
 
+    func testAuditHistoryAllowsStartedEventWithoutDurationOrError() throws {
+        let events = [
+            AuditEvent(
+                category: "external_mcp",
+                action: "fake.read_status",
+                status: .started,
+                metadata: [
+                    "server_name": "Fake MCP",
+                    "tool_name": "read_status",
+                    "risk": "read",
+                    "approval": "missing",
+                    "arguments": "No arguments"
+                ]
+            )
+        ]
+
+        let rows = try ExternalMCPAuditHistory.rows(from: events)
+
+        XCTAssertEqual(rows.first?.status, .started)
+        XCTAssertNil(rows.first?.durationMilliseconds)
+        XCTAssertNil(rows.first?.errorSummary)
+    }
+
+    func testAuditHistoryRejectsSucceededEventMissingDuration() {
+        let events = [
+            AuditEvent(
+                category: "external_mcp",
+                action: "fake.read_status",
+                status: .succeeded,
+                metadata: [
+                    "server_name": "Fake MCP",
+                    "tool_name": "read_status",
+                    "risk": "read",
+                    "approval": "missing",
+                    "arguments": "No arguments"
+                ]
+            )
+        ]
+
+        XCTAssertThrowsError(try ExternalMCPAuditHistory.rows(from: events)) { error in
+            XCTAssertEqual(error as? ExternalMCPAuditHistoryError, .missingMetadata("duration_ms"))
+        }
+    }
+
+    func testAuditHistoryRejectsFailedEventMissingError() {
+        let events = [
+            AuditEvent(
+                category: "external_mcp",
+                action: "fake.read_status",
+                status: .failed,
+                metadata: [
+                    "server_name": "Fake MCP",
+                    "tool_name": "read_status",
+                    "risk": "read",
+                    "approval": "missing",
+                    "duration_ms": "12",
+                    "arguments": "No arguments"
+                ]
+            )
+        ]
+
+        XCTAssertThrowsError(try ExternalMCPAuditHistory.rows(from: events)) { error in
+            XCTAssertEqual(error as? ExternalMCPAuditHistoryError, .missingMetadata("error"))
+        }
+    }
+
     func testAuditHistoryRejectsMissingRiskMetadataInsteadOfShowingUnknown() {
         let events = [
             AuditEvent(
