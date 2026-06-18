@@ -237,6 +237,46 @@ final class ActionExecutorTests: XCTestCase {
         XCTAssertTrue(logger.recordedEvents.contains { $0.status == .skipped && $0.action == "project.list" })
     }
 
+    func testExecutorRedactsToolResultSummaryBeforeAuditPersistence() throws {
+        let logger = InMemoryAuditLogger()
+        let secret = "sk-" + "sampleSecret"
+        let registry = try ToolRegistry(tools: [
+            StaticTool(name: .projectList, description: "success", inputSchema: ToolInputSchema(), permissionLevel: .read) { _, _ in
+                ToolResult(tool: .projectList, status: .succeeded, summary: "Loaded apiKey=\(secret)")
+            }
+        ])
+        let session = ReviewSession(plan: .reviewFixture(actions: [
+            PlanAction(id: "read", tool: .projectList)
+        ]))
+
+        _ = try ActionExecutor(registry: registry, auditLogger: logger).execute(session)
+
+        let toolEvent = try XCTUnwrap(logger.recordedEvents.first { $0.category == "tool" && $0.status == .succeeded })
+        let summary = try XCTUnwrap(toolEvent.metadata["summary"])
+        XCTAssertFalse(summary.contains(secret))
+        XCTAssertTrue(summary.contains("[REDACTED_SECRET]"))
+    }
+
+    func testExecutorRedactsToolErrorBeforeAuditPersistence() throws {
+        let logger = InMemoryAuditLogger()
+        let secret = "sk-" + "sampleSecret"
+        let registry = try ToolRegistry(tools: [
+            StaticTool(name: .projectList, description: "failure", inputSchema: ToolInputSchema(), permissionLevel: .read) { _, _ in
+                throw ToolExecutionError.executionFailed(.projectList, "provider token=\(secret) rejected")
+            }
+        ])
+        let session = ReviewSession(plan: .reviewFixture(actions: [
+            PlanAction(id: "read", tool: .projectList)
+        ]))
+
+        _ = try ActionExecutor(registry: registry, auditLogger: logger).execute(session)
+
+        let toolEvent = try XCTUnwrap(logger.recordedEvents.first { $0.category == "tool" && $0.status == .failed })
+        let error = try XCTUnwrap(toolEvent.metadata["error"])
+        XCTAssertFalse(error.contains(secret))
+        XCTAssertTrue(error.contains("[REDACTED_SECRET]"))
+    }
+
     func testExecutorPreservesSucceededToolStateWhenAuditFailsAfterExecutionStarts() throws {
         let logger = SequencedActionAuditLogger(failOnCall: 2)
         let registry = try ToolRegistry(tools: [

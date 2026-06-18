@@ -15,10 +15,16 @@ public enum ActionExecutorError: Error, Equatable, Sendable {
 public struct ActionExecutor: Sendable {
     private let registry: ToolRegistry
     private let auditLogger: (any AuditLogger)?
+    private let redactor: DeveloperSecretRedactor
 
-    public init(registry: ToolRegistry, auditLogger: (any AuditLogger)? = nil) {
+    public init(
+        registry: ToolRegistry,
+        auditLogger: (any AuditLogger)? = nil,
+        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()
+    ) {
         self.registry = registry
         self.auditLogger = auditLogger
+        self.redactor = redactor
     }
 
     public func validationIssues(for session: ReviewSession) -> [ToolInputValidationIssue] {
@@ -206,13 +212,17 @@ public struct ActionExecutor: Sendable {
             "tool": tool.rawValue
         ]
         if let result {
-            metadata["summary"] = result.summary
+            metadata["summary"] = redacted(result.summary)
         }
         if let error {
-            metadata["error"] = String(describing: error)
+            metadata["error"] = redacted(String(describing: error))
         }
 
         try auditLogger?.record(AuditEvent(category: "tool", action: tool.rawValue, status: status, metadata: metadata))
+    }
+
+    private func redacted(_ value: String) -> String {
+        redactor.redact(value).text
     }
 
     private func recordReviewEventOrMarkAuditFailure(

@@ -1070,6 +1070,14 @@
 - [x] `DraftGenerationTests` で assignment redaction の境界を固定する。
 - [x] 完了条件: 内蔵 CRUD / tool execution の audit path が logger 構成ミスで provider token や API key を SQLite audit log に保存しない。
 
+### P10-138: Review executor audit metadata is redacted before persistence
+
+- [x] `ActionExecutor` は tool success の `summary` を audit metadata に入れる前に `DeveloperSecretRedactor` に通す。
+- [x] `ActionExecutor` は tool failure の `error` を audit metadata に入れる前に `DeveloperSecretRedactor` に通す。
+- [x] caller が `RedactingAuditLogger` を明示注入しない test logger でも、provider token / API key が action execution audit に残らないことを固定する。
+- [x] `ActionExecutorTests` で success summary と failure error の両方を regression test にする。
+- [x] 完了条件: Review execution の永続 audit path が logger 構成ミスで tool result / error 由来の secret を SQLite audit log に保存しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
