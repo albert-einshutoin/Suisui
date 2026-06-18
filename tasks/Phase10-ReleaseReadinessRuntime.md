@@ -719,6 +719,13 @@
 - [x] source regression test、notification tool tests、daily check runner tests で既存通知フローを確認する。
 - [x] 完了条件: 通知一覧の取得異常が「通知なし」と誤表示されない。
 
+### P10-090: Tool argument arrays reject invalid element types
+
+- [x] `ToolArguments` の string array / object array getter は `compactMap` で不正要素を捨てない。
+- [x] `project.create` の `tags`、`frame.create/update` の `triggers`、`task.bulk_create` の `tasks`、`reminders.bulk_create` の `reminders` は不正要素で validation failure を返す。
+- [x] project / task / knowledge / reminder の regression tests で partial row / partial reminder が作られないことを確認する。
+- [x] 完了条件: CRUD / reminder bulk 入力の壊れた配列が、要素欠落または部分実行として成功扱いにならない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

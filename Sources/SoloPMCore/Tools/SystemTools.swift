@@ -244,7 +244,7 @@ public struct ReminderTool: Tool {
                 try linkReminderIfNeeded(record: record, args: args)
                 return createdResult(record)
             case .remindersBulkCreate:
-                let reminderObjects = args.objectArray("reminders")
+                let reminderObjects = try args.objectArray("reminders")
                 guard !reminderObjects.isEmpty else {
                     throw ToolExecutionError.validationFailed(name, "reminders must contain at least one item.")
                 }

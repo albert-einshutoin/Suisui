@@ -16,6 +16,25 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertNotNil(result.rollbackMetadata["projectId"])
     }
 
+    func testProjectCreateRejectsNonStringTagsWithoutCreatingProject() throws {
+        let stores = try makeStores()
+        let tool = ProjectTool(name: .projectCreate, store: stores.projects)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "title": .string("Launch alpha"),
+                    "tags": .array([.string("oss"), .number(1)])
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(error as? ToolExecutionError, .validationFailed(.projectCreate, "Argument 'tags[1]' must be string."))
+        }
+
+        XCTAssertEqual(try stores.projects.list(), [])
+    }
+
     func testProjectUpdateRejectsBlankTitleWithoutMutatingProject() throws {
         let stores = try makeStores()
         let project = try stores.projects.create(title: "Launch Readiness")
@@ -230,6 +249,27 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(try stores.tasks.listAll(), [])
     }
 
+    func testTaskBulkCreateRejectsNonObjectItemsWithoutPartialRows() throws {
+        let stores = try makeStores()
+        let tool = TaskTool(name: .taskBulkCreate, store: stores.tasks)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "tasks": .array([
+                        .object(["title": .string("Draft")]),
+                        .string("Review")
+                    ])
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(error as? ToolExecutionError, .validationFailed(.taskBulkCreate, "Argument 'tasks[1]' must be object."))
+        }
+
+        XCTAssertEqual(try stores.tasks.listAll(), [])
+    }
+
     func testKnowledgeFrameCreateAndSearchUseSameStore() throws {
         let stores = try makeStores()
         let create = KnowledgeFrameTool(name: .frameCreate, store: stores.knowledge)
@@ -245,6 +285,26 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         let result = try search.execute(arguments: ["query": .string("notarization")], context: ToolExecutionContext(source: .developerTool))
 
         XCTAssertEqual(result.output["count"], .number(1))
+    }
+
+    func testKnowledgeFrameCreateRejectsNonStringTriggersWithoutCreatingFrame() throws {
+        let stores = try makeStores()
+        let create = KnowledgeFrameTool(name: .frameCreate, store: stores.knowledge)
+
+        XCTAssertThrowsError(
+            try create.execute(
+                arguments: [
+                    "name": .string("Release checklist"),
+                    "body": .string("Use notarization."),
+                    "triggers": .array([.string("release"), .number(1)])
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(error as? ToolExecutionError, .validationFailed(.frameCreate, "Argument 'triggers[1]' must be string."))
+        }
+
+        XCTAssertEqual(try stores.knowledge.list(), [])
     }
 
     func testKnowledgeFrameUpdatePreservesTriggersWhenOmitted() throws {

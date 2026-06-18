@@ -29,7 +29,7 @@ public struct ProjectTool: Tool {
                 priority: try args.optionalTrimmedString("priority"),
                 deadline: try args.optionalTrimmedString("deadline"),
                 workspacePath: try args.optionalTrimmedString("workspacePath"),
-                tags: args.trimmedStringArray("tags"),
+                tags: try args.trimmedStringArray("tags"),
                 sourceCommand: try args.optionalTrimmedString("sourceCommand")
             )
             return ToolResult(
@@ -129,7 +129,7 @@ public struct TaskTool: Tool {
                 compensationHint: "Task can be completed or deleted by a future cleanup flow."
             )
         case .taskBulkCreate:
-            let taskObjects = args.objectArray("tasks")
+            let taskObjects = try args.objectArray("tasks")
             guard !taskObjects.isEmpty else {
                 throw ToolExecutionError.validationFailed(name, "tasks must contain at least one task.")
             }
@@ -257,7 +257,7 @@ public struct KnowledgeFrameTool: Tool {
         let args = ToolArguments(arguments, tool: name)
         switch name {
         case .frameCreate:
-            let frame = try store.create(name: try args.requiredTrimmedString("name"), body: try args.requiredString("body"), triggers: args.trimmedStringArray("triggers"))
+            let frame = try store.create(name: try args.requiredTrimmedString("name"), body: try args.requiredString("body"), triggers: try args.trimmedStringArray("triggers"))
             return ToolResult(
                 tool: name,
                 status: .succeeded,
@@ -270,7 +270,7 @@ public struct KnowledgeFrameTool: Tool {
                 id: try args.requiredInt64("id"),
                 name: try args.optionalTrimmedString("name"),
                 body: try args.optionalNonBlankString("body"),
-                triggers: args.optionalTrimmedStringArray("triggers")
+                triggers: try args.optionalTrimmedStringArray("triggers")
             )
             return ToolResult(tool: name, status: .succeeded, summary: "Updated frame \(frame.name)", output: ["frameId": .number(Double(frame.id))])
         case .frameGet:

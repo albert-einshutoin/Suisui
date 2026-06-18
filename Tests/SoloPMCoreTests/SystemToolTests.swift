@@ -211,6 +211,27 @@ final class SystemToolTests: XCTestCase {
         XCTAssertEqual(try client.list().first?.isCompleted, true)
     }
 
+    func testReminderBulkCreateRejectsNonObjectItemsWithoutPartialRecords() throws {
+        let client = InMemoryReminderClient()
+        let create = ReminderTool(name: .remindersBulkCreate, client: client)
+
+        XCTAssertThrowsError(
+            try create.execute(
+                arguments: [
+                    "reminders": .array([
+                        .object(["title": .string("Draft spec")]),
+                        .string("Review spec")
+                    ])
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(error as? ToolExecutionError, .validationFailed(.remindersBulkCreate, "Argument 'reminders[1]' must be object."))
+        }
+
+        XCTAssertEqual(try client.list(), [])
+    }
+
     func testReminderToolPersistsLocalTaskLink() throws {
         let connection = try migratedConnection()
         let linkStore = SQLiteReminderLinkStore(connection: connection)

@@ -82,12 +82,12 @@ public struct ToolArguments: Sendable {
         }
     }
 
-    public func stringArray(_ key: String) -> [String] {
-        optionalStringArray(key) ?? []
+    public func stringArray(_ key: String) throws -> [String] {
+        try optionalStringArray(key) ?? []
     }
 
-    public func trimmedStringArray(_ key: String) -> [String] {
-        guard let values = optionalStringArray(key) else {
+    public func trimmedStringArray(_ key: String) throws -> [String] {
+        guard let values = try optionalStringArray(key) else {
             return []
         }
 
@@ -96,8 +96,8 @@ public struct ToolArguments: Sendable {
             .filter { !$0.isEmpty }
     }
 
-    public func optionalTrimmedStringArray(_ key: String) -> [String]? {
-        guard let values = optionalStringArray(key) else {
+    public func optionalTrimmedStringArray(_ key: String) throws -> [String]? {
+        guard let values = try optionalStringArray(key) else {
             return nil
         }
 
@@ -106,29 +106,37 @@ public struct ToolArguments: Sendable {
             .filter { !$0.isEmpty }
     }
 
-    public func optionalStringArray(_ key: String) -> [String]? {
-        guard case .array(let values)? = raw[key] else {
+    public func optionalStringArray(_ key: String) throws -> [String]? {
+        guard let rawValue = raw[key] else {
             return nil
         }
 
-        return values.compactMap {
-            guard case .string(let value) = $0 else {
-                return nil
+        guard case .array(let values) = rawValue else {
+            throw ToolExecutionError.validationFailed(tool, "Argument '\(key)' must be array.")
+        }
+
+        return try values.enumerated().map { index, value in
+            guard case .string(let stringValue) = value else {
+                throw ToolExecutionError.validationFailed(tool, "Argument '\(key)[\(index)]' must be string.")
             }
-            return value
+            return stringValue
         }
     }
 
-    public func objectArray(_ key: String) -> [[String: JSONValue]] {
-        guard case .array(let values)? = raw[key] else {
+    public func objectArray(_ key: String) throws -> [[String: JSONValue]] {
+        guard let rawValue = raw[key] else {
             return []
         }
 
-        return values.compactMap {
-            guard case .object(let value) = $0 else {
-                return nil
+        guard case .array(let values) = rawValue else {
+            throw ToolExecutionError.validationFailed(tool, "Argument '\(key)' must be array.")
+        }
+
+        return try values.enumerated().map { index, value in
+            guard case .object(let objectValue) = value else {
+                throw ToolExecutionError.validationFailed(tool, "Argument '\(key)[\(index)]' must be object.")
             }
-            return value
+            return objectValue
         }
     }
 }
