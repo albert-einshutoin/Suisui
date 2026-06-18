@@ -104,7 +104,13 @@ public struct ChatCompletionsOutputTextExtractor: Sendable {
     public init() {}
 
     public func extractText(from data: Data) throws -> String {
-        let response = try JSONDecoder().decode(ChatCompletionsResponseBody.self, from: data)
+        let response: ChatCompletionsResponseBody
+        do {
+            response = try JSONDecoder().decode(ChatCompletionsResponseBody.self, from: data)
+        } catch {
+            throw LLMProviderError.invalidResponse("Chat completion response could not be decoded.")
+        }
+
         let contents = try response.choices.map { choice in
             let content = choice.message.content
             guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {

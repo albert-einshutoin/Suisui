@@ -1021,6 +1021,13 @@
 - [x] OpenAI Responses / Chat Completions / ActionPlan parser の focused tests が green であることを確認する。
 - [x] 完了条件: Chat Completions 互換 provider の壊れた response choice が action plan 生成の成功経路に紛れ込まない。
 
+### P10-132: LLM provider response decode failures are user-facing invalid responses
+
+- [x] OpenAI Responses の success HTTP body が期待 schema と違う場合、raw `DecodingError` ではなく `LLMProviderError.invalidResponse` を返す。
+- [x] Chat Completions 互換 provider の success HTTP body が期待 schema と違う場合、raw `DecodingError` ではなく `LLMProviderError.invalidResponse` を返す。
+- [x] Provider tests で schema mismatch が low-level decode error として UI / caller に漏れないことを固定する。
+- [x] 完了条件: 壊れた LLM provider 応答がユーザーに実装内部の decode failure として露出せず、復旧可能な provider invalid response として扱われる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

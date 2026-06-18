@@ -171,6 +171,23 @@ final class OpenAIResponsesProviderTests: XCTestCase {
         }
     }
 
+    func testOutputTextExtractorMapsDecodeFailureToInvalidResponse() throws {
+        let data = Data(
+            """
+            {
+              "output": "not-an-array"
+            }
+            """.utf8
+        )
+
+        XCTAssertThrowsError(try OpenAIResponsesOutputTextExtractor().extractText(from: data)) { error in
+            XCTAssertEqual(
+                error as? LLMProviderError,
+                .invalidResponse("OpenAI Responses payload could not be decoded.")
+            )
+        }
+    }
+
     func testProviderRejectsMissingAPIKeyBeforeHTTP() async throws {
         let provider = OpenAIResponsesProvider(
             secretStore: InMemorySecretStore(),

@@ -69,7 +69,12 @@ public struct OpenAIResponsesOutputTextExtractor: Sendable {
     public init() {}
 
     public func extractText(from data: Data) throws -> String {
-        let response = try JSONDecoder().decode(OpenAIResponsesResponseBody.self, from: data)
+        let response: OpenAIResponsesResponseBody
+        do {
+            response = try JSONDecoder().decode(OpenAIResponsesResponseBody.self, from: data)
+        } catch {
+            throw LLMProviderError.invalidResponse("OpenAI Responses payload could not be decoded.")
+        }
 
         if let outputText = response.outputText?.trimmingCharacters(in: .whitespacesAndNewlines),
            !outputText.isEmpty {

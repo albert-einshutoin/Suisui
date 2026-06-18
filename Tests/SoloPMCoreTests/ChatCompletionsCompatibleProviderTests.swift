@@ -128,6 +128,23 @@ final class ChatCompletionsCompatibleProviderTests: XCTestCase {
         }
     }
 
+    func testOutputTextExtractorMapsDecodeFailureToInvalidResponse() throws {
+        let data = Data(
+            """
+            {
+              "choices": "not-an-array"
+            }
+            """.utf8
+        )
+
+        XCTAssertThrowsError(try ChatCompletionsOutputTextExtractor().extractText(from: data)) { error in
+            XCTAssertEqual(
+                error as? LLMProviderError,
+                .invalidResponse("Chat completion response could not be decoded.")
+            )
+        }
+    }
+
     func testOpenRouterProviderRejectsMissingAPIKeyBeforeHTTP() async throws {
         let provider = ChatCompletionsCompatibleProvider(
             configuration: .openRouter(model: "openai/gpt-latest"),
