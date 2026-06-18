@@ -36,6 +36,7 @@ SOLOPM_BUILD_CONFIGURATION=release ./script/build_and_run.sh --build-only
 4. notarize
 
 ```bash
+SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh
 ./script/notarize_app.sh
 ```
 

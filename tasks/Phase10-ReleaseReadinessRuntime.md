@@ -411,6 +411,12 @@
 - [x] `notarize_app.sh` は hardened runtime flag がない app bundle を notary submit 前に失敗させる。
 - [x] 完了条件: release operator は notarization 前に署名種別 / hardened runtime 不備をローカルで検出できる。
 
+### P10-052: Notarization setup verifier
+
+- [x] `verify_notarization_setup.sh` は notarization docs / env example / script の存在と実行権限を確認する。
+- [x] `SOLOPM_RELEASE_PREFLIGHT_ONLINE=1` の場合は `xcrun notarytool history --keychain-profile` で configured notary profile を検証する。
+- [x] 完了条件: release operator は notary submit 前に Keychain profile 設定不備を単独コマンドで確認できる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

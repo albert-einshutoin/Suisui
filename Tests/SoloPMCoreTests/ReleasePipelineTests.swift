@@ -25,6 +25,19 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("signature is missing hardened runtime"))
     }
 
+    func testNotarizationSetupVerifierChecksProfileWithoutSecrets() throws {
+        let script = try readPackageFile("script/verify_notarization_setup.sh")
+
+        XCTAssertTrue(script.contains("SOLOPM_NOTARY_PROFILE"))
+        XCTAssertTrue(script.contains("SOLOPM_RELEASE_PREFLIGHT_ONLINE"))
+        XCTAssertTrue(script.contains("xcrun notarytool history"))
+        XCTAssertTrue(script.contains("--keychain-profile"))
+        XCTAssertFalse(script.contains("APPLE_ID_PASSWORD"))
+        XCTAssertFalse(script.contains("AC_PASSWORD"))
+        XCTAssertFalse(script.contains("PASSWORD="))
+        XCTAssertFalse(script.contains("TOKEN="))
+    }
+
     func testReleasePreflightReportsExternalReleaseBlockersWithoutSecrets() throws {
         let script = try readPackageFile("script/verify_release_environment.sh")
 
@@ -765,6 +778,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("./script/create_release_evidence.sh"))
         XCTAssertTrue(checklist.contains("packaging/release-evidence.json"))
         XCTAssertTrue(checklist.contains("manual release evidence"))
+        XCTAssertTrue(checklist.contains("./script/verify_notarization_setup.sh"))
         XCTAssertTrue(checklist.contains("./script/verify_release_environment.sh"))
         XCTAssertTrue(checklist.contains("./script/release_readiness_report.sh"))
     }
