@@ -202,10 +202,7 @@ public enum LLMProviderCatalog {
     }
 
     public static func entry(for id: LLMProviderID) -> LLMProviderCatalogEntry {
-        guard let entry = entriesByID[id] else {
-            preconditionFailure("Missing LLM provider catalog entry for \(id.rawValue).")
-        }
-        return entry
+        entriesByID[id] ?? unavailableEntry(for: id)
     }
 
     public static func isAvailableInCurrentBuild(_ id: LLMProviderID) -> Bool {
@@ -215,4 +212,19 @@ public enum LLMProviderCatalog {
     private static let entriesByID: [LLMProviderID: LLMProviderCatalogEntry] = Dictionary(
         uniqueKeysWithValues: allEntries.map { ($0.id, $0) }
     )
+
+    private static func unavailableEntry(for id: LLMProviderID) -> LLMProviderCatalogEntry {
+        LLMProviderCatalogEntry(
+            id: id,
+            displayName: id.rawValue,
+            isAvailableInCurrentBuild: false,
+            unavailableReason: "Provider catalog entry is missing.",
+            apiKeySecretKey: nil,
+            baseURL: nil,
+            defaultModelID: "",
+            requestFamily: .openAIResponses,
+            supportsStreaming: false,
+            supportsStructuredOutput: false
+        )
+    }
 }

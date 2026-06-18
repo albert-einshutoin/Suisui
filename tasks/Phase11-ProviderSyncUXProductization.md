@@ -172,6 +172,7 @@
   - [x] Sidebar -> board detail -> task card -> inspector edit/save/delete のsource-level focus anchorsを固定する。
   - [ ] 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。
 - [x] `script/capture_ui_evidence.sh` は一時HOME、seed済みProject board、Light/Dark/System切替、window captureを使う。
+- [x] `release_readiness_report.sh` は `ui-screenshots.md` だけでなく Light/Dark/System PNG の存在、サイズ、寸法を検証し、欠落や小さすぎる画像をblockerにする。
 - [ ] Light/Dark/System切替後にカード、サイドバー、インスペクタのコントラストが破綻しないことをスクリーンショットで確認する。
 - [ ] 完了条件: マウス、キーボード、支援技術のどれでも主要CRUDが完結する。
 

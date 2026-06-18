@@ -2,6 +2,17 @@ import XCTest
 @testable import SoloPMCore
 
 final class LLMProviderCatalogTests: XCTestCase {
+    func testCatalogDefinesEntryForEveryProviderID() {
+        let ids = LLMProviderCatalog.allEntries.map(\.id)
+
+        XCTAssertEqual(ids.count, Set(ids).count)
+        XCTAssertEqual(Set(ids), Set(LLMProviderID.allCases))
+
+        for id in LLMProviderID.allCases {
+            XCTAssertEqual(LLMProviderCatalog.entry(for: id).id, id)
+        }
+    }
+
     func testCatalogDefinesContractForEachTargetProvider() {
         let entries = LLMProviderCatalog.allEntries
 

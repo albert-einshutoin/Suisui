@@ -1952,9 +1952,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Sources/SoloPMCore"))
         XCTAssertTrue(script.contains("Sources/SoloPMApp"))
         XCTAssertTrue(script.contains("Sources/SoloPMCLI"))
-        XCTAssertTrue(script.contains("(?i:fake|mock|demo|canned|stub|skeleton|todo|fixme"))
+        XCTAssertTrue(script.contains("(?i:fake|mock|canned|stub|skeleton|todo|fixme"))
         XCTAssertTrue(script.contains("not[[:space:]_-]*implemented"))
-        XCTAssertTrue(script.contains("(?i:(^|[^[:alnum:]_])(sample|placeholder)([^[:alnum:]_]|$))"))
+        XCTAssertTrue(script.contains("(?i:(^|[^[:alnum:]_])(demo|sample|placeholder)([^[:alnum:]_]|$))"))
         XCTAssertTrue(script.contains("Static[A-Za-z0-9_]*"))
         XCTAssertFalse(script.contains("Fake|Mock|InMemory|Static|Demo|sample|canned|stub"))
         XCTAssertTrue(script.contains("Phase0-Phase10"))
@@ -1965,6 +1965,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("verify_release_environment.sh"))
         XCTAssertTrue(script.contains("missing runtime source directory"))
         XCTAssertTrue(script.contains("runtime mock/fake scan failed"))
+        XCTAssertTrue(script.contains("section \"UI screenshot evidence\""))
+        XCTAssertTrue(script.contains("docs/release/evidence/ui-screenshots.md"))
+        XCTAssertTrue(script.contains("project-board-light.png"))
+        XCTAssertTrue(script.contains("sips -g pixelWidth -g pixelHeight"))
+        XCTAssertTrue(script.contains("missing UI screenshot file"))
+        XCTAssertTrue(script.contains("UI screenshot is unexpectedly small"))
         XCTAssertTrue(script.contains("BLOCKER"))
     }
 
@@ -2063,6 +2069,68 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
     }
 
+    func testReleaseReadinessReportFailsWhenUIScreenshotEvidenceFilesAreMissing() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-missing-ui-evidence", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let evidenceDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("release", isDirectory: true)
+            .appendingPathComponent("evidence", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: evidenceDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: preflightURL, atomically: true, encoding: .utf8)
+        try """
+        # UI Screenshot Evidence
+
+        Generated with `script/capture_ui_evidence.sh`.
+
+        - Generated at: `2026-06-19T00:00:00Z`
+
+        ## Screenshots
+
+        - Light: `docs/release/evidence/ui-screenshots/project-board-light.png`
+        - Dark: `docs/release/evidence/ui-screenshots/project-board-dark.png`
+        - System: `docs/release/evidence/ui-screenshots/project-board-system.png`
+        """.write(to: evidenceDirectory.appendingPathComponent("ui-screenshots.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: preflightURL.path)
+
+        let result = try runTool(["bash", reportURL.path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("== UI screenshot evidence =="))
+        XCTAssertTrue(result.output.contains("missing UI screenshot file: docs/release/evidence/ui-screenshots/project-board-light.png"))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+    }
+
     func testReleaseReadinessRuntimeMarkerPatternCatchesLowercaseMarkersWithoutCommonFalsePositives() throws {
         let availability = try runTool(["rg", "--version"])
         try XCTSkipIf(availability.exitCode != 0, "rg is required to exercise the release marker pattern")
@@ -2085,11 +2153,13 @@ final class ReleasePipelineTests: XCTestCase {
         try """
         final class LocalmockExecutor {}
         struct StaticPlanningProvider {}
+        let demoProvider = "demo"
         let future = "Not_Implemented"
         let memoryDatabase = ":memory:"
         """.write(to: markerFile, atomically: true, encoding: .utf8)
         try """
         let settings = [AVSampleRateKey: 44_100]
+        let openCodeModelID = "opencode-model"
         private struct ArchivedProjectPlaceholder {}
         static func buildProductionValue() {}
         """.write(to: benignFile, atomically: true, encoding: .utf8)
@@ -2098,6 +2168,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual(markerResult.exitCode, 0, markerResult.output)
         XCTAssertTrue(markerResult.output.contains("LocalmockExecutor"))
         XCTAssertTrue(markerResult.output.contains("StaticPlanningProvider"))
+        XCTAssertTrue(markerResult.output.contains("demoProvider"))
         XCTAssertTrue(markerResult.output.contains("Not_Implemented"))
         XCTAssertTrue(markerResult.output.contains(":memory:"))
 
