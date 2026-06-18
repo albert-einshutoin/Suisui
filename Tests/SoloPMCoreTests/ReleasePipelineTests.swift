@@ -52,6 +52,15 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("release app signature is missing hardened runtime"))
     }
 
+    func testReleasePreflightRequiresAppBundleMetadataToMatchReleaseMetadata() throws {
+        let script = try readPackageFile("script/verify_release_environment.sh")
+
+        XCTAssertTrue(script.contains("CFBundleShortVersionString"))
+        XCTAssertTrue(script.contains("CFBundleVersion"))
+        XCTAssertTrue(script.contains("CFBundleIdentifier"))
+        XCTAssertTrue(script.contains("release app bundle metadata mismatch"))
+    }
+
     func testReleasePreflightRequiresLocalEvidenceFileForManualChecks() throws {
         let script = try readPackageFile("script/verify_release_environment.sh")
 

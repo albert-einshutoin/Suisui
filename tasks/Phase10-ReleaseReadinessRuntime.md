@@ -375,6 +375,12 @@
 - [x] ad-hoc / non-runtime signature は notarization submit 前に release blocker にする。
 - [x] 完了条件: public alpha 用 app bundle は Developer ID identity と hardened runtime の両方を満たした署名だけを release path として扱う。
 
+### P10-046: Release app bundle metadata gate
+
+- [x] `verify_release_environment.sh` は `dist/SoloPM.app/Contents/Info.plist` の `CFBundleIdentifier` / `CFBundleShortVersionString` / `CFBundleVersion` を `packaging/app_metadata.env` と照合する。
+- [x] stale build や別 bundle identifier の app bundle は package evidence / manual evidence に進む前に release blocker にする。
+- [x] 完了条件: release package は app metadata と一致する app bundle からだけ作成される。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

@@ -6,6 +6,7 @@ METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 SIGNING_ENV_FILE="$ROOT_DIR/packaging/signing.env"
 NOTARIZATION_ENV_FILE="$ROOT_DIR/packaging/notarization.env"
 RELEASE_EVIDENCE_FILE="${SOLOPM_RELEASE_EVIDENCE_FILE:-$ROOT_DIR/packaging/release-evidence.json}"
+PLIST_BUDDY="/usr/libexec/PlistBuddy"
 
 BLOCKERS=()
 WARNINGS=()
@@ -68,6 +69,44 @@ require_clean_source_tree() {
   fi
 }
 
+read_app_info_plist_key() {
+  local app_bundle="$1"
+  local key="$2"
+  "$PLIST_BUDDY" -c "Print :$key" "$app_bundle/Contents/Info.plist" 2>/dev/null || true
+}
+
+require_app_bundle_metadata() {
+  local app_bundle="$1"
+  local expected_bundle_id="$2"
+  local expected_version="$3"
+  local expected_build="$4"
+  local info_plist="$app_bundle/Contents/Info.plist"
+  local actual_bundle_id
+  local actual_version
+  local actual_build
+
+  if [[ ! -f "$info_plist" ]]; then
+    add_blocker "missing release app Info.plist: $info_plist"
+    return
+  fi
+
+  actual_bundle_id="$(read_app_info_plist_key "$app_bundle" "CFBundleIdentifier")"
+  actual_version="$(read_app_info_plist_key "$app_bundle" "CFBundleShortVersionString")"
+  actual_build="$(read_app_info_plist_key "$app_bundle" "CFBundleVersion")"
+
+  if [[ "$actual_bundle_id" != "$expected_bundle_id" ]]; then
+    add_blocker "release app bundle metadata mismatch: CFBundleIdentifier expected '$expected_bundle_id', got '$actual_bundle_id'"
+  fi
+
+  if [[ "$actual_version" != "$expected_version" ]]; then
+    add_blocker "release app bundle metadata mismatch: CFBundleShortVersionString expected '$expected_version', got '$actual_version'"
+  fi
+
+  if [[ "$actual_build" != "$expected_build" ]]; then
+    add_blocker "release app bundle metadata mismatch: CFBundleVersion expected '$expected_build', got '$actual_build'"
+  fi
+}
+
 require_file "$METADATA_FILE" "app metadata"
 require_file "$ROOT_DIR/packaging/SoloPM.entitlements" "entitlements"
 require_file "$ROOT_DIR/packaging/signing.env.example" "signing env example"
@@ -83,6 +122,7 @@ require_command xcrun
 require_command hdiutil
 require_command ditto
 require_command plutil
+require_command "$PLIST_BUDDY"
 
 require_clean_source_tree
 
@@ -275,6 +315,7 @@ else
 fi
 
 APP_NAME="${APP_NAME:-SoloPM}"
+BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:-}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 EXPECTED_APP_BUNDLE_PATH="dist/$APP_NAME.app"
 ARTIFACT_BASENAME="$APP_NAME-${MARKETING_VERSION:-}+${CURRENT_PROJECT_VERSION:-}"
@@ -308,6 +349,8 @@ else
 fi
 
 if [[ -d "$APP_BUNDLE" ]]; then
+  require_app_bundle_metadata "$APP_BUNDLE" "$BUNDLE_IDENTIFIER" "${MARKETING_VERSION:-}" "${CURRENT_PROJECT_VERSION:-}"
+
   if ! codesign --verify --strict --deep --verbose=2 "$APP_BUNDLE" >/dev/null 2>&1; then
     add_blocker "dist app failed codesign verification: $APP_BUNDLE"
   fi
