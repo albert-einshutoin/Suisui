@@ -557,6 +557,14 @@
 - [x] テスト: corrupted UserDefaults settings が silent default fallback にならないことを確認する。
 - [x] 完了条件: provider / workspace / notification 設定の破損が、ユーザーから見て設定消失のように見えない。
 
+### P10-068: Keychain API key read failure visibility
+
+- [x] `AppSettingsViewModel` は Keychain read failure を `try?` で握りつぶして `Not configured` にしない。
+- [x] OpenAI / OpenRouter API key status は read failure 時に `Unavailable` を表示する。
+- [x] UI には `API key status could not be read from Keychain.` を出す。
+- [x] テスト: SecretStore read failure が未設定表示にならないことを確認する。
+- [x] 完了条件: Keychain 障害や権限問題が API key 未設定として誤認されない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

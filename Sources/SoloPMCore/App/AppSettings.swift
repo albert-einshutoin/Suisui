@@ -326,13 +326,25 @@ public final class AppSettingsViewModel: ObservableObject {
     }
 
     public func refreshOpenAIAPIKeyStatus() {
-        let stored = (try? secretStore.read(.openAIAPIKey))?.trimmingCharacters(in: .whitespacesAndNewlines)
-        openAIAPIKeyStatusLabel = stored?.isEmpty == false ? "Configured" : "Not configured"
+        do {
+            let stored = try secretStore.read(.openAIAPIKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            openAIAPIKeyStatusLabel = stored?.isEmpty == false ? "Configured" : "Not configured"
+        } catch {
+            openAIAPIKeyStatusLabel = "Unavailable"
+            errorMessage = "API key status could not be read from Keychain."
+            successMessage = nil
+        }
     }
 
     public func refreshOpenRouterAPIKeyStatus() {
-        let stored = (try? secretStore.read(.openRouterAPIKey))?.trimmingCharacters(in: .whitespacesAndNewlines)
-        openRouterAPIKeyStatusLabel = stored?.isEmpty == false ? "Configured" : "Not configured"
+        do {
+            let stored = try secretStore.read(.openRouterAPIKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            openRouterAPIKeyStatusLabel = stored?.isEmpty == false ? "Configured" : "Not configured"
+        } catch {
+            openRouterAPIKeyStatusLabel = "Unavailable"
+            errorMessage = "API key status could not be read from Keychain."
+            successMessage = nil
+        }
     }
 
     private func clearMessages() {

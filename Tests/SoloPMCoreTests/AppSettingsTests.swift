@@ -69,6 +69,22 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testAppSettingsViewModelReportsKeychainReadFailureInsteadOfNotConfigured() throws {
+        let suiteName = "SoloPM.AppSettingsKeychainReadFailure.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: ThrowingReadSecretStore()
+        )
+
+        XCTAssertEqual(viewModel.openAIAPIKeyStatusLabel, "Unavailable")
+        XCTAssertEqual(viewModel.openRouterAPIKeyStatusLabel, "Unavailable")
+        XCTAssertEqual(viewModel.errorMessage, "API key status could not be read from Keychain.")
+    }
+
+    @MainActor
     func testAppSettingsViewModelSavesAndDeletesOpenAIKeyInSecretStoreOnly() throws {
         let suiteName = "SoloPM.AppSettingsViewModelTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -202,4 +218,14 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertEqual(viewModel.settings.sttProvider, .openAITranscribe)
     }
+}
+
+private struct ThrowingReadSecretStore: SecretStore {
+    func save(_ value: String, for key: SecretKey) throws {}
+
+    func read(_ key: SecretKey) throws -> String? {
+        throw SecretStoreError.unexpectedStatus(-1)
+    }
+
+    func delete(_ key: SecretKey) throws {}
 }
