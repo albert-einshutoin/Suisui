@@ -1995,6 +1995,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("--with-filename"))
         XCTAssertTrue(script.contains("tasks/README.md"))
         XCTAssertTrue(script.contains("verify_release_environment.sh"))
+        XCTAssertTrue(script.contains("NEXT: complete docs/release/checklist.md release-machine steps"))
         XCTAssertTrue(script.contains("missing runtime source directory"))
         XCTAssertTrue(script.contains("runtime mock/fake scan failed"))
         XCTAssertTrue(script.contains("section \"UI screenshot evidence\""))
@@ -2121,6 +2122,55 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("rg exploded"))
         XCTAssertTrue(result.output.contains("runtime mock/fake scan failed"))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+    }
+
+    func testReleaseReadinessReportShowsReleaseMachineNextActionsWhenPreflightFails() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-preflight-next-actions", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "BLOCKER: SOLOPM_SIGNING_IDENTITY is not set; Developer ID Application signing cannot run\\n"
+        exit 1
+        """.write(to: preflightURL, atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: preflightURL.path)
+
+        let result = try runTool(["bash", reportURL.path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("== Release environment preflight =="))
+        XCTAssertTrue(result.output.contains("SOLOPM_SIGNING_IDENTITY is not set"))
+        XCTAssertTrue(result.output.contains("NEXT: complete docs/release/checklist.md release-machine steps"))
+        XCTAssertTrue(result.output.contains("packaging/signing.env"))
+        XCTAssertTrue(result.output.contains("packaging/notarization.env"))
+        XCTAssertTrue(result.output.contains("production Sparkle feed/key"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
     }
 

@@ -1112,6 +1112,12 @@
 - [x] Phase checklist blocker はファイル名と行番号を出し、未完了gateの場所を追えるようにする。
 - [x] 完了条件: 次フェーズの未完了計画を追加しても、現在リリースの `NOT READY` 理由が水増しされない。
 
+### P10-141c: Release environment preflight next actions are explicit
+
+- [x] `release_readiness_report.sh` は `verify_release_environment.sh` が失敗した場合、release machineで揃えるべき `packaging/signing.env`、`packaging/notarization.env`、production Sparkle feed/key、signed/notarized app、appcast、`packaging/release-evidence.json` を `NEXT:` として表示する。
+- [x] `ReleasePipelineTests` で preflight failure fixture を作り、Developer ID signing blocker と release-machine next action が同時に出ることを固定する。
+- [x] 完了条件: Developer ID / notarization / Sparkle / evidence の外部条件が未完了な場合でも、次に実施すべきrelease checklist手順がreport内で分かる。
+
 ### P10-142: Manual release environment evidence must be concrete
 
 - [x] `create_release_evidence.sh` は manual check flag がある場合、空白だけの `--manual-environment` を拒否する。

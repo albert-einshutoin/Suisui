@@ -367,6 +367,7 @@ set -e
 printf "%s\n" "$preflight_output"
 if [[ "$preflight_status" -ne 0 ]]; then
   blocker "release environment preflight did not pass"
+  printf "NEXT: complete docs/release/checklist.md release-machine steps: configure packaging/signing.env, packaging/notarization.env, production Sparkle feed/key, signed/notarized app, appcast, and packaging/release-evidence.json; then rerun ./script/release_readiness_report.sh.\n"
 else
   printf "OK: release environment preflight passed\n"
 fi
