@@ -437,6 +437,7 @@
 - [x] `verify_appcast.sh` は Sparkle `generate_appcast` が出力する element 形式の `sparkle:version` / `sparkle:shortVersionString` を受け入れ、metadata mismatch は明示エラーにする。
 - [x] `verify_appcast.sh` は configured `SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX` と enclosure URL が一致しない appcast を拒否する。
 - [x] release checklist は generated `dist/releases/appcast.xml` を `SOLOPM_REQUIRE_RELEASE_APPCAST=1` で検証する。
+- [x] `create_release_evidence.sh` は release appcast verification が通らない状態では evidence を作成しない。
 - [x] `verify_release_environment.sh` は generated release appcast が存在し、release mode の appcast verification を通ることを release blocker にする。
 - [x] `verify_release_environment.sh` は appcast verification failure の具体理由を release blocker に含める。
 - [x] 完了条件: sample appcast smoke を通しただけでは public alpha release ready にならない。

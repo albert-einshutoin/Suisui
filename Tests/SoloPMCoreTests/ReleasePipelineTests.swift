@@ -302,11 +302,15 @@ final class ReleasePipelineTests: XCTestCase {
         )
         let artifactURL = try writeArtifactChecksum(to: checksumURL, artifactPath: artifactPath)
         let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: artifactPath)
+        let appcastURL = try writeReleaseAppcastFixture(
+            at: packageRoot().appendingPathComponent(".build/test-release-appcast.xml")
+        )
         defer {
             try? FileManager.default.removeItem(at: evidenceURL)
             try? FileManager.default.removeItem(at: checksumURL)
             try? FileManager.default.removeItem(at: artifactURL)
             try? FileManager.default.removeItem(at: packageEvidenceURL)
+            try? FileManager.default.removeItem(at: appcastURL)
         }
 
         let result = try runScript(
@@ -328,9 +332,11 @@ final class ReleasePipelineTests: XCTestCase {
             environment: [
                 "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
                 "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path,
+                "SOLOPM_RELEASE_APPCAST_FILE": appcastURL.path,
                 "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
                 "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile",
                 "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases/",
                 "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
@@ -345,7 +351,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(evidence.contains("\"signingIdentity\": \"Developer ID Application: SoloPM Test (TEAMID)\""))
         XCTAssertTrue(evidence.contains("\"notaryProfile\": \"SoloPMNotaryProfile\""))
         XCTAssertTrue(evidence.contains("\"sparkleFeedURL\": \"https://updates.solopm.app/releases/appcast.xml\""))
-        XCTAssertTrue(evidence.contains("\"appcastPath\": \"dist/releases/appcast.xml\""))
+        XCTAssertTrue(evidence.contains("\"appcastPath\": \".build/test-release-appcast.xml\""))
         XCTAssertTrue(evidence.contains("\"releaseMachineLaunch\": true"))
         XCTAssertTrue(evidence.contains("\"checksumVerification\": true"))
         XCTAssertTrue(evidence.contains("\"cleanDmgInstall\": true"))
@@ -380,11 +386,15 @@ final class ReleasePipelineTests: XCTestCase {
             for: checksumURL,
             artifactPath: relativeArtifactPath
         )
+        let appcastURL = try writeReleaseAppcastFixture(
+            at: packageRoot().appendingPathComponent(".build/test-release-appcast-absolute-checksum.xml")
+        )
         defer {
             try? FileManager.default.removeItem(at: evidenceURL)
             try? FileManager.default.removeItem(at: checksumURL)
             try? FileManager.default.removeItem(at: artifactURL)
             try? FileManager.default.removeItem(at: packageEvidenceURL)
+            try? FileManager.default.removeItem(at: appcastURL)
         }
 
         let result = try runScript(
@@ -393,9 +403,11 @@ final class ReleasePipelineTests: XCTestCase {
             environment: [
                 "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
                 "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path,
+                "SOLOPM_RELEASE_APPCAST_FILE": appcastURL.path,
                 "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
                 "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile",
                 "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases/",
                 "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
@@ -403,6 +415,50 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual(result.exitCode, 0, result.output)
         let evidence = try String(contentsOf: evidenceURL, encoding: .utf8)
         XCTAssertTrue(evidence.contains("\"artifactPath\": \"\(absoluteArtifactPath)\""))
+    }
+
+    func testReleaseEvidenceScriptRejectsInvalidReleaseAppcast() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-invalid-appcast.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-invalid-appcast.dmg.sha256")
+        let artifactPath = ".build/test-release-artifact-invalid-appcast.dmg"
+        let appcastURL = packageRoot()
+            .appendingPathComponent(".build/test-release-appcast-invalid.xml")
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let artifactURL = try writeArtifactChecksum(to: checksumURL, artifactPath: artifactPath)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: artifactPath)
+        try writeReleaseAppcastFixture(at: appcastURL, includeSignature: false)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: artifactURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+            try? FileManager.default.removeItem(at: appcastURL)
+        }
+
+        let result = try runScript(
+            "script/create_release_evidence.sh",
+            arguments: ["--force"],
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path,
+                "SOLOPM_RELEASE_APPCAST_FILE": appcastURL.path,
+                "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
+                "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases/",
+                "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release evidence appcast verification failed"))
+        XCTAssertTrue(result.output.contains("release appcast is missing Sparkle edSignature"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceURL.path))
     }
 
     func testReleaseEvidenceScriptRequiresSparkleContextForSuccessfulEvidence() throws {
@@ -1431,6 +1487,32 @@ final class ReleasePipelineTests: XCTestCase {
         try "\(sha256)  \(artifactPath)\n"
             .write(to: checksumURL, atomically: true, encoding: .utf8)
         return artifactURL
+    }
+
+    @discardableResult
+    private func writeReleaseAppcastFixture(at appcastURL: URL, includeSignature: Bool = true) throws -> URL {
+        let signatureAttribute = includeSignature
+            ? " sparkle:edSignature=\"release-signature-smoke-value\""
+            : ""
+        try FileManager.default.createDirectory(
+            at: appcastURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        <?xml version="1.0" encoding="utf-8"?>
+        <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+          <channel>
+            <title>SoloPM Releases</title>
+            <item>
+              <title>SoloPM 0.1.0</title>
+              <sparkle:version>1</sparkle:version>
+              <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+              <enclosure url="https://updates.solopm.app/releases/SoloPM-0.1.0+1.zip" length="12345" type="application/octet-stream"\(signatureAttribute)/>
+            </item>
+          </channel>
+        </rss>
+        """.write(to: appcastURL, atomically: true, encoding: .utf8)
+        return appcastURL
     }
 
     private func readPackageFile(_ relativePath: String) throws -> String {

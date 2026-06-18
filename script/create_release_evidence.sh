@@ -342,6 +342,17 @@ require_release_sparkle_context() {
   fi
 }
 
+require_release_appcast() {
+  local validation_output
+  if ! validation_output="$(
+    SOLOPM_REQUIRE_RELEASE_APPCAST=1 \
+      "$ROOT_DIR/script/verify_appcast.sh" "$RELEASE_APPCAST_FILE" 2>&1
+  )"; then
+    printf "release evidence appcast verification failed: %s: %s\n" "$RELEASE_APPCAST_FILE" "$validation_output" >&2
+    exit 2
+  fi
+}
+
 if [[ "${#NOTES[@]}" -eq 0 ]]; then
   NOTES+=("Generated from packaging/app_metadata.env. Set manual check flags only after testing the signed and notarized build.")
 fi
@@ -373,6 +384,7 @@ if [[ "$RELEASE_MACHINE_LAUNCH" == "true" \
 fi
 require_release_signing_context
 require_release_sparkle_context
+require_release_appcast
 
 {
   printf '{\n'
