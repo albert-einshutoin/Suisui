@@ -57,11 +57,11 @@
 
 ## P11-010: LLM provider catalog contract
 
-- [ ] `LLMProviderID` / Settings provider listを更新し、`openaiResponses`、`claudeMessages`、`geminiDirect`、`geminiOpenAICompatible`、`groqOpenAICompatible`、`opencodeLocal`、`openRouterCompatible`、`ollamaCompatible` を区別する。
-- [ ] 未実装providerはSettingsに選択肢として出さない。表示する場合は `Not available in this build` として保存不可にする。
-- [ ] providerごとに Keychain secret key、base URL、model id、request family、streaming support、structured output supportを定義する。
-- [ ] API keyはproviderごとにKeychainへ分離保存し、UserDefaults / SQLite / logs / screenshotsに出さない。
-- [ ] 完了条件: provider追加時に「OpenAI互換だから同じ」で隠れた差分がUIや実行時エラーに漏れない。
+- [x] `LLMProviderID` / Settings provider listを更新し、`openaiResponses`、`claudeMessages`、`geminiDirect`、`geminiOpenAICompatible`、`groqOpenAICompatible`、`opencodeLocal`、`openRouterCompatible`、`ollamaCompatible` を区別する。
+- [x] 未実装providerはSettingsに選択肢として出さない。表示する場合は `Not available in this build` として保存不可にする。
+- [x] providerごとに Keychain secret key、base URL、model id、request family、streaming support、structured output supportを定義する。
+- [x] API keyはproviderごとにKeychainへ分離保存し、UserDefaults / SQLite / logs / screenshotsに出さない。
+- [x] 完了条件: provider追加時に「OpenAI互換だから同じ」で隠れた差分がUIや実行時エラーに漏れない。
 
 ## P11-011: OpenAI Responses as reference implementation
 

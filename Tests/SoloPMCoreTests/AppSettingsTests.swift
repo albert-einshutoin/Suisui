@@ -39,7 +39,7 @@ final class AppSettingsTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let store = UserDefaultsAppSettingsStore(defaults: defaults)
         let settings = AppSettings(
-            aiProvider: .openAIResponses,
+            aiProvider: .openaiResponses,
             sttProvider: .openAITranscribe,
             notificationsEnabled: true,
             defaultWorkspacePath: "/tmp/SoloPM",
@@ -333,14 +333,55 @@ final class AppSettingsTests: XCTestCase {
         let store = UserDefaultsAppSettingsStore(defaults: defaults)
         let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
 
-        viewModel.setAIProvider(.openRouter)
+        viewModel.setAIProvider(.openRouterCompatible)
         viewModel.setSTTProvider(.openAITranscribe)
         viewModel.saveSettings()
 
         let loaded = try store.load()
 
-        XCTAssertEqual(loaded.aiProvider, .openRouter)
+        XCTAssertEqual(loaded.aiProvider, .openRouterCompatible)
         XCTAssertEqual(loaded.sttProvider, .openAITranscribe)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelRejectsUnavailableAIProviderSelection() throws {
+        let suiteName = "SoloPM.AppSettingsUnavailableAIProvider.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        XCTAssertEqual(viewModel.selectableAIProviders, [.openaiResponses, .openRouterCompatible, .ollamaCompatible])
+
+        viewModel.setAIProvider(.claudeMessages)
+        viewModel.saveSettings()
+
+        XCTAssertEqual(viewModel.settings.aiProvider, .openaiResponses)
+        XCTAssertEqual(viewModel.errorMessage, "Claude Messages is not available in this build.")
+        XCTAssertNil(defaults.data(forKey: "app.settings"))
+    }
+
+    func testLegacyAIProviderRawValuesAreMigratedWhenSettingsLoad() throws {
+        let decoder = JSONDecoder()
+        let template = """
+        {
+          "aiProvider": "%@",
+          "sttProvider": "openAITranscribe",
+          "notificationsEnabled": false,
+          "defaultWorkspacePath": null,
+          "timeZoneIdentifier": "UTC"
+        }
+        """
+
+        let openRouterData = Data(String(format: template, "openRouter").utf8)
+        let ollamaData = Data(String(format: template, "ollama").utf8)
+        let openAICompatibleData = Data(String(format: template, "openAICompatible").utf8)
+        let openAIResponsesData = Data(String(format: template, "openAIResponses").utf8)
+
+        XCTAssertEqual(try decoder.decode(AppSettings.self, from: openRouterData).aiProvider, .openRouterCompatible)
+        XCTAssertEqual(try decoder.decode(AppSettings.self, from: ollamaData).aiProvider, .ollamaCompatible)
+        XCTAssertEqual(try decoder.decode(AppSettings.self, from: openAICompatibleData).aiProvider, .openaiResponses)
+        XCTAssertEqual(try decoder.decode(AppSettings.self, from: openAIResponsesData).aiProvider, .openaiResponses)
     }
 
     @MainActor

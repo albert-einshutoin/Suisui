@@ -803,7 +803,7 @@ private struct SettingsView: View {
                         set: { settingsViewModel.setAIProvider($0) }
                     )
                 ) {
-                    ForEach(AIProvider.allCases, id: \.self) { provider in
+                    ForEach(settingsViewModel.selectableAIProviders, id: \.self) { provider in
                         Text(provider.displayName)
                             .tag(provider)
                     }
@@ -1341,22 +1341,26 @@ private enum AppRuntimeFactory {
     }
 
     private static func makeLLMProvider(settings: AppSettings, secretStore: any SecretStore) -> any LLMProvider {
-        switch settings.aiProvider {
-        case .openAIResponses:
-            OpenAIResponsesProvider(secretStore: secretStore)
-        case .openAICompatible:
-            ChatCompletionsCompatibleProvider(
-                configuration: .openAICompatible(model: "gpt-5.2"),
+        switch settings.normalizedForRuntime.aiProvider {
+        case .openaiResponses,
+             .claudeMessages,
+             .geminiDirect,
+             .geminiOpenAICompatible,
+             .groqOpenAICompatible,
+             .opencodeLocal:
+            let entry = LLMProviderCatalog.entry(for: .openaiResponses)
+            let configuration = OpenAIResponsesConfiguration(model: entry.defaultModelID)
+            return OpenAIResponsesProvider(secretStore: secretStore, configuration: configuration)
+        case .openRouterCompatible:
+            let entry = LLMProviderCatalog.entry(for: .openRouterCompatible)
+            return ChatCompletionsCompatibleProvider(
+                configuration: .openRouter(model: entry.defaultModelID),
                 secretStore: secretStore
             )
-        case .openRouter:
-            ChatCompletionsCompatibleProvider(
-                configuration: .openRouter(model: "openai/gpt-latest"),
-                secretStore: secretStore
-            )
-        case .ollama:
-            ChatCompletionsCompatibleProvider(
-                configuration: .ollama(model: "llama3.2"),
+        case .ollamaCompatible:
+            let entry = LLMProviderCatalog.entry(for: .ollamaCompatible)
+            return ChatCompletionsCompatibleProvider(
+                configuration: .ollama(model: entry.defaultModelID),
                 secretStore: secretStore
             )
         }

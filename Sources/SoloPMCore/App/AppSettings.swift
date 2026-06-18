@@ -9,7 +9,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var timeZoneIdentifier: String
 
     public init(
-        aiProvider: AIProvider = .openAIResponses,
+        aiProvider: AIProvider = .openaiResponses,
         sttProvider: STTProvider = .openAITranscribe,
         notificationsEnabled: Bool = false,
         defaultWorkspacePath: String? = nil,
@@ -26,6 +26,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public var normalizedForRuntime: AppSettings {
         var copy = self
+        if !LLMProviderCatalog.isAvailableInCurrentBuild(copy.aiProvider) {
+            copy.aiProvider = LLMProviderCatalog.defaultProviderID
+        }
         if !copy.sttProvider.isReleaseReady {
             copy.sttProvider = .openAITranscribe
         }
@@ -55,27 +58,17 @@ public struct AppSettings: Codable, Equatable, Sendable {
             )
         }
 
-        return issues
-    }
-}
-
-public enum AIProvider: String, CaseIterable, Codable, Equatable, Sendable {
-    case openAIResponses
-    case openAICompatible
-    case openRouter
-    case ollama
-
-    public var displayName: String {
-        switch self {
-        case .openAIResponses:
-            "OpenAI Responses"
-        case .openAICompatible:
-            "OpenAI-compatible"
-        case .openRouter:
-            "OpenRouter"
-        case .ollama:
-            "Ollama"
+        if !LLMProviderCatalog.isAvailableInCurrentBuild(aiProvider) {
+            issues.append(
+                ValidationIssue(
+                    field: "aiProvider",
+                    message: "\(aiProvider.displayName) is not available in this build.",
+                    severity: .error
+                )
+            )
         }
+
+        return issues
     }
 }
 
@@ -185,6 +178,7 @@ public final class AppSettingsViewModel: ObservableObject {
 
     private let settingsStore: any AppSettingsStore
     private let secretStore: any SecretStore
+    private var rejectedAIProvider: AIProvider?
 
     public init(settingsStore: any AppSettingsStore, secretStore: any SecretStore) {
         self.settingsStore = settingsStore
@@ -208,8 +202,13 @@ public final class AppSettingsViewModel: ObservableObject {
         self.keychainSecretStatusLabel = "Enter a secret key"
         self.errorMessage = initialErrorMessage
         self.successMessage = nil
+        self.rejectedAIProvider = nil
         refreshOpenAIAPIKeyStatus()
         refreshOpenRouterAPIKeyStatus()
+    }
+
+    public var selectableAIProviders: [AIProvider] {
+        LLMProviderCatalog.settingsSelectableIDs
     }
 
     public func setNotificationsEnabled(_ isEnabled: Bool) {
@@ -218,6 +217,13 @@ public final class AppSettingsViewModel: ObservableObject {
     }
 
     public func setAIProvider(_ provider: AIProvider) {
+        guard LLMProviderCatalog.isAvailableInCurrentBuild(provider) else {
+            rejectedAIProvider = provider
+            errorMessage = unavailableMessage(for: provider)
+            successMessage = nil
+            return
+        }
+
         settings.aiProvider = provider
         clearMessages()
     }
@@ -254,6 +260,12 @@ public final class AppSettingsViewModel: ObservableObject {
     }
 
     public func saveSettings() {
+        if let rejectedAIProvider {
+            errorMessage = unavailableMessage(for: rejectedAIProvider)
+            successMessage = nil
+            return
+        }
+
         let issues = settings.validate().filter { $0.severity == .error }
         guard issues.isEmpty else {
             errorMessage = issues.map(\.message).joined(separator: " ")
@@ -436,8 +448,13 @@ public final class AppSettingsViewModel: ObservableObject {
     }
 
     private func clearMessages() {
+        rejectedAIProvider = nil
         errorMessage = nil
         successMessage = nil
+    }
+
+    private func unavailableMessage(for provider: AIProvider) -> String {
+        "\(provider.displayName) is not available in this build."
     }
 
     @discardableResult

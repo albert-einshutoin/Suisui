@@ -477,6 +477,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(sttSource.contains("secretStore: any SecretStore = InMemorySecretStore()"))
     }
 
+    func testSettingsAIProviderPickerUsesSelectableCatalog() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(appSource.contains("settingsViewModel.selectableAIProviders"))
+        XCTAssertFalse(appSource.contains("ForEach(AIProvider.allCases"))
+    }
+
     func testShortcutSettingsDoesNotDefaultToInMemoryClient() throws {
         let source = try readPackageFile("Sources/SoloPMCore/Shortcuts/ShortcutRegistration.swift")
 

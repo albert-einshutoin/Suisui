@@ -9,6 +9,9 @@ public struct SecretKey: Codable, Hashable, Equatable, Sendable {
 
     public static let openAIAPIKey = SecretKey("openai_api_key")
     public static let openRouterAPIKey = SecretKey("openrouter_api_key")
+    public static let anthropicAPIKey = SecretKey("anthropic_api_key")
+    public static let geminiAPIKey = SecretKey("gemini_api_key")
+    public static let groqAPIKey = SecretKey("groq_api_key")
     public static let githubToken = SecretKey("github_token")
     public static let subscriptionLicense = SecretKey("subscription_license")
 }
