@@ -299,7 +299,7 @@ for screenshot_entry in "${UI_SCREENSHOTS[@]}"; do
     "$screenshot_bytes"
 done
 if [[ "$ui_evidence_blocker_count" -gt 0 ]]; then
-  printf "NEXT: run script/capture_ui_evidence.sh on a visible macOS session with Screen Recording permission; verify generated Light/Dark/System PNGs before release.\n"
+  printf "NEXT: run script/capture_ui_evidence.sh --doctor, then run script/capture_ui_evidence.sh on a visible macOS session with Screen Recording permission; verify generated Light/Dark/System PNGs before release.\n"
 fi
 
 section "VoiceOver accessibility evidence"

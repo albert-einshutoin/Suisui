@@ -1343,6 +1343,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(evidence.contains("SOLOPM_UI_EVIDENCE_KEEP_HOME=1"))
         XCTAssertTrue(evidence.contains("script/capture_ui_evidence.sh --doctor"))
         XCTAssertTrue(phase.contains("[x] `capture_ui_evidence.sh` はScreen Recording権限やwindow capture失敗時に、選択window情報と再実行手順を出す。"))
+        XCTAssertTrue(phase.contains("[x] `capture_ui_evidence.sh --doctor` はrelease evidenceを書かずにScreen Recordingの可視ピクセル取得を事前診断する。"))
     }
 
     func testLLMHTTPErrorMappingDoesNotDropMalformedErrorBodies() throws {
