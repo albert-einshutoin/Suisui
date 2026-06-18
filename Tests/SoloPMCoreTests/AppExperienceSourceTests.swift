@@ -239,6 +239,21 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("public func todayTasks("))
     }
 
+    func testTodayWorkflowShowsRecommendationDueCountsAndTimeBlocks() throws {
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+
+        XCTAssertTrue(workflowSource.contains("TodayPlanSummary"))
+        XCTAssertTrue(workflowSource.contains("TodayTimeBlockList"))
+        XCTAssertTrue(workflowSource.contains("plan.overdueCount"))
+        XCTAssertTrue(workflowSource.contains("plan.dueTodayCount"))
+        XCTAssertTrue(workflowSource.contains("plan.recommendationReason"))
+        XCTAssertTrue(workflowSource.contains("ForEach(plan.timeBlocks)"))
+        XCTAssertTrue(coreSource.contains("public struct TodayWorkflowPlan"))
+        XCTAssertTrue(coreSource.contains("public struct TodayTimeBlock"))
+        XCTAssertTrue(coreSource.contains("public func todayPlan("))
+    }
+
     func testAppAndCLIShareDefaultDatabaseLocation() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let cliSource = try readPackageFile("Sources/SoloPMCLI/SoloPMCLIEntrypoint.swift")

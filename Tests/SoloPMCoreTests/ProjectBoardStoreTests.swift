@@ -578,6 +578,49 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelBuildsDeterministicTodayPlanWithTimeBlocks() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        _ = viewModel.createTask(
+            title: "Fix overdue blocker",
+            projectID: launch.id,
+            status: .inProgress,
+            priority: .high,
+            dueAt: "2026-06-18T09:00:00Z"
+        )
+        _ = viewModel.createTask(
+            title: "Ship today update",
+            projectID: launch.id,
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-19T12:00:00Z"
+        )
+        _ = viewModel.createTask(
+            title: "Low priority cleanup",
+            projectID: launch.id,
+            status: .planned,
+            priority: .low,
+            dueAt: "2026-06-19T15:00:00Z"
+        )
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+
+        let plan = viewModel.todayPlan(
+            on: try isoDate("2026-06-19T08:37:00Z"),
+            calendar: calendar
+        )
+
+        XCTAssertEqual(plan.tasks.map(\.title), ["Fix overdue blocker", "Ship today update", "Low priority cleanup"])
+        XCTAssertEqual(plan.overdueCount, 1)
+        XCTAssertEqual(plan.dueTodayCount, 2)
+        XCTAssertEqual(plan.recommendedTask?.title, "Fix overdue blocker")
+        XCTAssertEqual(plan.recommendationReason, "Overdue high-priority work should be cleared first.")
+        XCTAssertEqual(plan.timeBlocks.map(\.label), ["09:00-09:30", "09:30-10:00", "10:00-10:30"])
+        XCTAssertEqual(plan.timeBlocks.map(\.task.title), ["Fix overdue blocker", "Ship today update", "Low priority cleanup"])
+    }
+
+    @MainActor
     func testProjectBoardViewModelClassifiesInboxTasksWithRealMutations() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()

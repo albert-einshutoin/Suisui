@@ -152,6 +152,42 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct TodayTimeBlock: Identifiable, Equatable, Sendable {
+    public var id: String { "\(task.id)-\(label)" }
+    public var label: String
+    public var task: ProjectBoardTask
+
+    public init(label: String, task: ProjectBoardTask) {
+        self.label = label
+        self.task = task
+    }
+}
+
+public struct TodayWorkflowPlan: Equatable, Sendable {
+    public var tasks: [ProjectBoardTask]
+    public var overdueCount: Int
+    public var dueTodayCount: Int
+    public var recommendedTask: ProjectBoardTask?
+    public var recommendationReason: String
+    public var timeBlocks: [TodayTimeBlock]
+
+    public init(
+        tasks: [ProjectBoardTask],
+        overdueCount: Int,
+        dueTodayCount: Int,
+        recommendedTask: ProjectBoardTask?,
+        recommendationReason: String,
+        timeBlocks: [TodayTimeBlock]
+    ) {
+        self.tasks = tasks
+        self.overdueCount = overdueCount
+        self.dueTodayCount = dueTodayCount
+        self.recommendedTask = recommendedTask
+        self.recommendationReason = recommendationReason
+        self.timeBlocks = timeBlocks
+    }
+}
+
 public struct ProjectBoardTaskDraft: Equatable, Sendable {
     public var projectID: Int64
     public var title: String
@@ -502,6 +538,34 @@ public final class ProjectBoardViewModel: ObservableObject {
                     return lhs.id > rhs.id
                 }
             }
+    }
+
+    public func todayPlan(
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> TodayWorkflowPlan {
+        let tasks = todayTasks(on: referenceDate, calendar: calendar)
+        let dayInterval = calendar.dateInterval(of: .day, for: referenceDate)
+        let dayStart = dayInterval?.start ?? referenceDate
+        let overdueCount = tasks.filter { task in
+            dueDate(for: task.dueAt).map { $0 < dayStart } == true
+        }.count
+        let dueTodayCount = tasks.filter { task in
+            guard let dayInterval, let dueDate = dueDate(for: task.dueAt) else {
+                return false
+            }
+            return dueDate >= dayInterval.start && dueDate < dayInterval.end
+        }.count
+        let recommendedTask = recommendedTodayTask(from: tasks, on: referenceDate, calendar: calendar)
+
+        return TodayWorkflowPlan(
+            tasks: tasks,
+            overdueCount: overdueCount,
+            dueTodayCount: dueTodayCount,
+            recommendedTask: recommendedTask,
+            recommendationReason: recommendationReason(for: recommendedTask, on: referenceDate, calendar: calendar),
+            timeBlocks: timeBlocks(for: orderedTimeBlockTasks(tasks, recommendedTask: recommendedTask), startingAt: referenceDate, calendar: calendar)
+        )
     }
 
     public func projectTitle(for task: ProjectBoardTask) -> String {
@@ -909,6 +973,94 @@ public final class ProjectBoardViewModel: ObservableObject {
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.date(from: rawDueAt)
+    }
+
+    private func recommendedTodayTask(
+        from tasks: [ProjectBoardTask],
+        on referenceDate: Date,
+        calendar: Calendar
+    ) -> ProjectBoardTask? {
+        let dayStart = calendar.dateInterval(of: .day, for: referenceDate)?.start ?? referenceDate
+        let overdueTasks = tasks.filter { task in
+            dueDate(for: task.dueAt).map { $0 < dayStart } == true
+        }
+        if let highPriorityOverdue = overdueTasks.first(where: { $0.priority == .high }) {
+            return highPriorityOverdue
+        }
+        if let overdueTask = overdueTasks.first {
+            return overdueTask
+        }
+        if let highPriorityTask = tasks.first(where: { $0.priority == .high }) {
+            return highPriorityTask
+        }
+        return tasks.first
+    }
+
+    private func recommendationReason(
+        for task: ProjectBoardTask?,
+        on referenceDate: Date,
+        calendar: Calendar
+    ) -> String {
+        guard let task else {
+            return "No due work is scheduled for today."
+        }
+
+        let dayStart = calendar.dateInterval(of: .day, for: referenceDate)?.start ?? referenceDate
+        let isOverdue = dueDate(for: task.dueAt).map { $0 < dayStart } == true
+        if isOverdue && task.priority == .high {
+            return "Overdue high-priority work should be cleared first."
+        }
+        if isOverdue {
+            return "Overdue work should be cleared before new tasks."
+        }
+        if task.priority == .high {
+            return "High-priority work is the best first task."
+        }
+        return "Earliest due task keeps today on track."
+    }
+
+    private func orderedTimeBlockTasks(
+        _ tasks: [ProjectBoardTask],
+        recommendedTask: ProjectBoardTask?
+    ) -> [ProjectBoardTask] {
+        guard let recommendedTask else {
+            return tasks
+        }
+
+        return [recommendedTask] + tasks.filter { $0.id != recommendedTask.id }
+    }
+
+    private func timeBlocks(
+        for tasks: [ProjectBoardTask],
+        startingAt referenceDate: Date,
+        calendar: Calendar
+    ) -> [TodayTimeBlock] {
+        let firstBlockStart = roundedTimeBlockStart(from: referenceDate, calendar: calendar)
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "HH:mm"
+
+        return tasks.prefix(4).enumerated().compactMap { offset, task in
+            guard let start = calendar.date(byAdding: .minute, value: offset * 30, to: firstBlockStart),
+                  let end = calendar.date(byAdding: .minute, value: 30, to: start) else {
+                return nil
+            }
+            return TodayTimeBlock(label: "\(formatter.string(from: start))-\(formatter.string(from: end))", task: task)
+        }
+    }
+
+    private func roundedTimeBlockStart(from referenceDate: Date, calendar: Calendar) -> Date {
+        guard let hourStart = calendar.dateInterval(of: .hour, for: referenceDate)?.start else {
+            return referenceDate
+        }
+
+        let slotSeconds = 30.0 * 60.0
+        let elapsed = referenceDate.timeIntervalSince(hourStart)
+        let remainder = elapsed.truncatingRemainder(dividingBy: slotSeconds)
+        let roundedElapsed = remainder == 0 ? elapsed : elapsed + (slotSeconds - remainder)
+        return hourStart.addingTimeInterval(roundedElapsed)
     }
 }
 

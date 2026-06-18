@@ -53,21 +53,21 @@ struct ProjectBoardSidebarDestinationRow: View {
 struct TodayWorkflowView: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
 
-    private var tasks: [ProjectBoardTask] {
-        viewModel.todayTasks()
+    private var plan: TodayWorkflowPlan {
+        viewModel.todayPlan()
     }
 
     var body: some View {
         WorkflowTaskSurface(
             title: "Today",
-            subtitle: "\(tasks.count) open due or overdue tasks",
+            subtitle: "\(plan.tasks.count) open due or overdue tasks",
             systemImage: "sun.max",
-            tasks: tasks,
+            tasks: plan.tasks,
             emptyTitle: "No tasks due today",
             emptyDescription: "Captured work remains in Inbox until it is scheduled or moved to a project.",
             viewModel: viewModel,
             footer: {
-                TodaySuggestionPanel(tasks: tasks, viewModel: viewModel)
+                TodaySuggestionPanel(plan: plan, viewModel: viewModel)
             }
         )
     }
@@ -316,31 +316,121 @@ private struct InboxActionPanel: View {
 }
 
 private struct TodaySuggestionPanel: View {
-    let tasks: [ProjectBoardTask]
+    let plan: TodayWorkflowPlan
     @ObservedObject var viewModel: ProjectBoardViewModel
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TodayPlanSummary(plan: plan, viewModel: viewModel)
+            TodayTimeBlockList(plan: plan)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct TodayPlanSummary: View {
+    let plan: TodayWorkflowPlan
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 12) {
+                recommendation
+                Spacer(minLength: 12)
+                dueCounts
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                recommendation
+                dueCounts
+            }
+        }
+    }
+
+    private var recommendation: some View {
         Label {
-            Text(suggestion)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(recommendationTitle)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(recommendationTitle)
+                Text(plan.recommendationReason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
         } icon: {
             Image(systemName: "sparkles")
                 .foregroundStyle(.blue)
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
     }
 
-    private var suggestion: String {
-        if let highPriority = tasks.first(where: { $0.priority == .high }) {
-            return "Start with \(highPriority.title) in \(viewModel.projectTitle(for: highPriority))."
+    private var dueCounts: some View {
+        HStack(spacing: 8) {
+            TodayCountBadge(label: "Overdue", value: plan.overdueCount, tint: .red)
+            TodayCountBadge(label: "Today", value: plan.dueTodayCount, tint: .blue)
         }
-        if let firstTask = tasks.first {
-            return "Start with \(firstTask.title), then clear the next due item."
+    }
+
+    private var recommendationTitle: String {
+        guard let task = plan.recommendedTask else {
+            return "No focus task"
         }
-        return "No due work is scheduled for today."
+        return "Start with \(task.title) in \(viewModel.projectTitle(for: task))"
+    }
+}
+
+private struct TodayCountBadge: View {
+    let label: String
+    let value: Int
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(value)")
+                .font(.headline.monospacedDigit())
+                .foregroundStyle(tint)
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(minWidth: 68, alignment: .leading)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct TodayTimeBlockList: View {
+    let plan: TodayWorkflowPlan
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Time Blocks")
+                .font(.subheadline.weight(.semibold))
+
+            if plan.timeBlocks.isEmpty {
+                Text("No scheduled blocks")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(plan.timeBlocks) { block in
+                    HStack(spacing: 8) {
+                        Text(block.label)
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 84, alignment: .leading)
+                        Text(block.task.title)
+                            .font(.caption.weight(.medium))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .help(block.task.title)
+                    }
+                }
+            }
+        }
     }
 }

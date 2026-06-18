@@ -25,7 +25,7 @@
 | Voice Command | board toolbarの `Voice Command`、menu barの `Voice Command` | CaptureとAI action reviewの導線がある。現状ではInboxの代替に近い。 |
 | Settings | board toolbarのgear、menu barのgear、macOS Settings scene | 先頭のStatus OverviewでAI Provider、MCP、Sync、Privacyを確認できる。詳細設定は下のFormに並ぶ。 |
 | Inbox | sidebarの `Inbox` | 未処理taskを実データから表示し、Task化、Project化、今日へ予定、後で確認を選択中itemへ1クリックで適用できる。 |
-| Today | sidebarの `Today` | due/overdueの未完了taskを実データから表示し、local focus suggestionとtask inspectorへつながる。 |
+| Today | sidebarの `Today` | due/overdueの未完了taskを実データから表示し、overdue/today件数、local focus suggestion、30分単位のtime block、task inspectorへつながる。 |
 
 ## クリック数
 
@@ -36,7 +36,7 @@
 | Project選択 | sidebar project row | 1 | Pass | ネイティブsidebar listで繰り返し操作に向いている。 |
 | Inbox確認 | sidebar `Inbox` | 1 | Pass | Capture先が見える。選択中itemは右inspectorで編集できる。 |
 | Inbox item分類 | item選択 -> `Make Task` / `Make Project` / `Schedule Today` / `Review Later` | 2 | Pass | 分類action自体は1クリック。選択済みなら即実行され、store mutationを通る。 |
-| Today確認 | sidebar `Today` | 1 | Pass | 今日以前の未完了taskがproject横断で見える。 |
+| Today確認 | sidebar `Today` | 1 | Pass | 今日以前の未完了task、期限内訳、local focus suggestion、time blockがproject横断で見える。 |
 | 選択中ProjectにTask作成 | headerの `Add Task` -> 入力 -> `Add` | 2 | Pass | 目標達成。columnの `+` と空columnの追加導線も2クリック。 |
 | 別ProjectにTask作成 | sidebar project -> `Add Task` -> 入力 -> `Add` | 3 | Watch | 目的地変更があるため許容。ただしInbox capture用途では重い。 |
 | Taskを隣のstatusへ移動 | cardのchevron left/right | 1 | Pass | 目標達成。ドラッグしないユーザーにも分かりやすい。 |
@@ -65,7 +65,7 @@
 | ギャップ | ユーザー影響 | 優先度 | 必要な修正 |
 | --- | --- | --- | --- |
 | Inbox分類後の自動遷移が粗い | Project化などの実mutationは動くが、分類後にユーザーへ次の最適画面を案内する余地がある。 | P1 | 分類結果のsuccess state、undo、次のitem選択を追加する。 |
-| Todayの時間ブロックが未完了 | Today viewはdue/overdue taskを表示するが、時間ブロックやcalendar-like flowはまだない。 | P1 | 今日の時間帯セクションとAI/Local提案の適用前確認を追加する。 |
+| Today time blockはlocal plan止まり | Today viewはdue/overdue task、local focus suggestion、30分time blockを表示できるが、Calendarへの適用や自動再配置はまだしない。 | P2 | Calendar連携をrelease scopeに入れる場合だけ、適用前確認つきのschedule actionを追加する。 |
 | Settings詳細Formが長い | Status Overviewで重要状態は見えるが、詳細設定はまだ縦に長い。 | P1 | General / AI / Sync / MCP / Privacy のtabまたは2カラムdetailsに分ける。 |
 | Provider詳細設定が長い | provider切替は2クリックになったが、API key、model、local executableなどの詳細設定は同じAI section内に縦積みで残る。 | P1 | providerごとに必要なfieldだけをcompact panelへ出し、他providerのfieldは折りたたむ。 |
 | MCP server切替時の接続確認が重い | 複数serverを持つユーザーが状態確認しづらい。 | P1 | MCP server listにinline statusとrow単位のcheck actionを置く。 |
@@ -75,9 +75,9 @@
 
 Problem: SoloPMは実働するboardとlocal dataを持ったが、まだ日々のPM cockpitではなく「project board + settings panel」に近い。
 
-User pull: 現時点で最も強い導線はProject単位のTask CRUD。弱い導線はcapture-to-triageで、InboxとTodayが見える行き先になっていない。
+User pull: 現時点で最も強い導線はProject単位のTask CRUD。InboxとTodayは見える行き先になったため、次の弱点はProject detail内の成果物/タイムライン/提案の整理。
 
-Retention hook: Todayを日次のdefault surfaceにする必要がある。今のままだとユーザーは毎回Projectを手動で探す必要がある。
+Retention hook: Todayは日次のdefault surfaceに近づいた。次はtime blockから実行/完了までの摩擦を減らし、毎朝開く理由を強くする。
 
 Monetization: Syncとadvanced MCPのgateは実装済みだが、価値がSettingsの中に埋もれている。Pro価値はdisabled toggleではなくstatus cardとして見える必要がある。
 
@@ -86,5 +86,5 @@ Risk: Provider/MCP controlをこのまま増やすと、アプリが便利にな
 ## 次の実装候補
 
 1. P11-022: Settingsをcompact overviewに整理し、AI Provider / MCP / Sync / Privacyの状態を深いscrollなしで見えるようにする。
-2. P11-032: 外部連携を増やす前に、InboxとTodayをfirst-class destinationにする。
+2. P11-031: Project Detailのタスク、成果物、タイムライン、提案を整理する。
 3. P11-033: keyboard shortcutとfocus orderをboard、inspector、review executionで検証する。
