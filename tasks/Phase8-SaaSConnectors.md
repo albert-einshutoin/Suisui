@@ -88,10 +88,11 @@
 
 ## Implementation Notes
 
-- 実装: `Sources/SoloPMCore/Connectors/SaaSConnectors.swift`
+- 実装: `Sources/SoloPMExternalConnectors/SaaSConnectors.swift`
 - テスト: `Tests/SoloPMCoreTests/SaaSConnectorTests.swift`
 - OAuth token の secret material は `SecretStore` 経由で保存し、metadata には `SecretKey` reference、scope、expiry のみを保持する。
-- Google Calendar / Gmail / Slack / Google Drive / Notion は Core protocol + in-memory fake client として実装し、本番 API adapter は Phase8 foundation の外側で差し替える。
+- Google Calendar / Gmail / Slack / Google Drive / Notion は `SoloPMExternalConnectors` target の protocol + test-only fake client として実装し、本番 API adapter は Phase8 foundation の外側で差し替える。
+- Public alpha の `SoloPM` app / `solopm-cli` は `SoloPMExternalConnectors` に依存せず、外部 SaaS 連携を runtime から除外する。
 - Gmail は draft create のみを公開し、send scope / send operation は持たない。
 - Slack は draft と post を分け、post は explicit approval 必須にする。自動投稿は実装していない。
 - Drive は selected folder id 以外への write を拒否する。

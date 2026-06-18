@@ -1,5 +1,6 @@
 import Foundation
 @testable import SoloPMCore
+@testable import SoloPMExternalConnectors
 
 final class InMemoryOAuthCredentialMetadataStore: OAuthCredentialMetadataStore, @unchecked Sendable {
     private let lock = NSLock()

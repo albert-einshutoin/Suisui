@@ -1,4 +1,5 @@
 import Foundation
+import SoloPMCore
 
 public enum SaaSConnectorID: String, Codable, CaseIterable, Hashable, Sendable {
     case googleCalendar = "google_calendar"

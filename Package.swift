@@ -34,6 +34,10 @@ let package = Package(
                 .linkedLibrary("sqlite3")
             ]
         ),
+        .target(
+            name: "SoloPMExternalConnectors",
+            dependencies: ["SoloPMCore"]
+        ),
         .executableTarget(
             name: "SoloPM",
             dependencies: [
@@ -48,7 +52,7 @@ let package = Package(
         ),
         .testTarget(
             name: "SoloPMCoreTests",
-            dependencies: ["SoloPMCore"],
+            dependencies: ["SoloPMCore", "SoloPMExternalConnectors"],
             resources: [
                 .process("Fixtures")
             ]

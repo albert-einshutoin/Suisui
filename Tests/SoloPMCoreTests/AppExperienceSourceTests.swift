@@ -307,6 +307,41 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
+    func testPublicAlphaAppDoesNotLinkExternalSaaSConnectorTarget() throws {
+        let packageSource = try readPackageFile("Package.swift")
+        let appTarget = try XCTUnwrap(packageSource.range(of: ".executableTarget(\n            name: \"SoloPM\","))
+        let cliTarget = try XCTUnwrap(packageSource.range(of: ".executableTarget(\n            name: \"SoloPMCLI\","))
+        let testsTarget = try XCTUnwrap(packageSource.range(of: ".testTarget(\n            name: \"SoloPMCoreTests\","))
+        let appTargetBlock = String(packageSource[appTarget.lowerBound..<cliTarget.lowerBound])
+        let cliTargetBlock = String(packageSource[cliTarget.lowerBound..<testsTarget.lowerBound])
+
+        XCTAssertTrue(packageSource.contains("name: \"SoloPMExternalConnectors\""))
+        XCTAssertTrue(packageSource.contains("dependencies: [\"SoloPMCore\"]"))
+        XCTAssertFalse(appTargetBlock.contains("SoloPMExternalConnectors"))
+        XCTAssertFalse(cliTargetBlock.contains("SoloPMExternalConnectors"))
+    }
+
+    func testSoloPMCoreDoesNotShipExternalSaaSConnectorImplementations() throws {
+        let coreSourceFiles = try allSwiftFiles(under: "Sources/SoloPMCore")
+        let forbiddenRuntimeSymbols = [
+            "SaaSConnectorID",
+            "OAuthScope",
+            "GoogleCalendarConnector",
+            "GmailDraftConnector",
+            "SlackConnector",
+            "GoogleDriveConnector",
+            "NotionConnector",
+            "ConnectorHealthDashboard"
+        ]
+
+        for sourceFile in coreSourceFiles {
+            let source = try String(contentsOf: sourceFile, encoding: .utf8)
+            for symbol in forbiddenRuntimeSymbols {
+                XCTAssertFalse(source.contains(symbol), "\(sourceFile.path) keeps optional external SaaS connector symbol \(symbol) in SoloPMCore.")
+            }
+        }
+    }
+
     func testInMemoryToolRegistryFactoryIsNotShippedInRuntimeSources() throws {
         let sourceFiles = try allSwiftFiles(under: "Sources")
 

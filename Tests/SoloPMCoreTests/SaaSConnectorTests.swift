@@ -1,5 +1,6 @@
 import XCTest
 @testable import SoloPMCore
+@testable import SoloPMExternalConnectors
 
 final class SaaSConnectorTests: XCTestCase {
     func testOAuthLifecycleStoresTokensInSecretStoreRefreshesAndDisconnects() throws {

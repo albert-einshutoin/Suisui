@@ -516,6 +516,15 @@
 - [x] テスト: invalid project/task status が SQLite に永続化されず、既存 status が保持されることを確認する。
 - [x] 完了条件: AI plan / CLI / OSS API 経由で未知 status が入り、board、deadline、CLI count の意味が壊れない。
 
+### P10-063: External SaaS connector target isolation
+
+- [x] Google / Gmail / Slack / Drive / Notion connector 実装を `SoloPMCore` から分離し、`SoloPMExternalConnectors` target に置く。
+- [x] `SoloPM` app target と `SoloPMCLI` target は `SoloPMExternalConnectors` に依存しない。
+- [x] Phase8 の connector tests は別 target を明示 import して継続検証する。
+- [x] テスト: public alpha app target が external SaaS connector target を link しないことを確認する。
+- [x] テスト: `Sources/SoloPMCore` に external SaaS connector symbols が残らないことを確認する。
+- [x] 完了条件: 外部 SaaS 連携を除外した public alpha runtime に OAuth / Slack post / Notion write 実装が混ざらない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
