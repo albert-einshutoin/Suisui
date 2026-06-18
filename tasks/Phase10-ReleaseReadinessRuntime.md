@@ -440,6 +440,7 @@
 - [x] `verify_appcast.sh` は release mode で `sparkle:edSignature` 欠落と `length="0"` enclosure を拒否する。
 - [x] `verify_appcast.sh` は Sparkle `generate_appcast` が出力する element 形式の `sparkle:version` / `sparkle:shortVersionString` を受け入れ、metadata mismatch は明示エラーにする。
 - [x] `verify_appcast.sh` は configured `SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX` と enclosure URL が一致しない appcast を拒否する。
+- [x] `verify_appcast.sh` は appcast が指す ZIP artifact、`.sha256`、`.package-evidence.json` が同じ release directory にあり、signed / notarized gate 有効の package evidence と一致することを検証する。
 - [x] release checklist は generated `dist/releases/appcast.xml` を `SOLOPM_REQUIRE_RELEASE_APPCAST=1` で検証する。
 - [x] `create_release_evidence.sh` は release appcast verification が通らない状態では evidence を作成しない。
 - [x] `verify_release_environment.sh` は generated release appcast が存在し、release mode の appcast verification を通ることを release blocker にする。

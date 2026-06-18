@@ -130,6 +130,48 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             at: appcastURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
+        let artifactURLs = try writeReleaseZipEvidence(in: appcastURL.deletingLastPathComponent())
+        try """
+        <?xml version="1.0" standalone="yes"?>
+        <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+          <channel>
+            <title>SoloPM</title>
+            <item>
+              <title>0.1.0</title>
+              <sparkle:version>1</sparkle:version>
+              <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+              <enclosure url="https://updates.solopm.app/releases/SoloPM-0.1.0+1.zip" length="12345" type="application/octet-stream" sparkle:edSignature="release-signature-smoke-value"/>
+            </item>
+          </channel>
+        </rss>
+        """.write(to: appcastURL, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: appcastURL)
+            for artifactURL in artifactURLs {
+                try? FileManager.default.removeItem(at: artifactURL)
+            }
+        }
+
+        let result = try runScript(
+            "script/verify_appcast.sh",
+            arguments: [appcastURL.path],
+            environment: [
+                "SOLOPM_REQUIRE_RELEASE_APPCAST": "1",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases"
+            ]
+        )
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("Appcast smoke passed"))
+    }
+
+    func testReleaseAppcastVerifierRequiresGeneratedZipArtifactEvidence() throws {
+        let appcastURL = packageRoot()
+            .appendingPathComponent(".build/test-release-appcast-missing-zip-evidence.xml")
+        try FileManager.default.createDirectory(
+            at: appcastURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
         try """
         <?xml version="1.0" standalone="yes"?>
         <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
@@ -155,8 +197,8 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(result.exitCode, 0, result.output)
-        XCTAssertTrue(result.output.contains("Appcast smoke passed"))
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release appcast artifact is missing"))
     }
 
     func testAppcastVerifierReportsMetadataMismatch() throws {
@@ -461,6 +503,34 @@ final class SparkleUpdateFoundationTests: XCTestCase {
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func writeReleaseZipEvidence(in directoryURL: URL) throws -> [URL] {
+        let artifactURL = directoryURL.appendingPathComponent("SoloPM-0.1.0+1.zip")
+        let checksumURL = directoryURL.appendingPathComponent("SoloPM-0.1.0+1.zip.sha256")
+        let packageEvidenceURL = directoryURL.appendingPathComponent("SoloPM-0.1.0+1.zip.package-evidence.json")
+        let artifactPath = artifactURL.path
+        let artifactSha = "554f3f497395d59fc12389d51b5fb7208248425e0dbad975db3f08132f58dbed"
+
+        try "zip content".write(to: artifactURL, atomically: true, encoding: .utf8)
+        try "\(artifactSha)  \(artifactPath)\n"
+            .write(to: checksumURL, atomically: true, encoding: .utf8)
+        try """
+        {
+          "package": {
+            "artifactPath": "\(artifactPath)",
+            "format": "zip",
+            "createdAt": "2026-06-18T00:00:00Z",
+            "signedPackageRequired": true,
+            "notarizedPackageRequired": true
+          },
+          "source": {
+            "gitCommit": "test-fixture"
+          }
+        }
+        """.write(to: packageEvidenceURL, atomically: true, encoding: .utf8)
+
+        return [artifactURL, checksumURL, packageEvidenceURL]
     }
 
     private func runScript(

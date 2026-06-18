@@ -15,6 +15,15 @@ fi
 
 DOWNLOAD_URL_PREFIX="${SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX:-${SPARKLE_DOWNLOAD_URL_PREFIX:-}}"
 
+artifact_path_for_compare() {
+  local artifact_path="$1"
+  if [[ "$artifact_path" == "$ROOT_DIR/"* ]]; then
+    printf "%s" "${artifact_path#"$ROOT_DIR/"}"
+  else
+    printf "%s" "$artifact_path"
+  fi
+}
+
 case "$REQUIRE_RELEASE_APPCAST" in
   0|1)
     ;;
@@ -117,6 +126,74 @@ if [[ "$REQUIRE_RELEASE_APPCAST" == "1" ]]; then
 
   if grep -E 'length="0"' "$APPCAST_FILE" >/dev/null; then
     echo "release appcast has zero-length enclosure" >&2
+    exit 2
+  fi
+
+  appcast_dir="$(cd "$(dirname "$APPCAST_FILE")" && pwd)"
+  expected_zip_name="$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.zip"
+  expected_zip_path="$appcast_dir/$expected_zip_name"
+  expected_zip_checksum="$expected_zip_path.sha256"
+  expected_zip_package_evidence="$expected_zip_path.package-evidence.json"
+
+  if [[ ! -f "$expected_zip_path" ]]; then
+    echo "release appcast artifact is missing: $expected_zip_path" >&2
+    exit 2
+  fi
+
+  if [[ ! -s "$expected_zip_path" ]]; then
+    echo "release appcast artifact is empty: $expected_zip_path" >&2
+    exit 2
+  fi
+
+  if [[ ! -f "$expected_zip_checksum" ]]; then
+    echo "release appcast artifact checksum is missing: $expected_zip_checksum" >&2
+    exit 2
+  fi
+
+  checksum_sha="$(awk 'NF { print $1; exit }' "$expected_zip_checksum")"
+  checksum_artifact_path="$(awk 'NF >= 2 { print $2; exit }' "$expected_zip_checksum")"
+  if [[ -z "$checksum_sha" || -z "$checksum_artifact_path" ]]; then
+    echo "release appcast artifact checksum must include sha256 and artifact path: $expected_zip_checksum" >&2
+    exit 2
+  fi
+
+  if [[ "$(artifact_path_for_compare "$checksum_artifact_path")" != "$(artifact_path_for_compare "$expected_zip_path")" ]]; then
+    echo "release appcast artifact checksum path does not match appcast artifact: expected '$expected_zip_path', got '$checksum_artifact_path'" >&2
+    exit 2
+  fi
+
+  actual_zip_sha="$(shasum -a 256 "$expected_zip_path" | awk 'NF { print $1; exit }')"
+  if [[ "$actual_zip_sha" != "$checksum_sha" ]]; then
+    echo "release appcast artifact SHA-256 does not match checksum file: expected '$checksum_sha', got '$actual_zip_sha'" >&2
+    exit 2
+  fi
+
+  if [[ ! -f "$expected_zip_package_evidence" ]]; then
+    echo "release appcast package evidence is missing: $expected_zip_package_evidence" >&2
+    exit 2
+  fi
+
+  if ! plutil -convert json -o /dev/null "$expected_zip_package_evidence" 2>/dev/null; then
+    echo "release appcast package evidence is not valid JSON or plist: $expected_zip_package_evidence" >&2
+    exit 2
+  fi
+
+  manifest_artifact_path="$(plutil -extract "package.artifactPath" raw -o - "$expected_zip_package_evidence" 2>/dev/null || true)"
+  signed_required="$(plutil -extract "package.signedPackageRequired" raw -o - "$expected_zip_package_evidence" 2>/dev/null || true)"
+  notarized_required="$(plutil -extract "package.notarizedPackageRequired" raw -o - "$expected_zip_package_evidence" 2>/dev/null || true)"
+
+  if [[ -z "$manifest_artifact_path" ]]; then
+    echo "release appcast package evidence is missing artifact path" >&2
+    exit 2
+  fi
+
+  if [[ "$(artifact_path_for_compare "$manifest_artifact_path")" != "$(artifact_path_for_compare "$expected_zip_path")" ]]; then
+    echo "release appcast package evidence artifact path does not match appcast artifact: expected '$expected_zip_path', got '$manifest_artifact_path'" >&2
+    exit 2
+  fi
+
+  if [[ "$signed_required" != "true" || "$notarized_required" != "true" ]]; then
+    echo "release appcast package evidence requires signed and notarized gates enabled" >&2
     exit 2
   fi
 fi

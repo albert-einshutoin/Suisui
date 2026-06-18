@@ -2113,10 +2113,34 @@ final class ReleasePipelineTests: XCTestCase {
         let signatureAttribute = includeSignature
             ? " sparkle:edSignature=\"release-signature-smoke-value\""
             : ""
+        let artifactURL = appcastURL.deletingLastPathComponent()
+            .appendingPathComponent("SoloPM-0.1.0+1.zip")
+        let checksumURL = appcastURL.deletingLastPathComponent()
+            .appendingPathComponent("SoloPM-0.1.0+1.zip.sha256")
+        let packageEvidenceURL = appcastURL.deletingLastPathComponent()
+            .appendingPathComponent("SoloPM-0.1.0+1.zip.package-evidence.json")
+        let artifactSha = "554f3f497395d59fc12389d51b5fb7208248425e0dbad975db3f08132f58dbed"
         try FileManager.default.createDirectory(
             at: appcastURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
+        try "zip content".write(to: artifactURL, atomically: true, encoding: .utf8)
+        try "\(artifactSha)  \(artifactURL.path)\n"
+            .write(to: checksumURL, atomically: true, encoding: .utf8)
+        try """
+        {
+          "package": {
+            "artifactPath": "\(artifactURL.path)",
+            "format": "zip",
+            "createdAt": "2026-06-18T00:00:00Z",
+            "signedPackageRequired": true,
+            "notarizedPackageRequired": true
+          },
+          "source": {
+            "gitCommit": "test-fixture"
+          }
+        }
+        """.write(to: packageEvidenceURL, atomically: true, encoding: .utf8)
         try """
         <?xml version="1.0" encoding="utf-8"?>
         <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
