@@ -121,6 +121,38 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertThrowsError(try viewModel.execute())
     }
 
+    func testBlankOptionalCRUDFieldDisablesExecutionBeforeApproval() throws {
+        let stores = try makeStores()
+        let task = try stores.tasks.create(title: "Draft release notes")
+        let registry = try ToolRegistry.phase2Core(
+            projectStore: stores.projects,
+            taskStore: stores.tasks,
+            knowledgeStore: stores.knowledge
+        )
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(
+                    id: "task",
+                    tool: .taskUpdate,
+                    arguments: [
+                        "id": .number(Double(task.id)),
+                        "title": .string("   ")
+                    ]
+                )
+            ]),
+            executor: ActionExecutor(registry: registry)
+        )
+
+        XCTAssertEqual(viewModel.validationIssues(for: "task").first?.field, "title")
+        XCTAssertEqual(
+            viewModel.validationIssues(for: "task").first?.message,
+            "Argument 'title' cannot be blank for task.update."
+        )
+        try viewModel.approve()
+        XCTAssertFalse(viewModel.canExecute)
+        XCTAssertThrowsError(try viewModel.execute())
+    }
+
     func testFakeVoiceToReviewToExecuteFlow() async throws {
         let plan = ActionPlan.reviewViewModelFixture(actions: [
             PlanAction(id: "project", tool: .projectCreate, arguments: ["title": .string("QZT Article")]),
@@ -161,6 +193,16 @@ final class ReviewSessionViewModelTests: XCTestCase {
     }
 }
 
+private func makeStores() throws -> (projects: SQLiteProjectStore, tasks: SQLiteTaskStore, knowledge: SQLiteKnowledgeFrameStore) {
+    let connection = try SQLiteConnection(path: ":memory:")
+    try ReviewTestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase2)
+    return (
+        SQLiteProjectStore(connection: connection),
+        SQLiteTaskStore(connection: connection),
+        SQLiteKnowledgeFrameStore(connection: connection)
+    )
+}
+
 private extension ActionPlan {
     static func reviewViewModelFixture(actions: [PlanAction]) -> ActionPlan {
         ActionPlan(
@@ -171,5 +213,23 @@ private extension ActionPlan {
             riskLevel: actions.map(\.riskLevel).max() ?? .read,
             requiresApproval: actions.contains { $0.riskLevel >= .write }
         )
+    }
+}
+
+private enum ReviewTestMigrationRunner {
+    static func migrate(connection: SQLiteConnection, migrations: [DatabaseMigration]) throws {
+        try connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                id TEXT PRIMARY KEY NOT NULL,
+                applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        let alreadyApplied = Set(try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;"))
+        for migration in migrations where !alreadyApplied.contains(migration.id) {
+            try migration.apply(connection)
+            try connection.execute("INSERT INTO schema_migrations (id) VALUES ('\(migration.id)');")
+        }
     }
 }

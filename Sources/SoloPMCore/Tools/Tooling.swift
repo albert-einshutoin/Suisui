@@ -3,11 +3,18 @@ import Foundation
 public struct ToolInputSchema: Equatable, Sendable {
     public var required: [String]
     public var properties: [String: String]
+    public var nonBlank: [String]
     public var additionalProperties: Bool
 
-    public init(required: [String] = [], properties: [String: String] = [:], additionalProperties: Bool = false) {
+    public init(
+        required: [String] = [],
+        properties: [String: String] = [:],
+        nonBlank: [String] = [],
+        additionalProperties: Bool = false
+    ) {
         self.required = required
         self.properties = properties
+        self.nonBlank = nonBlank
         self.additionalProperties = additionalProperties
     }
 }
@@ -41,8 +48,21 @@ public extension ToolInputSchema {
             }
         }
 
+        for key in nonBlank where !required.contains(key) {
+            guard let value = arguments[key], value.isBlankString else {
+                continue
+            }
+            issues.append(
+                ToolInputValidationIssue(
+                    actionID: actionID,
+                    field: key,
+                    message: "Argument '\(key)' cannot be blank for \(tool.rawValue)."
+                )
+            )
+        }
+
         if !additionalProperties {
-            let knownKeys = Set(properties.keys).union(required)
+            let knownKeys = Set(properties.keys).union(required).union(nonBlank)
             for key in arguments.keys.sorted() where !knownKeys.contains(key) {
                 issues.append(
                     ToolInputValidationIssue(

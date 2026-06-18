@@ -68,9 +68,17 @@ public struct ProjectTool: Tool {
     private static func schema(for name: ActionTool) -> ToolInputSchema {
         switch name {
         case .projectCreate:
-            ToolInputSchema(required: ["title"], properties: ["title": "string", "priority": "string", "deadline": "string", "workspacePath": "string", "tags": "array", "sourceCommand": "string"])
+            ToolInputSchema(
+                required: ["title"],
+                properties: ["title": "string", "priority": "string", "deadline": "string", "workspacePath": "string", "tags": "array", "sourceCommand": "string"],
+                nonBlank: ["priority", "deadline", "workspacePath", "sourceCommand"]
+            )
         case .projectUpdate:
-            ToolInputSchema(required: ["id"], properties: ["id": "number", "title": "string", "status": "string"])
+            ToolInputSchema(
+                required: ["id"],
+                properties: ["id": "number", "title": "string", "status": "string"],
+                nonBlank: ["title", "status"]
+            )
         case .projectGet, .projectComplete:
             ToolInputSchema(required: ["id"], properties: ["id": "number"])
         default:
@@ -196,11 +204,19 @@ public struct TaskTool: Tool {
     private static func schema(for name: ActionTool) -> ToolInputSchema {
         switch name {
         case .taskCreate:
-            ToolInputSchema(required: ["title"], properties: ["title": "string", "projectId": "number", "dueAt": "string", "priority": "string", "sourceCommand": "string"])
+            ToolInputSchema(
+                required: ["title"],
+                properties: ["title": "string", "projectId": "number", "dueAt": "string", "priority": "string", "sourceCommand": "string"],
+                nonBlank: ["dueAt", "priority", "sourceCommand"]
+            )
         case .taskBulkCreate:
             ToolInputSchema(required: ["tasks"], properties: ["tasks": "array"])
         case .taskUpdate:
-            ToolInputSchema(required: ["id"], properties: ["id": "number", "title": "string", "status": "string"])
+            ToolInputSchema(
+                required: ["id"],
+                properties: ["id": "number", "title": "string", "status": "string"],
+                nonBlank: ["title", "status"]
+            )
         case .taskComplete:
             ToolInputSchema(required: ["id"], properties: ["id": "number"])
         default:
@@ -266,7 +282,11 @@ public struct KnowledgeFrameTool: Tool {
         case .frameCreate:
             ToolInputSchema(required: ["name", "body"], properties: ["name": "string", "body": "string", "triggers": "array"])
         case .frameUpdate:
-            ToolInputSchema(required: ["id"], properties: ["id": "number", "name": "string", "body": "string", "triggers": "array"])
+            ToolInputSchema(
+                required: ["id"],
+                properties: ["id": "number", "name": "string", "body": "string", "triggers": "array"],
+                nonBlank: ["name", "body"]
+            )
         case .frameGet:
             ToolInputSchema(required: ["id"], properties: ["id": "number"])
         case .frameSearch:

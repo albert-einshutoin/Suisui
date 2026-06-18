@@ -468,6 +468,7 @@
 - [x] `project.create` / `task.create` は title の前後空白を正規化して永続化する。
 - [x] `project.update` / `task.update` は空白 title を拒否し、既存 row を壊さない。
 - [x] `frame.update` は空白 body を拒否し、既存 Knowledge Frame を壊さない。
+- [x] Review UI は CRUD update の空白任意フィールドを承認前に validation issue として表示し、実行ボタンを無効化する。
 - [x] 完了条件: UI だけでなく review tool / AI plan 経由でも空白だけの project / task / knowledge data が永続化されない。
 
 ## PDCA Loop
