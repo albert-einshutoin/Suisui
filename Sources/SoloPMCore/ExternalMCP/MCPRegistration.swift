@@ -193,6 +193,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
     @Published public private(set) var registration: MCPServerRegistration
     @Published public private(set) var toolRows: [ExternalMCPToolCatalogRow]
     @Published public private(set) var auditRows: [ExternalMCPAuditHistoryRow]
+    @Published public private(set) var auditErrorMessage: String?
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var isCheckingConnection: Bool
 
@@ -206,13 +207,15 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         launcher: MCPStdioServerLauncher = MCPStdioServerLauncher(),
         registrationValidator: MCPServerRegistrationValidator = MCPServerRegistrationValidator(),
         toolRows: [ExternalMCPToolCatalogRow] = [],
-        auditRows: [ExternalMCPAuditHistoryRow] = []
+        auditRows: [ExternalMCPAuditHistoryRow] = [],
+        auditErrorMessage: String? = nil
     ) {
         self.store = store
         self.launcher = launcher
         self.registrationValidator = registrationValidator
         self.toolRows = toolRows
         self.auditRows = auditRows
+        self.auditErrorMessage = auditErrorMessage
         self.errorMessage = nil
         self.isCheckingConnection = false
         self.registrations = []

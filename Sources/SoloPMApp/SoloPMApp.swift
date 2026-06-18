@@ -960,7 +960,11 @@ private struct SettingsView: View {
             }
 
             Section("MCP Audit") {
-                if externalMCPViewModel.auditRows.isEmpty {
+                if let auditErrorMessage = externalMCPViewModel.auditErrorMessage {
+                    Label(auditErrorMessage, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                } else if externalMCPViewModel.auditRows.isEmpty {
                     Text("No external calls recorded")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -1119,11 +1123,13 @@ private enum AppRuntimeFactory {
         } catch {
             store = UnavailableMCPServerRegistrationStore(error: error)
         }
+        let auditLoadResult = externalMCPAuditLoadResult()
 
         return ExternalMCPSettingsViewModel(
             store: store,
             launcher: launcher,
-            auditRows: externalMCPAuditRows()
+            auditRows: auditLoadResult.rows,
+            auditErrorMessage: auditLoadResult.errorMessage
         )
     }
 
@@ -1248,12 +1254,15 @@ private enum AppRuntimeFactory {
         RedactingAuditLogger(base: try SQLiteAuditLogger(path: applicationDatabaseURL().path))
     }
 
-    private static func externalMCPAuditRows() -> [ExternalMCPAuditHistoryRow] {
+    private static func externalMCPAuditLoadResult() -> ExternalMCPAuditLoadResult {
         do {
             let logger = try SQLiteAuditLogger(path: applicationDatabaseURL().path)
-            return ExternalMCPAuditHistory.rows(from: try logger.list(limit: 50))
+            return ExternalMCPAuditLoadResult(rows: ExternalMCPAuditHistory.rows(from: try logger.list(limit: 50)))
         } catch {
-            return []
+            return ExternalMCPAuditLoadResult(
+                rows: [],
+                errorMessage: "MCP audit history is unavailable because audit logging could not be opened."
+            )
         }
     }
 
@@ -1292,6 +1301,16 @@ private struct RuntimeSettingsLoadResult {
 
     init(settings: AppSettings, errorMessage: String? = nil) {
         self.settings = settings
+        self.errorMessage = errorMessage
+    }
+}
+
+private struct ExternalMCPAuditLoadResult {
+    let rows: [ExternalMCPAuditHistoryRow]
+    let errorMessage: String?
+
+    init(rows: [ExternalMCPAuditHistoryRow], errorMessage: String? = nil) {
+        self.rows = rows
         self.errorMessage = errorMessage
     }
 }

@@ -302,6 +302,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(mcpRegistrationSource.contains("UserDefaultsMCPServerRegistrationStore"))
     }
 
+    func testRuntimeExternalMCPAuditLoadFailureIsNotRenderedAsEmptyHistory() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let mcpRegistrationSource = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")
+
+        XCTAssertTrue(appSource.contains("externalMCPAuditLoadResult()"))
+        XCTAssertTrue(appSource.contains("auditErrorMessage: auditLoadResult.errorMessage"))
+        XCTAssertTrue(appSource.contains("externalMCPViewModel.auditErrorMessage"))
+        XCTAssertTrue(appSource.contains("MCP audit history is unavailable because audit logging could not be opened."))
+        XCTAssertFalse(appSource.contains("private static func externalMCPAuditRows() -> [ExternalMCPAuditHistoryRow]"))
+        XCTAssertTrue(mcpRegistrationSource.contains("@Published public private(set) var auditErrorMessage: String?"))
+    }
+
     func testExternalMCPArgumentsUseQuotedRoundTripTextInsteadOfSpaceSplitDisplay() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let mcpRegistrationSource = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")

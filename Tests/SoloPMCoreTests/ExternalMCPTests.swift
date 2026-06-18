@@ -143,6 +143,23 @@ final class ExternalMCPTests: XCTestCase {
     }
 
     @MainActor
+    func testExternalMCPSettingsViewModelKeepsAuditLoadErrorSeparateFromEmptyAuditRows() throws {
+        let store = InMemoryMCPServerRegistrationStore()
+        let viewModel = ExternalMCPSettingsViewModel(
+            store: store,
+            auditRows: [],
+            auditErrorMessage: "MCP audit history is unavailable because audit logging could not be opened."
+        )
+
+        XCTAssertTrue(viewModel.auditRows.isEmpty)
+        XCTAssertEqual(viewModel.auditErrorMessage, "MCP audit history is unavailable because audit logging could not be opened.")
+
+        viewModel.refresh()
+
+        XCTAssertEqual(viewModel.auditErrorMessage, "MCP audit history is unavailable because audit logging could not be opened.")
+    }
+
+    @MainActor
     func testExternalMCPSettingsViewModelRejectsInvalidCommandBeforeSaving() throws {
         let store = InMemoryMCPServerRegistrationStore()
         let viewModel = ExternalMCPSettingsViewModel(store: store)

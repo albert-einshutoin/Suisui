@@ -803,6 +803,14 @@
 - [x] Source regression test で `UnavailableMailDraftClient` と `MailDraftClient` に空成功 list path が復活しないことを確認する。
 - [x] 完了条件: 外部メール連携を除外した release runtime が、メール下書き連携の未対応状態を正常な空状態として誤表示しない。
 
+### P10-102: MCP audit load failure is visible
+
+- [x] `externalMCPAuditRows()` の catch で `[]` を返す silent fallback をやめ、audit load result と error message を分ける。
+- [x] `ExternalMCPSettingsViewModel` は `auditRows` と `auditErrorMessage` を別状態で保持し、空履歴と読込失敗を区別する。
+- [x] Settings の MCP Audit セクションは audit 読込失敗を warning として表示し、「No external calls recorded」と誤表示しない。
+- [x] unit / source regression test で audit load failure が空履歴に丸められないことを確認する。
+- [x] 完了条件: MCP 監査ログが壊れている、または開けない状態を、履歴がないだけの正常状態として出荷しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
