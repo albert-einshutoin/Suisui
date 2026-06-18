@@ -21,20 +21,24 @@ public struct SecretRedactionResult: Equatable, Sendable {
 }
 
 public struct DeveloperSecretRedactor: Sendable {
-    private struct Pattern: Sendable {
+    private struct CompiledPattern: @unchecked Sendable {
         var name: String
-        var expression: String
+        var regex: NSRegularExpression
     }
 
-    private let patterns: [Pattern] = [
-        Pattern(name: "github_pat", expression: #"github_pat_[A-Za-z0-9_]{8,}"#),
-        Pattern(name: "ghp", expression: #"ghp_[A-Za-z0-9_]{6,}"#),
-        Pattern(name: "openai", expression: #"sk-(?:proj-)?[A-Za-z0-9_-]{8,}"#),
-        Pattern(name: "aws_access_key", expression: #"AKIA[0-9A-Z]{16}"#),
-        Pattern(name: "assignment", expression: #"(?i)\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*\S+"#)
+    private static let defaultCompiledPatterns: [CompiledPattern] = [
+        compiledPattern(name: "github_pat", expression: #"github_pat_[A-Za-z0-9_]{8,}"#),
+        compiledPattern(name: "ghp", expression: #"ghp_[A-Za-z0-9_]{6,}"#),
+        compiledPattern(name: "openai", expression: #"sk-(?:proj-)?[A-Za-z0-9_-]{8,}"#),
+        compiledPattern(name: "aws_access_key", expression: #"AKIA[0-9A-Z]{16}"#),
+        compiledPattern(name: "assignment", expression: #"(?i)\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*\S+"#)
     ]
 
-    public init() {}
+    private let patterns: [CompiledPattern]
+
+    public init() {
+        self.patterns = Self.defaultCompiledPatterns
+    }
 
     public func redact(_ text: String) -> SecretRedactionResult {
         var redacted = text
@@ -42,19 +46,15 @@ public struct DeveloperSecretRedactor: Sendable {
         var matchedPatternNames: [String] = []
 
         for pattern in patterns {
-            guard let regex = try? NSRegularExpression(pattern: pattern.expression) else {
-                continue
-            }
-
             let range = NSRange(redacted.startIndex..<redacted.endIndex, in: redacted)
-            let matches = regex.numberOfMatches(in: redacted, range: range)
+            let matches = pattern.regex.numberOfMatches(in: redacted, range: range)
             guard matches > 0 else {
                 continue
             }
 
             matchedPatternNames.append(pattern.name)
             replacementCount += matches
-            redacted = regex.stringByReplacingMatches(
+            redacted = pattern.regex.stringByReplacingMatches(
                 in: redacted,
                 range: range,
                 withTemplate: "[REDACTED_SECRET]"
@@ -67,6 +67,13 @@ public struct DeveloperSecretRedactor: Sendable {
                 replacementCount: replacementCount,
                 matchedPatternNames: matchedPatternNames
             )
+        )
+    }
+
+    private static func compiledPattern(name: String, expression: String) -> CompiledPattern {
+        CompiledPattern(
+            name: name,
+            regex: try! NSRegularExpression(pattern: expression)
         )
     }
 }

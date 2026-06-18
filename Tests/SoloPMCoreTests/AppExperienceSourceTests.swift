@@ -199,6 +199,13 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
+    func testRuntimeSecretRedactionCompilesPatternsBeforeRedacting() throws {
+        let source = try readPackageFile("Sources/SoloPMCore/DeveloperMode/DraftGeneration.swift")
+
+        XCTAssertTrue(source.contains("CompiledPattern"))
+        XCTAssertFalse(source.contains("try? NSRegularExpression(pattern: pattern.expression)"))
+    }
+
     func testExternalMCPLauncherDoesNotDefaultToInMemorySecretStore() throws {
         let source = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")
 

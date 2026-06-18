@@ -691,6 +691,13 @@
 - [x] external MCP read execution audit に `risk=read` が残ることを unit test で確認する。
 - [x] 完了条件: MCP 実行ログが tool permission metadata を欠落させず、レビュー可能な監査証跡になる。
 
+### P10-086: Secret redaction regex failures are not silent
+
+- [x] `DeveloperSecretRedactor` は redaction 実行ごとに `try? NSRegularExpression` で invalid pattern を skip しない。
+- [x] secret redaction patterns は `CompiledPattern` として初期化時に検証済み regex を保持する。
+- [x] runtime source regression test と既存 draft redaction test で secret leak 防止を確認する。
+- [x] 完了条件: redaction pattern の破損が secret を無検知で通す成功 path にならない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
