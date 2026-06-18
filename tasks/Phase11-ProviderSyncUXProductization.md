@@ -131,11 +131,11 @@
 
 ## P11-030: UX click-path audit
 
-- [ ] `docs/ux/click-path-audit.md` を作り、Inbox、Today、Projects、Project Detail、Settings、Review Executeの主要操作をクリック数で棚卸しする。
-- [ ] 目標: タスク作成は2クリック以内、タスクステータス変更はドラッグ1回またはカードボタン1回、Project作成は2クリック以内。
+- [x] `docs/ux/click-path-audit.md` を作り、Inbox、Today、Projects、Project Detail、Settings、Review Executeの主要操作をクリック数で棚卸しする。
+- [x] 目標: タスク作成は2クリック以内、タスクステータス変更はドラッグ1回またはカードボタン1回、Project作成は2クリック以内。
 - [ ] 目標: Provider設定はSettingsを開いて2クリック以内、MCP接続確認はSettingsを開いて2クリック以内、Sync状態確認はSettingsを開いて1クリック以内。
-- [ ] クリック数だけでなく、次に何をすればよいかが画面上の主要ボタン/状態で分かるかを記録する。
-- [ ] 完了条件: UI改善が感覚論ではなく、導線コストとしてレビューできる。
+- [x] クリック数だけでなく、次に何をすればよいかが画面上の主要ボタン/状態で分かるかを記録する。
+- [x] 完了条件: UI改善が感覚論ではなく、導線コストとしてレビューできる。
 
 ## P11-031: Board and inspector UX upgrade
 
