@@ -30,6 +30,13 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("AC_PASSWORD"))
     }
 
+    func testReleasePreflightRequiresCleanTrackedSourceTree() throws {
+        let script = try readPackageFile("script/verify_release_environment.sh")
+
+        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" status --porcelain --untracked-files=no"))
+        XCTAssertTrue(script.contains("source tree has uncommitted tracked changes"))
+    }
+
     func testReleasePreflightRequiresLocalEvidenceFileForManualChecks() throws {
         let script = try readPackageFile("script/verify_release_environment.sh")
 

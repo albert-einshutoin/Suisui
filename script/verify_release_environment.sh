@@ -50,6 +50,24 @@ require_command() {
   fi
 }
 
+require_clean_source_tree() {
+  local source_status
+
+  if [[ ! -d "$ROOT_DIR/.git" ]]; then
+    return
+  fi
+
+  if ! command -v git >/dev/null 2>&1; then
+    add_blocker "required command is unavailable: git"
+    return
+  fi
+
+  source_status="$(git -C "$ROOT_DIR" status --porcelain --untracked-files=no 2>/dev/null || true)"
+  if [[ -n "$source_status" ]]; then
+    add_blocker "source tree has uncommitted tracked changes; commit or revert before release"
+  fi
+}
+
 require_file "$METADATA_FILE" "app metadata"
 require_file "$ROOT_DIR/packaging/SoloPM.entitlements" "entitlements"
 require_file "$ROOT_DIR/packaging/signing.env.example" "signing env example"
@@ -65,6 +83,8 @@ require_command xcrun
 require_command hdiutil
 require_command ditto
 require_command plutil
+
+require_clean_source_tree
 
 require_evidence_true() {
   local key_path="$1"

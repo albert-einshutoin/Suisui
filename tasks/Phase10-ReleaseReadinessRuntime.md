@@ -357,6 +357,12 @@
 - [x] `verify_release_environment.sh` も package evidence manifest を読み、手書き evidence / smoke artifact / artifactPath 欠落 manifest のすり抜けを blocker にする。
 - [x] 完了条件: release evidence は必ず `package_release.sh` が signed / notarized gate 有効で作った artifact checksum に紐づく。
 
+### P10-043: Release source tree hygiene gate
+
+- [x] `.gitignore` はローカル UI QA artifact と macOS metadata を ignore し、スクリーンショットや Finder metadata を release branch に混ぜない。
+- [x] `verify_release_environment.sh` は git checkout 上で tracked file に未コミット変更がある場合、release blocker にする。
+- [x] 完了条件: release preflight は ignore 済み local artifact では止まらず、source code / release script / task doc の未コミット変更だけを release 前に止める。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
