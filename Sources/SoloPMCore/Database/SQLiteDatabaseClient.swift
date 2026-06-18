@@ -426,6 +426,27 @@ public enum CoreMigrations {
                     return
                 }
                 try connection.execute("ALTER TABLE tasks ADD COLUMN detail TEXT;")
+            },
+            DatabaseMigration(id: "0008_create_mcp_server_registrations") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS mcp_server_registrations (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        sort_order INTEGER NOT NULL,
+                        display_name TEXT NOT NULL,
+                        command TEXT NOT NULL,
+                        arguments_json TEXT NOT NULL DEFAULT '[]',
+                        environment_json TEXT NOT NULL DEFAULT '{}',
+                        working_directory TEXT,
+                        is_enabled INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_mcp_server_registrations_sort_order
+                    ON mcp_server_registrations(sort_order);
+                    """
+                )
             }
         ]
     }

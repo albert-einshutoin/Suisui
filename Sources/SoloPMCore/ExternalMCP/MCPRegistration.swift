@@ -70,24 +70,24 @@ public protocol MCPServerRegistrationStore: Sendable {
     func saveRegistrations(_ registrations: [MCPServerRegistration]) throws
 }
 
-public final class UserDefaultsMCPServerRegistrationStore: MCPServerRegistrationStore, @unchecked Sendable {
-    private let defaults: UserDefaults
-    private let key: String
+public final class SQLiteMCPServerRegistrationStore: MCPServerRegistrationStore, @unchecked Sendable {
+    private let connection: SQLiteConnection
     private let lock = NSLock()
 
-    public init(defaults: UserDefaults = .standard, key: String = "external_mcp.registrations") {
-        self.defaults = defaults
-        self.key = key
+    public init(connection: SQLiteConnection) {
+        self.connection = connection
     }
 
     public func loadRegistrations() throws -> [MCPServerRegistration] {
         lock.lock()
         defer { lock.unlock() }
-        guard let data = defaults.data(forKey: key) else {
-            return []
-        }
+
         do {
-            return try JSONDecoder().decode([MCPServerRegistration].self, from: data)
+            return try connection
+                .queryRows("SELECT * FROM mcp_server_registrations ORDER BY sort_order ASC, id ASC;")
+                .map(Self.registration(row:))
+        } catch let error as MCPRegistrationStoreError {
+            throw error
         } catch {
             throw MCPRegistrationStoreError.decodingFailed
         }
@@ -96,11 +96,94 @@ public final class UserDefaultsMCPServerRegistrationStore: MCPServerRegistration
     public func saveRegistrations(_ registrations: [MCPServerRegistration]) throws {
         lock.lock()
         defer { lock.unlock() }
+
         do {
-            let data = try JSONEncoder().encode(registrations)
-            defaults.set(data, forKey: key)
+            try connection.transaction {
+                try connection.execute("DELETE FROM mcp_server_registrations;")
+                for (index, registration) in registrations.enumerated() {
+                    try insertLocked(registration, sortOrder: index)
+                }
+            }
+        } catch let error as MCPRegistrationStoreError {
+            throw error
         } catch {
             throw MCPRegistrationStoreError.encodingFailed
+        }
+    }
+
+    private func insertLocked(_ registration: MCPServerRegistration, sortOrder: Int) throws {
+        let argumentsJSON = try Self.jsonString(registration.arguments)
+        let environmentJSON = try Self.jsonString(registration.environment)
+        try connection.execute(
+            """
+            INSERT INTO mcp_server_registrations (
+              id,
+              sort_order,
+              display_name,
+              command,
+              arguments_json,
+              environment_json,
+              working_directory,
+              is_enabled
+            )
+            VALUES (
+              '\(MCPRegistrationSQL.escape(registration.id))',
+              \(sortOrder),
+              '\(MCPRegistrationSQL.escape(registration.displayName))',
+              '\(MCPRegistrationSQL.escape(registration.command))',
+              '\(MCPRegistrationSQL.escape(argumentsJSON))',
+              '\(MCPRegistrationSQL.escape(environmentJSON))',
+              \(MCPRegistrationSQL.optional(registration.workingDirectory)),
+              \(registration.isEnabled ? 1 : 0)
+            );
+            """
+        )
+    }
+
+    private static func registration(row: [String: String]) throws -> MCPServerRegistration {
+        guard let id = row["id"],
+              let displayName = row["display_name"],
+              let command = row["command"],
+              let argumentsJSON = row["arguments_json"],
+              let environmentJSON = row["environment_json"] else {
+            throw MCPRegistrationStoreError.decodingFailed
+        }
+
+        return MCPServerRegistration(
+            id: id,
+            displayName: displayName,
+            command: command,
+            arguments: try jsonValue(argumentsJSON),
+            environment: try jsonValue(environmentJSON),
+            workingDirectory: row["working_directory"]?.nilIfEmpty,
+            isEnabled: row["is_enabled"] == "1"
+        )
+    }
+
+    private static func jsonString<T: Encodable>(_ value: T) throws -> String {
+        do {
+            let data = try JSONEncoder().encode(value)
+            guard let string = String(data: data, encoding: .utf8) else {
+                throw MCPRegistrationStoreError.encodingFailed
+            }
+            return string
+        } catch let error as MCPRegistrationStoreError {
+            throw error
+        } catch {
+            throw MCPRegistrationStoreError.encodingFailed
+        }
+    }
+
+    private static func jsonValue<T: Decodable>(_ string: String) throws -> T {
+        do {
+            guard let data = string.data(using: .utf8) else {
+                throw MCPRegistrationStoreError.decodingFailed
+            }
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch let error as MCPRegistrationStoreError {
+            throw error
+        } catch {
+            throw MCPRegistrationStoreError.decodingFailed
         }
     }
 }
@@ -247,6 +330,26 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         default:
             return String(describing: error)
         }
+    }
+}
+
+private enum MCPRegistrationSQL {
+    static func escape(_ value: String) -> String {
+        value.replacingOccurrences(of: "'", with: "''")
+    }
+
+    static func optional(_ value: String?) -> String {
+        guard let value else {
+            return "NULL"
+        }
+
+        return "'\(escape(value))'"
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
     }
 }
 

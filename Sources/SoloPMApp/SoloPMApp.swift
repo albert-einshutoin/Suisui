@@ -1070,8 +1070,15 @@ private enum AppRuntimeFactory {
         let launcher = MCPStdioServerLauncher(
             environmentResolver: SecretStoreMCPEnvironmentResolver(secretStore: secretStore)
         )
+        let store: any MCPServerRegistrationStore
+        do {
+            store = SQLiteMCPServerRegistrationStore(connection: try migratedConnection())
+        } catch {
+            store = UnavailableMCPServerRegistrationStore(error: error)
+        }
+
         return ExternalMCPSettingsViewModel(
-            store: UserDefaultsMCPServerRegistrationStore(),
+            store: store,
             launcher: launcher,
             auditRows: externalMCPAuditRows()
         )
@@ -1249,6 +1256,18 @@ private struct UnavailableProjectBoardStore: ProjectBoardStore {
     }
 
     func deleteTask(id: Int64) throws {
+        throw error
+    }
+}
+
+private struct UnavailableMCPServerRegistrationStore: MCPServerRegistrationStore {
+    let error: Error
+
+    func loadRegistrations() throws -> [MCPServerRegistration] {
+        throw error
+    }
+
+    func saveRegistrations(_ registrations: [MCPServerRegistration]) throws {
         throw error
     }
 }

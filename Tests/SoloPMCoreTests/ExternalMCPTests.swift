@@ -141,6 +141,43 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertTrue(saved.isEnabled)
     }
 
+    func testSQLiteMCPRegistrationStorePersistsRegistrationsWithoutRawSecrets() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteMCPServerRegistrationStore(connection: connection)
+        let registrations = [
+            MCPServerRegistration(
+                id: "git'hub",
+                displayName: "Owner's GitHub MCP",
+                command: "/usr/bin/env",
+                arguments: ["node", "owner's server.js"],
+                environment: ["GITHUB_TOKEN": .keychain(.githubToken)],
+                workingDirectory: "/repo/owner's workspace",
+                isEnabled: true
+            ),
+            MCPServerRegistration(
+                id: "local",
+                displayName: "Local MCP",
+                command: "/usr/bin/env",
+                arguments: ["python", "server.py"],
+                environment: [:],
+                workingDirectory: nil,
+                isEnabled: false
+            )
+        ]
+
+        try store.saveRegistrations(registrations)
+
+        XCTAssertEqual(try store.loadRegistrations(), registrations)
+        let rows = try connection.queryRows("SELECT environment_json FROM mcp_server_registrations ORDER BY sort_order ASC;")
+        XCTAssertEqual(rows.first?["environment_json"]?.contains("github_token"), true)
+        XCTAssertEqual(rows.first?["environment_json"]?.contains("ghp_secret"), false)
+
+        try store.saveRegistrations([])
+
+        XCTAssertEqual(try store.loadRegistrations(), [])
+    }
+
     @MainActor
     func testExternalMCPSettingsViewModelChecksConnectionAndRefreshesToolCatalog() async throws {
         let registration = MCPServerRegistration(

@@ -314,6 +314,15 @@
 - [x] `project.complete` tool は task store を必須にし、voice / review 経由でも ProjectBoard と同じ完了 semantics にする。
 - [x] 完了条件: UI、CLI、review tool、deadline query のすべてで completed / archived project の task 状態が一貫する。
 
+### P10-037: SQLite MCP registration persistence
+
+- [x] `CoreMigrations.current` に `mcp_server_registrations` table を追加し、MCP server 登録を SQLite に永続化する。
+- [x] runtime の `ExternalMCPSettingsViewModel` は `UserDefaultsMCPServerRegistrationStore` ではなく `SQLiteMCPServerRegistrationStore` を使う。
+- [x] 未使用の `UserDefaultsMCPServerRegistrationStore` を production source から削除し、再導入を regression test で検知する。
+- [x] `environment_json` は Keychain reference だけを保存し、raw provider token / GitHub token を DB に入れない。
+- [x] display name / command / arguments / working directory に quote を含むユーザー入力でも保存と復元が壊れない。
+- [x] 完了条件: MCP registration が app restart 後も残り、外部連携なしの release path に UserDefaults / in-memory success path が混ざらない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

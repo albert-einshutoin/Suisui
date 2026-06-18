@@ -40,4 +40,13 @@ final class DatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(taskColumns.contains("detail"))
         XCTAssertTrue(appliedMigrationIDs.contains("0007_add_task_detail"))
     }
+
+    func testCurrentMigrationsCreateMCPRegistrationTable() throws {
+        let database = try SQLiteDatabaseClient(path: ":memory:")
+
+        try database.migrate(CoreMigrations.current)
+
+        XCTAssertTrue(try database.tableExists("mcp_server_registrations"))
+        XCTAssertTrue(try database.appliedMigrationIDs().contains("0008_create_mcp_server_registrations"))
+    }
 }

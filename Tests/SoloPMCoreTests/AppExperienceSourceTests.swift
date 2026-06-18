@@ -196,6 +196,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains("SecretStoreMCPEnvironmentResolver(secretStore: InMemorySecretStore())"))
     }
 
+    func testRuntimeExternalMCPSettingsUseSQLiteRegistrationStore() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let mcpRegistrationSource = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")
+
+        XCTAssertTrue(appSource.contains("SQLiteMCPServerRegistrationStore(connection:"))
+        XCTAssertFalse(appSource.contains("store: UserDefaultsMCPServerRegistrationStore()"))
+        XCTAssertFalse(mcpRegistrationSource.contains("UserDefaultsMCPServerRegistrationStore"))
+    }
+
     func testExternalMCPExecutorDoesNotDefaultToInMemoryAuditLogger() throws {
         let source = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPExecution.swift")
 
