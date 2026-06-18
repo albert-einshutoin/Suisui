@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 SIGNING_ENV_FILE="$ROOT_DIR/packaging/signing.env"
 NOTARIZATION_ENV_FILE="$ROOT_DIR/packaging/notarization.env"
+SPARKLE_ENV_FILE="$ROOT_DIR/packaging/sparkle.env"
 ENTITLEMENTS_FILE="$ROOT_DIR/packaging/SoloPM.entitlements"
 RELEASE_EVIDENCE_FILE="${SOLOPM_RELEASE_EVIDENCE_FILE:-$ROOT_DIR/packaging/release-evidence.json}"
 RELEASE_APPCAST_FILE="${SOLOPM_RELEASE_APPCAST_FILE:-$ROOT_DIR/dist/releases/appcast.xml}"
@@ -72,6 +73,14 @@ require_clean_source_tree() {
   fi
 }
 
+validate_release_sparkle_config() {
+  local validation_output
+
+  if ! validation_output="$(SOLOPM_BUILD_CONFIGURATION=release "$ROOT_DIR/script/validate_sparkle_release_config.sh" 2>&1)"; then
+    add_blocker "release Sparkle config is invalid: $validation_output"
+  fi
+}
+
 require_developer_id_application_identity() {
   local signing_identity="$1"
   case "$signing_identity" in
@@ -133,10 +142,14 @@ require_release_sparkle_metadata() {
 
   if [[ -z "$feed_url" ]]; then
     add_blocker "release app is missing Sparkle feed URL: SUFeedURL"
+  elif [[ -n "${SPARKLE_FEED_URL:-}" && "$feed_url" != "$SPARKLE_FEED_URL" ]]; then
+    add_blocker "release app Sparkle feed URL does not match configured SOLOPM_SPARKLE_FEED_URL: SUFeedURL"
   fi
 
   if [[ -z "$public_ed_key" ]]; then
     add_blocker "release app is missing Sparkle public EdDSA key: SUPublicEDKey"
+  elif [[ -n "${SPARKLE_PUBLIC_ED_KEY:-}" && "$public_ed_key" != "$SPARKLE_PUBLIC_ED_KEY" ]]; then
+    add_blocker "release app Sparkle public EdDSA key does not match configured SOLOPM_SPARKLE_PUBLIC_ED_KEY: SUPublicEDKey"
   else
     case "$public_ed_key" in
       base64-public-key-from-generate_keys|"<public key from generate_keys>")
@@ -229,6 +242,7 @@ require_executable "$ROOT_DIR/script/sign_app.sh" "signing script"
 require_executable "$ROOT_DIR/script/notarize_app.sh" "notarization script"
 require_executable "$ROOT_DIR/script/package_release.sh" "packaging script"
 require_executable "$ROOT_DIR/script/verify_appcast.sh" "appcast verification script"
+require_executable "$ROOT_DIR/script/validate_sparkle_release_config.sh" "Sparkle release config validator"
 require_command codesign
 require_command security
 require_command spctl
@@ -451,6 +465,11 @@ else
   add_blocker "missing local notarization config: copy packaging/notarization.env.example to packaging/notarization.env on the release machine"
 fi
 
+if [[ -f "$SPARKLE_ENV_FILE" ]]; then
+  # shellcheck source=/dev/null
+  source "$SPARKLE_ENV_FILE"
+fi
+
 APP_NAME="${APP_NAME:-SoloPM}"
 BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:-}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
@@ -459,7 +478,11 @@ ARTIFACT_BASENAME="$APP_NAME-${MARKETING_VERSION:-}+${CURRENT_PROJECT_VERSION:-}
 RELEASE_ARTIFACT_SHA256_FILE="${SOLOPM_RELEASE_ARTIFACT_SHA256_FILE:-}"
 SIGNING_IDENTITY="${SOLOPM_SIGNING_IDENTITY:-}"
 NOTARY_PROFILE="${SOLOPM_NOTARY_PROFILE:-}"
+SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
+SPARKLE_PUBLIC_ED_KEY="${SOLOPM_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
 ONLINE_PREFLIGHT="${SOLOPM_RELEASE_PREFLIGHT_ONLINE:-0}"
+
+validate_release_sparkle_config
 
 case "$ONLINE_PREFLIGHT" in
   0|1)

@@ -446,6 +446,7 @@
 - [x] release build は Sparkle feed URL が HTTPS でない場合、または予約ドメイン / ローカルドメインの場合に失敗する。
 - [x] release build と `verify_release_environment.sh` は placeholder Sparkle public key を release blocker にする。
 - [x] `verify_release_environment.sh` は signed app の `SUFeedURL` / `SUPublicEDKey` 欠落と placeholder feed URL を release blocker にする。
+- [x] `verify_release_environment.sh` は signed app の `SUFeedURL` / `SUPublicEDKey` が local release config と一致しない場合に release blocker にする。
 - [x] `packaging/sparkle.env.example` は release 用の `example.com` URL を含まず、production 値は local env または release machine の環境変数から与える。
 - [x] 完了条件: public alpha release build に sample feed URL や Sparkle 無効状態が混入しない。
 

@@ -10,6 +10,7 @@ Sparkle は SwiftPM dependency として `SoloPM` app target に追加する。`
 
 Sparkle の feed URL と public EdDSA key は release build 時だけ Info.plist に入れる。
 `SOLOPM_SPARKLE_FEED_URL` は production HTTPS appcast URL を environment か `packaging/sparkle.env` に設定する。release build は未設定、非 HTTPS、予約ドメイン、ローカルドメインを拒否する。
+final preflight は signed app の `SUFeedURL` / `SUPublicEDKey` が現在の release config と一致することも確認する。feed URL や public key を変更した場合は、署名・notarization の前に app bundle を作り直す。
 
 ```bash
 SOLOPM_BUILD_CONFIGURATION=release ./script/build_and_run.sh --build-only

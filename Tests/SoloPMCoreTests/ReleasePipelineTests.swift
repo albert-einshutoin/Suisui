@@ -105,6 +105,9 @@ final class ReleasePipelineTests: XCTestCase {
     func testReleasePreflightRequiresProductionSparkleFeedMetadata() throws {
         let script = try readPackageFile("script/verify_release_environment.sh")
 
+        XCTAssertTrue(script.contains("SPARKLE_ENV_FILE"))
+        XCTAssertTrue(script.contains("validate_sparkle_release_config.sh"))
+        XCTAssertTrue(script.contains("release Sparkle config is invalid"))
         XCTAssertTrue(script.contains("SUFeedURL"))
         XCTAssertTrue(script.contains("SUPublicEDKey"))
         XCTAssertTrue(script.contains("release app is missing Sparkle feed URL"))
@@ -112,6 +115,22 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("release app Sparkle feed URL must use https"))
         XCTAssertTrue(script.contains("release app Sparkle feed URL must not use placeholder or local domains"))
         XCTAssertTrue(script.contains("release app Sparkle public EdDSA key must not use a placeholder key"))
+        XCTAssertTrue(script.contains("release app Sparkle feed URL does not match configured SOLOPM_SPARKLE_FEED_URL"))
+        XCTAssertTrue(script.contains("release app Sparkle public EdDSA key does not match configured SOLOPM_SPARKLE_PUBLIC_ED_KEY"))
+    }
+
+    func testReleasePreflightRejectsInvalidSparkleReleaseConfiguration() throws {
+        let result = try runScript(
+            "script/verify_release_environment.sh",
+            environment: [
+                "SOLOPM_SPARKLE_FEED_URL": "http://updates.example.invalid/solopm/appcast.xml",
+                "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release Sparkle config is invalid"))
+        XCTAssertTrue(result.output.contains("SOLOPM_SPARKLE_FEED_URL must use https for release builds"))
     }
 
     func testReleasePreflightRequiresLocalEvidenceFileForManualChecks() throws {
