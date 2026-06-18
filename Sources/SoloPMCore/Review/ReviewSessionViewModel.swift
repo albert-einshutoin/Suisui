@@ -6,6 +6,7 @@ public final class ReviewSessionViewModel: ObservableObject {
     @Published public private(set) var session: ReviewSession
     @Published public private(set) var isExecuting: Bool
     @Published public private(set) var errorMessage: String?
+    @Published public private(set) var auditErrorMessage: String?
     @Published public private(set) var validationIssuesByActionID: [String: [ToolInputValidationIssue]]
 
     private let executor: ActionExecutor
@@ -27,9 +28,10 @@ public final class ReviewSessionViewModel: ObservableObject {
         self.runtimeValidationMessage = runtimeValidationMessage
         self.isExecuting = false
         self.errorMessage = runtimeValidationMessage
+        self.auditErrorMessage = nil
         self.validationIssuesByActionID = [:]
         refreshValidationIssues()
-        try? record(action: "session.create", status: .started)
+        recordAudit(action: "session.create", status: .started)
     }
 
     public var canApprove: Bool {
@@ -47,19 +49,19 @@ public final class ReviewSessionViewModel: ObservableObject {
     public func setActionEnabled(actionID: String, isEnabled: Bool) {
         session.setActionEnabled(id: actionID, isEnabled)
         refreshValidationIssues()
-        try? record(action: isEnabled ? "action.enable" : "action.disable", status: .succeeded, actionID: actionID)
+        recordAudit(action: isEnabled ? "action.enable" : "action.disable", status: .succeeded, actionID: actionID)
     }
 
     public func updateStringArgument(actionID: String, key: String, value: String) {
         session.updateStringArgument(id: actionID, key: key, value: value)
         refreshValidationIssues()
-        try? record(action: "action.edit", status: .succeeded, actionID: actionID)
+        recordAudit(action: "action.edit", status: .succeeded, actionID: actionID)
     }
 
     public func resetAction(actionID: String) {
         session.resetAction(id: actionID)
         refreshValidationIssues()
-        try? record(action: "action.reset", status: .succeeded, actionID: actionID)
+        recordAudit(action: "action.reset", status: .succeeded, actionID: actionID)
     }
 
     public func approve() throws {
@@ -69,7 +71,7 @@ public final class ReviewSessionViewModel: ObservableObject {
 
         let token = ApprovalToken(id: UUID().uuidString, sessionID: session.id)
         try session.approve(token: token)
-        try record(action: "session.approve", status: .succeeded)
+        recordAudit(action: "session.approve", status: .succeeded)
     }
 
     public func execute() throws {
@@ -88,7 +90,7 @@ public final class ReviewSessionViewModel: ObservableObject {
             session = try executor.execute(session)
         } catch {
             errorMessage = String(describing: error)
-            try? record(action: "session.execute", status: .failed)
+            recordAudit(action: "session.execute", status: .failed)
             throw error
         }
     }
@@ -96,7 +98,7 @@ public final class ReviewSessionViewModel: ObservableObject {
     public func cancel() {
         session.cancel()
         refreshValidationIssues()
-        try? record(action: "session.cancel", status: .skipped)
+        recordAudit(action: "session.cancel", status: .skipped)
     }
 
     private func refreshValidationIssues() {
@@ -128,5 +130,13 @@ public final class ReviewSessionViewModel: ObservableObject {
         }
 
         try auditLogger?.record(AuditEvent(category: "review", action: action, status: status, metadata: metadata))
+    }
+
+    private func recordAudit(action: String, status: AuditStatus, actionID: String? = nil) {
+        do {
+            try record(action: action, status: status, actionID: actionID)
+        } catch {
+            auditErrorMessage = "Review audit log failed: \(String(describing: error))"
+        }
     }
 }

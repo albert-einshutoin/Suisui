@@ -310,6 +310,11 @@ private struct ActionReviewPanel: View {
                     .font(.caption)
                     .foregroundStyle(.red)
             }
+            if let message = viewModel.auditErrorMessage {
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
 
             ViewThatFits(in: .horizontal) {
                 HStack {

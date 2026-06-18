@@ -622,6 +622,13 @@
 - [x] `dimensions` と `vector_json` の配列長不整合を decode error にする。
 - [x] 完了条件: 破損した embedding row が semantic search の ranking に静かに混ざらない。
 
+### P10-076: Review audit failure visibility
+
+- [x] `ReviewSessionViewModel` は review audit log の記録失敗を `try?` で捨てない。
+- [x] edit / execute failure path で audit failure が `auditErrorMessage` に残ることを unit test で確認する。
+- [x] Action Review UI は audit warning を通常の execution error とは別に表示する。
+- [x] 完了条件: レビュー操作や実行の履歴欠落がユーザーから見えない状態で進行しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

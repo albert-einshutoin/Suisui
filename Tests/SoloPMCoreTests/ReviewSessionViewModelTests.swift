@@ -121,6 +121,50 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertThrowsError(try viewModel.execute())
     }
 
+    func testAuditFailureDuringEditIsSurfacedInsteadOfDropped() throws {
+        let auditLogger = SequencedFailingAuditLogger(failOnCall: 2)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(name: .taskCreate, description: "create", inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]), permissionLevel: .writeWithApproval) { _, _ in
+                ToolResult(tool: .taskCreate, status: .succeeded, summary: "created")
+            }
+        ])
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+            ]),
+            executor: ActionExecutor(registry: registry),
+            auditLogger: auditLogger
+        )
+
+        XCTAssertNil(viewModel.auditErrorMessage)
+
+        viewModel.updateStringArgument(actionID: "task", key: "title", value: "Review")
+
+        XCTAssertEqual(viewModel.auditErrorMessage, "Review audit log failed: unavailable")
+    }
+
+    func testAuditFailureDuringExecuteFailureIsSurfacedWithExecutorError() throws {
+        let viewAuditLogger = SequencedFailingAuditLogger(failOnCall: 2)
+        let executorAuditLogger = SequencedFailingAuditLogger(failOnCall: 1)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(name: .projectList, description: "read", inputSchema: ToolInputSchema(), permissionLevel: .read) { _, _ in
+                ToolResult(tool: .projectList, status: .succeeded, summary: "ok")
+            }
+        ])
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(id: "read", tool: .projectList)
+            ]),
+            executor: ActionExecutor(registry: registry, auditLogger: executorAuditLogger),
+            auditLogger: viewAuditLogger
+        )
+
+        XCTAssertThrowsError(try viewModel.execute())
+
+        XCTAssertEqual(viewModel.errorMessage, "unavailable")
+        XCTAssertEqual(viewModel.auditErrorMessage, "Review audit log failed: unavailable")
+    }
+
     func testBlankOptionalCRUDFieldDisablesExecutionBeforeApproval() throws {
         let stores = try makeStores()
         let task = try stores.tasks.create(title: "Draft release notes")
@@ -235,6 +279,33 @@ private func makeStores() throws -> (projects: SQLiteProjectStore, tasks: SQLite
         SQLiteTaskStore(connection: connection),
         SQLiteKnowledgeFrameStore(connection: connection)
     )
+}
+
+private enum ReviewAuditTestError: Error, CustomStringConvertible {
+    case unavailable
+
+    var description: String {
+        "unavailable"
+    }
+}
+
+private final class SequencedFailingAuditLogger: AuditLogger, @unchecked Sendable {
+    private let failOnCall: Int
+    private var callCount = 0
+    private let lock = NSLock()
+
+    init(failOnCall: Int) {
+        self.failOnCall = failOnCall
+    }
+
+    func record(_ event: AuditEvent) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        callCount += 1
+        if callCount >= failOnCall {
+            throw ReviewAuditTestError.unavailable
+        }
+    }
 }
 
 private extension ActionPlan {
