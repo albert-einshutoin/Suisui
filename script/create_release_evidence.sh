@@ -202,6 +202,32 @@ is_placeholder_manual_environment() {
   esac
 }
 
+is_boilerplate_review_note() {
+  local normalized
+  normalized="$(trim_text "$1" | tr '[:upper:]' '[:lower:]')"
+  normalized="${normalized//./}"
+  normalized="${normalized//,/}"
+  normalized="${normalized//;/}"
+  case "$normalized" in
+    ""|\
+    "manual checks completed"|\
+    "manual checks completed on signed build"|\
+    "manual checks completed on the signed build"|\
+    "set booleans true only after the signed and notarized build is tested"|\
+    "generated from packaging/app_metadataenv set manual check flags only after testing the signed and notarized build"|\
+    *placeholder*|\
+    *replace*|\
+    *sample*|\
+    *example*|\
+    *todo*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 manual_checks_requested() {
   [[ "$RELEASE_MACHINE_LAUNCH" == "true" \
     || "$CHECKSUM_VERIFICATION" == "true" \
@@ -453,6 +479,12 @@ if manual_checks_requested; then
     echo "manual release evidence requires at least one explicit --note" >&2
     exit 2
   fi
+  for note in "${NOTES[@]}"; do
+    if is_boilerplate_review_note "$note"; then
+      echo "release evidence review notes must include concrete verification details" >&2
+      exit 2
+    fi
+  done
 fi
 require_release_signing_context
 require_release_sparkle_context

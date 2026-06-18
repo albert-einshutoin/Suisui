@@ -327,7 +327,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--sparkle-appcast-metadata",
                 "--manual-environment", "macOS 15.5 clean user on arm64",
                 "--checked-by", "release-owner",
-                "--note", "Manual checks completed on signed build."
+                "--note", "Verified launch, Gatekeeper, clean DMG install, Applications install, login item toggle, checksum, and Sparkle appcast on macOS 15.5 arm64 signed build."
             ],
             environment: [
                 "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
@@ -364,7 +364,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(evidence.contains("\"sparkleAppcastMetadata\": true"))
         XCTAssertTrue(evidence.contains("\"environment\": \"macOS 15.5 clean user on arm64\""))
         XCTAssertTrue(evidence.contains("\"checkedBy\": \"release-owner\""))
-        XCTAssertTrue(evidence.contains("Manual checks completed on signed build."))
+        XCTAssertTrue(evidence.contains("Verified launch, Gatekeeper, clean DMG install, Applications install, login item toggle, checksum, and Sparkle appcast on macOS 15.5 arm64 signed build."))
         XCTAssertFalse(evidence.contains("PASSWORD"))
         XCTAssertFalse(evidence.contains("TOKEN"))
         XCTAssertFalse(evidence.contains("SECRET"))
@@ -780,6 +780,56 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("manual release evidence requires a concrete --manual-environment"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceURL.path))
+    }
+
+    func testReleaseEvidenceScriptRejectsBoilerplateManualReviewNote() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-boilerplate-review-note.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-boilerplate-review-note.dmg.sha256")
+        let artifactPath = ".build/test-release-artifact-boilerplate-review-note.dmg"
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let artifactURL = try writeArtifactChecksum(to: checksumURL, artifactPath: artifactPath)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: artifactPath)
+        let appcastURL = try writeReleaseAppcastFixture(
+            at: packageRoot().appendingPathComponent(".build/test-release-appcast-boilerplate-review-note.xml")
+        )
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: artifactURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+            try? FileManager.default.removeItem(at: appcastURL)
+        }
+
+        let result = try runScript(
+            "script/create_release_evidence.sh",
+            arguments: [
+                "--force",
+                "--clean-environment-launch",
+                "--login-item-toggle",
+                "--manual-environment", "macOS 15.5 clean user on arm64",
+                "--checked-by", "release-owner",
+                "--note", "Manual checks completed."
+            ],
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path,
+                "SOLOPM_RELEASE_APPCAST_FILE": appcastURL.path,
+                "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
+                "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases/",
+                "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release evidence review notes must include concrete verification details"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceURL.path))
     }
 
@@ -1738,6 +1788,72 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("release evidence missing review notes"))
     }
 
+    func testReleasePreflightRejectsBoilerplateReviewNotes() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-boilerplate-review-notes.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-boilerplate-review-notes.dmg.sha256")
+        let artifactPath = ".build/test-release-artifact-boilerplate-review-notes.dmg"
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let artifactURL = try writeArtifactChecksum(to: checksumURL, artifactPath: artifactPath)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: artifactPath)
+        let gitCommit = try currentGitCommit()
+        try """
+        {
+          "release": {
+            "version": "0.1.0",
+            "buildNumber": "1",
+            "appBundlePath": "dist/SoloPM.app",
+            "artifactPath": "\(artifactPath)",
+            "artifactSha256": "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98",
+            "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
+            "notaryProfile": "SoloPMNotaryProfile",
+            "sparkleFeedURL": "https://updates.solopm.app/releases/appcast.xml",
+            "appcastPath": "dist/releases/appcast.xml"
+          },
+          "source": {
+            "gitCommit": "\(gitCommit)"
+          },
+          "manualChecks": {
+            "releaseMachineLaunch": true,
+            "checksumVerification": true,
+            "cleanDmgInstall": true,
+            "applicationsFolderInstall": true,
+            "gatekeeperAccepted": true,
+            "cleanEnvironmentLaunch": true,
+            "loginItemToggle": true,
+            "sparkleAppcastMetadata": true,
+            "environment": "macOS 15.5 clean user on arm64"
+          },
+          "review": {
+            "checkedBy": "release-owner",
+            "checkedAt": "2026-06-18T00:00:00Z",
+            "notes": ["Manual checks completed."]
+          }
+        }
+        """.write(to: evidenceURL, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: artifactURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+        }
+
+        let result = try runScript(
+            "script/verify_release_environment.sh",
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release evidence review notes must include concrete verification details"))
+    }
+
     func testReleasePreflightRejectsEvidenceForDifferentSourceCommit() throws {
         let evidenceURL = packageRoot()
             .appendingPathComponent(".build/test-release-evidence-source-commit.json")
@@ -1785,7 +1901,7 @@ final class ReleasePipelineTests: XCTestCase {
           "review": {
             "checkedBy": "release-owner",
             "checkedAt": "2026-06-18T00:00:00Z",
-            "notes": ["Manual checks completed."]
+            "notes": ["Verified launch, Gatekeeper, clean DMG install, Applications install, login item toggle, checksum, and Sparkle appcast on macOS 15.5 arm64 signed build."]
           }
         }
         """.write(to: evidenceURL, atomically: true, encoding: .utf8)
@@ -1820,7 +1936,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("packaging/release-evidence.json"))
         XCTAssertTrue(checklist.contains("manual release evidence"))
         XCTAssertTrue(checklist.contains("reject blank, placeholder, sample, example, todo, or replace-style environment descriptions"))
-        XCTAssertTrue(checklist.contains("blank reviewer names or blank review notes are rejected"))
+        XCTAssertTrue(checklist.contains("blank reviewer names, blank review notes, and boilerplate notes"))
         XCTAssertTrue(checklist.contains("manual release flags require an explicit review note"))
         XCTAssertTrue(checklist.contains("source git commit is recorded in release evidence"))
         XCTAssertTrue(checklist.contains("SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml"))

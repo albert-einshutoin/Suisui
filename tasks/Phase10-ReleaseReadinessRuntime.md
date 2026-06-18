@@ -1163,6 +1163,13 @@
 - [x] source regression test で `String(data: data, encoding: .utf8) ?? "[]"` の復活を防ぐ。
 - [x] 完了条件: embedding vector persistence が encoding failure 時に空ベクトル保存成功として見えない。
 
+### P10-150: Manual release evidence rejects boilerplate review notes
+
+- [x] `create_release_evidence.sh` は manual check flag が true の場合、`Manual checks completed` のような汎用 note を evidence として保存しない。
+- [x] `verify_release_environment.sh` は hand-written release evidence の `review.notes` が汎用文だけの場合、release blocker にする。
+- [x] `ReleasePipelineTests` で evidence generation と preflight の boilerplate note rejection を固定する。
+- [x] 完了条件: Gatekeeper / clean install / login item の manual evidence が、具体的な検証内容を含まないレビュー文だけで release ready に見えない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

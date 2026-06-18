@@ -375,6 +375,32 @@ is_placeholder_manual_environment() {
   esac
 }
 
+is_boilerplate_review_note() {
+  local normalized
+  normalized="$(trim_text "$1" | tr '[:upper:]' '[:lower:]')"
+  normalized="${normalized//./}"
+  normalized="${normalized//,/}"
+  normalized="${normalized//;/}"
+  case "$normalized" in
+    ""|\
+    "manual checks completed"|\
+    "manual checks completed on signed build"|\
+    "manual checks completed on the signed build"|\
+    "set booleans true only after the signed and notarized build is tested"|\
+    "generated from packaging/app_metadataenv set manual check flags only after testing the signed and notarized build"|\
+    *placeholder*|\
+    *replace*|\
+    *sample*|\
+    *example*|\
+    *todo*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 require_evidence_concrete_manual_environment() {
   local value
 
@@ -390,15 +416,26 @@ require_evidence_concrete_manual_environment() {
 
 require_evidence_review_notes() {
   local value
+  local index=0
+  local has_note=0
+  local has_concrete_note=0
 
-  if ! value="$(plutil -extract "review.notes.0" raw -o - "$RELEASE_EVIDENCE_FILE" 2>/dev/null)"; then
-    add_blocker "release evidence missing review notes: review.notes must include at least one explicit note"
-    return
-  fi
+  while value="$(plutil -extract "review.notes.$index" raw -o - "$RELEASE_EVIDENCE_FILE" 2>/dev/null)"; do
+    has_note=1
+    value="$(trim_text "$value")"
+    if [[ -n "$value" ]]; then
+      if ! is_boilerplate_review_note "$value"; then
+        has_concrete_note=1
+        break
+      fi
+    fi
+    index=$((index + 1))
+  done
 
-  value="$(trim_text "$value")"
-  if [[ -z "$value" ]]; then
+  if [[ "$has_note" != "1" ]]; then
     add_blocker "release evidence missing review notes: review.notes must include at least one explicit note"
+  elif [[ "$has_concrete_note" != "1" ]]; then
+    add_blocker "release evidence review notes must include concrete verification details"
   fi
 }
 
