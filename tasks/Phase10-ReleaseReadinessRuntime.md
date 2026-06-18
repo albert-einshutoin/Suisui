@@ -705,6 +705,13 @@
 - [x] source regression test、`LocalStoreTests`、`ProjectTaskKnowledgeToolTests` で既存CRUD動作を確認する。
 - [x] 完了条件: 永続化前の配列エンコード異常が、タグ/トリガー消失として成功扱いにならない。
 
+### P10-088: Review unavailable-tool registry does not drop registration failures
+
+- [x] `unavailableReviewRegistry` は `try? target.register` で fallback tool registration failure を捨てない。
+- [x] 重複登録を避ける既存 invariant を `try!` で明示し、source regression test で `try?` 復活を防ぐ。
+- [x] `ReviewSessionViewModelTests` で runtime validation message による execution block を維持する。
+- [x] 完了条件: review runtime unavailable 時に、必要な unavailable tool が静かに欠落しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

@@ -396,6 +396,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(reviewFactory.contains("Review execution tools are unavailable because audit logging or local data stores could not be opened."))
     }
 
+    func testUnavailableReviewRegistryDoesNotSilentlyDropRegistrationFailures() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertFalse(appSource.contains("try? target.register(UnavailableReviewTool"))
+        XCTAssertTrue(appSource.contains("try! target.register(UnavailableReviewTool"))
+    }
+
     func testVoicePlanningRequiresAuditLoggerBeforeGeneration() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let voiceFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeVoiceCaptureViewModel()"))

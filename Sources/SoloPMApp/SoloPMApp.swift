@@ -1255,7 +1255,7 @@ private enum AppRuntimeFactory {
         let target = ToolRegistry()
         var registeredTools: [ActionTool] = []
         for action in plan.actions where !registeredTools.contains(action.tool) {
-            try? target.register(UnavailableReviewTool(name: action.tool, message: message))
+            try! target.register(UnavailableReviewTool(name: action.tool, message: message))
             registeredTools.append(action.tool)
         }
         return target
