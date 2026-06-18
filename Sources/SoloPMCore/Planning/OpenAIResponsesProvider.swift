@@ -137,8 +137,11 @@ public struct OpenAIResponsesProvider: LLMProvider {
     }
 
     public func generatePlan(for request: PlanningRequest) async throws -> PlanningResponse {
-        let apiKey = try secretStore.read(.openAIAPIKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let apiKey, !apiKey.isEmpty else {
+        let apiKey: String
+        let storedAPIKey = try secretStore.read(.openAIAPIKey)
+        do {
+            apiKey = try APIKeyValidator.normalize(storedAPIKey)
+        } catch APIKeyValidationError.empty, APIKeyValidationError.containsWhitespace {
             throw LLMProviderError.authenticationFailed
         }
 

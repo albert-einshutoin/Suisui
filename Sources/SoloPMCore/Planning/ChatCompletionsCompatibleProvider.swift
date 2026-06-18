@@ -188,12 +188,15 @@ public struct ChatCompletionsCompatibleProvider: LLMProvider {
             return nil
         }
 
-        let apiKey = try secretStore.read(apiKeySecretKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if configuration.requiresAPIKey && (apiKey?.isEmpty ?? true) {
-            throw LLMProviderError.authenticationFailed
+        let storedAPIKey = try secretStore.read(apiKeySecretKey)
+        do {
+            return try APIKeyValidator.normalize(storedAPIKey)
+        } catch APIKeyValidationError.empty, APIKeyValidationError.containsWhitespace {
+            if configuration.requiresAPIKey {
+                throw LLMProviderError.authenticationFailed
+            }
+            return nil
         }
-
-        return apiKey
     }
 
     private func mapHTTPError(statusCode: Int, data: Data) -> LLMProviderError {

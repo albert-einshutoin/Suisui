@@ -367,7 +367,7 @@ public final class AppSettingsViewModel: ObservableObject {
     }
 
     private func validateAPIKey(_ apiKey: String) -> Bool {
-        guard apiKey.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
+        guard APIKeyValidator.isValid(apiKey) else {
             errorMessage = "API key cannot contain whitespace."
             successMessage = nil
             return false

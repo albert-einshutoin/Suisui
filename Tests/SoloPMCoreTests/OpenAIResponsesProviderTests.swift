@@ -202,6 +202,20 @@ final class OpenAIResponsesProviderTests: XCTestCase {
         }
     }
 
+    func testProviderRejectsAPIKeyWithInternalWhitespaceBeforeHTTP() async throws {
+        let provider = OpenAIResponsesProvider(
+            secretStore: InMemorySecretStore(values: [.openAIAPIKey: "sk-test invalid"]),
+            httpClient: StubHTTPDataClient(data: Data(), statusCode: 200)
+        )
+
+        do {
+            _ = try await provider.generatePlan(for: PlanningRequest(userInput: "Create a task"))
+            XCTFail("Expected malformed API key to fail before HTTP.")
+        } catch {
+            XCTAssertEqual(error as? LLMProviderError, .authenticationFailed)
+        }
+    }
+
     func testProviderMapsRateLimitStatus() async throws {
         let store = InMemorySecretStore(values: [.openAIAPIKey: "sk-test"])
         let provider = OpenAIResponsesProvider(

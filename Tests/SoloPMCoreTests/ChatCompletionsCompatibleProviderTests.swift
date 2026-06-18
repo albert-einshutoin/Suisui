@@ -160,6 +160,21 @@ final class ChatCompletionsCompatibleProviderTests: XCTestCase {
         }
     }
 
+    func testOpenRouterProviderRejectsAPIKeyWithInternalWhitespaceBeforeHTTP() async throws {
+        let provider = ChatCompletionsCompatibleProvider(
+            configuration: .openRouter(model: "openai/gpt-latest"),
+            secretStore: InMemorySecretStore(values: [.openRouterAPIKey: "sk-router\ninvalid"]),
+            httpClient: StubHTTPDataClient(data: Data(), statusCode: 200)
+        )
+
+        do {
+            _ = try await provider.generatePlan(for: PlanningRequest(userInput: "Create a task"))
+            XCTFail("Expected malformed API key to fail before HTTP.")
+        } catch {
+            XCTAssertEqual(error as? LLMProviderError, .authenticationFailed)
+        }
+    }
+
     func testOllamaProviderParsesSuccessfulResponseWithoutAPIKey() async throws {
         let provider = ChatCompletionsCompatibleProvider(
             configuration: .ollama(model: "llama3.2"),

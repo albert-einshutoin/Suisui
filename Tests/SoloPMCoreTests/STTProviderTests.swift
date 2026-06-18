@@ -95,6 +95,22 @@ final class STTProviderTests: XCTestCase {
         }
     }
 
+    func testOpenAITranscribeProviderRejectsAPIKeyWithInternalWhitespaceBeforeReadingAudio() async throws {
+        let provider = OpenAITranscribeProvider(
+            secretStore: InMemorySecretStore(values: [.openAIAPIKey: "sk-test invalid"]),
+            httpClient: StubSTTHTTPDataClient(data: Data(), statusCode: 200)
+        )
+
+        do {
+            _ = try await provider.transcribe(
+                RecordedAudio(fileURL: URL(filePath: "/tmp/does-not-exist.m4a"), format: .m4a)
+            )
+            XCTFail("Expected malformed API key to fail before reading audio.")
+        } catch {
+            XCTAssertEqual(error as? STTProviderError, .unavailable("OpenAI API key is invalid."))
+        }
+    }
+
     func testOpenAITranscribeProviderParsesSuccessfulResponse() async throws {
         let audioURL = try writeTemporaryAudio()
         let provider = OpenAITranscribeProvider(

@@ -33,9 +33,14 @@ public struct OpenAITranscribeProvider: SpeechToTextProvider {
             throw STTProviderError.unavailable(availability.reason ?? "OpenAI transcription is unavailable.")
         }
 
-        let apiKey = try secretStore.read(.openAIAPIKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let apiKey, !apiKey.isEmpty else {
+        let apiKey: String
+        let storedAPIKey = try secretStore.read(.openAIAPIKey)
+        do {
+            apiKey = try APIKeyValidator.normalize(storedAPIKey)
+        } catch APIKeyValidationError.empty {
             throw STTProviderError.unavailable("OpenAI API key is not configured.")
+        } catch APIKeyValidationError.containsWhitespace {
+            throw STTProviderError.unavailable("OpenAI API key is invalid.")
         }
 
         let request = try requestBuilder.makeRequest(apiKey: apiKey, audio: audio)

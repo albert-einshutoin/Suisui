@@ -1028,6 +1028,14 @@
 - [x] Provider tests で schema mismatch が low-level decode error として UI / caller に漏れないことを固定する。
 - [x] 完了条件: 壊れた LLM provider 応答がユーザーに実装内部の decode failure として露出せず、復旧可能な provider invalid response として扱われる。
 
+### P10-133: BYOK providers reject malformed stored API keys before network or file IO
+
+- [x] OpenAI Responses provider は Keychain 由来 API key に内部 whitespace / newline がある場合、HTTP request を作る前に失敗する。
+- [x] Chat Completions 互換 provider は OpenRouter / OpenAI-compatible API key に内部 whitespace / newline がある場合、HTTP request を作る前に失敗する。
+- [x] OpenAI Transcribe provider は内部 whitespace 入り API key を音声ファイル読み込み前に拒否する。
+- [x] 共通 validator を使い、Settings 保存時 validation と runtime provider validation の条件を分岐させない。
+- [x] 完了条件: 過去バージョンや破損 Keychain 値が残っていても、secret を malformed Authorization header や transcript request に流さない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
