@@ -65,6 +65,18 @@ final class SoloPMCLIReadOnlyReporterTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: databaseURL.path))
     }
 
+    func testCountValueDecodeDoesNotDefaultInvalidCountsToZero() throws {
+        XCTAssertEqual(try SoloPMCLIReadOnlyReporter.parseCountValue("3"), 3)
+
+        XCTAssertThrowsError(try SoloPMCLIReadOnlyReporter.parseCountValue(nil)) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .missingRequiredColumn(column: "count"))
+        }
+
+        XCTAssertThrowsError(try SoloPMCLIReadOnlyReporter.parseCountValue("not-a-count")) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .invalidInt64(column: "count", value: "not-a-count"))
+        }
+    }
+
     private func makeSeededDatabase() throws -> URL {
         let databaseURL = temporaryDirectory().appendingPathComponent("SoloPM.sqlite")
         let connection = try SQLiteConnection(path: databaseURL.path)

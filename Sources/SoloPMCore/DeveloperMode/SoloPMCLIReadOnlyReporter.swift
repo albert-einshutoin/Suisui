@@ -108,8 +108,17 @@ public struct SoloPMCLIReadOnlyReporter {
     }
 
     private func countRows(_ connection: SQLiteConnection, sql: String) throws -> Int {
-        let value = try connection.queryRows(sql).first?["count"] ?? "0"
-        return Int(value) ?? 0
+        try Self.parseCountValue(try connection.queryRows(sql).first?["count"])
+    }
+
+    static func parseCountValue(_ value: String?, column: String = "count") throws -> Int {
+        guard let value else {
+            throw LocalStoreDecodingError.missingRequiredColumn(column: column)
+        }
+        guard let count = Int(value) else {
+            throw LocalStoreDecodingError.invalidInt64(column: column, value: value)
+        }
+        return count
     }
 
     private func nowISO8601String() -> String {

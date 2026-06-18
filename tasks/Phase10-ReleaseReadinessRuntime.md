@@ -671,6 +671,12 @@
 - [x] draft edit / Clear で runtime validation failure が消えないことを unit test で確認する。
 - [x] 完了条件: AI 計画生成が監査なし runtime path で成功しない。
 
+### P10-083: CLI status counts fail fast
+
+- [x] `solopm-cli status` の SQLite `COUNT(*)` decode は欠落 / 不正値を `0` に丸めない。
+- [x] `SoloPMCLIReadOnlyReporter.parseCountValue` は missing count と invalid count を `LocalStoreDecodingError` として返す。
+- [x] 完了条件: CLI が壊れた集計値を「データなし」と誤表示しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
