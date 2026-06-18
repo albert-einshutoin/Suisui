@@ -71,6 +71,20 @@ final class DailyCheckRunnerTests: XCTestCase {
         XCTAssertEqual(logger.recordedEvents.last?.metadata["error"], "scan failed")
     }
 
+    func testSafeDailyCheckRunnerSurfacesAuditFailureWithoutDroppingScanFailure() throws {
+        let runner = SafeDailyCheckRunner(
+            runner: FailingDailyCheckRunnable(),
+            dateProvider: FixedDateProvider(now: try Date.iso8601("2026-06-17T12:00:00Z")),
+            auditLogger: FailingDailyCheckAuditLogger()
+        )
+
+        let result = runner.run(reason: .scheduledDaily)
+
+        XCTAssertEqual(result.status, .failed)
+        XCTAssertEqual(result.errorMessage, "scan failed")
+        XCTAssertEqual(result.auditErrorMessage, "Daily check audit log failed: unavailable")
+    }
+
     func testWatcherDiagnosticsProviderBuildsLastNextAndPermissionSnapshot() throws {
         var permissions = PermissionSnapshot.empty
         permissions.setStatus(.granted, for: .notifications)
@@ -218,6 +232,20 @@ private struct FixedDateProvider: DateProvider {
 private struct FailingDailyCheckRunnable: DailyCheckRunnable {
     func runIfNeeded(reason: DailyCheckReason) throws -> DailyCheckRunResult {
         throw ToolClientError.invalidRequest("scan failed")
+    }
+}
+
+private enum DailyCheckAuditTestError: Error, CustomStringConvertible {
+    case unavailable
+
+    var description: String {
+        "unavailable"
+    }
+}
+
+private struct FailingDailyCheckAuditLogger: AuditLogger {
+    func record(_ event: AuditEvent) throws {
+        throw DailyCheckAuditTestError.unavailable
     }
 }
 

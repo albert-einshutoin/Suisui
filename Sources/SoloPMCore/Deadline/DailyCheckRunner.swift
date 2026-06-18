@@ -21,6 +21,7 @@ public struct DailyCheckRunResult: Equatable, Sendable {
     public var notificationPlannedCount: Int
     public var skipReason: String?
     public var errorMessage: String?
+    public var auditErrorMessage: String?
 
     public init(
         status: DailyCheckRunStatus,
@@ -30,7 +31,8 @@ public struct DailyCheckRunResult: Equatable, Sendable {
         scanCount: Int = 0,
         notificationPlannedCount: Int = 0,
         skipReason: String? = nil,
-        errorMessage: String? = nil
+        errorMessage: String? = nil,
+        auditErrorMessage: String? = nil
     ) {
         self.status = status
         self.overdueCount = overdueCount
@@ -40,6 +42,7 @@ public struct DailyCheckRunResult: Equatable, Sendable {
         self.notificationPlannedCount = notificationPlannedCount
         self.skipReason = skipReason
         self.errorMessage = errorMessage
+        self.auditErrorMessage = auditErrorMessage
     }
 }
 
@@ -77,11 +80,11 @@ public final class DailyCheckRunner: DailyCheckRunnable, @unchecked Sendable {
     public func runIfNeeded(reason: DailyCheckReason) throws -> DailyCheckRunResult {
         let now = dateProvider.now
         if let lastRunAt = try stateStore.lastRunAt(), isSameConfiguredDay(lastRunAt, now) {
-            let result = DailyCheckRunResult(
+            var result = DailyCheckRunResult(
                 status: .skippedAlreadyRanToday,
                 skipReason: "already_ran_today"
             )
-            try recordAudit(status: .skipped, reason: reason, result: result)
+            recordAuditOrAttachFailure(status: .skipped, reason: reason, result: &result)
             return result
         }
 
@@ -101,7 +104,7 @@ public final class DailyCheckRunner: DailyCheckRunnable, @unchecked Sendable {
 
         let skipReasons = check.skipped.map { $0.reason.auditValue } + scheduleSkipReasons
         try stateStore.recordRun(at: now)
-        let result = DailyCheckRunResult(
+        var result = DailyCheckRunResult(
             status: .ran,
             overdueCount: check.candidates.count,
             scheduledCount: scheduledCount,
@@ -110,7 +113,7 @@ public final class DailyCheckRunner: DailyCheckRunnable, @unchecked Sendable {
             notificationPlannedCount: scheduledCount,
             skipReason: skipReasons.joinedNonEmpty()
         )
-        try recordAudit(status: .succeeded, reason: reason, result: result)
+        recordAuditOrAttachFailure(status: .succeeded, reason: reason, result: &result)
         return result
     }
 
@@ -141,6 +144,14 @@ public final class DailyCheckRunner: DailyCheckRunnable, @unchecked Sendable {
             )
         )
     }
+
+    private func recordAuditOrAttachFailure(status: AuditStatus, reason: DailyCheckReason, result: inout DailyCheckRunResult) {
+        do {
+            try recordAudit(status: status, reason: reason, result: result)
+        } catch {
+            result.auditErrorMessage = dailyCheckAuditErrorMessage(error)
+        }
+    }
 }
 
 public final class SafeDailyCheckRunner: @unchecked Sendable {
@@ -162,32 +173,40 @@ public final class SafeDailyCheckRunner: @unchecked Sendable {
         do {
             return try runner.runIfNeeded(reason: reason)
         } catch {
-            let result = DailyCheckRunResult(
+            var result = DailyCheckRunResult(
                 status: .failed,
                 errorMessage: error.auditMessage
             )
-            try? auditLogger?.record(
-                AuditEvent(
-                    timestamp: dateProvider.now,
-                    category: "deadline_watcher",
-                    action: "daily_check",
-                    status: .failed,
-                    metadata: [
-                        "reason": reason.rawValue,
-                        "run_status": String(describing: result.status),
-                        "overdue_count": String(result.overdueCount),
-                        "scheduled_count": String(result.scheduledCount),
-                        "skipped_count": String(result.skippedCount),
-                        "scan_count": String(result.scanCount),
-                        "notification_planned_count": String(result.notificationPlannedCount),
-                        "skip_reason": result.skipReason ?? "",
-                        "error": result.errorMessage ?? ""
-                    ]
+            do {
+                try auditLogger?.record(
+                    AuditEvent(
+                        timestamp: dateProvider.now,
+                        category: "deadline_watcher",
+                        action: "daily_check",
+                        status: .failed,
+                        metadata: [
+                            "reason": reason.rawValue,
+                            "run_status": String(describing: result.status),
+                            "overdue_count": String(result.overdueCount),
+                            "scheduled_count": String(result.scheduledCount),
+                            "skipped_count": String(result.skippedCount),
+                            "scan_count": String(result.scanCount),
+                            "notification_planned_count": String(result.notificationPlannedCount),
+                            "skip_reason": result.skipReason ?? "",
+                            "error": result.errorMessage ?? ""
+                        ]
+                    )
                 )
-            )
+            } catch {
+                result.auditErrorMessage = dailyCheckAuditErrorMessage(error)
+            }
             return result
         }
     }
+}
+
+private func dailyCheckAuditErrorMessage(_ error: Error) -> String {
+    "Daily check audit log failed: \(String(describing: error))"
 }
 
 public struct WatcherDiagnosticsSnapshot: Equatable, Sendable {

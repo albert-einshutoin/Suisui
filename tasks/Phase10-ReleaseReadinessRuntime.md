@@ -643,6 +643,13 @@
 - [x] Voice Command UI は planning audit warning を通常 phase とは別に表示する。
 - [x] 完了条件: 計画生成は成功したのに、audit write failure だけで Review へ進めなくなる状態を作らない。
 
+### P10-079: Daily check audit failure visibility
+
+- [x] `SafeDailyCheckRunner` は失敗監査の write failure を `try?` で捨てない。
+- [x] `DailyCheckRunner` は skip / run result の audit write failure を throw で実行結果に混ぜず、`DailyCheckRunResult.auditErrorMessage` に残す。
+- [x] scan failure と audit failure が別々に戻ることを unit test で確認する。
+- [x] 完了条件: daily deadline check の実行結果と監査欠落が同じ `failed` に丸め込まれない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
