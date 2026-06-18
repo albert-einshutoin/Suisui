@@ -43,6 +43,44 @@ final class SystemToolTests: XCTestCase {
         XCTAssertEqual(request.failureReason, "Notification permission is denied.")
     }
 
+    func testNotificationToolSurfacesFailedRequestPersistenceError() throws {
+        let connection = try migratedConnection()
+        let requestStore = SQLiteNotificationRequestStore(connection: connection)
+        try connection.execute(
+            """
+            CREATE TRIGGER block_notification_request_update
+            BEFORE UPDATE ON notification_requests
+            BEGIN
+                SELECT RAISE(FAIL, 'notification update blocked');
+            END;
+            """
+        )
+        let client = InMemoryNotificationClient(authorizationStatus: .denied)
+        let tool = NotificationTool(name: .notificationSchedule, client: client, requestStore: requestStore)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "title": .string("Standup"),
+                    "id": .string("standup-reminder"),
+                    "scheduledAt": .string("2026-06-18T09:00:00Z")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            guard case let ToolExecutionError.executionFailed(tool, message) = error else {
+                return XCTFail("Expected executionFailed, got \(error)")
+            }
+            XCTAssertEqual(tool, .notificationSchedule)
+            XCTAssertTrue(message.contains("Notification permission is denied."))
+            XCTAssertTrue(message.contains("Failed to persist notification failure state"))
+            XCTAssertTrue(message.contains("notification update blocked"))
+        }
+
+        let request = try XCTUnwrap(requestStore.list().first)
+        XCTAssertEqual(request.status, "pending")
+    }
+
     func testNotificationToolPersistsPendingThenScheduledState() throws {
         let connection = try migratedConnection()
         let requestStore = SQLiteNotificationRequestStore(connection: connection)

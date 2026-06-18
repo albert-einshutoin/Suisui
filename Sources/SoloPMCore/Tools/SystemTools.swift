@@ -70,12 +70,27 @@ public struct NotificationTool: Tool {
             return scheduledResult(record)
         } catch let error as ToolClientError {
             if case .permissionDenied = error {
-                _ = try? requestStore?.markFailed(requestID: requestID, reason: error.message)
+                try markRequestFailedOrThrow(requestID: requestID, reason: error.message)
             }
             throw error
         } catch {
-            _ = try? requestStore?.markFailed(requestID: requestID, reason: String(describing: error))
+            try markRequestFailedOrThrow(requestID: requestID, reason: String(describing: error))
             throw error
+        }
+    }
+
+    private func markRequestFailedOrThrow(requestID: String, reason: String) throws {
+        guard let requestStore else {
+            return
+        }
+
+        do {
+            _ = try requestStore.markFailed(requestID: requestID, reason: reason)
+        } catch {
+            throw ToolExecutionError.executionFailed(
+                name,
+                "\(reason) Failed to persist notification failure state: \(String(describing: error))"
+            )
         }
     }
 

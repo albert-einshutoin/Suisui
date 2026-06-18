@@ -657,6 +657,13 @@
 - [x] execute preflight failure と success-after-stale-error を unit test で固定する。
 - [x] 完了条件: ボタン操作が失敗した場合、ユーザーが原因を画面上で確認できる。
 
+### P10-081: Notification failure persistence is not silent
+
+- [x] `NotificationTool` は notification client failure 後の `notification_requests` failure-state 永続化失敗を `try?` で捨てない。
+- [x] permission denied と SQLite update failure の両方が `ToolExecutionError` message に残ることを unit test で確認する。
+- [x] 既存の permission denied path は `failed` request として永続化されることを維持する。
+- [x] 完了条件: 通知作成が失敗したのに request が `pending` のまま残る場合、ユーザーに永続化不整合が見える。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
