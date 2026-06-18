@@ -140,9 +140,11 @@
 ## P11-031: Board and inspector UX upgrade
 
 - [ ] `ui-samples/01.png`、`03.png`、`04.png` を基準に、左サイドバー、中央ボード/リスト、右インスペクタの情報密度を見直す。
-- [ ] Project Detailではタスク一覧、成果物、タイムライン、AI提案をタブまたはセクションとして整理する。
+- [x] Project Detailではタスク一覧、成果物、タイムライン、AI提案をタブまたはセクションとして整理する。
 - [ ] Task cardはタイトル、状態、優先度、期限、ドラッグ affordance が重ならず表示されることをスクリーンショットで確認する。
 - [ ] 右インスペクタは選択中タスク/プロジェクトの編集、削除、AI提案の適用を一箇所に集約する。
+  - [x] 選択中Taskの編集、削除、Local suggestion適用はTask inspectorに集約する。
+  - [ ] 選択中Projectの編集、削除、Local suggestion適用を右インスペクタに統合する。
 - [ ] 完了条件: Notion的な柔軟さ、Linear的な速度、Todoist的な即時入力のうち、SoloPMに必要な部分だけが実装される。
 
 ## P11-032: Today and Inbox workflow

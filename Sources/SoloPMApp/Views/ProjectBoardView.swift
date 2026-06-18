@@ -145,6 +145,7 @@ extension Notification.Name {
 }
 
 private enum ProjectBoardDisplayMode: String, CaseIterable, Identifiable {
+    case overview
     case board
     case list
 
@@ -152,6 +153,8 @@ private enum ProjectBoardDisplayMode: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
+        case .overview:
+            "Overview"
         case .board:
             "Board"
         case .list:
@@ -161,6 +164,8 @@ private enum ProjectBoardDisplayMode: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
+        case .overview:
+            "rectangle.grid.2x2"
         case .board:
             "rectangle.3.group"
         case .list:
@@ -265,6 +270,12 @@ private struct ProjectBoardDetail: View {
                 ArchivedProjectPlaceholder()
             } else {
                 switch displayMode {
+                case .overview:
+                    ProjectDetailOverview(
+                        project: project,
+                        viewModel: viewModel,
+                        onAddTask: { composingStatus = .backlog }
+                    )
                 case .board:
                     ProjectKanbanBoard(
                         project: project,
@@ -328,6 +339,323 @@ private struct ArchivedProjectPlaceholder: View {
             description: Text("Restore this project to edit tasks or include it in active deadline summaries.")
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct ProjectDetailOverview: View {
+    let project: ProjectBoardProject
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    let onAddTask: () -> Void
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 280), spacing: 12)
+    ]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                ProjectProgressOverview(project: project)
+
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                    ProjectTaskSnapshotSection(project: project, viewModel: viewModel, onAddTask: onAddTask)
+                    ProjectArtifactSection(project: project)
+                    ProjectTimelineSection(project: project)
+                    ProjectLocalSuggestionPanel(project: project, viewModel: viewModel)
+                }
+            }
+            .padding(.bottom, 4)
+        }
+        .scrollIndicators(.visible)
+    }
+}
+
+private struct ProjectProgressOverview: View {
+    let project: ProjectBoardProject
+
+    private var completedCount: Int {
+        project.tasks.filter { $0.status == .done }.count
+    }
+
+    private var openCount: Int {
+        project.tasks.filter { $0.status != .done }.count
+    }
+
+    private var blockedCount: Int {
+        project.tasks.filter { $0.status == .blocked }.count
+    }
+
+    private var progress: Double {
+        guard project.taskCount > 0 else {
+            return 0
+        }
+        return Double(completedCount) / Double(project.taskCount)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Label("Progress", systemImage: "chart.line.uptrend.xyaxis")
+                    .font(.headline)
+                Spacer()
+                Text("\(Int((progress * 100).rounded()))%")
+                    .font(.headline.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            ProgressView(value: progress)
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    metricBadges
+                }
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 8)], alignment: .leading, spacing: 8) {
+                    metricBadges
+                }
+            }
+        }
+        .padding(12)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    @ViewBuilder
+    private var metricBadges: some View {
+        ProjectMetricBadge(label: "Open", value: openCount, tint: .blue)
+        ProjectMetricBadge(label: "Done", value: completedCount, tint: .green)
+        ProjectMetricBadge(label: "Blocked", value: blockedCount, tint: .orange)
+        ProjectMetricBadge(label: "Artifacts", value: project.artifacts.count, tint: .purple)
+    }
+}
+
+private struct ProjectMetricBadge: View {
+    let label: String
+    let value: Int
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(value)")
+                .font(.headline.monospacedDigit())
+                .foregroundStyle(tint)
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(minWidth: 72, alignment: .leading)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct ProjectTaskSnapshotSection: View {
+    let project: ProjectBoardProject
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    let onAddTask: () -> Void
+
+    private var openTasks: [ProjectBoardTask] {
+        project.tasks
+            .filter { $0.status != .done }
+            .sorted { lhs, rhs in
+                switch (lhs.dueAt, rhs.dueAt) {
+                case let (lhsDue?, rhsDue?) where lhsDue != rhsDue:
+                    return lhsDue < rhsDue
+                case (_?, nil):
+                    return true
+                case (nil, _?):
+                    return false
+                default:
+                    return lhs.id > rhs.id
+                }
+            }
+    }
+
+    var body: some View {
+        ProjectOverviewPanel(title: "Tasks", systemImage: "checklist") {
+            if openTasks.isEmpty {
+                Text("No open tasks")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(openTasks.prefix(5)) { task in
+                    Button {
+                        viewModel.selectedTaskID = task.id
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: task.status.systemImage)
+                                .foregroundStyle(task.status.tint)
+                                .frame(width: 16)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(task.title)
+                                    .font(.caption.weight(.medium))
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                Text(task.dueLabel ?? task.status.title)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer(minLength: 8)
+                            Label(task.priority.label, systemImage: "flag")
+                                .labelStyle(.iconOnly)
+                                .foregroundStyle(task.priority.color)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help(task.title)
+                }
+            }
+
+            Button(action: onAddTask) {
+                Label("Add Task", systemImage: "plus")
+            }
+            .controlSize(.small)
+        }
+    }
+}
+
+private struct ProjectArtifactSection: View {
+    let project: ProjectBoardProject
+
+    var body: some View {
+        ProjectOverviewPanel(title: "Artifacts", systemImage: "doc.text") {
+            if project.artifacts.isEmpty {
+                Text("No tracked artifacts linked to this project")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(project.artifacts.prefix(4)) { artifact in
+                    HStack(spacing: 8) {
+                        Image(systemName: artifact.createdState.systemImage)
+                            .foregroundStyle(artifact.createdState.tint)
+                            .frame(width: 16)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(URL(fileURLWithPath: artifact.expectedPath).lastPathComponent)
+                                .font(.caption.weight(.medium))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                                .help(artifact.expectedPath)
+                            Text(artifact.createdState.label)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 8)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct ProjectTimelineSection: View {
+    let project: ProjectBoardProject
+
+    private var dueTasks: [ProjectBoardTask] {
+        project.tasks
+            .filter { $0.dueAt != nil }
+            .sorted { ($0.dueAt ?? "") < ($1.dueAt ?? "") }
+    }
+
+    var body: some View {
+        ProjectOverviewPanel(title: "Timeline", systemImage: "calendar") {
+            if dueTasks.isEmpty {
+                Text("No due dates yet")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(dueTasks.prefix(5)) { task in
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(task.status.tint)
+                            .frame(width: 7, height: 7)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(task.title)
+                                .font(.caption.weight(.medium))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Text(task.dueLabel ?? "")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .help(task.title)
+                }
+            }
+        }
+    }
+}
+
+private struct ProjectLocalSuggestionPanel: View {
+    let project: ProjectBoardProject
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    private var suggestedTask: ProjectBoardTask? {
+        project.tasks.first { $0.status == .blocked }
+            ?? project.tasks.first { $0.status != .done && $0.priority == .high }
+            ?? project.tasks.filter { $0.status != .done }.sorted { ($0.dueAt ?? "9999") < ($1.dueAt ?? "9999") }.first
+    }
+
+    var body: some View {
+        ProjectOverviewPanel(title: "Local Suggestions", systemImage: "sparkles") {
+            if let suggestedTask {
+                Text(suggestionText(for: suggestedTask))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+
+                HStack(spacing: 8) {
+                    Button {
+                        viewModel.selectedTaskID = suggestedTask.id
+                    } label: {
+                        Label("Open Task", systemImage: "sidebar.right")
+                    }
+                    .controlSize(.small)
+
+                    if suggestedTask.status == .blocked {
+                        Button {
+                            viewModel.moveTask(id: suggestedTask.id, to: .inProgress)
+                        } label: {
+                            Label("Unblock", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        .controlSize(.small)
+                    }
+                }
+            } else {
+                Text("No open work needs attention.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func suggestionText(for task: ProjectBoardTask) -> String {
+        if task.status == .blocked {
+            return "\(task.title) is blocked. Resolve it before adding more work."
+        }
+        if task.priority == .high {
+            return "\(task.title) is high priority. Make it the next focused task."
+        }
+        if let dueAt = task.dueAt {
+            return "\(task.title) is the next due task at \(dueAt)."
+        }
+        return "Continue with \(task.title)."
+    }
+}
+
+private struct ProjectOverviewPanel<Content: View>: View {
+    let title: String
+    let systemImage: String
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+            content()
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 170, alignment: .topLeading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -420,7 +748,7 @@ private struct ProjectHeaderActions: View {
             }
         }
         .pickerStyle(.segmented)
-        .frame(width: 168)
+        .frame(width: 252)
     }
 
     private var completeProjectButton: some View {
@@ -967,7 +1295,7 @@ private struct TaskInspectorView: View {
 
     var body: some View {
         Form {
-            Section("Task") {
+            Section("Edit") {
                 TextField("Title", text: $title)
                 TextField("Detail", text: $detail, axis: .vertical)
                     .lineLimit(4...8)
@@ -991,7 +1319,11 @@ private struct TaskInspectorView: View {
                 TextField("Due", text: $dueAt)
             }
 
-            Section {
+            Section("Suggestion") {
+                TaskInspectorSuggestionSection(task: task, viewModel: viewModel)
+            }
+
+            Section("Save") {
                 Button {
                     viewModel.updateSelectedTask(
                         title: title,
@@ -1007,7 +1339,7 @@ private struct TaskInspectorView: View {
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
 
-            Section {
+            Section("Danger Zone") {
                 Button(role: .destructive) {
                     isConfirmingDelete = true
                 } label: {
@@ -1042,6 +1374,50 @@ private struct TaskInspectorView: View {
         status = task.status
         priority = task.priority
         dueAt = task.dueAt ?? ""
+    }
+}
+
+private struct TaskInspectorSuggestionSection: View {
+    let task: ProjectBoardTask
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    private var targetStatus: ProjectTaskStatus? {
+        if task.status == .blocked {
+            return .inProgress
+        }
+        return task.status.nextStatus
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(suggestionText, systemImage: "sparkles")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                guard let targetStatus else {
+                    return
+                }
+                viewModel.moveSelectedTask(to: targetStatus)
+            } label: {
+                Label("Apply Suggestion", systemImage: "wand.and.stars")
+            }
+            .disabled(targetStatus == nil)
+        }
+    }
+
+    private var suggestionText: String {
+        if task.status == .done {
+            return "This task is already complete."
+        }
+        if task.status == .blocked {
+            return "If the blocker is resolved, move this task back into active work."
+        }
+        if task.priority == .high {
+            return "High-priority task: move it forward when the next step is clear."
+        }
+        return "Move this task to the next status when you are ready."
     }
 }
 
@@ -1105,6 +1481,41 @@ extension ProjectTaskStatus {
             return nil
         }
         return Self.allCases[nextIndex]
+    }
+}
+
+private extension ArtifactCreatedState {
+    var label: String {
+        switch self {
+        case .expected:
+            "Expected"
+        case .created:
+            "Created"
+        case .missing:
+            "Missing"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .expected:
+            "doc.badge.clock"
+        case .created:
+            "doc.text.fill"
+        case .missing:
+            "doc.badge.exclamationmark"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .expected:
+            .blue
+        case .created:
+            .green
+        case .missing:
+            .orange
+        }
     }
 }
 

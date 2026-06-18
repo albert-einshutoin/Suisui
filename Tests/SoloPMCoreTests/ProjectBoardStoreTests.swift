@@ -51,6 +51,44 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(inbox.subtitle, "1 open / 1 total")
     }
 
+    func testLoadSnapshotIncludesProjectAndTaskArtifactsWithoutMockRows() throws {
+        let stores = try makeStoreBundle()
+        let project = try stores.board.createProject(title: "Launch Readiness")
+        let task = try stores.board.createTask(ProjectBoardTaskDraft(
+            projectID: project.id,
+            title: "Write release notes",
+            status: .planned
+        ))
+        _ = try stores.artifacts.create(
+            projectID: project.id,
+            workspacePath: "/tmp/solopm",
+            expectedPath: "/tmp/solopm/release/checklist.md",
+            createdState: .expected
+        )
+        _ = try stores.artifacts.create(
+            taskID: task.id,
+            workspacePath: "/tmp/solopm",
+            expectedPath: "/tmp/solopm/release/notes.md",
+            createdState: .created,
+            lastModifiedAt: try isoDate("2026-06-19T10:00:00Z")
+        )
+        _ = try stores.artifacts.create(
+            workspacePath: "/tmp/solopm",
+            expectedPath: "/tmp/solopm/unlinked.md",
+            createdState: .created
+        )
+
+        let snapshot = try stores.board.loadSnapshot()
+        let loadedProject = try XCTUnwrap(snapshot.projects.first { $0.id == project.id })
+
+        XCTAssertEqual(loadedProject.artifacts.map(\.expectedPath), [
+            "/tmp/solopm/release/checklist.md",
+            "/tmp/solopm/release/notes.md"
+        ])
+        XCTAssertEqual(loadedProject.artifacts.map(\.createdState), [.expected, .created])
+        XCTAssertEqual(loadedProject.artifacts.last?.taskID, task.id)
+    }
+
     func testMoveTaskAssignsUnassignedPersistentTaskToInbox() throws {
         let stores = try makeStoreBundle()
         let orphan = try stores.tasks.create(title: "Move loose task", projectID: nil, status: "planned")
@@ -684,14 +722,16 @@ final class ProjectBoardStoreTests: XCTestCase {
     private func makeStoreBundle() throws -> (
         board: SQLiteProjectBoardStore,
         projects: SQLiteProjectStore,
-        tasks: SQLiteTaskStore
+        tasks: SQLiteTaskStore,
+        artifacts: SQLiteArtifactStore
     ) {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         return (
             SQLiteProjectBoardStore(connection: connection),
             SQLiteProjectStore(connection: connection),
-            SQLiteTaskStore(connection: connection)
+            SQLiteTaskStore(connection: connection),
+            SQLiteArtifactStore(connection: connection)
         )
     }
 }

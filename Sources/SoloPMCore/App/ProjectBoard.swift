@@ -81,13 +81,22 @@ public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
     public var status: String
     public var subtitle: String
     public var columns: [ProjectBoardColumn]
+    public var artifacts: [ProjectBoardArtifact]
 
-    public init(id: Int64, title: String, status: String = "active", subtitle: String, columns: [ProjectBoardColumn]) {
+    public init(
+        id: Int64,
+        title: String,
+        status: String = "active",
+        subtitle: String,
+        columns: [ProjectBoardColumn],
+        artifacts: [ProjectBoardArtifact] = []
+    ) {
         self.id = id
         self.title = title
         self.status = status
         self.subtitle = subtitle
         self.columns = columns
+        self.artifacts = artifacts
     }
 
     public var taskCount: Int {
@@ -104,6 +113,31 @@ public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
 
     public var isArchived: Bool {
         status == "archived"
+    }
+}
+
+public struct ProjectBoardArtifact: Identifiable, Equatable, Sendable {
+    public var id: Int64
+    public var projectID: Int64?
+    public var taskID: Int64?
+    public var expectedPath: String
+    public var createdState: ArtifactCreatedState
+    public var lastModifiedAt: Date?
+
+    public init(
+        id: Int64,
+        projectID: Int64?,
+        taskID: Int64?,
+        expectedPath: String,
+        createdState: ArtifactCreatedState,
+        lastModifiedAt: Date?
+    ) {
+        self.id = id
+        self.projectID = projectID
+        self.taskID = taskID
+        self.expectedPath = expectedPath
+        self.createdState = createdState
+        self.lastModifiedAt = lastModifiedAt
     }
 }
 
@@ -239,11 +273,13 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     private let connection: SQLiteConnection
     private let projectStore: SQLiteProjectStore
     private let taskStore: SQLiteTaskStore
+    private let artifactStore: SQLiteArtifactStore
 
     public init(connection: SQLiteConnection) {
         self.connection = connection
         self.projectStore = SQLiteProjectStore(connection: connection)
         self.taskStore = SQLiteTaskStore(connection: connection)
+        self.artifactStore = SQLiteArtifactStore(connection: connection)
     }
 
     public convenience init(path: String, migrations: [DatabaseMigration] = CoreMigrations.current) throws {
@@ -259,7 +295,9 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     public func loadSnapshot(includeArchived: Bool) throws -> ProjectBoardSnapshot {
         let boardData = try loadBoardData(includeArchived: includeArchived)
 
-        let boardProjects = boardData.projects.map { makeBoardProject(project: $0, tasks: boardData.tasks) }
+        let boardProjects = boardData.projects.map {
+            makeBoardProject(project: $0, tasks: boardData.tasks, artifacts: boardData.artifacts)
+        }
 
         return ProjectBoardSnapshot(projects: boardProjects)
     }
@@ -268,7 +306,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     public func createProject(title: String) throws -> ProjectBoardProject {
         let normalizedTitle = try normalizedProjectTitle(title)
         let record = try projectStore.create(title: normalizedTitle, tags: ["local"], sourceCommand: "app.project-board")
-        return makeBoardProject(project: record, tasks: [])
+        return makeBoardProject(project: record, tasks: [], artifacts: [])
     }
 
     @discardableResult
@@ -276,7 +314,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         let normalizedTitle = try normalizedProjectTitle(title)
         let record = try projectStore.update(id: id, title: normalizedTitle)
         let boardData = try loadBoardData(includeArchived: true)
-        return makeBoardProject(project: record, tasks: boardData.tasks)
+        return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts)
     }
 
     @discardableResult
@@ -284,21 +322,21 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         let record = try projectStore.update(id: id, status: "completed")
         _ = try taskStore.completeOpenTasks(projectID: id)
         let boardData = try loadBoardData(includeArchived: true)
-        return makeBoardProject(project: record, tasks: boardData.tasks)
+        return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts)
     }
 
     @discardableResult
     public func archiveProject(id: Int64) throws -> ProjectBoardProject {
         let record = try projectStore.archive(id: id)
         let boardData = try loadBoardData(includeArchived: true)
-        return makeBoardProject(project: record, tasks: boardData.tasks)
+        return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts)
     }
 
     @discardableResult
     public func restoreProject(id: Int64) throws -> ProjectBoardProject {
         let record = try projectStore.restore(id: id)
         let boardData = try loadBoardData(includeArchived: true)
-        return makeBoardProject(project: record, tasks: boardData.tasks)
+        return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts)
     }
 
     public func deleteProject(id: Int64) throws {
@@ -377,9 +415,14 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         return try projectStore.list(includeArchived: includeArchived)
     }
 
-    private func loadBoardData(includeArchived: Bool) throws -> (projects: [ProjectRecord], tasks: [ProjectBoardTask]) {
+    private func loadBoardData(includeArchived: Bool) throws -> (
+        projects: [ProjectRecord],
+        tasks: [ProjectBoardTask],
+        artifacts: [ProjectBoardArtifact]
+    ) {
         var projects = try ensureProjects(includeArchived: includeArchived)
         let taskRecords = try taskStore.listAll()
+        let artifacts = try artifactStore.list().map(makeBoardArtifact(_:))
         let fallbackProjectID: Int64?
 
         if taskRecords.contains(where: { $0.projectID == nil }) {
@@ -392,7 +435,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         let tasks = try taskRecords.map { record in
             try makeBoardTask(record, fallbackProjectID: fallbackProjectID).requiredTask()
         }
-        return (projects, tasks)
+        return (projects, tasks, artifacts)
     }
 
     private func ensureActiveInboxProject() throws -> ProjectRecord {
@@ -431,8 +474,16 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         return normalizedTitle
     }
 
-    private func makeBoardProject(project: ProjectRecord, tasks: [ProjectBoardTask]) -> ProjectBoardProject {
+    private func makeBoardProject(
+        project: ProjectRecord,
+        tasks: [ProjectBoardTask],
+        artifacts: [ProjectBoardArtifact]
+    ) -> ProjectBoardProject {
         let projectTasks = tasks.filter { $0.projectID == project.id }
+        let projectTaskIDs = Set(projectTasks.map(\.id))
+        let projectArtifacts = artifacts.filter { artifact in
+            artifact.projectID == project.id || artifact.taskID.map { projectTaskIDs.contains($0) } == true
+        }
         let columns = ProjectTaskStatus.allCases.map { status in
             ProjectBoardColumn(
                 status: status,
@@ -443,7 +494,14 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         }
         let openCount = projectTasks.filter { $0.status != .done }.count
         let subtitle = "\(openCount) open / \(projectTasks.count) total"
-        return ProjectBoardProject(id: project.id, title: project.title, status: project.status, subtitle: subtitle, columns: columns)
+        return ProjectBoardProject(
+            id: project.id,
+            title: project.title,
+            status: project.status,
+            subtitle: subtitle,
+            columns: columns,
+            artifacts: projectArtifacts
+        )
     }
 
     private func makeBoardTask(_ record: TaskRecord, fallbackProjectID: Int64? = nil) throws -> ProjectBoardTask? {
@@ -459,6 +517,17 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             status: ProjectTaskStatus.normalized(record.status),
             priority: try ProjectTaskPriority.normalized(record.priority, column: "tasks.priority"),
             dueAt: record.dueAt
+        )
+    }
+
+    private func makeBoardArtifact(_ record: ArtifactRecord) -> ProjectBoardArtifact {
+        ProjectBoardArtifact(
+            id: record.id,
+            projectID: record.projectID,
+            taskID: record.taskID,
+            expectedPath: record.expectedPath,
+            createdState: record.createdState,
+            lastModifiedAt: record.lastModifiedAt
         )
     }
 }

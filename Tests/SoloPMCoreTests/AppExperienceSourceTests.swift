@@ -239,6 +239,34 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("public func todayTasks("))
     }
 
+    func testProjectDetailOrganizesTasksArtifactsTimelineAndSuggestions() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+
+        XCTAssertTrue(source.contains("case overview"))
+        XCTAssertTrue(source.contains("ProjectDetailOverview("))
+        XCTAssertTrue(source.contains("ProjectProgressOverview"))
+        XCTAssertTrue(source.contains("ProjectTaskSnapshotSection"))
+        XCTAssertTrue(source.contains("ProjectArtifactSection"))
+        XCTAssertTrue(source.contains("ProjectTimelineSection"))
+        XCTAssertTrue(source.contains("ProjectLocalSuggestionPanel"))
+        XCTAssertTrue(source.contains("project.artifacts"))
+        XCTAssertTrue(coreSource.contains("public struct ProjectBoardArtifact"))
+        XCTAssertTrue(coreSource.contains("public var artifacts: [ProjectBoardArtifact]"))
+        XCTAssertTrue(coreSource.contains("SQLiteArtifactStore(connection: connection)"))
+    }
+
+    func testTaskInspectorGroupsEditingDeletionAndSuggestionApplication() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(source.contains("TaskInspectorSuggestionSection"))
+        XCTAssertTrue(source.contains("Apply Suggestion"))
+        XCTAssertTrue(source.contains("viewModel.moveSelectedTask(to:"))
+        XCTAssertTrue(source.contains("Section(\"Edit\")"))
+        XCTAssertTrue(source.contains("Section(\"Suggestion\")"))
+        XCTAssertTrue(source.contains("Section(\"Danger Zone\")"))
+    }
+
     func testTodayWorkflowShowsRecommendationDueCountsAndTimeBlocks() throws {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
