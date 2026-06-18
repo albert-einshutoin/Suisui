@@ -960,6 +960,14 @@
 - [x] `ExternalMCPTests` で number `description` と array `title` が invalid response になることを固定する。
 - [x] 完了条件: ユーザー登録 MCP server の壊れた tool metadata を空説明 / name fallback として catalog や review UI に表示しない。
 
+### P10-124: MCP initialize server identity metadata must be typed
+
+- [x] `MCPClient.initialize` は `result.serverInfo` が存在する場合、object 以外を無視して接続成功扱いにしない。
+- [x] `result.serverInfo.name` が存在する場合、string 以外を `nil` に丸めない。
+- [x] `serverInfo` / `serverInfo.name` 欠落時だけ MCP 互換の optional metadata として扱い、型不一致は `MCPClientError.invalidResponse` にする。
+- [x] `ExternalMCPTests` で string `serverInfo` と number `serverInfo.name` が invalid response になることを固定する。
+- [x] 完了条件: ユーザー登録 MCP server の壊れた initialize identity metadata を正常接続として扱わない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

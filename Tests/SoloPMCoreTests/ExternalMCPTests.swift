@@ -17,6 +17,62 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(transport.recordedRequests.first?.params?.objectValue?["protocolVersion"], .string("2025-11-25"))
     }
 
+    func testClientRejectsNonObjectInitializeServerInfo() async throws {
+        let transport = RecordingMCPTransport { request in
+            MCPJSONRPCResponse(
+                id: request.id,
+                result: .object([
+                    "protocolVersion": .string(MCPProtocolVersion.v2025_11_25.rawValue),
+                    "serverInfo": .string("not-an-object")
+                ])
+            )
+        }
+        let client = MCPClient(serverID: "bad-init", transport: transport)
+
+        do {
+            _ = try await client.initialize()
+            XCTFail("non-object initialize serverInfo should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(
+                    serverID: "bad-init",
+                    method: "initialize",
+                    reason: "result.serverInfo must be an object when present."
+                )
+            )
+        }
+    }
+
+    func testClientRejectsNonStringInitializeServerName() async throws {
+        let transport = RecordingMCPTransport { request in
+            MCPJSONRPCResponse(
+                id: request.id,
+                result: .object([
+                    "protocolVersion": .string(MCPProtocolVersion.v2025_11_25.rawValue),
+                    "serverInfo": .object([
+                        "name": .number(42)
+                    ])
+                ])
+            )
+        }
+        let client = MCPClient(serverID: "bad-init", transport: transport)
+
+        do {
+            _ = try await client.initialize()
+            XCTFail("non-string initialize serverInfo.name should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(
+                    serverID: "bad-init",
+                    method: "initialize",
+                    reason: "result.serverInfo.name must be a string when present."
+                )
+            )
+        }
+    }
+
     func testServerRegistrationValidatesCommandBinaryDisabledAndKeychainEnvReferences() async throws {
         let validator = MCPServerRegistrationValidator(binaryLocator: StaticBinaryLocator(availableCommands: ["node"]))
         let workingDirectory = try temporaryDirectory()

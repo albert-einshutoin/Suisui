@@ -43,9 +43,32 @@ public final class MCPClient: @unchecked Sendable {
         guard let protocolVersion = object["protocolVersion"]?.stringValue else {
             throw MCPClientError.invalidResponse(serverID: serverID, method: "initialize", reason: "Missing result.protocolVersion.")
         }
-        let serverInfo = object["serverInfo"]?.objectValue
+        let serverName: String?
+        if let serverInfoValue = object["serverInfo"] {
+            guard let serverInfo = serverInfoValue.objectValue else {
+                throw MCPClientError.invalidResponse(
+                    serverID: serverID,
+                    method: "initialize",
+                    reason: "result.serverInfo must be an object when present."
+                )
+            }
+            if let serverNameValue = serverInfo["name"] {
+                guard let parsedServerName = serverNameValue.stringValue else {
+                    throw MCPClientError.invalidResponse(
+                        serverID: serverID,
+                        method: "initialize",
+                        reason: "result.serverInfo.name must be a string when present."
+                    )
+                }
+                serverName = parsedServerName
+            } else {
+                serverName = nil
+            }
+        } else {
+            serverName = nil
+        }
         try await transport.notify(MCPJSONRPCNotification(method: "notifications/initialized"))
-        return MCPInitializeResult(protocolVersion: protocolVersion, serverName: serverInfo?["name"]?.stringValue)
+        return MCPInitializeResult(protocolVersion: protocolVersion, serverName: serverName)
     }
 
     public func listTools() async throws -> [MCPToolDefinition] {
