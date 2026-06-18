@@ -199,7 +199,7 @@ private struct ManualTestSuite {
             knowledgeFrameCandidates: []
         )
 
-        let prompt = PlanningPromptBuilder().buildPrompt(for: request)
+        let prompt = try PlanningPromptBuilder.loadDefault().buildPrompt(for: request)
 
         expect(prompt.user.contains("Time zone: Asia/Tokyo"), "Prompt should include timezone.")
         expect(prompt.user.contains("project.create"), "Prompt should include project.create.")
@@ -208,7 +208,7 @@ private struct ManualTestSuite {
     }
 
     mutating func testPlanningPromptForbidsDangerousOperations() throws {
-        let prompt = PlanningPromptBuilder().buildPrompt(
+        let prompt = try PlanningPromptBuilder.loadDefault().buildPrompt(
             for: PlanningRequest(userInput: "Delete this file")
         )
 

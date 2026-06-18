@@ -126,7 +126,7 @@ public struct ChatCompletionsCompatibleProvider: LLMProvider {
     private let configuration: ChatCompletionsCompatibleConfiguration
     private let secretStore: any SecretStore
     private let httpClient: any HTTPDataClient
-    private let promptBuilder: PlanningPromptBuilder
+    private let promptBuilder: PlanningPromptBuilder?
     private let requestBuilder: ChatCompletionsCompatibleRequestBuilder
     private let outputTextExtractor: ChatCompletionsOutputTextExtractor
     private let responseParser: ActionPlanResponseParser
@@ -135,7 +135,7 @@ public struct ChatCompletionsCompatibleProvider: LLMProvider {
         configuration: ChatCompletionsCompatibleConfiguration,
         secretStore: any SecretStore,
         httpClient: any HTTPDataClient = URLSessionHTTPDataClient(),
-        promptBuilder: PlanningPromptBuilder = PlanningPromptBuilder(),
+        promptBuilder: PlanningPromptBuilder? = nil,
         outputTextExtractor: ChatCompletionsOutputTextExtractor = ChatCompletionsOutputTextExtractor(),
         responseParser: ActionPlanResponseParser = ActionPlanResponseParser()
     ) {
@@ -150,7 +150,7 @@ public struct ChatCompletionsCompatibleProvider: LLMProvider {
 
     public func generatePlan(for request: PlanningRequest) async throws -> PlanningResponse {
         let apiKey = try readAPIKey()
-        let prompt = promptBuilder.buildPrompt(for: request)
+        let prompt = try (promptBuilder ?? PlanningPromptBuilder.loadDefault()).buildPrompt(for: request)
         let httpRequest = try requestBuilder.makeRequest(apiKey: apiKey, prompt: prompt)
         let data: Data
         let response: HTTPURLResponse

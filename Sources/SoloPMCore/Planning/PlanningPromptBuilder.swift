@@ -3,10 +3,12 @@ import Foundation
 public struct PlanningPromptBuilder: Sendable {
     private let actionPlanSchema: String
 
-    public init(actionPlanSchema: String? = nil) {
+    public init(actionPlanSchema: String) {
         self.actionPlanSchema = actionPlanSchema
-            ?? (try? ActionPlanSchema.loadString())
-            ?? ActionPlanSchema.fallbackPromptContract
+    }
+
+    public static func loadDefault() throws -> PlanningPromptBuilder {
+        PlanningPromptBuilder(actionPlanSchema: try ActionPlanSchema.loadString())
     }
 
     public func buildPrompt(for request: PlanningRequest) -> PlanningPrompt {

@@ -2,7 +2,7 @@ import XCTest
 @testable import SoloPMCore
 
 final class PlanningPromptBuilderTests: XCTestCase {
-    func testPromptContainsCurrentDateTimezoneToolsAndUserInput() {
+    func testPromptContainsCurrentDateTimezoneToolsAndUserInput() throws {
         let request = PlanningRequest(
             userInput: "Create a task for next Friday",
             currentDate: Date(timeIntervalSince1970: 1_783_200_000),
@@ -11,7 +11,7 @@ final class PlanningPromptBuilderTests: XCTestCase {
             knowledgeFrameCandidates: []
         )
 
-        let prompt = PlanningPromptBuilder().buildPrompt(for: request)
+        let prompt = try PlanningPromptBuilder.loadDefault().buildPrompt(for: request)
 
         XCTAssertTrue(prompt.user.contains("Time zone: Asia/Tokyo"))
         XCTAssertTrue(prompt.user.contains("project.create"))
@@ -19,8 +19,8 @@ final class PlanningPromptBuilderTests: XCTestCase {
         XCTAssertTrue(prompt.user.contains("Create a task for next Friday"))
     }
 
-    func testPromptForbidsDangerousOperations() {
-        let prompt = PlanningPromptBuilder().buildPrompt(
+    func testPromptForbidsDangerousOperations() throws {
+        let prompt = try PlanningPromptBuilder.loadDefault().buildPrompt(
             for: PlanningRequest(userInput: "Delete this file")
         )
 
@@ -45,5 +45,15 @@ final class PlanningPromptBuilderTests: XCTestCase {
         XCTAssertTrue(prompt.system.contains("ActionPlan JSON Schema"))
         XCTAssertTrue(prompt.system.contains("\"additionalProperties\": false"))
         XCTAssertTrue(prompt.system.contains("\"required\": [\"id\", \"actions\"]"))
+    }
+
+    func testDefaultPromptUsesPackagedActionPlanSchema() throws {
+        let prompt = try PlanningPromptBuilder.loadDefault().buildPrompt(
+            for: PlanningRequest(userInput: "Create a task")
+        )
+
+        XCTAssertTrue(prompt.system.contains("https://solopm.dev/schemas/action-plan.schema.json"))
+        XCTAssertTrue(prompt.system.contains("\"title\": \"SoloPM ActionPlan\""))
+        XCTAssertTrue(prompt.system.contains("\"$defs\""))
     }
 }

@@ -100,7 +100,7 @@ public struct OpenAIResponsesProvider: LLMProvider {
 
     private let secretStore: any SecretStore
     private let httpClient: any HTTPDataClient
-    private let promptBuilder: PlanningPromptBuilder
+    private let promptBuilder: PlanningPromptBuilder?
     private let requestBuilder: OpenAIResponsesRequestBuilder
     private let outputTextExtractor: OpenAIResponsesOutputTextExtractor
     private let responseParser: ActionPlanResponseParser
@@ -108,7 +108,7 @@ public struct OpenAIResponsesProvider: LLMProvider {
     public init(
         secretStore: any SecretStore,
         httpClient: any HTTPDataClient = URLSessionHTTPDataClient(),
-        promptBuilder: PlanningPromptBuilder = PlanningPromptBuilder(),
+        promptBuilder: PlanningPromptBuilder? = nil,
         configuration: OpenAIResponsesConfiguration = OpenAIResponsesConfiguration(),
         outputTextExtractor: OpenAIResponsesOutputTextExtractor = OpenAIResponsesOutputTextExtractor(),
         responseParser: ActionPlanResponseParser = ActionPlanResponseParser()
@@ -127,7 +127,7 @@ public struct OpenAIResponsesProvider: LLMProvider {
             throw LLMProviderError.authenticationFailed
         }
 
-        let prompt = promptBuilder.buildPrompt(for: request)
+        let prompt = try (promptBuilder ?? PlanningPromptBuilder.loadDefault()).buildPrompt(for: request)
         let httpRequest = try requestBuilder.makeRequest(apiKey: apiKey, prompt: prompt)
         let data: Data
         let response: HTTPURLResponse

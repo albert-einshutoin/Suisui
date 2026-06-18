@@ -677,6 +677,13 @@
 - [x] `SoloPMCLIReadOnlyReporter.parseCountValue` は missing count と invalid count を `LocalStoreDecodingError` として返す。
 - [x] 完了条件: CLI が壊れた集計値を「データなし」と誤表示しない。
 
+### P10-084: Planning prompt schema fallback removal
+
+- [x] `PlanningPromptBuilder` は `ActionPlanSchema.loadString()` failure を簡易 fallback contract に丸めない。
+- [x] Default prompt は packaged `action-plan.schema.json` を `loadDefault()` で明示 load する。
+- [x] OpenAI Responses / Chat Completions providers は schema load failure を plan generation failure として返す。
+- [x] 完了条件: AI planning prompt が完全な ActionPlan schema なしに成功しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

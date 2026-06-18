@@ -10,14 +10,6 @@ public enum ActionPlanSchema: Sendable {
     public static let fileExtension = "json"
     public static let subdirectory = "Schemas"
 
-    public static let fallbackPromptContract = """
-    {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "userInput", "summary", "actions", "riskLevel", "requiresApproval"]
-    }
-    """
-
     public static func loadData() throws -> Data {
         if let data = try? loadData(bundle: .main) {
             return data
