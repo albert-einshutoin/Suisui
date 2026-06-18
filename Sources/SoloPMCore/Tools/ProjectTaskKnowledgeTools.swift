@@ -210,7 +210,17 @@ public struct TaskTool: Tool {
                 nonBlank: ["dueAt", "priority", "sourceCommand"]
             )
         case .taskBulkCreate:
-            ToolInputSchema(required: ["tasks"], properties: ["tasks": "array"])
+            ToolInputSchema(
+                required: ["tasks"],
+                properties: ["tasks": "array"],
+                arrayItems: [
+                    "tasks": ToolInputSchema(
+                        required: ["title"],
+                        properties: ["title": "string", "projectId": "number", "dueAt": "string", "priority": "string", "sourceCommand": "string"],
+                        nonBlank: ["dueAt", "priority", "sourceCommand"]
+                    )
+                ]
+            )
         case .taskUpdate:
             ToolInputSchema(
                 required: ["id"],

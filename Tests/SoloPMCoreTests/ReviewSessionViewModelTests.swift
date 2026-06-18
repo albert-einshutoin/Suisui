@@ -153,6 +153,40 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertThrowsError(try viewModel.execute())
     }
 
+    func testBlankBulkTaskTitleDisablesExecutionBeforeApproval() throws {
+        let stores = try makeStores()
+        let registry = try ToolRegistry.phase2Core(
+            projectStore: stores.projects,
+            taskStore: stores.tasks,
+            knowledgeStore: stores.knowledge
+        )
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(
+                    id: "bulk",
+                    tool: .taskBulkCreate,
+                    arguments: [
+                        "tasks": .array([
+                            .object(["title": .string("Draft release notes")]),
+                            .object(["title": .string("   ")])
+                        ])
+                    ]
+                )
+            ]),
+            executor: ActionExecutor(registry: registry)
+        )
+
+        XCTAssertEqual(viewModel.validationIssues(for: "bulk").first?.field, "tasks[1].title")
+        XCTAssertEqual(
+            viewModel.validationIssues(for: "bulk").first?.message,
+            "Missing required argument 'tasks[1].title' for task.bulk_create."
+        )
+        try viewModel.approve()
+        XCTAssertFalse(viewModel.canExecute)
+        XCTAssertThrowsError(try viewModel.execute())
+        XCTAssertEqual(try stores.tasks.listAll(), [])
+    }
+
     func testFakeVoiceToReviewToExecuteFlow() async throws {
         let plan = ActionPlan.reviewViewModelFixture(actions: [
             PlanAction(id: "project", tool: .projectCreate, arguments: ["title": .string("QZT Article")]),

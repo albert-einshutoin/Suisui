@@ -4,17 +4,20 @@ public struct ToolInputSchema: Equatable, Sendable {
     public var required: [String]
     public var properties: [String: String]
     public var nonBlank: [String]
+    public var arrayItems: [String: ToolInputSchema]
     public var additionalProperties: Bool
 
     public init(
         required: [String] = [],
         properties: [String: String] = [:],
         nonBlank: [String] = [],
+        arrayItems: [String: ToolInputSchema] = [:],
         additionalProperties: Bool = false
     ) {
         self.required = required
         self.properties = properties
         self.nonBlank = nonBlank
+        self.arrayItems = arrayItems
         self.additionalProperties = additionalProperties
     }
 }
@@ -33,6 +36,15 @@ public struct ToolInputValidationIssue: Equatable, Sendable {
 
 public extension ToolInputSchema {
     func validate(arguments: [String: JSONValue], tool: ActionTool, actionID: String? = nil) -> [ToolInputValidationIssue] {
+        validate(arguments: arguments, tool: tool, actionID: actionID, fieldPrefix: nil)
+    }
+
+    private func validate(
+        arguments: [String: JSONValue],
+        tool: ActionTool,
+        actionID: String?,
+        fieldPrefix: String?
+    ) -> [ToolInputValidationIssue] {
         var issues: [ToolInputValidationIssue] = []
 
         for key in required {
@@ -40,8 +52,8 @@ public extension ToolInputSchema {
                 issues.append(
                     ToolInputValidationIssue(
                         actionID: actionID,
-                        field: key,
-                        message: "Missing required argument '\(key)' for \(tool.rawValue)."
+                        field: path(key, prefix: fieldPrefix),
+                        message: "Missing required argument '\(path(key, prefix: fieldPrefix))' for \(tool.rawValue)."
                     )
                 )
                 continue
@@ -55,20 +67,20 @@ public extension ToolInputSchema {
             issues.append(
                 ToolInputValidationIssue(
                     actionID: actionID,
-                    field: key,
-                    message: "Argument '\(key)' cannot be blank for \(tool.rawValue)."
+                    field: path(key, prefix: fieldPrefix),
+                    message: "Argument '\(path(key, prefix: fieldPrefix))' cannot be blank for \(tool.rawValue)."
                 )
             )
         }
 
         if !additionalProperties {
-            let knownKeys = Set(properties.keys).union(required).union(nonBlank)
+            let knownKeys = Set(properties.keys).union(required).union(nonBlank).union(arrayItems.keys)
             for key in arguments.keys.sorted() where !knownKeys.contains(key) {
                 issues.append(
                     ToolInputValidationIssue(
                         actionID: actionID,
-                        field: key,
-                        message: "Unknown argument '\(key)' for \(tool.rawValue)."
+                        field: path(key, prefix: fieldPrefix),
+                        message: "Unknown argument '\(path(key, prefix: fieldPrefix))' for \(tool.rawValue)."
                     )
                 )
             }
@@ -82,13 +94,48 @@ public extension ToolInputSchema {
             issues.append(
                 ToolInputValidationIssue(
                     actionID: actionID,
-                    field: key,
-                    message: "Argument '\(key)' must be \(expectedType) for \(tool.rawValue)."
+                    field: path(key, prefix: fieldPrefix),
+                    message: "Argument '\(path(key, prefix: fieldPrefix))' must be \(expectedType) for \(tool.rawValue)."
                 )
             )
         }
 
+        for (arrayKey, itemSchema) in arrayItems {
+            guard case .array(let values)? = arguments[arrayKey] else {
+                continue
+            }
+
+            for (index, value) in values.enumerated() {
+                let itemPrefix = "\(path(arrayKey, prefix: fieldPrefix))[\(index)]"
+                guard case .object(let object) = value else {
+                    issues.append(
+                        ToolInputValidationIssue(
+                            actionID: actionID,
+                            field: itemPrefix,
+                            message: "Argument '\(itemPrefix)' must be object for \(tool.rawValue)."
+                        )
+                    )
+                    continue
+                }
+
+                issues.append(contentsOf: itemSchema.validate(
+                    arguments: object,
+                    tool: tool,
+                    actionID: actionID,
+                    fieldPrefix: itemPrefix
+                ))
+            }
+        }
+
         return issues
+    }
+
+    private func path(_ key: String, prefix: String?) -> String {
+        guard let prefix else {
+            return key
+        }
+
+        return "\(prefix).\(key)"
     }
 }
 
