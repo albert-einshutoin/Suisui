@@ -156,6 +156,10 @@ require_release_sparkle_metadata() {
         add_blocker "release app Sparkle public EdDSA key must not use a placeholder key: SUPublicEDKey"
         ;;
     esac
+
+    if ! [[ "$public_ed_key" =~ ^[A-Za-z0-9+/=]{32,}$ ]]; then
+      add_blocker "release app Sparkle public EdDSA key must be a base64 public key: SUPublicEDKey"
+    fi
   fi
 
   if [[ -z "$feed_url" ]]; then

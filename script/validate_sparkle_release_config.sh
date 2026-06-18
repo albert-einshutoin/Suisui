@@ -50,6 +50,11 @@ if [[ "$BUILD_CONFIGURATION" == "release" ]]; then
       ;;
   esac
 
+  if ! [[ "$SPARKLE_PUBLIC_ED_KEY" =~ ^[A-Za-z0-9+/=]{32,}$ ]]; then
+    echo "SOLOPM_SPARKLE_PUBLIC_ED_KEY must be a base64 EdDSA public key for release builds" >&2
+    exit 2
+  fi
+
   case "$SPARKLE_FEED_URL" in
     https://*)
       ;;

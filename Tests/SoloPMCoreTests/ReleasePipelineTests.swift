@@ -115,6 +115,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("release app Sparkle feed URL must use https"))
         XCTAssertTrue(script.contains("release app Sparkle feed URL must not use placeholder or local domains"))
         XCTAssertTrue(script.contains("release app Sparkle public EdDSA key must not use a placeholder key"))
+        XCTAssertTrue(script.contains("release app Sparkle public EdDSA key must be a base64 public key"))
         XCTAssertTrue(script.contains("release app Sparkle feed URL does not match configured SOLOPM_SPARKLE_FEED_URL"))
         XCTAssertTrue(script.contains("release app Sparkle public EdDSA key does not match configured SOLOPM_SPARKLE_PUBLIC_ED_KEY"))
     }

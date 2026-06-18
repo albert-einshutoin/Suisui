@@ -57,7 +57,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             environment: [
                 "SOLOPM_BUILD_CONFIGURATION": "release",
                 "SOLOPM_SPARKLE_FEED_URL": "http://updates.example.invalid/solopm/appcast.xml",
-                "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "generated-public-ed-key-value"
+                "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
 
@@ -69,7 +69,7 @@ final class SparkleUpdateFoundationTests: XCTestCase {
             environment: [
                 "SOLOPM_BUILD_CONFIGURATION": "release",
                 "SOLOPM_SPARKLE_FEED_URL": "https://example.com/solopm/appcast.xml",
-                "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "generated-public-ed-key-value"
+                "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
 
@@ -88,12 +88,24 @@ final class SparkleUpdateFoundationTests: XCTestCase {
         XCTAssertNotEqual(placeholderKey.exitCode, 0)
         XCTAssertTrue(placeholderKey.output.contains("SOLOPM_SPARKLE_PUBLIC_ED_KEY must not use a placeholder key for release builds"))
 
-        let validFeed = try runScript(
+        let malformedKey = try runScript(
             "script/validate_sparkle_release_config.sh",
             environment: [
                 "SOLOPM_BUILD_CONFIGURATION": "release",
                 "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
                 "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "generated-public-ed-key-value"
+            ]
+        )
+
+        XCTAssertNotEqual(malformedKey.exitCode, 0)
+        XCTAssertTrue(malformedKey.output.contains("SOLOPM_SPARKLE_PUBLIC_ED_KEY must be a base64 EdDSA public key for release builds"))
+
+        let validFeed = try runScript(
+            "script/validate_sparkle_release_config.sh",
+            environment: [
+                "SOLOPM_BUILD_CONFIGURATION": "release",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
             ]
         )
 
