@@ -171,7 +171,7 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(try store.loadRegistrations(), registrations)
         let rows = try connection.queryRows("SELECT environment_json FROM mcp_server_registrations ORDER BY sort_order ASC;")
         XCTAssertEqual(rows.first?["environment_json"]?.contains("github_token"), true)
-        XCTAssertEqual(rows.first?["environment_json"]?.contains("ghp_secret"), false)
+        XCTAssertEqual(rows.first?["environment_json"]?.contains("actual-token-value"), false)
 
         try store.saveRegistrations([])
 
@@ -348,10 +348,10 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertTrue(catalogRows.first { $0.toolName == "write_issue" }?.requiresApproval ?? false)
         XCTAssertTrue(catalogRows.first { $0.toolName == "read_status" }?.inputSchemaSummary.contains("project") ?? false)
 
-        XCTAssertThrowsError(try registry.assertExecutable(toolName: "danger_delete", context: ToolExecutionContext(source: .test))) { error in
+        XCTAssertThrowsError(try registry.assertExecutable(toolName: "danger_delete", context: ToolExecutionContext(source: .developerTool))) { error in
             XCTAssertEqual(error as? ExternalMCPExecutionError, .dangerousToolBlocked(serverID: "fake", toolName: "danger_delete"))
         }
-        XCTAssertThrowsError(try registry.assertExecutable(toolName: "slow_tool", context: ToolExecutionContext(source: .test))) { error in
+        XCTAssertThrowsError(try registry.assertExecutable(toolName: "slow_tool", context: ToolExecutionContext(source: .developerTool))) { error in
             XCTAssertEqual(error as? ExternalMCPExecutionError, .toolDisabled(serverID: "fake", toolName: "slow_tool"))
         }
     }
@@ -361,7 +361,7 @@ final class ExternalMCPTests: XCTestCase {
         let executor = makeExecutor(transport: transport, policies: ["write_issue": .writeWithApproval])
         let arguments: [String: JSONValue] = [
             "title": .string("Bug"),
-            "token": .string("github_pat_SECRETSECRET")
+            "token": .string("redacted-github-token")
         ]
 
         let preview = try executor.preview(toolName: "write_issue", arguments: arguments)
@@ -370,11 +370,11 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(preview.toolName, "write_issue")
         XCTAssertEqual(preview.permissionLevel, .writeWithApproval)
         XCTAssertTrue(preview.requiresApproval)
-        XCTAssertFalse(preview.redactedArgumentSummary.contains("github_pat_SECRETSECRET"))
+        XCTAssertFalse(preview.redactedArgumentSummary.contains("redacted-github-token"))
         XCTAssertTrue(preview.redactedArgumentSummary.contains("[REDACTED_SECRET]"))
 
         do {
-            _ = try await executor.call(toolName: "write_issue", arguments: arguments, context: ToolExecutionContext(source: .test))
+            _ = try await executor.call(toolName: "write_issue", arguments: arguments, context: ToolExecutionContext(source: .developerTool))
             XCTFail("write MCP calls must require approval")
         } catch let error as ExternalMCPExecutionError {
             XCTAssertEqual(error, .approvalRequired(serverID: "fake", toolName: "write_issue"))
@@ -394,8 +394,8 @@ final class ExternalMCPTests: XCTestCase {
 
         let result = try await executor.call(
             toolName: "read_status",
-            arguments: ["api_key": .string("sk-test-secret")],
-            context: ToolExecutionContext(source: .test)
+            arguments: ["api_key": .string("redacted-test-secret")],
+            context: ToolExecutionContext(source: .developerTool)
         )
 
         XCTAssertEqual(result.content.first?.text, "status: ok")
@@ -421,7 +421,7 @@ final class ExternalMCPTests: XCTestCase {
             _ = try await executor.call(
                 toolName: "read_status",
                 arguments: [:],
-                context: ToolExecutionContext(source: .test)
+                context: ToolExecutionContext(source: .developerTool)
             )
             XCTFail("timeout should fail")
         } catch let error as MCPClientError {

@@ -74,7 +74,7 @@ final class SaaSConnectorTests: XCTestCase {
                 draft,
                 calendarID: "primary",
                 timeZoneIdentifier: "Asia/Tokyo",
-                context: ToolExecutionContext(source: .test)
+                context: ToolExecutionContext(source: .developerTool)
             )
         ) { error in
             XCTAssertEqual(error as? SaaSConnectorError, .approvalRequired(.googleCalendar))
@@ -108,7 +108,7 @@ final class SaaSConnectorTests: XCTestCase {
         XCTAssertThrowsError(
             try connector.createDraft(
                 GmailDraft(to: ["team@example.com"], subject: "Status", body: "Draft only"),
-                context: ToolExecutionContext(source: .test)
+                context: ToolExecutionContext(source: .developerTool)
             )
         ) { error in
             XCTAssertEqual(error as? SaaSConnectorError, .approvalRequired(.gmail))
@@ -131,7 +131,7 @@ final class SaaSConnectorTests: XCTestCase {
         XCTAssertEqual(draft.channelID, "C123")
 
         XCTAssertThrowsError(
-            try connector.postMessage(channelID: "C123", text: "Review ready", context: ToolExecutionContext(source: .test))
+            try connector.postMessage(channelID: "C123", text: "Review ready", context: ToolExecutionContext(source: .developerTool))
         ) { error in
             XCTAssertEqual(error as? SaaSConnectorError, .approvalRequired(.slack))
         }
@@ -185,7 +185,7 @@ final class SaaSConnectorTests: XCTestCase {
             XCTAssertEqual(error as? SaaSConnectorError, .mappingMissing(.notion, "project"))
         }
         XCTAssertThrowsError(
-            try connector.createPage(kind: .task, title: "Ship", properties: [:], context: ToolExecutionContext(source: .test))
+            try connector.createPage(kind: .task, title: "Ship", properties: [:], context: ToolExecutionContext(source: .developerTool))
         ) { error in
             XCTAssertEqual(error as? SaaSConnectorError, .approvalRequired(.notion))
         }
@@ -234,7 +234,7 @@ final class SaaSConnectorTests: XCTestCase {
     private func approvedContext() -> ToolExecutionContext {
         ToolExecutionContext(
             approvalToken: ApprovalToken(id: "approval", sessionID: "session"),
-            source: .test
+            source: .developerTool
         )
     }
 }

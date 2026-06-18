@@ -31,7 +31,7 @@ final class ToolRegistryTests: XCTestCase {
     func testWriteToolRequiresApprovalToken() throws {
         let tool = makeTool(name: .taskCreate, permissionLevel: .writeWithApproval)
 
-        XCTAssertThrowsError(try tool.execute(arguments: ["title": .string("Draft")], context: ToolExecutionContext(source: .test))) { error in
+        XCTAssertThrowsError(try tool.execute(arguments: ["title": .string("Draft")], context: ToolExecutionContext(source: .developerTool))) { error in
             XCTAssertEqual(error as? ToolExecutionError, .approvalRequired(.taskCreate))
         }
 
@@ -39,7 +39,7 @@ final class ToolRegistryTests: XCTestCase {
             arguments: ["title": .string("Draft")],
             context: ToolExecutionContext(
                 approvalToken: ApprovalToken(id: "approval-1", sessionID: "session-1"),
-                source: .test
+                source: .developerTool
             )
         )
 
@@ -53,7 +53,7 @@ final class ToolRegistryTests: XCTestCase {
             arguments: ["path": .string("/tmp/a.md")],
             context: ToolExecutionContext(
                 approvalToken: ApprovalToken(id: "approval-1", sessionID: "session-1"),
-                source: .test
+                source: .developerTool
             )
         )) { error in
             XCTAssertEqual(error as? ToolExecutionError, .dangerousToolBlocked(.filesystemCreateMarkdownFile))

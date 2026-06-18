@@ -12,7 +12,7 @@ final class AuditLoggerTests: XCTestCase {
                 action: "save",
                 status: .succeeded,
                 metadata: [
-                    "api_key": "sk-test-secret",
+                    "api_key": "redacted-test-key",
                     "Authorization": "Bearer token",
                     "note": "safe"
                 ]
@@ -23,6 +23,25 @@ final class AuditLoggerTests: XCTestCase {
         XCTAssertEqual(event.metadata["api_key"], "[REDACTED]")
         XCTAssertEqual(event.metadata["Authorization"], "[REDACTED]")
         XCTAssertEqual(event.metadata["note"], "safe")
+    }
+
+    func testRedactingAuditLoggerRemovesSecretsFromSerializedArguments() throws {
+        let base = InMemoryAuditLogger()
+        let logger = RedactingAuditLogger(base: base)
+
+        try logger.record(
+            AuditEvent(
+                category: "tools",
+                action: "task.create",
+                status: .failed,
+                metadata: [
+                    "arguments": "apiKey=string(\"redacted-test-key\"),title=string(\"Secret task\")"
+                ]
+            )
+        )
+
+        let event = try XCTUnwrap(base.recordedEvents.first)
+        XCTAssertEqual(event.metadata["arguments"], "[REDACTED]")
     }
 
     func testSQLiteAuditLoggerPersistsRedactedEvents() throws {
@@ -39,7 +58,7 @@ final class AuditLoggerTests: XCTestCase {
                 status: .succeeded,
                 metadata: [
                     "provider": "openai.responses",
-                    "api_key": "sk-secret",
+                    "api_key": "redacted-test-key",
                     "summary": "Created task"
                 ]
             )

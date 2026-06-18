@@ -202,7 +202,7 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
             ],
             context: approvedContext()
         )
-        let result = try search.execute(arguments: ["query": .string("notarization")], context: ToolExecutionContext(source: .test))
+        let result = try search.execute(arguments: ["query": .string("notarization")], context: ToolExecutionContext(source: .developerTool))
 
         XCTAssertEqual(result.output["count"], .number(1))
     }
@@ -257,7 +257,7 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
     }
 
     private func approvedContext() -> ToolExecutionContext {
-        ToolExecutionContext(approvalToken: ApprovalToken(id: "approval-1", sessionID: "session-1"), source: .test)
+        ToolExecutionContext(approvalToken: ApprovalToken(id: "approval-1", sessionID: "session-1"), source: .developerTool)
     }
 }
 

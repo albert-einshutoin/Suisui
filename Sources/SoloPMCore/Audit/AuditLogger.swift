@@ -150,6 +150,13 @@ public enum SecretRedactor {
 
     private static func containsSensitiveValue(_ value: String) -> Bool {
         let normalized = value.lowercased()
-        return normalized.hasPrefix("bearer ") || normalized.contains("sk-") || normalized.contains("api_key=")
+        return normalized.hasPrefix("bearer ")
+            || normalized.contains("sk-")
+            || normalized.contains("api_key=")
+            || normalized.contains("apikey=")
+            || normalized.contains("authorization=")
+            || normalized.contains("token=")
+            || normalized.contains("password=")
+            || normalized.contains("secret=")
     }
 }

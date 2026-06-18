@@ -171,7 +171,7 @@ final class KnowledgeAdvancedTests: XCTestCase {
 
         XCTAssertEqual(preview.redactedContext, "local frame")
         XCTAssertThrowsError(
-            try connector.send(preview, context: ToolExecutionContext(source: .test))
+            try connector.send(preview, context: ToolExecutionContext(source: .developerTool))
         ) { error in
             XCTAssertEqual(error as? WeKnoraConnectorError, .approvalRequired)
         }
@@ -223,7 +223,7 @@ final class KnowledgeAdvancedTests: XCTestCase {
     private func approvedContext() -> ToolExecutionContext {
         ToolExecutionContext(
             approvalToken: ApprovalToken(id: "approval", sessionID: "session"),
-            source: .test
+            source: .developerTool
         )
     }
 }

@@ -137,7 +137,8 @@
 - [x] `ExternalMCPToolExecutor` が `InMemoryAuditLogger` を default injection しないことを regression test で確認する。
 - [x] MCP tool execution は caller が audit logger を明示注入する。
 - [x] MCP lifecycle test 用 `RecordingMCPServerProcess` は `Tests/` 配下の test support に隔離する。
-- [x] `ToolExecutionContext` は execution source を必須引数にし、developer harness 扱いを暗黙 default にしない。
+- [x] `ToolExecutionContext` は execution source を必須引数にし、developer harness / test 扱いを shipping enum に残さない。
+- [x] 監査ログの serialized arguments は `apiKey=` などの secret-like field を値パターンに依存せず redaction する。
 - [x] 既存 tests は in-memory audit logger を test helper で明示注入する。
 - [x] 完了条件: 外部 MCP call が永続監査なし default で成功しない API になる。
 

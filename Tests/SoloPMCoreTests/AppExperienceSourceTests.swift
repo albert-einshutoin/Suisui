@@ -223,6 +223,9 @@ final class AppExperienceSourceTests: XCTestCase {
         let source = try readPackageFile("Sources/SoloPMCore/Tools/Tooling.swift")
 
         XCTAssertFalse(source.contains("source: ToolExecutionSource = .developerHarness"))
+        XCTAssertFalse(source.contains("case developerHarness"))
+        XCTAssertFalse(source.contains("case test"))
+        XCTAssertTrue(source.contains("case developerTool"))
         XCTAssertTrue(source.contains("source: ToolExecutionSource)"))
     }
 

@@ -104,9 +104,8 @@ public struct ToolExecutionContext: Sendable {
 }
 
 public enum ToolExecutionSource: String, Equatable, Sendable {
-    case developerHarness
+    case developerTool
     case reviewUI
-    case test
 }
 
 public enum ToolExecutionStatus: String, Equatable, Sendable {

@@ -212,7 +212,7 @@ final class SystemToolTests: XCTestCase {
                 "subject": .string("Status"),
                 "body": .string("Draft only")
             ],
-            context: ToolExecutionContext(source: .test)
+            context: ToolExecutionContext(source: .developerTool)
         )
 
         XCTAssertEqual(result.output["draftId"]?.stringValue, "mail-draft-1")
@@ -236,9 +236,9 @@ final class SystemToolTests: XCTestCase {
             try audited.execute(
                 arguments: [
                     "title": .string("Secret task"),
-                    "apiKey": .string("sk-test")
+                    "apiKey": .string("redacted-test-key")
                 ],
-                context: ToolExecutionContext(source: .test)
+                context: ToolExecutionContext(source: .developerTool)
             )
         )
 
@@ -296,7 +296,7 @@ final class SystemToolTests: XCTestCase {
     }
 
     private func approvedContext() -> ToolExecutionContext {
-        ToolExecutionContext(approvalToken: ApprovalToken(id: "approval-1", sessionID: "session-1"), source: .test)
+        ToolExecutionContext(approvalToken: ApprovalToken(id: "approval-1", sessionID: "session-1"), source: .developerTool)
     }
 
     private func temporaryDirectory() -> URL {

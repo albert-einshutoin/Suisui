@@ -91,7 +91,7 @@ final class DeveloperModeTests: XCTestCase {
 
         let result = try registry.tool(named: .gitStatus).execute(
             arguments: [:],
-            context: ToolExecutionContext(source: .test)
+            context: ToolExecutionContext(source: .developerTool)
         )
 
         XCTAssertEqual(result.status, .succeeded)
