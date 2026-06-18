@@ -870,6 +870,11 @@ private struct SettingsView: View {
                 LabeledContent("Last Check", value: diagnosticDateLabel(watcherDiagnosticsSnapshot.lastCheckAt))
                 LabeledContent("Next Check", value: diagnosticDateLabel(watcherDiagnosticsSnapshot.nextCheckAt))
                 LabeledContent("Notifications", value: permissionLabel(watcherDiagnosticsSnapshot.notificationPermissionStatus))
+                if let errorMessage = watcherDiagnosticsSnapshot.errorMessage {
+                    Label(errorMessage, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
             }
 
             Section("External MCP") {
@@ -1106,7 +1111,8 @@ private enum AppRuntimeFactory {
             ).snapshot()
         } catch {
             return WatcherDiagnosticsSnapshot(
-                notificationPermissionStatus: permissionSnapshot.status(for: .notifications)
+                notificationPermissionStatus: permissionSnapshot.status(for: .notifications),
+                errorMessage: "Watcher diagnostics are unavailable because local state could not be opened."
             )
         }
     }

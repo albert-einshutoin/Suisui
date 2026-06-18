@@ -213,15 +213,18 @@ public struct WatcherDiagnosticsSnapshot: Equatable, Sendable {
     public var lastCheckAt: Date?
     public var nextCheckAt: Date?
     public var notificationPermissionStatus: PermissionStatus
+    public var errorMessage: String?
 
     public init(
         lastCheckAt: Date? = nil,
         nextCheckAt: Date? = nil,
-        notificationPermissionStatus: PermissionStatus = .notDetermined
+        notificationPermissionStatus: PermissionStatus = .notDetermined,
+        errorMessage: String? = nil
     ) {
         self.lastCheckAt = lastCheckAt
         self.nextCheckAt = nextCheckAt
         self.notificationPermissionStatus = notificationPermissionStatus
+        self.errorMessage = errorMessage
     }
 }
 

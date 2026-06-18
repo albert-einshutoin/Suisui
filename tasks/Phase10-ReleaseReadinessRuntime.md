@@ -853,6 +853,13 @@
 - [x] `MenuBarSummaryViewModelTests` と `AppExperienceSourceTests` で読込失敗と UI wiring の regression を固定する。
 - [x] 完了条件: DB / local store が開けない状態を、締切がない正常状態として menu bar に表示しない。
 
+### P10-109: Watcher diagnostics load failure is visible in Settings
+
+- [x] `WatcherDiagnosticsSnapshot` は permission status だけでなく diagnostics load failure message を保持できる。
+- [x] Runtime factory は local daily-check state store を開けない場合、Last / Next の空表示だけに丸めず warning message を返す。
+- [x] Settings の Watcher section は `watcherDiagnosticsSnapshot.errorMessage` を警告として表示する。
+- [x] 完了条件: daily check state / local DB が読めない状態を、まだ一度もチェックしていないだけの正常状態として表示しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

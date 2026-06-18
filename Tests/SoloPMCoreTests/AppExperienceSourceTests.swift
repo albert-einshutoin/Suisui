@@ -169,6 +169,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("WatcherDiagnosticsProvider("))
         XCTAssertTrue(appSource.contains("SQLiteDailyCheckStateStore(connection: connection)"))
         XCTAssertTrue(appSource.contains("UserNotificationsPermissionSnapshotReader.snapshot()"))
+        XCTAssertTrue(appSource.contains("watcherDiagnosticsSnapshot.errorMessage"))
+        XCTAssertTrue(appSource.contains("Watcher diagnostics are unavailable because local state could not be opened."))
         XCTAssertFalse(appSource.contains("lastCheckAt: nil"))
         XCTAssertFalse(appSource.contains("nextCheckAt: Date()"))
         XCTAssertFalse(appSource.contains("notificationPermissionStatus: .notDetermined"))
