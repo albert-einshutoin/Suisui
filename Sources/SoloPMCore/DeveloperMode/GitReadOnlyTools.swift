@@ -274,7 +274,7 @@ public struct GitReadOnlyTool: Tool {
             )
         case .gitLogSummary:
             let args = ToolArguments(arguments, tool: name)
-            let limit = Int(args.optionalInt64("limit") ?? 10)
+            let limit = Int(try args.optionalInt64("limit") ?? 10)
             let entries = try client.logSummary(limit: limit)
             return ToolResult(
                 tool: name,

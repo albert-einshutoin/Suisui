@@ -384,6 +384,15 @@ private extension JSONValue {
             default:
                 return false
             }
+        case "integer":
+            switch self {
+            case .number(let value):
+                return Int64(exactly: value) != nil
+            case .string(let value):
+                return Int64(value) != nil
+            default:
+                return false
+            }
         case "array":
             if case .array = self {
                 return true

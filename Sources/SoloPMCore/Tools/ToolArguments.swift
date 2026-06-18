@@ -64,22 +64,34 @@ public struct ToolArguments: Sendable {
     }
 
     public func requiredInt64(_ key: String) throws -> Int64 {
-        guard let value = optionalInt64(key) else {
+        guard let value = try optionalInt64(key) else {
             throw ToolExecutionError.validationFailed(tool, "Missing required argument '\(key)'.")
         }
 
         return value
     }
 
-    public func optionalInt64(_ key: String) -> Int64? {
+    public func optionalInt64(_ key: String) throws -> Int64? {
         switch raw[key] {
         case .number(let value):
-            Int64(value)
+            guard let intValue = Int64(exactly: value) else {
+                throw invalidInt64(key)
+            }
+            return intValue
         case .string(let value):
-            Int64(value)
+            guard let intValue = Int64(value) else {
+                throw invalidInt64(key)
+            }
+            return intValue
+        case nil:
+            return nil
         default:
-            nil
+            throw invalidInt64(key)
         }
+    }
+
+    private func invalidInt64(_ key: String) -> ToolExecutionError {
+        .validationFailed(tool, "Argument '\(key)' must be a 64-bit integer.")
     }
 
     public func stringArray(_ key: String) throws -> [String] {

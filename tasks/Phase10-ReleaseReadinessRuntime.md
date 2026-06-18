@@ -896,6 +896,13 @@
 - [x] `ToolRegistryTests` と `ActionExecutorTests` で unavailable tool が review 前に検出されることを固定する。
 - [x] 完了条件: runtime registry が壊れている状態で、Review UI が入力問題なし / 実行可能に見えない。
 
+### P10-115: Tool integer identifiers are not truncated from fractional JSON numbers
+
+- [x] `ToolArguments.optionalInt64` は JSON number / string の ID を整数として厳密に検証し、小数や不正文字列を missing 扱いにしない。
+- [x] Project / Task / Calendar / Reminder / Notification / Knowledge tool schema は ID、duration、offset など整数フィールドを `integer` として review preflight で検出する。
+- [x] `ToolArgumentsTests` と `ToolRegistryTests` で fractional number が mutation 前に validation failure になることを固定する。
+- [x] 完了条件: LLM が `1.9` のような値を返しても `1` に丸めて別 Project / Task / Frame を更新しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

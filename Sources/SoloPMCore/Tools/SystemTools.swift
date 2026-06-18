@@ -110,9 +110,9 @@ public struct NotificationTool: Tool {
         case .notificationSchedule:
             ToolInputSchema(required: ["title", "scheduledAt"], properties: ["title": "string", "body": "string", "scheduledAt": "string", "id": "string"])
         case .notificationScheduleRelative:
-            ToolInputSchema(required: ["title", "offsetSeconds"], properties: ["title": "string", "body": "string", "offsetSeconds": "number"])
+            ToolInputSchema(required: ["title", "offsetSeconds"], properties: ["title": "string", "body": "string", "offsetSeconds": "integer"])
         case .notificationScheduleOverdueRule:
-            ToolInputSchema(required: ["taskId"], properties: ["taskId": "number", "title": "string", "body": "string"])
+            ToolInputSchema(required: ["taskId"], properties: ["taskId": "integer", "title": "string", "body": "string"])
         case .notificationCancel:
             ToolInputSchema(required: ["id"], properties: ["id": "string"])
         default:
@@ -180,8 +180,8 @@ public struct CalendarTool: Tool {
     }
 
     private func linkCalendarEventIfNeeded(record: CalendarEventRecord, args: ToolArguments) throws {
-        let projectID = args.optionalInt64("projectId")
-        let taskID = args.optionalInt64("taskId")
+        let projectID = try args.optionalInt64("projectId")
+        let taskID = try args.optionalInt64("taskId")
         guard projectID != nil || taskID != nil else {
             return
         }
@@ -204,11 +204,11 @@ public struct CalendarTool: Tool {
     private static func schema(for name: ActionTool) -> ToolInputSchema {
         switch name {
         case .calendarCreateEvent:
-            ToolInputSchema(required: ["title", "startAt", "endAt"], properties: ["title": "string", "startAt": "string", "endAt": "string", "notes": "string", "projectId": "number", "taskId": "number"])
+            ToolInputSchema(required: ["title", "startAt", "endAt"], properties: ["title": "string", "startAt": "string", "endAt": "string", "notes": "string", "projectId": "integer", "taskId": "integer"])
         case .calendarCreateDeadline:
-            ToolInputSchema(required: ["title", "dueDate"], properties: ["title": "string", "dueDate": "string", "notes": "string", "projectId": "number", "taskId": "number"])
+            ToolInputSchema(required: ["title", "dueDate"], properties: ["title": "string", "dueDate": "string", "notes": "string", "projectId": "integer", "taskId": "integer"])
         case .calendarCreateWorkBlock:
-            ToolInputSchema(required: ["title", "startAt", "durationMinutes"], properties: ["title": "string", "startAt": "string", "durationMinutes": "number", "notes": "string", "projectId": "number", "taskId": "number"])
+            ToolInputSchema(required: ["title", "startAt", "durationMinutes"], properties: ["title": "string", "startAt": "string", "durationMinutes": "integer", "notes": "string", "projectId": "integer", "taskId": "integer"])
         default:
             ToolInputSchema()
         }
@@ -272,8 +272,8 @@ public struct ReminderTool: Tool {
     }
 
     private func linkReminderIfNeeded(record: ReminderRecord, args: ToolArguments) throws {
-        let projectID = args.optionalInt64("projectId")
-        let taskID = args.optionalInt64("taskId")
+        let projectID = try args.optionalInt64("projectId")
+        let taskID = try args.optionalInt64("taskId")
         guard projectID != nil || taskID != nil else {
             return
         }
@@ -298,7 +298,7 @@ public struct ReminderTool: Tool {
     private static func schema(for name: ActionTool) -> ToolInputSchema {
         switch name {
         case .remindersCreate:
-            ToolInputSchema(required: ["title"], properties: ["title": "string", "dueAt": "string", "listName": "string", "projectId": "number", "taskId": "number"])
+            ToolInputSchema(required: ["title"], properties: ["title": "string", "dueAt": "string", "listName": "string", "projectId": "integer", "taskId": "integer"])
         case .remindersBulkCreate:
             ToolInputSchema(required: ["reminders"], properties: ["reminders": "array"])
         case .remindersMarkComplete:

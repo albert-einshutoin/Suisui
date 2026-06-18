@@ -76,11 +76,11 @@ public struct ProjectTool: Tool {
         case .projectUpdate:
             ToolInputSchema(
                 required: ["id"],
-                properties: ["id": "number", "title": "string", "status": "string"],
+                properties: ["id": "integer", "title": "string", "status": "string"],
                 nonBlank: ["title", "status"]
             )
         case .projectGet, .projectComplete:
-            ToolInputSchema(required: ["id"], properties: ["id": "number"])
+            ToolInputSchema(required: ["id"], properties: ["id": "integer"])
         default:
             ToolInputSchema()
         }
@@ -111,7 +111,7 @@ public struct TaskTool: Tool {
         let args = ToolArguments(arguments, tool: name)
         switch name {
         case .taskCreate:
-            let projectID = args.optionalInt64("projectId")
+            let projectID = try args.optionalInt64("projectId")
             try prepareProjectForTaskMutation(projectID: projectID, status: "open")
             let record = try store.create(
                 title: try args.requiredTrimmedString("title"),
@@ -137,7 +137,7 @@ public struct TaskTool: Tool {
                 let taskArgs = ToolArguments(taskObject, tool: name)
                 return TaskCreateDraft(
                     title: try taskArgs.requiredTrimmedString("title"),
-                    projectID: taskArgs.optionalInt64("projectId"),
+                    projectID: try taskArgs.optionalInt64("projectId"),
                     dueAt: try taskArgs.optionalTrimmedString("dueAt"),
                     priority: try taskArgs.optionalTrimmedString("priority"),
                     sourceCommand: try taskArgs.optionalTrimmedString("sourceCommand")
@@ -206,7 +206,7 @@ public struct TaskTool: Tool {
         case .taskCreate:
             ToolInputSchema(
                 required: ["title"],
-                properties: ["title": "string", "projectId": "number", "dueAt": "string", "priority": "string", "sourceCommand": "string"],
+                properties: ["title": "string", "projectId": "integer", "dueAt": "string", "priority": "string", "sourceCommand": "string"],
                 nonBlank: ["dueAt", "priority", "sourceCommand"]
             )
         case .taskBulkCreate:
@@ -216,7 +216,7 @@ public struct TaskTool: Tool {
                 arrayItems: [
                     "tasks": ToolInputSchema(
                         required: ["title"],
-                        properties: ["title": "string", "projectId": "number", "dueAt": "string", "priority": "string", "sourceCommand": "string"],
+                        properties: ["title": "string", "projectId": "integer", "dueAt": "string", "priority": "string", "sourceCommand": "string"],
                         nonBlank: ["dueAt", "priority", "sourceCommand"]
                     )
                 ]
@@ -224,11 +224,11 @@ public struct TaskTool: Tool {
         case .taskUpdate:
             ToolInputSchema(
                 required: ["id"],
-                properties: ["id": "number", "title": "string", "status": "string"],
+                properties: ["id": "integer", "title": "string", "status": "string"],
                 nonBlank: ["title", "status"]
             )
         case .taskComplete:
-            ToolInputSchema(required: ["id"], properties: ["id": "number"])
+            ToolInputSchema(required: ["id"], properties: ["id": "integer"])
         default:
             ToolInputSchema()
         }
@@ -294,11 +294,11 @@ public struct KnowledgeFrameTool: Tool {
         case .frameUpdate:
             ToolInputSchema(
                 required: ["id"],
-                properties: ["id": "number", "name": "string", "body": "string", "triggers": "array"],
+                properties: ["id": "integer", "name": "string", "body": "string", "triggers": "array"],
                 nonBlank: ["name", "body"]
             )
         case .frameGet:
-            ToolInputSchema(required: ["id"], properties: ["id": "number"])
+            ToolInputSchema(required: ["id"], properties: ["id": "integer"])
         case .frameSearch:
             ToolInputSchema(required: ["query"], properties: ["query": "string"])
         default:

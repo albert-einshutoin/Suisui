@@ -35,6 +35,30 @@ final class ToolRegistryTests: XCTestCase {
         ])
     }
 
+    func testRegistryValidationRejectsFractionalIntegerFieldsBeforeExecution() throws {
+        let registry = try ToolRegistry(tools: [
+            makeTool(
+                name: .taskUpdate,
+                permissionLevel: .writeWithApproval,
+                inputSchema: ToolInputSchema(required: ["id"], properties: ["id": "integer"])
+            )
+        ])
+
+        let issues = registry.validate(action: PlanAction(
+            id: "update",
+            tool: .taskUpdate,
+            arguments: ["id": .number(1.9)]
+        ))
+
+        XCTAssertEqual(issues, [
+            ToolInputValidationIssue(
+                actionID: "update",
+                field: "id",
+                message: "Argument 'id' must be integer for task.update."
+            )
+        ])
+    }
+
     func testRegistryExportsSchemas() throws {
         let registry = try ToolRegistry(tools: [
             makeTool(name: .taskCreate, permissionLevel: .writeWithApproval),
@@ -77,11 +101,15 @@ final class ToolRegistryTests: XCTestCase {
         }
     }
 
-    private func makeTool(name: ActionTool, permissionLevel: ToolPermissionLevel) -> StaticTool {
+    private func makeTool(
+        name: ActionTool,
+        permissionLevel: ToolPermissionLevel,
+        inputSchema: ToolInputSchema? = nil
+    ) -> StaticTool {
         StaticTool(
             name: name,
             description: name.rawValue,
-            inputSchema: ToolInputSchema(required: name == .taskCreate ? ["title"] : []),
+            inputSchema: inputSchema ?? ToolInputSchema(required: name == .taskCreate ? ["title"] : []),
             permissionLevel: permissionLevel
         ) { _, _ in
             ToolResult(tool: name, status: .succeeded, summary: "ok")
