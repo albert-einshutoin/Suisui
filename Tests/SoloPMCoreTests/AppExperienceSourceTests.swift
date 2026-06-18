@@ -48,6 +48,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".truncationMode(.tail)"))
     }
 
+    func testTaskInspectorRefreshesWhenSelectedTaskDataChanges() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(source.contains(".onChange(of: task)"))
+        XCTAssertTrue(source.contains("refreshFields(from: task)"))
+        XCTAssertFalse(source.contains(".onChange(of: task.id)"))
+    }
+
     func testProjectBoardUsesPersistentViewModelInsteadOfStaticSnapshot() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")

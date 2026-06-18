@@ -787,16 +787,20 @@ private struct TaskInspectorView: View {
         } message: {
             Text("This removes the task from the local SoloPM database.")
         }
-        .onChange(of: task.id) { _, newValue in
-            guard newValue == task.id else {
-                return
-            }
-            title = task.title
-            detail = task.detail
-            status = task.status
-            priority = task.priority
-            dueAt = task.dueAt ?? ""
+        .onAppear {
+            refreshFields(from: task)
         }
+        .onChange(of: task) { _, newTask in
+            refreshFields(from: newTask)
+        }
+    }
+
+    private func refreshFields(from task: ProjectBoardTask) {
+        title = task.title
+        detail = task.detail
+        status = task.status
+        priority = task.priority
+        dueAt = task.dueAt ?? ""
     }
 }
 

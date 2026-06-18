@@ -93,6 +93,30 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(moved.dueAt, "2026-06-22")
     }
 
+    func testUpdateTaskCanClearDueDate() throws {
+        let store = try makeStore()
+        let projectID = try XCTUnwrap(store.loadSnapshot().projects.first?.id)
+        let task = try store.createTask(ProjectBoardTaskDraft(
+            projectID: projectID,
+            title: "Clear due date",
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-22"
+        ))
+
+        _ = try store.updateTask(id: task.id, ProjectBoardTaskDraft(
+            projectID: projectID,
+            title: "Clear due date",
+            status: .planned,
+            priority: .medium,
+            dueAt: nil
+        ))
+
+        let snapshot = try store.loadSnapshot()
+        let updated = try XCTUnwrap(snapshot.projects.first?.column(.planned)?.tasks.first)
+        XCTAssertNil(updated.dueAt)
+    }
+
     func testDeleteTaskRemovesCardFromPersistentSnapshot() throws {
         let store = try makeStore()
         let projectID = try XCTUnwrap(store.loadSnapshot().projects.first?.id)
