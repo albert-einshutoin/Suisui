@@ -1362,6 +1362,8 @@ private struct ProjectInspectorView: View {
                         Label("Restore Project", systemImage: "arrow.uturn.backward")
                     }
                     .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("project-inspector-restore")
+                    .accessibilityHint("Restores the selected project to active views in the local SoloPM database.")
                 } else {
                     Button {
                         viewModel.completeSelectedProject()
@@ -1369,6 +1371,8 @@ private struct ProjectInspectorView: View {
                         Label("Complete Project", systemImage: "checkmark.seal")
                     }
                     .disabled(project.isCompleted)
+                    .accessibilityIdentifier("project-inspector-complete")
+                    .accessibilityHint("Completes the selected project in the local SoloPM database.")
                 }
             }
 
@@ -1379,6 +1383,8 @@ private struct ProjectInspectorView: View {
                     } label: {
                         Label("Archive Project", systemImage: "archivebox")
                     }
+                    .accessibilityIdentifier("project-inspector-archive")
+                    .accessibilityHint("Archives the selected project after confirmation.")
                 }
 
                 Button(role: .destructive) {
@@ -1540,6 +1546,8 @@ private struct ProjectInspectorSuggestionSection: View {
             }
             .disabled(suggestionAction == .none)
             .keyboardShortcut(.return, modifiers: [.command])
+            .accessibilityIdentifier("project-inspector-apply-suggestion")
+            .accessibilityHint("Applies the local next-step suggestion to the selected project.")
         }
     }
 
@@ -1639,6 +1647,7 @@ private struct TaskInspectorView: View {
                     .accessibilityIdentifier("task-inspector-title")
                 TextField("Detail", text: $detail, axis: .vertical)
                     .lineLimit(4...8)
+                    .accessibilityIdentifier("task-inspector-detail")
             }
 
             Section("Fields") {
@@ -1648,6 +1657,7 @@ private struct TaskInspectorView: View {
                             .tag(status)
                     }
                 }
+                .accessibilityIdentifier("task-inspector-status")
 
                 Picker("Priority", selection: $priority) {
                     ForEach(ProjectTaskPriority.allCases) { priority in
@@ -1655,8 +1665,10 @@ private struct TaskInspectorView: View {
                             .tag(priority)
                     }
                 }
+                .accessibilityIdentifier("task-inspector-priority")
 
                 TextField("Due", text: $dueAt)
+                    .accessibilityIdentifier("task-inspector-due")
             }
 
             Section("Suggestion") {
@@ -1855,6 +1867,8 @@ private struct TaskInspectorSuggestionSection: View {
             }
             .disabled(targetStatus == nil)
             .keyboardShortcut(.return, modifiers: [.command])
+            .accessibilityIdentifier("task-inspector-apply-suggestion")
+            .accessibilityHint("Applies the local next-step suggestion to the selected task.")
         }
     }
 
