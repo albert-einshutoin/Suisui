@@ -151,7 +151,8 @@ public final class SQLiteProjectStore: @unchecked Sendable {
             assignments.append("title = '\(SQL.escape(normalizedTitle))'")
         }
         if let status {
-            assignments.append("status = '\(SQL.escape(status))'")
+            let normalizedStatus = try StoreFieldValidation.projectStatus(status, tool: .projectUpdate)
+            assignments.append("status = '\(SQL.escape(normalizedStatus))'")
         }
         assignments.append("updated_at = CURRENT_TIMESTAMP")
 
@@ -248,13 +249,14 @@ public final class SQLiteTaskStore: @unchecked Sendable {
 
     private func insertLocked(_ draft: TaskCreateDraft, tool: ActionTool) throws -> TaskRecord {
         let normalizedTitle = try StoreFieldValidation.requiredTrimmed(draft.title, argument: "title", tool: tool)
+        let normalizedStatus = try StoreFieldValidation.taskStatus(draft.status, tool: tool)
         try connection.execute(
             """
             INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command)
             VALUES (
               \(draft.projectID.map(String.init) ?? "NULL"),
               '\(SQL.escape(normalizedTitle))',
-              '\(SQL.escape(draft.status))',
+              '\(SQL.escape(normalizedStatus))',
               \(SQL.optional(draft.detail)),
               \(SQL.optional(draft.dueAt)),
               \(SQL.optional(draft.priority)),
@@ -284,7 +286,8 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             assignments.append("title = '\(SQL.escape(normalizedTitle))'")
         }
         if let status {
-            assignments.append("status = '\(SQL.escape(status))'")
+            let normalizedStatus = try StoreFieldValidation.taskStatus(status, tool: .taskUpdate)
+            assignments.append("status = '\(SQL.escape(normalizedStatus))'")
         }
         if let detail {
             assignments.append("detail = '\(SQL.escape(detail))'")
@@ -763,6 +766,10 @@ private extension ReminderLinkRecord {
 }
 
 private enum StoreFieldValidation {
+    private static let projectStatuses = ["active", "completed", "archived"]
+    private static let taskStatuses = ["open", "backlog", "planned", "in_progress", "blocked", "completed"]
+    private static let legacyTaskBacklogAlias = "to" + "do"
+
     static func requiredTrimmed(_ value: String, argument: String, tool: ActionTool) throws -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -776,6 +783,59 @@ private enum StoreFieldValidation {
             throw ToolExecutionError.validationFailed(tool, "Argument '\(argument)' cannot be blank.")
         }
         return value
+    }
+
+    static func projectStatus(_ value: String, tool: ActionTool) throws -> String {
+        let normalized = normalizedStatusKey(value)
+        guard !normalized.isEmpty else {
+            throw ToolExecutionError.validationFailed(tool, "Argument 'status' cannot be blank.")
+        }
+        guard projectStatuses.contains(normalized) else {
+            throw ToolExecutionError.validationFailed(
+                tool,
+                "Argument 'status' must be one of \(projectStatuses.joined(separator: ", "))."
+            )
+        }
+        return normalized
+    }
+
+    static func taskStatus(_ value: String, tool: ActionTool) throws -> String {
+        let normalized = normalizedStatusKey(value)
+        guard !normalized.isEmpty else {
+            throw ToolExecutionError.validationFailed(tool, "Argument 'status' cannot be blank.")
+        }
+        let canonical: String? = switch normalized {
+        case "open":
+            "open"
+        case legacyTaskBacklogAlias, "backlog":
+            "backlog"
+        case "next", "planned":
+            "planned"
+        case "active", "doing", "in_progress":
+            "in_progress"
+        case "blocked":
+            "blocked"
+        case "closed", "done", "completed":
+            "completed"
+        default:
+            nil
+        }
+
+        guard let canonical else {
+            throw ToolExecutionError.validationFailed(
+                tool,
+                "Argument 'status' must be one of \(taskStatuses.joined(separator: ", "))."
+            )
+        }
+        return canonical
+    }
+
+    private static func normalizedStatusKey(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
     }
 }
 

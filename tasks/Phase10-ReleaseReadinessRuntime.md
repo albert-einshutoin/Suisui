@@ -507,6 +507,15 @@
 - [x] テスト: LocalStoreTests で store 直下からの空白 project / task / knowledge data が永続化されないことを確認する。
 - [x] 完了条件: UI / review tool 以外の Core API 利用経路でも空白だけの CRUD データが SQLite に入らない。
 
+### P10-062: SQLite CRUD status canonicalization
+
+- [x] `SQLiteProjectStore` は project status を `active` / `completed` / `archived` に限定する。
+- [x] `SQLiteTaskStore` は task status を `open` / `backlog` / `planned` / `in_progress` / `blocked` / `completed` に canonicalize する。
+- [x] task status alias の `todo` / `next` / `doing` / `active` / `done` / `closed` は既存 board semantics に合わせて保存値へ正規化する。
+- [x] invalid status は既存 row を上書きせず validation error にする。
+- [x] テスト: invalid project/task status が SQLite に永続化されず、既存 status が保持されることを確認する。
+- [x] 完了条件: AI plan / CLI / OSS API 経由で未知 status が入り、board、deadline、CLI count の意味が壊れない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

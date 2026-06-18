@@ -53,6 +53,28 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(try store.list(includeArchived: true).map(\.title), ["Investor demo"])
     }
 
+    func testProjectStoreNormalizesAndRejectsInvalidStatus() throws {
+        let connection = try migratedConnection()
+        let store = SQLiteProjectStore(connection: connection)
+        let project = try store.create(title: "Launch alpha")
+
+        let completed = try store.update(id: project.id, status: " completed ")
+
+        XCTAssertEqual(completed.status, "completed")
+
+        do {
+            _ = try store.update(id: project.id, status: "paused")
+            XCTFail("Invalid project status should not replace an existing status.")
+        } catch {
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .validationFailed(.projectUpdate, "Argument 'status' must be one of active, completed, archived.")
+            )
+        }
+
+        XCTAssertEqual(try store.get(id: project.id).status, "completed")
+    }
+
     func testProjectStoreArchivesProjectsWithoutDeletingRows() throws {
         let connection = try migratedConnection()
         let store = SQLiteProjectStore(connection: connection)
@@ -129,6 +151,42 @@ final class LocalStoreTests: XCTestCase {
 
         XCTAssertEqual(try store.get(id: task.id).title, "Fix onboarding")
         XCTAssertEqual(try store.listAll().map(\.title), ["Fix onboarding"])
+    }
+
+    func testTaskStoreNormalizesAndRejectsInvalidStatus() throws {
+        let connection = try migratedConnection()
+        let store = SQLiteTaskStore(connection: connection)
+
+        let completed = try store.create(title: "Ship alpha", status: " done ")
+
+        XCTAssertEqual(completed.status, "completed")
+
+        let inProgress = try store.update(id: completed.id, status: "doing")
+
+        XCTAssertEqual(inProgress.status, "in_progress")
+
+        do {
+            _ = try store.create(title: "Invalid status task", status: "parked")
+            XCTFail("Invalid task status should not be persisted.")
+        } catch {
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .validationFailed(.taskCreate, "Argument 'status' must be one of open, backlog, planned, in_progress, blocked, completed.")
+            )
+        }
+
+        do {
+            _ = try store.update(id: completed.id, status: "parked")
+            XCTFail("Invalid task status should not replace an existing status.")
+        } catch {
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .validationFailed(.taskUpdate, "Argument 'status' must be one of open, backlog, planned, in_progress, blocked, completed.")
+            )
+        }
+
+        XCTAssertEqual(try store.get(id: completed.id).status, "in_progress")
+        XCTAssertEqual(try store.listAll().map(\.title), ["Ship alpha"])
     }
 
     func testTaskStoreDueQueriesExcludeArchivedProjectTasks() throws {
