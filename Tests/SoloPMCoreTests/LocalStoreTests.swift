@@ -36,6 +36,18 @@ final class LocalStoreTests: XCTestCase {
         }
     }
 
+    func testProjectStoreRejectsCorruptedStatusInsteadOfReturningUnknownState() throws {
+        let connection = try migratedConnection()
+        let store = SQLiteProjectStore(connection: connection)
+        let project = try store.create(title: "Launch alpha")
+
+        try connection.execute("UPDATE projects SET status = 'parked' WHERE id = \(project.id);")
+
+        XCTAssertThrowsError(try store.get(id: project.id)) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .invalidEnum(column: "projects.status", value: "parked"))
+        }
+    }
+
     func testProjectStoreNormalizesAndRejectsBlankTitles() throws {
         let connection = try migratedConnection()
         let store = SQLiteProjectStore(connection: connection)
@@ -123,6 +135,20 @@ final class LocalStoreTests: XCTestCase {
         let due = try store.listDue(onOrBefore: "2026-06-18T00:00:00Z")
 
         XCTAssertEqual(due.map(\.title), ["Soon"])
+    }
+
+    func testTaskStoreRejectsCorruptedProjectIDInsteadOfDetachingTask() throws {
+        let connection = try migratedConnection()
+        let projects = SQLiteProjectStore(connection: connection)
+        let tasks = SQLiteTaskStore(connection: connection)
+        let project = try projects.create(title: "Launch alpha")
+        let task = try tasks.create(title: "Ship alpha", projectID: project.id)
+
+        try connection.execute("UPDATE tasks SET project_id = 'not-int' WHERE id = \(task.id);")
+
+        XCTAssertThrowsError(try tasks.get(id: task.id)) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .invalidInt64(column: "tasks.project_id", value: "not-int"))
+        }
     }
 
     func testTaskStoreNormalizesAndRejectsBlankTitles() throws {
@@ -293,6 +319,18 @@ final class LocalStoreTests: XCTestCase {
 
         XCTAssertThrowsError(try store.get(id: frame.id)) { error in
             XCTAssertEqual(error as? LocalStoreDecodingError, .invalidStringArray(column: "knowledge_frames.triggers_json"))
+        }
+    }
+
+    func testKnowledgeFrameStoreRejectsCorruptedRequiredFieldsInsteadOfReturningEmptyFrame() throws {
+        let connection = try migratedConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let frame = try store.create(name: "Runbook", body: "Use release checklist")
+
+        try connection.execute("UPDATE knowledge_frames SET name = '' WHERE id = \(frame.id);")
+
+        XCTAssertThrowsError(try store.get(id: frame.id)) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .missingRequiredColumn(column: "knowledge_frames.name"))
         }
     }
 

@@ -105,6 +105,9 @@ public struct ReminderLinkRecord: Equatable, Sendable {
 
 public enum LocalStoreDecodingError: Error, Equatable, Sendable {
     case invalidStringArray(column: String)
+    case missingRequiredColumn(column: String)
+    case invalidInt64(column: String, value: String)
+    case invalidEnum(column: String, value: String)
 }
 
 public final class SQLiteProjectStore: @unchecked Sendable {
@@ -410,7 +413,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             throw ToolExecutionError.executionFailed(.taskUpdate, "Task \(id) was not found.")
         }
 
-        return TaskRecord(row: row)
+        return try TaskRecord(row: row)
     }
 }
 
@@ -692,26 +695,37 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
 
 private extension ProjectRecord {
     init(row: [String: String]) throws {
+        let status = try StoreFieldValidation.persistedProjectStatus(
+            try SQL.requiredString(row["status"], column: "projects.status"),
+            column: "projects.status"
+        )
         self.init(
-            id: Int64(row["id"] ?? "") ?? 0,
-            title: row["title"] ?? "",
-            status: row["status"] ?? "",
+            id: try SQL.requiredInt64(row["id"], column: "projects.id"),
+            title: try SQL.requiredString(row["title"], column: "projects.title"),
+            status: status,
             priority: SQL.nilIfEmpty(row["priority"]),
             deadline: SQL.nilIfEmpty(row["deadline"]),
             workspacePath: SQL.nilIfEmpty(row["workspace_path"]),
-            tags: try SQL.parseStringArray(row["tags_json"] ?? "[]", column: "projects.tags_json"),
+            tags: try SQL.parseStringArray(
+                try SQL.requiredString(row["tags_json"], column: "projects.tags_json"),
+                column: "projects.tags_json"
+            ),
             sourceCommand: SQL.nilIfEmpty(row["source_command"])
         )
     }
 }
 
 private extension TaskRecord {
-    init(row: [String: String]) {
+    init(row: [String: String]) throws {
+        let status = try StoreFieldValidation.persistedTaskStatus(
+            try SQL.requiredString(row["status"], column: "tasks.status"),
+            column: "tasks.status"
+        )
         self.init(
-            id: Int64(row["id"] ?? "") ?? 0,
-            projectID: Int64(row["project_id"] ?? ""),
-            title: row["title"] ?? "",
-            status: row["status"] ?? "",
+            id: try SQL.requiredInt64(row["id"], column: "tasks.id"),
+            projectID: try SQL.optionalInt64(row["project_id"], column: "tasks.project_id"),
+            title: try SQL.requiredString(row["title"], column: "tasks.title"),
+            status: status,
             dueAt: SQL.nilIfEmpty(row["due_at"]),
             priority: SQL.nilIfEmpty(row["priority"]),
             sourceCommand: SQL.nilIfEmpty(row["source_command"]),
@@ -723,10 +737,13 @@ private extension TaskRecord {
 private extension KnowledgeFrameRecord {
     init(row: [String: String]) throws {
         self.init(
-            id: Int64(row["id"] ?? "") ?? 0,
-            name: row["name"] ?? "",
-            body: row["body"] ?? "",
-            triggers: try SQL.parseStringArray(row["triggers_json"] ?? "[]", column: "knowledge_frames.triggers_json")
+            id: try SQL.requiredInt64(row["id"], column: "knowledge_frames.id"),
+            name: try SQL.requiredString(row["name"], column: "knowledge_frames.name"),
+            body: try SQL.requiredString(row["body"], column: "knowledge_frames.body"),
+            triggers: try SQL.parseStringArray(
+                try SQL.requiredString(row["triggers_json"], column: "knowledge_frames.triggers_json"),
+                column: "knowledge_frames.triggers_json"
+            )
         )
     }
 }
@@ -841,6 +858,22 @@ private enum StoreFieldValidation {
             .replacingOccurrences(of: "-", with: "_")
             .replacingOccurrences(of: " ", with: "_")
     }
+
+    static func persistedProjectStatus(_ value: String, column: String) throws -> String {
+        let normalized = normalizedStatusKey(value)
+        guard projectStatuses.contains(normalized) else {
+            throw LocalStoreDecodingError.invalidEnum(column: column, value: value)
+        }
+        return normalized
+    }
+
+    static func persistedTaskStatus(_ value: String, column: String) throws -> String {
+        let normalized = normalizedStatusKey(value)
+        guard taskStatuses.contains(normalized) else {
+            throw LocalStoreDecodingError.invalidEnum(column: column, value: value)
+        }
+        return normalized
+    }
 }
 
 private enum SQL {
@@ -867,6 +900,32 @@ private enum SQL {
             throw LocalStoreDecodingError.invalidStringArray(column: column)
         }
         return decoded
+    }
+
+    static func requiredString(_ value: String?, column: String) throws -> String {
+        guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw LocalStoreDecodingError.missingRequiredColumn(column: column)
+        }
+        return value
+    }
+
+    static func requiredInt64(_ value: String?, column: String) throws -> Int64 {
+        let required = try requiredString(value, column: column)
+        guard let int = Int64(required) else {
+            throw LocalStoreDecodingError.invalidInt64(column: column, value: required)
+        }
+        return int
+    }
+
+    static func optionalInt64(_ value: String?, column: String) throws -> Int64? {
+        let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !normalized.isEmpty else {
+            return nil
+        }
+        guard let int = Int64(normalized) else {
+            throw LocalStoreDecodingError.invalidInt64(column: column, value: normalized)
+        }
+        return int
     }
 
     static func nilIfEmpty(_ value: String?) -> String? {

@@ -581,6 +581,15 @@
 - [x] テスト: runtime factory に silent default fallback が再導入されないことを確認する。
 - [x] 完了条件: 設定破損が provider / STT 選択の意図しない default 化として隠れない。
 
+### P10-071: SQLite CRUD row decode fail-fast fields
+
+- [x] `ProjectRecord(row:)` は `id` / `title` / `status` を必須 decode し、欠落や不正 enum を正常レコードにしない。
+- [x] `TaskRecord(row:)` は `id` / `project_id` / `title` / `status` を明示 decode し、不正 `project_id` を `nil` にしない。
+- [x] `KnowledgeFrameRecord(row:)` は `id` / `name` / `body` を必須 decode し、空 frame を返さない。
+- [x] `projects.tags_json` / `knowledge_frames.triggers_json` は欠落時も `[]` に丸めず decode error にする。
+- [x] テスト: corrupted project status、corrupted task project_id、corrupted knowledge name が silent fallback されないことを確認する。
+- [x] 完了条件: SQLite row 破損や migration bug が、空タイトル・ID 0・project link 消失・未知 status として UI/CLI に流れない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
