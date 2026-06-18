@@ -698,6 +698,13 @@
 - [x] runtime source regression test と既存 draft redaction test で secret leak 防止を確認する。
 - [x] 完了条件: redaction pattern の破損が secret を無検知で通す成功 path にならない。
 
+### P10-087: Local store array encoding failures are not silent
+
+- [x] `SQL.jsonArray` は `Project.tags` / `KnowledgeFrame.triggers` の encode failure を `[]` に丸めない。
+- [x] `SQLiteProjectStore.create` と `SQLiteKnowledgeFrameStore.create/update` は throwing `jsonArray` を呼び出し、失敗を CRUD caller へ返す。
+- [x] source regression test、`LocalStoreTests`、`ProjectTaskKnowledgeToolTests` で既存CRUD動作を確認する。
+- [x] 完了条件: 永続化前の配列エンコード異常が、タグ/トリガー消失として成功扱いにならない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

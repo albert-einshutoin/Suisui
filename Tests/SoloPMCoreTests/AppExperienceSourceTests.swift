@@ -206,6 +206,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains("try? NSRegularExpression(pattern: pattern.expression)"))
     }
 
+    func testLocalStoresDoNotDefaultArrayEncodingToEmptyJSON() throws {
+        let source = try readPackageFile("Sources/SoloPMCore/Tools/LocalStores.swift")
+
+        XCTAssertTrue(source.contains("static func jsonArray(_ values: [String], column: String) throws -> String"))
+        XCTAssertFalse(source.contains(#"(try? JSONEncoder().encode(values)) ?? Data("[]".utf8)"#))
+        XCTAssertFalse(source.contains(#"String(data: data, encoding: .utf8) ?? "[]""#))
+    }
+
     func testExternalMCPLauncherDoesNotDefaultToInMemorySecretStore() throws {
         let source = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")
 

@@ -133,6 +133,7 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         let normalizedTitle = try StoreFieldValidation.requiredTrimmed(title, argument: "title", tool: .projectCreate)
+        let tagsJSON = try SQL.jsonArray(tags, column: "projects.tags_json")
 
         try connection.execute(
             """
@@ -143,7 +144,7 @@ public final class SQLiteProjectStore: @unchecked Sendable {
               \(SQL.optional(priority)),
               \(SQL.optional(deadline)),
               \(SQL.optional(workspacePath)),
-              '\(SQL.escape(SQL.jsonArray(tags)))',
+              '\(SQL.escape(tagsJSON))',
               \(SQL.optional(sourceCommand))
             );
             """
@@ -586,11 +587,12 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         defer { lock.unlock() }
         let normalizedName = try StoreFieldValidation.requiredTrimmed(name, argument: "name", tool: .frameCreate)
         let validatedBody = try StoreFieldValidation.requiredNonBlank(body, argument: "body", tool: .frameCreate)
+        let triggersJSON = try SQL.jsonArray(triggers, column: "knowledge_frames.triggers_json")
 
         try connection.execute(
             """
             INSERT INTO knowledge_frames (name, body, triggers_json)
-            VALUES ('\(SQL.escape(normalizedName))', '\(SQL.escape(validatedBody))', '\(SQL.escape(SQL.jsonArray(triggers)))');
+            VALUES ('\(SQL.escape(normalizedName))', '\(SQL.escape(validatedBody))', '\(SQL.escape(triggersJSON))');
             """
         )
         let id = connection.lastInsertedRowID
@@ -619,7 +621,8 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
             assignments.append("body = '\(SQL.escape(validatedBody))'")
         }
         if let triggers {
-            assignments.append("triggers_json = '\(SQL.escape(SQL.jsonArray(triggers)))'")
+            let triggersJSON = try SQL.jsonArray(triggers, column: "knowledge_frames.triggers_json")
+            assignments.append("triggers_json = '\(SQL.escape(triggersJSON))'")
         }
         assignments.append("updated_at = CURRENT_TIMESTAMP")
 
@@ -906,9 +909,12 @@ private enum SQL {
         return "'\(escape(value))'"
     }
 
-    static func jsonArray(_ values: [String]) -> String {
-        let data = (try? JSONEncoder().encode(values)) ?? Data("[]".utf8)
-        return String(data: data, encoding: .utf8) ?? "[]"
+    static func jsonArray(_ values: [String], column: String) throws -> String {
+        let data = try JSONEncoder().encode(values)
+        guard let json = String(data: data, encoding: .utf8) else {
+            throw DatabaseError.executeFailed("Could not encode \(column) as UTF-8 JSON.")
+        }
+        return json
     }
 
     static func parseStringArray(_ value: String, column: String) throws -> [String] {
