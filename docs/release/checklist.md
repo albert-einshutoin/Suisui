@@ -119,7 +119,24 @@ export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERS
 SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh
 ```
 
-10. UI and accessibility evidence
+10. MCP Inspector evidence
+
+Regenerate the MCP stdio Tools evidence for this release candidate:
+
+```bash
+./script/verify_mcp_compliance.sh
+```
+
+Confirm `docs/release/evidence/mcp-inspector.md` includes:
+
+- ``Stable baseline: `2025-11-25` ``
+- ``Draft watchlist: `2026-07-28` ``
+- `tools/list` and `tools/call`
+- malformed-json / mismatched-id / invalid-schema / timeout failure taxonomy
+
+SoloPM must not be described as a full MCP host for this release.
+
+11. UI and accessibility evidence
 
 Generate Light/Dark/System screenshots on a host with Screen Recording permission:
 
@@ -129,7 +146,7 @@ script/capture_ui_evidence.sh
 
 Then replace `docs/release/evidence/accessibility-voiceover.md` with the real VoiceOver pass for the same release-candidate app. The final file must use `Status: passed`, include the Project navigation -> Project board detail -> Open task -> Status controls -> Task inspector path, and remove all pending/template language.
 
-11. final readiness report
+12. final readiness report
 
 ```bash
 source packaging/app_metadata.env
@@ -137,13 +154,13 @@ export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERS
 ./script/release_readiness_report.sh
 ```
 
-12. tag
+13. tag
 
 ```bash
 git tag -a v0.1.0-alpha.1 -m "SoloPM 0.1.0 alpha 1"
 ```
 
-13. release notes
+14. release notes
 
 Use [public-alpha.md](public-alpha.md) as the base. Include artifact names, checksums, supported macOS version, Known Issues, and rollback instructions.
 

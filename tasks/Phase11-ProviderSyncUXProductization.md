@@ -45,6 +45,7 @@
 - [x] smoke対象は production source にfake serverを入れず、`Tests/Support` か `fixtures/mcp/` の検証用stdio serverに隔離する。
 - [x] `initialize -> tools/list -> tools/call` の成功ログを `docs/release/evidence/mcp-inspector.md` に記録する。
 - [x] malformed JSON-RPC、mismatched id、invalid schema、timeout の失敗ログも証跡に含める。
+- [x] `release_readiness_report.sh` は `docs/release/evidence/mcp-inspector.md` の安定版baseline、draft境界、Inspector成功ログ、failure taxonomyを検証し、欠落/不完全なMCP証跡をblockerにする。
 - [x] Settings の Check Connection は Inspector結果と同じfailure taxonomyを表示する。
 - [x] 完了条件: MCP互換性が「テストでなんとなく通る」ではなく、公式ツールで再現可能な証跡になる。
 

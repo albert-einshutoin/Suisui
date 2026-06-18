@@ -10,6 +10,7 @@ UI_SCREENSHOT_MIN_BYTES=50000
 UI_SCREENSHOT_MIN_WIDTH=640
 UI_SCREENSHOT_MIN_HEIGHT=420
 VOICEOVER_EVIDENCE_RELATIVE="docs/release/evidence/accessibility-voiceover.md"
+MCP_EVIDENCE_RELATIVE="docs/release/evidence/mcp-inspector.md"
 RUNTIME_SOURCE_DIRS=(
   "$ROOT_DIR/Sources/SoloPMCore"
   "$ROOT_DIR/Sources/SoloPMApp"
@@ -31,6 +32,22 @@ VOICEOVER_REQUIRED_MARKERS=(
   "Delete Task confirmation"
   "No keyboard trap"
   "No unlabeled primary CRUD controls"
+)
+MCP_EVIDENCE_REQUIRED_MARKERS=(
+  "Generated:"
+  "Scope: validate the release MCP stdio fixture"
+  'Stable baseline: `2025-11-25`'
+  'Draft watchlist: `2026-07-28`'
+  "not a full MCP host"
+  "initialize -> tools/list -> tools/call"
+  "MCP Inspector CLI tools/list"
+  "MCP Inspector CLI tools/call"
+  "SoloPM local smoke success"
+  "malformed-json"
+  "mismatched-id"
+  "invalid-schema"
+  "timeout"
+  "exit: 0"
 )
 
 section() {
@@ -305,6 +322,23 @@ else
 
   if grep -Eiq '(pending|todo|tbd|placeholder|sample|example|replace me)' "$voiceover_evidence_file"; then
     blocker "VoiceOver accessibility evidence still contains placeholder text"
+  fi
+fi
+
+section "MCP Inspector evidence"
+mcp_evidence_file="$ROOT_DIR/$MCP_EVIDENCE_RELATIVE"
+if [[ ! -f "$mcp_evidence_file" ]]; then
+  blocker "missing MCP Inspector evidence file: $MCP_EVIDENCE_RELATIVE"
+else
+  mcp_missing_marker_count=0
+  for required_marker in "${MCP_EVIDENCE_REQUIRED_MARKERS[@]}"; do
+    if ! grep -F "$required_marker" "$mcp_evidence_file" >/dev/null; then
+      blocker "MCP Inspector evidence is missing marker: $required_marker"
+      mcp_missing_marker_count=$((mcp_missing_marker_count + 1))
+    fi
+  done
+  if [[ "$mcp_missing_marker_count" -eq 0 ]]; then
+    printf "OK: MCP Inspector evidence covers stable baseline, draft boundary, tools/list, tools/call, and failure taxonomy\n"
   fi
 fi
 
