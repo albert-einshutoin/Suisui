@@ -156,6 +156,44 @@ final class ExternalMCPTests: XCTestCase {
         }
     }
 
+    func testMCPEnvironmentTextCodecParsesKeychainReferencesAndRejectsRawValues() throws {
+        let environment = try MCPEnvironmentTextCodec.parse("""
+        GITHUB_TOKEN=keychain:github_token
+        OPENAI_API_KEY = keychain: openai_api_key
+        """)
+
+        XCTAssertEqual(environment, [
+            "GITHUB_TOKEN": .keychain(.githubToken),
+            "OPENAI_API_KEY": .keychain(.openAIAPIKey)
+        ])
+        XCTAssertEqual(
+            MCPEnvironmentTextCodec.format(environment),
+            """
+            GITHUB_TOKEN=keychain:github_token
+            OPENAI_API_KEY=keychain:openai_api_key
+            """
+        )
+
+        XCTAssertThrowsError(try MCPEnvironmentTextCodec.parse("GITHUB_TOKEN=ghp_raw_secret")) { error in
+            XCTAssertEqual(
+                error as? MCPEnvironmentTextError,
+                .rawValueNotAllowed(line: 1)
+            )
+        }
+        XCTAssertThrowsError(try MCPEnvironmentTextCodec.parse("9TOKEN=keychain:github_token")) { error in
+            XCTAssertEqual(
+                error as? MCPEnvironmentTextError,
+                .invalidName(line: 1, name: "9TOKEN")
+            )
+        }
+        XCTAssertThrowsError(try MCPEnvironmentTextCodec.parse("トークン=keychain:github_token")) { error in
+            XCTAssertEqual(
+                error as? MCPEnvironmentTextError,
+                .invalidName(line: 1, name: "トークン")
+            )
+        }
+    }
+
     func testStdioLauncherStartsProcessAndCallsTools() async throws {
         let scriptURL = try makeStdioServerScript()
         let registration = MCPServerRegistration(
@@ -502,6 +540,43 @@ final class ExternalMCPTests: XCTestCase {
 
         XCTAssertEqual(viewModel.registration.arguments, ["node", "server.js"])
         XCTAssertEqual(viewModel.errorMessage, "MCP arguments are invalid: missing closing double quote.")
+    }
+
+    @MainActor
+    func testExternalMCPSettingsViewModelEditsKeychainEnvironmentReferencesWithoutRawSecrets() throws {
+        let store = InMemoryMCPServerRegistrationStore()
+        let viewModel = ExternalMCPSettingsViewModel(store: store)
+
+        viewModel.updateDisplayName("GitHub MCP")
+        viewModel.updateCommand("/usr/bin/env")
+        viewModel.updateEnvironmentText("GITHUB_TOKEN=keychain:github_token")
+        viewModel.updateEnabled(true)
+        viewModel.save()
+
+        let saved = try XCTUnwrap(try store.loadRegistrations().first)
+        XCTAssertEqual(saved.environment, ["GITHUB_TOKEN": .keychain(.githubToken)])
+        XCTAssertEqual(viewModel.environmentText, "GITHUB_TOKEN=keychain:github_token")
+        let rows = viewModel.display.environmentRows
+        XCTAssertEqual(rows, [
+            MCPEnvironmentDisplayRow(name: "GITHUB_TOKEN", sourceLabel: "Keychain: github_token")
+        ])
+
+        viewModel.updateEnvironmentText("GITHUB_TOKEN=ghp_raw_secret")
+
+        XCTAssertEqual(viewModel.environmentText, "GITHUB_TOKEN=ghp_raw_secret")
+        XCTAssertEqual(viewModel.registration.environment, ["GITHUB_TOKEN": .keychain(.githubToken)])
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "MCP environment values must reference Keychain entries using keychain:<secret_key>."
+        )
+
+        viewModel.save()
+
+        XCTAssertEqual(try store.loadRegistrations().first?.environment, ["GITHUB_TOKEN": .keychain(.githubToken)])
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "MCP environment values must reference Keychain entries using keychain:<secret_key>."
+        )
     }
 
     func testSQLiteMCPRegistrationStorePersistsRegistrationsWithoutRawSecrets() throws {

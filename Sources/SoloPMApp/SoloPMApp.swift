@@ -920,6 +920,12 @@ private struct SettingsView: View {
                     get: { externalMCPViewModel.registration.workingDirectory ?? "" },
                     set: { externalMCPViewModel.updateWorkingDirectory($0) }
                 ))
+                TextField("Environment References", text: Binding(
+                    get: { externalMCPViewModel.environmentText },
+                    set: { externalMCPViewModel.updateEnvironmentText($0) }
+                ), axis: .vertical)
+                .lineLimit(2...4)
+                .help("Use NAME=keychain:secret_key per line. Raw secret values are rejected.")
                 LabeledContent("Transport", value: externalMCPViewModel.display.transportLabel)
                 LabeledContent("Status", value: externalMCPViewModel.display.statusLabel)
                 ForEach(externalMCPViewModel.display.environmentRows, id: \.name) { row in

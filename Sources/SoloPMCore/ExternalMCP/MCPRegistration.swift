@@ -207,6 +207,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
     @Published public private(set) var registration: MCPServerRegistration
     @Published public private(set) var registrationRows: [MCPServerRegistrationRow]
     @Published public private(set) var selectedRegistrationID: String?
+    @Published public private(set) var environmentText: String
     @Published public private(set) var toolRows: [ExternalMCPToolCatalogRow]
     @Published public private(set) var auditRows: [ExternalMCPAuditHistoryRow]
     @Published public private(set) var auditErrorMessage: String?
@@ -238,6 +239,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         self.registration = Self.blankRegistration(existingIDs: [])
         self.registrationRows = []
         self.selectedRegistrationID = nil
+        self.environmentText = ""
         refresh()
     }
 
@@ -261,6 +263,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
                 registration = Self.blankRegistration(existingIDs: [])
                 selectedRegistrationID = registration.id
             }
+            syncEnvironmentTextFromRegistration()
             refreshRegistrationRows()
             errorMessage = nil
         } catch {
@@ -276,6 +279,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
 
         registration = selected
         selectedRegistrationID = selected.id
+        syncEnvironmentTextFromRegistration()
         toolRows = []
         refreshRegistrationRows()
         errorMessage = nil
@@ -284,6 +288,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
     public func createRegistration() {
         registration = Self.blankRegistration(existingIDs: Set(registrations.map(\.id)))
         selectedRegistrationID = registration.id
+        syncEnvironmentTextFromRegistration()
         toolRows = []
         refreshRegistrationRows()
         errorMessage = nil
@@ -322,6 +327,19 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         }
     }
 
+    public func updateEnvironmentText(_ environmentText: String) {
+        self.environmentText = environmentText
+        do {
+            var updated = registration
+            updated.environment = try MCPEnvironmentTextCodec.parse(environmentText)
+            registration = updated
+            refreshRegistrationRows()
+            errorMessage = nil
+        } catch {
+            errorMessage = Self.environmentErrorMessage(error)
+        }
+    }
+
     public func updateWorkingDirectory(_ workingDirectory: String) {
         let trimmed = workingDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
         var updated = registration
@@ -332,13 +350,19 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
 
     public func save() {
         do {
-            try registrationValidator.validate(registration)
-            let updatedRegistrations = Self.replacing(registration, in: registrations)
+            var registrationToSave = registration
+            registrationToSave.environment = try MCPEnvironmentTextCodec.parse(environmentText)
+            try registrationValidator.validate(registrationToSave)
+            let updatedRegistrations = Self.replacing(registrationToSave, in: registrations)
             try store.saveRegistrations(updatedRegistrations)
             registrations = updatedRegistrations
-            selectedRegistrationID = registration.id
+            registration = registrationToSave
+            selectedRegistrationID = registrationToSave.id
+            syncEnvironmentTextFromRegistration()
             refreshRegistrationRows()
             errorMessage = nil
+        } catch let error as MCPEnvironmentTextError {
+            errorMessage = Self.environmentErrorMessage(error)
         } catch let error as MCPRegistrationStoreError {
             errorMessage = Self.storeErrorMessage(error)
         } catch {
@@ -353,6 +377,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             registrations = remainingRegistrations
             registration = remainingRegistrations.first ?? Self.blankRegistration(existingIDs: [])
             selectedRegistrationID = registration.id
+            syncEnvironmentTextFromRegistration()
             refreshRegistrationRows()
             toolRows = []
             errorMessage = nil
@@ -423,6 +448,10 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         registrationRows = rows
     }
 
+    private func syncEnvironmentTextFromRegistration() {
+        environmentText = MCPEnvironmentTextCodec.format(registration.environment)
+    }
+
     private static func connectionErrorMessage(_ error: Error) -> String {
         switch error {
         case MCPRegistrationError.serverDisabled:
@@ -471,6 +500,21 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             return "MCP arguments are invalid: trailing escape character."
         default:
             return "MCP arguments are invalid: \(error)"
+        }
+    }
+
+    private static func environmentErrorMessage(_ error: Error) -> String {
+        switch error {
+        case MCPEnvironmentTextError.rawValueNotAllowed:
+            return "MCP environment values must reference Keychain entries using keychain:<secret_key>."
+        case MCPEnvironmentTextError.missingAssignment(let line):
+            return "MCP environment line \(line) must use NAME=keychain:<secret_key>."
+        case MCPEnvironmentTextError.invalidName(let line, let name):
+            return "MCP environment line \(line) has an invalid variable name: \(name)."
+        case MCPEnvironmentTextError.missingKeychainKey(let line):
+            return "MCP environment line \(line) is missing a Keychain secret key."
+        default:
+            return "MCP environment references are invalid: \(error)"
         }
     }
 
@@ -591,6 +635,83 @@ public enum MCPArgumentTextCodec {
         }
 
         return "'\(argument.replacingOccurrences(of: "'", with: "'\\''"))'"
+    }
+}
+
+public enum MCPEnvironmentTextError: Error, Equatable, Sendable {
+    case missingAssignment(line: Int)
+    case invalidName(line: Int, name: String)
+    case rawValueNotAllowed(line: Int)
+    case missingKeychainKey(line: Int)
+}
+
+public enum MCPEnvironmentTextCodec {
+    public static func parse(_ text: String) throws -> [String: MCPEnvironmentReference] {
+        var environment: [String: MCPEnvironmentReference] = [:]
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        for (offset, rawLine) in lines.enumerated() {
+            let lineNumber = offset + 1
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty else {
+                continue
+            }
+
+            guard let separatorIndex = line.firstIndex(of: "=") else {
+                throw MCPEnvironmentTextError.missingAssignment(line: lineNumber)
+            }
+
+            let rawName = String(line[..<separatorIndex])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard isValidEnvironmentName(rawName) else {
+                throw MCPEnvironmentTextError.invalidName(line: lineNumber, name: rawName)
+            }
+
+            let rawValue = String(line[line.index(after: separatorIndex)...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard rawValue.hasPrefix("keychain:") else {
+                throw MCPEnvironmentTextError.rawValueNotAllowed(line: lineNumber)
+            }
+
+            let keyName = String(rawValue.dropFirst("keychain:".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !keyName.isEmpty else {
+                throw MCPEnvironmentTextError.missingKeychainKey(line: lineNumber)
+            }
+
+            environment[rawName] = .keychain(SecretKey(keyName))
+        }
+        return environment
+    }
+
+    public static func format(_ environment: [String: MCPEnvironmentReference]) -> String {
+        environment
+            .sorted { $0.key < $1.key }
+            .map { name, reference in
+                switch reference {
+                case .keychain(let key):
+                    return "\(name)=keychain:\(key.rawValue)"
+                }
+            }
+            .joined(separator: "\n")
+    }
+
+    private static func isValidEnvironmentName(_ name: String) -> Bool {
+        let scalars = Array(name.unicodeScalars)
+        guard let first = scalars.first,
+              first == "_" || isASCIIAlpha(first) else {
+            return false
+        }
+        return scalars.allSatisfy { scalar in
+            scalar == "_" || isASCIIAlpha(scalar) || isASCIIDigit(scalar)
+        }
+    }
+
+    private static func isASCIIAlpha(_ scalar: Unicode.Scalar) -> Bool {
+        ("A"..."Z").contains(scalar) || ("a"..."z").contains(scalar)
+    }
+
+    private static func isASCIIDigit(_ scalar: Unicode.Scalar) -> Bool {
+        ("0"..."9").contains(scalar)
     }
 }
 
