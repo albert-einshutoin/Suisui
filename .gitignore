@@ -2,6 +2,7 @@
 /.build/
 /DerivedData/
 /dist/
+/ui-samples/
 /.swiftpm/
 *.xcuserstate
 *.xcworkspace/xcuserdata/

@@ -68,6 +68,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(example.contains("SECRET"))
     }
 
+    func testLocalVisualQAArtifactsAndMacMetadataAreIgnored() throws {
+        let gitignore = try readPackageFile(".gitignore")
+        let ignoredPaths = gitignore
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+        XCTAssertTrue(ignoredPaths.contains(".DS_Store"))
+        XCTAssertTrue(ignoredPaths.contains("/ui-samples/"))
+    }
+
     func testReleasePreflightRejectsEvidenceForDifferentBuild() throws {
         let evidenceURL = packageRoot()
             .appendingPathComponent(".build/test-release-evidence-mismatch.json")
