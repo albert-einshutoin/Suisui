@@ -375,14 +375,14 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     public func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
         let normalized = try normalizedDraft(draft)
         try prepareProjectForTaskMutation(projectID: normalized.projectID, taskStatus: normalized.status)
-        let record = try taskStore.update(
+        let record = try taskStore.updateFields(
             id: id,
             title: normalized.title,
             status: normalized.status.rawValue,
-            detail: normalized.detail,
-            dueAt: normalized.dueAt ?? "",
-            priority: normalized.priority.rawValue,
-            projectID: normalized.projectID
+            detail: normalized.detail.isEmpty ? .clear : .set(normalized.detail),
+            dueAt: normalized.dueAt.map { .set($0) } ?? .clear,
+            priority: .set(normalized.priority.rawValue),
+            projectID: .set(normalized.projectID)
         )
         return try makeBoardTask(record).requiredTask()
     }

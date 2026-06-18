@@ -215,6 +215,29 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertNil(updated.dueAt)
     }
 
+    func testUpdateTaskClearsDueDateFromPersistentDueQueries() throws {
+        let stores = try makeStoreBundle()
+        let projectID = try XCTUnwrap(stores.board.loadSnapshot().projects.first?.id)
+        let task = try stores.board.createTask(ProjectBoardTaskDraft(
+            projectID: projectID,
+            title: "Clear persistent due date",
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-22"
+        ))
+
+        _ = try stores.board.updateTask(id: task.id, ProjectBoardTaskDraft(
+            projectID: projectID,
+            title: "Clear persistent due date",
+            status: .planned,
+            priority: .medium,
+            dueAt: nil
+        ))
+
+        XCTAssertNil(try stores.tasks.get(id: task.id).dueAt)
+        XCTAssertFalse(try stores.tasks.listDue(onOrBefore: "2026-12-31T23:59:59Z").contains { $0.id == task.id })
+    }
+
     func testDeleteTaskRemovesCardFromPersistentSnapshot() throws {
         let store = try makeStore()
         let projectID = try XCTUnwrap(store.loadSnapshot().projects.first?.id)

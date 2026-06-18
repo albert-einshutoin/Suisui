@@ -155,6 +155,7 @@
   - [x] 選択中Projectの編集、削除、Local suggestion適用を右インスペクタに統合する。
   - [x] Task / Project inspector はcompact summaryで状態、優先度、期限、件数を先頭表示し、詳細Formの前に文脈が分かる。
   - [x] Task単体削除はTask行だけでなく、紐づくCalendar link、Reminder link、Deadline rule、Artifactを同一transactionで削除し、削除件数をToolResultに返す。
+  - [x] Task inspectorで期限を削除した場合、画面上のnil表示だけでなくSQLiteの `due_at` をNULLへ戻し、期限検索/CLI/deadline watcherに空文字の期限が再浮上しない。
 - [ ] 完了条件: Notion的な柔軟さ、Linear的な速度、Todoist的な即時入力のうち、SoloPMに必要な部分だけが実装される。
 
 ## P11-032: Today and Inbox workflow
