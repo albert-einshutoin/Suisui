@@ -171,6 +171,28 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains("Button {\n                        onSelectTask(task.id)\n                    } label: {\n                        BoardTaskCard"))
     }
 
+    func testKanbanTaskCardsSeparateOpenDetailsFocusFromStatusMoveControls() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let cardStart = try XCTUnwrap(source.range(of: "private struct BoardTaskCard"))
+        let cardEnd = try XCTUnwrap(source.range(of: "private struct TaskCardSelectableSummary"))
+        let cardSource = String(source[cardStart.lowerBound..<cardEnd.lowerBound])
+
+        XCTAssertTrue(source.contains("TaskCardSelectableSummary"))
+        XCTAssertTrue(source.contains("TaskDragAffordance"))
+        XCTAssertTrue(cardSource.contains("Button(action: onSelect)"))
+        XCTAssertTrue(cardSource.contains(".buttonStyle(.plain)"))
+        XCTAssertTrue(cardSource.contains(".accessibilityIdentifier(\"task-card-open-details\")"))
+        XCTAssertTrue(cardSource.contains(".accessibilityIdentifier(\"task-status-move-controls\")"))
+        XCTAssertTrue(cardSource.contains(".accessibilityElement(children: .contain)"))
+        XCTAssertTrue(cardSource.contains(".accessibilitySortPriority(2)"))
+        XCTAssertTrue(cardSource.contains(".accessibilitySortPriority(1)"))
+        XCTAssertLessThan(
+            try XCTUnwrap(cardSource.range(of: "TaskCardSelectableSummary")).lowerBound,
+            try XCTUnwrap(cardSource.range(of: "TaskStatusMoveControls")).lowerBound
+        )
+        XCTAssertFalse(cardSource.contains(".onTapGesture(perform: onSelect)"))
+    }
+
     func testKanbanDragAndDropHasVisibleDesktopAffordances() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
@@ -299,10 +321,12 @@ final class AppExperienceSourceTests: XCTestCase {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
         XCTAssertTrue(source.contains(".accessibilityElement(children: .combine)"))
-        XCTAssertTrue(source.contains(".accessibilityLabel(\"Task \\(task.title)\")"))
+        XCTAssertTrue(source.contains(".accessibilityElement(children: .contain)"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Open task \\(task.title)\")"))
         XCTAssertTrue(source.contains(".accessibilityValue(accessibilityValueText)"))
-        XCTAssertTrue(source.contains(".accessibilityHint(\"Opens task details in the inspector.\")"))
-        XCTAssertTrue(source.contains(".accessibilityAction(named: \"Open Details\", onSelect)"))
+        XCTAssertTrue(source.contains(".accessibilityHint(\"Opens task details in the inspector. Use the status controls below to move without dragging.\")"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Status controls for \\(task.title)\")"))
+        XCTAssertTrue(source.contains(".accessibilityHint(\"Moves the task between board columns.\")"))
         XCTAssertTrue(source.contains(".accessibilityLabel(\"Add task to \\(column.title)\")"))
         XCTAssertTrue(source.contains(".accessibilityLabel(\"Add task to empty \\(column.title) column\")"))
         XCTAssertTrue(source.contains(".accessibilityLabel(\"Current status: \\(task.status.title)\")"))
@@ -928,6 +952,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(syncSource.contains("throw SyncServiceError.syncBackendNotConfigured"))
         XCTAssertTrue(entitlementSource.contains("case externalSync"))
         XCTAssertFalse(syncSource.contains("return SyncStartResult(startedAt: Date())"))
+    }
+
+    func testClickPathAuditTracksTaskCardFocusUpgradeAndRemainingManualEvidence() throws {
+        let audit = try readPackageFile("docs/ux/click-path-audit.md")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+
+        XCTAssertTrue(audit.contains("cardの `Open task` 領域 -> inspector編集 -> `Save Changes`"))
+        XCTAssertTrue(audit.contains("キーボードフォーカス可能なButton"))
+        XCTAssertTrue(audit.contains("Open Detailsとstatus move controlsも別フォーカス対象に分離"))
+        XCTAssertTrue(audit.contains("実機VoiceOver focus orderとLight/Darkのスクリーンショット確認は残る"))
+        XCTAssertTrue(phase.contains("[x] Task card本体のOpen Detailsとstatus move controlsを別フォーカス対象に分け"))
+        XCTAssertTrue(phase.contains("[ ] 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。"))
+        XCTAssertTrue(phase.contains("[ ] Light/Dark/System切替後にカード、サイドバー、インスペクタのコントラストが破綻しないことをスクリーンショットで確認する。"))
     }
 
     func testLLMHTTPErrorMappingDoesNotDropMalformedErrorBodies() throws {

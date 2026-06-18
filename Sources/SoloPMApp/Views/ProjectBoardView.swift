@@ -969,6 +969,55 @@ private struct BoardTaskCard: View {
     @State private var isPointerHovered = false
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button(action: onSelect) {
+                TaskCardSelectableSummary(task: task, isPointerHovered: isPointerHovered)
+            }
+            .buttonStyle(.plain)
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Open task \(task.title)")
+            .accessibilityValue(accessibilityValueText)
+            .accessibilityHint("Opens task details in the inspector. Use the status controls below to move without dragging.")
+            .accessibilityIdentifier("task-card-open-details")
+            .accessibilitySortPriority(2)
+
+            TaskStatusMoveControls(task: task, onMove: onMoveStatus)
+                .accessibilityIdentifier("task-status-move-controls")
+                .accessibilitySortPriority(1)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .background(task.status.tint.opacity(isSelected || isPointerHovered ? 0.14 : 0.05), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected || isPointerHovered ? task.status.tint.opacity(0.7) : Color.secondary.opacity(0.16))
+        }
+        .shadow(color: Color.black.opacity(isPointerHovered ? 0.10 : 0.04), radius: isPointerHovered ? 12 : 8, x: 0, y: isPointerHovered ? 4 : 2)
+        .contentShape(RoundedRectangle(cornerRadius: 8))
+        .onHover { isPointerHovered = $0 }
+        .animation(.snappy(duration: 0.16), value: isPointerHovered)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var accessibilityValueText: String {
+        var values = [
+            "Status: \(task.status.title)",
+            "Priority: \(task.priority.label)"
+        ]
+        if let dueLabel = task.dueLabel {
+            values.append("Due: \(dueLabel)")
+        }
+        return values.joined(separator: ", ")
+    }
+}
+
+private struct TaskCardSelectableSummary: View {
+    let task: ProjectBoardTask
+    let isPointerHovered: Bool
+
+    var body: some View {
         HStack(alignment: .top, spacing: 10) {
             TaskStatusAccentRail(tint: task.status.tint)
 
@@ -982,13 +1031,7 @@ private struct BoardTaskCard: View {
 
                     Spacer(minLength: 6)
 
-                    Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
-                        .font(.caption)
-                        .foregroundStyle(task.status.tint)
-                        .padding(4)
-                        .background(task.status.tint.opacity(isPointerHovered ? 0.18 : 0.10), in: Circle())
-                        .help("Drag to another status column")
-                        .accessibilityLabel("Drag to another status column")
+                    TaskDragAffordance(tint: task.status.tint, isPointerHovered: isPointerHovered)
                 }
 
                 if !task.detail.isEmpty {
@@ -1001,38 +1044,23 @@ private struct BoardTaskCard: View {
                 }
 
                 TaskMetadataRow(task: task)
-                TaskStatusMoveControls(task: task, onMove: onMoveStatus)
             }
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-        .background(task.status.tint.opacity(isSelected || isPointerHovered ? 0.14 : 0.05), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected || isPointerHovered ? task.status.tint.opacity(0.7) : Color.secondary.opacity(0.16))
-        }
-        .shadow(color: Color.black.opacity(isPointerHovered ? 0.10 : 0.04), radius: isPointerHovered ? 12 : 8, x: 0, y: isPointerHovered ? 4 : 2)
-        .contentShape(RoundedRectangle(cornerRadius: 8))
-        .onTapGesture(perform: onSelect)
-        .onHover { isPointerHovered = $0 }
-        .animation(.snappy(duration: 0.16), value: isPointerHovered)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Task \(task.title)")
-        .accessibilityValue(accessibilityValueText)
-        .accessibilityHint("Opens task details in the inspector.")
-        .accessibilityAction(named: "Open Details", onSelect)
     }
+}
 
-    private var accessibilityValueText: String {
-        var values = [
-            "Status: \(task.status.title)",
-            "Priority: \(task.priority.label)"
-        ]
-        if let dueLabel = task.dueLabel {
-            values.append("Due: \(dueLabel)")
-        }
-        return values.joined(separator: ", ")
+private struct TaskDragAffordance: View {
+    let tint: Color
+    let isPointerHovered: Bool
+
+    var body: some View {
+        Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+            .font(.caption)
+            .foregroundStyle(tint)
+            .frame(width: 24, height: 24)
+            .background(tint.opacity(isPointerHovered ? 0.18 : 0.10), in: Circle())
+            .help("Drag to another status column")
+            .accessibilityHidden(true)
     }
 }
 
@@ -1114,6 +1142,9 @@ private struct TaskStatusMoveControls: View {
             )
         }
         .buttonStyle(.borderless)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Status controls for \(task.title)")
+        .accessibilityHint("Moves the task between board columns.")
     }
 
     private func statusMoveButton(title: String, systemImage: String, targetStatus: ProjectTaskStatus?) -> some View {

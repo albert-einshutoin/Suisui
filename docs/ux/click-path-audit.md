@@ -44,7 +44,7 @@
 | Taskを隣のstatusへ移動 | cardのchevron left/right | 1 | Pass | 目標達成。ドラッグしないユーザーにも分かりやすい。 |
 | Taskを任意のstatusへ移動 | cardを対象columnへドラッグ | 1 drag | Pass | drag affordanceとdrop target表示がある。 |
 | context menuでTask移動 | card右クリック -> `Move To` -> status | 3 | Watch | 補助導線としては有効だが主導線ではない。 |
-| Task詳細編集 | card選択 -> inspector編集 -> `Save Changes` | 2 | Pass | 選択後にinspectorが出るため発見可能。Edit / Fields / Suggestion / Save / Danger Zoneで分かれる。 |
+| Task詳細編集 | cardの `Open task` 領域 -> inspector編集 -> `Save Changes` | 2 | Pass | カード選択はtap gestureだけに依存せず、キーボードフォーカス可能なButtonになっている。Edit / Fields / Suggestion / Save / Danger Zoneで分かれる。 |
 | Task提案適用 | card選択 -> inspector `Apply Suggestion` | 2 | Pass | statusを進めるだけのlocal suggestionは外部LLMなしで実mutationを通る。 |
 | Task削除 | card選択 -> `Delete Task` -> confirm | 3 | Pass | 破壊的操作なので確認があるのは妥当。 |
 | Project詳細編集 | sidebar project row -> inspector編集 -> `Save Project` | 2 | Pass | Project選択時に右inspectorが開き、title編集、status、task/artifact概要を一箇所で扱える。 |
@@ -75,7 +75,7 @@
 | Settings詳細Formが長い | Status Overviewで重要状態は見えるが、詳細設定はまだ縦に長い。 | P1 | General / AI / Sync / MCP / Privacy のtabまたは2カラムdetailsに分ける。 |
 | Provider詳細設定が長い | provider切替は2クリックになったが、API key、model、local executableなどの詳細設定は同じAI section内に縦積みで残る。 | P1 | providerごとに必要なfieldだけをcompact panelへ出し、他providerのfieldは折りたたむ。 |
 | MCP server切替時の接続確認が重い | 複数serverを持つユーザーが状態確認しづらい。 | P1 | MCP server listにinline statusとrow単位のcheck actionを置く。 |
-| accessibility検証が未完了 | Task card、column add、status move、destructive confirmationのlabel/helpはsource testで固定したが、VoiceOver focus orderとLight/Darkのスクリーンショット確認が残る。 | P1 | 支援技術とテーマ別コントラストを実機で確認し、崩れを修正する。 |
+| accessibility検証が未完了 | Task card、column add、status move、destructive confirmationのlabel/helpはsource testで固定し、Task cardのOpen Detailsとstatus move controlsも別フォーカス対象に分離した。実機VoiceOver focus orderとLight/Darkのスクリーンショット確認は残る。 | P1 | 支援技術とテーマ別コントラストを実機で確認し、崩れを修正する。 |
 
 ## プロダクトレビュー
 
