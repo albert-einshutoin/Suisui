@@ -59,6 +59,39 @@ final class SaaSConnectorTests: XCTestCase {
         XCTAssertEqual(client.revokedConnectorIDs, [.googleCalendar])
     }
 
+    func testOAuthCredentialStoreDoesNotDropRefreshTokenDeletionFailure() throws {
+        let secretStore = ToggleFailingDeleteSecretStore(failingKey: SecretKey("oauth.slack.refresh_token"))
+        let metadataStore = InMemoryOAuthCredentialMetadataStore()
+        let credentialStore = KeychainOAuthCredentialStore(secretStore: secretStore, metadataStore: metadataStore)
+
+        try credentialStore.saveTokens(
+            connectorID: .slack,
+            accessToken: "old-access-token",
+            refreshToken: "old-refresh-token",
+            scopes: [.slackChannelsRead],
+            expiresAt: Date(timeIntervalSince1970: 1_000)
+        )
+
+        secretStore.shouldFailDelete = true
+
+        XCTAssertThrowsError(
+            try credentialStore.saveTokens(
+                connectorID: .slack,
+                accessToken: "new-access-token",
+                refreshToken: nil,
+                scopes: [.slackChannelsRead],
+                expiresAt: Date(timeIntervalSince1970: 2_000)
+            )
+        ) { error in
+            XCTAssertEqual(error as? SecretStoreError, .unexpectedStatus(-25291))
+        }
+
+        let credential = try XCTUnwrap(try credentialStore.loadCredential(for: .slack))
+        XCTAssertEqual(credential.refreshTokenKey, SecretKey("oauth.slack.refresh_token"))
+        XCTAssertEqual(try secretStore.read(SecretKey("oauth.slack.access_token")), "old-access-token")
+        XCTAssertEqual(try secretStore.read(SecretKey("oauth.slack.refresh_token")), "old-refresh-token")
+    }
+
     func testGoogleCalendarConnectorUsesCalendarAbstractionAndRequiresApproval() throws {
         let client = InMemoryGoogleCalendarClient(validCalendarIDs: ["primary"])
         let connector = GoogleCalendarConnector(client: client)
@@ -273,5 +306,37 @@ private final class RecordingOAuthClient: OAuthClient, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         recordedRevokedConnectorIDs.append(connectorID)
+    }
+}
+
+private final class ToggleFailingDeleteSecretStore: SecretStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private let failingKey: SecretKey
+    private var values: [SecretKey: String] = [:]
+    var shouldFailDelete = false
+
+    init(failingKey: SecretKey) {
+        self.failingKey = failingKey
+    }
+
+    func save(_ value: String, for key: SecretKey) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        values[key] = value
+    }
+
+    func read(_ key: SecretKey) throws -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return values[key]
+    }
+
+    func delete(_ key: SecretKey) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        if shouldFailDelete, key == failingKey {
+            throw SecretStoreError.unexpectedStatus(-25291)
+        }
+        values.removeValue(forKey: key)
     }
 }

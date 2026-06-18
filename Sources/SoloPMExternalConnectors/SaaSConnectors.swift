@@ -121,11 +121,13 @@ public final class KeychainOAuthCredentialStore: OAuthCredentialStore, @unchecke
     ) throws {
         let accessTokenKey = Self.accessTokenKey(connectorID)
         let refreshTokenKey = refreshToken.map { _ in Self.refreshTokenKey(connectorID) }
-        try secretStore.save(accessToken, for: accessTokenKey)
+
         if let refreshToken, let refreshTokenKey {
+            try secretStore.save(accessToken, for: accessTokenKey)
             try secretStore.save(refreshToken, for: refreshTokenKey)
         } else {
-            try? secretStore.delete(Self.refreshTokenKey(connectorID))
+            try secretStore.delete(Self.refreshTokenKey(connectorID))
+            try secretStore.save(accessToken, for: accessTokenKey)
         }
 
         try metadataStore.saveMetadata(OAuthCredentialMetadata(credential: OAuthCredential(

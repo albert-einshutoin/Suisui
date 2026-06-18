@@ -882,6 +882,13 @@
 - [x] `AppExperienceSourceTests` と `ProjectBoardStoreTests` で appearance selection、mouse move controls、drag payload validation、adaptive card styling の regression を固定する。
 - [x] 完了条件: ライト/ダークどちらでもタスクの状態変更がポインタ操作だけで直感的に完了する。
 
+### P10-113: OAuth refresh token removal failures are fail-closed
+
+- [x] `KeychainOAuthCredentialStore.saveTokens` は refresh token なしの保存時に、古い refresh token 削除失敗を `try?` で握りつぶさない。
+- [x] refresh token 削除に失敗した場合、新しい access token / metadata を保存せず、既存 credential を壊さない。
+- [x] `SaaSConnectorTests` で削除失敗時の throw、既存 access token、既存 refresh token、既存 metadata の保持を確認する。
+- [x] 完了条件: 外部連携が release scope 外でも、Keychain に古い refresh token を残したまま「refresh なし credential」として成功表示しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
