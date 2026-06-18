@@ -149,6 +149,36 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(issues, [])
     }
 
+    func testProjectListToolReturnsPersistentProjectRecords() throws {
+        let stores = try makeStores()
+        let first = try stores.projects.create(
+            title: "Inbox",
+            priority: "medium",
+            deadline: "2026-06-30",
+            workspacePath: "/tmp/inbox",
+            tags: ["local", "triage"],
+            sourceCommand: "token=project-secret"
+        )
+        let archived = try stores.projects.create(title: "Archived")
+        _ = try stores.projects.archive(id: archived.id)
+        let tool = ProjectTool(name: .projectList, store: stores.projects)
+
+        let result = try tool.execute(arguments: [:], context: ToolExecutionContext(source: .developerTool))
+
+        XCTAssertEqual(result.output["count"], .number(1))
+        let projects = try XCTUnwrap(result.output["projects"]?.arrayValue)
+        XCTAssertEqual(projects.count, 1)
+        let project = try XCTUnwrap(projects.first?.objectValue)
+        XCTAssertEqual(project["id"], .number(Double(first.id)))
+        XCTAssertEqual(project["title"], .string("Inbox"))
+        XCTAssertEqual(project["status"], .string("active"))
+        XCTAssertEqual(project["priority"], .string("medium"))
+        XCTAssertEqual(project["deadline"], .string("2026-06-30"))
+        XCTAssertEqual(project["workspacePath"], .string("/tmp/inbox"))
+        XCTAssertEqual(project["tags"], .array([.string("local"), .string("triage")]))
+        XCTAssertNil(project["sourceCommand"])
+    }
+
     func testTaskBulkCreatePersistsTasksTransactionallyEnoughForMVP() throws {
         let stores = try makeStores()
         let tool = TaskTool(name: .taskBulkCreate, store: stores.tasks)
@@ -553,6 +583,52 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(update.inputSchema.properties["priority"], "string|null")
     }
 
+    func testTaskListDueAndOverdueToolsReturnPersistentTaskRecords() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "Launch Readiness")
+        let due = try stores.tasks.create(
+            title: "Due release task",
+            projectID: project.id,
+            dueAt: "2026-06-18T09:00:00Z",
+            priority: "high",
+            sourceCommand: "token=task-secret",
+            status: "planned",
+            detail: "Ship a readable task list."
+        )
+        _ = try stores.tasks.create(
+            title: "Future task",
+            projectID: project.id,
+            dueAt: "2026-06-20T09:00:00Z",
+            priority: "low"
+        )
+        let listDue = TaskTool(name: .taskListDue, store: stores.tasks, projectStore: stores.projects)
+        let listOverdue = TaskTool(name: .taskListOverdue, store: stores.tasks, projectStore: stores.projects)
+
+        let dueResult = try listDue.execute(
+            arguments: ["cutoff": .string("2026-06-18T09:00:00Z")],
+            context: ToolExecutionContext(source: .developerTool)
+        )
+        let overdueResult = try listOverdue.execute(
+            arguments: ["cutoff": .string("2026-06-19T00:00:00Z")],
+            context: ToolExecutionContext(source: .developerTool)
+        )
+
+        for result in [dueResult, overdueResult] {
+            XCTAssertEqual(result.output["count"], .number(1))
+            let tasks = try XCTUnwrap(result.output["tasks"]?.arrayValue)
+            XCTAssertEqual(tasks.count, 1)
+            let task = try XCTUnwrap(tasks.first?.objectValue)
+            XCTAssertEqual(task["id"], .number(Double(due.id)))
+            XCTAssertEqual(task["projectId"], .number(Double(project.id)))
+            XCTAssertEqual(task["title"], .string("Due release task"))
+            XCTAssertEqual(task["status"], .string("planned"))
+            XCTAssertEqual(task["detail"], .string("Ship a readable task list."))
+            XCTAssertEqual(task["dueAt"], .string("2026-06-18T09:00:00Z"))
+            XCTAssertEqual(task["priority"], .string("high"))
+            XCTAssertNil(task["sourceCommand"])
+        }
+    }
+
     func testTaskUpdateSchemaAcceptsNullForClearableTaskMetadata() throws {
         let stores = try makeStores()
         let update = TaskTool(name: .taskUpdate, store: stores.tasks, projectStore: stores.projects)
@@ -586,6 +662,38 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         let result = try search.execute(arguments: ["query": .string("notarization")], context: ToolExecutionContext(source: .developerTool))
 
         XCTAssertEqual(result.output["count"], .number(1))
+    }
+
+    func testKnowledgeFrameListAndSearchToolsReturnPersistentFrameRecords() throws {
+        let stores = try makeStores()
+        let release = try stores.knowledge.create(
+            name: "Release readiness frame",
+            body: "Use notarization and checksum before alpha release.",
+            triggers: ["release", "alpha"]
+        )
+        _ = try stores.knowledge.create(
+            name: "Meeting notes frame",
+            body: "Capture meeting outcomes.",
+            triggers: ["meeting"]
+        )
+        let list = KnowledgeFrameTool(name: .frameList, store: stores.knowledge)
+        let search = KnowledgeFrameTool(name: .frameSearch, store: stores.knowledge)
+
+        let listResult = try list.execute(arguments: [:], context: ToolExecutionContext(source: .developerTool))
+        let searchResult = try search.execute(
+            arguments: ["query": .string("notarization")],
+            context: ToolExecutionContext(source: .developerTool)
+        )
+
+        XCTAssertEqual(listResult.output["count"], .number(2))
+        XCTAssertEqual(listResult.output["frames"]?.arrayValue?.count, 2)
+        XCTAssertEqual(searchResult.output["count"], .number(1))
+        let frames = try XCTUnwrap(searchResult.output["frames"]?.arrayValue)
+        let frame = try XCTUnwrap(frames.first?.objectValue)
+        XCTAssertEqual(frame["id"], .number(Double(release.id)))
+        XCTAssertEqual(frame["name"], .string("Release readiness frame"))
+        XCTAssertEqual(frame["body"], .string("Use notarization and checksum before alpha release."))
+        XCTAssertEqual(frame["triggers"], .array([.string("release"), .string("alpha")]))
     }
 
     func testKnowledgeFrameCreateRejectsNonStringTriggersWithoutCreatingFrame() throws {
@@ -744,5 +852,19 @@ private extension JSONValue {
             return nil
         }
         return Int64(value)
+    }
+
+    var arrayValue: [JSONValue]? {
+        guard case .array(let values) = self else {
+            return nil
+        }
+        return values
+    }
+
+    var objectValue: [String: JSONValue]? {
+        guard case .object(let values) = self else {
+            return nil
+        }
+        return values
     }
 }

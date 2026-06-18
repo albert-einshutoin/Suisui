@@ -1211,6 +1211,16 @@
 - [x] `sourceCommand` は作成時来歴として更新対象から外し、Review UI から provenance を上書きしない。
 - [x] 完了条件: AI-generated Action Plan と Review UI から、Project の主要メタデータを作成後も編集・クリアできる。
 
+### P10-156: Read tools return usable persisted records, not only counts
+
+- [x] `project.list` は `count` に加えて、active project の `id` / `title` / `status` / metadata / tags を `projects` 配列で返す。
+- [x] `task.listDue` / `task.listOverdue` は `count` に加えて、該当 task の `id` / `projectId` / `title` / `status` / detail / due / priority を `tasks` 配列で返す。
+- [x] `frame.list` / `frame.search` は `count` に加えて、該当 frame の `id` / `name` / `body` / triggers を `frames` 配列で返す。
+- [x] `sourceCommand` は来歴に秘密っぽい文字列が混ざる可能性があるため、一覧 output では返さない。
+- [x] 既存互換のため `count` と summary は残し、Review / agent / CLI が詳細データを使える追加 output として返す。
+- [x] `ProjectTaskKnowledgeToolTests` で Project / Task / Knowledge の read output が実永続データを含むことを固定する。
+- [x] 完了条件: 外部連携なしでも、local SQLite の既存データをAI Reviewが再利用できる粒度で読み取れる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

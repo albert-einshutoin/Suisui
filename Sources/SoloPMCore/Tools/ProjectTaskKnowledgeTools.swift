@@ -63,7 +63,15 @@ public struct ProjectTool: Tool {
             return ToolResult(tool: name, status: .succeeded, summary: record.title, output: record.output)
         case .projectList:
             let records = try store.list()
-            return ToolResult(tool: name, status: .succeeded, summary: "\(records.count) projects", output: ["count": .number(Double(records.count))])
+            return ToolResult(
+                tool: name,
+                status: .succeeded,
+                summary: "\(records.count) projects",
+                output: [
+                    "count": .number(Double(records.count)),
+                    "projects": .array(records.map { .object($0.output) })
+                ]
+            )
         default:
             throw ToolExecutionError.executionFailed(name, "Unsupported project tool.")
         }
@@ -175,10 +183,26 @@ public struct TaskTool: Tool {
             return ToolResult(tool: name, status: .succeeded, summary: "Completed task \(record.title)", output: ["taskId": .number(Double(record.id))])
         case .taskListDue:
             let tasks = try store.listDue(onOrBefore: try args.optionalString("cutoff") ?? ISO8601DateFormatter().string(from: context.now))
-            return ToolResult(tool: name, status: .succeeded, summary: "\(tasks.count) due tasks", output: ["count": .number(Double(tasks.count))])
+            return ToolResult(
+                tool: name,
+                status: .succeeded,
+                summary: "\(tasks.count) due tasks",
+                output: [
+                    "count": .number(Double(tasks.count)),
+                    "tasks": .array(tasks.map { .object($0.output) })
+                ]
+            )
         case .taskListOverdue:
             let tasks = try store.listOverdue(before: try args.optionalString("cutoff") ?? ISO8601DateFormatter().string(from: context.now))
-            return ToolResult(tool: name, status: .succeeded, summary: "\(tasks.count) overdue tasks", output: ["count": .number(Double(tasks.count))])
+            return ToolResult(
+                tool: name,
+                status: .succeeded,
+                summary: "\(tasks.count) overdue tasks",
+                output: [
+                    "count": .number(Double(tasks.count)),
+                    "tasks": .array(tasks.map { .object($0.output) })
+                ]
+            )
         default:
             throw ToolExecutionError.executionFailed(name, "Unsupported task tool.")
         }
@@ -295,10 +319,26 @@ public struct KnowledgeFrameTool: Tool {
             return ToolResult(tool: name, status: .succeeded, summary: frame.name, output: frame.output)
         case .frameList:
             let frames = try store.list()
-            return ToolResult(tool: name, status: .succeeded, summary: "\(frames.count) frames", output: ["count": .number(Double(frames.count))])
+            return ToolResult(
+                tool: name,
+                status: .succeeded,
+                summary: "\(frames.count) frames",
+                output: [
+                    "count": .number(Double(frames.count)),
+                    "frames": .array(frames.map { .object($0.output) })
+                ]
+            )
         case .frameSearch:
             let frames = try store.search(query: try args.requiredTrimmedString("query"))
-            return ToolResult(tool: name, status: .succeeded, summary: "\(frames.count) matching frames", output: ["count": .number(Double(frames.count))])
+            return ToolResult(
+                tool: name,
+                status: .succeeded,
+                summary: "\(frames.count) matching frames",
+                output: [
+                    "count": .number(Double(frames.count)),
+                    "frames": .array(frames.map { .object($0.output) })
+                ]
+            )
         default:
             throw ToolExecutionError.executionFailed(name, "Unsupported knowledge frame tool.")
         }
@@ -403,11 +443,45 @@ public extension ToolRegistry {
 
 private extension ProjectRecord {
     var output: [String: JSONValue] {
-        [
+        var values: [String: JSONValue] = [
+            "id": .number(Double(id)),
+            "title": .string(title),
+            "status": .string(status),
+            "tags": JSONValueFactory.strings(tags)
+        ]
+        if let priority {
+            values["priority"] = .string(priority)
+        }
+        if let deadline {
+            values["deadline"] = .string(deadline)
+        }
+        if let workspacePath {
+            values["workspacePath"] = .string(workspacePath)
+        }
+        return values
+    }
+}
+
+private extension TaskRecord {
+    var output: [String: JSONValue] {
+        var values: [String: JSONValue] = [
             "id": .number(Double(id)),
             "title": .string(title),
             "status": .string(status)
         ]
+        if let projectID {
+            values["projectId"] = .number(Double(projectID))
+        }
+        if let detail {
+            values["detail"] = .string(detail)
+        }
+        if let dueAt {
+            values["dueAt"] = .string(dueAt)
+        }
+        if let priority {
+            values["priority"] = .string(priority)
+        }
+        return values
     }
 }
 
