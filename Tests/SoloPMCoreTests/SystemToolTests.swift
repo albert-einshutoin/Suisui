@@ -340,7 +340,67 @@ final class SystemToolTests: XCTestCase {
         let events = logger.recordedEvents
         XCTAssertEqual(events.map(\.status), [.started, .failed])
         XCTAssertEqual(events.last?.metadata["approval_state"], "missing")
-        XCTAssertEqual(events.last?.metadata["arguments"], "[REDACTED]")
+        let arguments = try XCTUnwrap(events.last?.metadata["arguments"])
+        XCTAssertFalse(arguments.contains("redacted-test-key"))
+        XCTAssertEqual(arguments, "[REDACTED]")
+    }
+
+    func testAuditedToolRedactsArgumentsWithoutRedactingLogger() throws {
+        let logger = InMemoryAuditLogger()
+        let base = StaticTool(
+            name: .taskCreate,
+            description: "Create task",
+            inputSchema: ToolInputSchema(required: ["title"]),
+            permissionLevel: .writeWithApproval
+        ) { _, _ in
+            ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created")
+        }
+        let audited = AuditedTool(base: base, logger: logger)
+        let apiKey = "sk-" + "sampleSecret"
+
+        XCTAssertThrowsError(
+            try audited.execute(
+                arguments: [
+                    "title": .string("Secret task"),
+                    "apiKey": .string(apiKey)
+                ],
+                context: ToolExecutionContext(source: .developerTool)
+            )
+        )
+
+        let arguments = try XCTUnwrap(logger.recordedEvents.last?.metadata["arguments"])
+        XCTAssertFalse(arguments.contains(apiKey))
+        XCTAssertTrue(arguments.contains("[REDACTED_SECRET]"))
+    }
+
+    func testAuditedToolRedactsSensitiveArgumentKeyEvenWhenValueHasSpaces() throws {
+        let logger = InMemoryAuditLogger()
+        let base = StaticTool(
+            name: .taskCreate,
+            description: "Create task",
+            inputSchema: ToolInputSchema(required: ["title"]),
+            permissionLevel: .writeWithApproval
+        ) { _, _ in
+            ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created")
+        }
+        let audited = AuditedTool(base: base, logger: logger)
+        let malformedSecret = "alpha beta gamma"
+
+        XCTAssertThrowsError(
+            try audited.execute(
+                arguments: [
+                    "title": .string("Secret task"),
+                    "apiKey": .string(malformedSecret)
+                ],
+                context: ToolExecutionContext(source: .developerTool)
+            )
+        )
+
+        let arguments = try XCTUnwrap(logger.recordedEvents.last?.metadata["arguments"])
+        XCTAssertFalse(arguments.contains("alpha"))
+        XCTAssertFalse(arguments.contains("beta gamma"))
+        XCTAssertTrue(arguments.contains("apiKey=[REDACTED_SECRET]"))
+        XCTAssertTrue(arguments.contains("title=string(\"Secret task\")"))
     }
 
     func testPhase2MVPRegistryContainsSystemTools() throws {

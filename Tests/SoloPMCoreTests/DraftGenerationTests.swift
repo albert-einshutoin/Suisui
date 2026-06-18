@@ -47,4 +47,15 @@ final class DraftGenerationTests: XCTestCase {
         XCTAssertTrue(draft.body.contains("[REDACTED_SECRET]"))
         XCTAssertEqual(draft.redactionReport.replacementCount, 3)
     }
+
+    func testAssignmentRedactionDoesNotConsumeFollowingAuditFields() {
+        let apiKey = "secret-value"
+        let summary = "apiKey=string(\"\(apiKey)\"),title=string(\"Secret task\")"
+
+        let redaction = DeveloperSecretRedactor().redact(summary)
+
+        XCTAssertFalse(redaction.text.contains(apiKey))
+        XCTAssertEqual(redaction.text, "[REDACTED_SECRET],title=string(\"Secret task\")")
+        XCTAssertEqual(redaction.report.matchedPatternNames, ["assignment"])
+    }
 }

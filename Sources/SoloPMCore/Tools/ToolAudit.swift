@@ -3,15 +3,21 @@ import Foundation
 public struct AuditedTool: Tool {
     private let base: any Tool
     private let logger: any AuditLogger
+    private let redactor: DeveloperSecretRedactor
 
     public var name: ActionTool { base.name }
     public var description: String { base.description }
     public var inputSchema: ToolInputSchema { base.inputSchema }
     public var permissionLevel: ToolPermissionLevel { base.permissionLevel }
 
-    public init(base: any Tool, logger: any AuditLogger) {
+    public init(
+        base: any Tool,
+        logger: any AuditLogger,
+        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()
+    ) {
         self.base = base
         self.logger = logger
+        self.redactor = redactor
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
@@ -28,12 +34,12 @@ public struct AuditedTool: Tool {
             let result = try base.execute(arguments: arguments, context: context)
             var eventMetadata = metadata(arguments: arguments, context: context)
             eventMetadata["result"] = result.status.rawValue
-            eventMetadata["summary"] = result.summary
+            eventMetadata["summary"] = redacted(result.summary)
             try logger.record(AuditEvent(category: "tool", action: name.rawValue, status: .succeeded, metadata: eventMetadata))
             return result
         } catch {
             var eventMetadata = metadata(arguments: arguments, context: context)
-            eventMetadata["error"] = String(describing: error)
+            eventMetadata["error"] = redacted(String(describing: error))
             try logger.record(AuditEvent(category: "tool", action: name.rawValue, status: .failed, metadata: eventMetadata))
             throw error
         }
@@ -46,18 +52,40 @@ public struct AuditedTool: Tool {
             "permission_level": permissionLevel.rawValue,
             "source": context.source.rawValue,
             "approval_state": context.approvalToken == nil ? "missing" : "present",
-            "arguments": Self.argumentSummary(arguments)
+            "arguments": argumentSummary(arguments)
         ]
     }
 
-    private static func argumentSummary(_ arguments: [String: JSONValue]) -> String {
+    private func argumentSummary(_ arguments: [String: JSONValue]) -> String {
         let summary = arguments
             .sorted { $0.key < $1.key }
-            .map { "\($0.key)=\(String(describing: $0.value))" }
+            .map { "\($0.key)=\(argumentValueSummary(key: $0.key, value: $0.value))" }
             .joined(separator: ",")
-        guard summary.count > 256 else {
-            return summary
+        let redactedSummary = redacted(summary)
+        guard redactedSummary.count > 256 else {
+            return redactedSummary
         }
-        return String(summary.prefix(256))
+        return String(redactedSummary.prefix(256))
+    }
+
+    private func argumentValueSummary(key: String, value: JSONValue) -> String {
+        Self.isSensitiveArgumentKey(key) ? "[REDACTED_SECRET]" : String(describing: value)
+    }
+
+    private func redacted(_ value: String) -> String {
+        redactor.redact(value).text
+    }
+
+    private static func isSensitiveArgumentKey(_ key: String) -> Bool {
+        let normalized = key.lowercased()
+        return [
+            "api_key",
+            "apikey",
+            "authorization",
+            "bearer",
+            "password",
+            "secret",
+            "token"
+        ].contains { normalized.contains($0) }
     }
 }

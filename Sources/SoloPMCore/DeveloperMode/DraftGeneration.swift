@@ -31,7 +31,7 @@ public struct DeveloperSecretRedactor: Sendable {
         compiledPattern(name: "ghp", expression: #"ghp_[A-Za-z0-9_]{6,}"#),
         compiledPattern(name: "openai", expression: #"sk-(?:proj-)?[A-Za-z0-9_-]{8,}"#),
         compiledPattern(name: "aws_access_key", expression: #"AKIA[0-9A-Z]{16}"#),
-        compiledPattern(name: "assignment", expression: #"(?i)\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*\S+"#)
+        compiledPattern(name: "assignment", expression: #"(?i)\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*(?!\[REDACTED_SECRET\])[^\s,;]+"#)
     ]
 
     private let patterns: [CompiledPattern]

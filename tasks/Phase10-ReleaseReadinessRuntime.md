@@ -1060,6 +1060,16 @@
 - [x] `ExternalMCPTests` で load failure 時の表示保持と save failure 時の user-facing error を固定する。
 - [x] 完了条件: SQLite 側の破損や保存失敗が起きても、ユーザーが登録済み MCP server を「消えた」と誤認せず、復旧すべき local data 問題として扱える。
 
+### P10-137: Audited tool arguments are redacted before persistence
+
+- [x] `AuditedTool` は caller が `RedactingAuditLogger` を明示注入しなくても、監査 metadata に入れる `arguments` を `DeveloperSecretRedactor` に通す。
+- [x] `apiKey` / `token` / `password` / `secret` などの sensitive key は値の形式に関係なく argument summary 作成時点で置換する。
+- [x] Tool の result summary / error message も監査 metadata に入れる前に redaction する。
+- [x] Assignment redaction は `apiKey=...` の値だけを隠し、後続の安全な audit field を巻き込んで消さない。
+- [x] `SystemToolTests` で non-redacting logger でも API key が監査ログに残らないことを固定する。
+- [x] `DraftGenerationTests` で assignment redaction の境界を固定する。
+- [x] 完了条件: 内蔵 CRUD / tool execution の audit path が logger 構成ミスで provider token や API key を SQLite audit log に保存しない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
