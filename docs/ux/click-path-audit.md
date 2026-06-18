@@ -47,8 +47,10 @@
 | Task詳細編集 | card選択 -> inspector編集 -> `Save Changes` | 2 | Pass | 選択後にinspectorが出るため発見可能。Edit / Fields / Suggestion / Save / Danger Zoneで分かれる。 |
 | Task提案適用 | card選択 -> inspector `Apply Suggestion` | 2 | Pass | statusを進めるだけのlocal suggestionは外部LLMなしで実mutationを通る。 |
 | Task削除 | card選択 -> `Delete Task` -> confirm | 3 | Pass | 破壊的操作なので確認があるのは妥当。 |
-| Project完了 | `Complete Project` | 1 | Pass | headerに見えている。 |
-| Project archive/delete | header action -> confirm | 2 | Pass | 破壊的操作なので確認があるのは妥当。 |
+| Project詳細編集 | sidebar project row -> inspector編集 -> `Save Project` | 2 | Pass | Project選択時に右inspectorが開き、title編集、status、task/artifact概要を一箇所で扱える。 |
+| Project提案適用 | sidebar project row -> inspector `Apply Suggestion` | 2 | Pass | 空Projectのfirst task作成、全Task完了Projectのcomplete、注目Taskを開く導線を外部LLMなしで実行する。 |
+| Project完了 | Project inspector -> `Complete Project` | 2 | Pass | headerから削除し、選択中Projectの操作をinspectorに集約した。 |
+| Project archive/delete | Project inspector -> action -> confirm | 3 | Pass | 破壊的操作なので確認があるのは妥当。 |
 | boardからSettingsを開く | toolbar gear | 1 | Pass | menu barからも2クリックで開ける。 |
 | Theme変更 | Settings -> `Theme` segment | 2 | Pass | ThemeはSettingsに集約済み。 |
 | AI Provider状態確認 | Settings -> Status Overviewを見る | 1 | Pass | 現在のproviderと認証/承認状態は先頭で分かる。 |
@@ -69,7 +71,7 @@
 | --- | --- | --- | --- |
 | Inbox分類後の自動遷移が粗い | Project化などの実mutationは動くが、分類後にユーザーへ次の最適画面を案内する余地がある。 | P1 | 分類結果のsuccess state、undo、次のitem選択を追加する。 |
 | Today time blockはlocal plan止まり | Today viewはdue/overdue task、local focus suggestion、30分time blockを表示できるが、Calendarへの適用や自動再配置はまだしない。 | P2 | Calendar連携をrelease scopeに入れる場合だけ、適用前確認つきのschedule actionを追加する。 |
-| Project用inspectorが未統合 | Task inspectorは編集/削除/提案適用を集約したが、Project編集/削除/提案はheaderとOverviewに分散している。 | P1 | 選択中Projectを右inspectorにも表示し、Project操作をTask inspectorと同じ密度に揃える。 |
+| Task card screenshot検証が未完 | Task cardのtitle/status/priority/due/drag affordanceは実装済みだが、light/dark両方で重なりがないことはスクリーンショット evidence がまだ弱い。 | P1 | app起動後にProject boardをlight/darkで撮り、`docs/release/evidence/` に保存する。 |
 | Settings詳細Formが長い | Status Overviewで重要状態は見えるが、詳細設定はまだ縦に長い。 | P1 | General / AI / Sync / MCP / Privacy のtabまたは2カラムdetailsに分ける。 |
 | Provider詳細設定が長い | provider切替は2クリックになったが、API key、model、local executableなどの詳細設定は同じAI section内に縦積みで残る。 | P1 | providerごとに必要なfieldだけをcompact panelへ出し、他providerのfieldは折りたたむ。 |
 | MCP server切替時の接続確認が重い | 複数serverを持つユーザーが状態確認しづらい。 | P1 | MCP server listにinline statusとrow単位のcheck actionを置く。 |
@@ -79,16 +81,16 @@
 
 Problem: SoloPMは実働するboardとlocal dataを持ったが、まだ日々のPM cockpitとしてはProject detailの文脈整理が弱かった。
 
-User pull: Project overviewでTask、Artifact、Timeline、Local suggestionが同じ画面にまとまり、Projectを開いた後に次の作業へ移りやすくなった。残る弱点はProject単位の右inspectorがないこと。
+User pull: Project overviewでTask、Artifact、Timeline、Local suggestionが同じ画面にまとまり、Project inspectorで編集、削除、提案適用まで同じ右側の操作面に揃った。
 
-Retention hook: Todayは日次のdefault surfaceに近づき、Project overviewは週次/案件単位の確認面になった。次はinspectorとkeyboard/focusを詰め、繰り返し操作の摩擦を減らす。
+Retention hook: Todayは日次のdefault surfaceに近づき、Project overviewは週次/案件単位の確認面になった。次はkeyboard/focusとスクリーンショット検証を詰め、繰り返し操作の摩擦を減らす。
 
 Monetization: Syncとadvanced MCPのgateは実装済みだが、価値がSettingsの中に埋もれている。Pro価値はdisabled toggleではなくstatus cardとして見える必要がある。
 
-Risk: Artifact表示は実DB rowだけに限定したためmock感はないが、artifact作成/リンク導線はまだ薄い。次のUI作業は機能追加よりProject inspectorとaccessibility検証を優先する。
+Risk: Artifact表示は実DB rowだけに限定したためmock感はないが、artifact作成/リンク導線はまだ薄い。次のUI作業は機能追加よりaccessibilityとvisual evidenceを優先する。
 
 ## 次の実装候補
 
 1. P11-022: Settingsをcompact overviewに整理し、AI Provider / MCP / Sync / Privacyの状態を深いscrollなしで見えるようにする。
-2. P11-031: Project用右inspectorとスクリーンショット検証を完了する。
+2. P11-031: Task cardのlight/darkスクリーンショット検証を完了する。
 3. P11-033: keyboard shortcutとfocus orderをboard、inspector、review executionで検証する。

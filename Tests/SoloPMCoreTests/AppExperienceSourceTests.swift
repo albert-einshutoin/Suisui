@@ -48,7 +48,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
         XCTAssertTrue(source.contains("ViewThatFits(in: .horizontal)"))
-        XCTAssertTrue(source.contains("ProjectHeaderTitleEditor"))
+        XCTAssertTrue(source.contains("ProjectHeaderSummary"))
         XCTAssertTrue(source.contains("ProjectHeaderActions"))
         XCTAssertTrue(source.contains("TaskMetadataRow"))
         XCTAssertTrue(source.contains("ScrollView([.horizontal, .vertical])"))
@@ -265,6 +265,34 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("Section(\"Edit\")"))
         XCTAssertTrue(source.contains("Section(\"Suggestion\")"))
         XCTAssertTrue(source.contains("Section(\"Danger Zone\")"))
+    }
+
+    func testProjectInspectorGroupsEditingDeletionAndSuggestionApplication() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let headerStart = try XCTUnwrap(source.range(of: "private struct ProjectHeaderActions"))
+        let boardStart = try XCTUnwrap(source.range(of: "private struct ProjectKanbanBoard"))
+        let headerSource = String(source[headerStart.lowerBound..<boardStart.lowerBound])
+
+        XCTAssertTrue(source.contains("ProjectInspectorView(project: project, viewModel: viewModel)"))
+        XCTAssertTrue(source.contains("ProjectInspectorSuggestionSection"))
+        XCTAssertTrue(source.contains("@State private var isInspectorPresented = true"))
+        XCTAssertTrue(source.contains("selectedProjectForInspector"))
+        XCTAssertTrue(source.contains("isInspectorPresented = false"))
+        XCTAssertTrue(source.contains("viewModel.updateSelectedProject(title: title)"))
+        XCTAssertTrue(source.contains("viewModel.deleteSelectedProject()"))
+        XCTAssertTrue(source.contains("viewModel.archiveSelectedProject()"))
+        XCTAssertTrue(source.contains("viewModel.restoreSelectedProject()"))
+        XCTAssertTrue(source.contains("viewModel.completeSelectedProject()"))
+        XCTAssertTrue(source.contains("viewModel.createTask(title: \"Define next action\""))
+        XCTAssertTrue(source.contains("viewModel.selectedTaskID = taskID"))
+        XCTAssertTrue(source.contains("Section(\"Edit\")"))
+        XCTAssertTrue(source.contains("Section(\"Suggestion\")"))
+        XCTAssertTrue(source.contains("Section(\"Actions\")"))
+        XCTAssertTrue(source.contains("Section(\"Danger Zone\")"))
+        XCTAssertFalse(source.contains("ProjectHeaderTitleEditor"))
+        XCTAssertFalse(headerSource.contains("Delete Project"))
+        XCTAssertFalse(headerSource.contains("Archive Project"))
+        XCTAssertFalse(headerSource.contains("Complete Project"))
     }
 
     func testTodayWorkflowShowsRecommendationDueCountsAndTimeBlocks() throws {

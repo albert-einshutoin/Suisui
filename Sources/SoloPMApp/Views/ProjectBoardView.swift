@@ -7,6 +7,7 @@ struct ProjectBoardView: View {
     @StateObject private var viewModel: ProjectBoardViewModel
     @State private var displayMode: ProjectBoardDisplayMode = .board
     @State private var selectedDestination: ProjectBoardSidebarDestination? = .today
+    @State private var isInspectorPresented = true
 
     init(viewModel: ProjectBoardViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -104,10 +105,16 @@ struct ProjectBoardView: View {
                 }
             }
             .inspector(isPresented: inspectorBinding) {
-                if let task = viewModel.selectedTask {
-                    TaskInspectorView(task: task, viewModel: viewModel)
-                        .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
+                Group {
+                    if let task = viewModel.selectedTask {
+                        TaskInspectorView(task: task, viewModel: viewModel)
+                    } else if let project = selectedProjectForInspector {
+                        ProjectInspectorView(project: project, viewModel: viewModel)
+                    } else {
+                        EmptyView()
+                    }
                 }
+                .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
             }
         }
         .navigationTitle("SoloPM")
@@ -122,21 +129,36 @@ struct ProjectBoardView: View {
             case .project(let projectID):
                 viewModel.selectedProjectID = projectID
                 viewModel.selectedTaskID = nil
+                isInspectorPresented = true
             case .inbox, .today, .none:
                 viewModel.selectedTaskID = nil
+                isInspectorPresented = false
+            }
+        }
+        .onChange(of: viewModel.selectedTaskID) { _, selectedTaskID in
+            if selectedTaskID != nil {
+                isInspectorPresented = true
             }
         }
     }
 
     private var inspectorBinding: Binding<Bool> {
         Binding(
-            get: { viewModel.selectedTask != nil },
+            get: { isInspectorPresented && (viewModel.selectedTask != nil || selectedProjectForInspector != nil) },
             set: { isPresented in
+                isInspectorPresented = isPresented
                 if !isPresented {
                     viewModel.selectedTaskID = nil
                 }
             }
         )
+    }
+
+    private var selectedProjectForInspector: ProjectBoardProject? {
+        guard case .project(let projectID) = selectedDestination else {
+            return nil
+        }
+        return viewModel.snapshot.projects.first { $0.id == projectID }
     }
 }
 
@@ -214,47 +236,28 @@ private struct ProjectBoardDetail: View {
     @Binding var displayMode: ProjectBoardDisplayMode
     @ObservedObject var viewModel: ProjectBoardViewModel
     @State private var composingStatus: ProjectTaskStatus?
-    @State private var projectTitle = ""
-    @State private var isConfirmingArchive = false
-    @State private var isConfirmingDelete = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .center, spacing: 12) {
-                    ProjectHeaderTitleEditor(
-                        project: project,
-                        projectTitle: $projectTitle,
-                        onSave: { viewModel.updateSelectedProject(title: projectTitle) }
-                    )
+                    ProjectHeaderSummary(project: project)
 
                     Spacer(minLength: 12)
 
                     ProjectHeaderActions(
                         project: project,
                         displayMode: $displayMode,
-                        onCompleteProject: viewModel.completeSelectedProject,
-                        onArchiveProject: { isConfirmingArchive = true },
-                        onRestoreProject: viewModel.restoreSelectedProject,
-                        onDeleteProject: { isConfirmingDelete = true },
                         onAddTask: { composingStatus = .backlog }
                     )
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
-                    ProjectHeaderTitleEditor(
-                        project: project,
-                        projectTitle: $projectTitle,
-                        onSave: { viewModel.updateSelectedProject(title: projectTitle) }
-                    )
+                    ProjectHeaderSummary(project: project)
 
                     ProjectHeaderActions(
                         project: project,
                         displayMode: $displayMode,
-                        onCompleteProject: viewModel.completeSelectedProject,
-                        onArchiveProject: { isConfirmingArchive = true },
-                        onRestoreProject: viewModel.restoreSelectedProject,
-                        onDeleteProject: { isConfirmingDelete = true },
                         onAddTask: { composingStatus = .backlog }
                     )
                 }
@@ -289,44 +292,11 @@ private struct ProjectBoardDetail: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onAppear {
-            projectTitle = project.title
-        }
-        .onChange(of: project.id) { _, _ in
-            projectTitle = project.title
-        }
-        .onChange(of: project.title) { _, newTitle in
-            projectTitle = newTitle
-        }
         .onChange(of: project.isArchived) { _, isArchived in
             if isArchived {
                 composingStatus = nil
                 viewModel.selectedTaskID = nil
             }
-        }
-        .confirmationDialog(
-            "Archive this project?",
-            isPresented: $isConfirmingArchive,
-            titleVisibility: .visible
-        ) {
-            Button("Archive Project", role: .destructive) {
-                viewModel.archiveSelectedProject()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This hides the project from the active board and deadline summaries. Existing local tasks are kept in the SoloPM database.")
-        }
-        .confirmationDialog(
-            "Delete this project?",
-            isPresented: $isConfirmingDelete,
-            titleVisibility: .visible
-        ) {
-            Button("Delete Project", role: .destructive) {
-                viewModel.deleteSelectedProject()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This permanently removes the project, its local tasks, deadline rules, artifact links, calendar links, and reminder links from SoloPM.")
         }
     }
 }
@@ -659,43 +629,36 @@ private struct ProjectOverviewPanel<Content: View>: View {
     }
 }
 
-private struct ProjectHeaderTitleEditor: View {
+private struct ProjectHeaderSummary: View {
     let project: ProjectBoardProject
-    @Binding var projectTitle: String
-    let onSave: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                TextField("Project title", text: $projectTitle)
+        Label {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(project.title)
                     .font(.title2.weight(.semibold))
-                    .textFieldStyle(.plain)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .help(project.title)
-                    .frame(minWidth: 160, maxWidth: 520)
 
-                Button(action: onSave) {
-                    Label("Save Project", systemImage: "checkmark")
-                }
-                .labelStyle(.iconOnly)
-                .disabled(projectTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || projectTitle == project.title)
-            }
+                HStack(spacing: 8) {
+                    Text(project.subtitle)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                        .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 8) {
-                Text(project.subtitle)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .truncationMode(.tail)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if project.isCompleted {
-                    Label("Completed", systemImage: "checkmark.seal.fill")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                        .lineLimit(1)
+                    if project.isCompleted {
+                        Label("Completed", systemImage: "checkmark.seal.fill")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                            .lineLimit(1)
+                    }
                 }
             }
+        } icon: {
+            Image(systemName: project.isArchived ? "archivebox" : "folder")
+                .foregroundStyle(project.isCompleted ? .green : .secondary)
         }
     }
 }
@@ -703,38 +666,17 @@ private struct ProjectHeaderTitleEditor: View {
 private struct ProjectHeaderActions: View {
     let project: ProjectBoardProject
     @Binding var displayMode: ProjectBoardDisplayMode
-    let onCompleteProject: () -> Void
-    let onArchiveProject: () -> Void
-    let onRestoreProject: () -> Void
-    let onDeleteProject: () -> Void
     let onAddTask: () -> Void
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 8) {
                 viewPicker
-                projectActionButtons
+                addTaskButton
             }
 
             VStack(alignment: .leading, spacing: 8) {
                 viewPicker
-                projectActionButtons
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var projectActionButtons: some View {
-        if project.isArchived {
-            HStack(spacing: 8) {
-                restoreProjectButton
-                deleteProjectButton
-            }
-        } else {
-            HStack(spacing: 8) {
-                completeProjectButton
-                archiveProjectButton
-                deleteProjectButton
                 addTaskButton
             }
         }
@@ -751,38 +693,13 @@ private struct ProjectHeaderActions: View {
         .frame(width: 252)
     }
 
-    private var completeProjectButton: some View {
-        Button(action: onCompleteProject) {
-            Label("Complete Project", systemImage: "checkmark.seal")
-        }
-        .disabled(project.isCompleted)
-    }
-
-    private var archiveProjectButton: some View {
-        Button(role: .destructive, action: onArchiveProject) {
-            Label("Archive Project", systemImage: "archivebox")
-        }
-    }
-
-    private var restoreProjectButton: some View {
-        Button(action: onRestoreProject) {
-            Label("Restore Project", systemImage: "arrow.uturn.backward")
-        }
-        .buttonStyle(.borderedProminent)
-    }
-
-    private var deleteProjectButton: some View {
-        Button(role: .destructive, action: onDeleteProject) {
-            Label("Delete Project", systemImage: "trash")
-        }
-    }
-
     private var addTaskButton: some View {
         Button(action: onAddTask) {
             Label("Add Task", systemImage: "plus")
         }
         .buttonStyle(.borderedProminent)
         .keyboardShortcut("n", modifiers: [.command])
+        .disabled(project.isArchived)
     }
 }
 
@@ -1270,6 +1187,199 @@ private struct ProjectTaskList: View {
             }
         }
     }
+}
+
+private struct ProjectInspectorView: View {
+    let project: ProjectBoardProject
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    @State private var title: String
+    @State private var isConfirmingArchive = false
+    @State private var isConfirmingDelete = false
+
+    init(project: ProjectBoardProject, viewModel: ProjectBoardViewModel) {
+        self.project = project
+        self.viewModel = viewModel
+        _title = State(initialValue: project.title)
+    }
+
+    var body: some View {
+        Form {
+            Section("Edit") {
+                TextField("Title", text: $title)
+                LabeledContent("Status", value: project.status.capitalized)
+                LabeledContent("Tasks", value: project.subtitle)
+                LabeledContent("Artifacts", value: "\(project.artifacts.count)")
+            }
+
+            Section("Suggestion") {
+                ProjectInspectorSuggestionSection(project: project, viewModel: viewModel)
+            }
+
+            Section("Save") {
+                Button {
+                    viewModel.updateSelectedProject(title: title)
+                } label: {
+                    Label("Save Project", systemImage: "checkmark.circle")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title == project.title)
+            }
+
+            Section("Actions") {
+                if project.isArchived {
+                    Button {
+                        viewModel.restoreSelectedProject()
+                    } label: {
+                        Label("Restore Project", systemImage: "arrow.uturn.backward")
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else {
+                    Button {
+                        viewModel.completeSelectedProject()
+                    } label: {
+                        Label("Complete Project", systemImage: "checkmark.seal")
+                    }
+                    .disabled(project.isCompleted)
+                }
+            }
+
+            Section("Danger Zone") {
+                if !project.isArchived {
+                    Button(role: .destructive) {
+                        isConfirmingArchive = true
+                    } label: {
+                        Label("Archive Project", systemImage: "archivebox")
+                    }
+                }
+
+                Button(role: .destructive) {
+                    isConfirmingDelete = true
+                } label: {
+                    Label("Delete Project", systemImage: "trash")
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .confirmationDialog(
+            "Archive this project?",
+            isPresented: $isConfirmingArchive,
+            titleVisibility: .visible
+        ) {
+            Button("Archive Project", role: .destructive) {
+                viewModel.archiveSelectedProject()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This hides the project from the active board and deadline summaries. Existing local tasks are kept in the SoloPM database.")
+        }
+        .confirmationDialog(
+            "Delete this project?",
+            isPresented: $isConfirmingDelete,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Project", role: .destructive) {
+                viewModel.deleteSelectedProject()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently removes the project, its local tasks, deadline rules, artifact links, calendar links, and reminder links from SoloPM.")
+        }
+        .onAppear {
+            refreshFields(from: project)
+        }
+        .onChange(of: project) { _, newProject in
+            refreshFields(from: newProject)
+        }
+    }
+
+    private func refreshFields(from project: ProjectBoardProject) {
+        title = project.title
+    }
+}
+
+private struct ProjectInspectorSuggestionSection: View {
+    let project: ProjectBoardProject
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(suggestionText, systemImage: "sparkles")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                applySuggestion()
+            } label: {
+                Label("Apply Suggestion", systemImage: "wand.and.stars")
+            }
+            .disabled(suggestionAction == .none)
+        }
+    }
+
+    private var suggestionAction: ProjectInspectorSuggestionAction {
+        if project.isArchived {
+            return .restoreProject
+        }
+        if project.taskCount == 0 {
+            return .createFirstTask
+        }
+        if !project.isCompleted && project.tasks.allSatisfy({ $0.status == .done }) {
+            return .completeProject
+        }
+        if let blockedTask = project.tasks.first(where: { $0.status == .blocked }) {
+            return .openTask(blockedTask.id)
+        }
+        if let highPriorityTask = project.tasks.first(where: { $0.status != .done && $0.priority == .high }) {
+            return .openTask(highPriorityTask.id)
+        }
+        if let dueTask = project.tasks
+            .filter({ $0.status != .done && $0.dueAt != nil })
+            .sorted(by: { ($0.dueAt ?? "") < ($1.dueAt ?? "") })
+            .first {
+            return .openTask(dueTask.id)
+        }
+        return .none
+    }
+
+    private var suggestionText: String {
+        switch suggestionAction {
+        case .restoreProject:
+            return "Restore this project before editing tasks or including it in active summaries."
+        case .createFirstTask:
+            return "Create a first concrete task so the project has a next action."
+        case .completeProject:
+            return "All tasks are done. Complete the project to keep active views focused."
+        case .openTask:
+            return "Open the highest-signal task and decide its next move in the inspector."
+        case .none:
+            return "No project-level suggestion is needed right now."
+        }
+    }
+
+    private func applySuggestion() {
+        switch suggestionAction {
+        case .restoreProject:
+            viewModel.restoreSelectedProject()
+        case .createFirstTask:
+            _ = viewModel.createTask(title: "Define next action", projectID: project.id, status: .backlog)
+        case .completeProject:
+            viewModel.completeSelectedProject()
+        case .openTask(let taskID):
+            viewModel.selectedTaskID = taskID
+        case .none:
+            break
+        }
+    }
+}
+
+private enum ProjectInspectorSuggestionAction: Equatable {
+    case restoreProject
+    case createFirstTask
+    case completeProject
+    case openTask(Int64)
+    case none
 }
 
 private struct TaskInspectorView: View {
