@@ -9,6 +9,24 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var timeZoneIdentifier: String
     public var geminiModelID: String?
     public var groqBaseURLString: String?
+    public var openCodeExecutablePath: String?
+    public var openCodeWorkspacePath: String?
+    public var openCodeModelID: String?
+    public var isOpenCodeLocalExecutionApproved: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case aiProvider
+        case sttProvider
+        case notificationsEnabled
+        case defaultWorkspacePath
+        case timeZoneIdentifier
+        case geminiModelID
+        case groqBaseURLString
+        case openCodeExecutablePath
+        case openCodeWorkspacePath
+        case openCodeModelID
+        case isOpenCodeLocalExecutionApproved
+    }
 
     public init(
         aiProvider: AIProvider = .openaiResponses,
@@ -17,7 +35,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
         defaultWorkspacePath: String? = nil,
         timeZoneIdentifier: String = TimeZone.current.identifier,
         geminiModelID: String? = nil,
-        groqBaseURLString: String? = nil
+        groqBaseURLString: String? = nil,
+        openCodeExecutablePath: String? = nil,
+        openCodeWorkspacePath: String? = nil,
+        openCodeModelID: String? = nil,
+        isOpenCodeLocalExecutionApproved: Bool = false
     ) {
         self.aiProvider = aiProvider
         self.sttProvider = sttProvider
@@ -26,6 +48,40 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.timeZoneIdentifier = timeZoneIdentifier
         self.geminiModelID = geminiModelID
         self.groqBaseURLString = groqBaseURLString
+        self.openCodeExecutablePath = openCodeExecutablePath
+        self.openCodeWorkspacePath = openCodeWorkspacePath
+        self.openCodeModelID = openCodeModelID
+        self.isOpenCodeLocalExecutionApproved = isOpenCodeLocalExecutionApproved
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.aiProvider = try container.decode(AIProvider.self, forKey: .aiProvider)
+        self.sttProvider = try container.decode(STTProvider.self, forKey: .sttProvider)
+        self.notificationsEnabled = try container.decode(Bool.self, forKey: .notificationsEnabled)
+        self.defaultWorkspacePath = try container.decodeIfPresent(String.self, forKey: .defaultWorkspacePath)
+        self.timeZoneIdentifier = try container.decode(String.self, forKey: .timeZoneIdentifier)
+        self.geminiModelID = try container.decodeIfPresent(String.self, forKey: .geminiModelID)
+        self.groqBaseURLString = try container.decodeIfPresent(String.self, forKey: .groqBaseURLString)
+        self.openCodeExecutablePath = try container.decodeIfPresent(String.self, forKey: .openCodeExecutablePath)
+        self.openCodeWorkspacePath = try container.decodeIfPresent(String.self, forKey: .openCodeWorkspacePath)
+        self.openCodeModelID = try container.decodeIfPresent(String.self, forKey: .openCodeModelID)
+        self.isOpenCodeLocalExecutionApproved = try container.decodeIfPresent(Bool.self, forKey: .isOpenCodeLocalExecutionApproved) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(aiProvider, forKey: .aiProvider)
+        try container.encode(sttProvider, forKey: .sttProvider)
+        try container.encode(notificationsEnabled, forKey: .notificationsEnabled)
+        try container.encodeIfPresent(defaultWorkspacePath, forKey: .defaultWorkspacePath)
+        try container.encode(timeZoneIdentifier, forKey: .timeZoneIdentifier)
+        try container.encodeIfPresent(geminiModelID, forKey: .geminiModelID)
+        try container.encodeIfPresent(groqBaseURLString, forKey: .groqBaseURLString)
+        try container.encodeIfPresent(openCodeExecutablePath, forKey: .openCodeExecutablePath)
+        try container.encodeIfPresent(openCodeWorkspacePath, forKey: .openCodeWorkspacePath)
+        try container.encodeIfPresent(openCodeModelID, forKey: .openCodeModelID)
+        try container.encode(isOpenCodeLocalExecutionApproved, forKey: .isOpenCodeLocalExecutionApproved)
     }
 
     public static let `default` = AppSettings()
@@ -43,6 +99,15 @@ public struct AppSettings: Codable, Equatable, Sendable {
         }
         if let groqBaseURLString = copy.groqBaseURLString?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.groqBaseURLString = groqBaseURLString.isEmpty ? nil : groqBaseURLString
+        }
+        if let openCodeExecutablePath = copy.openCodeExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            copy.openCodeExecutablePath = openCodeExecutablePath.isEmpty ? nil : openCodeExecutablePath
+        }
+        if let openCodeWorkspacePath = copy.openCodeWorkspacePath?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            copy.openCodeWorkspacePath = openCodeWorkspacePath.isEmpty ? nil : openCodeWorkspacePath
+        }
+        if let openCodeModelID = copy.openCodeModelID?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            copy.openCodeModelID = openCodeModelID.isEmpty ? nil : openCodeModelID
         }
         return copy
     }
@@ -131,7 +196,100 @@ public struct AppSettings: Codable, Equatable, Sendable {
             }
         }
 
+        if aiProvider == .opencodeLocal {
+            appendOpenCodeLocalIssues(to: &issues)
+        } else {
+            appendOptionalOpenCodeLocalIssues(to: &issues)
+        }
+
         return issues
+    }
+
+    private func appendOpenCodeLocalIssues(to issues: inout [ValidationIssue]) {
+        appendOpenCodeExecutablePathIssue(to: &issues, isRequired: true)
+        appendOpenCodeWorkspacePathIssue(to: &issues, isRequired: true)
+        appendOpenCodeModelIDIssue(to: &issues, isRequired: true)
+        if !isOpenCodeLocalExecutionApproved {
+            issues.append(
+                ValidationIssue(
+                    field: "isOpenCodeLocalExecutionApproved",
+                    message: "OpenCode local execution requires explicit approval.",
+                    severity: .error
+                )
+            )
+        }
+    }
+
+    private func appendOptionalOpenCodeLocalIssues(to issues: inout [ValidationIssue]) {
+        appendOpenCodeExecutablePathIssue(to: &issues, isRequired: false)
+        appendOpenCodeWorkspacePathIssue(to: &issues, isRequired: false)
+        appendOpenCodeModelIDIssue(to: &issues, isRequired: false)
+    }
+
+    private func appendOpenCodeExecutablePathIssue(to issues: inout [ValidationIssue], isRequired: Bool) {
+        let trimmed = openCodeExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else {
+            if isRequired {
+                issues.append(
+                    ValidationIssue(
+                        field: "openCodeExecutablePath",
+                        message: "OpenCode executable path is required.",
+                        severity: .error
+                    )
+                )
+            }
+            return
+        }
+        if trimmed.hasSuffix("/auth.json") || trimmed == "auth.json" {
+            issues.append(
+                ValidationIssue(
+                    field: "openCodeExecutablePath",
+                    message: "OpenCode executable path must not point to auth.json.",
+                    severity: .error
+                )
+            )
+        }
+    }
+
+    private func appendOpenCodeWorkspacePathIssue(to issues: inout [ValidationIssue], isRequired: Bool) {
+        let trimmed = openCodeWorkspacePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else {
+            if isRequired {
+                issues.append(
+                    ValidationIssue(
+                        field: "openCodeWorkspacePath",
+                        message: "OpenCode workspace path is required.",
+                        severity: .error
+                    )
+                )
+            }
+            return
+        }
+    }
+
+    private func appendOpenCodeModelIDIssue(to issues: inout [ValidationIssue], isRequired: Bool) {
+        let trimmed = openCodeModelID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else {
+            if isRequired {
+                issues.append(
+                    ValidationIssue(
+                        field: "openCodeModelID",
+                        message: "OpenCode model id is required.",
+                        severity: .error
+                    )
+                )
+            }
+            return
+        }
+        if trimmed.rangeOfCharacter(from: .whitespacesAndNewlines) != nil {
+            issues.append(
+                ValidationIssue(
+                    field: "openCodeModelID",
+                    message: "OpenCode model id cannot contain whitespace.",
+                    severity: .error
+                )
+            )
+        }
     }
 }
 
@@ -315,6 +473,9 @@ public final class AppSettingsViewModel: ObservableObject {
         }
 
         settings.aiProvider = provider
+        if provider == .opencodeLocal, settings.openCodeModelID == nil {
+            settings.openCodeModelID = LLMProviderCatalog.entry(for: .opencodeLocal).defaultModelID
+        }
         clearMessages()
     }
 
@@ -338,6 +499,29 @@ public final class AppSettingsViewModel: ObservableObject {
     public func setGroqBaseURLString(_ baseURLString: String) {
         let trimmed = baseURLString.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.groqBaseURLString = trimmed.isEmpty ? nil : trimmed
+        clearMessages()
+    }
+
+    public func setOpenCodeExecutablePath(_ path: String) {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.openCodeExecutablePath = trimmed.isEmpty ? nil : trimmed
+        clearMessages()
+    }
+
+    public func setOpenCodeWorkspacePath(_ path: String) {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.openCodeWorkspacePath = trimmed.isEmpty ? nil : trimmed
+        clearMessages()
+    }
+
+    public func setOpenCodeModelID(_ modelID: String) {
+        let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.openCodeModelID = trimmed.isEmpty ? nil : trimmed
+        clearMessages()
+    }
+
+    public func setOpenCodeLocalExecutionApproved(_ isApproved: Bool) {
+        settings.isOpenCodeLocalExecutionApproved = isApproved
         clearMessages()
     }
 

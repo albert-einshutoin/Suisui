@@ -53,6 +53,7 @@ final class LLMProviderCatalogTests: XCTestCase {
         let openCode = LLMProviderCatalog.entry(for: .opencodeLocal)
         XCTAssertNil(openCode.apiKeySecretKey)
         XCTAssertNil(openCode.baseURL)
+        XCTAssertTrue(openCode.isAvailableInCurrentBuild)
         XCTAssertEqual(openCode.requestFamily, .opencodeLocalCLI)
     }
 
@@ -64,6 +65,7 @@ final class LLMProviderCatalogTests: XCTestCase {
                 .claudeMessages,
                 .geminiDirect,
                 .groqOpenAICompatible,
+                .opencodeLocal,
                 .openRouterCompatible,
                 .ollamaCompatible
             ]

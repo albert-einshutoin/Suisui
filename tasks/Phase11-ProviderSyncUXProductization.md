@@ -99,11 +99,11 @@
 
 ## P11-015: OpenCode local provider integration
 
-- [ ] OpenCodeはクラウドAPI providerではなく、ローカル開発者向けの `opencodeLocal` adapterとして扱う。
-- [ ] SoloPMは `~/.local/share/opencode/auth.json` を読まない。ユーザーが選んだ `opencode` executableとworkspaceだけを使う。
-- [ ] subprocess実行はtimeout、stderr redaction、working directory validation、user approvalを必須にする。
-- [ ] OpenCode outputはAction Plan JSONのみ受け入れ、自然文だけの応答は実行しない。
-- [ ] 完了条件: 開発者はOpenCode資産を使えるが、SoloPMが勝手に認証情報を吸い上げない。
+- [x] OpenCodeはクラウドAPI providerではなく、ローカル開発者向けの `opencodeLocal` adapterとして扱う。
+- [x] SoloPMは `~/.local/share/opencode/auth.json` を読まない。ユーザーが選んだ `opencode` executableとworkspaceだけを使う。
+- [x] subprocess実行はtimeout、stderr redaction、working directory validation、user approvalを必須にする。
+- [x] OpenCode outputはAction Plan JSONのみ受け入れ、自然文だけの応答は実行しない。
+- [x] 完了条件: 開発者はOpenCode資産を使えるが、SoloPMが勝手に認証情報を吸い上げない。
 
 ## P11-020: Subscription entitlement domain
 

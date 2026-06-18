@@ -537,6 +537,10 @@ final class AppSettingsTests: XCTestCase {
         viewModel.setDefaultWorkspacePath("/tmp/SoloPM")
         viewModel.setGeminiModelID(" gemini-3.5-flash ")
         viewModel.setGroqBaseURLString(" https://api.groq.com/openai/v1 ")
+        viewModel.setOpenCodeExecutablePath(" opencode ")
+        viewModel.setOpenCodeWorkspacePath(" /tmp ")
+        viewModel.setOpenCodeModelID(" opencode-go/kimi-k2.7-code ")
+        viewModel.setOpenCodeLocalExecutionApproved(true)
         viewModel.saveSettings()
 
         let loaded = try store.load()
@@ -545,6 +549,10 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(loaded.defaultWorkspacePath, "/tmp/SoloPM")
         XCTAssertEqual(loaded.geminiModelID, "gemini-3.5-flash")
         XCTAssertEqual(loaded.groqBaseURLString, "https://api.groq.com/openai/v1")
+        XCTAssertEqual(loaded.openCodeExecutablePath, "opencode")
+        XCTAssertEqual(loaded.openCodeWorkspacePath, "/tmp")
+        XCTAssertEqual(loaded.openCodeModelID, "opencode-go/kimi-k2.7-code")
+        XCTAssertTrue(loaded.isOpenCodeLocalExecutionApproved)
     }
 
     func testAppSettingsValidatesGroqBaseURLBeforeSaving() {
@@ -557,6 +565,50 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(insecure.validate().first?.message, "Groq base URL must be an HTTPS URL with a host.")
         XCTAssertEqual(missingHost.validate().first?.message, "Groq base URL must be an HTTPS URL with a host.")
         XCTAssertTrue(valid.validate().isEmpty)
+    }
+
+    func testAppSettingsValidatesOpenCodeLocalSettingsOnlyWhenSelected() {
+        let inactive = AppSettings(
+            aiProvider: .openaiResponses,
+            openCodeExecutablePath: nil,
+            openCodeWorkspacePath: nil,
+            openCodeModelID: nil,
+            isOpenCodeLocalExecutionApproved: false
+        )
+        let missingConfig = AppSettings(
+            aiProvider: .opencodeLocal,
+            openCodeExecutablePath: nil,
+            openCodeWorkspacePath: nil,
+            openCodeModelID: nil,
+            isOpenCodeLocalExecutionApproved: false
+        )
+        let authJSONExecutable = AppSettings(
+            aiProvider: .opencodeLocal,
+            openCodeExecutablePath: "~/.local/share/opencode/auth.json",
+            openCodeWorkspacePath: "/tmp",
+            openCodeModelID: "opencode-go/kimi-k2.7-code",
+            isOpenCodeLocalExecutionApproved: true
+        )
+        let whitespaceModel = AppSettings(
+            aiProvider: .opencodeLocal,
+            openCodeExecutablePath: "opencode",
+            openCodeWorkspacePath: "/tmp",
+            openCodeModelID: "provider/model bad",
+            isOpenCodeLocalExecutionApproved: true
+        )
+
+        XCTAssertTrue(inactive.validate().isEmpty)
+        XCTAssertEqual(
+            missingConfig.validate().map(\.field),
+            [
+                "openCodeExecutablePath",
+                "openCodeWorkspacePath",
+                "openCodeModelID",
+                "isOpenCodeLocalExecutionApproved"
+            ]
+        )
+        XCTAssertEqual(authJSONExecutable.validate().first?.message, "OpenCode executable path must not point to auth.json.")
+        XCTAssertEqual(whitespaceModel.validate().first?.message, "OpenCode model id cannot contain whitespace.")
     }
 
     @MainActor
@@ -587,7 +639,7 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertEqual(
             viewModel.selectableAIProviders,
-            [.openaiResponses, .claudeMessages, .geminiDirect, .groqOpenAICompatible, .openRouterCompatible, .ollamaCompatible]
+            [.openaiResponses, .claudeMessages, .geminiDirect, .groqOpenAICompatible, .opencodeLocal, .openRouterCompatible, .ollamaCompatible]
         )
 
         viewModel.setAIProvider(.geminiOpenAICompatible)
@@ -615,10 +667,19 @@ final class AppSettingsTests: XCTestCase {
         let openAICompatibleData = Data(String(format: template, "openAICompatible").utf8)
         let openAIResponsesData = Data(String(format: template, "openAIResponses").utf8)
 
-        XCTAssertEqual(try decoder.decode(AppSettings.self, from: openRouterData).aiProvider, .openRouterCompatible)
-        XCTAssertEqual(try decoder.decode(AppSettings.self, from: ollamaData).aiProvider, .ollamaCompatible)
-        XCTAssertEqual(try decoder.decode(AppSettings.self, from: openAICompatibleData).aiProvider, .openaiResponses)
-        XCTAssertEqual(try decoder.decode(AppSettings.self, from: openAIResponsesData).aiProvider, .openaiResponses)
+        let openRouterSettings = try decoder.decode(AppSettings.self, from: openRouterData)
+        let ollamaSettings = try decoder.decode(AppSettings.self, from: ollamaData)
+        let openAICompatibleSettings = try decoder.decode(AppSettings.self, from: openAICompatibleData)
+        let openAIResponsesSettings = try decoder.decode(AppSettings.self, from: openAIResponsesData)
+
+        XCTAssertEqual(openRouterSettings.aiProvider, .openRouterCompatible)
+        XCTAssertEqual(ollamaSettings.aiProvider, .ollamaCompatible)
+        XCTAssertEqual(openAICompatibleSettings.aiProvider, .openaiResponses)
+        XCTAssertEqual(openAIResponsesSettings.aiProvider, .openaiResponses)
+        XCTAssertFalse(openRouterSettings.isOpenCodeLocalExecutionApproved)
+        XCTAssertNil(openRouterSettings.openCodeExecutablePath)
+        XCTAssertNil(openRouterSettings.openCodeWorkspacePath)
+        XCTAssertNil(openRouterSettings.openCodeModelID)
     }
 
     @MainActor

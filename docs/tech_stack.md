@@ -375,6 +375,8 @@ Gemini Direct adapter は Google Gemini API の native `models/{model}:generateC
 
 Groq OpenAI-compatible adapter は Groq公式の `https://api.groq.com/openai/v1` base URL と `chat/completions` request pathを専用presetで固定し、既定 model id は production model の `llama-3.3-70b-versatile` にする。Settings では Groq API key を Keychain の `groq_api_key`、Groq base URL を app settings に保存し、OpenAI / OpenRouter のAPI keyや課金経路と混ぜない。
 
+OpenCode Local adapter はクラウドAPI providerではなく、ユーザーが選んだ `opencode` executable / workspace / model id を使う local subprocess providerとして扱う。SoloPMはOpenCode credentials storeの `~/.local/share/opencode/auth.json` を直接読まず、Settingsで明示承認された場合だけ `opencode run --model ... --dir ...` をtimeout付きで起動し、stdoutがAction Plan JSONとしてschema validationを通った場合だけPlanningResponseにする。
+
 ```text
 LLMProvider
 ├─ OpenAIResponsesAdapter
@@ -1161,6 +1163,7 @@ Business:
 - Groq OpenAI compatibility: https://console.groq.com/docs/openai
 - Groq Text Generation: https://console.groq.com/docs/text-chat
 - Groq Models: https://console.groq.com/docs/models
+- OpenCode CLI: https://opencode.ai/docs/cli/
 - Ollama OpenAI compatibility: https://docs.ollama.com/api/openai-compatibility
 - Xcode releases: https://developer.apple.com/news/releases/
 - Xcode system requirements: https://developer.apple.com/xcode/system-requirements/

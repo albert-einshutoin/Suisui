@@ -680,6 +680,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("settingsViewModel.deleteGroqAPIKey()"))
         XCTAssertTrue(appSource.contains("Groq API Key"))
         XCTAssertTrue(appSource.contains("Groq Base URL"))
+        XCTAssertTrue(appSource.contains("OpenCode Executable"))
+        XCTAssertTrue(appSource.contains("OpenCode Workspace"))
+        XCTAssertTrue(appSource.contains("OpenCode Model ID"))
+        XCTAssertTrue(appSource.contains("Approve OpenCode Local Execution"))
         XCTAssertFalse(appSource.contains("SecureField(\"API Key\", text: .constant(\"\"))"))
     }
 
@@ -702,8 +706,23 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(factorySource.contains("case .geminiDirect:"))
         XCTAssertTrue(factorySource.contains("GeminiDirectConfiguration(model: settings.normalizedForRuntime.geminiModelID ?? entry.defaultModelID)"))
         XCTAssertTrue(factorySource.contains("GeminiDirectProvider(secretStore: secretStore, configuration: configuration)"))
-        XCTAssertTrue(factorySource.contains(".geminiOpenAICompatible,\n             .opencodeLocal"))
+        XCTAssertTrue(factorySource.contains(".openaiResponses,\n             .geminiOpenAICompatible:"))
         XCTAssertFalse(factorySource.contains(".claudeMessages,\n             .geminiDirect"))
+        XCTAssertFalse(factorySource.contains(".geminiDirect,\n             .geminiOpenAICompatible"))
+    }
+
+    func testRuntimeLLMFactoryUsesOpenCodeLocalProviderWithoutOpenAIFallbackOrAuthFileRead() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let factoryStart = try XCTUnwrap(appSource.range(of: "private static func makeLLMProvider"))
+        let factorySource = String(appSource[factoryStart.lowerBound..<appSource.endIndex])
+
+        XCTAssertTrue(factorySource.contains("case .opencodeLocal:"))
+        XCTAssertTrue(factorySource.contains("OpenCodeLocalConfiguration("))
+        XCTAssertTrue(factorySource.contains("OpenCodeLocalProvider(configuration: configuration)"))
+        XCTAssertTrue(factorySource.contains("normalizedSettings.openCodeExecutablePath"))
+        XCTAssertTrue(factorySource.contains("normalizedSettings.openCodeWorkspacePath"))
+        XCTAssertFalse(factorySource.contains(".openaiResponses,\n             .opencodeLocal"))
+        XCTAssertFalse(appSource.contains(".local/share/opencode/auth.json"))
     }
 
     func testRuntimeLLMFactoryUsesGroqCompatibleProviderWithoutOpenAIFallback() throws {

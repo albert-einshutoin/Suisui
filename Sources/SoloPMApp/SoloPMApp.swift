@@ -925,6 +925,38 @@ private struct SettingsView: View {
                         Label("Delete Groq Key", systemImage: "trash")
                     }
                 }
+                TextField(
+                    "OpenCode Executable",
+                    text: Binding(
+                        get: { settingsViewModel.settings.openCodeExecutablePath ?? "" },
+                        set: { settingsViewModel.setOpenCodeExecutablePath($0) }
+                    )
+                )
+                TextField(
+                    "OpenCode Workspace",
+                    text: Binding(
+                        get: { settingsViewModel.settings.openCodeWorkspacePath ?? "" },
+                        set: { settingsViewModel.setOpenCodeWorkspacePath($0) }
+                    )
+                )
+                TextField(
+                    "OpenCode Model ID",
+                    text: Binding(
+                        get: {
+                            settingsViewModel.settings.openCodeModelID
+                                ?? LLMProviderCatalog.entry(for: .opencodeLocal).defaultModelID
+                        },
+                        set: { settingsViewModel.setOpenCodeModelID($0) }
+                    )
+                )
+                Toggle(
+                    isOn: Binding(
+                        get: { settingsViewModel.settings.isOpenCodeLocalExecutionApproved },
+                        set: { settingsViewModel.setOpenCodeLocalExecutionApproved($0) }
+                    )
+                ) {
+                    Label("Approve OpenCode Local Execution", systemImage: "terminal")
+                }
                 LabeledContent("OpenRouter API Key", value: settingsViewModel.openRouterAPIKeyStatusLabel)
                 SecureField(
                     "OpenRouter API Key",
@@ -1433,8 +1465,7 @@ private enum AppRuntimeFactory {
     private static func makeLLMProvider(settings: AppSettings, secretStore: any SecretStore) -> any LLMProvider {
         switch settings.normalizedForRuntime.aiProvider {
         case .openaiResponses,
-             .geminiOpenAICompatible,
-             .opencodeLocal:
+             .geminiOpenAICompatible:
             let entry = LLMProviderCatalog.entry(for: .openaiResponses)
             let configuration = OpenAIResponsesConfiguration(model: entry.defaultModelID)
             return OpenAIResponsesProvider(secretStore: secretStore, configuration: configuration)
@@ -1469,6 +1500,16 @@ private enum AppRuntimeFactory {
                 configuration: .ollama(model: entry.defaultModelID),
                 secretStore: secretStore
             )
+        case .opencodeLocal:
+            let entry = LLMProviderCatalog.entry(for: .opencodeLocal)
+            let normalizedSettings = settings.normalizedForRuntime
+            let configuration = OpenCodeLocalConfiguration(
+                executablePath: normalizedSettings.openCodeExecutablePath,
+                workspacePath: normalizedSettings.openCodeWorkspacePath,
+                modelID: normalizedSettings.openCodeModelID ?? entry.defaultModelID,
+                isExecutionApproved: normalizedSettings.isOpenCodeLocalExecutionApproved
+            )
+            return OpenCodeLocalProvider(configuration: configuration)
         }
     }
 

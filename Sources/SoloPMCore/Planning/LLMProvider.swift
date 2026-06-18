@@ -11,6 +11,7 @@ public enum LLMProviderError: Error, Equatable, Sendable {
     case rateLimited
     case network(String)
     case invalidResponse(String)
+    case executionNotApproved(String)
     case unknown(String)
 
     public var userMessage: String {
@@ -23,6 +24,8 @@ public enum LLMProviderError: Error, Equatable, Sendable {
             "The AI provider request failed due to a network problem: \(message)"
         case .invalidResponse(let message):
             "The AI provider returned an invalid planning response: \(message)"
+        case .executionNotApproved(let message):
+            "The AI provider cannot run until local execution is approved: \(message)"
         case .unknown(let message):
             "The AI provider failed unexpectedly: \(message)"
         }

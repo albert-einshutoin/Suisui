@@ -165,8 +165,7 @@ public enum LLMProviderCatalog {
         LLMProviderCatalogEntry(
             id: .opencodeLocal,
             displayName: "OpenCode Local",
-            isAvailableInCurrentBuild: false,
-            unavailableReason: unavailableReason,
+            isAvailableInCurrentBuild: true,
             apiKeySecretKey: nil,
             baseURL: nil,
             defaultModelID: "anthropic/claude-sonnet-4-5",

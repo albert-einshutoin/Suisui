@@ -8,6 +8,7 @@ final class LLMProviderErrorTests: XCTestCase {
             .rateLimited,
             .network("offline"),
             .invalidResponse("missing JSON"),
+            .executionNotApproved("approve OpenCode"),
             .unknown("unexpected")
         ]
 
@@ -22,6 +23,7 @@ final class LLMProviderErrorTests: XCTestCase {
         XCTAssertTrue(LLMProviderError.rateLimited.userMessage.contains("rate limit"))
         XCTAssertTrue(LLMProviderError.network("offline").userMessage.contains("offline"))
         XCTAssertTrue(LLMProviderError.invalidResponse("missing JSON").userMessage.contains("missing JSON"))
+        XCTAssertTrue(LLMProviderError.executionNotApproved("approve OpenCode").userMessage.contains("approve OpenCode"))
     }
 
     func testHTTPErrorMessageExtractorRedactsStructuredErrorMessages() {
