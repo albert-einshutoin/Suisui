@@ -215,10 +215,9 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     }
 
     public func loadSnapshot(includeArchived: Bool) throws -> ProjectBoardSnapshot {
-        let projects = try ensureProjects(includeArchived: includeArchived)
-        let tasks = try taskStore.listAll().compactMap(makeBoardTask)
+        let boardData = try loadBoardData(includeArchived: includeArchived)
 
-        let boardProjects = projects.map { makeBoardProject(project: $0, tasks: tasks) }
+        let boardProjects = boardData.projects.map { makeBoardProject(project: $0, tasks: boardData.tasks) }
 
         return ProjectBoardSnapshot(projects: boardProjects)
     }
@@ -234,30 +233,30 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     public func updateProject(id: Int64, title: String) throws -> ProjectBoardProject {
         let normalizedTitle = try normalizedProjectTitle(title)
         let record = try projectStore.update(id: id, title: normalizedTitle)
-        let tasks = try taskStore.listAll().compactMap(makeBoardTask)
-        return makeBoardProject(project: record, tasks: tasks)
+        let boardData = try loadBoardData(includeArchived: true)
+        return makeBoardProject(project: record, tasks: boardData.tasks)
     }
 
     @discardableResult
     public func completeProject(id: Int64) throws -> ProjectBoardProject {
         let record = try projectStore.update(id: id, status: "completed")
         _ = try taskStore.completeOpenTasks(projectID: id)
-        let tasks = try taskStore.listAll().compactMap(makeBoardTask)
-        return makeBoardProject(project: record, tasks: tasks)
+        let boardData = try loadBoardData(includeArchived: true)
+        return makeBoardProject(project: record, tasks: boardData.tasks)
     }
 
     @discardableResult
     public func archiveProject(id: Int64) throws -> ProjectBoardProject {
         let record = try projectStore.archive(id: id)
-        let tasks = try taskStore.listAll().compactMap(makeBoardTask)
-        return makeBoardProject(project: record, tasks: tasks)
+        let boardData = try loadBoardData(includeArchived: true)
+        return makeBoardProject(project: record, tasks: boardData.tasks)
     }
 
     @discardableResult
     public func restoreProject(id: Int64) throws -> ProjectBoardProject {
         let record = try projectStore.restore(id: id)
-        let tasks = try taskStore.listAll().compactMap(makeBoardTask)
-        return makeBoardProject(project: record, tasks: tasks)
+        let boardData = try loadBoardData(includeArchived: true)
+        return makeBoardProject(project: record, tasks: boardData.tasks)
     }
 
     @discardableResult
@@ -327,6 +326,32 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         return try projectStore.list(includeArchived: includeArchived)
     }
 
+    private func loadBoardData(includeArchived: Bool) throws -> (projects: [ProjectRecord], tasks: [ProjectBoardTask]) {
+        var projects = try ensureProjects(includeArchived: includeArchived)
+        let taskRecords = try taskStore.listAll()
+        let fallbackProjectID: Int64?
+
+        if taskRecords.contains(where: { $0.projectID == nil }) {
+            fallbackProjectID = try ensureActiveInboxProject().id
+            projects = try projectStore.list(includeArchived: includeArchived)
+        } else {
+            fallbackProjectID = nil
+        }
+
+        let tasks = try taskRecords.map { record in
+            try makeBoardTask(record, fallbackProjectID: fallbackProjectID).requiredTask()
+        }
+        return (projects, tasks)
+    }
+
+    private func ensureActiveInboxProject() throws -> ProjectRecord {
+        if let inbox = try projectStore.list().first(where: { $0.title == "Inbox" }) {
+            return inbox
+        }
+
+        return try projectStore.create(title: "Inbox", tags: ["local"], sourceCommand: "app.project-board")
+    }
+
     private func normalizedDraft(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTaskDraft {
         let title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else {
@@ -370,8 +395,8 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         return ProjectBoardProject(id: project.id, title: project.title, status: project.status, subtitle: subtitle, columns: columns)
     }
 
-    private func makeBoardTask(_ record: TaskRecord) -> ProjectBoardTask? {
-        guard let projectID = record.projectID else {
+    private func makeBoardTask(_ record: TaskRecord, fallbackProjectID: Int64? = nil) -> ProjectBoardTask? {
+        guard let projectID = record.projectID ?? fallbackProjectID else {
             return nil
         }
 

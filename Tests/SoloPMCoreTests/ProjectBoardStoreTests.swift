@@ -34,6 +34,23 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(plannedTasks.first?.dueLabel, "2026-06-20")
     }
 
+    func testLoadSnapshotShowsUnassignedPersistentTasksInInbox() throws {
+        let stores = try makeStoreBundle()
+        _ = try stores.projects.create(title: "Launch Readiness")
+        _ = try stores.tasks.create(
+            title: "Triage loose task",
+            projectID: nil,
+            status: "planned",
+            detail: "Created outside the board UI."
+        )
+
+        let snapshot = try stores.board.loadSnapshot()
+        let inbox = try XCTUnwrap(snapshot.projects.first { $0.title == "Inbox" })
+
+        XCTAssertEqual(inbox.column(.planned)?.tasks.map(\.title), ["Triage loose task"])
+        XCTAssertEqual(inbox.subtitle, "1 open / 1 total")
+    }
+
     func testUpdateTaskMovesCardAcrossColumnsAndUpdatesMetadata() throws {
         let store = try makeStore()
         let projectID = try XCTUnwrap(store.loadSnapshot().projects.first?.id)

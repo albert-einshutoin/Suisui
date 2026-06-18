@@ -726,6 +726,13 @@
 - [x] project / task / knowledge / reminder の regression tests で partial row / partial reminder が作られないことを確認する。
 - [x] 完了条件: CRUD / reminder bulk 入力の壊れた配列が、要素欠落または部分実行として成功扱いにならない。
 
+### P10-091: Board shows unassigned persistent tasks
+
+- [x] `SQLiteProjectBoardStore` は `projectID == nil` の永続タスクを `compactMap` で Board から落とさない。
+- [x] 未紐付けタスクが存在する場合は active `Inbox` project を確保し、その Inbox カラムに表示する。
+- [x] `ProjectBoardStoreTests` で CLI / AI 経由など Board UI 外で作られたタスクが Inbox に出ることを確認する。
+- [x] 完了条件: ローカルDBに存在するタスクが、project 未指定という理由だけでタスク管理UIから消えない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
