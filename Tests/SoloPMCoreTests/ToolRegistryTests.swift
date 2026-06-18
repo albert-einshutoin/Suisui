@@ -18,6 +18,23 @@ final class ToolRegistryTests: XCTestCase {
         }
     }
 
+    func testRegistryValidationReportsUnavailableTool() throws {
+        let registry = ToolRegistry()
+        let issues = registry.validate(action: PlanAction(
+            id: "task",
+            tool: .taskCreate,
+            arguments: ["title": .string("Draft")]
+        ))
+
+        XCTAssertEqual(issues, [
+            ToolInputValidationIssue(
+                actionID: "task",
+                field: "tool",
+                message: "Tool task.create is not available in the active registry."
+            )
+        ])
+    }
+
     func testRegistryExportsSchemas() throws {
         let registry = try ToolRegistry(tools: [
             makeTool(name: .taskCreate, permissionLevel: .writeWithApproval),

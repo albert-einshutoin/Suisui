@@ -194,17 +194,25 @@ final class ActionExecutorTests: XCTestCase {
         XCTAssertFalse(callTracker.wasCalled)
     }
 
-    func testExecutorMarksUnknownToolAsFailure() throws {
+    func testExecutorReportsUnavailableToolBeforeExecution() throws {
         let registry = ToolRegistry()
         let session = ReviewSession(plan: .reviewFixture(actions: [
             PlanAction(id: "missing", tool: .projectList)
         ]))
 
-        let executed = try ActionExecutor(registry: registry).execute(session)
-
-        XCTAssertEqual(executed.executionStatus, .failed)
-        XCTAssertEqual(executed.items.first?.executionStatus, .failed)
-        XCTAssertTrue(executed.items.first?.errorMessage?.contains("unknownTool") == true)
+        XCTAssertThrowsError(try ActionExecutor(registry: registry).execute(session)) { error in
+            guard case .validationFailed(let issues) = error as? ActionExecutorError else {
+                XCTFail("Expected validation failure, got \(error)")
+                return
+            }
+            XCTAssertEqual(issues, [
+                ToolInputValidationIssue(
+                    actionID: "missing",
+                    field: "tool",
+                    message: "Tool project.list is not available in the active registry."
+                )
+            ])
+        }
     }
 
     func testExecutorRecordsSkippedDisabledActionInAuditLog() throws {

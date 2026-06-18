@@ -889,6 +889,13 @@
 - [x] `SaaSConnectorTests` で削除失敗時の throw、既存 access token、既存 refresh token、既存 metadata の保持を確認する。
 - [x] 完了条件: 外部連携が release scope 外でも、Keychain に古い refresh token を残したまま「refresh なし credential」として成功表示しない。
 
+### P10-114: Review execution blocks unavailable tools before execution
+
+- [x] `ToolRegistry.validate(action:)` は active registry に tool が存在しない場合、空の validation result ではなく action-level issue を返す。
+- [x] `ActionExecutor` は registry 欠落を tool 実行後の failure ではなく preflight validation failure として止める。
+- [x] `ToolRegistryTests` と `ActionExecutorTests` で unavailable tool が review 前に検出されることを固定する。
+- [x] 完了条件: runtime registry が壊れている状態で、Review UI が入力問題なし / 実行可能に見えない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

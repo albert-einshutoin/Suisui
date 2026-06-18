@@ -306,7 +306,13 @@ public final class ToolRegistry: @unchecked Sendable {
         defer { lock.unlock() }
 
         guard let schema = tools[action.tool]?.inputSchema else {
-            return []
+            return [
+                ToolInputValidationIssue(
+                    actionID: action.id,
+                    field: "tool",
+                    message: "Tool \(action.tool.rawValue) is not available in the active registry."
+                )
+            ]
         }
 
         return schema.validate(arguments: action.arguments, tool: action.tool, actionID: action.id)
