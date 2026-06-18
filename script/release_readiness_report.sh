@@ -58,14 +58,32 @@ else
 fi
 
 section "Phase checklist blockers"
-phase_unchecked="$(rg -n -g '*.md' -- "- \\[ \\]" "$ROOT_DIR"/tasks/Phase*.md || true)"
+phase_unchecked=""
+if [[ -d "$ROOT_DIR/tasks" ]]; then
+  while IFS= read -r phase_file; do
+    phase_name="$(basename "$phase_file")"
+    case "$phase_name" in
+      Phase[0-9].md|Phase[0-9]-*.md|Phase10.md|Phase10-*.md)
+        unchecked_items="$(rg -n --with-filename -- "- \\[ \\]" "$phase_file" || true)"
+        if [[ -n "$unchecked_items" ]]; then
+          if [[ -n "$phase_unchecked" ]]; then
+            phase_unchecked+=$'\n'
+          fi
+          phase_unchecked+="$unchecked_items"
+        fi
+        ;;
+    esac
+  done < <(find "$ROOT_DIR/tasks" -maxdepth 1 -type f -name 'Phase*.md' | sort)
+else
+  blocker "missing tasks directory"
+fi
 readme_template_unchecked="$(rg -n -g '*.md' -- "- \\[ \\]" "$ROOT_DIR/tasks/README.md" || true)"
 
 if [[ -n "$phase_unchecked" ]]; then
   printf "%s\n" "$phase_unchecked"
   blocker "phase checklist still has unchecked release/manual gates"
 else
-  printf "OK: no unchecked items in tasks/Phase*.md\n"
+  printf "OK: no unchecked items in release phase checklists (Phase0-Phase10)\n"
 fi
 
 if [[ -n "$readme_template_unchecked" ]]; then

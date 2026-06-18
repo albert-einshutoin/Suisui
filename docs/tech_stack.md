@@ -372,9 +372,12 @@ LLMProvider
 ├─ OpenAIResponsesAdapter
 ├─ OpenAICompatibleChatAdapter
 │  ├─ OpenRouterAdapter
+│  ├─ GroqAdapter
 │  └─ OllamaAdapter
-├─ AnthropicAdapter later
-└─ GeminiAdapter later
+├─ AnthropicMessagesAdapter
+├─ GeminiDirectAdapter
+├─ GeminiOpenAICompatibleAdapter
+└─ OpenCodeLocalAdapter
 ```
 
 優先順位:
@@ -383,9 +386,12 @@ LLMProvider
 |---|---|---|
 | P0 | OpenAI Responses API | 最初の基準実装にする |
 | P1 | OpenRouter | 複数モデル選択とコスト最適化 |
+| P1 | Groq | OpenAI互換の高速/低コストproviderとして対応する |
 | P1 | Ollama | ローカル LLM 対応 |
-| P2 | Anthropic | Claude ユーザー対応 |
-| P2 | Gemini | Google ecosystem 対応 |
+| P1 | Anthropic Messages API | Claude ユーザー対応 |
+| P1 | Gemini Direct API | Google ecosystem 対応 |
+| P2 | Gemini OpenAI-compatible API | 既存OpenAI互換clientを使うユーザー向け |
+| P2 | OpenCode local adapter | 開発者向け。CLI/subprocess連携で、認証ファイルはSoloPMが読まない |
 | P2 | Apple Foundation Models | macOS 26+ / Apple Intelligence利用可能時のOSネイティブ推論。MVPコアではなく実験的に使う |
 
 ### 7.1.1 Later: Apple Foundation Models framework
@@ -929,7 +935,7 @@ Sync later:
 | 領域 | 発生タイミング | 対応 |
 |---|---|---|
 | モデル download bandwidth | whisper model 配布 | GitHub Releases / CDN / external model URL |
-| Sync | 後続 | 有料サービス化 |
+| Sync | 後続 | 有料サービス化。Freeではdomain層で同期実行を止め、Proでもbackend未構成時はmock successにしない |
 | Publish / Status Page | 後続 | 有料サービス化 |
 | OAuth App 審査 | Gmail / Google 連携時 | 後続に回す |
 | サポート | 商用利用 | Commercial Support |

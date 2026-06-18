@@ -1104,6 +1104,14 @@
 - [x] `ReleasePipelineTests` で fake `rg` を `PATH` に差し込み、scan command error で release report が non-zero になることを固定する。
 - [x] 完了条件: runtime source scan が実行不能な状態で `READY` を出さず、リリース前に検出可能な blocker として残す。
 
+### P10-141b: Future phase planning is not a current release blocker
+
+- [x] `release_readiness_report.sh` は `Phase11+` の future planning を現在リリースの blocker にしない。
+- [x] release checklist scan は Phase0〜Phase10 の現在 release gate に限定する。
+- [x] `ReleasePipelineTests` で Phase10 までに限定されることを固定する。
+- [x] Phase checklist blocker はファイル名と行番号を出し、未完了gateの場所を追えるようにする。
+- [x] 完了条件: 次フェーズの未完了計画を追加しても、現在リリースの `NOT READY` 理由が水増しされない。
+
 ### P10-142: Manual release environment evidence must be concrete
 
 - [x] `create_release_evidence.sh` は manual check flag がある場合、空白だけの `--manual-environment` を拒否する。
@@ -1248,6 +1256,16 @@
 - [x] Dock 再クリックなど `applicationShouldHandleReopen` で visible window がない場合も Project Board を復帰する。
 - [x] `LaunchExperienceTests` で build script と AppDelegate の起動復帰契約を固定する。
 - [x] 完了条件: ビルド成功後にプロセスだけ残り、ユーザーが Project Board を触れない状態で止まらない。
+
+### P10-160: Project delete CRUD is real local data mutation
+
+- [x] `ActionTool` / packaged `action-plan.schema.json` に `project.delete` を追加し、Project delete を承認付き write tool として扱う。
+- [x] `SQLiteProjectStore.delete` は Project row だけでなく、関連 Task、CalendarLink、ReminderLink、DeadlineRule、Artifact を同一transactionで削除する。
+- [x] `SQLiteProjectStore.delete` は `CoreMigrations.phase2` のように後続tableが存在しないDBでも失敗しない。
+- [x] `ProjectTool(project.delete)` は削除件数を output に返し、Review execution からProject削除を実行できる。
+- [x] Project Board UI は確認ダイアログつきの `Delete Project` を持ち、ViewModel経由で永続削除できる。
+- [x] `LocalStoreTests` / `ProjectTaskKnowledgeToolTests` / `ProjectBoardStoreTests` / `ActionPlanDomainTests` / `ActionPlanSchemaTests` で永続削除、schema、risk、registry、UI ViewModelを固定する。
+- [x] 完了条件: Project CRUD の delete がUI専用操作でもmockでもなく、ローカル永続DBに対する一貫したCRUDとして成立する。
 
 ## PDCA Loop
 
