@@ -4,7 +4,9 @@
     "buildNumber": "1",
     "appBundlePath": "dist/SoloPM.app",
     "artifactPath": "dist/releases/SoloPM-0.1.0+1.dmg",
-    "artifactSha256": "replace-after-package"
+    "artifactSha256": "replace-after-package",
+    "signingIdentity": "Developer ID Application: SoloPM Release Owner (TEAMID)",
+    "notaryProfile": "SoloPMNotaryProfile"
   },
   "manualChecks": {
     "cleanEnvironmentLaunch": false,

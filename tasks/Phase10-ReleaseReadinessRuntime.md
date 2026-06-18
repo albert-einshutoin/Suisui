@@ -417,6 +417,13 @@
 - [x] `SOLOPM_RELEASE_PREFLIGHT_ONLINE=1` の場合は `xcrun notarytool history --keychain-profile` で configured notary profile を検証する。
 - [x] 完了条件: release operator は notary submit 前に Keychain profile 設定不備を単独コマンドで確認できる。
 
+### P10-053: Release evidence signing context binding
+
+- [x] `create_release_evidence.sh` は `SOLOPM_SIGNING_IDENTITY` / `SOLOPM_NOTARY_PROFILE` がない状態で成功証跡を作らない。
+- [x] release evidence は `release.signingIdentity` / `release.notaryProfile` を記録するが、credential secret は保存しない。
+- [x] `verify_release_environment.sh` は evidence の signing identity / notary profile が現在の release machine 設定と一致することを照合する。
+- [x] 完了条件: manual release evidence は artifact checksum だけでなく、配布署名 context にも紐づく。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

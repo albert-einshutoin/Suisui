@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
+SIGNING_ENV_FILE="$ROOT_DIR/packaging/signing.env"
+NOTARIZATION_ENV_FILE="$ROOT_DIR/packaging/notarization.env"
 OUTPUT_FILE="${SOLOPM_RELEASE_EVIDENCE_FILE:-$ROOT_DIR/packaging/release-evidence.json}"
 CHECKSUM_FILE="${SOLOPM_RELEASE_ARTIFACT_SHA256_FILE:-}"
 FORCE=0
@@ -95,12 +97,24 @@ fi
 # shellcheck source=/dev/null
 source "$METADATA_FILE"
 
+if [[ -f "$SIGNING_ENV_FILE" ]]; then
+  # shellcheck source=/dev/null
+  source "$SIGNING_ENV_FILE"
+fi
+
+if [[ -f "$NOTARIZATION_ENV_FILE" ]]; then
+  # shellcheck source=/dev/null
+  source "$NOTARIZATION_ENV_FILE"
+fi
+
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 MARKETING_VERSION="${MARKETING_VERSION:?MARKETING_VERSION is required}"
 CURRENT_PROJECT_VERSION="${CURRENT_PROJECT_VERSION:?CURRENT_PROJECT_VERSION is required}"
 APP_BUNDLE_PATH="dist/$APP_NAME.app"
 ARTIFACT_BASENAME="$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION"
 CHECKED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+SIGNING_IDENTITY="${SOLOPM_SIGNING_IDENTITY:-}"
+NOTARY_PROFILE="${SOLOPM_NOTARY_PROFILE:-}"
 
 json_escape() {
   local value="$1"
@@ -215,6 +229,22 @@ require_release_package_evidence() {
   fi
 }
 
+require_release_signing_context() {
+  if [[ -z "$SIGNING_IDENTITY" || -z "$NOTARY_PROFILE" ]]; then
+    echo "release evidence requires SOLOPM_SIGNING_IDENTITY and SOLOPM_NOTARY_PROFILE" >&2
+    exit 2
+  fi
+
+  case "$SIGNING_IDENTITY" in
+    "Developer ID Application:"*)
+      ;;
+    *)
+      echo "release evidence requires a Developer ID Application signing identity: $SIGNING_IDENTITY" >&2
+      exit 2
+      ;;
+  esac
+}
+
 if [[ "${#NOTES[@]}" -eq 0 ]]; then
   NOTES+=("Generated from packaging/app_metadata.env. Set manual check flags only after testing the signed and notarized build.")
 fi
@@ -235,6 +265,7 @@ if [[ "$CLEAN_ENVIRONMENT_LAUNCH" == "true" || "$LOGIN_ITEM_TOGGLE" == "true" ]]
     exit 2
   fi
 fi
+require_release_signing_context
 
 {
   printf '{\n'
@@ -243,7 +274,9 @@ fi
   printf '    "buildNumber": "%s",\n' "$(json_escape "$CURRENT_PROJECT_VERSION")"
   printf '    "appBundlePath": "%s",\n' "$(json_escape "$APP_BUNDLE_PATH")"
   printf '    "artifactPath": "%s",\n' "$(json_escape "$artifact_path")"
-  printf '    "artifactSha256": "%s"\n' "$(json_escape "$artifact_sha")"
+  printf '    "artifactSha256": "%s",\n' "$(json_escape "$artifact_sha")"
+  printf '    "signingIdentity": "%s",\n' "$(json_escape "$SIGNING_IDENTITY")"
+  printf '    "notaryProfile": "%s"\n' "$(json_escape "$NOTARY_PROFILE")"
   printf '  },\n'
   printf '  "manualChecks": {\n'
   printf '    "cleanEnvironmentLaunch": %s,\n' "$CLEAN_ENVIRONMENT_LAUNCH"

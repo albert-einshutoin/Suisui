@@ -135,6 +135,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(example.contains("\"version\": \"0.1.0\""))
         XCTAssertTrue(example.contains("\"buildNumber\": \"1\""))
         XCTAssertTrue(example.contains("\"appBundlePath\": \"dist/SoloPM.app\""))
+        XCTAssertTrue(example.contains("\"signingIdentity\""))
+        XCTAssertTrue(example.contains("\"notaryProfile\""))
         XCTAssertFalse(example.contains("PASSWORD"))
         XCTAssertFalse(example.contains("TOKEN"))
         XCTAssertFalse(example.contains("SECRET"))
@@ -214,7 +216,9 @@ final class ReleasePipelineTests: XCTestCase {
             ],
             environment: [
                 "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
-                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path,
+                "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
+                "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile"
             ]
         )
 
@@ -225,6 +229,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(evidence.contains("\"appBundlePath\": \"dist/SoloPM.app\""))
         XCTAssertTrue(evidence.contains("\"artifactPath\": \"dist/releases/SoloPM-0.1.0+1.dmg\""))
         XCTAssertTrue(evidence.contains("\"artifactSha256\": \"abcdef1234567890\""))
+        XCTAssertTrue(evidence.contains("\"signingIdentity\": \"Developer ID Application: SoloPM Test (TEAMID)\""))
+        XCTAssertTrue(evidence.contains("\"notaryProfile\": \"SoloPMNotaryProfile\""))
         XCTAssertTrue(evidence.contains("\"cleanEnvironmentLaunch\": true"))
         XCTAssertTrue(evidence.contains("\"loginItemToggle\": true"))
         XCTAssertTrue(evidence.contains("\"environment\": \"macOS 15.5 clean user on arm64\""))
@@ -264,13 +270,47 @@ final class ReleasePipelineTests: XCTestCase {
             arguments: ["--force"],
             environment: [
                 "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
-                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path,
+                "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
+                "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile"
             ]
         )
 
         XCTAssertEqual(result.exitCode, 0, result.output)
         let evidence = try String(contentsOf: evidenceURL, encoding: .utf8)
         XCTAssertTrue(evidence.contains("\"artifactPath\": \"\(absoluteArtifactPath)\""))
+    }
+
+    func testReleaseEvidenceScriptRequiresSigningContextForSuccessfulEvidence() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-missing-signing-context.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-missing-signing-context.dmg.sha256")
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try "abcdef1234567890  dist/releases/SoloPM-0.1.0+1.dmg\n"
+            .write(to: checksumURL, atomically: true, encoding: .utf8)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+        }
+
+        let result = try runScript(
+            "script/create_release_evidence.sh",
+            arguments: ["--force"],
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release evidence requires SOLOPM_SIGNING_IDENTITY and SOLOPM_NOTARY_PROFILE"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceURL.path))
     }
 
     func testReleaseEvidenceScriptRejectsMissingPackagedArtifact() throws {
@@ -479,6 +519,57 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("release evidence artifact SHA-256 does not match package checksum"))
+    }
+
+    func testReleasePreflightRejectsEvidenceForDifferentSigningContext() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-signing-context.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-signing-context.dmg.sha256")
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        {
+          "release": {
+            "version": "0.1.0",
+            "buildNumber": "1",
+            "appBundlePath": "dist/SoloPM.app",
+            "artifactPath": "dist/releases/SoloPM-0.1.0+1.dmg",
+            "artifactSha256": "actual-sha",
+            "signingIdentity": "Developer ID Application: Other Release Owner (TEAMID)",
+            "notaryProfile": "OtherNotaryProfile"
+          },
+          "manualChecks": {
+            "cleanEnvironmentLaunch": true,
+            "loginItemToggle": true,
+            "environment": "macOS 15.5 clean user on arm64"
+          }
+        }
+        """.write(to: evidenceURL, atomically: true, encoding: .utf8)
+        try "actual-sha  dist/releases/SoloPM-0.1.0+1.dmg\n"
+            .write(to: checksumURL, atomically: true, encoding: .utf8)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+        }
+
+        let result = try runScript(
+            "script/verify_release_environment.sh",
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path,
+                "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Release Owner (TEAMID)",
+                "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile"
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release evidence signing identity does not match metadata"))
+        XCTAssertTrue(result.output.contains("release evidence notary profile does not match metadata"))
     }
 
     func testReleasePreflightRejectsEvidenceWithoutPackageEvidenceManifest() throws {

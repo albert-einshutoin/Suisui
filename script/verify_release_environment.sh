@@ -459,6 +459,14 @@ if [[ -f "$RELEASE_EVIDENCE_FILE" ]]; then
     require_evidence_equals "release.version" "version" "${MARKETING_VERSION:-}"
     require_evidence_equals "release.buildNumber" "build number" "${CURRENT_PROJECT_VERSION:-}"
     require_evidence_equals "release.appBundlePath" "app bundle path" "$EXPECTED_APP_BUNDLE_PATH"
+    require_evidence_non_empty "release.signingIdentity" "signing identity"
+    require_evidence_non_empty "release.notaryProfile" "notary profile"
+    if [[ -n "$SIGNING_IDENTITY" ]]; then
+      require_evidence_equals "release.signingIdentity" "signing identity" "$SIGNING_IDENTITY"
+    fi
+    if [[ -n "$NOTARY_PROFILE" ]]; then
+      require_evidence_equals "release.notaryProfile" "notary profile" "$NOTARY_PROFILE"
+    fi
     require_evidence_artifact_sha256
     require_evidence_true "manualChecks.cleanEnvironmentLaunch" "clean environment launch"
     require_evidence_true "manualChecks.loginItemToggle" "login item toggle in signed app"
