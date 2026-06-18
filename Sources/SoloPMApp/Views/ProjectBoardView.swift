@@ -41,6 +41,8 @@ struct ProjectBoardView: View {
                     Label("Add Project", systemImage: "folder.badge.plus")
                 }
                 .buttonStyle(.borderless)
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .help("Add a project")
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
             }
@@ -63,6 +65,8 @@ struct ProjectBoardView: View {
                         SettingsLink {
                             Label("Settings", systemImage: "gearshape")
                         }
+                        .keyboardShortcut(",", modifiers: [.command])
+                        .help("Open Settings")
                     }
                 }
                 .inspector(isPresented: inspectorBinding) {

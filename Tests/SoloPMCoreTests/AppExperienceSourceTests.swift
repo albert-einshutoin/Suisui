@@ -179,6 +179,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".animation(.snappy(duration: 0.16), value: isPointerHovered)"))
     }
 
+    func testProjectBoardExposesPrimaryCRUDKeyboardShortcuts() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(source.contains(".keyboardShortcut(\"n\", modifiers: [.command])"))
+        XCTAssertTrue(source.contains(".keyboardShortcut(\"n\", modifiers: [.command, .shift])"))
+        XCTAssertTrue(source.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
+        XCTAssertTrue(source.contains(".help(\"Add a project\")"))
+        XCTAssertTrue(source.contains(".help(\"Open Settings\")"))
+    }
+
     func testAppAndCLIShareDefaultDatabaseLocation() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let cliSource = try readPackageFile("Sources/SoloPMCLI/SoloPMCLIEntrypoint.swift")

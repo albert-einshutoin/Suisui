@@ -155,8 +155,8 @@
 
 ## P11-033: Keyboard and accessibility pass
 
-- [ ] `Command+N` は選択中ProjectにTask追加、`Command+Shift+N` はProject追加、`Command+,` はSettingsに割り当てる。
-- [ ] Drag操作の代替として、カード上のMoveボタンとcontext menuを維持する。
+- [x] `Command+N` は選択中ProjectにTask追加、`Command+Shift+N` はProject追加、`Command+,` はSettingsに割り当てる。
+- [x] Drag操作の代替として、カード上のMoveボタンとcontext menuを維持する。
 - [ ] VoiceOver label、focus order、button help、destructive confirmationを確認する。
 - [ ] Light/Dark/System切替後にカード、サイドバー、インスペクタのコントラストが破綻しないことをスクリーンショットで確認する。
 - [ ] 完了条件: マウス、キーボード、支援技術のどれでも主要CRUDが完結する。
