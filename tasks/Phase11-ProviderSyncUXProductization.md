@@ -240,6 +240,7 @@
 - [x] `script/create_competitor_hands_on_evidence.sh --pending` は `.tmp/competitor-hands-on/create-evidence-command.sh` を生成し、operatorがplaceholderを具体観測へ置換して同じoutput/benchmark pathでpassed証跡を作れる。
 - [x] `script/create_competitor_hands_on_evidence.sh --pending` pins `.tmp/competitor-hands-on/create-evidence-command.sh` to a clean tracked source tree and the source commit it was generated for, and the generated command exits before writing evidence if the release candidate tree is dirty or the commit has changed.
 - [x] `script/create_competitor_hands_on_evidence.sh --pending` は `.tmp/competitor-hands-on/hands-on-worksheet.md` も生成し、2-4時間の手動レビュー中にcontext、クリックパス、測定、Ship/Defer/Rejectを取り漏らさない。
+- [x] action summary は VoiceOver の `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` preview と `.tmp/voiceover-review/create-evidence-command.sh` を案内し、operatorがtracked evidenceを汚さずrelease候補contextを確認できるようにする。
 - [x] release action summary は competitor hands-on の pending generator と `.tmp/competitor-hands-on/create-evidence-command.sh` を先に案内し、手動証跡を未完了のまま明確に修復できる。
 - [x] Notion: 柔軟だが個人PM用途では構造化と運用設計が重い。SoloPMは「音声/AIで構造化済みのProject/Taskに落とす」ことで差別化する。
 - [x] Todoist: 速いcaptureと今日の整理が強い。SoloPMはInbox/Todayの即時入力とAI分類を取り込む。

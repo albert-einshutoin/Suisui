@@ -753,6 +753,7 @@ write_release_actions() {
     printf -- "- Prepare the deterministic review candidate before the manual pass. Use \`--no-launch\` to inspect the isolated database first, then run without it to build and open the candidate app.\n\n"
     write_voiceover_review_candidate_command
     printf "\n"
+    printf -- "- The candidate writes \`.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md\` so you can inspect the release-candidate context without modifying tracked evidence.\n"
     printf -- "- The candidate writes \`.tmp/voiceover-review/create-evidence-command.sh\` with the same database/project context. Replace every placeholder in that generated command with concrete VoiceOver observations before running it.\n"
     printf -- "- The generated VoiceOver evidence command is pinned to a clean tracked source tree and the source commit it was created for. Rerun \`./script/prepare_voiceover_review_candidate.sh\` after source changes instead of reusing an older command.\n"
     printf -- "- Run the source/runtime accessibility preflight first, then perform a real VoiceOver pass.\n"
