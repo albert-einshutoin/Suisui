@@ -216,6 +216,8 @@ Update the benchmark document from worksheet/desk research to hands-on findings 
 
 Use the generator so a pending worksheet cannot be mistaken for a pass. The passed generator writes both `docs/release/evidence/competitor-hands-on.md` and `docs/product/competitor-benchmark.md`, so the release report cannot be unblocked by updating only one of the two artifacts.
 
+Running the pending generator also writes `.tmp/competitor-hands-on/create-evidence-command.sh`. Use that generated command after the hands-on pass so the final evidence keeps the same output paths and required fields. Replace every placeholder in that generated command with concrete observations before running it; the script rejects the generated placeholders if they are not edited.
+
 Each competitor note and Ship / Defer / Reject delta must identify what was actually observed or decided during the hands-on pass. Boilerplate notes such as `Verified.`, `Passed.`, `OK`, `No issues`, or unedited `Concrete ... observation from the hands-on pass.` examples are rejected by both the generator and `release_readiness_report.sh`.
 
 ```bash
