@@ -11,6 +11,7 @@ UI_SCREENSHOT_MIN_BYTES=50000
 UI_SCREENSHOT_MIN_WIDTH=640
 UI_SCREENSHOT_MIN_HEIGHT=420
 VOICEOVER_EVIDENCE_RELATIVE="docs/release/evidence/accessibility-voiceover.md"
+ACCESSIBILITY_PREFLIGHT_RELATIVE="script/check_accessibility_preflight.sh"
 COMPETITOR_EVIDENCE_RELATIVE="docs/release/evidence/competitor-hands-on.md"
 MCP_EVIDENCE_RELATIVE="docs/release/evidence/mcp-inspector.md"
 RUNTIME_SOURCE_DIRS=(
@@ -297,6 +298,7 @@ fi
 
 section "VoiceOver accessibility evidence"
 voiceover_evidence_file="$ROOT_DIR/$VOICEOVER_EVIDENCE_RELATIVE"
+accessibility_preflight_script="$ROOT_DIR/$ACCESSIBILITY_PREFLIGHT_RELATIVE"
 voiceover_evidence_blocker_count=0
 voiceover_blocker() {
   blocker "$1"
@@ -341,6 +343,23 @@ normalize_voiceover_context_value() {
   context_value="${context_value//\`/}"
   printf '%s' "$context_value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
 }
+if [[ ! -x "$accessibility_preflight_script" ]]; then
+  voiceover_blocker "missing executable accessibility source preflight: $ACCESSIBILITY_PREFLIGHT_RELATIVE"
+else
+  set +e
+  accessibility_preflight_output="$("$accessibility_preflight_script" --source-only 2>&1)"
+  accessibility_preflight_status=$?
+  set -e
+
+  if [[ "$accessibility_preflight_status" -ne 0 ]]; then
+    if [[ -n "$accessibility_preflight_output" ]]; then
+      printf "%s\n" "$accessibility_preflight_output"
+    fi
+    voiceover_blocker "accessibility source preflight failed"
+  else
+    printf "%s\n" "$accessibility_preflight_output"
+  fi
+fi
 if [[ ! -f "$voiceover_evidence_file" ]]; then
   voiceover_blocker "missing VoiceOver accessibility evidence file: $VOICEOVER_EVIDENCE_RELATIVE"
 else

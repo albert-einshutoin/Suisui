@@ -2445,6 +2445,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("NEXT: run script/capture_ui_evidence.sh --doctor"))
         XCTAssertTrue(script.contains("then run script/capture_ui_evidence.sh on a visible macOS session with Screen Recording permission"))
         XCTAssertTrue(script.contains("section \"VoiceOver accessibility evidence\""))
+        XCTAssertTrue(script.contains("script/check_accessibility_preflight.sh"))
+        XCTAssertTrue(script.contains("--source-only"))
+        XCTAssertTrue(script.contains("accessibility source preflight failed"))
         XCTAssertTrue(script.contains("docs/release/evidence/accessibility-voiceover.md"))
         XCTAssertTrue(script.contains("Status: passed"))
         XCTAssertTrue(script.contains("grep -Fx \"Status: passed\""))
@@ -3269,6 +3272,98 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Delete Task confirmation"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: No keyboard trap"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: No unlabeled primary CRUD controls"))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+    }
+
+    func testReleaseReadinessReportFailsWhenAccessibilitySourcePreflightFails() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-accessibility-source-preflight", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let packagingDirectory = fixtureRoot.appendingPathComponent("packaging", isDirectory: true)
+        let evidenceDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("release", isDirectory: true)
+            .appendingPathComponent("evidence", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let releasePreflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+        let accessibilityPreflightURL = scriptDirectory.appendingPathComponent("check_accessibility_preflight.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: packagingDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: evidenceDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        echo "BLOCKER: missing accessibility anchor 'task-inspector-save' in ProjectBoardView.swift" >&2
+        exit 1
+        """.write(to: accessibilityPreflightURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: releasePreflightURL, atomically: true, encoding: .utf8)
+        try """
+        APP_NAME=SoloPM
+        BUNDLE_IDENTIFIER=dev.solopm.app
+        MARKETING_VERSION=0.1.0
+        CURRENT_PROJECT_VERSION=1
+        """.write(to: packagingDirectory.appendingPathComponent("app_metadata.env"), atomically: true, encoding: .utf8)
+        try """
+        # VoiceOver Accessibility Evidence
+
+        Status: passed
+
+        ## Release Candidate Context
+
+        - macOS version: macOS 15.5
+        - App build: `0.1.0 (1)`
+        - Bundle identifier: `dev.solopm.app`
+        - Checked by: Release reviewer
+        - Check date: 2026-06-19
+        - Evidence source: `dist/SoloPM.app` manual pass
+
+        ## Verified Focus Path
+
+        - Project navigation: passed - Sidebar navigation announced counts.
+        - Project board detail: passed - Board detail announced project title.
+        - Open task: passed - Task opened from keyboard focus.
+        - Inline Task Composer: passed - Composer controls were reachable.
+        - Status controls: passed - Move controls announced target status.
+        - Task inspector: passed - Inspector fields and actions were reachable.
+        - Save Changes: passed - Save activated from keyboard.
+        - Delete Task confirmation: passed - Delete confirmation was announced.
+        - No keyboard trap: passed - Focus left all primary regions.
+        - No unlabeled primary CRUD controls: passed - Primary CRUD labels were present.
+        """.write(to: evidenceDirectory.appendingPathComponent("accessibility-voiceover.md"), atomically: true, encoding: .utf8)
+        try "- [x] release gate checked\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] release readme checked\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        for url in [reportURL, releasePreflightURL, accessibilityPreflightURL] {
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        }
+
+        let result = try runTool(["bash", reportURL.path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("missing accessibility anchor 'task-inspector-save'"))
+        XCTAssertTrue(result.output.contains("accessibility source preflight failed"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
     }
 
