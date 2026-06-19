@@ -205,7 +205,8 @@ private struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
                                 task: task,
                                 projectTitle: viewModel.projectTitle(for: task),
                                 isSelected: viewModel.selectedTaskID == task.id,
-                                onSelect: { viewModel.selectedTaskID = task.id }
+                                onSelect: { viewModel.selectedTaskID = task.id },
+                                onToggleCompletion: { viewModel.toggleTaskCompletion(id: task.id) }
                             )
                         }
                     }
@@ -247,54 +248,68 @@ private struct WorkflowTaskRow: View {
     let projectTitle: String
     let isSelected: Bool
     let onSelect: () -> Void
+    let onToggleCompletion: () -> Void
 
     var body: some View {
-        Button(action: onSelect) {
-            HStack(alignment: .center, spacing: 10) {
-                Image(systemName: task.status == .done ? "checkmark.square.fill" : "square")
-                    .foregroundStyle(task.status.tint)
-                    .frame(width: 20)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(task.title)
-                        .font(.headline)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .help(task.title)
-                    HStack(spacing: 8) {
-                        Label(projectTitle, systemImage: "folder")
-                        Label(task.status.title, systemImage: task.status.systemImage)
-                        if let dueLabel = task.dueLabel {
-                            Label(dueLabel, systemImage: "calendar")
-                        }
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                }
-
-                Spacer(minLength: 8)
-
-                Label(task.priority.label, systemImage: "flag")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(task.priority.color)
+        HStack(alignment: .center, spacing: 10) {
+            Button(action: onToggleCompletion) {
+                Label(task.status == .done ? "Reopen task" : "Complete task", systemImage: task.status == .done ? "checkmark.square.fill" : "square")
                     .labelStyle(.iconOnly)
-                    .help(task.priority.label)
+                    .frame(width: 28, height: 28)
             }
-            .padding(10)
+            .buttonStyle(.borderless)
+            .foregroundStyle(task.status.tint)
+            .help(task.status == .done ? "Reopen task" : "Complete task")
+            .accessibilityLabel(task.status == .done ? "Reopen task \(task.title)" : "Complete task \(task.title)")
+            .accessibilityHint("Updates the task status in the local SoloPM database without opening the inspector.")
+            .accessibilityIdentifier("workflow-task-completion-\(task.id)")
+
+            Button(action: onSelect) {
+                HStack(alignment: .center, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(task.title)
+                            .font(.headline)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .help(task.title)
+                        HStack(spacing: 8) {
+                            Label(projectTitle, systemImage: "folder")
+                            Label(task.status.title, systemImage: task.status.systemImage)
+                            if let dueLabel = task.dueLabel {
+                                Label(dueLabel, systemImage: "calendar")
+                            }
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Label(task.priority.label, systemImage: "flag")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(task.priority.color)
+                        .labelStyle(.iconOnly)
+                        .help(task.priority.label)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isSelected ? Color.accentColor.opacity(0.10) : Color.secondary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.12))
-            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Open task \(task.title)")
+            .accessibilityValue(workflowAccessibilityValue)
+            .accessibilityHint("Selects this task so Inbox actions or task inspector edits can use it.")
+            .accessibilityIdentifier("workflow-task-row-\(task.id)")
         }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Open task \(task.title)")
-        .accessibilityValue(workflowAccessibilityValue)
-        .accessibilityHint("Selects this task so Inbox actions or task inspector edits can use it.")
-        .accessibilityIdentifier("workflow-task-row-\(task.id)")
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(isSelected ? Color.accentColor.opacity(0.10) : Color.secondary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.12))
+        }
+        .accessibilityElement(children: .contain)
     }
 
     private var workflowAccessibilityValue: String {

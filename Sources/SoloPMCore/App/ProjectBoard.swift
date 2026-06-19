@@ -1120,6 +1120,29 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    public func toggleTaskCompletion(id: Int64) {
+        guard let task = snapshot.projects.flatMap(\.tasks).first(where: { $0.id == id }) else {
+            errorMessage = "Task is no longer available."
+            return
+        }
+
+        let previousProjectID = selectedProjectID
+        let previousTaskID = selectedTaskID
+
+        do {
+            _ = try store.moveTask(id: id, to: task.status == .done ? .planned : .done)
+            load()
+            selectedProjectID = previousProjectID
+            selectedTaskID = previousTaskID
+            errorMessage = nil
+            onChange()
+        } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
+            errorMessage = "Restore the project before moving tasks."
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
     @discardableResult
     public func moveDroppedTasks(ids rawIDs: [String], to status: ProjectTaskStatus) -> Bool {
         guard !rawIDs.isEmpty else {

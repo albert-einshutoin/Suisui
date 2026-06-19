@@ -347,6 +347,10 @@ final class AppExperienceSourceTests: XCTestCase {
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
 
+        XCTAssertTrue(workflowSource.contains("viewModel.toggleTaskCompletion(id: task.id)"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"workflow-task-completion-\\(task.id)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityLabel(task.status == .done ? \"Reopen task \\(task.title)\" : \"Complete task \\(task.title)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityHint(\"Updates the task status in the local SoloPM database without opening the inspector.\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-quick-add-title\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-quick-add-button\")"))
         XCTAssertTrue(workflowSource.contains(".keyboardShortcut(.return, modifiers: [.command])"))
@@ -371,7 +375,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-time-block-list\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-time-block-row-\\(block.id)\")"))
 
+        XCTAssertTrue(audit.contains("Inbox / Todayのrow完了toggle"))
         XCTAssertTrue(audit.contains("Inbox / Todayのrow、Quick Add、分類action、Today summary、time blockにsource-level accessibility identifiers / hints / keyboard anchorsを追加済み"))
+        XCTAssertTrue(phase.contains("[x] Inbox / Today workflowのrow完了toggleを追加し、選択済みinspectorを開かずにlocal SQLite task statusをDoneへ移せる。"))
         XCTAssertTrue(phase.contains("[x] Inbox / Today workflowのrow、Quick Add、分類action、Today summary、time blockにsource-level accessibility identifiers / hints / keyboard anchorsを付ける。"))
     }
 

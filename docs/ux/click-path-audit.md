@@ -40,6 +40,7 @@
 | Project artifact追加 | Project overview -> `Expected artifact path` -> `Track Artifact` | 2 | Pass | 絶対パスだけをexpected artifactとしてlocal SQLiteへ保存し、相対パスはworkspace未確定として保存しない。 |
 | Project artifact削除 | Project overview -> Artifact row `Remove artifact link` | 1 | Pass | 実ファイルは削除せず、local SQLiteのartifact linkだけを削除する。存在しないlinkはmock successにしない。 |
 | Inbox確認 | sidebar `Inbox` | 1 | Pass | Capture先が見える。選択中itemは右inspectorで編集できる。 |
+| Inbox / Todayのrow完了toggle | workflow rowのcheckbox button | 1 | Pass | Inspectorを開かず、local SQLiteのTask statusをDone/Plannedへ実mutationする。 |
 | Inbox item分類 | item選択 -> `Make Task` / `Make Project` / `Schedule Today` / `Review Later` | 2 | Pass | 分類action自体は1クリック。選択済みなら即実行され、store mutationを通る。 |
 | Today確認 | sidebar `Today` | 1 | Pass | 今日以前の未完了task、期限内訳、local focus suggestion、time blockがproject横断で見える。 |
 | 選択中ProjectにTask作成 | headerの `Add Task` -> 入力 -> `Add` | 2 | Pass | 目標達成。columnの `+` と空columnの追加導線も2クリック。 |

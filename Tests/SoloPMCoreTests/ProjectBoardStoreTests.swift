@@ -941,6 +941,41 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelTogglesWorkflowTaskCompletionWithRealMutation() throws {
+        var changeCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+        let inboxID = try XCTUnwrap(viewModel.inboxProject?.id)
+        let captured = try XCTUnwrap(viewModel.createTask(
+            title: "Finish today from workflow row",
+            projectID: inboxID,
+            status: .planned,
+            dueAt: "2026-06-19T09:00:00Z"
+        ))
+        viewModel.selectedTaskID = nil
+        let selectedProjectIDBeforeToggle = viewModel.selectedProjectID
+
+        viewModel.toggleTaskCompletion(id: captured.id)
+
+        XCTAssertEqual(viewModel.selectedProjectID, selectedProjectIDBeforeToggle)
+        XCTAssertNil(viewModel.selectedTaskID)
+        XCTAssertEqual(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == captured.id }?.status, .done)
+        XCTAssertFalse(viewModel.inboxTasks.contains { $0.id == captured.id })
+        XCTAssertTrue(viewModel.todayTasks(on: try isoDate("2026-06-19T10:00:00Z")).isEmpty)
+        XCTAssertEqual(changeCount, 2)
+
+        viewModel.toggleTaskCompletion(id: captured.id)
+
+        XCTAssertNil(viewModel.selectedTaskID)
+        XCTAssertEqual(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == captured.id }?.status, .planned)
+        XCTAssertTrue(viewModel.todayTasks(on: try isoDate("2026-06-19T10:00:00Z")).contains { $0.id == captured.id })
+        XCTAssertEqual(changeCount, 3)
+    }
+
+    @MainActor
     func testProjectBoardViewModelInboxClassificationShowsFeedbackAdvancesSelectionAndUndo() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()
