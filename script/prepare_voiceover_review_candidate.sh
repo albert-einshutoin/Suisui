@@ -116,8 +116,8 @@ write_voiceover_evidence_command() {
     printf '%s\n' '  --status-controls-note "<VoiceOver observation for previous/next status controls and target status labels>" \'
     printf '%s\n' '  --task-inspector-note "<VoiceOver observation for inspector fields, summary, suggestion, save, and danger actions>" \'
     printf '%s\n' '  --save-changes-note "<VoiceOver observation proving keyboard activation saves local task changes>" \'
-    printf '%s\n' '  --delete-confirmation-note "<VoiceOver observation proving Delete Task opens a destructive confirmation before deletion>" \'
-    printf '%s\n' '  --no-keyboard-trap-note "<VoiceOver observation proving focus leaves sidebar, board, inspector, and dialogs>" \'
+    printf '%s\n' '  --delete-confirmation-note "<VoiceOver observation proving Delete Task opens an inline inspector confirmation panel before deletion>" \'
+    printf '%s\n' '  --no-keyboard-trap-note "<VoiceOver observation proving focus leaves sidebar, board, inspector, and inline confirmation panels>" \'
     printf '%s\n' '  --no-unlabeled-crud-note "<VoiceOver observation proving primary CRUD controls have labels or help>" \'
     printf '%s\n' '  --confirm-manual-voiceover-pass'
   } >"$output_path"
@@ -258,9 +258,9 @@ VALUES (
 INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command, created_at, updated_at)
 VALUES (
   $seeded_project_id,
-  'Confirm destructive dialog labels',
+  'Confirm destructive confirmation labels',
   'blocked',
-  'Open task details and verify Delete Task announces a destructive confirmation before deletion.',
+  'Open task details and verify Delete Task announces an inline inspector confirmation panel before deletion.',
   strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+4 days'),
   'high',
   'voiceover-review-seed',

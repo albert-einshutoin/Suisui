@@ -34,8 +34,8 @@ Do not set `Status: passed` until every item below is verified on the signed or 
 - [ ] Status controls: move focus to previous/next status controls and confirm button labels include target status.
 - [ ] Task inspector: focus title, detail, status, priority, due, summary, save, suggestion, and danger actions.
 - [ ] Save Changes: confirm keyboard activation reaches the local task save action.
-- [ ] Delete Task confirmation: confirm destructive action opens confirmation before local deletion.
-- [ ] No keyboard trap: confirm focus can leave sidebar, board, card controls, inspector fields, and confirmation dialogs.
+- [ ] Delete Task confirmation: confirm destructive action opens an inline inspector confirmation panel before local deletion.
+- [ ] No keyboard trap: confirm focus can leave sidebar, board, card controls, inspector fields, and inline confirmation panels.
 - [ ] No unlabeled primary CRUD controls: confirm create, update, status move, complete/archive, and delete actions have labels or help.
 
 ## Failure Notes
