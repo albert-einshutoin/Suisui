@@ -104,6 +104,9 @@ write_voiceover_evidence_command() {
     printf '# Candidate selected destination: %q\n' "project:$candidate_project_id"
     printf '%s\n' '# Replace every placeholder below with concrete observations from the manual VoiceOver pass before running.'
     printf '\n'
+    printf 'REPO_ROOT=%q\n' "$ROOT_DIR"
+    printf '%s\n' 'cd "$REPO_ROOT"'
+    printf '\n'
     printf '%s\n' './script/create_voiceover_evidence.sh --passed \'
     printf '%s\n' '  --checked-by "<reviewer name>" \'
     printf '%s\n' '  --accessibility-environment "<macOS version, hardware, VoiceOver input method, clean user/install context>" \'

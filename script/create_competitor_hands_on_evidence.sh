@@ -403,6 +403,9 @@ write_competitor_evidence_command() {
     printf '%s\n' '# Replace every placeholder below with concrete observations from the real Notion/Todoist/Linear/Motion hands-on pass before running.'
     printf '%s\n' '# This command must fail if placeholders are not replaced; it does not mark hands-on evidence as passed by itself.'
     printf '\n'
+    printf 'REPO_ROOT=%q\n' "$ROOT_DIR"
+    printf '%s\n' 'cd "$REPO_ROOT"'
+    printf '\n'
     printf '%s\n' './script/create_competitor_hands_on_evidence.sh --passed \'
     printf '%s\n' '  --checked-by "<reviewer name>" \'
     printf '%s\n' '  --environment "<macOS/browser versions, competitor app/account tiers, and paid trial details>" \'
