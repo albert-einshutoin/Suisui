@@ -2682,6 +2682,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("runtime AX smoke has too few buttons"))
         XCTAssertTrue(script.contains("runtime AX smoke has too few text fields"))
         XCTAssertTrue(script.contains("runtime AX smoke has too few static texts"))
+        XCTAssertTrue(script.contains("unlabeledButtonCount"))
+        XCTAssertTrue(script.contains("runtime AX smoke has unlabeled buttons"))
         XCTAssertTrue(script.contains("This is not a substitute for the manual VoiceOver pass."))
 
         let result = try runScript("script/check_accessibility_preflight.sh", arguments: ["--source-only"])
@@ -2693,9 +2695,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT=1 ./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("verifies both accessibility anchors and primary CRUD keyboard shortcuts"))
         XCTAssertTrue(checklist.contains("fewer than the minimum buttons, text fields, or static texts"))
+        XCTAssertTrue(checklist.contains("unlabeled AX buttons"))
         XCTAssertTrue(checklist.contains("scans visible windows by AX role"))
         XCTAssertTrue(phase.contains("[x] `script/check_accessibility_preflight.sh` はsource-level accessibility anchorsを確認し、任意のruntime AX smokeで手動VoiceOver前の崩れを検出できる。"))
         XCTAssertTrue(phase.contains("[x] `script/check_accessibility_preflight.sh` は主要CRUDのkeyboard shortcutsをsource anchorとして監視する。"))
+        XCTAssertTrue(phase.contains("[x] `script/check_accessibility_preflight.sh --runtime` は見えているrelease候補windowのunlabeled AX buttonsをblockerにする。"))
         XCTAssertTrue(phase.contains("[ ] 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。"))
     }
 

@@ -192,6 +192,7 @@ on run argv
   set bestButtonCount to 0
   set bestTextFieldCount to 0
   set bestStaticTextCount to 0
+  set bestUnlabeledButtonCount to 0
   tell application "System Events"
     if not (exists process appName) then error appName & " process is not visible to System Events"
     tell process appName
@@ -206,17 +207,30 @@ on run argv
         set buttonCount to 0
         set textFieldCount to 0
         set staticTextCount to 0
+        set unlabeledButtonCount to 0
         set axItems to entire contents of currentWindow
         repeat with axItem in axItems
           set itemRole to ""
           try
             set itemRole to role of axItem as text
           end try
-          if itemRole is "AXButton" then set buttonCount to buttonCount + 1
+          if itemRole is "AXButton" then
+            set buttonCount to buttonCount + 1
+            set buttonName to ""
+            try
+              set buttonName to name of axItem as text
+            end try
+            if buttonName is "" or buttonName is "missing value" then
+              try
+                set buttonName to description of axItem as text
+              end try
+            end if
+            if buttonName is "" or buttonName is "missing value" then set unlabeledButtonCount to unlabeledButtonCount + 1
+          end if
           if itemRole is "AXTextField" or itemRole is "AXTextArea" then set textFieldCount to textFieldCount + 1
           if itemRole is "AXStaticText" then set staticTextCount to staticTextCount + 1
         end repeat
-        set currentSummary to "window=" & windowIndex & " name=" & windowName & ", buttons=" & buttonCount & ", textFields=" & textFieldCount & ", staticTexts=" & staticTextCount
+        set currentSummary to "window=" & windowIndex & " name=" & windowName & ", buttons=" & buttonCount & ", textFields=" & textFieldCount & ", staticTexts=" & staticTextCount & ", unlabeledButtons=" & unlabeledButtonCount
         set currentScore to buttonCount + textFieldCount + staticTextCount
         if bestSummary is "" then
           set bestSummary to currentSummary
@@ -224,14 +238,16 @@ on run argv
           set bestButtonCount to buttonCount
           set bestTextFieldCount to textFieldCount
           set bestStaticTextCount to staticTextCount
+          set bestUnlabeledButtonCount to unlabeledButtonCount
         else if currentScore > bestScore then
           set bestSummary to currentSummary
           set bestScore to currentScore
           set bestButtonCount to buttonCount
           set bestTextFieldCount to textFieldCount
           set bestStaticTextCount to staticTextCount
+          set bestUnlabeledButtonCount to unlabeledButtonCount
         end if
-        if buttonCount >= minButtons and textFieldCount >= minTextFields and staticTextCount >= minStaticTexts then
+        if buttonCount >= minButtons and textFieldCount >= minTextFields and staticTextCount >= minStaticTexts and unlabeledButtonCount is 0 then
           return "OK: runtime AX smoke visible, windows=" & windowCount & ", " & currentSummary
         end if
       end repeat
@@ -240,6 +256,7 @@ on run argv
       if bestButtonCount < minButtons then error "runtime AX smoke has too few buttons: " & bestButtonCount & " < " & minButtons & " (" & bestSummary & ")"
       if bestTextFieldCount < minTextFields then error "runtime AX smoke has too few text fields: " & bestTextFieldCount & " < " & minTextFields & " (" & bestSummary & ")"
       if bestStaticTextCount < minStaticTexts then error "runtime AX smoke has too few static texts: " & bestStaticTextCount & " < " & minStaticTexts & " (" & bestSummary & ")"
+      if bestUnlabeledButtonCount > 0 then error "runtime AX smoke has unlabeled buttons: " & bestUnlabeledButtonCount & " (" & bestSummary & ")"
       error "runtime AX smoke did not find a qualifying visible window: " & bestSummary
     end tell
   end tell

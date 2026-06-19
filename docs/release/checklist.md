@@ -157,7 +157,7 @@ Run the accessibility preflight before the manual VoiceOver pass. The source-onl
 ./script/check_accessibility_preflight.sh --runtime
 ```
 
-The runtime preflight is intentionally stricter than a process/window check: it scans visible windows by AX role and fails if the best release-candidate window has fewer than the minimum buttons, text fields, or static texts, because a low-information AX tree is not enough evidence for the manual VoiceOver pass.
+The runtime preflight is intentionally stricter than a process/window check: it scans visible windows by AX role and fails if the best release-candidate window has fewer than the minimum buttons, text fields, or static texts, or if it exposes unlabeled AX buttons, because a low-information AX tree is not enough evidence for the manual VoiceOver pass.
 
 When reviewing a local release candidate in a visible macOS session, include the runtime AX smoke in the readiness report:
 
