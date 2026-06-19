@@ -165,6 +165,13 @@ When reviewing a local release candidate in a visible macOS session, include the
 SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT=1 ./script/release_readiness_report.sh
 ```
 
+Before claiming local CRUD is product-ready, run the runtime accessible CRUD smoke. It builds `dist/SoloPM.app`, launches it with an isolated `SOLOPM_DATABASE_PATH`, selects a seeded Project Board via `SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION`, then uses macOS Accessibility to create, rename, complete, and delete a project through the visible app while verifying the SQLite rows changed:
+
+```bash
+./script/check_runtime_accessible_crud_smoke.sh
+SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SMOKE=1 ./script/release_readiness_report.sh
+```
+
 Then replace `docs/release/evidence/accessibility-voiceover.md` with the real VoiceOver pass for the same release-candidate app. The final file must use `Status: passed`, complete the release-candidate context fields, include the runtime AX smoke OK line with `unlabeledButtons=0`, `genericButtons=0`, and `crudSignals=8/8`, include the Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector path, and remove all pending/template language.
 
 Use the generator to avoid stale bundle/build metadata:
@@ -222,6 +229,7 @@ source packaging/app_metadata.env
 export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"
 ./script/release_readiness_report.sh
 SOLOPM_RELEASE_CI_PREFLIGHT=1 ./script/release_readiness_report.sh
+SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SMOKE=1 ./script/release_readiness_report.sh
 SOLOPM_RELEASE_XCODE_PREFLIGHT=1 ./script/release_readiness_report.sh
 SOLOPM_BUILD_CONFIGURATION=release SOLOPM_RELEASE_LAUNCH_PREFLIGHT=1 ./script/release_readiness_report.sh
 ```

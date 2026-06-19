@@ -3200,6 +3200,29 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("swift test\n"))
     }
 
+    func testRuntimeAccessibleCRUDSmokeScriptLaunchesIsolatedAppAndVerifiesSQLiteMutations() throws {
+        let script = try readPackageFile("script/check_runtime_accessible_crud_smoke.sh")
+
+        XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH"))
+        XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=project:$seed_project_id"))
+        XCTAssertTrue(script.contains("./script/build_and_run.sh --build-only"))
+        XCTAssertTrue(script.contains("script/check_accessibility_preflight.sh --runtime --skip-launch"))
+        XCTAssertTrue(script.contains("pressButtonContaining \"Creates a new local project\""))
+        XCTAssertTrue(script.contains("waitForTextFieldContaining \"Untitled Project\""))
+        XCTAssertTrue(script.contains("setTextFieldContaining \"Untitled Project\" \"AX Runtime CRUD Project\""))
+        XCTAssertTrue(script.contains("waitForTextFieldContaining \"AX Runtime CRUD Project\""))
+        XCTAssertTrue(script.contains("pressButtonContaining \"Saves edits to the selected project\""))
+        XCTAssertTrue(script.contains("pressButtonContaining \"Completes the selected project\""))
+        XCTAssertTrue(script.contains("pressButtonContaining \"Deletes the selected project\""))
+        XCTAssertTrue(script.contains("verify_single_value \"created project\""))
+        XCTAssertTrue(script.contains("verify_single_value \"renamed project\""))
+        XCTAssertTrue(script.contains("verify_single_value \"completed project\""))
+        XCTAssertTrue(script.contains("verify_single_value \"deleted project\""))
+        XCTAssertTrue(script.contains("OK: runtime accessible CRUD smoke created, renamed, completed, and deleted a project through the visible app"))
+        XCTAssertFalse(script.contains(":memory:"))
+        XCTAssertFalse(script.contains("Static"))
+    }
+
     func testReleaseReadinessReportCanRunLocalCRUDSmokeWhenEnabled() throws {
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-release-readiness-local-crud-smoke", isDirectory: true)
@@ -3253,6 +3276,59 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
     }
 
+    func testReleaseReadinessReportCanRunRuntimeAccessibleCRUDSmokeWhenEnabled() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-runtime-accessible-crud-smoke", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+        let accessibleCRUDSmokeURL = scriptDirectory.appendingPathComponent("check_runtime_accessible_crud_smoke.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: preflightURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "runtime accessible crud fixture smoke invoked\\n"
+        exit 23
+        """.write(to: accessibleCRUDSmokeURL, atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        for url in [reportURL, preflightURL, accessibleCRUDSmokeURL] {
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        }
+
+        let result = try runTool(["bash", reportURL.path], environment: ["SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SMOKE": "1"])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("== Runtime accessible CRUD smoke =="))
+        XCTAssertTrue(result.output.contains("runtime accessible crud fixture smoke invoked"))
+        XCTAssertTrue(result.output.contains("BLOCKER: runtime accessible CRUD smoke failed"))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+    }
+
     func testReleaseReadinessReportAggregatesRuntimeMockScanTasksAndPreflight() throws {
         let script = try readPackageFile("script/release_readiness_report.sh")
         let contentCheckScript = try readPackageFile("script/ui_evidence_content_check.swift")
@@ -3269,6 +3345,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SOLOPM_LOCAL_CRUD_SMOKE"))
         XCTAssertTrue(script.contains("script/check_local_crud_smoke.sh"))
         XCTAssertTrue(script.contains("local CRUD smoke failed"))
+        XCTAssertTrue(script.contains("SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SMOKE"))
+        XCTAssertTrue(script.contains("script/check_runtime_accessible_crud_smoke.sh"))
+        XCTAssertTrue(script.contains("runtime accessible CRUD smoke failed"))
         XCTAssertTrue(script.contains("SOLOPM_RELEASE_XCODE_PREFLIGHT"))
         XCTAssertTrue(script.contains(".swiftpm/xcode/package.xcworkspace"))
         XCTAssertTrue(script.contains("xcodebuild"))

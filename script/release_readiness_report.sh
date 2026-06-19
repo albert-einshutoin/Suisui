@@ -8,6 +8,8 @@ RELEASE_CI_PREFLIGHT="${SOLOPM_RELEASE_CI_PREFLIGHT:-0}"
 RELEASE_CI_PREFLIGHT_RELATIVE="scripts/ci.sh"
 LOCAL_CRUD_SMOKE="${SOLOPM_LOCAL_CRUD_SMOKE:-0}"
 LOCAL_CRUD_SMOKE_RELATIVE="script/check_local_crud_smoke.sh"
+RUNTIME_ACCESSIBLE_CRUD_SMOKE="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SMOKE:-0}"
+RUNTIME_ACCESSIBLE_CRUD_SMOKE_RELATIVE="script/check_runtime_accessible_crud_smoke.sh"
 RELEASE_XCODE_PREFLIGHT="${SOLOPM_RELEASE_XCODE_PREFLIGHT:-0}"
 XCODE_WORKSPACE_RELATIVE=".swiftpm/xcode/package.xcworkspace"
 XCODE_SCHEME="${SOLOPM_XCODE_SCHEME:-SoloPM}"
@@ -353,6 +355,33 @@ elif [[ "$LOCAL_CRUD_SMOKE" == "1" ]]; then
   fi
 else
   printf "INFO: local CRUD smoke skipped; set SOLOPM_LOCAL_CRUD_SMOKE=1 to run %s inside this report.\n" "$LOCAL_CRUD_SMOKE_RELATIVE"
+fi
+
+section "Runtime accessible CRUD smoke"
+runtime_accessible_crud_smoke_script="$ROOT_DIR/$RUNTIME_ACCESSIBLE_CRUD_SMOKE_RELATIVE"
+if [[ "$RUNTIME_ACCESSIBLE_CRUD_SMOKE" != "0" && "$RUNTIME_ACCESSIBLE_CRUD_SMOKE" != "1" ]]; then
+  blocker "SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SMOKE must be 0 or 1"
+elif [[ "$RUNTIME_ACCESSIBLE_CRUD_SMOKE" == "1" ]]; then
+  if [[ ! -x "$runtime_accessible_crud_smoke_script" ]]; then
+    blocker "missing executable runtime accessible CRUD smoke: $RUNTIME_ACCESSIBLE_CRUD_SMOKE_RELATIVE"
+  else
+    set +e
+    runtime_accessible_crud_smoke_output="$("$runtime_accessible_crud_smoke_script" 2>&1)"
+    runtime_accessible_crud_smoke_status=$?
+    set -e
+
+    if [[ -n "$runtime_accessible_crud_smoke_output" ]]; then
+      printf "%s\n" "$runtime_accessible_crud_smoke_output"
+    fi
+
+    if [[ "$runtime_accessible_crud_smoke_status" -ne 0 ]]; then
+      blocker "runtime accessible CRUD smoke failed"
+    else
+      printf "OK: runtime accessible CRUD smoke passed\n"
+    fi
+  fi
+else
+  printf "INFO: runtime accessible CRUD smoke skipped; set SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SMOKE=1 to run %s against the visible app and isolated SQLite database.\n" "$RUNTIME_ACCESSIBLE_CRUD_SMOKE_RELATIVE"
 fi
 
 section "Release Xcode preflight"

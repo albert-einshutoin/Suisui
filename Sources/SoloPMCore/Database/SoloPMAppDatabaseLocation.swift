@@ -1,11 +1,30 @@
 import Foundation
 
 public enum SoloPMAppDatabaseLocation {
+    public static let databasePathOverrideEnvironmentKey = "SOLOPM_DATABASE_PATH"
+
     public static func defaultDatabaseURL(
         createDirectory: Bool,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        environment: [String: String] = ProcessInfo.processInfo.environment
     ) throws -> URL {
-        try applicationSupportDirectoryURL(
+        if let override = environment[databasePathOverrideEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !override.isEmpty {
+            guard override.hasPrefix("/") else {
+                throw DatabaseError.openFailed("\(databasePathOverrideEnvironmentKey) must be an absolute file path.")
+            }
+            let url = URL(fileURLWithPath: override)
+            if createDirectory {
+                try fileManager.createDirectory(
+                    at: url.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+            }
+            return url
+        }
+
+        return try applicationSupportDirectoryURL(
             createDirectory: createDirectory,
             fileManager: fileManager
         )

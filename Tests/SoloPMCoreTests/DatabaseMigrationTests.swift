@@ -2,6 +2,38 @@ import XCTest
 @testable import SoloPMCore
 
 final class DatabaseMigrationTests: XCTestCase {
+    func testDatabaseLocationCanUseAbsoluteEnvironmentOverrideForRuntimeSmokeIsolation() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("solopm-db-location-\(UUID().uuidString)", isDirectory: true)
+        let databaseURL = root.appendingPathComponent("nested/SoloPM-runtime-smoke.sqlite")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let resolvedURL = try SoloPMAppDatabaseLocation.defaultDatabaseURL(
+            createDirectory: true,
+            environment: [SoloPMAppDatabaseLocation.databasePathOverrideEnvironmentKey: databaseURL.path]
+        )
+
+        XCTAssertEqual(resolvedURL, databaseURL)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: databaseURL.deletingLastPathComponent().path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: databaseURL.path))
+    }
+
+    func testDatabaseLocationRejectsRelativeEnvironmentOverride() throws {
+        XCTAssertThrowsError(
+            try SoloPMAppDatabaseLocation.defaultDatabaseURL(
+                createDirectory: false,
+                environment: [SoloPMAppDatabaseLocation.databasePathOverrideEnvironmentKey: "relative/SoloPM.sqlite"]
+            )
+        ) { error in
+            guard case let DatabaseError.openFailed(message) = error else {
+                XCTFail("Expected DatabaseError.openFailed, got \(error).")
+                return
+            }
+            XCTAssertTrue(message.contains(SoloPMAppDatabaseLocation.databasePathOverrideEnvironmentKey))
+            XCTAssertTrue(message.contains("absolute"))
+        }
+    }
+
     func testSQLiteConnectionEnforcesForeignKeyConstraints() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try connection.execute(
