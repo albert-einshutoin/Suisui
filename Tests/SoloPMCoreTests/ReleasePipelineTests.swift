@@ -3212,6 +3212,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate decision delta: Defer"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate decision delta: Reject"))
         XCTAssertTrue(result.output.contains("Competitor benchmark still reads as desk research or a hands-on worksheet"))
+        XCTAssertTrue(result.output.contains("./script/create_competitor_hands_on_evidence.sh --passed"))
+        XCTAssertTrue(result.output.contains("--benchmark-output docs/product/competitor-benchmark.md"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
     }
 
@@ -3574,6 +3576,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence bundle identifier does not match packaging metadata"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence app build does not match packaging metadata"))
         XCTAssertTrue(script.contains("NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass"))
+        XCTAssertTrue(script.contains("./script/create_voiceover_evidence.sh --passed"))
+        XCTAssertTrue(script.contains("--capture-runtime-ax-smoke"))
         XCTAssertTrue(script.contains("runtime AX smoke OK line with unlabeledButtons=0, genericButtons=0, and crudSignals=8/8"))
         XCTAssertTrue(script.contains("complete release-candidate context"))
         XCTAssertTrue(script.contains("section \"Competitor hands-on evidence\""))
@@ -3591,6 +3595,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Competitor benchmark still reads as desk research or a hands-on worksheet"))
         XCTAssertTrue(script.contains("macOS/browser versions|competitor app/account tiers|whether any paid trial"))
         XCTAssertTrue(script.contains("NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass"))
+        XCTAssertTrue(script.contains("./script/create_competitor_hands_on_evidence.sh --passed"))
+        XCTAssertTrue(script.contains("--benchmark-output docs/product/competitor-benchmark.md"))
         XCTAssertTrue(script.contains("section \"MCP Inspector evidence\""))
         XCTAssertTrue(script.contains("script/verify_mcp_compliance.sh"))
         XCTAssertTrue(script.contains("SOLOPM_MCP_EVIDENCE_FILE=\"$mcp_runtime_evidence_file\""))
@@ -4179,6 +4185,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence is not marked passed"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence still contains pending/template/placeholder text"))
         XCTAssertTrue(result.output.contains("NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass"))
+        XCTAssertTrue(result.output.contains("./script/create_voiceover_evidence.sh --passed"))
+        XCTAssertTrue(result.output.contains("--capture-runtime-ax-smoke"))
         XCTAssertTrue(result.output.contains("complete release-candidate context"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
     }

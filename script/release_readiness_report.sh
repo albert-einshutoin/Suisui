@@ -777,7 +777,7 @@ else
   fi
 fi
 if [[ "$voiceover_evidence_blocker_count" -gt 0 ]]; then
-  printf "NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass, Status: passed, complete release-candidate context, the runtime AX smoke OK line with unlabeledButtons=0, genericButtons=0, and crudSignals=8/8, complete focus-path notes, and no pending/template/unchecked markers.\n"
+  printf "NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass by running ./script/create_voiceover_evidence.sh --passed with complete release-candidate context, --capture-runtime-ax-smoke, complete focus-path notes, and no pending/template/unchecked markers; the generated evidence must include the runtime AX smoke OK line with unlabeledButtons=0, genericButtons=0, and crudSignals=8/8.\n"
 fi
 
 section "Competitor hands-on evidence"
@@ -940,7 +940,7 @@ else
   done
 fi
 if [[ "$competitor_evidence_blocker_count" -gt 0 ]]; then
-  printf "NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass, Status: passed, complete reviewer/date/source/environment context, complete Notion/Todoist/Linear/Motion notes, and no pending/template/unchecked markers; also update docs/product/competitor-benchmark.md from worksheet/desk research to hands-on findings.\n"
+  printf "NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass by running ./script/create_competitor_hands_on_evidence.sh --passed with complete reviewer/date/source/environment context, complete Notion/Todoist/Linear/Motion notes, Ship/Defer/Reject deltas, --benchmark-output docs/product/competitor-benchmark.md, and no pending/template/unchecked markers; the generator also updates docs/product/competitor-benchmark.md from worksheet/desk research to hands-on findings.\n"
 else
   printf "OK: competitor hands-on evidence covers Notion, Todoist, Linear, Motion, and public alpha scope boundaries\n"
 fi
