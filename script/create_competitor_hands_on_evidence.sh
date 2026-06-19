@@ -308,11 +308,7 @@ write_context() {
     printf '%s\n' '- Checked by:'
   fi
   printf -- '- Check date: %s\n' "$CHECK_DATE"
-  if [[ "$EVIDENCE_STATUS" == "passed" ]]; then
-    printf -- '- Source commit: `%s`\n' "$SOURCE_COMMIT"
-  else
-    printf '%s\n' '- Source commit:'
-  fi
+  printf -- '- Source commit: `%s`\n' "$SOURCE_COMMIT"
   printf -- '- Evidence source: `%s`\n' "$EVIDENCE_SOURCE"
   if [[ -n "$ENVIRONMENT" ]]; then
     printf -- '- Environment: %s\n' "$ENVIRONMENT"

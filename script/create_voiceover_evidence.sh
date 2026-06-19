@@ -374,11 +374,7 @@ write_context() {
   printf -- '- macOS version: %s\n' "$MACOS_VERSION"
   printf -- '- App build: `%s (%s)`\n' "$MARKETING_VERSION" "$CURRENT_PROJECT_VERSION"
   printf -- '- Bundle identifier: `%s`\n' "$BUNDLE_IDENTIFIER"
-  if [[ "$VOICEOVER_STATUS" == "passed" ]]; then
-    printf -- '- Source commit: `%s`\n' "$SOURCE_COMMIT"
-  else
-    printf '%s\n' '- Source commit:'
-  fi
+  printf -- '- Source commit: `%s`\n' "$SOURCE_COMMIT"
   if [[ -n "$CHECKED_BY" ]]; then
     printf -- '- Checked by: %s\n' "$CHECKED_BY"
   else
