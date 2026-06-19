@@ -172,7 +172,7 @@ Before claiming local CRUD is product-ready, run the runtime accessible CRUD smo
 SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SMOKE=1 ./script/release_readiness_report.sh
 ```
 
-Then replace `docs/release/evidence/accessibility-voiceover.md` with the real VoiceOver pass for the same release-candidate app. The final file must use `Status: passed`, complete the release-candidate context fields, include the runtime AX smoke OK line with `unlabeledButtons=0`, `genericButtons=0`, and `crudSignals=8/8`, include the Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector path, and remove all pending/template language.
+Then replace `docs/release/evidence/accessibility-voiceover.md` with the real VoiceOver pass for the same release-candidate app. The final file must use `Status: passed`, complete the release-candidate context fields, include the runtime AX smoke OK line with `unlabeledButtons=0`, `genericButtons=0`, `crudSignals=8/8`, and `focusPathSignals=6/6`, include the Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector path, and remove all pending/template language.
 
 Use the generator to avoid stale bundle/build metadata:
 
