@@ -700,15 +700,19 @@ write_manual_helper_freshness_item() {
 
   if [[ ! -f "$helper_path" ]]; then
     printf -- "- [ ] %s missing for current source commit: \`%s\`\n" "$label" "$relative_path"
+    return 1
   elif manual_helper_contains_current_source_commit "$helper_path" "$expected_commit"; then
     printf -- "- [x] %s %s current source commit: \`%s\`\n" "$label" "$success_phrase" "$relative_path"
+    return 0
   else
     printf -- "- [ ] %s is stale or not pinned to current source commit \`%s\`: \`%s\`\n" "$label" "$expected_commit" "$relative_path"
+    return 1
   fi
 }
 
 write_manual_helper_freshness_actions() {
   local expected_commit
+  local stale_or_missing=0
   expected_commit="$(source_commit)"
 
   printf "## Manual Review Helper Freshness\n"
@@ -716,37 +720,47 @@ write_manual_helper_freshness_actions() {
     "VoiceOver pending preview" \
     "is generated for" \
     ".tmp/voiceover-review/accessibility-voiceover-pending-$expected_commit.md" \
-    "$expected_commit"
+    "$expected_commit" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "VoiceOver evidence command" \
     "is pinned to" \
     ".tmp/voiceover-review/create-evidence-command.sh" \
-    "$expected_commit"
+    "$expected_commit" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "Competitor pending evidence" \
     "is generated for" \
     ".tmp/competitor-hands-on/competitor-hands-on-pending-$expected_commit.md" \
-    "$expected_commit"
+    "$expected_commit" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "Competitor worksheet" \
     "is generated for" \
     ".tmp/competitor-hands-on/hands-on-worksheet.md" \
-    "$expected_commit"
+    "$expected_commit" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "Competitor evidence command" \
     "is pinned to" \
     ".tmp/competitor-hands-on/create-evidence-command.sh" \
-    "$expected_commit"
+    "$expected_commit" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "Release machine worksheet" \
     "is generated for" \
     ".tmp/release-machine/release-machine-worksheet.md" \
-    "$expected_commit"
+    "$expected_commit" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "Release evidence command" \
     "is pinned to" \
     ".tmp/release-machine/create-release-evidence-command.sh" \
-    "$expected_commit"
+    "$expected_commit" || stale_or_missing=1
+
+  if [[ "$stale_or_missing" -ne 0 ]]; then
+    printf "\n"
+    printf "NEXT: regenerate manual review helpers for current source commit before running any passed-evidence command.\n"
+    printf '%s\n' '```bash'
+    printf '%s\n' './script/prepare_voiceover_review_candidate.sh --no-launch --skip-build'
+    printf './script/create_competitor_hands_on_evidence.sh --pending --output ".tmp/competitor-hands-on/competitor-hands-on-pending-%s.md" --benchmark-output ".tmp/competitor-hands-on/competitor-benchmark-pending-%s.md"\n' "$expected_commit" "$expected_commit"
+    printf '%s\n' './script/prepare_release_machine_evidence.sh'
+    printf '%s\n' '```'
+  fi
   printf "\n"
 }
 

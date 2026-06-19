@@ -2685,6 +2685,97 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actions.contains("- [x] Release evidence command is pinned to current source commit: `.tmp/release-machine/create-release-evidence-command.sh`"))
     }
 
+    func testReleaseActionSummaryTellsOperatorsToRegenerateStaleManualHelpers() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-stale-manual-helper-freshness", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let packagingDirectory = fixtureRoot.appendingPathComponent("packaging", isDirectory: true)
+        let voiceOverDirectory = fixtureRoot
+            .appendingPathComponent(".tmp", isDirectory: true)
+            .appendingPathComponent("voiceover-review", isDirectory: true)
+        let competitorDirectory = fixtureRoot
+            .appendingPathComponent(".tmp", isDirectory: true)
+            .appendingPathComponent("competitor-hands-on", isDirectory: true)
+        let releaseMachineDirectory = fixtureRoot
+            .appendingPathComponent(".tmp", isDirectory: true)
+            .appendingPathComponent("release-machine", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let releasePreflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+        let actionURL = fixtureRoot
+            .appendingPathComponent(".build", isDirectory: true)
+            .appendingPathComponent("release-actions.md")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: packagingDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: voiceOverDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: competitorDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: releaseMachineDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: releasePreflightURL, atomically: true, encoding: .utf8)
+        try """
+        APP_NAME=SoloPM
+        BUNDLE_IDENTIFIER=dev.solopm.app
+        MARKETING_VERSION=0.1.0
+        CURRENT_PROJECT_VERSION=1
+        """.write(to: packagingDirectory.appendingPathComponent("app_metadata.env"), atomically: true, encoding: .utf8)
+        try "- [x] release gate checked\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] release readme checked\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        let commit = try runTool(["git", "rev-parse", "--short", "HEAD"])
+            .output
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        try "- Source commit: `oldcafe`\n"
+            .write(
+                to: competitorDirectory.appendingPathComponent("competitor-hands-on-pending-\(commit).md"),
+                atomically: true,
+                encoding: .utf8
+            )
+        try "- Release candidate source commit: `oldcafe`\n"
+            .write(to: competitorDirectory.appendingPathComponent("hands-on-worksheet.md"), atomically: true, encoding: .utf8)
+        try "EXPECTED_SOURCE_COMMIT=oldcafe\n"
+            .write(to: competitorDirectory.appendingPathComponent("create-evidence-command.sh"), atomically: true, encoding: .utf8)
+        try "- Release candidate source commit: `oldcafe`\n"
+            .write(to: releaseMachineDirectory.appendingPathComponent("release-machine-worksheet.md"), atomically: true, encoding: .utf8)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: releasePreflightURL.path)
+
+        _ = try runTool(
+            ["bash", reportURL.path],
+            environment: ["SOLOPM_RELEASE_ACTIONS_FILE": actionURL.path]
+        )
+        let actions = try String(contentsOf: actionURL, encoding: .utf8)
+
+        XCTAssertTrue(actions.contains("## Manual Review Helper Freshness"))
+        XCTAssertTrue(actions.contains("- [ ] VoiceOver pending preview missing for current source commit: `.tmp/voiceover-review/accessibility-voiceover-pending-\(commit).md`"))
+        XCTAssertTrue(actions.contains("- [ ] Competitor pending evidence is stale or not pinned to current source commit `\(commit)`: `.tmp/competitor-hands-on/competitor-hands-on-pending-\(commit).md`"))
+        XCTAssertTrue(actions.contains("- [ ] Release evidence command missing for current source commit: `.tmp/release-machine/create-release-evidence-command.sh`"))
+        XCTAssertTrue(actions.contains("NEXT: regenerate manual review helpers for current source commit before running any passed-evidence command."))
+        XCTAssertTrue(actions.contains("./script/prepare_voiceover_review_candidate.sh --no-launch --skip-build"))
+        XCTAssertTrue(actions.contains("./script/create_competitor_hands_on_evidence.sh --pending --output \".tmp/competitor-hands-on/competitor-hands-on-pending-\(commit).md\" --benchmark-output \".tmp/competitor-hands-on/competitor-benchmark-pending-\(commit).md\""))
+        XCTAssertTrue(actions.contains("./script/prepare_release_machine_evidence.sh"))
+    }
+
     func testVoiceOverEvidenceGeneratorWritesPendingAndPassedEvidence() throws {
         let pendingURL = packageRoot()
             .appendingPathComponent(".build/test-voiceover-evidence-pending.md")
