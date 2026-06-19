@@ -4497,6 +4497,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("Release Machine phase gates:\n- [ ] tasks/Phase11.md:5:- [ ] Developer ID signing、notarization、Gatekeeper、clean environment evidence が揃う。"))
         XCTAssertTrue(actionSummary.contains("Login Item Manual Check phase gates:"))
         XCTAssertTrue(actionSummary.contains("Login Item Manual Check phase gates:\n- [ ] tasks/Phase11.md:2:- [ ] 手動確認: login item 設定をオン / オフできる。"))
+        XCTAssertTrue(actionSummary.contains("## Login Item Manual Check"))
+        XCTAssertTrue(actionSummary.contains("Login item evidence is recorded through `script/create_release_evidence.sh`, not a standalone checkbox."))
+        XCTAssertTrue(actionSummary.contains("--login-item-toggle \\"))
+        XCTAssertTrue(actionSummary.contains("--manual-environment \"<macOS version, hardware, clean user or VM/install context>\" \\"))
+        XCTAssertTrue(actionSummary.contains("--note \"<concrete note covering Settings launch-at-login toggle on and off in the signed app>\""))
     }
 
     func testReleaseReadinessReportIncludesPhase11AndIgnoresFuturePhasePlanning() throws {

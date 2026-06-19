@@ -511,6 +511,32 @@ write_competitor_hands_on_evidence_command() {
   printf '%s\n' '```'
 }
 
+phase_manual_unchecked_has_login_item_gate() {
+  if [[ -z "$phase_manual_unchecked" ]]; then
+    return 1
+  fi
+
+  grep -Eiq 'login item|launch at login|ログイン' <<<"$phase_manual_unchecked"
+}
+
+write_release_evidence_login_item_command() {
+  printf '%s\n' '```bash'
+  printf '%s\n' 'SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="<path to generated DMG .sha256>" \'
+  printf '%s\n' './script/create_release_evidence.sh --force \'
+  printf '%s\n' '  --release-machine-launch \'
+  printf '%s\n' '  --checksum-verification \'
+  printf '%s\n' '  --clean-dmg-install \'
+  printf '%s\n' '  --applications-folder-install \'
+  printf '%s\n' '  --gatekeeper-accepted \'
+  printf '%s\n' '  --clean-environment-launch \'
+  printf '%s\n' '  --login-item-toggle \'
+  printf '%s\n' '  --sparkle-appcast-metadata \'
+  printf '%s\n' '  --manual-environment "<macOS version, hardware, clean user or VM/install context>" \'
+  printf '%s\n' '  --checked-by "<reviewer name>" \'
+  printf '%s\n' '  --note "<concrete note covering Settings launch-at-login toggle on and off in the signed app>"'
+  printf '%s\n' '```'
+}
+
 write_release_actions() {
   local status="$1"
   local action_path="$RELEASE_ACTIONS_FILE"
@@ -602,6 +628,16 @@ write_release_actions() {
     write_competitor_hands_on_evidence_command
     printf "\n"
     printf -- "- Record Ship / Defer / Reject decisions and keep external SaaS sync/team workflow outside public alpha scope.\n\n"
+
+    if phase_manual_unchecked_has_login_item_gate; then
+      printf "## Login Item Manual Check\n"
+      printf -- "- Login item evidence is recorded through \`script/create_release_evidence.sh\`, not a standalone checkbox.\n"
+      printf -- "- Use the signed and notarized app installed from the release artifact, toggle Launch at Login on and off in Settings, and record the concrete environment/note.\n"
+      printf -- "- This command also binds the login item evidence to the packaged artifact, Developer ID signing context, notary profile, Sparkle metadata, and current source commit.\n\n"
+      write_release_evidence_login_item_command
+      printf "\n"
+      printf -- "- Do not mark Phase4 login item complete until \`verify_release_environment.sh\` accepts \`manualChecks.loginItemToggle=true\` from this evidence.\n\n"
+    fi
 
     printf "## Release Machine\n"
     printf -- "- Follow \`docs/release/checklist.md\` on the release machine.\n"
