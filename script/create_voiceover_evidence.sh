@@ -24,12 +24,32 @@ CHECK_DATE="$(date +%F)"
 MACOS_VERSION="macOS $(sw_vers -productVersion 2>/dev/null || printf 'unknown')"
 EVIDENCE_SOURCE="dist/$APP_NAME.app manual VoiceOver pass"
 CONFIRM_MANUAL_PASS=0
+PROJECT_NAVIGATION_NOTE=""
+PROJECT_BOARD_DETAIL_NOTE=""
+OPEN_TASK_NOTE=""
+INLINE_TASK_COMPOSER_NOTE=""
+STATUS_CONTROLS_NOTE=""
+TASK_INSPECTOR_NOTE=""
+SAVE_CHANGES_NOTE=""
+DELETE_CONFIRMATION_NOTE=""
+NO_KEYBOARD_TRAP_NOTE=""
+NO_UNLABELED_CRUD_NOTE=""
 
 usage() {
-  printf '%s\n' "usage: $0 (--pending|--passed) [--output PATH] [--checked-by NAME] [--macos-version VERSION] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--confirm-manual-voiceover-pass]"
+  printf '%s\n' "usage: $0 (--pending|--passed) [--output PATH] [--checked-by NAME] [--macos-version VERSION] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--project-navigation-note TEXT] [--project-board-detail-note TEXT] [--open-task-note TEXT] [--inline-task-composer-note TEXT] [--status-controls-note TEXT] [--task-inspector-note TEXT] [--save-changes-note TEXT] [--delete-confirmation-note TEXT] [--no-keyboard-trap-note TEXT] [--no-unlabeled-crud-note TEXT] [--confirm-manual-voiceover-pass]"
   printf '%s\n' ""
   printf '%s\n' "Use --pending to write a safe worksheet that release readiness will reject."
   printf '%s\n' "Use --passed only after a real VoiceOver pass on the release-candidate app."
+}
+
+require_passed_value() {
+  local flag="$1"
+  local value="$2"
+
+  if [[ -z "${value//[[:space:]]/}" ]]; then
+    echo "$flag is required with --passed" >&2
+    exit 2
+  fi
 }
 
 while [[ "$#" -gt 0 ]]; do
@@ -60,6 +80,46 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --evidence-source)
       EVIDENCE_SOURCE="${2:-}"
+      shift 2
+      ;;
+    --project-navigation-note)
+      PROJECT_NAVIGATION_NOTE="${2:-}"
+      shift 2
+      ;;
+    --project-board-detail-note)
+      PROJECT_BOARD_DETAIL_NOTE="${2:-}"
+      shift 2
+      ;;
+    --open-task-note)
+      OPEN_TASK_NOTE="${2:-}"
+      shift 2
+      ;;
+    --inline-task-composer-note)
+      INLINE_TASK_COMPOSER_NOTE="${2:-}"
+      shift 2
+      ;;
+    --status-controls-note)
+      STATUS_CONTROLS_NOTE="${2:-}"
+      shift 2
+      ;;
+    --task-inspector-note)
+      TASK_INSPECTOR_NOTE="${2:-}"
+      shift 2
+      ;;
+    --save-changes-note)
+      SAVE_CHANGES_NOTE="${2:-}"
+      shift 2
+      ;;
+    --delete-confirmation-note)
+      DELETE_CONFIRMATION_NOTE="${2:-}"
+      shift 2
+      ;;
+    --no-keyboard-trap-note)
+      NO_KEYBOARD_TRAP_NOTE="${2:-}"
+      shift 2
+      ;;
+    --no-unlabeled-crud-note)
+      NO_UNLABELED_CRUD_NOTE="${2:-}"
       shift 2
       ;;
     --confirm-manual-voiceover-pass)
@@ -96,6 +156,16 @@ if [[ "$VOICEOVER_STATUS" == "passed" ]]; then
     echo "--macos-version and --check-date are required with --passed" >&2
     exit 2
   fi
+  require_passed_value "--project-navigation-note" "$PROJECT_NAVIGATION_NOTE"
+  require_passed_value "--project-board-detail-note" "$PROJECT_BOARD_DETAIL_NOTE"
+  require_passed_value "--open-task-note" "$OPEN_TASK_NOTE"
+  require_passed_value "--inline-task-composer-note" "$INLINE_TASK_COMPOSER_NOTE"
+  require_passed_value "--status-controls-note" "$STATUS_CONTROLS_NOTE"
+  require_passed_value "--task-inspector-note" "$TASK_INSPECTOR_NOTE"
+  require_passed_value "--save-changes-note" "$SAVE_CHANGES_NOTE"
+  require_passed_value "--delete-confirmation-note" "$DELETE_CONFIRMATION_NOTE"
+  require_passed_value "--no-keyboard-trap-note" "$NO_KEYBOARD_TRAP_NOTE"
+  require_passed_value "--no-unlabeled-crud-note" "$NO_UNLABELED_CRUD_NOTE"
 fi
 
 mkdir -p "$(dirname "$OUTPUT_FILE")"
@@ -171,16 +241,16 @@ write_passed_evidence() {
     printf '\n'
     printf '%s\n' '## Verified Focus Path'
     printf '\n'
-    printf '%s\n' '- Project navigation: passed - Sidebar Inbox, Today, and Project rows announce their destination and counts.'
-    printf '%s\n' '- Project board detail: passed - Selected project board announces project context before task navigation.'
-    printf '%s\n' '- Open task: passed - Task card details can be opened from the keyboard without drag.'
-    printf '%s\n' '- Inline Task Composer: passed - Title, detail, priority, due, create, and cancel controls are reachable; Command+Return creates and Escape cancels.'
-    printf '%s\n' '- Status controls: passed - Previous and next status buttons announce the target status.'
-    printf '%s\n' '- Task inspector: passed - Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.'
-    printf '%s\n' '- Save Changes: passed - Keyboard activation reaches the local task save action.'
-    printf '%s\n' '- Delete Task confirmation: passed - Delete opens confirmation before local deletion.'
-    printf '%s\n' '- No keyboard trap: passed - Focus can leave sidebar, board, card controls, inspector fields, and confirmation dialogs.'
-    printf '%s\n' '- No unlabeled primary CRUD controls: passed - Create, update, status move, complete/archive, and delete actions have labels or help.'
+    printf -- '- Project navigation: passed - %s\n' "$PROJECT_NAVIGATION_NOTE"
+    printf -- '- Project board detail: passed - %s\n' "$PROJECT_BOARD_DETAIL_NOTE"
+    printf -- '- Open task: passed - %s\n' "$OPEN_TASK_NOTE"
+    printf -- '- Inline Task Composer: passed - %s\n' "$INLINE_TASK_COMPOSER_NOTE"
+    printf -- '- Status controls: passed - %s\n' "$STATUS_CONTROLS_NOTE"
+    printf -- '- Task inspector: passed - %s\n' "$TASK_INSPECTOR_NOTE"
+    printf -- '- Save Changes: passed - %s\n' "$SAVE_CHANGES_NOTE"
+    printf -- '- Delete Task confirmation: passed - %s\n' "$DELETE_CONFIRMATION_NOTE"
+    printf -- '- No keyboard trap: passed - %s\n' "$NO_KEYBOARD_TRAP_NOTE"
+    printf -- '- No unlabeled primary CRUD controls: passed - %s\n' "$NO_UNLABELED_CRUD_NOTE"
     printf '\n'
     printf '%s\n' '## Failure Notes'
     printf '\n'

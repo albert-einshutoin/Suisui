@@ -48,6 +48,18 @@ VOICEOVER_REQUIRED_CONTEXT_LABELS=(
   "Check date"
   "Evidence source"
 )
+VOICEOVER_REQUIRED_NOTE_LABELS=(
+  "Project navigation"
+  "Project board detail"
+  "Open task"
+  "Inline Task Composer"
+  "Status controls"
+  "Task inspector"
+  "Save Changes"
+  "Delete Task confirmation"
+  "No keyboard trap"
+  "No unlabeled primary CRUD controls"
+)
 COMPETITOR_REQUIRED_MARKERS=(
   "Status: passed"
   "Notion"
@@ -307,6 +319,23 @@ voiceover_context_value() {
     }
   ' "$voiceover_evidence_file" || true
 }
+voiceover_note_value() {
+  local note_label="$1"
+  awk -v label="$note_label" '
+    index($0, "- " label ": passed -") == 1 {
+      value = $0
+      sub("^- " label ": passed -[[:space:]]*", "", value)
+      print value
+      found = 1
+      exit
+    }
+    END {
+      if (found != 1) {
+        exit 1
+      }
+    }
+  ' "$voiceover_evidence_file" || true
+}
 normalize_voiceover_context_value() {
   local context_value="$1"
   context_value="${context_value//\`/}"
@@ -354,6 +383,20 @@ else
 
     if grep -Eiq '(pending|todo|tbd|placeholder|sample|example|replace me|signed or release-candidate)' <<<"$context_value"; then
       voiceover_blocker "VoiceOver accessibility evidence has template release context: $context_label"
+    fi
+  done
+
+  for note_label in "${VOICEOVER_REQUIRED_NOTE_LABELS[@]}"; do
+    note_value="$(voiceover_note_value "$note_label")"
+    compact_note_value="$(tr -d '[:space:]' <<<"$note_value")"
+
+    if [[ -z "$compact_note_value" ]]; then
+      voiceover_blocker "VoiceOver accessibility evidence missing concrete focus note: $note_label"
+      continue
+    fi
+
+    if grep -Eiq '(pending|todo|tbd|placeholder|sample|example|replace me)' <<<"$note_value"; then
+      voiceover_blocker "VoiceOver accessibility evidence has template focus note: $note_label"
     fi
   done
 

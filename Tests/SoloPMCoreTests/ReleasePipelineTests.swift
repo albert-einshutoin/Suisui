@@ -2104,6 +2104,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("./script/check_accessibility_preflight.sh --runtime"))
         XCTAssertTrue(checklist.contains("./script/create_voiceover_evidence.sh --pending"))
         XCTAssertTrue(checklist.contains("./script/create_voiceover_evidence.sh --passed"))
+        XCTAssertTrue(checklist.contains("--project-navigation-note"))
+        XCTAssertTrue(checklist.contains("--project-board-detail-note"))
+        XCTAssertTrue(checklist.contains("--inline-task-composer-note"))
+        XCTAssertTrue(checklist.contains("--no-unlabeled-crud-note"))
         XCTAssertTrue(checklist.contains("--confirm-manual-voiceover-pass"))
         XCTAssertTrue(checklist.contains("Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector"))
         XCTAssertTrue(checklist.contains("docs/release/evidence/competitor-hands-on.md"))
@@ -2146,6 +2150,21 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(unsafePassedResult.output.contains("--confirm-manual-voiceover-pass is required with --passed"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
 
+        let missingNotesResult = try runScript(
+            "script/create_voiceover_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "Release reviewer",
+                "--macos-version", "macOS 15.5",
+                "--check-date", "2026-06-19",
+                "--output", passedURL.path,
+                "--confirm-manual-voiceover-pass"
+            ]
+        )
+        XCTAssertNotEqual(missingNotesResult.exitCode, 0)
+        XCTAssertTrue(missingNotesResult.output.contains("--project-navigation-note is required with --passed"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
         let passedResult = try runScript(
             "script/create_voiceover_evidence.sh",
             arguments: [
@@ -2153,6 +2172,16 @@ final class ReleasePipelineTests: XCTestCase {
                 "--checked-by", "Release reviewer",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
+                "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
+                "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
+                "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
+                "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
+                "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
+                "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
+                "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
+                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
                 "--output", passedURL.path,
                 "--confirm-manual-voiceover-pass"
             ]
@@ -2165,16 +2194,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(passedEvidence.contains("- Bundle identifier: `dev.solopm.app`"))
         XCTAssertTrue(passedEvidence.contains("- Checked by: Release reviewer"))
         XCTAssertTrue(passedEvidence.contains("- Check date: 2026-06-19"))
-        XCTAssertTrue(passedEvidence.contains("- Project navigation: passed"))
-        XCTAssertTrue(passedEvidence.contains("- Project board detail: passed"))
-        XCTAssertTrue(passedEvidence.contains("- Open task: passed"))
-        XCTAssertTrue(passedEvidence.contains("- Inline Task Composer: passed"))
-        XCTAssertTrue(passedEvidence.contains("- Status controls: passed"))
-        XCTAssertTrue(passedEvidence.contains("- Task inspector: passed"))
-        XCTAssertTrue(passedEvidence.contains("- Save Changes: passed"))
-        XCTAssertTrue(passedEvidence.contains("- Delete Task confirmation: passed"))
-        XCTAssertTrue(passedEvidence.contains("- No keyboard trap: passed"))
-        XCTAssertTrue(passedEvidence.contains("- No unlabeled primary CRUD controls: passed"))
+        XCTAssertTrue(passedEvidence.contains("- Project navigation: passed - Sidebar Inbox, Today, and selected project rows announce destination and counts in order."))
+        XCTAssertTrue(passedEvidence.contains("- Project board detail: passed - Selected project board announces project title before card navigation begins."))
+        XCTAssertTrue(passedEvidence.contains("- Open task: passed - Task card details open from keyboard focus without relying on drag."))
+        XCTAssertTrue(passedEvidence.contains("- Inline Task Composer: passed - Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable."))
+        XCTAssertTrue(passedEvidence.contains("- Status controls: passed - Previous and next status buttons announce the target status before moving the task."))
+        XCTAssertTrue(passedEvidence.contains("- Task inspector: passed - Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable."))
+        XCTAssertTrue(passedEvidence.contains("- Save Changes: passed - Keyboard activation reaches the local task save action and returns without a trap."))
+        XCTAssertTrue(passedEvidence.contains("- Delete Task confirmation: passed - Delete opens confirmation before local deletion and exposes cancel."))
+        XCTAssertTrue(passedEvidence.contains("- No keyboard trap: passed - Focus can leave sidebar, board, card controls, inspector fields, and dialogs."))
+        XCTAssertTrue(passedEvidence.contains("- No unlabeled primary CRUD controls: passed - Create, update, status move, complete, archive, and delete actions have labels or help."))
         XCTAssertFalse(passedEvidence.localizedCaseInsensitiveContains("pending"))
         XCTAssertFalse(passedEvidence.contains("- [ ]"))
         XCTAssertFalse(passedEvidence.localizedCaseInsensitiveContains("placeholder"))
@@ -3148,6 +3177,98 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(result.output.contains("VoiceOver accessibility evidence is not marked passed"))
         XCTAssertFalse(result.output.contains("VoiceOver accessibility evidence still contains pending/template/placeholder text"))
         XCTAssertFalse(result.output.contains("VoiceOver accessibility evidence still contains unchecked checklist markers"))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+    }
+
+    func testReleaseReadinessReportFailsWhenVoiceOverEvidenceLacksConcreteFocusNotes() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-weak-voiceover-evidence", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let packagingDirectory = fixtureRoot.appendingPathComponent("packaging", isDirectory: true)
+        let evidenceDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("release", isDirectory: true)
+            .appendingPathComponent("evidence", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: packagingDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: evidenceDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: preflightURL, atomically: true, encoding: .utf8)
+        try """
+        APP_NAME=SoloPM
+        BUNDLE_IDENTIFIER=dev.solopm.app
+        MARKETING_VERSION=0.1.0
+        CURRENT_PROJECT_VERSION=1
+        """.write(to: packagingDirectory.appendingPathComponent("app_metadata.env"), atomically: true, encoding: .utf8)
+        try """
+        # VoiceOver Accessibility Evidence
+
+        Status: passed
+
+        ## Release Candidate Context
+
+        - macOS version: macOS 15.5
+        - App build: `0.1.0 (1)`
+        - Bundle identifier: `dev.solopm.app`
+        - Checked by: Release reviewer
+        - Check date: 2026-06-19
+        - Evidence source: `dist/SoloPM.app` manual pass
+
+        ## Verified Focus Path
+
+        - Project navigation: passed -
+        - Project board detail: passed -
+        - Open task: passed -
+        - Inline Task Composer: passed -
+        - Status controls: passed -
+        - Task inspector: passed -
+        - Save Changes: passed -
+        - Delete Task confirmation: passed -
+        - No keyboard trap: passed -
+        - No unlabeled primary CRUD controls: passed -
+        """.write(to: evidenceDirectory.appendingPathComponent("accessibility-voiceover.md"), atomically: true, encoding: .utf8)
+        try "- [x] release gate checked\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] release readme checked\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: preflightURL.path)
+
+        let result = try runTool(["bash", reportURL.path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Project navigation"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Project board detail"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Open task"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Inline Task Composer"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Status controls"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Task inspector"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Save Changes"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Delete Task confirmation"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: No keyboard trap"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: No unlabeled primary CRUD controls"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
     }
 

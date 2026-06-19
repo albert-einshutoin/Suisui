@@ -161,7 +161,19 @@ Use the generator to avoid stale bundle/build metadata:
 
 ```bash
 ./script/create_voiceover_evidence.sh --pending
-./script/create_voiceover_evidence.sh --passed --checked-by "Reviewer Name" --confirm-manual-voiceover-pass
+./script/create_voiceover_evidence.sh --passed \
+  --checked-by "Reviewer Name" \
+  --project-navigation-note "Concrete VoiceOver observation for sidebar Inbox, Today, and Project navigation." \
+  --project-board-detail-note "Concrete VoiceOver observation for selected project board context." \
+  --open-task-note "Concrete VoiceOver observation for opening task details without pointer drag." \
+  --inline-task-composer-note "Concrete VoiceOver observation for title/detail/priority/due/create/cancel paths." \
+  --status-controls-note "Concrete VoiceOver observation for previous/next status move controls." \
+  --task-inspector-note "Concrete VoiceOver observation for task inspector fields and actions." \
+  --save-changes-note "Concrete VoiceOver observation for local task save activation." \
+  --delete-confirmation-note "Concrete VoiceOver observation for destructive confirmation and cancel." \
+  --no-keyboard-trap-note "Concrete VoiceOver observation that focus can leave every primary region." \
+  --no-unlabeled-crud-note "Concrete VoiceOver observation that primary CRUD controls have labels or help." \
+  --confirm-manual-voiceover-pass
 ```
 
 12. Competitor hands-on evidence
