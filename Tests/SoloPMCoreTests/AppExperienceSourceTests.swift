@@ -566,6 +566,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(evidence.contains("Seed the Project Board with at least one active project and one task with a due date."))
         XCTAssertTrue(evidence.contains("## Required Focus Path"))
         XCTAssertTrue(evidence.contains("[ ] Project navigation"))
+        XCTAssertTrue(evidence.contains("[ ] Inline Task Composer"))
         XCTAssertTrue(evidence.contains("[ ] Task inspector"))
         XCTAssertTrue(evidence.contains("## Failure Notes"))
         XCTAssertTrue(evidence.contains("- Blocker observed:"))
@@ -576,6 +577,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(generator.contains("VOICEOVER_STATUS=\"pending\""))
         XCTAssertTrue(generator.contains("--confirm-manual-voiceover-pass"))
         XCTAssertTrue(generator.contains("Project navigation: passed"))
+        XCTAssertTrue(generator.contains("Inline Task Composer: passed"))
         XCTAssertTrue(generator.contains("No unlabeled primary CRUD controls: passed"))
         XCTAssertTrue(generator.contains("Status: passed"))
         XCTAssertTrue(generator.contains("Status: pending"))
@@ -583,6 +585,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(generator.contains("CURRENT_PROJECT_VERSION"))
         XCTAssertTrue(generator.contains("MARKETING_VERSION"))
         XCTAssertTrue(phase.contains("[x] `release_readiness_report.sh` はVoiceOver証跡のrelease-candidate context空欄/テンプレート値をblockerにする。"))
+        XCTAssertTrue(phase.contains("[x] `release_readiness_report.sh` とVoiceOver証跡generatorはInline Task Composerの作成/cancel導線を必須focus pathに含める。"))
         XCTAssertTrue(phase.contains("[x] `docs/release/evidence/accessibility-voiceover.md` は実機確認者がmacOS/build/checked-by/failure notesを埋められる形にする。"))
     }
 

@@ -146,7 +146,7 @@ script/capture_ui_evidence.sh --doctor
 script/capture_ui_evidence.sh
 ```
 
-Then replace `docs/release/evidence/accessibility-voiceover.md` with the real VoiceOver pass for the same release-candidate app. The final file must use `Status: passed`, complete the release-candidate context fields, include the Project navigation -> Project board detail -> Open task -> Status controls -> Task inspector path, and remove all pending/template language.
+Then replace `docs/release/evidence/accessibility-voiceover.md` with the real VoiceOver pass for the same release-candidate app. The final file must use `Status: passed`, complete the release-candidate context fields, include the Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector path, and remove all pending/template language.
 
 Use the generator to avoid stale bundle/build metadata:
 
@@ -183,7 +183,7 @@ Use [public-alpha.md](public-alpha.md) as the base. Include artifact names, chec
 - Confirm Settings can toggle launch at login in the signed app.
 - Confirm Sparkle local appcast metadata points to the new build.
 - Confirm Light/Dark/System screenshots show sidebar, task cards, and right inspector without overlap.
-- Confirm VoiceOver can follow Project navigation -> Project board detail -> Open task -> Status controls -> Task inspector without unlabeled primary CRUD controls or keyboard traps.
+- Confirm VoiceOver can follow Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector without unlabeled primary CRUD controls or keyboard traps.
 - Record the manual check results in `packaging/release-evidence.json`.
 
 ## Rollback

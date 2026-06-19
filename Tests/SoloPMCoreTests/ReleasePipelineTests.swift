@@ -2103,7 +2103,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("./script/create_voiceover_evidence.sh --pending"))
         XCTAssertTrue(checklist.contains("./script/create_voiceover_evidence.sh --passed"))
         XCTAssertTrue(checklist.contains("--confirm-manual-voiceover-pass"))
-        XCTAssertTrue(checklist.contains("Project navigation -> Project board detail -> Open task -> Status controls -> Task inspector"))
+        XCTAssertTrue(checklist.contains("Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector"))
         XCTAssertTrue(checklist.contains("./script/release_readiness_report.sh"))
     }
 
@@ -2128,6 +2128,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(pendingEvidence.contains("- App build: `0.1.0 (1)`"))
         XCTAssertTrue(pendingEvidence.contains("- Bundle identifier: `dev.solopm.app`"))
         XCTAssertTrue(pendingEvidence.contains("- [ ] Project navigation"))
+        XCTAssertTrue(pendingEvidence.contains("- [ ] Inline Task Composer"))
         XCTAssertTrue(pendingEvidence.contains("Do not set `Status: passed` until every item below is verified"))
 
         let unsafePassedResult = try runScript(
@@ -2160,6 +2161,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(passedEvidence.contains("- Project navigation: passed"))
         XCTAssertTrue(passedEvidence.contains("- Project board detail: passed"))
         XCTAssertTrue(passedEvidence.contains("- Open task: passed"))
+        XCTAssertTrue(passedEvidence.contains("- Inline Task Composer: passed"))
         XCTAssertTrue(passedEvidence.contains("- Status controls: passed"))
         XCTAssertTrue(passedEvidence.contains("- Task inspector: passed"))
         XCTAssertTrue(passedEvidence.contains("- Save Changes: passed"))
@@ -2211,6 +2213,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Status: passed"))
         XCTAssertTrue(script.contains("grep -Fx \"Status: passed\""))
         XCTAssertTrue(script.contains("Project navigation"))
+        XCTAssertTrue(script.contains("Inline Task Composer"))
         XCTAssertTrue(script.contains("Task inspector"))
         XCTAssertTrue(script.contains("missing VoiceOver accessibility evidence file"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence is not marked passed"))

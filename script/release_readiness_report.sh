@@ -31,6 +31,7 @@ VOICEOVER_REQUIRED_MARKERS=(
   "Project navigation"
   "Project board detail"
   "Open task"
+  "Inline Task Composer"
   "Status controls"
   "Task inspector"
   "Save Changes"
