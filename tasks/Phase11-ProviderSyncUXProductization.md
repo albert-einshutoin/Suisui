@@ -245,6 +245,7 @@
 - [x] 「便利そう」だけの機能はIssue化せず、クリック数削減、継続利用、課金理由のどれに効くかを書く。
 - [x] Pro機能はFree体験を壊さず、しかしProの価値がSettings/Sync/MCP画面で理解できるようにする。
 - [x] OSSとして、BYOK provider追加、MCP compliance fixtures、local-first data modelを外部contributorが触れる形にする。
+- [x] Investor reviewはUI screenshot証跡をpassed local evidenceとして扱い、VoiceOver、競合hands-on、署名/Notarization/Sparkle/Gatekeeperを残release blockerとして分離する。
 - [x] 完了条件: 実装完了だけでなく、投資判断の観点で「なぜ伸びるか / なぜ課金されるか」を説明できる。
 
 ## Exit Gate

@@ -1778,6 +1778,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testInvestorReviewTiesFeaturesToRetentionMonetizationAndRisk() throws {
         let review = try readPackageFile("docs/product/investor-review.md")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
 
         XCTAssertTrue(review.contains("Problem"))
         XCTAssertTrue(review.contains("User pull"))
@@ -1791,6 +1792,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(review.contains("Visual quality"))
         XCTAssertTrue(review.contains("Accessibility"))
         XCTAssertTrue(review.contains("Paid value"))
+        XCTAssertTrue(review.contains("UI screenshot evidence is now present and release-report validated"))
+        XCTAssertTrue(review.contains("Remaining release blockers are VoiceOver manual pass, competitor hands-on validation, and signing/notarization/Sparkle/Gatekeeper evidence"))
+        XCTAssertTrue(review.contains("Light/Dark/System screenshots are green for Project Board and Settings"))
+        XCTAssertFalse(review.contains("Visual evidence, VoiceOver focus order, and full release packaging evidence remain open"))
+        XCTAssertFalse(review.contains("Without screenshot evidence, UI quality is not fully proven"))
+        XCTAssertTrue(phase.contains("[x] Investor reviewはUI screenshot証跡をpassed local evidenceとして扱い、VoiceOver、競合hands-on、署名/Notarization/Sparkle/Gatekeeperを残release blockerとして分離する。"))
     }
 
     private func readPackageFile(_ relativePath: String) throws -> String {
