@@ -29,6 +29,7 @@
 
 実装メモ:
 - `MCPClient` は `initialize`、`notifications/initialized`、`tools/list`、`tools/call` を JSON-RPC 2.0 model として扱う。
+- `ExternalMCPToolExecutor.call` は実行 `tools/call` の前に `initialize -> notifications/initialized` を通すため、Settingsの接続確認とは別経路の実行でもMCP lifecycleを破らない。同じ `MCPClient` の再利用では初期化結果をcacheし、1セッション内で `initialize` を再送しない。
 - `MCPProtocolVersion.v2025_11_25` を protocol negotiation の基準値にした。
 - `MCPClientTransport` protocol で stdio transport を先に差し込める構成にし、Streamable HTTP は同じ protocol の後続 adapter として残した。
 - `ToolOrigin.externalMCP` により、内蔵 `ActionTool` と外部 MCP tool を registry 上で区別する。

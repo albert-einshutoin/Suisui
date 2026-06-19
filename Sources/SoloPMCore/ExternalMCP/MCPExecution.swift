@@ -85,6 +85,7 @@ public struct ExternalMCPToolExecutor: Sendable {
         ))
 
         do {
+            _ = try await client.initialize()
             let result = try await client.callTool(name: toolName, arguments: arguments)
             try validateStructuredOutputIfNeeded(result, descriptor: descriptor)
             var metadata = auditMetadata(

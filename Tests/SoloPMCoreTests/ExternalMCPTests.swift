@@ -1765,6 +1765,43 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(transport.recordedMethods, [])
     }
 
+    func testExternalMCPExecutionInitializesSessionBeforeToolCall() async throws {
+        let transport = ExternalMCPTestKit.makeFakeServerTransport()
+        let executor = makeExecutor(transport: transport, policies: ["read_status": .read])
+
+        _ = try await executor.call(
+            toolName: "read_status",
+            arguments: ["project": .string("soloPM")],
+            context: ToolExecutionContext(source: .developerTool)
+        )
+
+        XCTAssertEqual(
+            transport.recordedMethods,
+            ["initialize", "notifications/initialized", "tools/call"]
+        )
+    }
+
+    func testExternalMCPExecutionReusesInitializedSessionAcrossCalls() async throws {
+        let transport = ExternalMCPTestKit.makeFakeServerTransport()
+        let executor = makeExecutor(transport: transport, policies: ["read_status": .read])
+
+        _ = try await executor.call(
+            toolName: "read_status",
+            arguments: ["project": .string("soloPM")],
+            context: ToolExecutionContext(source: .developerTool)
+        )
+        _ = try await executor.call(
+            toolName: "read_status",
+            arguments: ["project": .string("soloPM")],
+            context: ToolExecutionContext(source: .developerTool)
+        )
+
+        XCTAssertEqual(
+            transport.recordedMethods,
+            ["initialize", "notifications/initialized", "tools/call", "tools/call"]
+        )
+    }
+
     func testExternalMCPExecutionRequiresPaidEntitlementBeforeToolCall() async throws {
         let logger = InMemoryAuditLogger()
         let transport = ExternalMCPTestKit.makeFakeServerTransport()
@@ -1893,7 +1930,7 @@ final class ExternalMCPTests: XCTestCase {
                     ])
                 )
             }
-            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+            return Self.validInitializeResponse(for: request)
         }
         let executor = makeExecutor(
             transport: transport,
@@ -1924,7 +1961,7 @@ final class ExternalMCPTests: XCTestCase {
                     ])
                 )
             }
-            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+            return Self.validInitializeResponse(for: request)
         }
         let executor = makeExecutor(
             transport: transport,
@@ -1971,7 +2008,7 @@ final class ExternalMCPTests: XCTestCase {
                     ])
                 )
             }
-            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+            return Self.validInitializeResponse(for: request)
         }
         let executor = makeExecutor(
             transport: transport,
@@ -2019,7 +2056,7 @@ final class ExternalMCPTests: XCTestCase {
                     ])
                 )
             }
-            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+            return Self.validInitializeResponse(for: request)
         }
         let executor = makeExecutor(
             transport: transport,
@@ -2061,7 +2098,7 @@ final class ExternalMCPTests: XCTestCase {
                     ])
                 )
             }
-            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+            return Self.validInitializeResponse(for: request)
         }
         let executor = makeExecutor(
             transport: transport,
@@ -2130,7 +2167,12 @@ final class ExternalMCPTests: XCTestCase {
 
     func testTimeoutKillsProcessAndAuditsFailure() async throws {
         let logger = InMemoryAuditLogger()
-        let transport = ExternalMCPTestKit.makeHangingTransport()
+        let transport = RecordingMCPTransport { request in
+            if request.method == "tools/call" {
+                throw MCPClientError.timeout(serverID: "fake", method: "tools/call")
+            }
+            return Self.validInitializeResponse(for: request)
+        }
         let processController = RecordingMCPProcessController()
         let executor = makeExecutor(
             client: MCPClient(serverID: "fake", transport: transport, timeout: 0.01),
@@ -2835,6 +2877,27 @@ final class ExternalMCPTests: XCTestCase {
             auditLogger: auditLogger,
             processController: processController,
             entitlementChecker: EntitlementChecker(store: entitlementStore)
+        )
+    }
+
+    private static func validInitializeResponse(for request: MCPJSONRPCRequest) -> MCPJSONRPCResponse {
+        guard request.method == "initialize" else {
+            return MCPJSONRPCResponse(
+                id: request.id,
+                error: MCPJSONRPCError(code: -32601, message: "Unknown method: \(request.method)")
+            )
+        }
+
+        return MCPJSONRPCResponse(
+            id: request.id,
+            result: .object([
+                "protocolVersion": .string(MCPProtocolVersion.v2025_11_25.rawValue),
+                "capabilities": .object(["tools": .object(["listChanged": .bool(false)])]),
+                "serverInfo": .object([
+                    "name": .string("fake-mcp"),
+                    "version": .string("0.1.0")
+                ])
+            ])
         )
     }
 

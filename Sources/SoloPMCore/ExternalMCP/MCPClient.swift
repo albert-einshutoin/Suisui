@@ -18,6 +18,7 @@ public final class MCPClient: @unchecked Sendable {
     private let timeout: TimeInterval
     private let lock = NSLock()
     private var nextRequestID = 1
+    private var initializeResult: MCPInitializeResult?
 
     public init(serverID: String, transport: any MCPClientTransport, timeout: TimeInterval = 10) {
         self.serverID = serverID
@@ -26,6 +27,10 @@ public final class MCPClient: @unchecked Sendable {
     }
 
     public func initialize() async throws -> MCPInitializeResult {
+        if let initializeResult = cachedInitializeResult() {
+            return initializeResult
+        }
+
         let request = makeRequest(
             method: "initialize",
             params: .object([
@@ -75,12 +80,14 @@ public final class MCPClient: @unchecked Sendable {
             throw MCPClientError.invalidResponse(serverID: serverID, method: "initialize", reason: "result.serverInfo.version must be a string.")
         }
         try await transport.notify(MCPJSONRPCNotification(method: "notifications/initialized"))
-        return MCPInitializeResult(
+        let initializeResult = MCPInitializeResult(
             protocolVersion: protocolVersion,
             serverName: serverName,
             serverVersion: serverVersion,
             serverCapabilities: capabilities
         )
+        cacheInitializeResult(initializeResult)
+        return initializeResult
     }
 
     public func listTools() async throws -> [MCPToolDefinition] {
@@ -181,6 +188,18 @@ public final class MCPClient: @unchecked Sendable {
         let id = nextRequestID
         nextRequestID += 1
         return MCPJSONRPCRequest(id: id, method: method, params: params)
+    }
+
+    private func cachedInitializeResult() -> MCPInitializeResult? {
+        lock.lock()
+        defer { lock.unlock() }
+        return initializeResult
+    }
+
+    private func cacheInitializeResult(_ result: MCPInitializeResult) {
+        lock.lock()
+        defer { lock.unlock() }
+        initializeResult = result
     }
 
     private func send(_ request: MCPJSONRPCRequest) async throws -> JSONValue {

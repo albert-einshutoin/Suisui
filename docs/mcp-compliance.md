@@ -39,7 +39,7 @@ Primary references:
 | Tools list | Implemented | `MCPClient.listTools` calls `tools/list` and parses `tools` as an array of tool definitions. |
 | Tools list pagination | Implemented | `MCPClient.listTools` follows `result.nextCursor` with `params.cursor`, rejects malformed cursor metadata, and guards against repeated cursors so paginated servers are not silently truncated. |
 | Tool name policy | Implemented for release subset | MCP marks 1-128 character ASCII tool names with letters, digits, underscore, hyphen, and dot as the interoperable shape, and expects names to be unique within a server. SoloPM treats names outside that shape or duplicate names across paginated responses as invalid to keep Settings, audit rows, and approval policies deterministic. |
-| Tools call | Implemented | `MCPClient.callTool` calls `tools/call` with `name` and `arguments`, and parses `content`, `isError`, and `structuredContent`. When present, `structuredContent` must be a JSON object. Successful tool results with a declared `outputSchema` are validated before success audit; tool execution errors with `isError = true` stay actionable and skip output schema validation. |
+| Tools call | Implemented | `ExternalMCPToolExecutor.call` now initializes the MCP session and sends `notifications/initialized` before any execution `tools/call`; `MCPClient.initialize()` caches the accepted session result so repeated calls on the same client do not re-run initialization. `MCPClient.callTool` calls `tools/call` with `name` and `arguments`, and parses `content`, `isError`, and `structuredContent`. When present, `structuredContent` must be a JSON object. Successful tool results with a declared `outputSchema` are validated before success audit; tool execution errors with `isError = true` stay actionable and skip output schema validation. |
 | Tool schema typing | Implemented for release subset | `inputSchema` is required, root `type` must be `object`, omitted `$schema` is treated as JSON Schema 2020-12, explicit 2020-12 and draft-07 dialects are accepted, unsupported dialects are rejected with `invalid-schema`, `required` must be an array of strings, and every `properties.*` schema must be an object. `outputSchema` is optional, must be a JSON object when present, may omit root `type`, rejects non-object root `type`, accepts the same supported `$schema` dialects, and validates `structuredContent` required fields plus primitive property types. Full JSON Schema keyword validation is not claimed yet. |
 | Tool permission | Implemented for SoloPM policy | Unknown external tools default to disabled; write tools require approval; dangerous tools are blocked even after paid entitlement approval. |
 | Paid execution boundary | Implemented | External MCP registrations and diagnostics are available on Free, but `tools/call` execution requires `FeatureGate.advancedMCPExecution`; ADR 0008 records the decision. |
@@ -58,6 +58,8 @@ Primary references:
 ## Tests That Currently Guard Compliance
 
 - `ExternalMCPTests.testClientInitializesListsAndCallsToolsWith20251125Protocol`
+- `ExternalMCPTests.testExternalMCPExecutionInitializesSessionBeforeToolCall`
+- `ExternalMCPTests.testExternalMCPExecutionReusesInitializedSessionAcrossCalls`
 - `ExternalMCPTests.testClientFollowsToolsListPaginationCursor`
 - `ExternalMCPTests.testClientRejectsMalformedToolsListPaginationCursor`
 - `ExternalMCPTests.testClientRejectsRepeatedToolsListPaginationCursor`
