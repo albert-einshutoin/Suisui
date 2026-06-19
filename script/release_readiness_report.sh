@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BLOCKER_COUNT=0
 APP_METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
+RELEASE_CI_PREFLIGHT="${SOLOPM_RELEASE_CI_PREFLIGHT:-0}"
+RELEASE_CI_PREFLIGHT_RELATIVE="scripts/ci.sh"
 MOCK_PATTERN="(?i:fake|mock|fixture|canned|stub|skeleton|todo|fixme|not[[:space:]_-]*implemented|notimplemented|inmemory)|(?i:(^|[^[:alnum:]_])(demo|sample|placeholder)([^[:alnum:]_]|$))|Static[A-Za-z0-9_]*|:memory:|fatalError|preconditionFailure"
 UI_EVIDENCE_RELATIVE="docs/release/evidence/ui-screenshots.md"
 UI_SCREENSHOT_RELATIVE_DIR="docs/release/evidence/ui-screenshots"
@@ -167,6 +169,33 @@ else
         ;;
     esac
   fi
+fi
+
+section "Release CI preflight"
+release_ci_preflight_script="$ROOT_DIR/$RELEASE_CI_PREFLIGHT_RELATIVE"
+if [[ "$RELEASE_CI_PREFLIGHT" != "0" && "$RELEASE_CI_PREFLIGHT" != "1" ]]; then
+  blocker "SOLOPM_RELEASE_CI_PREFLIGHT must be 0 or 1"
+elif [[ "$RELEASE_CI_PREFLIGHT" == "1" ]]; then
+  if [[ ! -x "$release_ci_preflight_script" ]]; then
+    blocker "missing executable release CI preflight: $RELEASE_CI_PREFLIGHT_RELATIVE"
+  else
+    set +e
+    release_ci_preflight_output="$("$release_ci_preflight_script" 2>&1)"
+    release_ci_preflight_status=$?
+    set -e
+
+    if [[ -n "$release_ci_preflight_output" ]]; then
+      printf "%s\n" "$release_ci_preflight_output"
+    fi
+
+    if [[ "$release_ci_preflight_status" -ne 0 ]]; then
+      blocker "release CI preflight failed"
+    else
+      printf "OK: release CI preflight passed\n"
+    fi
+  fi
+else
+  printf "INFO: release CI preflight skipped; set SOLOPM_RELEASE_CI_PREFLIGHT=1 to run %s inside this report.\n" "$RELEASE_CI_PREFLIGHT_RELATIVE"
 fi
 
 section "Phase checklist blockers"

@@ -18,6 +18,7 @@ This checklist is the single runbook for reproducing a SoloPM public alpha relea
 
 ```bash
 swift test
+./scripts/ci.sh
 ```
 
 2. build
@@ -208,6 +209,7 @@ Use the generator so a pending worksheet cannot be mistaken for a pass:
 source packaging/app_metadata.env
 export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"
 ./script/release_readiness_report.sh
+SOLOPM_RELEASE_CI_PREFLIGHT=1 ./script/release_readiness_report.sh
 ```
 
 14. tag
