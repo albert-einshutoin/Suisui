@@ -39,14 +39,19 @@ struct ProjectBoardView: View {
 
                 Divider()
 
-                Toggle(
-                    "Show Archived",
-                    isOn: Binding(
-                        get: { viewModel.showsArchivedProjects },
-                        set: { viewModel.setShowsArchivedProjects($0) }
+                Button {
+                    viewModel.setShowsArchivedProjects(!viewModel.showsArchivedProjects)
+                } label: {
+                    Label(
+                        "Show Archived",
+                        systemImage: viewModel.showsArchivedProjects ? "checkmark.square" : "square"
                     )
-                )
-                .toggleStyle(.checkbox)
+                }
+                .buttonStyle(.borderless)
+                .help("Show archived projects")
+                .accessibilityLabel("Show archived projects")
+                .accessibilityValue(viewModel.showsArchivedProjects ? "On" : "Off")
+                .accessibilityHint("Shows archived projects in the sidebar without deleting local data.")
                 .padding(.horizontal, 10)
                 .padding(.top, 8)
 
@@ -60,6 +65,8 @@ struct ProjectBoardView: View {
                 .buttonStyle(.borderless)
                 .keyboardShortcut("n", modifiers: [.command, .shift])
                 .help("Add a project")
+                .accessibilityLabel("Add Project")
+                .accessibilityHint("Creates a new local project and selects it.")
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
             }
@@ -533,6 +540,9 @@ private struct ProjectTaskSnapshotSection: View {
                 Label("Add Task", systemImage: "plus")
             }
             .controlSize(.small)
+            .help("Add task to \(project.title)")
+            .accessibilityLabel("Add task to \(project.title)")
+            .accessibilityHint("Opens the inline composer for a new local task.")
         }
     }
 }
@@ -818,6 +828,9 @@ private struct ProjectHeaderActions: View {
         .buttonStyle(.borderedProminent)
         .keyboardShortcut("n", modifiers: [.command])
         .disabled(project.isArchived)
+        .help("Add task to \(project.title)")
+        .accessibilityLabel("Add task to \(project.title)")
+        .accessibilityHint("Opens the inline composer for a new local task.")
     }
 }
 

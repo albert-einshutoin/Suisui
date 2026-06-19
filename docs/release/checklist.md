@@ -157,7 +157,7 @@ Run the accessibility preflight before the manual VoiceOver pass. The source-onl
 ./script/check_accessibility_preflight.sh --runtime
 ```
 
-The runtime preflight is intentionally stricter than a process/window check: it scans visible windows by AX role and fails if the best release-candidate window has fewer than the minimum buttons, text fields, or static texts, or if it exposes unlabeled AX buttons, because a low-information AX tree is not enough evidence for the manual VoiceOver pass.
+The runtime preflight is intentionally stricter than a process/window check: it scans visible windows by AX role and fails if the best release-candidate window has fewer than the minimum buttons, text fields, or static texts, if it exposes unlabeled AX buttons, or if a button only reports the generic `button` label without help or child text, because a low-information AX tree is not enough evidence for the manual VoiceOver pass.
 
 When reviewing a local release candidate in a visible macOS session, include the runtime AX smoke in the readiness report:
 
@@ -165,7 +165,7 @@ When reviewing a local release candidate in a visible macOS session, include the
 SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT=1 ./script/release_readiness_report.sh
 ```
 
-Then replace `docs/release/evidence/accessibility-voiceover.md` with the real VoiceOver pass for the same release-candidate app. The final file must use `Status: passed`, complete the release-candidate context fields, include the runtime AX smoke OK line with `unlabeledButtons=0`, include the Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector path, and remove all pending/template language.
+Then replace `docs/release/evidence/accessibility-voiceover.md` with the real VoiceOver pass for the same release-candidate app. The final file must use `Status: passed`, complete the release-candidate context fields, include the runtime AX smoke OK line with `unlabeledButtons=0` and `genericButtons=0`, include the Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector path, and remove all pending/template language.
 
 Use the generator to avoid stale bundle/build metadata:
 
@@ -176,7 +176,7 @@ Each focus-path note must name the concrete VoiceOver observation, control, or f
 ./script/create_voiceover_evidence.sh --passed \
   --checked-by "Reviewer Name" \
   --accessibility-environment "VoiceOver/keyboard/device details used for the manual pass" \
-  --runtime-ax-smoke-note "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=27, textFields=1, staticTexts=24, unlabeledButtons=0" \
+  --runtime-ax-smoke-note "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0" \
   --project-navigation-note "Concrete VoiceOver observation for sidebar Inbox, Today, and Project navigation." \
   --project-board-detail-note "Concrete VoiceOver observation for selected project board context." \
   --open-task-note "Concrete VoiceOver observation for opening task details without pointer drag." \

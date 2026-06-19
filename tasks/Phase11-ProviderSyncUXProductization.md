@@ -206,8 +206,8 @@
   - [x] `script/check_accessibility_preflight.sh` はsource-level accessibility anchorsを確認し、任意のruntime AX smokeで手動VoiceOver前の崩れを検出できる。
   - [x] `script/check_accessibility_preflight.sh` はTask inspectorのdetail/status/priority/due/suggestion/save/deleteとProject inspectorのtitle/suggestion/save/complete/restore/archive/deleteを必須anchorとして監視する。
   - [x] `script/check_accessibility_preflight.sh` は主要CRUDのkeyboard shortcutsをsource anchorとして監視する。
-  - [x] `script/check_accessibility_preflight.sh --runtime` は見えているrelease候補windowのunlabeled AX buttonsをblockerにする。
-  - [x] VoiceOver passed evidence は同じrelease候補で実行したruntime AX smoke OK行と `unlabeledButtons=0` を含まない場合release readyにしない。
+  - [x] `script/check_accessibility_preflight.sh --runtime` は見えているrelease候補windowのunlabeled AX buttonsとhelp/child textなしgeneric `button` labelをblockerにする。
+  - [x] VoiceOver passed evidence は同じrelease候補で実行したruntime AX smoke OK行、`unlabeledButtons=0`、`genericButtons=0` を含まない場合release readyにしない。
   - [ ] 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。
 - [x] `script/capture_ui_evidence.sh` は一時HOME、seed済みProject board、Light/Dark/System切替、window captureを使う。
   - [x] `capture_ui_evidence.sh` はcapture前にappを前面化し、黒画面/低情報量PNGをrelease evidenceとして残さず失敗させる。

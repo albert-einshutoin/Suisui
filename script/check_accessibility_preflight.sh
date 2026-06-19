@@ -78,7 +78,7 @@ usage() {
   printf '%s\n' ""
   printf '%s\n' "Checks accessibility anchors before the manual VoiceOver release pass."
   printf '%s\n' "This is not a substitute for the manual VoiceOver pass."
-  printf '%s\n' "Runtime smoke fails when the visible window has fewer than $MIN_AX_BUTTONS buttons, $MIN_AX_TEXT_FIELDS text field, or $MIN_AX_STATIC_TEXTS static texts."
+  printf '%s\n' "Runtime smoke fails when the visible window has fewer than $MIN_AX_BUTTONS buttons, $MIN_AX_TEXT_FIELDS text field, $MIN_AX_STATIC_TEXTS static texts, unlabeled buttons, or generic button labels without help or child text."
 }
 
 while [[ "$#" -gt 0 ]]; do
@@ -205,6 +205,7 @@ on run argv
   set bestTextFieldCount to 0
   set bestStaticTextCount to 0
   set bestUnlabeledButtonCount to 0
+  set bestGenericButtonCount to 0
   tell application "System Events"
     if not (exists process appName) then error appName & " process is not visible to System Events"
     tell process appName
@@ -220,6 +221,8 @@ on run argv
         set textFieldCount to 0
         set staticTextCount to 0
         set unlabeledButtonCount to 0
+        set genericButtonCount to 0
+        set genericButtonDetails to ""
         set axItems to entire contents of currentWindow
         repeat with axItem in axItems
           set itemRole to ""
@@ -229,20 +232,69 @@ on run argv
           if itemRole is "AXButton" then
             set buttonCount to buttonCount + 1
             set buttonName to ""
+            set buttonTitle to ""
+            set buttonDescription to ""
+            set buttonHelp to ""
+            set buttonPosition to ""
+            set buttonSize to ""
+            set childTextCount to 0
             try
               set buttonName to name of axItem as text
             end try
+            try
+              set buttonTitle to value of attribute "AXTitle" of axItem as text
+            end try
+            try
+              set buttonDescription to description of axItem as text
+            end try
+            try
+              set buttonHelp to value of attribute "AXHelp" of axItem as text
+            end try
+            try
+              set buttonPosition to position of axItem as text
+            end try
+            try
+              set buttonSize to size of axItem as text
+            end try
+            try
+              repeat with childItem in entire contents of axItem
+                set childRole to ""
+                set childText to ""
+                try
+                  set childRole to role of childItem as text
+                end try
+                if childRole is "AXStaticText" then
+                  try
+                    set childText to name of childItem as text
+                  end try
+                  if childText is "" or childText is "missing value" then
+                    try
+                      set childText to value of childItem as text
+                    end try
+                  end if
+                  if childText is not "" and childText is not "missing value" then set childTextCount to childTextCount + 1
+                end if
+              end repeat
+            end try
+            if buttonName is "" or buttonName is "missing value" then set buttonName to buttonTitle
+            if buttonName is "" or buttonName is "missing value" then set buttonName to buttonDescription
             if buttonName is "" or buttonName is "missing value" then
-              try
-                set buttonName to description of axItem as text
-              end try
+              set unlabeledButtonCount to unlabeledButtonCount + 1
+            else if buttonName is "button" and (buttonHelp is "" or buttonHelp is "missing value") and childTextCount is 0 then
+              set genericButtonCount to genericButtonCount + 1
+              set genericButtonDetail to "generic button #" & buttonCount & " title=" & buttonTitle & " description=" & buttonDescription & " childTexts=" & childTextCount & " position=" & buttonPosition & " size=" & buttonSize
+              if genericButtonDetails is "" then
+                set genericButtonDetails to genericButtonDetail
+              else if genericButtonCount <= 3 then
+                set genericButtonDetails to genericButtonDetails & "; " & genericButtonDetail
+              end if
             end if
-            if buttonName is "" or buttonName is "missing value" then set unlabeledButtonCount to unlabeledButtonCount + 1
           end if
           if itemRole is "AXTextField" or itemRole is "AXTextArea" then set textFieldCount to textFieldCount + 1
           if itemRole is "AXStaticText" then set staticTextCount to staticTextCount + 1
         end repeat
-        set currentSummary to "window=" & windowIndex & " name=" & windowName & ", buttons=" & buttonCount & ", textFields=" & textFieldCount & ", staticTexts=" & staticTextCount & ", unlabeledButtons=" & unlabeledButtonCount
+        set currentSummary to "window=" & windowIndex & " name=" & windowName & ", buttons=" & buttonCount & ", textFields=" & textFieldCount & ", staticTexts=" & staticTextCount & ", unlabeledButtons=" & unlabeledButtonCount & ", genericButtons=" & genericButtonCount
+        if genericButtonDetails is not "" then set currentSummary to currentSummary & ", genericButtonDetails=" & genericButtonDetails
         set currentScore to buttonCount + textFieldCount + staticTextCount
         if bestSummary is "" then
           set bestSummary to currentSummary
@@ -251,6 +303,7 @@ on run argv
           set bestTextFieldCount to textFieldCount
           set bestStaticTextCount to staticTextCount
           set bestUnlabeledButtonCount to unlabeledButtonCount
+          set bestGenericButtonCount to genericButtonCount
         else if currentScore > bestScore then
           set bestSummary to currentSummary
           set bestScore to currentScore
@@ -258,8 +311,9 @@ on run argv
           set bestTextFieldCount to textFieldCount
           set bestStaticTextCount to staticTextCount
           set bestUnlabeledButtonCount to unlabeledButtonCount
+          set bestGenericButtonCount to genericButtonCount
         end if
-        if buttonCount >= minButtons and textFieldCount >= minTextFields and staticTextCount >= minStaticTexts and unlabeledButtonCount is 0 then
+        if buttonCount >= minButtons and textFieldCount >= minTextFields and staticTextCount >= minStaticTexts and unlabeledButtonCount is 0 and genericButtonCount is 0 then
           return "OK: runtime AX smoke visible, windows=" & windowCount & ", " & currentSummary
         end if
       end repeat
@@ -269,6 +323,7 @@ on run argv
       if bestTextFieldCount < minTextFields then error "runtime AX smoke has too few text fields: " & bestTextFieldCount & " < " & minTextFields & " (" & bestSummary & ")"
       if bestStaticTextCount < minStaticTexts then error "runtime AX smoke has too few static texts: " & bestStaticTextCount & " < " & minStaticTexts & " (" & bestSummary & ")"
       if bestUnlabeledButtonCount > 0 then error "runtime AX smoke has unlabeled buttons: " & bestUnlabeledButtonCount & " (" & bestSummary & ")"
+      if bestGenericButtonCount > 0 then error "runtime AX smoke has generic button labels without help or child text: " & bestGenericButtonCount & " (" & bestSummary & ")"
       error "runtime AX smoke did not find a qualifying visible window: " & bestSummary
     end tell
   end tell
