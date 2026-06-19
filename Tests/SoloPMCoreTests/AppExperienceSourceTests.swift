@@ -1583,6 +1583,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(audit.contains("ProjectBoardStoreTests.testProjectBoardViewModelInboxClassificationShowsFeedbackAdvancesSelectionAndUndo"))
         XCTAssertTrue(audit.contains("ExternalMCPTests.testExternalMCPSettingsViewModelChecksSpecificRegistrationFromInlineRow"))
         XCTAssertTrue(audit.contains("SyncEntitlementTests.testSyncServiceFreeStartFailsBeforeNetworkClientIsReached"))
+        XCTAssertTrue(audit.contains("SyncEntitlementTests.testSyncServiceConfiguredBackendRecordsNetworkFailureInsteadOfReturningReady"))
+        XCTAssertTrue(audit.contains("SyncEntitlementTests.testSyncSettingsViewModelShowsFailedStateAfterNetworkFailure"))
         XCTAssertTrue(phase.contains("[x] UX click-path auditで主要操作のクリック数が記録され、改善PRと紐づいている。"))
     }
 

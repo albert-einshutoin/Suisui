@@ -69,6 +69,24 @@ final class SyncEntitlementTests: XCTestCase {
         XCTAssertEqual(try service.status().state, .backendNotConfigured)
     }
 
+    func testSyncServiceConfiguredBackendRecordsNetworkFailureInsteadOfReturningReady() throws {
+        let networkClient = RecordingSyncNetworkClient(error: SyncServiceError.networkUnavailable)
+        let service = SyncService(
+            entitlementStore: StaticEntitlementStore(plan: .pro),
+            configuration: SyncConfiguration(backendEndpoint: URL(string: "https://sync.solopm.example/v1")),
+            networkClient: networkClient
+        )
+
+        XCTAssertThrowsError(try service.startSync()) { error in
+            XCTAssertEqual(error as? SyncServiceError, .networkUnavailable)
+        }
+
+        let status = try service.status()
+        XCTAssertEqual(status.state, .failed)
+        XCTAssertNotNil(status.lastAttemptAt)
+        XCTAssertEqual(networkClient.startCallCount, 1)
+    }
+
     func testSyncServiceDryRunDefinesLocalDataClassesWithoutExternalSaaS() throws {
         let service = SyncService(
             entitlementStore: StaticEntitlementStore(plan: .pro),
@@ -144,6 +162,30 @@ final class SyncEntitlementTests: XCTestCase {
         XCTAssertNil(viewModel.errorMessage)
         XCTAssertEqual(networkClient.startCallCount, 1)
     }
+
+    @MainActor
+    func testSyncSettingsViewModelShowsFailedStateAfterNetworkFailure() {
+        let networkClient = RecordingSyncNetworkClient(error: SyncServiceError.networkUnavailable)
+        let viewModel = SyncSettingsViewModel(
+            service: SyncService(
+                entitlementStore: StaticEntitlementStore(plan: .pro),
+                configuration: SyncConfiguration(backendEndpoint: URL(string: "https://sync.solopm.example/v1")),
+                networkClient: networkClient
+            )
+        )
+
+        XCTAssertEqual(viewModel.statusLabel, "Ready")
+        XCTAssertTrue(viewModel.canEnableSync)
+
+        viewModel.setSyncEnabled(true)
+
+        XCTAssertFalse(viewModel.isSyncEnabled)
+        XCTAssertEqual(viewModel.statusLabel, "Failed")
+        XCTAssertEqual(viewModel.errorMessage, "Sync network client is unavailable in this build.")
+        XCTAssertTrue(viewModel.canEnableSync)
+        XCTAssertNil(viewModel.syncUnavailableLabel)
+        XCTAssertEqual(networkClient.startCallCount, 1)
+    }
 }
 
 private struct StaticEntitlementStore: EntitlementStore {
@@ -156,9 +198,17 @@ private struct StaticEntitlementStore: EntitlementStore {
 
 private final class RecordingSyncNetworkClient: SyncNetworkClient, @unchecked Sendable {
     private(set) var startCallCount = 0
+    var error: Error?
+
+    init(error: Error? = nil) {
+        self.error = error
+    }
 
     func startSync(endpoint: URL, payload: SyncStartPayload) throws -> SyncStartResult {
         startCallCount += 1
+        if let error {
+            throw error
+        }
         return SyncStartResult(startedAt: Date(timeIntervalSince1970: 1))
     }
 }

@@ -103,6 +103,7 @@ public final class SyncService: @unchecked Sendable {
     private let networkClient: any SyncNetworkClient
     private let includedData: [SyncDataClass]
     private var lastAttemptAt: Date?
+    private var lastAttemptFailed = false
     private let lock = NSLock()
 
     public init(
@@ -119,10 +120,11 @@ public final class SyncService: @unchecked Sendable {
 
     public func status() throws -> SyncStatus {
         let snapshot = try entitlementStore.snapshot()
+        let attemptState = currentAttemptState()
         return SyncStatus(
             plan: snapshot.plan,
-            state: state(for: snapshot.plan),
-            lastAttemptAt: currentLastAttemptAt(),
+            state: state(for: snapshot.plan, lastAttemptFailed: attemptState.failed),
+            lastAttemptAt: attemptState.date,
             includedData: includedData
         )
     }
@@ -139,12 +141,17 @@ public final class SyncService: @unchecked Sendable {
             throw SyncServiceError.syncBackendNotConfigured
         }
 
-        let result = try networkClient.startSync(
-            endpoint: endpoint,
-            payload: SyncStartPayload(includedData: includedData)
-        )
-        setLastAttemptAt(result.startedAt)
-        return result
+        do {
+            let result = try networkClient.startSync(
+                endpoint: endpoint,
+                payload: SyncStartPayload(includedData: includedData)
+            )
+            setLastAttempt(at: result.startedAt, failed: false)
+            return result
+        } catch {
+            setLastAttempt(at: Date(), failed: true)
+            throw error
+        }
     }
 
     public func stopSync() throws -> SyncStatus {
@@ -155,7 +162,7 @@ public final class SyncService: @unchecked Sendable {
         SyncExportDryRun(includedData: includedData)
     }
 
-    private func state(for plan: SubscriptionPlan) -> SyncStatusState {
+    private func state(for plan: SubscriptionPlan, lastAttemptFailed: Bool) -> SyncStatusState {
         guard plan.allows(.externalSync) else {
             return .upgradeRequired
         }
@@ -164,23 +171,28 @@ public final class SyncService: @unchecked Sendable {
             return .backendNotConfigured
         }
 
+        if lastAttemptFailed {
+            return .failed
+        }
+
         return .idle
     }
 
     private func recordAttempt() {
-        setLastAttemptAt(Date())
+        setLastAttempt(at: Date(), failed: false)
     }
 
-    private func currentLastAttemptAt() -> Date? {
+    private func currentAttemptState() -> (date: Date?, failed: Bool) {
         lock.lock()
         defer { lock.unlock() }
-        return lastAttemptAt
+        return (lastAttemptAt, lastAttemptFailed)
     }
 
-    private func setLastAttemptAt(_ date: Date) {
+    private func setLastAttempt(at date: Date, failed: Bool) {
         lock.lock()
         defer { lock.unlock() }
         lastAttemptAt = date
+        lastAttemptFailed = failed
     }
 }
 
@@ -236,19 +248,17 @@ public final class SyncSettingsViewModel: ObservableObject {
     }
 
     public var canEnableSync: Bool {
-        status.state == .idle
+        status.state == .idle || status.state == .failed
     }
 
     public var syncUnavailableLabel: String? {
         switch status.state {
-        case .idle, .syncing:
+        case .idle, .syncing, .failed:
             nil
         case .upgradeRequired:
             "Upgrade required"
         case .backendNotConfigured:
             "Sync backend is not configured"
-        case .failed:
-            "Sync is unavailable"
         }
     }
 
