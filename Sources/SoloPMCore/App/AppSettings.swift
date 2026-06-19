@@ -390,6 +390,30 @@ public final class UserDefaultsAppSettingsStore: AppSettingsStore, @unchecked Se
     }
 }
 
+public struct AIProviderReadinessRow: Identifiable, Equatable, Sendable {
+    public var provider: AIProvider
+    public var statusLabel: String
+    public var detailLabel: String
+    public var nextActionLabel: String
+    public var isSelected: Bool
+
+    public var id: AIProvider { provider }
+
+    public init(
+        provider: AIProvider,
+        statusLabel: String,
+        detailLabel: String,
+        nextActionLabel: String,
+        isSelected: Bool
+    ) {
+        self.provider = provider
+        self.statusLabel = statusLabel
+        self.detailLabel = detailLabel
+        self.nextActionLabel = nextActionLabel
+        self.isSelected = isSelected
+    }
+}
+
 @MainActor
 public final class AppSettingsViewModel: ObservableObject {
     @Published public private(set) var settings: AppSettings
@@ -457,6 +481,20 @@ public final class AppSettingsViewModel: ObservableObject {
 
     public var selectableAIProviders: [AIProvider] {
         LLMProviderCatalog.settingsSelectableIDs
+    }
+
+    public var providerReadinessRows: [AIProviderReadinessRow] {
+        selectableAIProviders.map { providerReadinessRow(for: $0) }
+    }
+
+    public func providerReadinessRow(for provider: AIProvider) -> AIProviderReadinessRow {
+        AIProviderReadinessRow(
+            provider: provider,
+            statusLabel: providerReadinessStatusLabel(for: provider),
+            detailLabel: providerReadinessDetailLabel(for: provider),
+            nextActionLabel: providerReadinessNextActionLabel(for: provider),
+            isSelected: settings.aiProvider == provider
+        )
     }
 
     public func setNotificationsEnabled(_ isEnabled: Bool) {
@@ -935,6 +973,126 @@ public final class AppSettingsViewModel: ObservableObject {
 
     private func unavailableMessage(for provider: AIProvider) -> String {
         "\(provider.displayName) is not available in this build."
+    }
+
+    private func providerReadinessStatusLabel(for provider: AIProvider) -> String {
+        guard LLMProviderCatalog.isAvailableInCurrentBuild(provider) else {
+            return "Not available"
+        }
+
+        switch provider {
+        case .openaiResponses:
+            return openAIAPIKeyStatusLabel
+        case .claudeMessages:
+            return anthropicAPIKeyStatusLabel
+        case .geminiDirect:
+            return geminiAPIKeyStatusLabel
+        case .geminiOpenAICompatible:
+            return "Not available"
+        case .groqOpenAICompatible:
+            return groqAPIKeyStatusLabel
+        case .opencodeLocal:
+            return openCodeReadinessStatusLabel
+        case .openRouterCompatible:
+            return openRouterAPIKeyStatusLabel
+        case .ollamaCompatible:
+            return "Local"
+        }
+    }
+
+    private func providerReadinessDetailLabel(for provider: AIProvider) -> String {
+        guard LLMProviderCatalog.isAvailableInCurrentBuild(provider) else {
+            return LLMProviderCatalog.entry(for: provider).unavailableReason ?? "Not available in this build."
+        }
+
+        switch provider {
+        case .openaiResponses:
+            return "Smoke: \(providerSmokeDisplayLabel(openAIProviderSmokeStatusLabel))"
+        case .claudeMessages:
+            return "Uses Anthropic Keychain secret with the Claude Messages runtime."
+        case .geminiDirect:
+            return "Smoke: \(providerSmokeDisplayLabel(geminiProviderSmokeStatusLabel))"
+        case .geminiOpenAICompatible:
+            return LLMProviderCatalog.entry(for: provider).unavailableReason ?? "Not available in this build."
+        case .groqOpenAICompatible:
+            return "Smoke: \(providerSmokeDisplayLabel(groqProviderSmokeStatusLabel))"
+        case .opencodeLocal:
+            return openCodeReadinessDetailLabel
+        case .openRouterCompatible:
+            return "Uses OpenRouter Keychain secret with an OpenAI-compatible runtime."
+        case .ollamaCompatible:
+            return "Local endpoint; API key is not required."
+        }
+    }
+
+    private func providerReadinessNextActionLabel(for provider: AIProvider) -> String {
+        guard LLMProviderCatalog.isAvailableInCurrentBuild(provider) else {
+            return "Select an available provider."
+        }
+
+        switch provider {
+        case .opencodeLocal:
+            if settings.openCodeExecutablePath == nil {
+                return "Set the OpenCode executable path."
+            }
+            if settings.openCodeWorkspacePath == nil {
+                return "Set the workspace path."
+            }
+            if !settings.isOpenCodeLocalExecutionApproved {
+                return "Review the local command and approve execution."
+            }
+            return "Generate a reviewed plan when you are ready."
+        case .ollamaCompatible:
+            return "Start the local Ollama-compatible server before planning."
+        case .geminiOpenAICompatible:
+            return "Select an available provider."
+        default:
+            switch providerReadinessStatusLabel(for: provider) {
+            case "Configured":
+                return "Generate a reviewed plan or run a manual smoke check."
+            case "Invalid":
+                return "Re-enter the provider API key in Keychain."
+            case "Unavailable":
+                return "Check Keychain access and reopen Settings."
+            default:
+                return "Save the provider API key in Keychain."
+            }
+        }
+    }
+
+    private var openCodeReadinessStatusLabel: String {
+        if settings.openCodeExecutablePath == nil || settings.openCodeWorkspacePath == nil {
+            return "Setup required"
+        }
+        return settings.isOpenCodeLocalExecutionApproved ? "Approved" : "Approval required"
+    }
+
+    private var openCodeReadinessDetailLabel: String {
+        if settings.openCodeExecutablePath == nil {
+            return "Executable path is required."
+        }
+        if settings.openCodeWorkspacePath == nil {
+            return "Workspace path is required."
+        }
+        if !settings.isOpenCodeLocalExecutionApproved {
+            return "Local execution approval is required."
+        }
+        return "Local execution is approved for the selected workspace."
+    }
+
+    private func providerSmokeDisplayLabel(_ rawLabel: String) -> String {
+        switch rawLabel {
+        case "readyForManualSmoke":
+            return "Ready for manual smoke"
+        case "notConfigured":
+            return "Not configured"
+        case "invalidConfiguration":
+            return "Invalid configuration"
+        case "unavailable":
+            return "Unavailable"
+        default:
+            return rawLabel
+        }
     }
 
     private func providerSmokeStatusLabel(forAPIKeyStatusLabel apiKeyStatusLabel: String) -> String {

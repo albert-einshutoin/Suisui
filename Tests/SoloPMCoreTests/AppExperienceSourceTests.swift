@@ -1196,7 +1196,10 @@ final class AppExperienceSourceTests: XCTestCase {
         let aiSource = String(appSource[aiStart.lowerBound..<syncStart.lowerBound])
 
         XCTAssertTrue(appSource.contains("SelectedAIProviderStatusRow("))
+        XCTAssertTrue(appSource.contains("AIProviderReadinessSummaryRow("))
+        XCTAssertTrue(appSource.contains("settingsViewModel.providerReadinessRows"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"ai-provider-readiness-row\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"ai-provider-readiness-summary\")"))
         XCTAssertTrue(appSource.contains("private var providerReadinessDetailLabel: String"))
         XCTAssertTrue(appSource.contains("private var activeAIProviderNextActionLabel: String"))
         XCTAssertLessThan(
@@ -1205,10 +1208,20 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         XCTAssertLessThan(
             try XCTUnwrap(aiSource.range(of: "SelectedAIProviderStatusRow(")).lowerBound,
+            try XCTUnwrap(aiSource.range(of: "AIProviderReadinessSummaryRow(")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(aiSource.range(of: "AIProviderReadinessSummaryRow(")).lowerBound,
+            try XCTUnwrap(aiSource.range(of: "selectedProviderConfigurationFields")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(aiSource.range(of: "SelectedAIProviderStatusRow(")).lowerBound,
             try XCTUnwrap(aiSource.range(of: "selectedProviderConfigurationFields")).lowerBound
         )
         XCTAssertTrue(audit.contains("AI Provider readiness row"))
+        XCTAssertTrue(audit.contains("AI Provider readiness summary"))
         XCTAssertTrue(phase.contains("[x] AI tabはprovider picker直下に選択中providerの状態、smoke readiness、次の操作を表示し、詳細fieldを読む前に未設定理由が分かる。"))
+        XCTAssertTrue(phase.contains("[x] AI tabはProvider Readiness summaryで全providerの設定状態をprovider切替なしに確認できる。"))
     }
 
     func testRuntimeLLMFactoryUsesClaudeMessagesProviderWithoutOpenAIFallback() throws {

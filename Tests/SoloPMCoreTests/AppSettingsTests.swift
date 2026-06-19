@@ -646,6 +646,58 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testAppSettingsViewModelBuildsProviderReadinessRowsWithoutSecrets() throws {
+        let suiteName = "SoloPM.AppSettingsProviderReadinessRows.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        try store.save(
+            AppSettings(
+                aiProvider: .opencodeLocal,
+                openCodeExecutablePath: "/opt/homebrew/bin/opencode",
+                openCodeWorkspacePath: "/tmp/SoloPM",
+                openCodeModelID: "anthropic/claude-sonnet-4-5",
+                isOpenCodeLocalExecutionApproved: true
+            )
+        )
+        let openAISecret = "sk-secret-openai"
+        let geminiSecret = "gemini-secret"
+        let secretStore = InMemorySecretStore(values: [
+            .openAIAPIKey: openAISecret,
+            .geminiAPIKey: geminiSecret
+        ])
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: secretStore)
+
+        XCTAssertEqual(viewModel.providerReadinessRows.map(\.provider), viewModel.selectableAIProviders)
+        XCTAssertFalse(viewModel.providerReadinessRows.contains { $0.provider == .geminiOpenAICompatible })
+
+        let openAIRow = try XCTUnwrap(viewModel.providerReadinessRows.first { $0.provider == .openaiResponses })
+        XCTAssertEqual(openAIRow.statusLabel, "Configured")
+        XCTAssertEqual(openAIRow.detailLabel, "Smoke: Ready for manual smoke")
+        XCTAssertEqual(openAIRow.nextActionLabel, "Generate a reviewed plan or run a manual smoke check.")
+        XCTAssertFalse(openAIRow.isSelected)
+
+        let claudeRow = try XCTUnwrap(viewModel.providerReadinessRows.first { $0.provider == .claudeMessages })
+        XCTAssertEqual(claudeRow.statusLabel, "Not configured")
+        XCTAssertEqual(claudeRow.nextActionLabel, "Save the provider API key in Keychain.")
+
+        let openCodeRow = try XCTUnwrap(viewModel.providerReadinessRows.first { $0.provider == .opencodeLocal })
+        XCTAssertEqual(openCodeRow.statusLabel, "Approved")
+        XCTAssertEqual(openCodeRow.detailLabel, "Local execution is approved for the selected workspace.")
+        XCTAssertTrue(openCodeRow.isSelected)
+
+        let ollamaRow = try XCTUnwrap(viewModel.providerReadinessRows.first { $0.provider == .ollamaCompatible })
+        XCTAssertEqual(ollamaRow.statusLabel, "Local")
+        XCTAssertEqual(ollamaRow.detailLabel, "Local endpoint; API key is not required.")
+
+        let renderedLabels = viewModel.providerReadinessRows
+            .flatMap { [$0.provider.displayName, $0.statusLabel, $0.detailLabel, $0.nextActionLabel] }
+            .joined(separator: "\n")
+        XCTAssertFalse(renderedLabels.contains(openAISecret))
+        XCTAssertFalse(renderedLabels.contains(geminiSecret))
+    }
+
+    @MainActor
     func testAppSettingsViewModelRejectsUnavailableAIProviderSelection() throws {
         let suiteName = "SoloPM.AppSettingsUnavailableAIProvider.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

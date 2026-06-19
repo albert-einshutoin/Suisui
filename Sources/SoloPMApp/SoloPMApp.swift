@@ -931,6 +931,7 @@ private struct SettingsView: View {
                     nextActionLabel: activeAIProviderNextActionLabel,
                     tone: activeAIProviderTone
                 )
+                AIProviderReadinessSummaryRow(rows: settingsViewModel.providerReadinessRows)
                 selectedProviderConfigurationFields
             }
 
@@ -1481,112 +1482,34 @@ private struct SettingsView: View {
         .formStyle(.grouped)
     }
 
+    private var activeAIProviderReadinessRow: AIProviderReadinessRow {
+        settingsViewModel.providerReadinessRow(for: settingsViewModel.settings.aiProvider)
+    }
+
     private var activeAIProviderStatusLabel: String {
-        switch settingsViewModel.settings.aiProvider {
-        case .openaiResponses, .geminiOpenAICompatible:
-            settingsViewModel.openAIAPIKeyStatusLabel
-        case .claudeMessages:
-            settingsViewModel.anthropicAPIKeyStatusLabel
-        case .geminiDirect:
-            settingsViewModel.geminiAPIKeyStatusLabel
-        case .groqOpenAICompatible:
-            settingsViewModel.groqAPIKeyStatusLabel
-        case .opencodeLocal:
-            settingsViewModel.settings.isOpenCodeLocalExecutionApproved ? "Approved" : "Approval required"
-        case .openRouterCompatible:
-            settingsViewModel.openRouterAPIKeyStatusLabel
-        case .ollamaCompatible:
-            "Local"
-        }
+        activeAIProviderReadinessRow.statusLabel
     }
 
     private var providerReadinessDetailLabel: String {
-        switch settingsViewModel.settings.aiProvider {
-        case .openaiResponses, .geminiOpenAICompatible:
-            "Smoke: \(providerSmokeDisplayLabel(settingsViewModel.openAIProviderSmokeStatusLabel))"
-        case .claudeMessages:
-            "Uses Anthropic Keychain secret with the Claude Messages runtime."
-        case .geminiDirect:
-            "Smoke: \(providerSmokeDisplayLabel(settingsViewModel.geminiProviderSmokeStatusLabel))"
-        case .groqOpenAICompatible:
-            "Smoke: \(providerSmokeDisplayLabel(settingsViewModel.groqProviderSmokeStatusLabel))"
-        case .opencodeLocal:
-            openCodeReadinessDetailLabel
-        case .openRouterCompatible:
-            "Uses OpenRouter Keychain secret with an OpenAI-compatible runtime."
-        case .ollamaCompatible:
-            "Local endpoint; API key is not required."
-        }
+        activeAIProviderReadinessRow.detailLabel
     }
 
     private var activeAIProviderNextActionLabel: String {
-        switch settingsViewModel.settings.aiProvider {
-        case .opencodeLocal:
-            if settingsViewModel.settings.openCodeExecutablePath == nil {
-                return "Set the OpenCode executable path."
-            }
-            if settingsViewModel.settings.openCodeWorkspacePath == nil {
-                return "Set the workspace path."
-            }
-            if !settingsViewModel.settings.isOpenCodeLocalExecutionApproved {
-                return "Review the local command and approve execution."
-            }
-            return "Generate a reviewed plan when you are ready."
-        case .ollamaCompatible:
-            return "Start the local Ollama-compatible server before planning."
-        default:
-            switch activeAIProviderStatusLabel {
-            case "Configured":
-                return "Generate a reviewed plan or run a manual smoke check."
-            case "Invalid":
-                return "Re-enter the provider API key in Keychain."
-            default:
-                return "Save the provider API key in Keychain."
-            }
-        }
+        activeAIProviderReadinessRow.nextActionLabel
     }
 
     private var activeAIProviderTone: SettingsStatusTone {
-        if settingsViewModel.settings.aiProvider == .opencodeLocal,
-           openCodeReadinessDetailLabel != "Local execution is approved for the selected workspace." {
-            return .warning
-        }
+        tone(for: activeAIProviderReadinessRow)
+    }
 
-        switch activeAIProviderStatusLabel {
+    private func tone(for row: AIProviderReadinessRow) -> SettingsStatusTone {
+        switch row.statusLabel {
         case "Configured", "Approved", "Local":
             return .ready
         case "Invalid", "Unavailable":
             return .danger
         default:
             return .warning
-        }
-    }
-
-    private var openCodeReadinessDetailLabel: String {
-        if settingsViewModel.settings.openCodeExecutablePath == nil {
-            return "Executable path is required."
-        }
-        if settingsViewModel.settings.openCodeWorkspacePath == nil {
-            return "Workspace path is required."
-        }
-        if !settingsViewModel.settings.isOpenCodeLocalExecutionApproved {
-            return "Local execution approval is required."
-        }
-        return "Local execution is approved for the selected workspace."
-    }
-
-    private func providerSmokeDisplayLabel(_ rawLabel: String) -> String {
-        switch rawLabel {
-        case "readyForManualSmoke":
-            "Ready for manual smoke"
-        case "notConfigured":
-            "Not configured"
-        case "invalidConfiguration":
-            "Invalid configuration"
-        case "unavailable":
-            "Unavailable"
-        default:
-            rawLabel
         }
     }
 
@@ -1872,6 +1795,83 @@ private struct SelectedAIProviderStatusRow: View {
         .accessibilityIdentifier("ai-provider-readiness-row")
         .accessibilityLabel("AI provider readiness")
         .accessibilityValue("\(providerName), \(statusLabel), \(nextActionLabel)")
+    }
+}
+
+private struct AIProviderReadinessSummaryRow: View {
+    let rows: [AIProviderReadinessRow]
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 190), alignment: .leading)
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Provider Readiness", systemImage: "checklist.checked")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                ForEach(rows) { row in
+                    AIProviderReadinessSummaryItem(row: row, tone: tone(for: row))
+                }
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("ai-provider-readiness-summary")
+        .accessibilityLabel("AI Provider readiness summary")
+    }
+
+    private func tone(for row: AIProviderReadinessRow) -> SettingsStatusTone {
+        switch row.statusLabel {
+        case "Configured", "Approved", "Local":
+            return .ready
+        case "Invalid", "Unavailable":
+            return .danger
+        case "Not available":
+            return .neutral
+        default:
+            return .warning
+        }
+    }
+}
+
+private struct AIProviderReadinessSummaryItem: View {
+    let row: AIProviderReadinessRow
+    let tone: SettingsStatusTone
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: row.isSelected ? "largecircle.fill.circle" : tone.systemImage)
+                .foregroundStyle(row.isSelected ? .accentColor : tone.color)
+                .frame(width: 16)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(row.provider.displayName)
+                    .font(.caption.weight(row.isSelected ? .semibold : .regular))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(row.provider.displayName)
+
+                Text(row.statusLabel)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(tone.color)
+                    .lineLimit(1)
+
+                Text(row.nextActionLabel)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 3)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("ai-provider-readiness-summary-\(row.provider.rawValue)")
+        .accessibilityLabel(row.provider.displayName)
+        .accessibilityValue("\(row.statusLabel), \(row.nextActionLabel)")
     }
 }
 
