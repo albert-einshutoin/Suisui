@@ -213,6 +213,7 @@
 
 - [ ] Notion、Todoist、Linear、Motion を2-4時間で触り、SoloPMに関係する機能だけを `docs/product/competitor-benchmark.md` に記録する。
 - [x] 公式docs/product pageベースの desk research を `docs/product/competitor-benchmark.md` に記録する。
+- [x] 実操作2-4時間で見るべき競合別クリックパス、測定項目、SoloPM採用/非採用判断基準を `docs/product/competitor-benchmark.md` に記録する。
 - [x] Notion: 柔軟だが個人PM用途では構造化と運用設計が重い。SoloPMは「音声/AIで構造化済みのProject/Taskに落とす」ことで差別化する。
 - [x] Todoist: 速いcaptureと今日の整理が強い。SoloPMはInbox/Todayの即時入力とAI分類を取り込む。
 - [x] Linear: issue/project/cycleの速度とキーボード操作が強い。SoloPMは個人向けにstatus移動とProject進捗だけを取り込む。

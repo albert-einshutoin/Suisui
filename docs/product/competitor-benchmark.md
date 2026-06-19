@@ -2,13 +2,16 @@
 
 Verified: 2026-06-19
 
-Scope: Notion, Todoist, Linear, and Motion were reviewed from official product/help/docs pages. This is not a full hands-on trial record. Treat it as product benchmark evidence for SoloPM feature fit; visual screenshot evidence remains tracked in Phase 11.
+Scope: Notion, Todoist, Linear, and Motion were reviewed from official product/help/docs pages. This is not a full hands-on trial record. Treat it as product benchmark evidence and a release-candidate hands-on worksheet for SoloPM feature fit; visual screenshot evidence remains tracked in Phase 11.
 
 Official references rechecked on 2026-06-19:
 - Notion board/status model: https://www.notion.com/help/boards
+- Notion Projects: https://www.notion.com/product/projects
 - Todoist Quick Add: https://www.todoist.com/help/articles/use-task-quick-add-in-todoist-va4Lhpzz
+- Todoist board layout: https://www.todoist.com/help/articles/use-the-board-layout-in-todoist-AiAVsyEI
 - Linear quick navigation and command-menu model: https://linear.app/docs/conceptual-model
-- Motion automatic scheduling positioning: https://www.usemotion.com/help
+- Linear Projects and Triage: https://linear.app/docs/projects / https://linear.app/docs/triage
+- Motion AI Project Manager and AI Task Manager: https://www.usemotion.com/features/ai-project-manager / https://www.usemotion.com/features/ai-task-manager
 
 ## Decision Summary
 
@@ -21,6 +24,32 @@ Official references rechecked on 2026-06-19:
 | Linear keyboard-first issues, command menu, triage, project progress | Product teams need low-friction execution and clean intake review. | SoloPM can borrow speed and inspector density without becoming team issue tracking. | Adopt keyboard shortcuts, right inspector, triage-like Inbox; do not adopt multi-team workflow/cycles in MVP. |
 | Linear project updates and initiatives | Leaders need progress health and objective-level visibility. | SoloPM is personal PM, so status health should be project-local. | Adopt project progress and health later; reject org-wide initiatives for MVP. |
 | Motion AI project/task scheduling and delay prediction | Users do not want to constantly reprioritize, chase status, or guess if deadlines will slip. | SoloPM's differentiator is local-first, BYOK, approval-first planning. | Adopt explainable risk/suggestion panels; defer autonomous rescheduling until Calendar integration is trustworthy. |
+
+## Official Source Snapshot
+
+| Product | Current official signal | SoloPM interpretation |
+| --- | --- | --- |
+| Notion | Board views can group database pages by status, assignee, priority, or other properties, with filters, sorts, custom properties, drag/reorder, and card sizing. | SoloPM should keep fixed Project/Task semantics for speed, while artifacts provide flexible context without turning the MVP into a database builder. |
+| Todoist | Quick Add is available across macOS/iOS/Android/Windows, supports `Q`, natural-language date/deadline, project/section, priority, reminders, labels, and a desktop global shortcut. Board layout exposes section columns and drag movement. | SoloPM's menu bar Quick Add and Inbox capture match the low-friction direction; natural-language date parsing remains valuable but must be deterministic before adoption. |
+| Linear | Projects are outcome/date-oriented units with issues, optional documents, progress graph, notification options, detail sidebar, and `Shift P` / `C` shortcuts. Triage is a special inbox for review before team workflow. | SoloPM should keep Project Overview, right inspector, keyboard CRUD, and Inbox triage. Multi-team, cycles, initiatives, and bulk issue operations remain out of scope. |
+| Motion | AI Project Manager emphasizes automatic project movement, prioritization, delay prediction, capacity balancing, and status visibility. AI Task Manager plans days around deadlines, priorities, dependencies, and at-risk tasks. | SoloPM should adopt explainable local risk/suggestion panels first. Autonomous rescheduling is too trust-sensitive without reliable calendar data and user-visible reasoning. |
+
+## Release Candidate Hands-On Worksheet
+
+This section is the exact manual pass required before checking the Phase 11 hands-on item. The goal is not to copy competitors. The goal is to decide whether SoloPM's public alpha loop is competitive enough for a personal, local-first PM app.
+
+| Competitor | 30-minute hands-on path | Measure | SoloPM decision gate |
+| --- | --- | --- | --- |
+| Notion | Create a project database, switch to board, add three tasks, group by status, attach one doc/link, and try an AI/project summary if available. | Setup steps before first useful board; number of choices before first task; clarity of project context. | SoloPM passes if a new user can create project/task/artifact context faster without schema setup. |
+| Todoist | Use global/desktop Quick Add, create tasks with date/priority/project/section, switch board/list, drag a task, and inspect Today/Upcoming. | Keystrokes/clicks to capture; confidence that task landed in the right place; speed of status movement. | SoloPM passes if Inbox/Menu Bar capture and Today/Board answer "where did it go?" within one screen. |
+| Linear | Create project, create issue, move issue status, open details/sidebar, use command menu/keyboard shortcut, process one triage-like item. | Repeated-operation speed; inspector density; keyboard affordance discoverability. | SoloPM passes if task create/edit/move/delete flows work by mouse and keyboard without leaving the board context. |
+| Motion | Create tasks with due dates/priorities, observe scheduling/risk surfaces, adjust a deadline, and inspect how the tool explains changes. | Whether recommendations are understandable; how much calendar data is required; risk of over-automation. | SoloPM passes if suggestions explain why before applying, and if local-first review prevents surprise schedule changes. |
+
+Manual evidence to attach after the pass:
+- Date, reviewer, macOS/browser/app versions, account tier used, and whether a paid trial was required.
+- One screenshot or note per competitor showing the critical screen used for the path.
+- A short "ship / defer / reject" delta section covering only changes that would alter SoloPM's current backlog.
+- Explicit confirmation that no external SaaS sync or team workflow was added to SoloPM's public alpha scope because of the benchmark.
 
 ## Competitor Notes
 

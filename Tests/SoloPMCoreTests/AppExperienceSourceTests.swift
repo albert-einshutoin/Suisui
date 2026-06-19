@@ -1604,8 +1604,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(benchmark.contains("AppExperienceSourceTests.testProjectDetailOrganizesTasksArtifactsTimelineAndSuggestions"))
         XCTAssertTrue(benchmark.contains("ProjectBoardStoreTests.testProjectBoardViewModelQuickCapturePersistsToSQLiteInbox"))
         XCTAssertTrue(benchmark.contains("VC-Grade Feature Fit"))
+        XCTAssertTrue(benchmark.contains("Official Source Snapshot"))
+        XCTAssertTrue(benchmark.contains("Release Candidate Hands-On Worksheet"))
+        XCTAssertTrue(benchmark.contains("30-minute hands-on path"))
+        XCTAssertTrue(benchmark.contains("Setup steps before first useful board"))
+        XCTAssertTrue(benchmark.contains("Keystrokes/clicks to capture"))
+        XCTAssertTrue(benchmark.contains("Repeated-operation speed"))
+        XCTAssertTrue(benchmark.contains("Whether recommendations are understandable"))
+        XCTAssertTrue(benchmark.contains("Explicit confirmation that no external SaaS sync or team workflow was added"))
         XCTAssertTrue(phase.contains("[x] 競合benchmarkから採用/非採用判断が残っている。"))
         XCTAssertTrue(phase.contains("[x] 完了条件: Notion的な柔軟さ、Linear的な速度、Todoist的な即時入力のうち、SoloPMに必要な部分だけが実装される。"))
+        XCTAssertTrue(phase.contains("[x] 実操作2-4時間で見るべき競合別クリックパス、測定項目、SoloPM採用/非採用判断基準を `docs/product/competitor-benchmark.md` に記録する。"))
     }
 
     func testInvestorReviewTiesFeaturesToRetentionMonetizationAndRisk() throws {
