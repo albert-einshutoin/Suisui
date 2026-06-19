@@ -527,6 +527,9 @@ private struct ProjectTaskSnapshotSection: View {
                     }
                     .buttonStyle(.plain)
                     .help(task.title)
+                    .accessibilityIdentifier("project-overview-task-open-\(task.id)")
+                    .accessibilityLabel("Open task \(task.title)")
+                    .accessibilityHint("Opens the task inspector from the project overview.")
                 }
             }
 
@@ -535,6 +538,7 @@ private struct ProjectTaskSnapshotSection: View {
             }
             .controlSize(.small)
             .help("Add task to \(project.title)")
+            .accessibilityIdentifier("project-overview-add-task")
             .accessibilityLabel("Add task to \(project.title)")
             .accessibilityHint("Opens the inline composer for a new local task.")
         }
@@ -601,6 +605,7 @@ private struct ProjectArtifactSection: View {
             .controlSize(.small)
             .onSubmit(trackArtifact)
             .accessibilityIdentifier("project-artifact-path")
+            .accessibilityLabel("Track artifact path")
             .accessibilityHint("Enter an absolute local path to track as an expected project artifact.")
     }
 
@@ -611,6 +616,7 @@ private struct ProjectArtifactSection: View {
         .controlSize(.small)
         .disabled(project.isArchived || artifactPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         .accessibilityIdentifier("project-artifact-track")
+        .accessibilityLabel("Track artifact link")
         .accessibilityHint("Adds an expected artifact link to the selected project in the local SoloPM database.")
     }
 
@@ -664,6 +670,9 @@ private struct ProjectTimelineSection: View {
                         }
                     }
                     .help(task.title)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Project timeline item \(task.title)")
+                    .accessibilityValue(task.dueLabel ?? "No due date")
                 }
             }
         }
@@ -695,6 +704,9 @@ private struct ProjectLocalSuggestionPanel: View {
                         Label("Open Task", systemImage: "sidebar.right")
                     }
                     .controlSize(.small)
+                    .help("Open the suggested task")
+                    .accessibilityIdentifier("project-local-suggestion-open-task")
+                    .accessibilityHint("Opens the suggested task in the inspector.")
 
                     if suggestedTask.status == .blocked {
                         Button {
@@ -703,6 +715,9 @@ private struct ProjectLocalSuggestionPanel: View {
                             Label("Unblock", systemImage: "arrow.triangle.2.circlepath")
                         }
                         .controlSize(.small)
+                        .help("Move the suggested blocked task to In Progress")
+                        .accessibilityIdentifier("project-local-suggestion-unblock-task")
+                        .accessibilityHint("Moves the suggested blocked task back to In Progress in the local database.")
                     }
                 }
             } else {

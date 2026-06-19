@@ -663,6 +663,26 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(phase.contains("[ ] 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。"))
     }
 
+    func testProjectOverviewActionsAreAccessibleCrudEntryPoints() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let audit = try readPackageFile("docs/ux/click-path-audit.md")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-overview-task-open-\\(task.id)\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Open task \\(task.title)\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Opens the task inspector from the project overview.\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-overview-add-task\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-local-suggestion-open-task\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Opens the suggested task in the inspector.\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-local-suggestion-unblock-task\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Moves the suggested blocked task back to In Progress in the local database.\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Project timeline item \\(task.title)\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Track artifact path\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Track artifact link\")"))
+        XCTAssertTrue(audit.contains("Project OverviewのTask snapshot、Local Suggestions、Artifactsはaccessibility identifier / label / hint付きのCRUD入口になっている"))
+        XCTAssertTrue(phase.contains("[x] Project OverviewのTask snapshot、Local Suggestions、Artifactsにaccessibility identifier / label / hintを付け、Overviewからも支援技術で主要CRUDへ入れる。"))
+    }
+
     func testVoiceOverEvidenceTemplateCapturesReleaseCandidateContextAndFailureNotes() throws {
         let evidence = try readPackageFile("docs/release/evidence/accessibility-voiceover.md")
         let generator = try readPackageFile("script/create_voiceover_evidence.sh")

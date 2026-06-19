@@ -41,6 +41,9 @@ SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
 SPARKLE_PUBLIC_ED_KEY="${SOLOPM_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
 VERIFY_TIMEOUT_SECONDS="${SOLOPM_VERIFY_TIMEOUT_SECONDS:-12}"
 PROJECT_BOARD_WINDOW_NAME="${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}"
+BUILD_AND_RUN_LOCK_DIR="$TMPDIR/build_and_run.lock"
+BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS="${SOLOPM_BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS:-120}"
+BUILD_AND_RUN_LOCK_ACQUIRED=0
 
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
@@ -57,6 +60,34 @@ if [[ ! "$VERIFY_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$VERIFY_TIMEOUT_SECONDS" -lt 1
   echo "SOLOPM_VERIFY_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
+
+if [[ ! "$BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS" -lt 1 ]]; then
+  echo "SOLOPM_BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS must be a positive integer" >&2
+  exit 2
+fi
+
+release_build_and_run_lock() {
+  if [[ "${BUILD_AND_RUN_LOCK_ACQUIRED:-0}" == "1" ]]; then
+    rmdir "$BUILD_AND_RUN_LOCK_DIR" >/dev/null 2>&1 || true
+    BUILD_AND_RUN_LOCK_ACQUIRED=0
+  fi
+}
+
+acquire_build_and_run_lock() {
+  local deadline=$((SECONDS + BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS))
+  while ! mkdir "$BUILD_AND_RUN_LOCK_DIR" >/dev/null 2>&1; do
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: timed out waiting for build/run lock: $BUILD_AND_RUN_LOCK_DIR" >&2
+      echo "NEXT: wait for the other SoloPM build/run command to finish, or remove the lock only after confirming no build_and_run.sh process is active." >&2
+      return 1
+    fi
+    sleep 1
+  done
+  BUILD_AND_RUN_LOCK_ACQUIRED=1
+}
+
+acquire_build_and_run_lock
+trap release_build_and_run_lock EXIT INT TERM
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
@@ -201,25 +232,31 @@ wait_for_project_board_window() {
 
 case "$MODE" in
   --build-only|build)
+    release_build_and_run_lock
     ;;
   run)
     open_app
+    release_build_and_run_lock
     ;;
   --debug|debug)
+    release_build_and_run_lock
     lldb -- "$APP_BINARY"
     ;;
   --logs|logs)
     open_app
+    release_build_and_run_lock
     /usr/bin/log stream --info --style compact --predicate "process == \"$APP_NAME\""
     ;;
   --telemetry|telemetry)
     open_app
+    release_build_and_run_lock
     /usr/bin/log stream --info --style compact --predicate "subsystem == \"$BUNDLE_IDENTIFIER\""
     ;;
   --verify|verify)
     open_app
     wait_for_app_process
     wait_for_project_board_window
+    release_build_and_run_lock
     ;;
   *)
     echo "usage: $0 [run|--build-only|--debug|--logs|--telemetry|--verify]" >&2

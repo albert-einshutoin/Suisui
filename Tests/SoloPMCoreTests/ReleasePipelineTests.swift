@@ -4,6 +4,19 @@ import ImageIO
 import XCTest
 
 final class ReleasePipelineTests: XCTestCase {
+    func testBuildAndRunSerializesDistBundleRebuilds() throws {
+        let script = try readPackageFile("script/build_and_run.sh")
+
+        XCTAssertTrue(script.contains("BUILD_AND_RUN_LOCK_DIR=\"$TMPDIR/build_and_run.lock\""))
+        XCTAssertTrue(script.contains("while ! mkdir \"$BUILD_AND_RUN_LOCK_DIR\""))
+        XCTAssertTrue(script.contains("trap release_build_and_run_lock EXIT INT TERM"))
+        XCTAssertTrue(script.contains("BLOCKER: timed out waiting for build/run lock"))
+        XCTAssertLessThan(
+            try XCTUnwrap(script.range(of: "acquire_build_and_run_lock")).lowerBound,
+            try XCTUnwrap(script.range(of: "rm -rf \"$APP_BUNDLE\"")).lowerBound
+        )
+    }
+
     func testNotarizationScriptUsesStoredCredentialsStaplingAndLogRecovery() throws {
         let script = try readPackageFile("script/notarize_app.sh")
 
