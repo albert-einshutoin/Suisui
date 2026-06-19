@@ -2330,6 +2330,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("./script/check_accessibility_preflight.sh --runtime"))
         XCTAssertTrue(checklist.contains("./script/create_voiceover_evidence.sh --pending"))
         XCTAssertTrue(checklist.contains("./script/create_voiceover_evidence.sh --passed"))
+        XCTAssertTrue(checklist.contains("--runtime-ax-smoke-note"))
         XCTAssertTrue(checklist.contains("--accessibility-environment \"VoiceOver/keyboard/device details used for the manual pass\""))
         XCTAssertTrue(checklist.contains("--project-navigation-note"))
         XCTAssertTrue(checklist.contains("--project-board-detail-note"))
@@ -2373,6 +2374,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(pendingEvidence.contains("- App build: `0.1.0 (1)`"))
         XCTAssertTrue(pendingEvidence.contains("- Bundle identifier: `dev.solopm.app`"))
         XCTAssertTrue(pendingEvidence.contains("- Accessibility environment:"))
+        XCTAssertTrue(pendingEvidence.contains("- Runtime AX smoke:"))
         XCTAssertTrue(pendingEvidence.contains("- [ ] Project navigation"))
         XCTAssertTrue(pendingEvidence.contains("- [ ] Inline Task Composer"))
         XCTAssertTrue(pendingEvidence.contains("Do not set `Status: passed` until every item below is verified"))
@@ -2435,6 +2437,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
+                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=27, textFields=1, staticTexts=24, unlabeledButtons=0",
                 "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
                 "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
                 "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
@@ -2591,6 +2594,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
+                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=27, textFields=1, staticTexts=24, unlabeledButtons=0",
                 "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
                 "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
                 "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
@@ -2614,6 +2618,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(passedEvidence.contains("- Checked by: SoloPM Release Owner"))
         XCTAssertTrue(passedEvidence.contains("- Check date: 2026-06-19"))
         XCTAssertTrue(passedEvidence.contains("- Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display"))
+        XCTAssertTrue(passedEvidence.contains("- Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=27, textFields=1, staticTexts=24, unlabeledButtons=0"))
         XCTAssertTrue(passedEvidence.contains("- Project navigation: passed - Sidebar Inbox, Today, and selected project rows announce destination and counts in order."))
         XCTAssertTrue(passedEvidence.contains("- Project board detail: passed - Selected project board announces project title before card navigation begins."))
         XCTAssertTrue(passedEvidence.contains("- Open task: passed - Task card details open from keyboard focus without relying on drag."))
@@ -3233,6 +3238,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence missing release context"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence has template release context"))
         XCTAssertTrue(script.contains("VoiceOver/keyboard/device details|VoiceOver / keyboard / device details|manual pass environment"))
+        XCTAssertTrue(script.contains("Runtime AX smoke"))
+        XCTAssertTrue(script.contains("VoiceOver accessibility evidence runtime AX smoke missing marker"))
+        XCTAssertTrue(script.contains("unlabeledButtons=0"))
         XCTAssertTrue(script.contains("packaging/app_metadata.env"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence bundle identifier does not match packaging metadata"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence app build does not match packaging metadata"))
@@ -3890,6 +3898,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Check date:
         - Evidence source: signed or release-candidate `dist/SoloPM.app`
         - Accessibility environment:
+        - Runtime AX smoke:
 
         - [ ] Project navigation
         - Project board detail
@@ -3917,6 +3926,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing release context: Checked by"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing release context: Check date"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing release context: Accessibility environment"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing release context: Runtime AX smoke"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence has template release context: Evidence source"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence still contains unchecked checklist markers"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
@@ -3977,6 +3987,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Check date: 2026-06-19
         - Evidence source: `dist/SoloPM.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
+        - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=27, textFields=1, staticTexts=24, unlabeledButtons=0
 
         - Project navigation: passed
         - Project board detail: passed
@@ -4062,6 +4073,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Check date: 2026-02-31
         - Evidence source: `dist/SoloPM.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
+        - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=27, textFields=1, staticTexts=24, unlabeledButtons=0
 
         ## Verified Focus Path
 
@@ -4162,6 +4174,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Check date: 2099-01-01
         - Evidence source: `dist/SoloPM.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
+        - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=27, textFields=1, staticTexts=24, unlabeledButtons=0
 
         ## Verified Focus Path
 
@@ -4283,6 +4296,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Check date: 2026-06-19
         - Evidence source: `dist/SoloPM.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
+        - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=27, textFields=1, staticTexts=24, unlabeledButtons=0
 
         ## Verified Focus Path
 

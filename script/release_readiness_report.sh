@@ -60,6 +60,7 @@ VOICEOVER_REQUIRED_CONTEXT_LABELS=(
   "Check date"
   "Evidence source"
   "Accessibility environment"
+  "Runtime AX smoke"
 )
 VOICEOVER_REQUIRED_NOTE_LABELS=(
   "Project navigation"
@@ -667,6 +668,14 @@ else
       voiceover_blocker "VoiceOver accessibility evidence has invalid release context date: $context_label"
     elif [[ "$context_label" == "Check date" ]] && is_future_date "$context_value"; then
       voiceover_blocker "VoiceOver accessibility evidence has future release context date: $context_label"
+    fi
+
+    if [[ "$context_label" == "Runtime AX smoke" ]]; then
+      for runtime_marker in "OK: runtime AX smoke visible" "buttons=" "textFields=" "staticTexts=" "unlabeledButtons=0"; do
+        if ! grep -F "$runtime_marker" <<<"$context_value" >/dev/null; then
+          voiceover_blocker "VoiceOver accessibility evidence runtime AX smoke missing marker: $runtime_marker"
+        fi
+      done
     fi
   done
 

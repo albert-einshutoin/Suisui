@@ -24,6 +24,7 @@ CHECK_DATE="$(date +%F)"
 MACOS_VERSION="macOS $(sw_vers -productVersion 2>/dev/null || printf 'unknown')"
 EVIDENCE_SOURCE="dist/$APP_NAME.app manual VoiceOver pass"
 ACCESSIBILITY_ENVIRONMENT=""
+RUNTIME_AX_SMOKE_NOTE=""
 CONFIRM_MANUAL_PASS=0
 PROJECT_NAVIGATION_NOTE=""
 PROJECT_BOARD_DETAIL_NOTE=""
@@ -37,7 +38,7 @@ NO_KEYBOARD_TRAP_NOTE=""
 NO_UNLABELED_CRUD_NOTE=""
 
 usage() {
-  printf '%s\n' "usage: $0 (--pending|--passed) [--output PATH] [--checked-by NAME] [--macos-version VERSION] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--accessibility-environment TEXT] [--project-navigation-note TEXT] [--project-board-detail-note TEXT] [--open-task-note TEXT] [--inline-task-composer-note TEXT] [--status-controls-note TEXT] [--task-inspector-note TEXT] [--save-changes-note TEXT] [--delete-confirmation-note TEXT] [--no-keyboard-trap-note TEXT] [--no-unlabeled-crud-note TEXT] [--confirm-manual-voiceover-pass]"
+  printf '%s\n' "usage: $0 (--pending|--passed) [--output PATH] [--checked-by NAME] [--macos-version VERSION] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--accessibility-environment TEXT] [--runtime-ax-smoke-note TEXT] [--project-navigation-note TEXT] [--project-board-detail-note TEXT] [--open-task-note TEXT] [--inline-task-composer-note TEXT] [--status-controls-note TEXT] [--task-inspector-note TEXT] [--save-changes-note TEXT] [--delete-confirmation-note TEXT] [--no-keyboard-trap-note TEXT] [--no-unlabeled-crud-note TEXT] [--confirm-manual-voiceover-pass]"
   printf '%s\n' ""
   printf '%s\n' "Use --pending to write a safe worksheet that release readiness will reject."
   printf '%s\n' "Use --passed only after a real VoiceOver pass on the release-candidate app."
@@ -88,6 +89,22 @@ require_concrete_voiceover_note() {
     echo "$flag must include concrete VoiceOver verification details" >&2
     exit 2
   fi
+}
+
+require_runtime_ax_smoke_note() {
+  local value="$1"
+
+  require_passed_value "--runtime-ax-smoke-note" "$value"
+  if is_boilerplate_voiceover_note "$value"; then
+    echo "--runtime-ax-smoke-note must include the concrete runtime AX smoke output" >&2
+    exit 2
+  fi
+  for required_marker in "OK: runtime AX smoke visible" "buttons=" "textFields=" "staticTexts=" "unlabeledButtons=0"; do
+    if ! grep -F "$required_marker" <<<"$value" >/dev/null; then
+      echo "--runtime-ax-smoke-note must include $required_marker from ./script/check_accessibility_preflight.sh --runtime" >&2
+      exit 2
+    fi
+  done
 }
 
 is_placeholder_accessibility_environment() {
@@ -176,6 +193,10 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --accessibility-environment)
       ACCESSIBILITY_ENVIRONMENT="${2:-}"
+      shift 2
+      ;;
+    --runtime-ax-smoke-note)
+      RUNTIME_AX_SMOKE_NOTE="${2:-}"
       shift 2
       ;;
     --project-navigation-note)
@@ -279,6 +300,7 @@ if [[ "$VOICEOVER_STATUS" == "passed" ]]; then
   require_concrete_voiceover_note "--delete-confirmation-note" "$DELETE_CONFIRMATION_NOTE"
   require_concrete_voiceover_note "--no-keyboard-trap-note" "$NO_KEYBOARD_TRAP_NOTE"
   require_concrete_voiceover_note "--no-unlabeled-crud-note" "$NO_UNLABELED_CRUD_NOTE"
+  require_runtime_ax_smoke_note "$RUNTIME_AX_SMOKE_NOTE"
 fi
 
 mkdir -p "$(dirname "$OUTPUT_FILE")"
@@ -301,6 +323,11 @@ write_context() {
   else
     printf '%s\n' '- Accessibility environment:'
   fi
+  if [[ -n "$RUNTIME_AX_SMOKE_NOTE" ]]; then
+    printf -- '- Runtime AX smoke: %s\n' "$RUNTIME_AX_SMOKE_NOTE"
+  else
+    printf '%s\n' '- Runtime AX smoke:'
+  fi
 }
 
 write_pending_evidence() {
@@ -319,7 +346,8 @@ write_pending_evidence() {
     printf '%s\n' '2. Launch `dist/SoloPM.app`.'
     printf '%s\n' '3. Seed the Project Board with at least one active project and one task with a due date.'
     printf '%s\n' '4. Open the Project Board window and keep the right inspector visible.'
-    printf '%s\n' '5. Navigate using keyboard and VoiceOver commands before using the pointer.'
+    printf '%s\n' '5. Run `./script/check_accessibility_preflight.sh --runtime` and paste the OK line into `Runtime AX smoke`.'
+    printf '%s\n' '6. Navigate using keyboard and VoiceOver commands before using the pointer.'
     printf '\n'
     printf '%s\n' '## Required Focus Path'
     printf '\n'
