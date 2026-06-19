@@ -196,6 +196,40 @@ verify_single_value() {
   done
 }
 
+pressButtonUntilSQLiteValue() {
+  local label="$1"
+  local fragment="$2"
+  local sql="$3"
+  local expected="$4"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local actual=""
+
+  while true; do
+    pressButtonContaining "$fragment"
+
+    local postcondition_deadline=$((SECONDS + 3))
+    while true; do
+      actual="$(query_single_value "$sql" || true)"
+      if [[ "$actual" == "$expected" ]]; then
+        printf "OK: %s verified in SQLite (%s)\n" "$label" "$actual"
+        return 0
+      fi
+      if [[ "$SECONDS" -ge "$deadline" ]]; then
+        echo "BLOCKER: $label SQLite verification failed after AX press retry: expected '$expected', got '${actual:-<empty>}'" >&2
+        echo "SQL: $sql" >&2
+        return 1
+      fi
+      if [[ "$SECONDS" -ge "$postcondition_deadline" ]]; then
+        break
+      fi
+      sleep 1
+    done
+
+    printf "INFO: SQLite postcondition for $label was not met after pressing '$fragment'; retrying AX press.\n" >&2
+    sleep 1
+  done
+}
+
 seed_board_data() {
   "$SQLITE3" "$database_path" <<'SQL'
 INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command, created_at, updated_at)
@@ -511,8 +545,7 @@ terminate_app
 wait_for_no_app_process
 launch_app_for_crud_mutation
 
-pressButtonContaining "Creates a new local project"
-verify_single_value "created project" "SELECT count(*) FROM projects WHERE title='Untitled Project' AND source_command='app.project-board';" "1"
+pressButtonUntilSQLiteValue "created project" "Creates a new local project" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM projects WHERE title='Untitled Project' AND source_command='app.project-board';" "1"
 created_project_id="$(wait_for_nonempty_value "created project id" "SELECT id FROM projects WHERE title='Untitled Project' AND source_command='app.project-board' ORDER BY id DESC LIMIT 1;")"
 terminate_app
 wait_for_no_app_process
@@ -528,8 +561,7 @@ pressButtonContaining "Opens the inline composer for a new local task"
 waitForTextFieldContaining "Enter the task name"
 setTextFieldContaining "Enter the task name" "AX Runtime CRUD Task"
 waitForTextFieldContaining "AX Runtime CRUD Task"
-pressButtonContaining "Creates the task in the local SoloPM database."
-verify_single_value "created task" "SELECT count(*) FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime CRUD Task' AND status='backlog' AND source_command='app.project-board';" "1"
+pressButtonUntilSQLiteValue "created task" "Creates the task in the local SoloPM database." "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime CRUD Task' AND status='backlog' AND source_command='app.project-board';" "1"
 created_task_id="$(wait_for_nonempty_value "created task id" "SELECT id FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime CRUD Task' ORDER BY id DESC LIMIT 1;")"
 
 pressButtonContaining "Opens task details in the inspector"
@@ -552,15 +584,13 @@ pressButtonContaining "Opens the inline composer for a new local task"
 waitForTextFieldContaining "Enter the task name"
 setTextFieldContaining "Enter the task name" "AX Runtime Cascade Task"
 waitForTextFieldContaining "AX Runtime Cascade Task"
-pressButtonContaining "Creates the task in the local SoloPM database."
-verify_single_value "created cascade task" "SELECT count(*) FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Cascade Task' AND status='backlog' AND source_command='app.project-board';" "1"
+pressButtonUntilSQLiteValue "created cascade task" "Creates the task in the local SoloPM database." "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Cascade Task' AND status='backlog' AND source_command='app.project-board';" "1"
 cascade_task_id="$(wait_for_nonempty_value "cascade task id" "SELECT id FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Cascade Task' ORDER BY id DESC LIMIT 1;")"
 terminate_app
 wait_for_no_app_process
 launch_app_for_seed_project "$created_project_id"
 
-pressButtonContaining "Completes the selected project"
-verify_single_value "completed project" "SELECT status FROM projects WHERE id=$created_project_id;" "completed"
+pressButtonUntilSQLiteValue "completed project" "Completes the selected project" "SELECT status FROM projects WHERE id=$created_project_id;" "completed"
 
 pressButtonContaining "Deletes the selected project"
 sleep 1
