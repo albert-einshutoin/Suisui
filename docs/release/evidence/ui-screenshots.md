@@ -2,18 +2,20 @@
 
 Generated with `script/capture_ui_evidence.sh`.
 
-- Generated at: `2026-06-19T15:03:52Z`
+- Generated at: `2026-06-19T23:06:34Z`
 - App bundle: `dist/SoloPM.app`
 - Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`
 - Seed data: local `Launch Readiness` project with planned, in-progress, and blocked task cards plus deterministic MCP registration rows
-- Scope: Project board sidebar, task cards, right inspector, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System
-- Manual review: passed for Project Board sidebar/cards/inspector, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast
+- Scope: Project board sidebar, task cards, right inspector, Settings Overview Pro Value row, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System
+- Manual review: passed for Project Board sidebar/cards/inspector, Settings Overview Pro Value row, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast
 
 ## Screenshots
 
 - Light: `docs/release/evidence/ui-screenshots/project-board-light.png`
 - Dark: `docs/release/evidence/ui-screenshots/project-board-dark.png`
 - System: `docs/release/evidence/ui-screenshots/project-board-system.png`
+- Settings Overview Light: `docs/release/evidence/ui-screenshots/settings-overview-light.png`
+- Settings Overview Dark: `docs/release/evidence/ui-screenshots/settings-overview-dark.png`
 - Settings Appearance Light: `docs/release/evidence/ui-screenshots/settings-appearance-light.png`
 - Settings Appearance Dark: `docs/release/evidence/ui-screenshots/settings-appearance-dark.png`
 - MCP Settings Light: `docs/release/evidence/ui-screenshots/settings-mcp-light.png`

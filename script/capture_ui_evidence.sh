@@ -474,6 +474,51 @@ open_settings_appearance_tab() {
     -e 'end tell' >/dev/null
 }
 
+open_settings_overview_tab() {
+  /usr/bin/osascript \
+    -e 'tell application "System Events"' \
+    -e "tell process \"$APP_NAME\"" \
+    -e 'set frontmost to true' \
+    -e 'keystroke "," using command down' \
+    -e 'set settingsWindow to missing value' \
+    -e 'repeat 40 times' \
+    -e 'if exists window "Overview" then' \
+    -e 'set settingsWindow to window "Overview"' \
+    -e 'exit repeat' \
+    -e 'else if exists window "Appearance" then' \
+    -e 'set settingsWindow to window "Appearance"' \
+    -e 'exit repeat' \
+    -e 'else if exists window "MCP" then' \
+    -e 'set settingsWindow to window "MCP"' \
+    -e 'exit repeat' \
+    -e 'end if' \
+    -e 'delay 0.25' \
+    -e 'end repeat' \
+    -e 'if settingsWindow is missing value then' \
+    -e 'error "SoloPM Settings window did not appear."' \
+    -e 'end if' \
+    -e 'click button "Overview" of toolbar 1 of settingsWindow' \
+    -e 'end tell' \
+    -e 'end tell' >/dev/null
+}
+
+capture_settings_overview() {
+  local appearance="$1"
+  local output_path="$2"
+
+  APPEARANCE_OVERRIDE="$appearance"
+  stop_evidence_app
+  write_appearance_preference "$appearance"
+  open_evidence_app
+  wait_for_process
+  activate_evidence_app
+  sleep 1.0
+  open_settings_overview_tab
+  sleep 1.0
+
+  capture_visible_window "$appearance Settings overview" "$output_path" "Overview"
+}
+
 capture_settings_appearance() {
   local appearance="$1"
   local output_path="$2"
@@ -528,10 +573,12 @@ write_evidence_file() {
   local light_path="$2"
   local dark_path="$3"
   local system_path="$4"
-  local appearance_light_path="$5"
-  local appearance_dark_path="$6"
-  local mcp_light_path="$7"
-  local mcp_dark_path="$8"
+  local overview_light_path="$5"
+  local overview_dark_path="$6"
+  local appearance_light_path="$7"
+  local appearance_dark_path="$8"
+  local mcp_light_path="$9"
+  local mcp_dark_path="${10}"
 
   {
     printf '%s\n' '# UI Screenshot Evidence'
@@ -542,14 +589,16 @@ write_evidence_file() {
     printf -- '- App bundle: `dist/%s.app`\n' "$APP_NAME"
     printf '%s\n' '- Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`'
     printf '%s\n' '- Seed data: local `Launch Readiness` project with planned, in-progress, and blocked task cards plus deterministic MCP registration rows'
-    printf '%s\n' '- Scope: Project board sidebar, task cards, right inspector, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System'
-    printf '%s\n' '- Manual review: passed for Project Board sidebar/cards/inspector, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast'
+    printf '%s\n' '- Scope: Project board sidebar, task cards, right inspector, Settings Overview Pro Value row, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System'
+    printf '%s\n' '- Manual review: passed for Project Board sidebar/cards/inspector, Settings Overview Pro Value row, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast'
     printf '\n'
     printf '%s\n' '## Screenshots'
     printf '\n'
     printf -- '- Light: `%s`\n' "$(relative_path "$light_path")"
     printf -- '- Dark: `%s`\n' "$(relative_path "$dark_path")"
     printf -- '- System: `%s`\n' "$(relative_path "$system_path")"
+    printf -- '- Settings Overview Light: `%s`\n' "$(relative_path "$overview_light_path")"
+    printf -- '- Settings Overview Dark: `%s`\n' "$(relative_path "$overview_dark_path")"
     printf -- '- Settings Appearance Light: `%s`\n' "$(relative_path "$appearance_light_path")"
     printf -- '- Settings Appearance Dark: `%s`\n' "$(relative_path "$appearance_dark_path")"
     printf -- '- MCP Settings Light: `%s`\n' "$(relative_path "$mcp_light_path")"
@@ -644,6 +693,8 @@ persist_project_board_selection "$DATABASE_PATH"
 LIGHT_SCREENSHOT="$SCREENSHOT_DIR/project-board-light.png"
 DARK_SCREENSHOT="$SCREENSHOT_DIR/project-board-dark.png"
 SYSTEM_SCREENSHOT="$SCREENSHOT_DIR/project-board-system.png"
+SETTINGS_OVERVIEW_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-overview-light.png"
+SETTINGS_OVERVIEW_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-overview-dark.png"
 SETTINGS_APPEARANCE_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-appearance-light.png"
 SETTINGS_APPEARANCE_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-appearance-dark.png"
 MCP_SETTINGS_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-mcp-light.png"
@@ -652,18 +703,22 @@ MCP_SETTINGS_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-mcp-dark.png"
 capture_appearance light "$LIGHT_SCREENSHOT"
 capture_appearance dark "$DARK_SCREENSHOT"
 capture_appearance system "$SYSTEM_SCREENSHOT"
+capture_settings_overview light "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT"
+capture_settings_overview dark "$SETTINGS_OVERVIEW_DARK_SCREENSHOT"
 capture_settings_appearance light "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT"
 capture_settings_appearance dark "$SETTINGS_APPEARANCE_DARK_SCREENSHOT"
 capture_mcp_settings_appearance light "$MCP_SETTINGS_LIGHT_SCREENSHOT"
 capture_mcp_settings_appearance dark "$MCP_SETTINGS_DARK_SCREENSHOT"
 
 GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-write_evidence_file "$GENERATED_AT" "$LIGHT_SCREENSHOT" "$DARK_SCREENSHOT" "$SYSTEM_SCREENSHOT" "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT" "$SETTINGS_APPEARANCE_DARK_SCREENSHOT" "$MCP_SETTINGS_LIGHT_SCREENSHOT" "$MCP_SETTINGS_DARK_SCREENSHOT"
+write_evidence_file "$GENERATED_AT" "$LIGHT_SCREENSHOT" "$DARK_SCREENSHOT" "$SYSTEM_SCREENSHOT" "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT" "$SETTINGS_OVERVIEW_DARK_SCREENSHOT" "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT" "$SETTINGS_APPEARANCE_DARK_SCREENSHOT" "$MCP_SETTINGS_LIGHT_SCREENSHOT" "$MCP_SETTINGS_DARK_SCREENSHOT"
 
 echo "UI screenshot evidence generated:"
 echo "- $(relative_path "$LIGHT_SCREENSHOT")"
 echo "- $(relative_path "$DARK_SCREENSHOT")"
 echo "- $(relative_path "$SYSTEM_SCREENSHOT")"
+echo "- $(relative_path "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT")"
+echo "- $(relative_path "$SETTINGS_OVERVIEW_DARK_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_APPEARANCE_DARK_SCREENSHOT")"
 echo "- $(relative_path "$MCP_SETTINGS_LIGHT_SCREENSHOT")"

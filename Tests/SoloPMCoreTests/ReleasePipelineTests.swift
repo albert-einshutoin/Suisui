@@ -4462,6 +4462,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("section \"UI screenshot evidence\""))
         XCTAssertTrue(script.contains("docs/release/evidence/ui-screenshots.md"))
         XCTAssertTrue(script.contains("project-board-light.png"))
+        XCTAssertTrue(script.contains("settings-overview-light.png"))
         XCTAssertTrue(script.contains("settings-appearance-light.png"))
         XCTAssertTrue(script.contains("settings-mcp-light.png"))
         XCTAssertTrue(script.contains("sips -g pixelWidth -g pixelHeight"))
@@ -5335,6 +5336,8 @@ final class ReleasePipelineTests: XCTestCase {
         - Light: `docs/release/evidence/ui-screenshots/project-board-light.png`
         - Dark: `docs/release/evidence/ui-screenshots/project-board-dark.png`
         - System: `docs/release/evidence/ui-screenshots/project-board-system.png`
+        - Settings Overview Light: `docs/release/evidence/ui-screenshots/settings-overview-light.png`
+        - Settings Overview Dark: `docs/release/evidence/ui-screenshots/settings-overview-dark.png`
         - Settings Appearance Light: `docs/release/evidence/ui-screenshots/settings-appearance-light.png`
         - Settings Appearance Dark: `docs/release/evidence/ui-screenshots/settings-appearance-dark.png`
         - MCP Settings Light: `docs/release/evidence/ui-screenshots/settings-mcp-light.png`
@@ -5410,6 +5413,8 @@ final class ReleasePipelineTests: XCTestCase {
         - Light: `docs/release/evidence/ui-screenshots/project-board-light.png`
         - Dark: `docs/release/evidence/ui-screenshots/project-board-dark.png`
         - System: `docs/release/evidence/ui-screenshots/project-board-system.png`
+        - Settings Overview Light: `docs/release/evidence/ui-screenshots/settings-overview-light.png`
+        - Settings Overview Dark: `docs/release/evidence/ui-screenshots/settings-overview-dark.png`
         - Settings Appearance Light: `docs/release/evidence/ui-screenshots/settings-appearance-light.png`
         - Settings Appearance Dark: `docs/release/evidence/ui-screenshots/settings-appearance-dark.png`
         - MCP Settings Light: `docs/release/evidence/ui-screenshots/settings-mcp-light.png`
@@ -5435,7 +5440,7 @@ final class ReleasePipelineTests: XCTestCase {
         try "- [x] fixture readme has no template blockers\n"
             .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
 
-        for screenshotFilename in ["project-board-light.png", "project-board-dark.png", "project-board-system.png", "settings-appearance-light.png", "settings-appearance-dark.png", "settings-mcp-light.png", "settings-mcp-dark.png"] {
+        for screenshotFilename in ["project-board-light.png", "project-board-dark.png", "project-board-system.png", "settings-overview-light.png", "settings-overview-dark.png", "settings-appearance-light.png", "settings-appearance-dark.png", "settings-mcp-light.png", "settings-mcp-dark.png"] {
             try writeSolidPNG(
                 to: screenshotDirectory.appendingPathComponent(screenshotFilename),
                 width: 800,
@@ -5456,6 +5461,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/project-board-light.png"))
         XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/project-board-dark.png"))
         XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/project-board-system.png"))
+        XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/settings-overview-light.png"))
+        XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/settings-overview-dark.png"))
         XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/settings-appearance-light.png"))
         XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/settings-appearance-dark.png"))
         XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/settings-mcp-light.png"))
