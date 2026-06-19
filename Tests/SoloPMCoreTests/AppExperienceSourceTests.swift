@@ -121,6 +121,29 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(boardSource.contains("appearancePreference: $appearancePreference"))
     }
 
+    func testThemePickerIsOwnedOnlyBySettingsAppearanceSectionAcrossAppSources() throws {
+        let expectedOwner = "Sources/SoloPMApp/Views/SettingsAppearanceSection.swift"
+        let markers = [
+            "Picker(\"Theme\", selection: $appearancePreference)",
+            ".accessibilityIdentifier(\"settings-theme-picker\")"
+        ]
+        let root = packageRoot()
+        var ownersByMarker: [String: Set<String>] = [:]
+
+        for fileURL in try allSwiftFiles(under: "Sources/SoloPMApp") {
+            let relativePath = fileURL.path.replacingOccurrences(of: root.path + "/", with: "")
+            let source = try String(contentsOf: fileURL, encoding: .utf8)
+
+            for marker in markers where source.contains(marker) {
+                ownersByMarker[marker, default: []].insert(relativePath)
+            }
+        }
+
+        for marker in markers {
+            XCTAssertEqual(ownersByMarker[marker], [expectedOwner], "\(marker) should only live in Settings.")
+        }
+    }
+
     func testProjectBoardSidebarAndToolbarDoNotHostThemeControls() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let sidebarStart = try XCTUnwrap(boardSource.range(of: "NavigationSplitView {"))
