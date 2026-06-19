@@ -172,6 +172,32 @@ is_placeholder_checked_by() {
   esac
 }
 
+is_boilerplate_voiceover_note() {
+  local normalized
+  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[[:punct:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
+  case "$normalized" in
+    verified|\
+    checked|\
+    confirmed|\
+    passed|\
+    ok|\
+    okay|\
+    works|\
+    "looks good"|\
+    "all good"|\
+    "no issue"|\
+    "no issues"|\
+    "concrete voiceover observation"*|\
+    "manual pass complete"|\
+    "manual pass completed")
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 is_manual_phase_gate() {
   local item="$1"
   grep -Eiq '(手動確認|実機|支援技術|VoiceOver|hands-on|2-4[[:space:]]*hour|2-4時間|Developer ID|notarization|notarized|公証|Gatekeeper|clean environment|clean 環境|別ユーザー|login item|signed app|signed / notarized|署名|release-machine|manual evidence)' <<<"$item"
@@ -620,6 +646,8 @@ else
 
     if grep -Eiq '(pending|todo|tbd|placeholder|sample|example|replace me)' <<<"$note_value"; then
       voiceover_blocker "VoiceOver accessibility evidence has template focus note: $note_label"
+    elif is_boilerplate_voiceover_note "$note_value"; then
+      voiceover_blocker "VoiceOver accessibility evidence has boilerplate focus note: $note_label"
     fi
   done
 

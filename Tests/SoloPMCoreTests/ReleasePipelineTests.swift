@@ -2409,6 +2409,58 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(futureDateResult.output.contains("--check-date must not be in the future"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
 
+        let boilerplateNoteResult = try runScript(
+            "script/create_voiceover_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "SoloPM Release Owner",
+                "--macos-version", "macOS 15.5",
+                "--check-date", "2026-06-19",
+                "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
+                "--project-navigation-note", "Verified.",
+                "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
+                "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
+                "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
+                "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
+                "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
+                "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
+                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--output", passedURL.path,
+                "--confirm-manual-voiceover-pass"
+            ]
+        )
+        XCTAssertNotEqual(boilerplateNoteResult.exitCode, 0)
+        XCTAssertTrue(boilerplateNoteResult.output.contains("--project-navigation-note must include concrete VoiceOver verification details"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
+        let copiedTemplateNoteResult = try runScript(
+            "script/create_voiceover_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "SoloPM Release Owner",
+                "--macos-version", "macOS 15.5",
+                "--check-date", "2026-06-19",
+                "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
+                "--project-navigation-note", "Concrete VoiceOver observation for sidebar Inbox, Today, and Project navigation.",
+                "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
+                "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
+                "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
+                "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
+                "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
+                "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
+                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--output", passedURL.path,
+                "--confirm-manual-voiceover-pass"
+            ]
+        )
+        XCTAssertNotEqual(copiedTemplateNoteResult.exitCode, 0)
+        XCTAssertTrue(copiedTemplateNoteResult.output.contains("--project-navigation-note must include concrete VoiceOver verification details"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
         let passedResult = try runScript(
             "script/create_voiceover_evidence.sh",
             arguments: [
@@ -3704,8 +3756,8 @@ final class ReleasePipelineTests: XCTestCase {
 
         ## Verified Focus Path
 
-        - Project navigation: passed -
-        - Project board detail: passed -
+        - Project navigation: passed - Verified.
+        - Project board detail: passed - Concrete VoiceOver observation for selected project board context.
         - Open task: passed -
         - Inline Task Composer: passed -
         - Status controls: passed -
@@ -3727,8 +3779,8 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence has invalid release context date: Check date"))
-        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Project navigation"))
-        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Project board detail"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence has boilerplate focus note: Project navigation"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence has boilerplate focus note: Project board detail"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Open task"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Inline Task Composer"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Status controls"))

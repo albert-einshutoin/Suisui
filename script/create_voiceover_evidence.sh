@@ -53,6 +53,43 @@ require_passed_value() {
   fi
 }
 
+is_boilerplate_voiceover_note() {
+  local normalized
+  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[[:punct:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
+  case "$normalized" in
+    verified|\
+    checked|\
+    confirmed|\
+    passed|\
+    ok|\
+    okay|\
+    works|\
+    "looks good"|\
+    "all good"|\
+    "no issue"|\
+    "no issues"|\
+    "concrete voiceover observation"*|\
+    "manual pass complete"|\
+    "manual pass completed")
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+require_concrete_voiceover_note() {
+  local flag="$1"
+  local value="$2"
+
+  require_passed_value "$flag" "$value"
+  if is_boilerplate_voiceover_note "$value"; then
+    echo "$flag must include concrete VoiceOver verification details" >&2
+    exit 2
+  fi
+}
+
 is_placeholder_accessibility_environment() {
   local normalized
   normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
@@ -232,16 +269,16 @@ if [[ "$VOICEOVER_STATUS" == "passed" ]]; then
     echo "--accessibility-environment must describe the actual VoiceOver, keyboard, and device environment" >&2
     exit 2
   fi
-  require_passed_value "--project-navigation-note" "$PROJECT_NAVIGATION_NOTE"
-  require_passed_value "--project-board-detail-note" "$PROJECT_BOARD_DETAIL_NOTE"
-  require_passed_value "--open-task-note" "$OPEN_TASK_NOTE"
-  require_passed_value "--inline-task-composer-note" "$INLINE_TASK_COMPOSER_NOTE"
-  require_passed_value "--status-controls-note" "$STATUS_CONTROLS_NOTE"
-  require_passed_value "--task-inspector-note" "$TASK_INSPECTOR_NOTE"
-  require_passed_value "--save-changes-note" "$SAVE_CHANGES_NOTE"
-  require_passed_value "--delete-confirmation-note" "$DELETE_CONFIRMATION_NOTE"
-  require_passed_value "--no-keyboard-trap-note" "$NO_KEYBOARD_TRAP_NOTE"
-  require_passed_value "--no-unlabeled-crud-note" "$NO_UNLABELED_CRUD_NOTE"
+  require_concrete_voiceover_note "--project-navigation-note" "$PROJECT_NAVIGATION_NOTE"
+  require_concrete_voiceover_note "--project-board-detail-note" "$PROJECT_BOARD_DETAIL_NOTE"
+  require_concrete_voiceover_note "--open-task-note" "$OPEN_TASK_NOTE"
+  require_concrete_voiceover_note "--inline-task-composer-note" "$INLINE_TASK_COMPOSER_NOTE"
+  require_concrete_voiceover_note "--status-controls-note" "$STATUS_CONTROLS_NOTE"
+  require_concrete_voiceover_note "--task-inspector-note" "$TASK_INSPECTOR_NOTE"
+  require_concrete_voiceover_note "--save-changes-note" "$SAVE_CHANGES_NOTE"
+  require_concrete_voiceover_note "--delete-confirmation-note" "$DELETE_CONFIRMATION_NOTE"
+  require_concrete_voiceover_note "--no-keyboard-trap-note" "$NO_KEYBOARD_TRAP_NOTE"
+  require_concrete_voiceover_note "--no-unlabeled-crud-note" "$NO_UNLABELED_CRUD_NOTE"
 fi
 
 mkdir -p "$(dirname "$OUTPUT_FILE")"

@@ -169,6 +169,8 @@ Then replace `docs/release/evidence/accessibility-voiceover.md` with the real Vo
 
 Use the generator to avoid stale bundle/build metadata:
 
+Each focus-path note must name the concrete VoiceOver observation, control, or focus transition that was checked. Boilerplate notes such as `Verified.`, `Passed.`, `OK`, or `No issues` are rejected by both the generator and `release_readiness_report.sh`.
+
 ```bash
 ./script/create_voiceover_evidence.sh --pending
 ./script/create_voiceover_evidence.sh --passed \
