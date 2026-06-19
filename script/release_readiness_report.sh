@@ -706,7 +706,7 @@ else
     fi
 
     if [[ "$context_label" == "Runtime AX smoke" ]]; then
-      for runtime_marker in "OK: runtime AX smoke visible" "buttons=" "textFields=" "staticTexts=" "unlabeledButtons=0" "genericButtons=0"; do
+      for runtime_marker in "OK: runtime AX smoke visible" "buttons=" "textFields=" "staticTexts=" "unlabeledButtons=0" "genericButtons=0" "crudSignals=8/8"; do
         if ! grep -F "$runtime_marker" <<<"$context_value" >/dev/null; then
           voiceover_blocker "VoiceOver accessibility evidence runtime AX smoke missing marker: $runtime_marker"
         fi
@@ -745,7 +745,7 @@ else
   fi
 fi
 if [[ "$voiceover_evidence_blocker_count" -gt 0 ]]; then
-  printf "NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass, Status: passed, complete release-candidate context, the runtime AX smoke OK line with unlabeledButtons=0 and genericButtons=0, complete focus-path notes, and no pending/template/unchecked markers.\n"
+  printf "NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass, Status: passed, complete release-candidate context, the runtime AX smoke OK line with unlabeledButtons=0, genericButtons=0, and crudSignals=8/8, complete focus-path notes, and no pending/template/unchecked markers.\n"
 fi
 
 section "Competitor hands-on evidence"

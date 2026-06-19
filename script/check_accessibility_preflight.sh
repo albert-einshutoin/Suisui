@@ -22,6 +22,16 @@ TIMEOUT_SECONDS=12
 MIN_AX_BUTTONS=5
 MIN_AX_TEXT_FIELDS=1
 MIN_AX_STATIC_TEXTS=5
+REQUIRED_RUNTIME_CRUD_MARKERS=(
+  "Shows archived projects"
+  "Creates a new local project"
+  "Opens the inline composer for a new local task"
+  "Add task to Backlog"
+  "Saves edits to the selected project"
+  "Completes the selected project"
+  "Archives the selected project"
+  "Deletes the selected project"
+)
 
 REQUIRED_SOURCE_ANCHORS=(
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-sidebar"
@@ -78,7 +88,7 @@ usage() {
   printf '%s\n' ""
   printf '%s\n' "Checks accessibility anchors before the manual VoiceOver release pass."
   printf '%s\n' "This is not a substitute for the manual VoiceOver pass."
-  printf '%s\n' "Runtime smoke fails when the visible window has fewer than $MIN_AX_BUTTONS buttons, $MIN_AX_TEXT_FIELDS text field, $MIN_AX_STATIC_TEXTS static texts, unlabeled buttons, or generic button labels without help or child text."
+  printf '%s\n' "Runtime smoke fails when the visible window has fewer than $MIN_AX_BUTTONS buttons, $MIN_AX_TEXT_FIELDS text field, $MIN_AX_STATIC_TEXTS static texts, unlabeled buttons, generic button labels without help or child text, or missing primary CRUD button help signals."
 }
 
 while [[ "$#" -gt 0 ]]; do
@@ -191,14 +201,29 @@ done
 ax_deadline=$((SECONDS + TIMEOUT_SECONDS))
 ax_output=""
 ax_status=1
+required_runtime_crud_markers_joined=""
+for required_runtime_crud_marker in "${REQUIRED_RUNTIME_CRUD_MARKERS[@]}"; do
+  if [[ -z "$required_runtime_crud_markers_joined" ]]; then
+    required_runtime_crud_markers_joined="$required_runtime_crud_marker"
+  else
+    required_runtime_crud_markers_joined="${required_runtime_crud_markers_joined}|||${required_runtime_crud_marker}"
+  fi
+done
+required_runtime_crud_marker_count="${#REQUIRED_RUNTIME_CRUD_MARKERS[@]}"
 while true; do
   set +e
-  ax_output="$(/usr/bin/osascript - "$APP_NAME" "$MIN_AX_BUTTONS" "$MIN_AX_TEXT_FIELDS" "$MIN_AX_STATIC_TEXTS" <<'APPLESCRIPT' 2>&1
+  ax_output="$(/usr/bin/osascript - "$APP_NAME" "$MIN_AX_BUTTONS" "$MIN_AX_TEXT_FIELDS" "$MIN_AX_STATIC_TEXTS" "$required_runtime_crud_markers_joined" "$required_runtime_crud_marker_count" <<APPLESCRIPT 2>&1
 on run argv
   set appName to item 1 of argv
   set minButtons to (item 2 of argv) as integer
   set minTextFields to (item 3 of argv) as integer
   set minStaticTexts to (item 4 of argv) as integer
+  set requiredCRUDMarkersRaw to item 5 of argv
+  set requiredCRUDMarkerCount to (item 6 of argv) as integer
+  set previousTextItemDelimiters to text item delimiters of AppleScript
+  set text item delimiters of AppleScript to "|||"
+  set requiredCRUDMarkers to text items of requiredCRUDMarkersRaw
+  set text item delimiters of AppleScript to previousTextItemDelimiters
   set bestSummary to ""
   set bestScore to -1
   set bestButtonCount to 0
@@ -206,6 +231,8 @@ on run argv
   set bestStaticTextCount to 0
   set bestUnlabeledButtonCount to 0
   set bestGenericButtonCount to 0
+  set bestCRUDSignalCount to 0
+  set bestMissingCRUDSignals to ""
   tell application "System Events"
     if not (exists process appName) then error appName & " process is not visible to System Events"
     tell process appName
@@ -223,6 +250,7 @@ on run argv
         set unlabeledButtonCount to 0
         set genericButtonCount to 0
         set genericButtonDetails to ""
+        set buttonSignalText to ""
         set axItems to entire contents of currentWindow
         repeat with axItem in axItems
           set itemRole to ""
@@ -289,11 +317,28 @@ on run argv
                 set genericButtonDetails to genericButtonDetails & "; " & genericButtonDetail
               end if
             end if
+            set buttonSignalText to buttonSignalText & " " & buttonName & " " & buttonTitle & " " & buttonDescription & " " & buttonHelp
           end if
           if itemRole is "AXTextField" or itemRole is "AXTextArea" then set textFieldCount to textFieldCount + 1
           if itemRole is "AXStaticText" then set staticTextCount to staticTextCount + 1
         end repeat
-        set currentSummary to "window=" & windowIndex & " name=" & windowName & ", buttons=" & buttonCount & ", textFields=" & textFieldCount & ", staticTexts=" & staticTextCount & ", unlabeledButtons=" & unlabeledButtonCount & ", genericButtons=" & genericButtonCount
+        set crudSignalCount to 0
+        set missingCRUDSignals to ""
+        repeat with requiredCRUDMarker in requiredCRUDMarkers
+          set requiredCRUDMarkerText to requiredCRUDMarker as text
+          if requiredCRUDMarkerText is not "" then
+            if buttonSignalText contains requiredCRUDMarkerText then
+              set crudSignalCount to crudSignalCount + 1
+            else
+              if missingCRUDSignals is "" then
+                set missingCRUDSignals to requiredCRUDMarkerText
+              else
+                set missingCRUDSignals to missingCRUDSignals & "; " & requiredCRUDMarkerText
+              end if
+            end if
+          end if
+        end repeat
+        set currentSummary to "window=" & windowIndex & " name=" & windowName & ", buttons=" & buttonCount & ", textFields=" & textFieldCount & ", staticTexts=" & staticTextCount & ", unlabeledButtons=" & unlabeledButtonCount & ", genericButtons=" & genericButtonCount & ", crudSignals=" & crudSignalCount & "/" & requiredCRUDMarkerCount
         if genericButtonDetails is not "" then set currentSummary to currentSummary & ", genericButtonDetails=" & genericButtonDetails
         set currentScore to buttonCount + textFieldCount + staticTextCount
         if bestSummary is "" then
@@ -304,6 +349,8 @@ on run argv
           set bestStaticTextCount to staticTextCount
           set bestUnlabeledButtonCount to unlabeledButtonCount
           set bestGenericButtonCount to genericButtonCount
+          set bestCRUDSignalCount to crudSignalCount
+          set bestMissingCRUDSignals to missingCRUDSignals
         else if currentScore > bestScore then
           set bestSummary to currentSummary
           set bestScore to currentScore
@@ -312,8 +359,10 @@ on run argv
           set bestStaticTextCount to staticTextCount
           set bestUnlabeledButtonCount to unlabeledButtonCount
           set bestGenericButtonCount to genericButtonCount
+          set bestCRUDSignalCount to crudSignalCount
+          set bestMissingCRUDSignals to missingCRUDSignals
         end if
-        if buttonCount >= minButtons and textFieldCount >= minTextFields and staticTextCount >= minStaticTexts and unlabeledButtonCount is 0 and genericButtonCount is 0 then
+        if buttonCount >= minButtons and textFieldCount >= minTextFields and staticTextCount >= minStaticTexts and unlabeledButtonCount is 0 and genericButtonCount is 0 and crudSignalCount is requiredCRUDMarkerCount then
           return "OK: runtime AX smoke visible, windows=" & windowCount & ", " & currentSummary
         end if
       end repeat
@@ -324,6 +373,7 @@ on run argv
       if bestStaticTextCount < minStaticTexts then error "runtime AX smoke has too few static texts: " & bestStaticTextCount & " < " & minStaticTexts & " (" & bestSummary & ")"
       if bestUnlabeledButtonCount > 0 then error "runtime AX smoke has unlabeled buttons: " & bestUnlabeledButtonCount & " (" & bestSummary & ")"
       if bestGenericButtonCount > 0 then error "runtime AX smoke has generic button labels without help or child text: " & bestGenericButtonCount & " (" & bestSummary & ")"
+      if bestCRUDSignalCount < requiredCRUDMarkerCount then error "runtime AX smoke is missing primary CRUD button labels or help: " & bestMissingCRUDSignals & " (" & bestSummary & ")"
       error "runtime AX smoke did not find a qualifying visible window: " & bestSummary
     end tell
   end tell

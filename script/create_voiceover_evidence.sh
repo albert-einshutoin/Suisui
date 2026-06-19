@@ -99,7 +99,7 @@ require_runtime_ax_smoke_note() {
     echo "--runtime-ax-smoke-note must include the concrete runtime AX smoke output" >&2
     exit 2
   fi
-  for required_marker in "OK: runtime AX smoke visible" "buttons=" "textFields=" "staticTexts=" "unlabeledButtons=0" "genericButtons=0"; do
+  for required_marker in "OK: runtime AX smoke visible" "buttons=" "textFields=" "staticTexts=" "unlabeledButtons=0" "genericButtons=0" "crudSignals=8/8"; do
     if ! grep -F "$required_marker" <<<"$value" >/dev/null; then
       echo "--runtime-ax-smoke-note must include $required_marker from ./script/check_accessibility_preflight.sh --runtime" >&2
       exit 2

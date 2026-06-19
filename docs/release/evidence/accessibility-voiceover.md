@@ -13,7 +13,7 @@ Do not set `Status: passed` until every item below is verified on the signed or 
 - Check date: 2026-06-19
 - Evidence source: `dist/SoloPM.app manual VoiceOver pass`
 - Accessibility environment:
-- Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0
+- Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8
 
 ## Setup
 
