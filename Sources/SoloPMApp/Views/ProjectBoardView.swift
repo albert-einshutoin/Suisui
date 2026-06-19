@@ -1,4 +1,5 @@
 import SoloPMCore
+import Dispatch
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -1515,8 +1516,19 @@ private struct ProjectInspectorView: View {
             }
 
             Section("Danger Zone") {
-                if !project.isArchived {
+                if isConfirmingArchive {
+                    InspectorDestructiveConfirmation(
+                        title: "Archive this project?",
+                        message: "This hides the project from the active board and deadline summaries. Existing local tasks are kept in the SoloPM database.",
+                        confirmTitle: "Archive Project",
+                        confirmSystemImage: "archivebox",
+                        accessibilityIdentifier: "project-inspector-archive-confirmation",
+                        confirmAction: archiveSelectedProjectAfterConfirmationDismissal,
+                        cancelAction: { isConfirmingArchive = false }
+                    )
+                } else if !project.isArchived {
                     Button(role: .destructive) {
+                        isConfirmingDelete = false
                         isConfirmingArchive = true
                     } label: {
                         Label("Archive Project", systemImage: "archivebox")
@@ -1526,15 +1538,28 @@ private struct ProjectInspectorView: View {
                     .accessibilityHint("Archives the selected project after confirmation.")
                 }
 
-                Button(role: .destructive) {
-                    isConfirmingDelete = true
-                } label: {
-                    Label("Delete Project", systemImage: "trash")
+                if isConfirmingDelete {
+                    InspectorDestructiveConfirmation(
+                        title: "Delete this project?",
+                        message: "This permanently removes the project, its local tasks, deadline rules, artifact links, calendar links, and reminder links from SoloPM.",
+                        confirmTitle: "Delete Project",
+                        confirmSystemImage: "trash",
+                        accessibilityIdentifier: "project-inspector-delete-confirmation",
+                        confirmAction: deleteSelectedProjectAfterConfirmationDismissal,
+                        cancelAction: { isConfirmingDelete = false }
+                    )
+                } else {
+                    Button(role: .destructive) {
+                        isConfirmingArchive = false
+                        isConfirmingDelete = true
+                    } label: {
+                        Label("Delete Project", systemImage: "trash")
+                    }
+                    .keyboardShortcut(.delete, modifiers: [.command])
+                    .help("Deletes the selected project after confirmation")
+                    .accessibilityIdentifier("project-inspector-delete")
+                    .accessibilityHint("Deletes the selected project after confirmation.")
                 }
-                .keyboardShortcut(.delete, modifiers: [.command])
-                .help("Deletes the selected project after confirmation")
-                .accessibilityIdentifier("project-inspector-delete")
-                .accessibilityHint("Deletes the selected project after confirmation.")
             }
         }
         .formStyle(.grouped)
@@ -1542,30 +1567,6 @@ private struct ProjectInspectorView: View {
         .accessibilityIdentifier("project-inspector")
         .accessibilityLabel("Project inspector for \(project.title)")
         .accessibilityHint("Edit, save, archive, restore, or delete the selected project.")
-        .confirmationDialog(
-            "Archive this project?",
-            isPresented: $isConfirmingArchive,
-            titleVisibility: .visible
-        ) {
-            Button("Archive Project", role: .destructive) {
-                viewModel.archiveSelectedProject()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This hides the project from the active board and deadline summaries. Existing local tasks are kept in the SoloPM database.")
-        }
-        .confirmationDialog(
-            "Delete this project?",
-            isPresented: $isConfirmingDelete,
-            titleVisibility: .visible
-        ) {
-            Button("Delete Project", role: .destructive) {
-                viewModel.deleteSelectedProject()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This permanently removes the project, its local tasks, deadline rules, artifact links, calendar links, and reminder links from SoloPM.")
-        }
         .onAppear {
             refreshFields(from: project)
         }
@@ -1576,6 +1577,20 @@ private struct ProjectInspectorView: View {
 
     private func refreshFields(from project: ProjectBoardProject) {
         title = project.title
+    }
+
+    private func archiveSelectedProjectAfterConfirmationDismissal() {
+        isConfirmingArchive = false
+        DispatchQueue.main.async {
+            viewModel.archiveSelectedProject()
+        }
+    }
+
+    private func deleteSelectedProjectAfterConfirmationDismissal() {
+        isConfirmingDelete = false
+        DispatchQueue.main.async {
+            viewModel.deleteSelectedProject()
+        }
     }
 }
 
@@ -1831,15 +1846,27 @@ private struct TaskInspectorView: View {
             }
 
             Section("Danger Zone") {
-                Button(role: .destructive) {
-                    isConfirmingDelete = true
-                } label: {
-                    Label("Delete Task", systemImage: "trash")
+                if isConfirmingDelete {
+                    InspectorDestructiveConfirmation(
+                        title: "Delete this task?",
+                        message: "This removes the task from the local SoloPM database.",
+                        confirmTitle: "Delete Task",
+                        confirmSystemImage: "trash",
+                        accessibilityIdentifier: "task-inspector-delete-confirmation",
+                        confirmAction: deleteSelectedTaskAfterConfirmationDismissal,
+                        cancelAction: { isConfirmingDelete = false }
+                    )
+                } else {
+                    Button(role: .destructive) {
+                        isConfirmingDelete = true
+                    } label: {
+                        Label("Delete Task", systemImage: "trash")
+                    }
+                    .keyboardShortcut(.delete, modifiers: [.command])
+                    .help("Deletes the selected task after confirmation")
+                    .accessibilityIdentifier("task-inspector-delete")
+                    .accessibilityHint("Deletes the selected task after confirmation.")
                 }
-                .keyboardShortcut(.delete, modifiers: [.command])
-                .help("Deletes the selected task after confirmation")
-                .accessibilityIdentifier("task-inspector-delete")
-                .accessibilityHint("Deletes the selected task after confirmation.")
             }
         }
         .formStyle(.grouped)
@@ -1847,18 +1874,6 @@ private struct TaskInspectorView: View {
         .accessibilityIdentifier("task-inspector")
         .accessibilityLabel("Task inspector for \(task.title)")
         .accessibilityHint("Edit, save, move, or delete the selected task.")
-        .confirmationDialog(
-            "Delete this task?",
-            isPresented: $isConfirmingDelete,
-            titleVisibility: .visible
-        ) {
-            Button("Delete Task", role: .destructive) {
-                viewModel.deleteSelectedTask()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes the task from the local SoloPM database.")
-        }
         .onAppear {
             refreshFields(from: task)
         }
@@ -1873,6 +1888,48 @@ private struct TaskInspectorView: View {
         status = task.status
         priority = task.priority
         dueAt = task.dueAt ?? ""
+    }
+
+    private func deleteSelectedTaskAfterConfirmationDismissal() {
+        isConfirmingDelete = false
+        DispatchQueue.main.async {
+            viewModel.deleteSelectedTask()
+        }
+    }
+}
+
+private struct InspectorDestructiveConfirmation: View {
+    let title: String
+    let message: String
+    let confirmTitle: String
+    let confirmSystemImage: String
+    let accessibilityIdentifier: String
+    let confirmAction: () -> Void
+    let cancelAction: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: "exclamationmark.triangle.fill")
+                .font(.headline)
+                .foregroundStyle(.red)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                Button("Cancel", role: .cancel, action: cancelAction)
+                Button(role: .destructive, action: confirmAction) {
+                    Label(confirmTitle, systemImage: confirmSystemImage)
+                }
+                .accessibilityIdentifier("\(accessibilityIdentifier)-confirm")
+                .accessibilityLabel(confirmTitle)
+                .accessibilityHint("Confirms \(confirmTitle).")
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(accessibilityIdentifier)
     }
 }
 

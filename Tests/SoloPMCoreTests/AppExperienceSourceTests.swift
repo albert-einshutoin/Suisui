@@ -37,7 +37,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("Archive Project"))
         XCTAssertTrue(source.contains("Show Archived"))
         XCTAssertTrue(source.contains("Restore Project"))
-        XCTAssertTrue(source.contains("confirmationDialog"))
+        XCTAssertTrue(source.contains("InspectorDestructiveConfirmation"))
         XCTAssertTrue(coreSource.contains("Backlog"))
         XCTAssertTrue(coreSource.contains("In Progress"))
         XCTAssertTrue(coreSource.contains("Done"))
@@ -415,6 +415,32 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(projectInspectorSource.contains(".keyboardShortcut(.delete, modifiers: [.command])"))
         XCTAssertTrue(taskInspectorSource.contains(".keyboardShortcut(.delete, modifiers: [.command])"))
         XCTAssertGreaterThanOrEqual(suggestionSource.components(separatedBy: ".keyboardShortcut(.return, modifiers: [.command])").count - 1, 2)
+    }
+
+    func testInspectorDestructiveConfirmationActionsDeferSelectionMutations() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let projectInspectorStart = try XCTUnwrap(source.range(of: "private struct ProjectInspectorView"))
+        let taskInspectorStart = try XCTUnwrap(source.range(of: "private struct TaskInspectorView"))
+        let projectSuggestionStart = try XCTUnwrap(source.range(of: "private struct ProjectInspectorSuggestionSection"))
+        let taskSummaryStart = try XCTUnwrap(source.range(of: "private struct TaskInspectorMetadataSummary"))
+        let projectInspectorSource = String(source[projectInspectorStart.lowerBound..<projectSuggestionStart.lowerBound])
+        let taskInspectorSource = String(source[taskInspectorStart.lowerBound..<taskSummaryStart.lowerBound])
+
+        XCTAssertTrue(projectInspectorSource.contains("archiveSelectedProjectAfterConfirmationDismissal()"))
+        XCTAssertTrue(projectInspectorSource.contains("deleteSelectedProjectAfterConfirmationDismissal()"))
+        XCTAssertTrue(taskInspectorSource.contains("deleteSelectedTaskAfterConfirmationDismissal()"))
+        XCTAssertTrue(projectInspectorSource.contains("InspectorDestructiveConfirmation("))
+        XCTAssertTrue(taskInspectorSource.contains("InspectorDestructiveConfirmation("))
+        XCTAssertTrue(projectInspectorSource.contains("DispatchQueue.main.async"))
+        XCTAssertTrue(taskInspectorSource.contains("DispatchQueue.main.async"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"\\(accessibilityIdentifier)-confirm\")"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(confirmTitle)"))
+        XCTAssertTrue(source.contains(".accessibilityHint(\"Confirms \\(confirmTitle).\")"))
+        XCTAssertFalse(projectInspectorSource.contains(".confirmationDialog("))
+        XCTAssertFalse(taskInspectorSource.contains(".confirmationDialog("))
+        XCTAssertFalse(projectInspectorSource.contains("Button(\"Archive Project\", role: .destructive) {\n                viewModel.archiveSelectedProject()\n            }"))
+        XCTAssertFalse(projectInspectorSource.contains("Button(\"Delete Project\", role: .destructive) {\n                viewModel.deleteSelectedProject()\n            }"))
+        XCTAssertFalse(taskInspectorSource.contains("Button(\"Delete Task\", role: .destructive) {\n                viewModel.deleteSelectedTask()\n            }"))
     }
 
     func testInspectorsExposeCompactMetadataSummaries() throws {
