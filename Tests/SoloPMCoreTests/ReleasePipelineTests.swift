@@ -2344,6 +2344,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("./script/prepare_voiceover_review_candidate.sh --no-launch"))
         XCTAssertTrue(checklist.contains("VoiceOver Review Project"))
         XCTAssertTrue(checklist.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION"))
+        XCTAssertTrue(checklist.contains(".tmp/voiceover-review/create-evidence-command.sh"))
+        XCTAssertTrue(checklist.contains("Replace every placeholder in that generated command with concrete observations from the manual pass before running it."))
         XCTAssertTrue(checklist.contains("./script/create_voiceover_evidence.sh --pending"))
         XCTAssertTrue(checklist.contains("./script/create_voiceover_evidence.sh --passed"))
         XCTAssertTrue(checklist.contains("--capture-runtime-ax-smoke"))
@@ -2537,6 +2539,33 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(placeholderReviewerResult.output.contains("--checked-by must name the actual reviewer"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
 
+        let angleBracketPlaceholderReviewerResult = try runScript(
+            "script/create_voiceover_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "<reviewer name>",
+                "--macos-version", "macOS 15.5",
+                "--check-date", "2026-06-19",
+                "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
+                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6",
+                "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
+                "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
+                "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
+                "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
+                "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
+                "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
+                "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
+                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--output", passedURL.path,
+                "--confirm-manual-voiceover-pass"
+            ]
+        )
+        XCTAssertNotEqual(angleBracketPlaceholderReviewerResult.exitCode, 0)
+        XCTAssertTrue(angleBracketPlaceholderReviewerResult.output.contains("--checked-by must name the actual reviewer"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
         let invalidDateResult = try runScript(
             "script/create_voiceover_evidence.sh",
             arguments: [
@@ -2665,6 +2694,33 @@ final class ReleasePipelineTests: XCTestCase {
         )
         XCTAssertNotEqual(copiedTemplateNoteResult.exitCode, 0)
         XCTAssertTrue(copiedTemplateNoteResult.output.contains("--project-navigation-note must include concrete VoiceOver verification details"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
+        let angleBracketTemplateNoteResult = try runScript(
+            "script/create_voiceover_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "SoloPM Release Owner",
+                "--macos-version", "macOS 15.5",
+                "--check-date", "2026-06-19",
+                "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
+                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6",
+                "--project-navigation-note", "<VoiceOver observation for sidebar Inbox, Today, Projects, and selected review project navigation>",
+                "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
+                "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
+                "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
+                "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
+                "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
+                "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
+                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--output", passedURL.path,
+                "--confirm-manual-voiceover-pass"
+            ]
+        )
+        XCTAssertNotEqual(angleBracketTemplateNoteResult.exitCode, 0)
+        XCTAssertTrue(angleBracketTemplateNoteResult.output.contains("--project-navigation-note must include concrete VoiceOver verification details"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
 
         let missingFocusPathRuntimeAXResult = try runScript(
@@ -2914,6 +2970,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] `script/check_accessibility_preflight.sh --runtime` はProject Board上のShow Archived、Add Project、Add Task、Save、Complete、Archive、Deleteのbutton help signalsを `crudSignals=8/8` としてblocker化する。"))
         XCTAssertTrue(phase.contains("[x] `script/check_accessibility_preflight.sh --runtime` はProject navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector のfocus path signalsを `focusPathSignals=6/6` としてblocker化する。"))
         XCTAssertTrue(phase.contains("[x] VoiceOver passed evidence は同じrelease候補で実行したruntime AX smoke OK行、`unlabeledButtons=0`、`genericButtons=0`、`crudSignals=8/8`、`focusPathSignals=6/6` を含まない場合release readyにしない。"))
+        XCTAssertTrue(phase.contains("[x] `script/prepare_voiceover_review_candidate.sh` は `.tmp/voiceover-review/create-evidence-command.sh` を生成し、同じ候補DB/Project IDを使った手動VoiceOver証跡コマンドをoperatorがplaceholder置換して実行できる。"))
         XCTAssertTrue(phase.contains("[ ] 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。"))
     }
 
@@ -3024,6 +3081,28 @@ final class ReleasePipelineTests: XCTestCase {
         )
         XCTAssertNotEqual(placeholderReviewerResult.exitCode, 0)
         XCTAssertTrue(placeholderReviewerResult.output.contains("--checked-by must name the actual reviewer"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
+        let angleBracketPlaceholderReviewerResult = try runScript(
+            "script/create_competitor_hands_on_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "<reviewer name>",
+                "--check-date", "2026-06-19",
+                "--environment", "macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used",
+                "--notion-note", "Board setup was flexible but required manual schema decisions before task entry felt fast.",
+                "--todoist-note", "Quick Add made capture fast, but project context still needed review after entry.",
+                "--linear-note", "Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.",
+                "--motion-note", "Scheduling suggestions were useful only when the reason and deadline impact were visible.",
+                "--ship", "Keep fast local capture, board status movement, and right inspector as the public alpha loop.",
+                "--defer", "Natural-language dates and autonomous scheduling stay out until reliability evidence exists.",
+                "--reject", "Team cycles, initiatives, and external SaaS sync stay outside public alpha scope.",
+                "--output", passedURL.path,
+                "--confirm-manual-hands-on"
+            ]
+        )
+        XCTAssertNotEqual(angleBracketPlaceholderReviewerResult.exitCode, 0)
+        XCTAssertTrue(angleBracketPlaceholderReviewerResult.output.contains("--checked-by must name the actual reviewer"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
 
         let invalidDateResult = try runScript(
@@ -3627,6 +3706,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("VoiceOver review artifact"))
         XCTAssertTrue(script.contains("SELECT CASE WHEN count(*) = 5 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$seed_project_id\""))
+        XCTAssertTrue(script.contains("evidence_command_file=\"$ROOT_DIR/.tmp/voiceover-review/create-evidence-command.sh\""))
+        XCTAssertTrue(script.contains("write_voiceover_evidence_command()"))
+        XCTAssertTrue(script.contains("--capture-runtime-ax-smoke"))
+        XCTAssertTrue(script.contains("--project-navigation-note"))
+        XCTAssertTrue(script.contains("chmod +x \"$output_path\""))
+        XCTAssertTrue(script.contains("Evidence command: %s\\n"))
         XCTAssertTrue(script.contains("OK: VoiceOver review candidate ready"))
         XCTAssertTrue(script.contains("--no-launch"))
         XCTAssertTrue(script.contains("--skip-build"))
@@ -4115,7 +4200,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence still contains unchecked checklist markers"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence missing release context"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence has template release context"))
-        XCTAssertTrue(script.contains("VoiceOver/keyboard/device details|VoiceOver / keyboard / device details|manual pass environment"))
+        XCTAssertTrue(script.contains("VoiceOver/keyboard/device details|VoiceOver / keyboard / device details|macOS version.*hardware.*VoiceOver input method.*clean user|manual pass environment"))
         XCTAssertTrue(script.contains("Runtime AX smoke"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence runtime AX smoke missing marker"))
         XCTAssertTrue(script.contains("unlabeledButtons=0"))

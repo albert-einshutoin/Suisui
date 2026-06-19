@@ -73,6 +73,7 @@ is_boilerplate_voiceover_note() {
     "no issue"|\
     "no issues"|\
     "concrete voiceover observation"*|\
+    "voiceover observation"*|\
     "manual pass complete"|\
     "manual pass completed")
       return 0
@@ -143,10 +144,10 @@ capture_runtime_ax_smoke_note() {
 
 is_placeholder_accessibility_environment() {
   local normalized
-  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[[:punct:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
   case "$normalized" in
-    *"voiceover/keyboard/device details"*|\
-    *"voiceover / keyboard / device details"*|\
+    *"voiceover keyboard device details"*|\
+    *"macos version hardware voiceover input method clean user install context"*|\
     *"manual pass environment"*|\
     *"accessibility environment"*)
       return 0
@@ -159,7 +160,7 @@ is_placeholder_accessibility_environment() {
 
 is_placeholder_checked_by() {
   local normalized
-  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
+  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[[:punct:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
   case "$normalized" in
     name|\
     reviewer|\

@@ -100,7 +100,7 @@ is_placeholder_environment() {
 
 is_placeholder_checked_by() {
   local normalized
-  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
+  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[[:punct:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
   case "$normalized" in
     name|\
     reviewer|\

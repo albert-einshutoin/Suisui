@@ -858,7 +858,7 @@ write_phase_manual_gate_routes() {
 
 is_placeholder_checked_by() {
   local normalized
-  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
+  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[[:punct:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
   case "$normalized" in
     name|\
     reviewer|\
@@ -896,6 +896,7 @@ is_boilerplate_voiceover_note() {
     "no issue"|\
     "no issues"|\
     "concrete voiceover observation"*|\
+    "voiceover observation"*|\
     "manual pass complete"|\
     "manual pass completed")
       return 0
@@ -1657,7 +1658,7 @@ else
     fi
 
     has_template_context=0
-    grep -Eiq '(pending|todo|tbd|placeholder|sample|example|replace me|signed or release-candidate|VoiceOver/keyboard/device details|VoiceOver / keyboard / device details|manual pass environment|accessibility environment)' <<<"$context_value" && has_template_context=1
+    grep -Eiq '(pending|todo|tbd|placeholder|sample|example|replace me|signed or release-candidate|VoiceOver/keyboard/device details|VoiceOver / keyboard / device details|macOS version.*hardware.*VoiceOver input method.*clean user|manual pass environment|accessibility environment)' <<<"$context_value" && has_template_context=1
     [[ "$context_label" == "Checked by" ]] && is_placeholder_checked_by "$context_value" && has_template_context=1
     if [[ "$has_template_context" -eq 1 ]]; then
       voiceover_blocker "VoiceOver accessibility evidence has template release context: $context_label"
