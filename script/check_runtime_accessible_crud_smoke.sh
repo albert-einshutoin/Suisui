@@ -14,6 +14,7 @@ source "$METADATA_FILE"
 
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
+APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS:-30}"
 KEEP_DATABASE="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_KEEP_DATABASE:-0}"
 SQLITE3="${SQLITE3:-sqlite3}"
@@ -35,10 +36,35 @@ database_path="$tmp_dir/SoloPM-runtime-accessible-crud.sqlite"
 created_project_id=""
 created_task_id=""
 cascade_task_id=""
+app_pid=""
+
+terminate_app() {
+  local quit_pid=""
+  /usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 &
+  quit_pid=$!
+
+  for _ in {1..30}; do
+    if ! kill -0 "$quit_pid" >/dev/null 2>&1; then
+      wait "$quit_pid" >/dev/null 2>&1 || true
+      break
+    fi
+    sleep 0.1
+  done
+
+  if kill -0 "$quit_pid" >/dev/null 2>&1; then
+    kill "$quit_pid" >/dev/null 2>&1 || true
+    wait "$quit_pid" >/dev/null 2>&1 || true
+  fi
+
+  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+  if [[ -n "${app_pid:-}" ]]; then
+    wait "$app_pid" >/dev/null 2>&1 || true
+    app_pid=""
+  fi
+}
 
 cleanup() {
-  /usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+  terminate_app
   if [[ "$KEEP_DATABASE" != "1" ]]; then
     rm -rf "$tmp_dir"
   else
@@ -84,26 +110,28 @@ activate_app() {
 }
 
 launch_app_for_database_migration() {
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-  /usr/bin/open -n -F --env "SOLOPM_DATABASE_PATH=$database_path" "$APP_BUNDLE"
+  terminate_app
+  SOLOPM_DATABASE_PATH="$database_path" "$APP_BINARY" &
+  app_pid=$!
   activate_app
   wait_for_app_process
 }
 
 launch_app_for_seed_project() {
   local seed_project_id="$1"
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-  /usr/bin/open -n -F \
-    --env "SOLOPM_DATABASE_PATH=$database_path" \
-    --env "SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=project:$seed_project_id" \
-    "$APP_BUNDLE"
+  terminate_app
+  SOLOPM_DATABASE_PATH="$database_path" \
+    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
+    "$APP_BINARY" &
+  app_pid=$!
   activate_app
   wait_for_app_process
 }
 
 launch_app_for_crud_mutation() {
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-  /usr/bin/open -n -F --env "SOLOPM_DATABASE_PATH=$database_path" "$APP_BUNDLE"
+  terminate_app
+  SOLOPM_DATABASE_PATH="$database_path" "$APP_BINARY" &
+  app_pid=$!
   activate_app
   wait_for_app_process
 }
@@ -439,9 +467,14 @@ if [[ ! -d "$APP_BUNDLE" ]]; then
   exit 2
 fi
 
+if [[ ! -x "$APP_BINARY" ]]; then
+  echo "BLOCKER: app binary not found or not executable after build: $APP_BINARY" >&2
+  exit 2
+fi
+
 launch_app_for_database_migration
 wait_for_database_table "projects"
-/usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
+terminate_app
 wait_for_no_app_process
 
 seed_project_id="$(seed_board_data)"
@@ -452,14 +485,14 @@ fi
 
 launch_app_for_seed_project "$seed_project_id"
 ./script/check_accessibility_preflight.sh --runtime --skip-launch --timeout "$TIMEOUT_SECONDS"
-/usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
+terminate_app
 wait_for_no_app_process
 launch_app_for_crud_mutation
 
 pressButtonContaining "Creates a new local project"
 verify_single_value "created project" "SELECT count(*) FROM projects WHERE title='Untitled Project' AND source_command='app.project-board';" "1"
 created_project_id="$(wait_for_nonempty_value "created project id" "SELECT id FROM projects WHERE title='Untitled Project' AND source_command='app.project-board' ORDER BY id DESC LIMIT 1;")"
-/usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
+terminate_app
 wait_for_no_app_process
 launch_app_for_seed_project "$created_project_id"
 
@@ -484,7 +517,7 @@ pressButtonContaining "Saves edits to the selected task in the local SoloPM data
 verify_single_value "renamed task" "SELECT title FROM tasks WHERE id=$created_task_id;" "AX Runtime CRUD Task Updated"
 pressButtonContaining "Changes AX Runtime CRUD Task"
 verify_single_value "advanced task status" "SELECT status FROM tasks WHERE id=$created_task_id;" "planned"
-/usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
+terminate_app
 wait_for_no_app_process
 launch_app_for_seed_project "$created_project_id"
 pressButtonContaining "Opens task details in the inspector"
@@ -500,7 +533,7 @@ waitForTextFieldContaining "AX Runtime Cascade Task"
 pressButtonContaining "Creates the task in the local SoloPM database."
 verify_single_value "created cascade task" "SELECT count(*) FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Cascade Task' AND status='backlog' AND source_command='app.project-board';" "1"
 cascade_task_id="$(wait_for_nonempty_value "cascade task id" "SELECT id FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Cascade Task' ORDER BY id DESC LIMIT 1;")"
-/usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
+terminate_app
 wait_for_no_app_process
 launch_app_for_seed_project "$created_project_id"
 

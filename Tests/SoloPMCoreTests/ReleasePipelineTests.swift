@@ -3204,7 +3204,12 @@ final class ReleasePipelineTests: XCTestCase {
         let script = try readPackageFile("script/check_runtime_accessible_crud_smoke.sh")
 
         XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH"))
-        XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=project:$seed_project_id"))
+        XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
+        XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH=\"$database_path\" \"$APP_BINARY\" &"))
+        XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$seed_project_id\""))
+        XCTAssertTrue(script.contains("app_pid=$!"))
+        XCTAssertTrue(script.contains("wait \"$app_pid\" >/dev/null 2>&1 || true"))
+        XCTAssertFalse(script.contains("open -n -F --env \"SOLOPM_DATABASE_PATH=$database_path\""))
         XCTAssertTrue(script.contains("./script/build_and_run.sh --build-only"))
         XCTAssertTrue(script.contains("script/check_accessibility_preflight.sh --runtime --skip-launch"))
         XCTAssertTrue(script.contains("pressButtonContaining \"Creates a new local project\""))
