@@ -666,6 +666,90 @@ write_release_machine_runbook_command() {
   printf '%s\n' '```'
 }
 
+manual_helper_contains_current_source_commit() {
+  local helper_path="$1"
+  local expected_commit="$2"
+
+  [[ -f "$helper_path" ]] || return 1
+
+  if grep -Fq "Source commit: \`$expected_commit\`" "$helper_path"; then
+    return 0
+  fi
+  if grep -Fq "Release candidate source commit: \`$expected_commit\`" "$helper_path"; then
+    return 0
+  fi
+  if grep -Fq "EXPECTED_SOURCE_COMMIT=$expected_commit" "$helper_path"; then
+    return 0
+  fi
+  if grep -Fq "EXPECTED_SOURCE_COMMIT=\"$expected_commit\"" "$helper_path"; then
+    return 0
+  fi
+  if grep -Fq "EXPECTED_SOURCE_COMMIT='$expected_commit'" "$helper_path"; then
+    return 0
+  fi
+
+  return 1
+}
+
+write_manual_helper_freshness_item() {
+  local label="$1"
+  local success_phrase="$2"
+  local relative_path="$3"
+  local expected_commit="$4"
+  local helper_path="$ROOT_DIR/$relative_path"
+
+  if [[ ! -f "$helper_path" ]]; then
+    printf -- "- [ ] %s missing for current source commit: \`%s\`\n" "$label" "$relative_path"
+  elif manual_helper_contains_current_source_commit "$helper_path" "$expected_commit"; then
+    printf -- "- [x] %s %s current source commit: \`%s\`\n" "$label" "$success_phrase" "$relative_path"
+  else
+    printf -- "- [ ] %s is stale or not pinned to current source commit \`%s\`: \`%s\`\n" "$label" "$expected_commit" "$relative_path"
+  fi
+}
+
+write_manual_helper_freshness_actions() {
+  local expected_commit
+  expected_commit="$(source_commit)"
+
+  printf "## Manual Review Helper Freshness\n"
+  write_manual_helper_freshness_item \
+    "VoiceOver pending preview" \
+    "is generated for" \
+    ".tmp/voiceover-review/accessibility-voiceover-pending-$expected_commit.md" \
+    "$expected_commit"
+  write_manual_helper_freshness_item \
+    "VoiceOver evidence command" \
+    "is pinned to" \
+    ".tmp/voiceover-review/create-evidence-command.sh" \
+    "$expected_commit"
+  write_manual_helper_freshness_item \
+    "Competitor pending evidence" \
+    "is generated for" \
+    ".tmp/competitor-hands-on/competitor-hands-on-pending-$expected_commit.md" \
+    "$expected_commit"
+  write_manual_helper_freshness_item \
+    "Competitor worksheet" \
+    "is generated for" \
+    ".tmp/competitor-hands-on/hands-on-worksheet.md" \
+    "$expected_commit"
+  write_manual_helper_freshness_item \
+    "Competitor evidence command" \
+    "is pinned to" \
+    ".tmp/competitor-hands-on/create-evidence-command.sh" \
+    "$expected_commit"
+  write_manual_helper_freshness_item \
+    "Release machine worksheet" \
+    "is generated for" \
+    ".tmp/release-machine/release-machine-worksheet.md" \
+    "$expected_commit"
+  write_manual_helper_freshness_item \
+    "Release evidence command" \
+    "is pinned to" \
+    ".tmp/release-machine/create-release-evidence-command.sh" \
+    "$expected_commit"
+  printf "\n"
+}
+
 write_release_actions() {
   local status="$1"
   local action_path="$RELEASE_ACTIONS_FILE"
@@ -750,6 +834,8 @@ write_release_actions() {
     printf -- "- Direct manual evidence scripts enforce the same clean tracked source tree guard before writing passed evidence.\n"
     printf -- "- This includes \`./script/create_voiceover_evidence.sh --passed\`, \`./script/create_competitor_hands_on_evidence.sh --passed\`, and \`./script/create_release_evidence.sh\`.\n"
     printf -- "- Do not bypass the generated command files to work around a dirty tree. Commit or revert tracked source changes, regenerate the candidate/worksheet command, then record evidence for the current release candidate.\n\n"
+
+    write_manual_helper_freshness_actions
 
     printf "## Manual VoiceOver\n"
     printf -- "- Prepare the deterministic review candidate before the manual pass. Use \`--no-launch\` to inspect the isolated database first, then run without it to build and open the candidate app.\n\n"
