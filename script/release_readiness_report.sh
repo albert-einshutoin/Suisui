@@ -358,6 +358,43 @@ write_automated_proof_gate_actions() {
   printf "\n"
 }
 
+write_voiceover_manual_evidence_command() {
+  printf '%s\n' '```bash'
+  printf '%s\n' './script/create_voiceover_evidence.sh --passed \'
+  printf '%s\n' '  --checked-by "<reviewer name>" \'
+  printf '%s\n' '  --accessibility-environment "<macOS version, hardware, VoiceOver input method, clean user/install context>" \'
+  printf '%s\n' '  --capture-runtime-ax-smoke \'
+  printf '%s\n' '  --project-navigation-note "<VoiceOver observation for sidebar project navigation>" \'
+  printf '%s\n' '  --project-board-detail-note "<VoiceOver observation for selected project board context>" \'
+  printf '%s\n' '  --open-task-note "<VoiceOver observation for focusing a task card and opening details>" \'
+  printf '%s\n' '  --inline-task-composer-note "<VoiceOver observation for title/detail/priority/due create flow>" \'
+  printf '%s\n' '  --status-controls-note "<VoiceOver observation for previous/next status controls>" \'
+  printf '%s\n' '  --task-inspector-note "<VoiceOver observation for inspector fields and actions>" \'
+  printf '%s\n' '  --save-changes-note "<VoiceOver observation proving keyboard activation saves local changes>" \'
+  printf '%s\n' '  --delete-confirmation-note "<VoiceOver observation proving destructive confirmation appears before deletion>" \'
+  printf '%s\n' '  --no-keyboard-trap-note "<VoiceOver observation proving focus leaves sidebar, board, inspector, and dialogs>" \'
+  printf '%s\n' '  --no-unlabeled-crud-note "<VoiceOver observation proving primary CRUD controls have labels or help>" \'
+  printf '%s\n' '  --confirm-manual-voiceover-pass'
+  printf '%s\n' '```'
+}
+
+write_competitor_hands_on_evidence_command() {
+  printf '%s\n' '```bash'
+  printf '%s\n' './script/create_competitor_hands_on_evidence.sh --passed \'
+  printf '%s\n' '  --checked-by "<reviewer name>" \'
+  printf '%s\n' '  --environment "<macOS/browser versions, competitor account tiers, paid trial status>" \'
+  printf '%s\n' '  --notion-note "<hands-on Notion project database, board, task, and artifact observation>" \'
+  printf '%s\n' '  --todoist-note "<hands-on Todoist quick add, board/list, drag movement, Today/Upcoming observation>" \'
+  printf '%s\n' '  --linear-note "<hands-on Linear project/issue/status/sidebar/keyboard command observation>" \'
+  printf '%s\n' '  --motion-note "<hands-on Motion dated task, prioritization, schedule/risk explanation observation>" \'
+  printf '%s\n' '  --ship "<SoloPM behavior to ship now based on the hands-on benchmark>" \'
+  printf '%s\n' '  --defer "<behavior deferred until reliability or demand evidence is stronger>" \'
+  printf '%s\n' '  --reject "<behaviors deliberately kept out of public alpha scope>" \'
+  printf '%s\n' '  --benchmark-output docs/product/competitor-benchmark.md \'
+  printf '%s\n' '  --confirm-manual-hands-on'
+  printf '%s\n' '```'
+}
+
 write_release_actions() {
   local status="$1"
   local action_path="$RELEASE_ACTIONS_FILE"
@@ -435,12 +472,16 @@ write_release_actions() {
 
     printf "## Manual VoiceOver\n"
     printf -- "- Run the source/runtime accessibility preflight first, then perform a real VoiceOver pass.\n"
-    printf -- "- Generator command: \`./script/create_voiceover_evidence.sh --passed --capture-runtime-ax-smoke --confirm-manual-voiceover-pass ...\`\n"
+    printf -- "- Replace every placeholder below with concrete observations from the real release-candidate app before running it.\n\n"
+    write_voiceover_manual_evidence_command
+    printf "\n"
     printf -- "- Required evidence stays manual: concrete Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector observations.\n\n"
 
     printf "## Competitor Hands-On\n"
     printf -- "- Complete the 2-4 hour Notion, Todoist, Linear, and Motion hands-on pass before release.\n"
-    printf -- "- Generator command: \`./script/create_competitor_hands_on_evidence.sh --passed --benchmark-output docs/product/competitor-benchmark.md --confirm-manual-hands-on ...\`\n"
+    printf -- "- Replace every placeholder below with concrete observations and Ship / Defer / Reject decisions before running it.\n\n"
+    write_competitor_hands_on_evidence_command
+    printf "\n"
     printf -- "- Record Ship / Defer / Reject decisions and keep external SaaS sync/team workflow outside public alpha scope.\n\n"
 
     printf "## Release Machine\n"
