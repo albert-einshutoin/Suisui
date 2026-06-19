@@ -21,6 +21,7 @@ RELEASE_XCODE_PREFLIGHT="${SOLOPM_RELEASE_XCODE_PREFLIGHT:-$AUTOMATED_PROOF_GATE
 XCODE_WORKSPACE_RELATIVE=".swiftpm/xcode/package.xcworkspace"
 XCODE_SCHEME="${SOLOPM_XCODE_SCHEME:-SoloPM}"
 XCODE_DESTINATION="${SOLOPM_XCODE_DESTINATION:-platform=macOS}"
+XCODE_CONFIGURATION="${SOLOPM_XCODE_CONFIGURATION:-Debug}"
 RELEASE_LAUNCH_PREFLIGHT="${SOLOPM_RELEASE_LAUNCH_PREFLIGHT:-$AUTOMATED_PROOF_GATES}"
 RELEASE_LAUNCH_PREFLIGHT_RELATIVE="script/build_and_run.sh"
 MOCK_PATTERN="(?i:fake|mock|fixture|canned|stub|skeleton|todo|fixme|not[[:space:]_-]*implemented|notimplemented|inmemory)|(?i:(^|[^[:alnum:]_])(demo|sample|placeholder)([^[:alnum:]_]|$))|Static[A-Za-z0-9_]*|:memory:|fatalError|preconditionFailure"
@@ -152,6 +153,11 @@ EXPECTED_VOICEOVER_APP_BUILD=""
 if [[ -n "${MARKETING_VERSION:-}" && -n "${CURRENT_PROJECT_VERSION:-}" ]]; then
   EXPECTED_VOICEOVER_APP_BUILD="$MARKETING_VERSION ($CURRENT_PROJECT_VERSION)"
 fi
+EXPECTED_AUTOMATED_PREFLIGHT_APP_NAME="${APP_NAME:-SoloPM}"
+EXPECTED_AUTOMATED_PREFLIGHT_XCODE_WORKSPACE="$XCODE_WORKSPACE_RELATIVE"
+EXPECTED_AUTOMATED_PREFLIGHT_XCODE_SCHEME="$XCODE_SCHEME"
+EXPECTED_AUTOMATED_PREFLIGHT_XCODE_CONFIGURATION="$XCODE_CONFIGURATION"
+EXPECTED_AUTOMATED_PREFLIGHT_XCODE_DESTINATION="$XCODE_DESTINATION"
 
 section() {
   printf "\n== %s ==\n" "$1"
@@ -390,6 +396,25 @@ is_future_date() {
   is_iso_date "$value" && [[ "$value" > "$today" ]]
 }
 
+is_utc_timestamp() {
+  local value="$1"
+  local normalized
+  value="$(printf '%s' "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  [[ "$value" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || return 1
+  normalized="$(/bin/date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$value" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null)" || return 1
+  [[ "$normalized" == "$value" ]]
+}
+
+is_future_utc_timestamp() {
+  local value="$1"
+  local timestamp_seconds now_seconds
+  value="$(printf '%s' "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  is_utc_timestamp "$value" || return 1
+  timestamp_seconds="$(/bin/date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$value" '+%s' 2>/dev/null)" || return 1
+  now_seconds="$(/bin/date -u '+%s')"
+  [[ "$timestamp_seconds" -gt "$now_seconds" ]]
+}
+
 assert_screenshot_has_visible_content() {
   local image_path="$1"
   /usr/bin/swift "$ROOT_DIR/script/ui_evidence_content_check.swift" "$image_path"
@@ -464,6 +489,21 @@ validate_automated_preflight_evidence() {
     return 1
   fi
 
+  local generated_at
+  generated_at="$(automated_preflight_context_value "Generated at")"
+  if [[ -z "$(tr -d '[:space:]' <<<"$generated_at")" ]]; then
+    set_automated_preflight_evidence_reason "missing generated timestamp"
+    return 1
+  fi
+  if ! is_utc_timestamp "$generated_at"; then
+    set_automated_preflight_evidence_reason "invalid generated timestamp"
+    return 1
+  fi
+  if is_future_utc_timestamp "$generated_at"; then
+    set_automated_preflight_evidence_reason "generated timestamp is in the future"
+    return 1
+  fi
+
   if ! grep -Fx "Tracked source tree: clean" "$AUTOMATED_PREFLIGHT_EVIDENCE_PATH" >/dev/null; then
     set_automated_preflight_evidence_reason "missing clean tracked source tree marker"
     return 1
@@ -493,6 +533,37 @@ validate_automated_preflight_evidence() {
 
   if is_report_root_git_checkout_root && [[ "$(tracked_source_tree_status)" != "clean" ]]; then
     set_automated_preflight_evidence_reason "current tracked source tree is not clean"
+    return 1
+  fi
+
+  local evidence_app evidence_workspace evidence_scheme evidence_configuration evidence_destination
+  evidence_app="$(automated_preflight_context_value "App")"
+  if [[ "$evidence_app" != "$EXPECTED_AUTOMATED_PREFLIGHT_APP_NAME" ]]; then
+    set_automated_preflight_evidence_reason "app mismatch: expected $EXPECTED_AUTOMATED_PREFLIGHT_APP_NAME"
+    return 1
+  fi
+
+  evidence_workspace="$(automated_preflight_context_value "Xcode workspace")"
+  if [[ "$evidence_workspace" != "$EXPECTED_AUTOMATED_PREFLIGHT_XCODE_WORKSPACE" ]]; then
+    set_automated_preflight_evidence_reason "Xcode workspace mismatch: expected $EXPECTED_AUTOMATED_PREFLIGHT_XCODE_WORKSPACE"
+    return 1
+  fi
+
+  evidence_scheme="$(automated_preflight_context_value "Xcode scheme")"
+  if [[ "$evidence_scheme" != "$EXPECTED_AUTOMATED_PREFLIGHT_XCODE_SCHEME" ]]; then
+    set_automated_preflight_evidence_reason "Xcode scheme mismatch: expected $EXPECTED_AUTOMATED_PREFLIGHT_XCODE_SCHEME"
+    return 1
+  fi
+
+  evidence_configuration="$(automated_preflight_context_value "Xcode configuration")"
+  if [[ "$evidence_configuration" != "$EXPECTED_AUTOMATED_PREFLIGHT_XCODE_CONFIGURATION" ]]; then
+    set_automated_preflight_evidence_reason "Xcode configuration mismatch: expected $EXPECTED_AUTOMATED_PREFLIGHT_XCODE_CONFIGURATION"
+    return 1
+  fi
+
+  evidence_destination="$(automated_preflight_context_value "Xcode destination")"
+  if [[ "$evidence_destination" != "$EXPECTED_AUTOMATED_PREFLIGHT_XCODE_DESTINATION" ]]; then
+    set_automated_preflight_evidence_reason "Xcode destination mismatch: expected $EXPECTED_AUTOMATED_PREFLIGHT_XCODE_DESTINATION"
     return 1
   fi
 
@@ -685,7 +756,7 @@ elif [[ "$RELEASE_XCODE_PREFLIGHT" == "1" ]]; then
       xcodebuild \
         -workspace "$xcode_workspace" \
         -scheme "$XCODE_SCHEME" \
-        -configuration Debug \
+        -configuration "$XCODE_CONFIGURATION" \
         -destination "$XCODE_DESTINATION" \
         build 2>&1
     )"

@@ -237,6 +237,7 @@ SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./s
 ```
 
 Evidence-file mode requires a clean tracked source tree, so commit or discard tracked changes before producing release proof.
+When the final report reuses this evidence, it verifies the generator identity, UTC timestamp, source commit, clean-tree marker, app name, Xcode workspace/scheme/configuration/destination, every automated proof gate, and the manual-evidence boundary text.
 
 ```bash
 source packaging/app_metadata.env
