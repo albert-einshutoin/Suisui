@@ -2662,7 +2662,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift::inbox-quick-add-button"))
         XCTAssertTrue(script.contains(#"Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(\"n\", modifiers: [.command])"#))
         XCTAssertTrue(script.contains(#"Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(\"n\", modifiers: [.command, .shift])"#))
-        XCTAssertTrue(script.contains(#"Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(\",\", modifiers: [.command])"#))
+        XCTAssertTrue(script.contains(#"Sources/SoloPMApp/SoloPMApp.swift::.keyboardShortcut(\",\", modifiers: [.command])"#))
         XCTAssertTrue(script.contains(#"Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(\"s\", modifiers: [.command])"#))
         XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(.delete, modifiers: [.command])"))
         XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(.return, modifiers: [.command])"))

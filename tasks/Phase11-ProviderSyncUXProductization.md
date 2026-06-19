@@ -187,7 +187,7 @@
 
 ## P11-033: Keyboard and accessibility pass
 
-- [x] `Command+N` は選択中ProjectにTask追加、`Command+Shift+N` はProject追加、`Command+,` はSettingsに割り当てる。
+- [x] `Command+N` は選択中ProjectにTask追加、`Command+Shift+N` はProject追加、`Command+,` はProject Board toolbarではなくmacOS app menuのSettingsに割り当てる。
 - [x] Drag操作の代替として、カード上のMoveボタンとcontext menuを維持する。
 - [x] Task / Project inspector は `Command+S` で保存、`Command+Return` で提案適用、`Command+Delete` で削除確認を開ける。
 - [ ] VoiceOver label、focus order、button help、destructive confirmationを確認する。

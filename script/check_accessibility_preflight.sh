@@ -71,7 +71,7 @@ REQUIRED_SOURCE_ANCHORS=(
   "Sources/SoloPMApp/Views/ProjectWorkflowViews.swift::today-plan-summary"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(\"n\", modifiers: [.command])"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(\"n\", modifiers: [.command, .shift])"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(\",\", modifiers: [.command])"
+  "Sources/SoloPMApp/SoloPMApp.swift::.keyboardShortcut(\",\", modifiers: [.command])"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(\"s\", modifiers: [.command])"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(.delete, modifiers: [.command])"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::.keyboardShortcut(.return, modifiers: [.command])"

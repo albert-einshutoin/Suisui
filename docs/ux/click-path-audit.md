@@ -21,9 +21,9 @@
 
 | 画面 | 入口 | 現状 |
 | --- | --- | --- |
-| Project Board | 起動時のメインwindow、menu barの `Project Board`、board toolbar | SidebarにInbox、Today、Projectsが固定表示され、Project overview/board/list、task composer、inspector、Settings入口がある主要画面。 |
+| Project Board | 起動時のメインwindow、menu barの `Project Board` | SidebarにInbox、Today、Projectsが固定表示され、Project overview/board/list、task composer、inspectorを扱う主要画面。 |
 | Voice Command | board toolbarの `Voice Command`、menu barの `Voice Command` | CaptureとAI action reviewの導線がある。現状ではInboxの代替に近い。 |
-| Settings | board toolbarのgear、menu barのgear、macOS Settings scene | 先頭のStatus OverviewでAI Provider、MCP、Sync、Privacyを確認できる。詳細設定は下のFormに並ぶ。 |
+| Settings | macOS app menuの `Settings...`、menu barのgear、macOS Settings scene | 先頭のStatus OverviewでAI Provider、MCP、Sync、Privacyを確認できる。ThemeはSettings OverviewのAppearanceに集約する。 |
 | Inbox | sidebarの `Inbox` | 未処理taskを実データから表示し、Task化、Project化、今日へ予定、後で確認を選択中itemへ1クリックで適用できる。 |
 | Today | sidebarの `Today` | due/overdueの未完了taskを実データから表示し、overdue/today件数、local focus suggestion、30分単位のtime block、task inspectorへつながる。 |
 
@@ -55,7 +55,7 @@
 | Project提案適用 | sidebar project row -> inspector `Apply Suggestion` | 2 | Pass | 空Projectのfirst task作成、全Task完了Projectのcomplete、注目Taskを開く導線を外部LLMなしで実行する。 |
 | Project完了 | Project inspector -> `Complete Project` | 2 | Pass | headerから削除し、選択中Projectの操作をinspectorに集約した。 |
 | Project archive/delete | Project inspector -> action -> confirm | 3 | Pass | 破壊的操作なので確認があるのは妥当。 |
-| boardからSettingsを開く | toolbar gear | 1 | Pass | menu barからも2クリックで開ける。 |
+| Settingsを開く | macOS app menu `Settings...` または menu bar gear | 1-2 | Pass | Project Boardの右上には置かず、作業画面内のTheme/Settings重複導線をなくす。 |
 | Theme変更 | Settings -> Overview -> `Theme` segment | 2 | Pass | ThemeはSettings Overviewに集約済み。Project Boardのサイドバー下/右上にはTheme controlを置かない。 |
 | AI Provider状態確認 | Settings -> Status OverviewまたはAI tabのProvider Readiness summaryを見る | 1 | Pass | 現在のproviderと認証/承認状態は先頭で分かり、AI tabでは全providerの設定状態をprovider切替なしで確認できる。 |
 | AI Provider変更 | Settings -> provider picker -> provider | 2 | Pass | Provider選択時に自動保存されるため、保存ボタンを探す必要がない。AI Provider readiness rowで選択中providerの状態、smoke readiness、次の操作がすぐ分かる。 |
@@ -102,7 +102,7 @@ PR未作成のため、現時点ではcurrent branchの改善commitとsource tes
 | Review Execute artifact作成 | Action Planのfilesystem artifact作成が `projectId` / `taskId` を持つ場合、作成ファイルと同時にlocal SQLite artifact linkを作り、Project OverviewのArtifactsへ戻す。 | `Sources/SoloPMCore/Tools/SystemTools.swift`, `Sources/SoloPMCore/Tools/SystemToolClients.swift`, `Sources/SoloPMApp/SoloPMApp.swift` | `SystemToolTests.testFileSystemToolPersistsCreatedArtifactLinkWhenProjectIDIsProvided`, `AppExperienceSourceTests.testRuntimeAppCompositionDoesNotUseDemoOrInMemorySuccessPath` |
 | Inbox capture / triage | MenuBar Quick AddまたはInbox headerから実タスクを作り、item選択後にMake Task、Make Project、Schedule Today、Review Laterを1クリックで実mutationへ送る。 | `Sources/SoloPMApp/SoloPMApp.swift`, `Sources/SoloPMApp/Views/ProjectWorkflowViews.swift`, `Sources/SoloPMCore/App/ProjectBoard.swift` | `AppExperienceSourceTests.testMenuBarPanelProvidesFastInboxCaptureWithRuntimeBoardViewModel`, `ProjectBoardStoreTests.testProjectBoardViewModelQuickCapturesInboxTaskAndNotifies`, `ProjectBoardStoreTests.testProjectBoardViewModelQuickCapturePersistsToSQLiteInbox`, `ProjectBoardStoreTests.testProjectBoardViewModelInboxClassificationShowsFeedbackAdvancesSelectionAndUndo`, `ProjectBoardStoreTests.testSQLiteBoardStorePersistsInboxClassificationUndo` |
 | Today planning | sidebarから1クリックでdue/overdue、focus suggestion、time blockを確認する。 | `Sources/SoloPMApp/Views/ProjectWorkflowViews.swift`, `Sources/SoloPMCore/App/ProjectBoard.swift` | `AppExperienceSourceTests.testTodayWorkflowShowsRecommendationDueCountsAndTimeBlocks`, `ProjectBoardStoreTests.testProjectBoardViewModelBuildsDeterministicTodayPlanWithTimeBlocks` |
-| Settings overview / Theme | toolbar gearから1クリックでSettingsを開き、Status OverviewとTheme segmentをSettings内へ集約する。 | `Sources/SoloPMApp/SoloPMApp.swift` | `AppExperienceSourceTests.testSettingsSurfaceStartsWithStatusOverviewForCoreOperationalAreas`, `AppExperienceSourceTests.testAppearanceSelectionIsConfiguredOnlyFromSettings`, `AppExperienceSourceTests.testProjectBoardSidebarAndToolbarDoNotHostThemeControls` |
+| Settings overview / Theme | macOS app menuまたはmenu bar panelからSettingsを開き、Status OverviewとTheme segmentをSettings内へ集約する。Project Boardのサイドバー下/右上にはTheme/Settings controlを置かない。 | `Sources/SoloPMApp/SoloPMApp.swift` | `AppExperienceSourceTests.testSettingsSurfaceStartsWithStatusOverviewForCoreOperationalAreas`, `AppExperienceSourceTests.testAppearanceSelectionIsConfiguredOnlyFromSettings`, `AppExperienceSourceTests.testProjectBoardSidebarAndToolbarDoNotHostThemeControls` |
 | AI Provider readiness row | Provider picker直下に選択中providerの状態、smoke readiness、次の操作を表示し、API keyやlocal executionの不足を詳細field前に分かるようにする。 | `Sources/SoloPMApp/SoloPMApp.swift` | `AppExperienceSourceTests.testAISettingsTabShowsSelectedProviderReadinessBeforeProviderFields` |
 | AI Provider readiness summary | AI tab内に全providerの状態を短いsummaryとして表示し、provider切替なしでKeychain/API/local executionの不足を把握できるようにする。 | `Sources/SoloPMApp/SoloPMApp.swift`, `Sources/SoloPMCore/App/AppSettings.swift` | `AppExperienceSourceTests.testAISettingsTabShowsSelectedProviderReadinessBeforeProviderFields`, `AppSettingsTests.testAppSettingsViewModelBuildsProviderReadinessRowsWithoutSecrets` |
 | AI provider設定 | provider pickerの選択を自動保存し、選択中providerのfieldだけを表示する。 | `Sources/SoloPMApp/SoloPMApp.swift`, `Sources/SoloPMCore/App/AppSettings.swift`, `Sources/SoloPMCore/App/LLMProviderCatalog.swift` | `AppExperienceSourceTests.testAISettingsTabShowsOnlySelectedProviderFields`, `AppSettingsTests.testAppSettingsViewModelPersistsProviderSelectionWhenSelected` |

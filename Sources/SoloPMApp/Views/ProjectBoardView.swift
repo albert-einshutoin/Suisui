@@ -107,12 +107,6 @@ struct ProjectBoardView: View {
                     } label: {
                         Label("Voice Command", systemImage: "mic")
                     }
-
-                    SettingsLink {
-                        Label("Settings", systemImage: "gearshape")
-                    }
-                    .keyboardShortcut(",", modifiers: [.command])
-                    .help("Open Settings")
                 }
             }
             .inspector(isPresented: inspectorBinding) {

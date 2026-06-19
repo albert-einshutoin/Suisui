@@ -155,6 +155,8 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(sidebarSource.contains("Show Archived"))
         XCTAssertTrue(sidebarSource.contains("Add Project"))
+        XCTAssertFalse(sidebarSource.contains("SettingsLink"))
+        XCTAssertFalse(sidebarSource.contains("gearshape"))
         XCTAssertFalse(sidebarSource.contains("Theme"))
         XCTAssertFalse(sidebarSource.contains("Appearance"))
         XCTAssertFalse(sidebarSource.contains("SoloPMAppearancePreference"))
@@ -174,7 +176,10 @@ final class AppExperienceSourceTests: XCTestCase {
         let inspectorStart = try XCTUnwrap(boardSource.range(of: ".inspector(isPresented: inspectorBinding)"))
         let toolbarSource = String(boardSource[toolbarStart.lowerBound..<inspectorStart.lowerBound])
 
-        XCTAssertTrue(toolbarSource.contains("SettingsLink"))
+        XCTAssertFalse(toolbarSource.contains("SettingsLink"))
+        XCTAssertFalse(toolbarSource.contains("gearshape"))
+        XCTAssertFalse(toolbarSource.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
+        XCTAssertFalse(toolbarSource.contains("Open Settings"))
         XCTAssertFalse(toolbarSource.contains("Theme"))
         XCTAssertFalse(toolbarSource.contains("Appearance"))
         XCTAssertFalse(toolbarSource.contains("SoloPMAppearancePreference"))
@@ -346,12 +351,15 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardExposesPrimaryCRUDKeyboardShortcuts() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
         XCTAssertTrue(source.contains(".keyboardShortcut(\"n\", modifiers: [.command])"))
         XCTAssertTrue(source.contains(".keyboardShortcut(\"n\", modifiers: [.command, .shift])"))
-        XCTAssertTrue(source.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
         XCTAssertTrue(source.contains(".help(\"Add a project\")"))
-        XCTAssertTrue(source.contains(".help(\"Open Settings\")"))
+        XCTAssertFalse(source.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
+        XCTAssertFalse(source.contains(".help(\"Open Settings\")"))
+        XCTAssertTrue(appSource.contains("CommandGroup(replacing: .appSettings)"))
+        XCTAssertTrue(appSource.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
     }
 
     func testInlineTaskComposerExposesKeyboardAndVoiceOverCreateAnchors() throws {

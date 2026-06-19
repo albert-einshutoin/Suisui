@@ -2,7 +2,7 @@
 
 Generated with `script/capture_ui_evidence.sh`.
 
-- Generated at: `2026-06-19T01:37:09Z`
+- Generated at: `2026-06-19T09:26:36Z`
 - App bundle: `dist/SoloPM.app`
 - Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`
 - Seed data: local `Launch Readiness` project with planned, in-progress, and blocked task cards plus deterministic MCP registration rows

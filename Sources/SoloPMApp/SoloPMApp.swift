@@ -28,6 +28,14 @@ struct SoloPM: App {
                 .preferredColorScheme(effectiveAppearancePreference.colorScheme)
         }
         .defaultSize(width: 1180, height: 760)
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                SettingsLink {
+                    Label("Settings...", systemImage: "gearshape")
+                }
+                .keyboardShortcut(",", modifiers: [.command])
+            }
+        }
 
         Window("Voice Command", id: "voice-capture") {
             VoiceCaptureView(viewModel: AppRuntimeFactory.makeVoiceCaptureViewModel())
