@@ -6,12 +6,12 @@ Do not set `Status: passed` until every item below is verified on the signed or 
 
 ## Release Candidate Context
 
-- macOS version:
+- macOS version: macOS 26.5
 - App build: `0.1.0 (1)`
 - Bundle identifier: `dev.solopm.app`
 - Checked by:
-- Check date:
-- Evidence source: `dist/SoloPM.app` release-candidate manual pass
+- Check date: 2026-06-19
+- Evidence source: `dist/SoloPM.app manual VoiceOver pass`
 
 ## Setup
 
@@ -42,8 +42,6 @@ Do not set `Status: passed` until every item below is verified on the signed or 
 
 ## Completion Instructions
 
-1. Replace `Status: pending` with `Status: passed`.
+1. Run this script with `--passed --checked-by NAME --confirm-manual-voiceover-pass` only after the manual pass.
 2. Remove all `pending` and unchecked `[ ]` markers.
-3. Fill every Release Candidate Context field.
-4. Keep concrete notes for any warning that was accepted for release.
-5. Rerun `./script/release_readiness_report.sh` and confirm the VoiceOver section is green.
+3. Rerun `./script/release_readiness_report.sh` and confirm the VoiceOver section is green.

@@ -525,6 +525,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testVoiceOverEvidenceTemplateCapturesReleaseCandidateContextAndFailureNotes() throws {
         let evidence = try readPackageFile("docs/release/evidence/accessibility-voiceover.md")
+        let generator = try readPackageFile("script/create_voiceover_evidence.sh")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
 
         XCTAssertTrue(evidence.contains("Status: pending"))
@@ -546,6 +547,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(evidence.contains("- Follow-up source/test link:"))
         XCTAssertTrue(evidence.contains("## Completion Instructions"))
         XCTAssertTrue(evidence.contains("Remove all `pending` and unchecked `[ ]` markers."))
+        XCTAssertTrue(generator.contains("usage:"))
+        XCTAssertTrue(generator.contains("VOICEOVER_STATUS=\"pending\""))
+        XCTAssertTrue(generator.contains("--confirm-manual-voiceover-pass"))
+        XCTAssertTrue(generator.contains("Project navigation: passed"))
+        XCTAssertTrue(generator.contains("No unlabeled primary CRUD controls: passed"))
+        XCTAssertTrue(generator.contains("Status: passed"))
+        XCTAssertTrue(generator.contains("Status: pending"))
+        XCTAssertTrue(generator.contains("BUNDLE_IDENTIFIER"))
+        XCTAssertTrue(generator.contains("CURRENT_PROJECT_VERSION"))
+        XCTAssertTrue(generator.contains("MARKETING_VERSION"))
         XCTAssertTrue(phase.contains("[x] `release_readiness_report.sh` はVoiceOver証跡のrelease-candidate context空欄/テンプレート値をblockerにする。"))
         XCTAssertTrue(phase.contains("[x] `docs/release/evidence/accessibility-voiceover.md` は実機確認者がmacOS/build/checked-by/failure notesを埋められる形にする。"))
     }

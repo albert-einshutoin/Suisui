@@ -147,6 +147,13 @@ script/capture_ui_evidence.sh
 
 Then replace `docs/release/evidence/accessibility-voiceover.md` with the real VoiceOver pass for the same release-candidate app. The final file must use `Status: passed`, complete the release-candidate context fields, include the Project navigation -> Project board detail -> Open task -> Status controls -> Task inspector path, and remove all pending/template language.
 
+Use the generator to avoid stale bundle/build metadata:
+
+```bash
+./script/create_voiceover_evidence.sh --pending
+./script/create_voiceover_evidence.sh --passed --checked-by "Reviewer Name" --confirm-manual-voiceover-pass
+```
+
 12. final readiness report
 
 ```bash

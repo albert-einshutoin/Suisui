@@ -1974,8 +1974,75 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("Draft watchlist: `2026-07-28`"))
         XCTAssertTrue(checklist.contains("script/capture_ui_evidence.sh"))
         XCTAssertTrue(checklist.contains("docs/release/evidence/accessibility-voiceover.md"))
+        XCTAssertTrue(checklist.contains("./script/create_voiceover_evidence.sh --pending"))
+        XCTAssertTrue(checklist.contains("./script/create_voiceover_evidence.sh --passed"))
+        XCTAssertTrue(checklist.contains("--confirm-manual-voiceover-pass"))
         XCTAssertTrue(checklist.contains("Project navigation -> Project board detail -> Open task -> Status controls -> Task inspector"))
         XCTAssertTrue(checklist.contains("./script/release_readiness_report.sh"))
+    }
+
+    func testVoiceOverEvidenceGeneratorWritesPendingAndPassedEvidence() throws {
+        let pendingURL = packageRoot()
+            .appendingPathComponent(".build/test-voiceover-evidence-pending.md")
+        let passedURL = packageRoot()
+            .appendingPathComponent(".build/test-voiceover-evidence-passed.md")
+        defer {
+            try? FileManager.default.removeItem(at: pendingURL)
+            try? FileManager.default.removeItem(at: passedURL)
+        }
+
+        let pendingResult = try runScript(
+            "script/create_voiceover_evidence.sh",
+            arguments: ["--pending", "--output", pendingURL.path]
+        )
+
+        XCTAssertEqual(pendingResult.exitCode, 0, pendingResult.output)
+        let pendingEvidence = try String(contentsOf: pendingURL, encoding: .utf8)
+        XCTAssertTrue(pendingEvidence.contains("Status: pending"))
+        XCTAssertTrue(pendingEvidence.contains("- App build: `0.1.0 (1)`"))
+        XCTAssertTrue(pendingEvidence.contains("- Bundle identifier: `dev.solopm.app`"))
+        XCTAssertTrue(pendingEvidence.contains("- [ ] Project navigation"))
+        XCTAssertTrue(pendingEvidence.contains("Do not set `Status: passed` until every item below is verified"))
+
+        let unsafePassedResult = try runScript(
+            "script/create_voiceover_evidence.sh",
+            arguments: ["--passed", "--checked-by", "Release reviewer", "--output", passedURL.path]
+        )
+        XCTAssertNotEqual(unsafePassedResult.exitCode, 0)
+        XCTAssertTrue(unsafePassedResult.output.contains("--confirm-manual-voiceover-pass is required with --passed"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
+        let passedResult = try runScript(
+            "script/create_voiceover_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "Release reviewer",
+                "--macos-version", "macOS 15.5",
+                "--check-date", "2026-06-19",
+                "--output", passedURL.path,
+                "--confirm-manual-voiceover-pass"
+            ]
+        )
+
+        XCTAssertEqual(passedResult.exitCode, 0, passedResult.output)
+        let passedEvidence = try String(contentsOf: passedURL, encoding: .utf8)
+        XCTAssertTrue(passedEvidence.contains("Status: passed"))
+        XCTAssertTrue(passedEvidence.contains("- App build: `0.1.0 (1)`"))
+        XCTAssertTrue(passedEvidence.contains("- Bundle identifier: `dev.solopm.app`"))
+        XCTAssertTrue(passedEvidence.contains("- Checked by: Release reviewer"))
+        XCTAssertTrue(passedEvidence.contains("- Check date: 2026-06-19"))
+        XCTAssertTrue(passedEvidence.contains("- Project navigation: passed"))
+        XCTAssertTrue(passedEvidence.contains("- Project board detail: passed"))
+        XCTAssertTrue(passedEvidence.contains("- Open task: passed"))
+        XCTAssertTrue(passedEvidence.contains("- Status controls: passed"))
+        XCTAssertTrue(passedEvidence.contains("- Task inspector: passed"))
+        XCTAssertTrue(passedEvidence.contains("- Save Changes: passed"))
+        XCTAssertTrue(passedEvidence.contains("- Delete Task confirmation: passed"))
+        XCTAssertTrue(passedEvidence.contains("- No keyboard trap: passed"))
+        XCTAssertTrue(passedEvidence.contains("- No unlabeled primary CRUD controls: passed"))
+        XCTAssertFalse(passedEvidence.localizedCaseInsensitiveContains("pending"))
+        XCTAssertFalse(passedEvidence.contains("- [ ]"))
+        XCTAssertFalse(passedEvidence.localizedCaseInsensitiveContains("placeholder"))
     }
 
     func testReleaseReadinessReportAggregatesRuntimeMockScanTasksAndPreflight() throws {
