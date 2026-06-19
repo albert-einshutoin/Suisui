@@ -336,6 +336,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(command.contains("# Fill \(worksheetURL.path) while reviewing, then replace every placeholder below."))
         XCTAssertTrue(command.contains("REPO_ROOT="))
         XCTAssertTrue(command.contains("cd \"$REPO_ROOT\""))
+        XCTAssertTrue(command.contains("EXPECTED_SOURCE_COMMIT=\(currentShortCommit)"))
+        XCTAssertTrue(command.contains("CURRENT_SOURCE_COMMIT=\"$(git rev-parse --short HEAD 2>/dev/null || printf unknown)\""))
+        XCTAssertTrue(command.contains("TRACKED_SOURCE_STATUS=\"$(git status --porcelain --untracked-files=no)\""))
+        XCTAssertTrue(command.contains("release evidence command requires a clean tracked source tree"))
+        XCTAssertTrue(command.contains("release evidence command was generated for source commit"))
+        XCTAssertTrue(command.contains("Rerun ./script/prepare_release_machine_evidence.sh for this release candidate."))
         XCTAssertTrue(command.contains("source packaging/app_metadata.env"))
         XCTAssertTrue(command.contains("SOLOPM_RELEASE_ARTIFACT_SHA256_FILE=\"dist/releases/SoloPM-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256\""))
         XCTAssertTrue(command.contains("./script/create_release_evidence.sh --force \\"))
@@ -351,6 +357,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(command.contains("--checked-by \"<reviewer name>\" \\"))
         XCTAssertTrue(command.contains("Launch at Login toggle on/off"))
         XCTAssertTrue(command.contains("Sparkle appcast metadata"))
+
+        let checklist = try readPackageFile("docs/release/checklist.md")
+        XCTAssertTrue(checklist.contains("The generated release evidence command requires a clean tracked source tree, pins the source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit."))
+
+        let phase = try readPackageFile("tasks/Phase10-ReleaseReadinessRuntime.md")
+        XCTAssertTrue(phase.contains("[x] `script/prepare_release_machine_evidence.sh` pins `.tmp/release-machine/create-release-evidence-command.sh` to a clean tracked source tree and the source commit it was generated for"))
     }
 
     func testLocalVisualQAArtifactsAndMacMetadataAreIgnored() throws {
