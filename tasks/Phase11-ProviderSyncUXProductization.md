@@ -218,6 +218,7 @@
   - [x] `script/create_voiceover_evidence.sh --capture-runtime-ax-smoke` は手動VoiceOver証跡の作成時に同じrelease候補のruntime AX smoke OK行を自動取得し、古いコピー済みcountsでrelease readyを偽らない。
   - [x] `script/prepare_voiceover_review_candidate.sh` は隔離DBにVoiceOver確認用Project/各StatusのTask/Artifactをseedし、`SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION` 付きで同じrelease候補を開ける。
   - [x] `script/prepare_voiceover_review_candidate.sh` は `.tmp/voiceover-review/create-evidence-command.sh` を生成し、同じ候補DB/Project IDを使った手動VoiceOver証跡コマンドをoperatorがplaceholder置換して実行できる。
+  - [x] `script/prepare_voiceover_review_candidate.sh` pins `.tmp/voiceover-review/create-evidence-command.sh` to a clean tracked source tree and the source commit it was generated for, and the generated command exits before writing evidence if the release candidate tree is dirty or the commit has changed.
   - [ ] 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。
 - [x] `script/capture_ui_evidence.sh` は一時HOME、seed済みProject board、Light/Dark/System切替、window captureを使う。
   - [x] `capture_ui_evidence.sh` はcapture前にappを前面化し、黒画面/低情報量PNGをrelease evidenceとして残さず失敗させる。
@@ -236,6 +237,7 @@
 - [x] `script/create_competitor_hands_on_evidence.sh --passed` は手動確認済みの具体メモから `docs/product/competitor-benchmark.md` の `## Hands-On Findings` も同時生成する。
 - [x] 競合hands-on証跡はmacOS/browser/app version、account tier、paid trial有無を含む環境contextがない場合release readyにしない。
 - [x] `script/create_competitor_hands_on_evidence.sh --pending` は `.tmp/competitor-hands-on/create-evidence-command.sh` を生成し、operatorがplaceholderを具体観測へ置換して同じoutput/benchmark pathでpassed証跡を作れる。
+- [x] `script/create_competitor_hands_on_evidence.sh --pending` pins `.tmp/competitor-hands-on/create-evidence-command.sh` to a clean tracked source tree and the source commit it was generated for, and the generated command exits before writing evidence if the release candidate tree is dirty or the commit has changed.
 - [x] `script/create_competitor_hands_on_evidence.sh --pending` は `.tmp/competitor-hands-on/hands-on-worksheet.md` も生成し、2-4時間の手動レビュー中にcontext、クリックパス、測定、Ship/Defer/Rejectを取り漏らさない。
 - [x] release action summary は competitor hands-on の pending generator と `.tmp/competitor-hands-on/create-evidence-command.sh` を先に案内し、手動証跡を未完了のまま明確に修復できる。
 - [x] Notion: 柔軟だが個人PM用途では構造化と運用設計が重い。SoloPMは「音声/AIで構造化済みのProject/Taskに落とす」ことで差別化する。

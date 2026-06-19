@@ -188,6 +188,7 @@ Prepare the manual VoiceOver candidate with deterministic local data before star
 ```
 
 Replace every placeholder in that generated command with concrete observations from the manual pass before running it.
+The generated VoiceOver evidence command requires a clean tracked source tree, pins the source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit. Rerun `./script/prepare_voiceover_review_candidate.sh` after any source commit changes so the candidate database, release app, runtime AX smoke, and manual VoiceOver observations stay bound to the same release candidate.
 
 Then replace `docs/release/evidence/accessibility-voiceover.md` with the real VoiceOver pass for the same release-candidate app. The final file must use `Status: passed`, complete the release-candidate context fields, include the runtime AX smoke OK line with `unlabeledButtons=0`, `genericButtons=0`, `crudSignals=8/8`, and `focusPathSignals=6/6`, include the Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector path, and remove all pending/template language.
 
@@ -225,6 +226,7 @@ Update the benchmark document from worksheet/desk research to hands-on findings 
 Use the generator so pending evidence or a review worksheet cannot be mistaken for a pass. The passed generator writes both `docs/release/evidence/competitor-hands-on.md` and `docs/product/competitor-benchmark.md`, so the release report cannot be unblocked by updating only one of the two artifacts.
 
 Running the pending generator also writes `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/create-evidence-command.sh`. Fill the worksheet during the hands-on pass, then use that generated command after the pass so the final evidence keeps the same output paths and required fields. Replace every placeholder in that generated command with concrete observations before running it; the script rejects the generated placeholders if they are not edited.
+The generated competitor hands-on command requires a clean tracked source tree, pins the source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit. Rerun `./script/create_competitor_hands_on_evidence.sh --pending` after any source commit changes so the worksheet, evidence file, benchmark output, and release candidate stay aligned.
 
 Each competitor note and Ship / Defer / Reject delta must identify what was actually observed or decided during the hands-on pass. Boilerplate notes such as `Verified.`, `Passed.`, `OK`, `No issues`, or unedited `Concrete ... observation from the hands-on pass.` examples are rejected by both the generator and `release_readiness_report.sh`.
 

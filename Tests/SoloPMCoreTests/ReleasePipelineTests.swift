@@ -3130,6 +3130,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(generatedCommand.contains("# Fill \(worksheetURL.path) while reviewing, then replace every placeholder below."))
         XCTAssertTrue(generatedCommand.contains("REPO_ROOT="))
         XCTAssertTrue(generatedCommand.contains("cd \"$REPO_ROOT\""))
+        XCTAssertTrue(generatedCommand.contains("EXPECTED_SOURCE_COMMIT=\(currentShortCommit)"))
+        XCTAssertTrue(generatedCommand.contains("CURRENT_SOURCE_COMMIT=\"$(git rev-parse --short HEAD 2>/dev/null || printf unknown)\""))
+        XCTAssertTrue(generatedCommand.contains("TRACKED_SOURCE_STATUS=\"$(git status --porcelain --untracked-files=no)\""))
+        XCTAssertTrue(generatedCommand.contains("competitor hands-on evidence command requires a clean tracked source tree"))
+        XCTAssertTrue(generatedCommand.contains("competitor hands-on evidence command was generated for source commit"))
         XCTAssertTrue(generatedCommand.contains("./script/create_competitor_hands_on_evidence.sh --passed \\"))
         XCTAssertTrue(generatedCommand.contains("--checked-by \"<reviewer name>\" \\"))
         XCTAssertTrue(generatedCommand.contains("--environment \"<macOS/browser versions, competitor app/account tiers, and paid trial details>\" \\"))
@@ -3140,9 +3145,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(generatedCommand.contains("--output \(pendingURL.path) \\"))
         XCTAssertTrue(generatedCommand.contains("--benchmark-output \(benchmarkURL.path) \\"))
         XCTAssertTrue(generatedCommand.contains("--confirm-manual-hands-on"))
+        let releaseChecklist = try readPackageFile("docs/release/checklist.md")
+        XCTAssertTrue(releaseChecklist.contains("The generated competitor hands-on command requires a clean tracked source tree, pins the source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit."))
+        let phase11 = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+        XCTAssertTrue(phase11.contains("[x] `script/create_competitor_hands_on_evidence.sh --pending` pins `.tmp/competitor-hands-on/create-evidence-command.sh` to a clean tracked source tree and the source commit it was generated for"))
         let generatedCommandResult = try runTool(["bash", commandURL.path])
         XCTAssertNotEqual(generatedCommandResult.exitCode, 0)
-        XCTAssertTrue(generatedCommandResult.output.contains("--checked-by must name the actual reviewer"))
+        XCTAssertTrue(
+            generatedCommandResult.output.contains("competitor hands-on evidence command requires a clean tracked source tree")
+                || generatedCommandResult.output.contains("--checked-by must name the actual reviewer")
+        )
 
         let unsafePassedResult = try runScript(
             "script/create_competitor_hands_on_evidence.sh",
@@ -3890,8 +3902,14 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$seed_project_id\""))
         XCTAssertTrue(script.contains("evidence_command_file=\"$ROOT_DIR/.tmp/voiceover-review/create-evidence-command.sh\""))
         XCTAssertTrue(script.contains("write_voiceover_evidence_command()"))
+        XCTAssertTrue(script.contains("SOURCE_COMMIT=\"$(git -C \"$ROOT_DIR\" rev-parse --short HEAD 2>/dev/null || printf \"unknown\")\""))
         XCTAssertTrue(script.contains("REPO_ROOT=%q"))
         XCTAssertTrue(script.contains("cd \"$REPO_ROOT\""))
+        XCTAssertTrue(script.contains("EXPECTED_SOURCE_COMMIT=%q"))
+        XCTAssertTrue(script.contains("CURRENT_SOURCE_COMMIT=\"$(git rev-parse --short HEAD 2>/dev/null || printf unknown)\""))
+        XCTAssertTrue(script.contains("TRACKED_SOURCE_STATUS=\"$(git status --porcelain --untracked-files=no)\""))
+        XCTAssertTrue(script.contains("VoiceOver evidence command requires a clean tracked source tree"))
+        XCTAssertTrue(script.contains("VoiceOver evidence command was generated for source commit"))
         XCTAssertTrue(script.contains("--capture-runtime-ax-smoke"))
         XCTAssertTrue(script.contains("--project-navigation-note"))
         XCTAssertTrue(script.contains("Delete Task opens an inline inspector confirmation panel before deletion"))
@@ -3903,6 +3921,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("--no-launch"))
         XCTAssertTrue(script.contains("--skip-build"))
         XCTAssertFalse(script.contains(":memory:"))
+
+        let releaseChecklist = try readPackageFile("docs/release/checklist.md")
+        XCTAssertTrue(releaseChecklist.contains("The generated VoiceOver evidence command requires a clean tracked source tree, pins the source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit."))
+        let phase11 = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+        XCTAssertTrue(phase11.contains("[x] `script/prepare_voiceover_review_candidate.sh` pins `.tmp/voiceover-review/create-evidence-command.sh` to a clean tracked source tree and the source commit it was generated for"))
     }
 
     func testReleaseReadinessReportCanUseAutomatedPreflightEvidenceInsteadOfRerunningLocalProofGates() throws {

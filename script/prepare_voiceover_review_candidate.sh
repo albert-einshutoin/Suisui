@@ -19,6 +19,7 @@ DEFAULT_DATABASE_PATH="$ROOT_DIR/.tmp/voiceover-review/SoloPM-voiceover-review.s
 VOICEOVER_REVIEW_ARTIFACT_PATH="$ROOT_DIR/docs/release/evidence/accessibility-voiceover.md"
 TIMEOUT_SECONDS="${SOLOPM_VOICEOVER_REVIEW_TIMEOUT_SECONDS:-30}"
 SQLITE3="${SQLITE3:-sqlite3}"
+SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
 
 database_path="$DEFAULT_DATABASE_PATH"
 launch_app=1
@@ -106,6 +107,19 @@ write_voiceover_evidence_command() {
     printf '\n'
     printf 'REPO_ROOT=%q\n' "$ROOT_DIR"
     printf '%s\n' 'cd "$REPO_ROOT"'
+    printf '\n'
+    printf '%s\n' 'TRACKED_SOURCE_STATUS="$(git status --porcelain --untracked-files=no)"'
+    printf '%s\n' 'if [[ -n "$TRACKED_SOURCE_STATUS" ]]; then'
+    printf '%s\n' '  printf "BLOCKER: VoiceOver evidence command requires a clean tracked source tree. Commit or revert tracked source changes, then rerun ./script/prepare_voiceover_review_candidate.sh for this release candidate.\n" >&2'
+    printf '%s\n' '  exit 2'
+    printf '%s\n' 'fi'
+    printf '\n'
+    printf 'EXPECTED_SOURCE_COMMIT=%q\n' "$SOURCE_COMMIT"
+    printf '%s\n' 'CURRENT_SOURCE_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || printf unknown)"'
+    printf '%s\n' 'if [[ "$CURRENT_SOURCE_COMMIT" != "$EXPECTED_SOURCE_COMMIT" ]]; then'
+    printf '%s\n' '  printf "BLOCKER: VoiceOver evidence command was generated for source commit %s but current source commit is %s. Rerun ./script/prepare_voiceover_review_candidate.sh for this release candidate.\n" "$EXPECTED_SOURCE_COMMIT" "$CURRENT_SOURCE_COMMIT" >&2'
+    printf '%s\n' '  exit 2'
+    printf '%s\n' 'fi'
     printf '\n'
     printf '%s\n' './script/create_voiceover_evidence.sh --passed \'
     printf '%s\n' '  --checked-by "<reviewer name>" \'
