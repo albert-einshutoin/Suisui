@@ -106,6 +106,9 @@ final class AppExperienceSourceTests: XCTestCase {
         let settingsRange = try XCTUnwrap(appSource.range(of: "Settings {"))
         let appearanceRange = try XCTUnwrap(appSource.range(of: "SettingsAppearanceSection(appearancePreference: $appearancePreference)"))
         XCTAssertLessThan(settingsRange.lowerBound, appearanceRange.lowerBound)
+        XCTAssertTrue(appSource.contains("appearancePreference: $appearancePreference"))
+        XCTAssertTrue(appSource.contains("@Binding private var appearancePreference: SoloPMAppearancePreference"))
+        XCTAssertEqual(appSource.components(separatedBy: "@AppStorage(SoloPMAppearancePreference.storageKey)").count - 1, 1)
         XCTAssertFalse(appSource.contains(".accessibilityIdentifier(\"settings-theme-picker\")"))
         XCTAssertFalse(appSource.contains("Picker(\"Theme\", selection: $appearancePreference)"))
         XCTAssertFalse(boardSource.contains("AppearancePicker"))
@@ -188,6 +191,23 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(toolbarSource.contains(".pickerStyle(.segmented)"))
     }
 
+    func testMenuBarPanelDoesNotHostThemeControls() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let panelStart = try XCTUnwrap(appSource.range(of: "private struct MenuBarPanel"))
+        let panelEnd = try XCTUnwrap(appSource.range(of: "private struct SummaryRow"))
+        let panelSource = String(appSource[panelStart.lowerBound..<panelEnd.lowerBound])
+
+        XCTAssertTrue(panelSource.contains("SettingsLink"))
+        XCTAssertFalse(panelSource.contains("Theme"))
+        XCTAssertFalse(panelSource.contains("Appearance"))
+        XCTAssertFalse(panelSource.contains("SoloPMAppearancePreference"))
+        XCTAssertFalse(panelSource.contains("Picker(\"Theme\""))
+        XCTAssertFalse(panelSource.contains("Picker(\"Appearance\""))
+        XCTAssertFalse(panelSource.contains("settings-theme-picker"))
+        XCTAssertFalse(panelSource.contains("appearancePreference"))
+        XCTAssertFalse(panelSource.contains(".pickerStyle(.segmented)"))
+    }
+
     func testProjectBoardDropPayloadsAreValidatedByViewModel() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
@@ -216,9 +236,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appearanceSource.contains("static var environmentOverride: SoloPMAppearancePreference?"))
         XCTAssertTrue(appearanceSource.contains("var colorScheme: ColorScheme?"))
         XCTAssertTrue(appSource.contains("@AppStorage(SoloPMAppearancePreference.storageKey)"))
+        XCTAssertEqual(appSource.components(separatedBy: "@AppStorage(SoloPMAppearancePreference.storageKey)").count - 1, 1)
         XCTAssertTrue(appSource.contains("private var effectiveAppearancePreference: SoloPMAppearancePreference"))
         XCTAssertTrue(appSource.contains("SoloPMAppearancePreference.environmentOverride ?? appearancePreference"))
         XCTAssertTrue(appSource.contains(".preferredColorScheme(effectiveAppearancePreference.colorScheme)"))
+        XCTAssertTrue(appSource.contains("SettingsView("))
+        XCTAssertTrue(appSource.contains("appearancePreference: $appearancePreference"))
+        XCTAssertTrue(appSource.contains("@Binding private var appearancePreference: SoloPMAppearancePreference"))
         XCTAssertTrue(appSource.contains("SettingsAppearanceSection(appearancePreference: $appearancePreference)"))
         XCTAssertFalse(boardSource.contains("@AppStorage(SoloPMAppearancePreference.storageKey)"))
         XCTAssertFalse(boardSource.contains(".preferredColorScheme(appearancePreference.colorScheme)"))

@@ -47,7 +47,8 @@ struct SoloPM: App {
                 launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
                 watcherDiagnosticsSnapshot: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot(),
                 externalMCPViewModel: AppRuntimeFactory.makeExternalMCPSettingsViewModel(),
-                syncViewModel: AppRuntimeFactory.makeSyncSettingsViewModel()
+                syncViewModel: AppRuntimeFactory.makeSyncSettingsViewModel(),
+                appearancePreference: $appearancePreference
             )
             .preferredColorScheme(effectiveAppearancePreference.colorScheme)
         }
@@ -826,21 +827,23 @@ private struct SettingsView: View {
     @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
     @StateObject private var externalMCPViewModel: ExternalMCPSettingsViewModel
     @StateObject private var syncViewModel: SyncSettingsViewModel
+    @Binding private var appearancePreference: SoloPMAppearancePreference
     @State private var isConfirmingMCPRegistrationDeletion = false
-    @AppStorage(SoloPMAppearancePreference.storageKey) private var appearancePreference: SoloPMAppearancePreference = .system
 
     init(
         settingsViewModel: AppSettingsViewModel,
         launchAtLoginViewModel: LaunchAtLoginSettingsViewModel,
         watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot,
         externalMCPViewModel: ExternalMCPSettingsViewModel,
-        syncViewModel: SyncSettingsViewModel
+        syncViewModel: SyncSettingsViewModel,
+        appearancePreference: Binding<SoloPMAppearancePreference>
     ) {
         self.watcherDiagnosticsSnapshot = watcherDiagnosticsSnapshot
         _settingsViewModel = StateObject(wrappedValue: settingsViewModel)
         _launchAtLoginViewModel = StateObject(wrappedValue: launchAtLoginViewModel)
         _externalMCPViewModel = StateObject(wrappedValue: externalMCPViewModel)
         _syncViewModel = StateObject(wrappedValue: syncViewModel)
+        _appearancePreference = appearancePreference
     }
 
     var body: some View {
