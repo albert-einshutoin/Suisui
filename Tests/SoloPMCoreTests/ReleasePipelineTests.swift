@@ -2610,6 +2610,47 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("BLOCKER"))
     }
 
+    func testReleaseReadinessReportClassifiesUncheckedPhaseItems() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-phase-classification", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        - [ ] Implement durable local CRUD recovery for corrupted project rows.
+        - [ ] 手動確認: signed app の login item 設定をオン / オフできる。
+        """.write(to: tasksDirectory.appendingPathComponent("Phase11.md"), atomically: true, encoding: .utf8)
+        try "- [x] README template is ignored here\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+
+        let result = try runTool(["bash", reportURL.path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("Unchecked implementation phase items:"))
+        XCTAssertTrue(result.output.contains("Implement durable local CRUD recovery for corrupted project rows."))
+        XCTAssertTrue(result.output.contains("phase checklist still has unchecked implementation tasks"))
+        XCTAssertTrue(result.output.contains("Unchecked manual/release phase gates:"))
+        XCTAssertTrue(result.output.contains("signed app の login item 設定をオン / オフできる。"))
+        XCTAssertTrue(result.output.contains("phase checklist still has unchecked manual/release gates"))
+    }
+
     func testReleaseReadinessReportIncludesPhase11AndIgnoresFuturePhasePlanning() throws {
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-release-readiness-phase11-scope", isDirectory: true)

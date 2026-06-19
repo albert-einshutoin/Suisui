@@ -138,6 +138,22 @@ blocker() {
   printf "BLOCKER: %s\n" "$1"
 }
 
+append_line() {
+  local current="$1"
+  local line="$2"
+
+  if [[ -n "$current" ]]; then
+    current+=$'\n'
+  fi
+  current+="$line"
+  printf "%s" "$current"
+}
+
+is_manual_phase_gate() {
+  local item="$1"
+  grep -Eiq '(手動確認|実機|支援技術|VoiceOver|hands-on|2-4[[:space:]]*hour|2-4時間|Developer ID|notarization|notarized|公証|Gatekeeper|clean environment|clean 環境|別ユーザー|login item|signed app|signed / notarized|署名|release-machine|manual evidence)' <<<"$item"
+}
+
 assert_screenshot_has_visible_content() {
   local image_path="$1"
   /usr/bin/swift "$ROOT_DIR/script/ui_evidence_content_check.swift" "$image_path"
@@ -272,7 +288,8 @@ else
 fi
 
 section "Phase checklist blockers"
-phase_unchecked=""
+phase_implementation_unchecked=""
+phase_manual_unchecked=""
 if [[ -d "$ROOT_DIR/tasks" ]]; then
   while IFS= read -r phase_file; do
     phase_name="$(basename "$phase_file")"
@@ -280,10 +297,13 @@ if [[ -d "$ROOT_DIR/tasks" ]]; then
       Phase[0-9].md|Phase[0-9]-*.md|Phase10.md|Phase10-*.md|Phase11.md|Phase11-*.md)
         unchecked_items="$(rg -n --with-filename -- "- \\[ \\]" "$phase_file" || true)"
         if [[ -n "$unchecked_items" ]]; then
-          if [[ -n "$phase_unchecked" ]]; then
-            phase_unchecked+=$'\n'
-          fi
-          phase_unchecked+="$unchecked_items"
+          while IFS= read -r unchecked_item; do
+            if is_manual_phase_gate "$unchecked_item"; then
+              phase_manual_unchecked="$(append_line "$phase_manual_unchecked" "$unchecked_item")"
+            else
+              phase_implementation_unchecked="$(append_line "$phase_implementation_unchecked" "$unchecked_item")"
+            fi
+          done <<<"$unchecked_items"
         fi
         ;;
     esac
@@ -293,10 +313,19 @@ else
 fi
 readme_template_unchecked="$(rg -n -g '*.md' -- "- \\[ \\]" "$ROOT_DIR/tasks/README.md" || true)"
 
-if [[ -n "$phase_unchecked" ]]; then
-  printf "%s\n" "$phase_unchecked"
-  blocker "phase checklist still has unchecked release/manual gates"
-else
+if [[ -n "$phase_implementation_unchecked" ]]; then
+  printf "Unchecked implementation phase items:\n"
+  printf "%s\n" "$phase_implementation_unchecked"
+  blocker "phase checklist still has unchecked implementation tasks"
+fi
+
+if [[ -n "$phase_manual_unchecked" ]]; then
+  printf "Unchecked manual/release phase gates:\n"
+  printf "%s\n" "$phase_manual_unchecked"
+  blocker "phase checklist still has unchecked manual/release gates"
+fi
+
+if [[ -z "$phase_implementation_unchecked" && -z "$phase_manual_unchecked" ]]; then
   printf "OK: no unchecked items in release phase checklists (Phase0-Phase11)\n"
 fi
 
