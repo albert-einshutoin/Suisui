@@ -3785,6 +3785,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("- [x] Launch preflight: passed"))
         XCTAssertTrue(actionSummary.contains("- [x] Runtime accessibility preflight: passed"))
         XCTAssertTrue(actionSummary.contains("- [x] MCP compliance preflight: passed"))
+        XCTAssertTrue(actionSummary.contains("## Local Product Gate Status"))
+        XCTAssertTrue(actionSummary.contains("Local product gates"))
         XCTAssertFalse(actionSummary.contains("- Run: `SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh`"))
     }
 
@@ -4186,6 +4188,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Automated preflight evidence accepted"))
         XCTAssertTrue(script.contains("automated_preflight_context_value \"Generated at\""))
         XCTAssertTrue(script.contains("for required_gate in \"${AUTOMATED_PREFLIGHT_REQUIRED_GATES[@]}\""))
+        XCTAssertTrue(script.contains("## Local Product Gate Status"))
+        XCTAssertTrue(script.contains("write_local_product_gate_status"))
+        XCTAssertTrue(script.contains("Local product gates are green for this source commit"))
+        XCTAssertTrue(script.contains("Remaining gates are manual VoiceOver, competitor hands-on, and release-machine signing/notarization/Sparkle/Gatekeeper evidence."))
         XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh"))
         XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/release_readiness_report.sh"))
         XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/check_automated_release_preflight.sh"))
@@ -4214,6 +4220,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(checklist.contains("SOLOPM_RELEASE_ACTIONS_FILE=.tmp/release-actions.md ./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("The action summary groups remaining blockers into Automated Proof Gates, Manual VoiceOver, Competitor Hands-On, Release Machine, Phase Checklist, and Other buckets."))
+        XCTAssertTrue(checklist.contains("The action summary includes a Local Product Gate Status section so reviewers can distinguish current-commit local MCP/data/CRUD proof from manual and release-machine blockers."))
         XCTAssertTrue(checklist.contains("routes unchecked manual gates to Manual VoiceOver, Competitor Hands-On, Release Machine, Login Item Manual Check, or Manual Review"))
         XCTAssertTrue(checklist.contains("routes verifier blockers to Signing Configuration, Notarization, Sparkle / Appcast, Gatekeeper / Stapling, Release Evidence, Source Hygiene, or Local Inspection"))
         XCTAssertTrue(phase.contains("[x] `release_readiness_report.sh` は `SOLOPM_RELEASE_ACTIONS_FILE` 指定時に残blockerのoperator action summaryを書き出す。"))
@@ -4223,6 +4230,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] action summary は `Release Environment Blockers` に `verify_release_environment.sh` の `BLOCKER:` 明細を相対パス化して列挙し、機密っぽい値を転記しない。"))
         XCTAssertTrue(phase.contains("[x] action summary は release environment blocker を Signing Configuration / Notarization / Sparkle / Appcast / Gatekeeper / Release Evidence / Source Hygiene / Local Inspection に分類し"))
         XCTAssertTrue(phase.contains("[x] action summary は clean-tree automated preflight evidence が有効な場合、accepted evidence、source commit、generated at、passed gatesを表示し、再実行指示だけを出さない。"))
+        XCTAssertTrue(phase.contains("[x] action summary は Local Product Gate Status でcurrent commitのMCP/data/CRUD/local proofがgreenか、残りがmanual/release-machineかを明示する。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Manual VoiceOver Blockers` と `Competitor Hands-On Blockers` に手動証跡の不足項目を分離表示し、手動作業を完了扱いにしない。"))
         XCTAssertTrue(phase.contains("[x] action summary は未チェックの手動Phase項目を Manual VoiceOver / Competitor Hands-On / Release Machine / Login Item Manual Check / Manual Review に分類し"))
         XCTAssertTrue(phase.contains("[x] action summary は Release Machine blocker が残る場合、署名、notarization、package、appcast、release evidence、final preflight の順序付きコマンドを出す。"))

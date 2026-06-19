@@ -289,6 +289,65 @@ write_blocker_bucket_summary() {
   printf "\n"
 }
 
+has_runtime_product_source_blocker() {
+  local blocker_message
+
+  for blocker_message in "${BLOCKER_MESSAGES[@]}"; do
+    case "$blocker_message" in
+      *"runtime mock/fake/fixture scan failed"*|*"missing runtime source directory"*)
+        return 0
+        ;;
+    esac
+  done
+
+  return 1
+}
+
+has_local_product_gate_blocker() {
+  local blocker_message
+
+  for blocker_message in "${BLOCKER_MESSAGES[@]}"; do
+    case "$blocker_message" in
+      *"automated preflight"*|\
+      *"release CI preflight"*|\
+      *"local CRUD smoke"*|\
+      *"runtime accessible CRUD smoke"*|\
+      *"release Xcode preflight"*|\
+      *"release launch preflight"*|\
+      *"accessibility runtime preflight"*|\
+      *"MCP compliance"*)
+        return 0
+        ;;
+    esac
+  done
+
+  return 1
+}
+
+write_local_product_gate_status() {
+  printf "## Local Product Gate Status\n"
+  if automated_preflight_evidence_covers "Release CI" &&
+    ! has_local_product_gate_blocker &&
+    ! has_runtime_product_source_blocker; then
+    printf -- "- [x] Local product gates are green for this source commit.\n"
+    printf -- "- [x] Runtime source scan has no mock/fake/fixture/demo markers in SoloPM app targets.\n"
+    printf -- "- [x] MCP compliance, SQLite data CRUD, visible-app accessible CRUD, Xcode build, launch, and runtime AX proof are covered by accepted automated preflight evidence.\n"
+    printf -- "- [ ] Remaining gates are manual VoiceOver, competitor hands-on, and release-machine signing/notarization/Sparkle/Gatekeeper evidence.\n"
+  else
+    printf -- "- [ ] Local product gates are not fully proven for this source commit.\n"
+    if ! automated_preflight_evidence_covers "Release CI"; then
+      printf -- "- [ ] Automated preflight evidence is missing or invalid; run \`script/check_automated_release_preflight.sh\` on a clean tracked source tree.\n"
+    fi
+    if has_local_product_gate_blocker; then
+      printf -- "- [ ] One or more local proof gates still has blocker groups; inspect Current Blocker Groups before claiming MCP/data/CRUD readiness.\n"
+    fi
+    if has_runtime_product_source_blocker; then
+      printf -- "- [ ] Runtime source scan still has product-source blockers; remove runtime mock/fake/fixture/demo paths before release.\n"
+    fi
+  fi
+  printf "\n"
+}
+
 collect_release_environment_blockers() {
   local output="$1"
   local line
@@ -624,6 +683,8 @@ write_release_actions() {
     printf "\n"
 
     write_blocker_bucket_summary
+
+    write_local_product_gate_status
 
     if [[ -n "$phase_implementation_unchecked" || -n "$phase_manual_unchecked" ]]; then
       printf "## Phase Checklist Items\n"
