@@ -249,6 +249,60 @@ manual_checks_requested() {
     || "$SPARKLE_APPCAST_METADATA" == "true" ]]
 }
 
+review_notes_text() {
+  printf '%s\n' "${NOTES[@]}"
+}
+
+require_manual_note_proof_if_checked() {
+  local is_checked="$1"
+  local label="$2"
+  local pattern="$3"
+
+  if [[ "$is_checked" != "true" ]]; then
+    return
+  fi
+
+  if ! review_notes_text | grep -Eiq "$pattern"; then
+    printf "manual release evidence note missing proof for %s\n" "$label" >&2
+    exit 2
+  fi
+}
+
+require_manual_note_proofs() {
+  require_manual_note_proof_if_checked \
+    "$RELEASE_MACHINE_LAUNCH" \
+    "release machine launch" \
+    'release[ -]?machine.*launch|launch.*release[ -]?machine|dist/solopm\.app'
+  require_manual_note_proof_if_checked \
+    "$CHECKSUM_VERIFICATION" \
+    "checksum verification" \
+    'checksum|sha-?256|shasum'
+  require_manual_note_proof_if_checked \
+    "$CLEAN_DMG_INSTALL" \
+    "clean DMG install" \
+    'clean.*dmg|dmg.*clean'
+  require_manual_note_proof_if_checked \
+    "$APPLICATIONS_FOLDER_INSTALL" \
+    "Applications folder install" \
+    'applications|/applications'
+  require_manual_note_proof_if_checked \
+    "$GATEKEEPER_ACCEPTED" \
+    "Gatekeeper acceptance" \
+    'gatekeeper|spctl'
+  require_manual_note_proof_if_checked \
+    "$CLEAN_ENVIRONMENT_LAUNCH" \
+    "clean environment launch" \
+    'clean.*environment.*launch|clean.*user.*launch|clean.*vm.*launch|first.*launch'
+  require_manual_note_proof_if_checked \
+    "$LOGIN_ITEM_TOGGLE" \
+    "login item toggle" \
+    'login[ -]?item|launch[ -]?at[ -]?login'
+  require_manual_note_proof_if_checked \
+    "$SPARKLE_APPCAST_METADATA" \
+    "Sparkle appcast metadata" \
+    'sparkle.*appcast|appcast.*sparkle'
+}
+
 artifact_path_for_compare() {
   local artifact_path="$1"
   if [[ "$artifact_path" == "$ROOT_DIR/"* ]]; then
@@ -495,6 +549,7 @@ if manual_checks_requested; then
       exit 2
     fi
   done
+  require_manual_note_proofs
 fi
 require_release_signing_context
 require_release_sparkle_context

@@ -401,6 +401,70 @@ is_boilerplate_review_note() {
   esac
 }
 
+release_evidence_review_notes_text() {
+  local value
+  local index=0
+
+  while value="$(plutil -extract "review.notes.$index" raw -o - "$RELEASE_EVIDENCE_FILE" 2>/dev/null)"; do
+    printf '%s\n' "$value"
+    index=$((index + 1))
+  done
+}
+
+require_evidence_note_proof_if_checked() {
+  local key_path="$1"
+  local label="$2"
+  local pattern="$3"
+  local value
+
+  if ! value="$(plutil -extract "$key_path" raw -o - "$RELEASE_EVIDENCE_FILE" 2>/dev/null)"; then
+    return
+  fi
+
+  if [[ "$value" != "true" ]]; then
+    return
+  fi
+
+  if ! release_evidence_review_notes_text | grep -Eiq "$pattern"; then
+    add_blocker "release evidence review notes missing proof for $label: $key_path"
+  fi
+}
+
+require_evidence_manual_note_proofs() {
+  require_evidence_note_proof_if_checked \
+    "manualChecks.releaseMachineLaunch" \
+    "release machine launch" \
+    'release[ -]?machine.*launch|launch.*release[ -]?machine|dist/solopm\.app'
+  require_evidence_note_proof_if_checked \
+    "manualChecks.checksumVerification" \
+    "checksum verification" \
+    'checksum|sha-?256|shasum'
+  require_evidence_note_proof_if_checked \
+    "manualChecks.cleanDmgInstall" \
+    "clean DMG install" \
+    'clean.*dmg|dmg.*clean'
+  require_evidence_note_proof_if_checked \
+    "manualChecks.applicationsFolderInstall" \
+    "Applications folder install" \
+    'applications|/applications'
+  require_evidence_note_proof_if_checked \
+    "manualChecks.gatekeeperAccepted" \
+    "Gatekeeper acceptance" \
+    'gatekeeper|spctl'
+  require_evidence_note_proof_if_checked \
+    "manualChecks.cleanEnvironmentLaunch" \
+    "clean environment launch" \
+    'clean.*environment.*launch|clean.*user.*launch|clean.*vm.*launch|first.*launch'
+  require_evidence_note_proof_if_checked \
+    "manualChecks.loginItemToggle" \
+    "login item toggle" \
+    'login[ -]?item|launch[ -]?at[ -]?login'
+  require_evidence_note_proof_if_checked \
+    "manualChecks.sparkleAppcastMetadata" \
+    "Sparkle appcast metadata" \
+    'sparkle.*appcast|appcast.*sparkle'
+}
+
 require_evidence_concrete_manual_environment() {
   local value
 
@@ -748,6 +812,7 @@ if [[ -f "$RELEASE_EVIDENCE_FILE" ]]; then
     require_evidence_non_empty "review.checkedBy" "reviewer"
     require_evidence_non_empty "review.checkedAt" "review timestamp"
     require_evidence_review_notes
+    require_evidence_manual_note_proofs
   else
     add_blocker "release evidence is not valid JSON or plist: $RELEASE_EVIDENCE_FILE"
   fi

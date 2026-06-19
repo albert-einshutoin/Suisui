@@ -87,12 +87,13 @@ export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERS
   --sparkle-appcast-metadata \
   --manual-environment "macOS version, hardware, clean user/install notes" \
   --checked-by "$USER" \
-  --note "Verified launch, Gatekeeper, clean DMG install, Applications install, login item toggle, checksum, and Sparkle appcast on macOS 15.5 arm64 signed build."
+  --note "Verified release-machine launch from dist/SoloPM.app, checksum SHA-256, clean DMG install, Applications install, Gatekeeper acceptance, clean environment launch, login item toggle, and Sparkle appcast metadata on macOS 15.5 arm64 signed build."
 ```
 
 Set manual check flags only for that signed and notarized build. Each flag maps to a Manual Checks bullet below; do not set a flag unless that exact check was performed on the same release artifact. Record the OS, hardware, install location, and clean user/profile details in `--manual-environment`.
 Do not leave the template text in `--manual-environment`; `create_release_evidence.sh` and `verify_release_environment.sh` reject blank, placeholder, sample, example, todo, or replace-style environment descriptions.
 Keep `--checked-by` and `--note` concrete as well; blank reviewer names, blank review notes, and boilerplate notes such as "Manual checks completed" are rejected so the evidence identifies who reviewed the release and why the checks were accepted; manual release flags require an explicit review note.
+The evidence scripts reject manual flags whose `--note` does not mention the matching observed proof.
 The source git commit is recorded in release evidence and checked against package evidence during final preflight, so regenerate the signed package and evidence after any source commit changes.
 Use `packaging/release-evidence.example.json` only as the schema template; do not copy it as final evidence without running the script.
 
