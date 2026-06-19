@@ -155,6 +155,12 @@ Run the accessibility preflight before the manual VoiceOver pass. The source-onl
 
 The runtime preflight is intentionally stricter than a process/window check: it scans visible windows by AX role and fails if the best release-candidate window has fewer than the minimum buttons, text fields, or static texts, because a low-information AX tree is not enough evidence for the manual VoiceOver pass.
 
+When reviewing a local release candidate in a visible macOS session, include the runtime AX smoke in the readiness report:
+
+```bash
+SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT=1 ./script/release_readiness_report.sh
+```
+
 Then replace `docs/release/evidence/accessibility-voiceover.md` with the real VoiceOver pass for the same release-candidate app. The final file must use `Status: passed`, complete the release-candidate context fields, include the Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector path, and remove all pending/template language.
 
 Use the generator to avoid stale bundle/build metadata:

@@ -12,6 +12,7 @@ UI_SCREENSHOT_MIN_WIDTH=640
 UI_SCREENSHOT_MIN_HEIGHT=420
 VOICEOVER_EVIDENCE_RELATIVE="docs/release/evidence/accessibility-voiceover.md"
 ACCESSIBILITY_PREFLIGHT_RELATIVE="script/check_accessibility_preflight.sh"
+ACCESSIBILITY_RUNTIME_PREFLIGHT="${SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT:-0}"
 COMPETITOR_EVIDENCE_RELATIVE="docs/release/evidence/competitor-hands-on.md"
 MCP_EVIDENCE_RELATIVE="docs/release/evidence/mcp-inspector.md"
 MCP_COMPLIANCE_RELATIVE="script/verify_mcp_compliance.sh"
@@ -347,6 +348,10 @@ normalize_voiceover_context_value() {
 if [[ ! -x "$accessibility_preflight_script" ]]; then
   voiceover_blocker "missing executable accessibility source preflight: $ACCESSIBILITY_PREFLIGHT_RELATIVE"
 else
+  if [[ "$ACCESSIBILITY_RUNTIME_PREFLIGHT" != "0" && "$ACCESSIBILITY_RUNTIME_PREFLIGHT" != "1" ]]; then
+    voiceover_blocker "SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT must be 0 or 1"
+  fi
+
   set +e
   accessibility_preflight_output="$("$accessibility_preflight_script" --source-only 2>&1)"
   accessibility_preflight_status=$?
@@ -359,6 +364,24 @@ else
     voiceover_blocker "accessibility source preflight failed"
   else
     printf "%s\n" "$accessibility_preflight_output"
+  fi
+
+  if [[ "$ACCESSIBILITY_RUNTIME_PREFLIGHT" == "1" ]]; then
+    set +e
+    accessibility_runtime_preflight_output="$("$accessibility_preflight_script" --runtime 2>&1)"
+    accessibility_runtime_preflight_status=$?
+    set -e
+
+    if [[ "$accessibility_runtime_preflight_status" -ne 0 ]]; then
+      if [[ -n "$accessibility_runtime_preflight_output" ]]; then
+        printf "%s\n" "$accessibility_runtime_preflight_output"
+      fi
+      voiceover_blocker "accessibility runtime preflight failed"
+    else
+      printf "%s\n" "$accessibility_runtime_preflight_output"
+    fi
+  else
+    printf "INFO: accessibility runtime preflight skipped; set SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT=1 to include the visible AX smoke check.\n"
   fi
 fi
 if [[ ! -f "$voiceover_evidence_file" ]]; then

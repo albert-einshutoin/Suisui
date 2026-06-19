@@ -154,8 +154,12 @@ while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do
   sleep 1
 done
 
-set +e
-ax_output="$(/usr/bin/osascript - "$APP_NAME" "$MIN_AX_BUTTONS" "$MIN_AX_TEXT_FIELDS" "$MIN_AX_STATIC_TEXTS" <<'APPLESCRIPT' 2>&1
+ax_deadline=$((SECONDS + TIMEOUT_SECONDS))
+ax_output=""
+ax_status=1
+while true; do
+  set +e
+  ax_output="$(/usr/bin/osascript - "$APP_NAME" "$MIN_AX_BUTTONS" "$MIN_AX_TEXT_FIELDS" "$MIN_AX_STATIC_TEXTS" <<'APPLESCRIPT' 2>&1
 on run argv
   set appName to item 1 of argv
   set minButtons to (item 2 of argv) as integer
@@ -220,11 +224,23 @@ on run argv
 end run
 APPLESCRIPT
 )"
-ax_status=$?
-set -e
+  ax_status=$?
+  set -e
+
+  if [[ "$ax_status" -eq 0 ]]; then
+    break
+  fi
+
+  if [[ "$SECONDS" -ge "$ax_deadline" ]]; then
+    break
+  fi
+
+  sleep 1
+done
 
 if [[ "$ax_status" -ne 0 ]]; then
   printf '%s\n' "$ax_output" >&2
+  echo "BLOCKER: runtime AX smoke did not pass within ${TIMEOUT_SECONDS}s" >&2
   echo "BLOCKER: runtime AX smoke failed; grant Accessibility permission to Terminal/Codex and keep the Project Board window visible." >&2
   exit 1
 fi
