@@ -17,7 +17,7 @@ struct SoloPMCLI {
             fputs("\(error.message)\n", stderr)
             return error.exitCode
         } catch {
-            fputs("Unexpected error: \(error.localizedDescription)\n", stderr)
+            fputs("Unexpected error: SoloPM CLI failed unexpectedly.\n", stderr)
             return .runtimeFailure
         }
     }
@@ -48,7 +48,7 @@ struct SoloPMCLI {
             }
             return .success
         } catch {
-            fputs("local read failed: \(error.localizedDescription)\n", stderr)
+            fputs("local read failed: SoloPM local data could not be read.\n", stderr)
             return .runtimeFailure
         }
     }
@@ -62,7 +62,7 @@ struct SoloPMCLI {
             }
             return SoloPMCLIExitCode.planValidation(result)
         } catch {
-            fputs("plan validate failed: \(error.localizedDescription)\n", stderr)
+            fputs("plan validate failed: Action plan file could not be read or validated.\n", stderr)
             return .runtimeFailure
         }
     }

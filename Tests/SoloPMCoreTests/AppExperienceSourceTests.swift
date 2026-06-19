@@ -620,6 +620,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains("appendingPathComponent(\"SoloPM.sqlite\")"))
     }
 
+    func testCLIEntrypointUsesSanitizedRuntimeErrors() throws {
+        let cliSource = try readPackageFile("Sources/SoloPMCLI/SoloPMCLIEntrypoint.swift")
+
+        XCTAssertTrue(cliSource.contains("Unexpected error: SoloPM CLI failed unexpectedly."))
+        XCTAssertTrue(cliSource.contains("local read failed: SoloPM local data could not be read."))
+        XCTAssertTrue(cliSource.contains("plan validate failed: Action plan file could not be read or validated."))
+        XCTAssertFalse(cliSource.contains("error.localizedDescription"))
+    }
+
     func testMenuBarSummaryRefreshesFromRuntimeController() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
