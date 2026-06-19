@@ -39,6 +39,8 @@ COPYRIGHT="${COPYRIGHT:?COPYRIGHT is required}"
 BUILD_CONFIGURATION="${SOLOPM_BUILD_CONFIGURATION:-debug}"
 SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
 SPARKLE_PUBLIC_ED_KEY="${SOLOPM_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
+VERIFY_TIMEOUT_SECONDS="${SOLOPM_VERIFY_TIMEOUT_SECONDS:-12}"
+PROJECT_BOARD_WINDOW_NAME="${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}"
 
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
@@ -50,6 +52,11 @@ APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 
 cd "$ROOT_DIR"
+
+if [[ ! "$VERIFY_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$VERIFY_TIMEOUT_SECONDS" -lt 1 ]]; then
+  echo "SOLOPM_VERIFY_TIMEOUT_SECONDS must be a positive integer" >&2
+  exit 2
+fi
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
@@ -146,6 +153,52 @@ open_app() {
   /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 || true
 }
 
+wait_for_app_process() {
+  local deadline=$((SECONDS + VERIFY_TIMEOUT_SECONDS))
+  while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: $APP_NAME process did not appear within ${VERIFY_TIMEOUT_SECONDS}s" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+wait_for_project_board_window() {
+  local deadline=$((SECONDS + VERIFY_TIMEOUT_SECONDS))
+  local window_output=""
+  local window_status=1
+
+  while true; do
+    set +e
+    window_output="$(
+      SOLOPM_WINDOW_OWNER="$APP_NAME" \
+      SOLOPM_WINDOW_NAME="$PROJECT_BOARD_WINDOW_NAME" \
+      /usr/bin/swift "$ROOT_DIR/script/ui_evidence_window_metadata.swift" 2>&1
+    )"
+    window_status=$?
+    set -e
+
+    if [[ "$window_status" -eq 0 ]]; then
+      printf "OK: Project Board window visible (%s)\n" "$window_output"
+      return 0
+    fi
+
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      break
+    fi
+
+    sleep 1
+  done
+
+  if [[ -n "$window_output" ]]; then
+    printf "%s\n" "$window_output" >&2
+  fi
+  echo "BLOCKER: Project Board window was not visible within ${VERIFY_TIMEOUT_SECONDS}s" >&2
+  echo "NEXT: keep the main Project Board window visible and grant Screen Recording permission if window metadata is unavailable, then rerun ./script/build_and_run.sh --verify." >&2
+  return 1
+}
+
 case "$MODE" in
   --build-only|build)
     ;;
@@ -165,8 +218,8 @@ case "$MODE" in
     ;;
   --verify|verify)
     open_app
-    sleep 1
-    pgrep -x "$APP_NAME" >/dev/null
+    wait_for_app_process
+    wait_for_project_board_window
     ;;
   *)
     echo "usage: $0 [run|--build-only|--debug|--logs|--telemetry|--verify]" >&2

@@ -9,6 +9,19 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(script.contains("tell application \\\"$APP_NAME\\\" to activate"))
     }
 
+    func testVerifyModeRequiresVisibleProjectBoardWindow() throws {
+        let script = try readPackageFile("script/build_and_run.sh")
+
+        XCTAssertTrue(script.contains("SOLOPM_VERIFY_TIMEOUT_SECONDS"))
+        XCTAssertTrue(script.contains("PROJECT_BOARD_WINDOW_NAME=\"${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}\""))
+        XCTAssertTrue(script.contains("wait_for_project_board_window"))
+        XCTAssertTrue(script.contains("SOLOPM_WINDOW_OWNER=\"$APP_NAME\""))
+        XCTAssertTrue(script.contains("SOLOPM_WINDOW_NAME=\"$PROJECT_BOARD_WINDOW_NAME\""))
+        XCTAssertTrue(script.contains("script/ui_evidence_window_metadata.swift"))
+        XCTAssertTrue(script.contains("BLOCKER: Project Board window was not visible within"))
+        XCTAssertFalse(script.contains("sleep 1\n    pgrep -x \"$APP_NAME\" >/dev/null\n    ;;"))
+    }
+
     func testBundleDisablesWindowRestorationForPrimaryBoardLaunch() throws {
         let script = try readPackageFile("script/build_and_run.sh")
 

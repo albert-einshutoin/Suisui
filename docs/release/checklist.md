@@ -25,7 +25,10 @@ swift test
 
 ```bash
 SOLOPM_BUILD_CONFIGURATION=release ./script/build_and_run.sh --build-only
+SOLOPM_BUILD_CONFIGURATION=release ./script/build_and_run.sh --verify
 ```
+
+`--verify` must report a visible Project Board window, not only a running process.
 
 3. sign
 
