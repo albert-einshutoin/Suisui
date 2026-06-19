@@ -196,13 +196,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(toolbarSource.contains(".pickerStyle(.segmented)"))
     }
 
-    func testMenuBarPanelDoesNotHostThemeControls() throws {
+    func testMenuBarPanelDoesNotHostSettingsOrThemeControls() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let panelStart = try XCTUnwrap(appSource.range(of: "private struct MenuBarPanel"))
         let panelEnd = try XCTUnwrap(appSource.range(of: "private struct SummaryRow"))
         let panelSource = String(appSource[panelStart.lowerBound..<panelEnd.lowerBound])
 
-        XCTAssertTrue(panelSource.contains("SettingsLink"))
+        XCTAssertFalse(panelSource.contains("SettingsLink"))
+        XCTAssertFalse(panelSource.contains("gearshape"))
         XCTAssertFalse(panelSource.contains("Theme"))
         XCTAssertFalse(panelSource.contains("Appearance"))
         XCTAssertFalse(panelSource.contains("SoloPMAppearancePreference"))

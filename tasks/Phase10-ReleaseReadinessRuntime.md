@@ -981,6 +981,7 @@
 ### P10-125: Settings-only theme switching and mouse drag affordances stay discoverable
 
 - [x] Project Board の左サイドバーと右上ヘッダーから appearance / Settings control を削除し、Theme 変更は Settings 画面の `Theme` picker だけにする。
+- [x] MenuBarPanel の右上 Settings gear も削除し、Settings への導線は macOS app menu の `Settings...` / `Command+,` に集約する。
 - [x] Scene-level `.preferredColorScheme(effectiveAppearancePreference.colorScheme)` と Settings の同じ `@AppStorage` key を使い、通常画面ごとにテーマ状態が分岐しない。UI evidence capture時だけ `SOLOPM_APPEARANCE_PREFERENCE` でLight/Dark/Systemを明示できる。
 - [x] Kanban task card の drag operation は raw payload 文字列ではなく、タスクカードとして認識できる preview を表示する。
 - [x] `AppExperienceSourceTests` で Project Board 内に appearance control が残らず、Settings にだけ Theme picker があることを固定する。

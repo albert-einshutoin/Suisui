@@ -157,15 +157,9 @@ private struct MenuBarPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("SoloPM")
-                    .font(.headline)
-                Spacer()
-                SettingsLink {
-                    Label("Settings", systemImage: "gearshape")
-                }
-                .labelStyle(.iconOnly)
-            }
+            Text("SoloPM")
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
                 openWindow(id: "project-board")
