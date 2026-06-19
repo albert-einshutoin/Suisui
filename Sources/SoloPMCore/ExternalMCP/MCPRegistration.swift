@@ -451,7 +451,7 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             refreshRegistrationRows()
             errorMessage = nil
         } catch {
-            errorMessage = Self.storeErrorMessage(error)
+            errorMessage = Self.storeLoadErrorMessage(error)
         }
     }
 
@@ -553,9 +553,13 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         } catch let error as MCPEnvironmentTextError {
             errorMessage = Self.environmentErrorMessage(error)
         } catch let error as MCPRegistrationStoreError {
-            errorMessage = Self.storeErrorMessage(error)
-        } catch {
+            errorMessage = Self.storeSaveErrorMessage(error)
+        } catch let error as MCPRegistrationError {
             errorMessage = Self.connectionErrorMessage(error)
+        } catch let error as MCPClientError {
+            errorMessage = Self.connectionErrorMessage(error)
+        } catch {
+            errorMessage = Self.storeSaveErrorMessage(error)
         }
     }
 
@@ -574,9 +578,9 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
             applySelectedConnectionSnapshot()
             errorMessage = nil
         } catch let error as MCPRegistrationStoreError {
-            errorMessage = Self.storeErrorMessage(error)
+            errorMessage = Self.storeDeleteErrorMessage(error)
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.storeDeleteErrorMessage(error)
         }
     }
 
@@ -751,13 +755,13 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         case MCPClientError.invalidResponse(_, "initialize", let reason):
             message = "MCP initialize response was invalid: \(reason)"
         case MCPClientError.protocolError(_, let method, _, let protocolMessage):
-            message = "MCP \(method) failed: \(protocolMessage)"
+            message = "MCP \(method) failed: \(redactedDisplayValue(protocolMessage))"
         case MCPClientError.timeout(_, let method):
             message = "MCP \(method) timed out."
         case MCPClientError.transportFailed(_, let method, let transportMessage):
-            message = "MCP \(method) transport failed: \(transportMessage)"
+            message = "MCP \(method) transport failed: \(redactedDisplayValue(transportMessage))"
         default:
-            message = String(describing: error)
+            message = "MCP connection check failed."
         }
 
         if let failureTaxonomy {
@@ -784,17 +788,45 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         }
     }
 
-    private static func storeErrorMessage(_ error: Error) -> String {
+    private static func storeLoadErrorMessage(_ error: Error) -> String {
         switch error {
         case let error as LocalStoreDecodingError:
             return localDataRepairMessage(for: error)
         case MCPRegistrationStoreError.decodingFailed:
             return "MCP registrations could not be loaded from the local database."
         case MCPRegistrationStoreError.encodingFailed:
+            return "MCP registrations could not be loaded from the local database."
+        default:
+            return "MCP registrations could not be loaded from the local database."
+        }
+    }
+
+    private static func storeSaveErrorMessage(_ error: Error) -> String {
+        switch error {
+        case let error as LocalStoreDecodingError:
+            return localDataRepairMessage(for: error)
+        case MCPRegistrationStoreError.decodingFailed,
+             MCPRegistrationStoreError.encodingFailed:
             return "MCP registrations could not be saved to the local database."
         default:
-            return String(describing: error)
+            return "MCP registrations could not be saved to the local database."
         }
+    }
+
+    private static func storeDeleteErrorMessage(_ error: Error) -> String {
+        switch error {
+        case let error as LocalStoreDecodingError:
+            return localDataRepairMessage(for: error)
+        case MCPRegistrationStoreError.decodingFailed,
+             MCPRegistrationStoreError.encodingFailed:
+            return "MCP registration could not be deleted from the local database."
+        default:
+            return "MCP registration could not be deleted from the local database."
+        }
+    }
+
+    private static func redactedDisplayValue(_ value: String) -> String {
+        DeveloperSecretRedactor().redact(value).text
     }
 
     private static func localDataRepairMessage(for error: LocalStoreDecodingError) -> String {

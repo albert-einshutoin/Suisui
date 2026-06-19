@@ -17,6 +17,27 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(transport.recordedRequests.first?.params?.objectValue?["protocolVersion"], .string("2025-11-25"))
     }
 
+    func testClientDoesNotExposeUnexpectedTransportErrorDetails() async throws {
+        let transport = RecordingMCPTransport { _ in
+            throw UnexpectedMCPSettingsTestError.privateDetail("transport secret sk-mcp-transport")
+        }
+        let client = MCPClient(serverID: "fake", transport: transport)
+
+        do {
+            _ = try await client.listTools()
+            XCTFail("transport error should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .transportFailed(serverID: "fake", method: "tools/list", message: "transport request failed.")
+            )
+            if case .transportFailed(_, _, let message) = error {
+                XCTAssertFalse(message.contains("UnexpectedMCPSettingsTestError"))
+                XCTAssertFalse(message.contains("sk-mcp-transport"))
+            }
+        }
+    }
+
     func testClientFollowsToolsListPaginationCursor() async throws {
         let transport = RecordingMCPTransport { request in
             if request.method != "tools/list" {
@@ -687,6 +708,25 @@ final class ExternalMCPTests: XCTestCase {
     }
 
     @MainActor
+    func testExternalMCPSettingsViewModelReportsUnexpectedSaveFailureWithoutInternalErrorName() throws {
+        let store = ToggleFailingMCPServerRegistrationStore(registrations: [])
+        let viewModel = ExternalMCPSettingsViewModel(store: store)
+
+        viewModel.updateDisplayName("Local MCP")
+        viewModel.updateCommand("/usr/bin/env")
+        viewModel.updateEnabled(true)
+
+        store.saveError = UnexpectedMCPSettingsTestError.privateDetail("save secret sk-mcp-save")
+        viewModel.save()
+
+        XCTAssertEqual(viewModel.errorMessage, "MCP registrations could not be saved to the local database.")
+        XCTAssertFalse(viewModel.errorMessage?.contains("UnexpectedMCPSettingsTestError") ?? true)
+        XCTAssertFalse(viewModel.errorMessage?.contains("sk-mcp-save") ?? true)
+        store.saveError = nil
+        XCTAssertEqual(try store.loadRegistrations(), [])
+    }
+
+    @MainActor
     func testExternalMCPSettingsViewModelRejectsInvalidCommandBeforeSaving() throws {
         let store = InMemoryMCPServerRegistrationStore()
         let viewModel = ExternalMCPSettingsViewModel(store: store)
@@ -1152,6 +1192,29 @@ final class ExternalMCPTests: XCTestCase {
     }
 
     @MainActor
+    func testExternalMCPSettingsViewModelReportsUnexpectedDeleteFailureWithoutInternalErrorName() throws {
+        let registration = MCPServerRegistration(
+            id: "local",
+            displayName: "Local MCP",
+            command: "/usr/bin/env",
+            arguments: ["node", "server.js"],
+            environment: [:],
+            workingDirectory: "/tmp",
+            isEnabled: true
+        )
+        let store = ToggleFailingMCPServerRegistrationStore(registrations: [registration])
+        let viewModel = ExternalMCPSettingsViewModel(store: store)
+
+        store.saveError = UnexpectedMCPSettingsTestError.privateDetail("delete secret sk-mcp-delete")
+        viewModel.deleteRegistration()
+
+        XCTAssertEqual(viewModel.errorMessage, "MCP registration could not be deleted from the local database.")
+        XCTAssertEqual(viewModel.registration, registration)
+        XCTAssertFalse(viewModel.errorMessage?.contains("UnexpectedMCPSettingsTestError") ?? true)
+        XCTAssertFalse(viewModel.errorMessage?.contains("sk-mcp-delete") ?? true)
+    }
+
+    @MainActor
     func testExternalMCPSettingsViewModelDeleteRemovesOnlyCurrentRegistration() throws {
         let first = MCPServerRegistration(
             id: "first",
@@ -1412,6 +1475,34 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(viewModel.connectionCheckResultLabel, "Failed: invalid-schema")
         XCTAssertEqual(viewModel.protocolVersionLabel, "2025-11-25")
         XCTAssertTrue(viewModel.toolRows.isEmpty)
+    }
+
+    @MainActor
+    func testExternalMCPSettingsViewModelReportsUnexpectedConnectionFailureWithoutInternalErrorName() async throws {
+        let registration = MCPServerRegistration(
+            id: "fake",
+            displayName: "Fake MCP",
+            command: "node",
+            arguments: [],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let store = InMemoryMCPServerRegistrationStore(registrations: [registration])
+        let launcher = MCPStdioServerLauncher(
+            validator: MCPServerRegistrationValidator(binaryLocator: StaticBinaryLocator(availableCommands: ["node"])),
+            transportFactory: { _ in
+                throw UnexpectedMCPSettingsTestError.privateDetail("connection secret sk-mcp-connect")
+            }
+        )
+        let viewModel = ExternalMCPSettingsViewModel(store: store, launcher: launcher)
+
+        await viewModel.checkConnection()
+
+        XCTAssertEqual(viewModel.errorMessage, "MCP connection check failed.")
+        XCTAssertEqual(viewModel.connectionCheckResultLabel, "Failed")
+        XCTAssertFalse(viewModel.errorMessage?.contains("UnexpectedMCPSettingsTestError") ?? true)
+        XCTAssertFalse(viewModel.errorMessage?.contains("sk-mcp-connect") ?? true)
     }
 
     @MainActor
@@ -2786,6 +2877,7 @@ private final class ToggleFailingMCPServerRegistrationStore: MCPServerRegistrati
     var shouldFailLoads = false
     var shouldFailSaves = false
     var loadError: Error?
+    var saveError: Error?
 
     init(registrations: [MCPServerRegistration]) {
         self.registrations = registrations
@@ -2806,10 +2898,24 @@ private final class ToggleFailingMCPServerRegistrationStore: MCPServerRegistrati
     func saveRegistrations(_ registrations: [MCPServerRegistration]) throws {
         lock.lock()
         defer { lock.unlock() }
+        if let saveError {
+            throw saveError
+        }
         if shouldFailSaves {
             throw MCPRegistrationStoreError.encodingFailed
         }
         self.registrations = registrations
+    }
+}
+
+private enum UnexpectedMCPSettingsTestError: Error, CustomStringConvertible {
+    case privateDetail(String)
+
+    var description: String {
+        switch self {
+        case .privateDetail(let detail):
+            "UnexpectedMCPSettingsTestError(\(detail))"
+        }
     }
 }
 
