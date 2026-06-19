@@ -472,6 +472,8 @@ write_release_actions() {
       fi
     fi
 
+    write_phase_manual_gate_routes
+
     if [[ "${#RELEASE_ENVIRONMENT_BLOCKER_MESSAGES[@]}" -gt 0 ]]; then
       printf "## Release Environment Blockers\n"
       for release_environment_blocker in "${RELEASE_ENVIRONMENT_BLOCKER_MESSAGES[@]}"; do
@@ -516,6 +518,90 @@ append_line() {
   fi
   current+="$line"
   printf "%s" "$current"
+}
+
+phase_manual_gate_route_for_item() {
+  local item="$1"
+  local lowered
+
+  lowered="$(printf "%s" "$item" | tr '[:upper:]' '[:lower:]')"
+  case "$lowered" in
+    *voiceover*|*accessibility*|*focus\ order*|*button\ help*|*destructive\ confirmation*|*支援技術*)
+      printf "Manual VoiceOver"
+      ;;
+    *notion*|*todoist*|*linear*|*motion*|*competitor*|*benchmark*|*競合*)
+      printf "Competitor Hands-On"
+      ;;
+    *developer\ id*|*signing*|*signed*|*codesign*|*notarization*|*notarized*|*gatekeeper*|*sparkle*|*appcast*|*clean\ environment*|*download*|*署名*|*公証*)
+      printf "Release Machine"
+      ;;
+    *login\ item*|*launch\ at\ login*|*ログイン*)
+      printf "Login Item Manual Check"
+      ;;
+    *)
+      printf "Manual Review"
+      ;;
+  esac
+}
+
+write_phase_manual_route_group() {
+  local label="$1"
+  local items="$2"
+  local item
+
+  if [[ -z "$items" ]]; then
+    return 0
+  fi
+
+  printf "%s phase gates:\n" "$label"
+  while IFS= read -r item; do
+    [[ -z "$item" ]] && continue
+    printf -- "- [ ] %s\n" "${item#"$ROOT_DIR/"}"
+  done <<<"$items"
+  printf "\n"
+}
+
+write_phase_manual_gate_routes() {
+  local item
+  local route
+  local voiceover_items=""
+  local competitor_items=""
+  local release_machine_items=""
+  local login_item_items=""
+  local manual_review_items=""
+
+  if [[ -z "$phase_manual_unchecked" ]]; then
+    return 0
+  fi
+
+  while IFS= read -r item; do
+    [[ -z "$item" ]] && continue
+    route="$(phase_manual_gate_route_for_item "$item")"
+    case "$route" in
+      "Manual VoiceOver")
+        voiceover_items="$(append_line "$voiceover_items" "$item")"
+        ;;
+      "Competitor Hands-On")
+        competitor_items="$(append_line "$competitor_items" "$item")"
+        ;;
+      "Release Machine")
+        release_machine_items="$(append_line "$release_machine_items" "$item")"
+        ;;
+      "Login Item Manual Check")
+        login_item_items="$(append_line "$login_item_items" "$item")"
+        ;;
+      *)
+        manual_review_items="$(append_line "$manual_review_items" "$item")"
+        ;;
+    esac
+  done <<<"$phase_manual_unchecked"
+
+  printf "## Phase Manual Gate Routes\n"
+  write_phase_manual_route_group "Manual VoiceOver" "$voiceover_items"
+  write_phase_manual_route_group "Competitor Hands-On" "$competitor_items"
+  write_phase_manual_route_group "Release Machine" "$release_machine_items"
+  write_phase_manual_route_group "Login Item Manual Check" "$login_item_items"
+  write_phase_manual_route_group "Manual Review" "$manual_review_items"
 }
 
 is_placeholder_checked_by() {

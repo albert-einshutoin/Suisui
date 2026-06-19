@@ -4150,6 +4150,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("write_blocker_bucket_line \"Competitor Hands-On\""))
         XCTAssertTrue(script.contains("write_blocker_bucket_line \"Release Machine\""))
         XCTAssertTrue(script.contains("write_blocker_bucket_line \"Phase Checklist\""))
+        XCTAssertTrue(script.contains("phase_manual_gate_route_for_item()"))
+        XCTAssertTrue(script.contains("write_phase_manual_gate_routes()"))
+        XCTAssertTrue(script.contains("## Phase Manual Gate Routes"))
+        XCTAssertTrue(script.contains("Login Item Manual Check"))
         XCTAssertTrue(script.contains("## Automated Proof Gates"))
         XCTAssertTrue(script.contains("Automated preflight evidence accepted"))
         XCTAssertTrue(script.contains("automated_preflight_context_value \"Generated at\""))
@@ -4177,6 +4181,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(checklist.contains("SOLOPM_RELEASE_ACTIONS_FILE=.tmp/release-actions.md ./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("The action summary groups remaining blockers into Automated Proof Gates, Manual VoiceOver, Competitor Hands-On, Release Machine, Phase Checklist, and Other buckets."))
+        XCTAssertTrue(checklist.contains("routes unchecked manual gates to Manual VoiceOver, Competitor Hands-On, Release Machine, Login Item Manual Check, or Manual Review"))
         XCTAssertTrue(phase.contains("[x] `release_readiness_report.sh` は `SOLOPM_RELEASE_ACTIONS_FILE` 指定時に残blockerのoperator action summaryを書き出す。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Source commit` と tracked source tree の clean / dirty / unavailable 状態を併記する。"))
         XCTAssertTrue(phase.contains("[x] action summary は今回の実行で発生した具体blockerを `Current Blocker Groups` のチェックリストとして列挙する。"))
@@ -4184,6 +4189,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] action summary は `Release Environment Blockers` に `verify_release_environment.sh` の `BLOCKER:` 明細を相対パス化して列挙し、機密っぽい値を転記しない。"))
         XCTAssertTrue(phase.contains("[x] action summary は clean-tree automated preflight evidence が有効な場合、accepted evidence、source commit、generated at、passed gatesを表示し、再実行指示だけを出さない。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Manual VoiceOver Blockers` と `Competitor Hands-On Blockers` に手動証跡の不足項目を分離表示し、手動作業を完了扱いにしない。"))
+        XCTAssertTrue(phase.contains("[x] action summary は未チェックの手動Phase項目を Manual VoiceOver / Competitor Hands-On / Release Machine / Login Item Manual Check / Manual Review に分類し"))
     }
 
     func testReleaseReadinessReportWritesSpecificReleaseEnvironmentBlockersToActionSummary() throws {
@@ -4431,7 +4437,10 @@ final class ReleasePipelineTests: XCTestCase {
             .write(to: reportURL, atomically: true, encoding: .utf8)
         try """
         - [ ] Implement durable local CRUD recovery for corrupted project rows.
-        - [ ] 手動確認: signed app の login item 設定をオン / オフできる。
+        - [ ] 手動確認: login item 設定をオン / オフできる。
+        - [ ] VoiceOver label、focus order、button help、destructive confirmationを確認する。
+        - [ ] Notion、Todoist、Linear、Motion を2-4時間で触り、SoloPMに関係する機能だけを記録する。
+        - [ ] Developer ID signing、notarization、Gatekeeper、clean environment evidence が揃う。
         """.write(to: tasksDirectory.appendingPathComponent("Phase11.md"), atomically: true, encoding: .utf8)
         try "- [x] README template is ignored here\n"
             .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
@@ -4448,7 +4457,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("Implement durable local CRUD recovery for corrupted project rows."))
         XCTAssertTrue(result.output.contains("phase checklist still has unchecked implementation tasks"))
         XCTAssertTrue(result.output.contains("Unchecked manual/release phase gates:"))
-        XCTAssertTrue(result.output.contains("signed app の login item 設定をオン / オフできる。"))
+        XCTAssertTrue(result.output.contains("login item 設定をオン / オフできる。"))
         XCTAssertTrue(result.output.contains("phase checklist still has unchecked manual/release gates"))
         XCTAssertTrue(actionSummary.contains("## Phase Checklist Items"))
         XCTAssertTrue(actionSummary.contains("## Blocker Buckets"))
@@ -4458,7 +4467,17 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("Unchecked implementation phase items:"))
         XCTAssertTrue(actionSummary.contains("Implement durable local CRUD recovery for corrupted project rows."))
         XCTAssertTrue(actionSummary.contains("Unchecked manual/release phase gates:"))
-        XCTAssertTrue(actionSummary.contains("signed app の login item 設定をオン / オフできる。"))
+        XCTAssertTrue(actionSummary.contains("login item 設定をオン / オフできる。"))
+        XCTAssertTrue(actionSummary.contains("VoiceOver label、focus order、button help、destructive confirmationを確認する。"))
+        XCTAssertTrue(actionSummary.contains("Notion、Todoist、Linear、Motion を2-4時間で触り"))
+        XCTAssertTrue(actionSummary.contains("Developer ID signing、notarization、Gatekeeper、clean environment evidence が揃う。"))
+        XCTAssertTrue(actionSummary.contains("## Phase Manual Gate Routes"))
+        XCTAssertTrue(actionSummary.contains("Manual VoiceOver phase gates:"))
+        XCTAssertTrue(actionSummary.contains("Competitor Hands-On phase gates:"))
+        XCTAssertTrue(actionSummary.contains("Release Machine phase gates:"))
+        XCTAssertTrue(actionSummary.contains("Release Machine phase gates:\n- [ ] tasks/Phase11.md:5:- [ ] Developer ID signing、notarization、Gatekeeper、clean environment evidence が揃う。"))
+        XCTAssertTrue(actionSummary.contains("Login Item Manual Check phase gates:"))
+        XCTAssertTrue(actionSummary.contains("Login Item Manual Check phase gates:\n- [ ] tasks/Phase11.md:2:- [ ] 手動確認: login item 設定をオン / オフできる。"))
     }
 
     func testReleaseReadinessReportIncludesPhase11AndIgnoresFuturePhasePlanning() throws {

@@ -1296,6 +1296,7 @@
 - [x] action summary は `Manual VoiceOver Blockers` と `Competitor Hands-On Blockers` に手動証跡の不足項目を分離表示し、手動作業を完了扱いにしない。
 - [x] action summary は VoiceOver / competitor hands-on の証跡生成コマンドを必須フラグ込みで表示し、placeholderを実測値に置き換える必要を明記する。
 - [x] action summary は `Phase Checklist Items` に未チェックPhase項目のファイル名・行番号・本文を相対パスで列挙する。
+- [x] action summary は未チェックの手動Phase項目を Manual VoiceOver / Competitor Hands-On / Release Machine / Login Item Manual Check / Manual Review に分類し、どの証跡経路で解消するかを示す。
 - [x] action summary は release evidence ではなく、VoiceOver / competitor hands-on / signing / notarization / Sparkle / Gatekeeper を完了扱いにしないことを明記する。
 - [x] `ReleasePipelineTests` と `docs/release/checklist.md` で operator action summary の生成導線を固定する。
 - [x] 完了条件: `release_readiness_report.sh` が `NOT READY` のままでも、次に実行すべき手動・自動・release-machine作業が1ファイルに集約される。
