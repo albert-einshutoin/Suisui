@@ -1071,6 +1071,7 @@ private struct InlineTaskComposer: View {
                 }
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .keyboardShortcut(.return, modifiers: [.command])
+                .help("Creates the task in the local SoloPM database")
                 .accessibilityIdentifier("inline-task-create")
                 .accessibilityHint("Creates the task in the local SoloPM database.")
 
@@ -1078,6 +1079,7 @@ private struct InlineTaskComposer: View {
                     Label("Cancel", systemImage: "xmark")
                 }
                 .keyboardShortcut(.escape, modifiers: [])
+                .help("Cancels task creation and returns focus to the board column")
                 .accessibilityIdentifier("inline-task-cancel")
                 .accessibilityHint("Cancels task creation and returns focus to the board column.")
             }
@@ -1468,6 +1470,7 @@ private struct ProjectInspectorView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title == project.title)
                 .keyboardShortcut("s", modifiers: [.command])
+                .help("Saves edits to the selected project in the local SoloPM database")
                 .accessibilityIdentifier("project-inspector-save")
                 .accessibilityHint("Saves edits to the selected project in the local SoloPM database.")
             }
@@ -1480,6 +1483,7 @@ private struct ProjectInspectorView: View {
                         Label("Restore Project", systemImage: "arrow.uturn.backward")
                     }
                     .buttonStyle(.borderedProminent)
+                    .help("Restores the selected project to active views in the local SoloPM database")
                     .accessibilityIdentifier("project-inspector-restore")
                     .accessibilityHint("Restores the selected project to active views in the local SoloPM database.")
                 } else {
@@ -1489,6 +1493,7 @@ private struct ProjectInspectorView: View {
                         Label("Complete Project", systemImage: "checkmark.seal")
                     }
                     .disabled(project.isCompleted)
+                    .help("Completes the selected project in the local SoloPM database")
                     .accessibilityIdentifier("project-inspector-complete")
                     .accessibilityHint("Completes the selected project in the local SoloPM database.")
                 }
@@ -1501,6 +1506,7 @@ private struct ProjectInspectorView: View {
                     } label: {
                         Label("Archive Project", systemImage: "archivebox")
                     }
+                    .help("Archives the selected project after confirmation")
                     .accessibilityIdentifier("project-inspector-archive")
                     .accessibilityHint("Archives the selected project after confirmation.")
                 }
@@ -1511,6 +1517,7 @@ private struct ProjectInspectorView: View {
                     Label("Delete Project", systemImage: "trash")
                 }
                 .keyboardShortcut(.delete, modifiers: [.command])
+                .help("Deletes the selected project after confirmation")
                 .accessibilityIdentifier("project-inspector-delete")
                 .accessibilityHint("Deletes the selected project after confirmation.")
             }
@@ -1664,6 +1671,7 @@ private struct ProjectInspectorSuggestionSection: View {
             }
             .disabled(suggestionAction == .none)
             .keyboardShortcut(.return, modifiers: [.command])
+            .help("Applies the local next-step suggestion to the selected project")
             .accessibilityIdentifier("project-inspector-apply-suggestion")
             .accessibilityHint("Applies the local next-step suggestion to the selected project.")
         }
@@ -1808,6 +1816,7 @@ private struct TaskInspectorView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .keyboardShortcut("s", modifiers: [.command])
+                .help("Saves edits to the selected task in the local SoloPM database")
                 .accessibilityIdentifier("task-inspector-save")
                 .accessibilityHint("Saves edits to the selected task in the local SoloPM database.")
             }
@@ -1819,6 +1828,7 @@ private struct TaskInspectorView: View {
                     Label("Delete Task", systemImage: "trash")
                 }
                 .keyboardShortcut(.delete, modifiers: [.command])
+                .help("Deletes the selected task after confirmation")
                 .accessibilityIdentifier("task-inspector-delete")
                 .accessibilityHint("Deletes the selected task after confirmation.")
             }
@@ -1985,6 +1995,7 @@ private struct TaskInspectorSuggestionSection: View {
             }
             .disabled(targetStatus == nil)
             .keyboardShortcut(.return, modifiers: [.command])
+            .help("Applies the local next-step suggestion to the selected task")
             .accessibilityIdentifier("task-inspector-apply-suggestion")
             .accessibilityHint("Applies the local next-step suggestion to the selected task.")
         }
