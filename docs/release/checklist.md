@@ -172,6 +172,13 @@ Before claiming local CRUD is product-ready, run the runtime accessible CRUD smo
 SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SMOKE=1 ./script/release_readiness_report.sh
 ```
 
+Prepare the manual VoiceOver candidate with deterministic local data before starting the screen-reader pass. This creates an isolated `.tmp/voiceover-review/SoloPM-voiceover-review.sqlite`, seeds `VoiceOver Review Project` with one task in each board column plus an accessibility evidence artifact link, and prints the `SOLOPM_DATABASE_PATH` / `SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION` launch command. Use `--no-launch` when you only want to inspect the generated database before opening the app:
+
+```bash
+./script/prepare_voiceover_review_candidate.sh --no-launch
+./script/prepare_voiceover_review_candidate.sh
+```
+
 Then replace `docs/release/evidence/accessibility-voiceover.md` with the real VoiceOver pass for the same release-candidate app. The final file must use `Status: passed`, complete the release-candidate context fields, include the runtime AX smoke OK line with `unlabeledButtons=0`, `genericButtons=0`, `crudSignals=8/8`, and `focusPathSignals=6/6`, include the Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector path, and remove all pending/template language.
 
 Use the generator to avoid stale bundle/build metadata:

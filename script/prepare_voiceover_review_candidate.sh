@@ -1,0 +1,330 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
+
+if [[ ! -f "$METADATA_FILE" ]]; then
+  echo "missing metadata file: $METADATA_FILE" >&2
+  exit 2
+fi
+
+# shellcheck source=/dev/null
+source "$METADATA_FILE"
+
+APP_NAME="${APP_NAME:?APP_NAME is required}"
+APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
+APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+DEFAULT_DATABASE_PATH="$ROOT_DIR/.tmp/voiceover-review/SoloPM-voiceover-review.sqlite"
+VOICEOVER_REVIEW_ARTIFACT_PATH="$ROOT_DIR/docs/release/evidence/accessibility-voiceover.md"
+TIMEOUT_SECONDS="${SOLOPM_VOICEOVER_REVIEW_TIMEOUT_SECONDS:-30}"
+SQLITE3="${SQLITE3:-sqlite3}"
+
+database_path="$DEFAULT_DATABASE_PATH"
+launch_app=1
+build_app=1
+app_pid=""
+
+usage() {
+  printf '%s\n' "usage: $0 [--database PATH] [--no-launch] [--skip-build]"
+  printf '%s\n' ""
+  printf '%s\n' "Creates deterministic local Project Board data for the manual VoiceOver release pass."
+  printf '%s\n' "The default database is isolated under .tmp/voiceover-review and does not touch the user's app data."
+}
+
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --database)
+      database_path="${2:-}"
+      shift 2
+      ;;
+    --no-launch)
+      launch_app=0
+      shift
+      ;;
+    --skip-build)
+      build_app=0
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -z "${database_path//[[:space:]]/}" ]]; then
+  echo "--database must not be blank" >&2
+  exit 2
+fi
+
+case "$database_path" in
+  /*) ;;
+  *) database_path="$ROOT_DIR/$database_path" ;;
+esac
+
+if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
+  echo "SOLOPM_VOICEOVER_REVIEW_TIMEOUT_SECONDS must be a positive integer" >&2
+  exit 2
+fi
+
+if ! command -v "$SQLITE3" >/dev/null 2>&1; then
+  echo "BLOCKER: sqlite3 is required to prepare VoiceOver review data" >&2
+  exit 2
+fi
+
+sql_escape() {
+  printf "%s" "$1" | sed "s/'/''/g"
+}
+
+query_single_value() {
+  local sql="$1"
+  "$SQLITE3" -batch -noheader "$database_path" "$sql" | tail -n 1
+}
+
+wait_for_app_process() {
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: $APP_NAME process did not appear within ${TIMEOUT_SECONDS}s" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+wait_for_no_app_process() {
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while pgrep -x "$APP_NAME" >/dev/null 2>&1; do
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+      return 0
+    fi
+    sleep 1
+  done
+}
+
+terminate_app() {
+  /usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
+  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+  if [[ -n "${app_pid:-}" ]]; then
+    wait "$app_pid" >/dev/null 2>&1 || true
+    app_pid=""
+  fi
+}
+
+activate_app() {
+  /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 || true
+}
+
+wait_for_database_table() {
+  local table="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if [[ -f "$database_path" ]] && "$SQLITE3" "$database_path" "SELECT name FROM sqlite_master WHERE type='table' AND name='$table';" | grep -Fx "$table" >/dev/null; then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: SQLite table '$table' was not created in VoiceOver review database: $database_path" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+seed_voiceover_review_data() {
+  local workspace_path="$ROOT_DIR/docs/release/evidence"
+  local artifact_path="$VOICEOVER_REVIEW_ARTIFACT_PATH"
+  local escaped_workspace_path
+  local escaped_artifact_path
+  local seeded_project_id
+
+  escaped_workspace_path="$(sql_escape "$workspace_path")"
+  escaped_artifact_path="$(sql_escape "$artifact_path")"
+
+  "$SQLITE3" "$database_path" <<SQL
+PRAGMA foreign_keys = ON;
+
+DELETE FROM artifacts
+WHERE project_id IN (SELECT id FROM projects WHERE source_command='voiceover-review-seed')
+   OR task_id IN (SELECT id FROM tasks WHERE source_command='voiceover-review-seed');
+DELETE FROM tasks WHERE source_command='voiceover-review-seed';
+DELETE FROM projects WHERE source_command='voiceover-review-seed';
+
+INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command, created_at, updated_at)
+VALUES (
+  'VoiceOver Review Project',
+  'active',
+  'high',
+  strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+7 days'),
+  '$escaped_workspace_path',
+  '["release","accessibility"]',
+  'voiceover-review-seed',
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+);
+SQL
+
+  seeded_project_id="$(query_single_value "SELECT id FROM projects WHERE title='VoiceOver Review Project' AND source_command='voiceover-review-seed' ORDER BY id DESC LIMIT 1;")"
+  if [[ -z "${seeded_project_id//[[:space:]]/}" ]]; then
+    echo "BLOCKER: VoiceOver review project was not inserted" >&2
+    exit 1
+  fi
+
+  "$SQLITE3" "$database_path" <<SQL
+PRAGMA foreign_keys = ON;
+INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command, created_at, updated_at)
+VALUES (
+  $seeded_project_id,
+  'Review Project navigation',
+  'backlog',
+  'Use VoiceOver to move through Inbox, Today, Projects, and back to the selected project.',
+  strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+1 day'),
+  'high',
+  'voiceover-review-seed',
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+);
+
+INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command, created_at, updated_at)
+VALUES (
+  $seeded_project_id,
+  'Verify inline composer keyboard path',
+  'planned',
+  'Create a new task from a board column, then confirm Command+Return and Escape are reachable.',
+  strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+2 days'),
+  'medium',
+  'voiceover-review-seed',
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+);
+
+INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command, created_at, updated_at)
+VALUES (
+  $seeded_project_id,
+  'Move status with card controls',
+  'in_progress',
+  'Use previous and next status buttons from the task card without relying on drag only.',
+  strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+3 days'),
+  'medium',
+  'voiceover-review-seed',
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+);
+
+INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command, created_at, updated_at)
+VALUES (
+  $seeded_project_id,
+  'Confirm destructive dialog labels',
+  'blocked',
+  'Open task details and verify Delete Task announces a destructive confirmation before deletion.',
+  strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+4 days'),
+  'high',
+  'voiceover-review-seed',
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+);
+
+INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command, created_at, updated_at)
+VALUES (
+  $seeded_project_id,
+  'Save release accessibility notes',
+  'completed',
+  'Use the inspector title and detail fields, then activate Save Changes from the keyboard.',
+  strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+5 days'),
+  'low',
+  'voiceover-review-seed',
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+);
+
+INSERT INTO artifacts (project_id, task_id, workspace_path, expected_path, created_state, created_at, updated_at)
+VALUES (
+  $seeded_project_id,
+  NULL,
+  '$escaped_workspace_path',
+  '$escaped_artifact_path',
+  'expected',
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+);
+SQL
+}
+
+verify_seed() {
+  local expected="$1"
+  local label="$2"
+  local sql="$3"
+  local actual
+
+  actual="$(query_single_value "$sql" || true)"
+  if [[ "$actual" != "$expected" ]]; then
+    echo "BLOCKER: $label verification failed: expected '$expected', got '${actual:-<empty>}'" >&2
+    echo "SQL: $sql" >&2
+    exit 1
+  fi
+}
+
+cd "$ROOT_DIR"
+mkdir -p "$(dirname "$database_path")"
+
+if [[ "$build_app" -eq 1 ]]; then
+  ./script/build_and_run.sh --build-only
+fi
+
+if [[ ! -x "$APP_BINARY" ]]; then
+  echo "BLOCKER: app binary not found or not executable: $APP_BINARY" >&2
+  exit 2
+fi
+
+terminate_app
+SOLOPM_DATABASE_PATH="$database_path" "$APP_BINARY" &
+app_pid=$!
+activate_app
+wait_for_app_process
+wait_for_database_table "projects"
+terminate_app
+wait_for_no_app_process
+
+seed_voiceover_review_data
+seed_project_id="$(query_single_value "SELECT id FROM projects WHERE title='VoiceOver Review Project' AND source_command='voiceover-review-seed' ORDER BY id DESC LIMIT 1;")"
+
+if [[ -z "${seed_project_id//[[:space:]]/}" ]]; then
+  echo "BLOCKER: VoiceOver review project was not inserted" >&2
+  exit 1
+fi
+
+verify_seed "5" "seed task count" "SELECT count(*) FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"
+verify_seed "1" "seed artifact count" "SELECT count(*) FROM artifacts WHERE project_id=$seed_project_id AND expected_path='$(sql_escape "$VOICEOVER_REVIEW_ARTIFACT_PATH")';"
+verify_seed "1" "seed task spread" "SELECT CASE WHEN count(DISTINCT status) = 5 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"
+verify_seed "1" "VoiceOver release project selection" "SELECT CASE WHEN count(*) = 5 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"
+
+launch_env_file="$ROOT_DIR/.tmp/voiceover-review/launch.env"
+{
+  printf 'SOLOPM_DATABASE_PATH=%q\n' "$database_path"
+  printf 'SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=%q\n' "project:$seed_project_id"
+} >"$launch_env_file"
+
+printf 'OK: VoiceOver review candidate ready\n'
+printf 'Database: %s\n' "$database_path"
+printf 'Project ID: %s\n' "$seed_project_id"
+printf 'Artifact: VoiceOver review artifact -> %s\n' "$VOICEOVER_REVIEW_ARTIFACT_PATH"
+printf 'Launch env: %s\n' "$launch_env_file"
+
+if [[ "$launch_app" -eq 1 ]]; then
+  SOLOPM_DATABASE_PATH="$database_path" \
+    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
+    "$APP_BINARY" &
+  app_pid=$!
+  activate_app
+  wait_for_app_process
+  printf 'App launched for manual VoiceOver review with SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:%s"\n' "$seed_project_id"
+else
+  printf 'Launch skipped. To open the same candidate manually, run:\n'
+  printf 'SOLOPM_DATABASE_PATH=%q SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=%q %q\n' "$database_path" "project:$seed_project_id" "$APP_BINARY"
+fi

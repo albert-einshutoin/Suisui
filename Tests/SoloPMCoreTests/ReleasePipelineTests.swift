@@ -2341,6 +2341,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("docs/release/evidence/accessibility-voiceover.md"))
         XCTAssertTrue(checklist.contains("./script/check_accessibility_preflight.sh --source-only"))
         XCTAssertTrue(checklist.contains("./script/check_accessibility_preflight.sh --runtime"))
+        XCTAssertTrue(checklist.contains("./script/prepare_voiceover_review_candidate.sh --no-launch"))
+        XCTAssertTrue(checklist.contains("VoiceOver Review Project"))
+        XCTAssertTrue(checklist.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION"))
         XCTAssertTrue(checklist.contains("./script/create_voiceover_evidence.sh --pending"))
         XCTAssertTrue(checklist.contains("./script/create_voiceover_evidence.sh --passed"))
         XCTAssertTrue(checklist.contains("--capture-runtime-ax-smoke"))
@@ -3604,6 +3607,30 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("OK: runtime accessible CRUD smoke created, renamed, completed, and deleted a project, then created, updated, moved, directly deleted, and cascade-deleted tasks through the visible app"))
         XCTAssertFalse(script.contains(":memory:"))
         XCTAssertFalse(script.contains("Static"))
+    }
+
+    func testVoiceOverReviewCandidateScriptSeedsIsolatedDatabaseAndLaunchesSelectedProject() throws {
+        let script = try readPackageFile("script/prepare_voiceover_review_candidate.sh")
+
+        XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
+        XCTAssertTrue(script.contains("DEFAULT_DATABASE_PATH=\"$ROOT_DIR/.tmp/voiceover-review/SoloPM-voiceover-review.sqlite\""))
+        XCTAssertTrue(script.contains("./script/build_and_run.sh --build-only"))
+        XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH=\"$database_path\" \"$APP_BINARY\" &"))
+        XCTAssertTrue(script.contains("wait_for_database_table \"projects\""))
+        XCTAssertTrue(script.contains("voiceover-review-seed"))
+        XCTAssertTrue(script.contains("VoiceOver Review Project"))
+        XCTAssertTrue(script.contains("Review Project navigation"))
+        XCTAssertTrue(script.contains("Verify inline composer keyboard path"))
+        XCTAssertTrue(script.contains("Move status with card controls"))
+        XCTAssertTrue(script.contains("Confirm destructive dialog labels"))
+        XCTAssertTrue(script.contains("Save release accessibility notes"))
+        XCTAssertTrue(script.contains("VoiceOver review artifact"))
+        XCTAssertTrue(script.contains("SELECT CASE WHEN count(*) = 5 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"))
+        XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$seed_project_id\""))
+        XCTAssertTrue(script.contains("OK: VoiceOver review candidate ready"))
+        XCTAssertTrue(script.contains("--no-launch"))
+        XCTAssertTrue(script.contains("--skip-build"))
+        XCTAssertFalse(script.contains(":memory:"))
     }
 
     func testReleaseReadinessReportCanUseAutomatedPreflightEvidenceInsteadOfRerunningLocalProofGates() throws {
