@@ -853,6 +853,9 @@ private struct SettingsView: View {
             overviewSettingsTab
                 .tabItem { Label("Overview", systemImage: "gauge.with.dots.needle.bottom.50percent") }
 
+            appearanceSettingsTab
+                .tabItem { Label("Appearance", systemImage: "circle.lefthalf.filled") }
+
             aiSettingsTab
                 .tabItem { Label("AI", systemImage: "brain.head.profile") }
 
@@ -902,8 +905,13 @@ private struct SettingsView: View {
                 )
             }
 
-            SettingsAppearanceSection(appearancePreference: $appearancePreference)
+        }
+        .formStyle(.grouped)
+    }
 
+    private var appearanceSettingsTab: some View {
+        Form {
+            SettingsAppearanceSection(appearancePreference: $appearancePreference)
         }
         .formStyle(.grouped)
     }

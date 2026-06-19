@@ -46,8 +46,8 @@ UI_SCREENSHOTS=(
   "Light:project-board-light.png"
   "Dark:project-board-dark.png"
   "System:project-board-system.png"
-  "Settings Overview Light:settings-overview-light.png"
-  "Settings Overview Dark:settings-overview-dark.png"
+  "Settings Appearance Light:settings-appearance-light.png"
+  "Settings Appearance Dark:settings-appearance-dark.png"
   "MCP Settings Light:settings-mcp-light.png"
   "MCP Settings Dark:settings-mcp-dark.png"
 )
