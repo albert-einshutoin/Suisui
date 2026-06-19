@@ -2336,6 +2336,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("./script/verify_mcp_compliance.sh"))
         XCTAssertTrue(checklist.contains("docs/release/evidence/mcp-inspector.md"))
         XCTAssertTrue(checklist.contains("Stable baseline: `2025-11-25`"))
+        XCTAssertTrue(checklist.contains("Official latest source: https://modelcontextprotocol.io/specification"))
+        XCTAssertTrue(checklist.contains("Official latest checked: 2026-06-20"))
+        XCTAssertTrue(checklist.contains("Official stable source: https://modelcontextprotocol.io/specification/2025-11-25"))
         XCTAssertTrue(checklist.contains("Draft watchlist: `2026-07-28`"))
         XCTAssertTrue(checklist.contains("script/capture_ui_evidence.sh"))
         XCTAssertTrue(checklist.contains("docs/release/evidence/accessibility-voiceover.md"))
@@ -3906,6 +3909,8 @@ final class ReleasePipelineTests: XCTestCase {
         Scope: validate the release MCP stdio fixture
         Stable baseline: `2025-11-25`
         Official stable latest: `2025-11-25`
+        Official latest source: https://modelcontextprotocol.io/specification
+        Official latest checked: 2026-06-20
         Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
         Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/
         EMA remote authorization is not a SoloPM public-alpha release target
@@ -4319,6 +4324,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("OK: MCP compliance review covers stable baseline, draft boundary, release subset, and non-host positioning"))
         XCTAssertTrue(script.contains("docs/release/evidence/mcp-inspector.md"))
         XCTAssertTrue(script.contains("Stable baseline: `2025-11-25`"))
+        XCTAssertTrue(script.contains("Official latest source: https://modelcontextprotocol.io/specification"))
+        XCTAssertTrue(script.contains("Official latest checked: 2026-06-20"))
         XCTAssertTrue(script.contains("Official stable source: https://modelcontextprotocol.io/specification/2025-11-25"))
         XCTAssertTrue(script.contains("Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18"))
         XCTAssertTrue(script.contains("Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/"))
@@ -4572,6 +4579,8 @@ final class ReleasePipelineTests: XCTestCase {
         Scope: validate the release MCP stdio fixture
         Stable baseline: `2025-11-25`
         Official stable latest: `2025-11-25`
+        Official latest source: https://modelcontextprotocol.io/specification
+        Official latest checked: 2026-06-20
         Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
         Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/
         EMA remote authorization is not a SoloPM public-alpha release target
@@ -6297,6 +6306,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("== MCP Inspector evidence =="))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Draft watchlist: `2026-07-28`"))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Official stable latest: `2025-11-25`"))
+        XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Official latest source: https://modelcontextprotocol.io/specification"))
+        XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Official latest checked: 2026-06-20"))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: 2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28."))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: MCP Inspector CLI tools/call"))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: malformed-json"))
@@ -6340,6 +6351,10 @@ final class ReleasePipelineTests: XCTestCase {
         Stable baseline: `2025-11-25`
 
         Official stable latest: `2025-11-25`
+
+        Official latest source: https://modelcontextprotocol.io/specification
+
+        Official latest checked: 2026-06-20
 
         Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
 
@@ -6410,6 +6425,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("== MCP Inspector evidence =="))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official stable latest: `2025-11-25`"))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official latest source: https://modelcontextprotocol.io/specification"))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official latest checked: 2026-06-20"))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Draft watchlist: `2026-07-28`"))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: will not claim draft or full-host compatibility"))
         XCTAssertTrue(result.output.contains("OK: MCP Inspector evidence covers stable baseline, draft boundary, tools/list, tools/call, and failure taxonomy"))

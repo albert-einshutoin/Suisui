@@ -43,7 +43,7 @@
 - [x] `tools/list` の `outputSchema` をrelease subsetとしてparse/validateし、`tools/call` 成功時は object `structuredContent` の必須fieldとprimitive typeを検証してからsuccess auditへ進む。`isError = true` のtool実行エラーはLLMが自己修正できるactionable resultとしてschema検証をskipする。
 - [x] `resources/list` / `prompts/list` は未対応としてUIとdocsで明示し、対応済みのように表示しない。
 - [x] `2026-07-28` draft / release-candidate の per-request protocol metadata と `server/discover` は今回のrelease target外として、`docs/mcp-compliance.md` と `docs/release/evidence/mcp-inspector.md` に明記する。
-- [x] MCP evidence は公式stable latest `2025-11-25`、公式stable source URL、`2026-07-28` release-candidate source URL / final予定日の境界を明記しない限りrelease readyにしない。
+- [x] MCP evidence は公式latest entrypoint、latest確認日、公式stable latest `2025-11-25`、公式stable source URL、`2026-07-28` release-candidate source URL / final予定日の境界を明記しない限りrelease readyにしない。
 - [x] MCP evidence はEnterprise-Managed Authorization extensionがstableであることをwatchlistに入れ、remote authorizationはpublic alpha対象外と明記しない限りrelease readyにしない。
 - [x] 完了条件: 仕様の「実装済み」「未対応」「後続」の境界が投資家/OSS contributorに説明できる。
 

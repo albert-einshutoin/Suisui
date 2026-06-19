@@ -135,6 +135,10 @@ Regenerate the MCP stdio Tools evidence for this release candidate:
 Confirm `docs/release/evidence/mcp-inspector.md` includes:
 
 - ``Stable baseline: `2025-11-25` ``
+- ``Official stable latest: `2025-11-25` ``
+- `Official latest source: https://modelcontextprotocol.io/specification`
+- `Official latest checked: 2026-06-20`
+- `Official stable source: https://modelcontextprotocol.io/specification/2025-11-25`
 - ``Draft watchlist: `2026-07-28` ``
 - `tools/list` and `tools/call`
 - malformed-json / mismatched-id / invalid-schema / timeout failure taxonomy

@@ -1,12 +1,16 @@
 # MCP Inspector Evidence
 
-Generated: 2026-06-19T17:56:55Z
+Generated: 2026-06-19T19:33:54Z
 
 Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and SoloPM's local JSON-RPC smoke checks.
 
 Stable baseline: `2025-11-25`
 
 Official stable latest: `2025-11-25`
+
+Official latest source: https://modelcontextprotocol.io/specification
+
+Official latest checked: 2026-06-20
 
 Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
 

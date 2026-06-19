@@ -124,6 +124,8 @@ MCP_EVIDENCE_REQUIRED_MARKERS=(
   "Scope: validate the release MCP stdio fixture"
   'Stable baseline: `2025-11-25`'
   'Official stable latest: `2025-11-25`'
+  "Official latest source: https://modelcontextprotocol.io/specification"
+  "Official latest checked: 2026-06-20"
   "Official stable source: https://modelcontextprotocol.io/specification/2025-11-25"
   "Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18"
   "Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/"
@@ -145,6 +147,8 @@ MCP_EVIDENCE_REQUIRED_MARKERS=(
 MCP_REVIEW_REQUIRED_MARKERS=(
   'Stable baseline: `2025-11-25`'
   'Official stable latest: `2025-11-25`'
+  "Official latest source: https://modelcontextprotocol.io/specification"
+  "Official latest checked: 2026-06-20"
   "Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18"
   "Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/"
   "EMA remote authorization is not a SoloPM public-alpha release target"

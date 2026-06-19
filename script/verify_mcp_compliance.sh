@@ -71,6 +71,10 @@ Stable baseline: \`2025-11-25\`
 
 Official stable latest: \`2025-11-25\`
 
+Official latest source: https://modelcontextprotocol.io/specification
+
+Official latest checked: 2026-06-20
+
 Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
 
 Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
