@@ -257,6 +257,12 @@ write_blocker_bucket_line() {
   printf -- "- [%s] %s: %d blocker group(s)\n" "$marker" "$label" "$count"
 }
 
+nonempty_line_count() {
+  local value="$1"
+
+  awk 'NF { count += 1 } END { print count + 0 }' <<<"$value"
+}
+
 blocker_bucket_count() {
   local expected_bucket="$1"
   local count=0
@@ -277,9 +283,14 @@ write_operator_priority_queue_line() {
   local label="$1"
   local count="$2"
   local next_action="$3"
+  local detail="${4:-}"
 
   if [[ "$count" -gt 0 ]]; then
-    printf -- "- [ ] %s clears up to %d blocker group(s). Next: %s\n" "$label" "$count" "$next_action"
+    printf -- "- [ ] %s clears up to %d blocker group(s)" "$label" "$count"
+    if [[ -n "$detail" ]]; then
+      printf " and %s" "$detail"
+    fi
+    printf ". Next: %s\n" "$next_action"
   else
     printf -- "- [x] %s has no active blocker groups in this report run.\n" "$label"
   fi
@@ -290,11 +301,15 @@ write_operator_priority_queue() {
   local competitor_count
   local release_machine_count
   local phase_count
+  local release_environment_item_count
+  local phase_manual_item_count
 
   voiceover_count="$(blocker_bucket_count "Manual VoiceOver")"
   competitor_count="$(blocker_bucket_count "Competitor Hands-On")"
   release_machine_count="$(blocker_bucket_count "Release Machine")"
   phase_count="$(blocker_bucket_count "Phase Checklist")"
+  release_environment_item_count="${#RELEASE_ENVIRONMENT_BLOCKER_MESSAGES[@]}"
+  phase_manual_item_count="$(nonempty_line_count "$phase_manual_unchecked")"
 
   printf "## Operator Priority Queue\n"
   write_operator_priority_queue_line \
@@ -308,10 +323,11 @@ write_operator_priority_queue() {
   write_operator_priority_queue_line \
     "Release-machine runbook" \
     "$release_machine_count" \
-    "run \`./script/prepare_release_machine_evidence.sh\`, complete signing/notarization/Sparkle/Gatekeeper evidence, then rerun readiness."
+    "run \`./script/prepare_release_machine_evidence.sh\`, complete signing/notarization/Sparkle/Gatekeeper evidence, then rerun readiness." \
+    "covers ${release_environment_item_count} release environment blocker item(s)"
 
   if [[ "$phase_count" -gt 0 ]]; then
-    printf -- "- [ ] Phase checklist routing clears the remaining manual checklist blocker after the linked evidence is accepted.\n"
+    printf -- "- [ ] Phase checklist routing tracks %d unchecked manual/release phase item(s) and clears the remaining manual checklist blocker after the linked evidence is accepted.\n" "$phase_manual_item_count"
   else
     printf -- "- [x] Phase checklist has no active blocker groups in this report run.\n"
   fi
