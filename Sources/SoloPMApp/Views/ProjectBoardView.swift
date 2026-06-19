@@ -1572,14 +1572,8 @@ private struct ProjectInspectorMetadataSummary: View {
     }
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                metadataPills
-            }
-
-            LazyVGrid(columns: compactColumns, alignment: .leading, spacing: 8) {
-                metadataPills
-            }
+        LazyVGrid(columns: compactColumns, alignment: .leading, spacing: 8) {
+            metadataPills
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Project summary")
@@ -1876,14 +1870,8 @@ private struct TaskInspectorMetadataSummary: View {
     }
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                metadataPills
-            }
-
-            LazyVGrid(columns: compactColumns, alignment: .leading, spacing: 8) {
-                metadataPills
-            }
+        LazyVGrid(columns: compactColumns, alignment: .leading, spacing: 8) {
+            metadataPills
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Task summary")
