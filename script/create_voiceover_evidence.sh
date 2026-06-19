@@ -28,6 +28,7 @@ ACCESSIBILITY_ENVIRONMENT=""
 RUNTIME_AX_SMOKE_NOTE=""
 CAPTURE_RUNTIME_AX_SMOKE=0
 CONFIRM_MANUAL_PASS=0
+SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
 PROJECT_NAVIGATION_NOTE=""
 PROJECT_BOARD_DETAIL_NOTE=""
 OPEN_TASK_NOTE=""
@@ -352,6 +353,11 @@ write_context() {
   printf -- '- macOS version: %s\n' "$MACOS_VERSION"
   printf -- '- App build: `%s (%s)`\n' "$MARKETING_VERSION" "$CURRENT_PROJECT_VERSION"
   printf -- '- Bundle identifier: `%s`\n' "$BUNDLE_IDENTIFIER"
+  if [[ "$VOICEOVER_STATUS" == "passed" ]]; then
+    printf -- '- Source commit: `%s`\n' "$SOURCE_COMMIT"
+  else
+    printf '%s\n' '- Source commit:'
+  fi
   if [[ -n "$CHECKED_BY" ]]; then
     printf -- '- Checked by: %s\n' "$CHECKED_BY"
   else

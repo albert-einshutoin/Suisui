@@ -68,6 +68,7 @@ VOICEOVER_REQUIRED_CONTEXT_LABELS=(
   "macOS version"
   "App build"
   "Bundle identifier"
+  "Source commit"
   "Checked by"
   "Check date"
   "Evidence source"
@@ -98,6 +99,7 @@ COMPETITOR_REQUIRED_MARKERS=(
 COMPETITOR_REQUIRED_CONTEXT_LABELS=(
   "Checked by"
   "Check date"
+  "Source commit"
   "Evidence source"
   "Environment"
   "Scope"
@@ -956,6 +958,7 @@ section "VoiceOver accessibility evidence"
 voiceover_evidence_file="$ROOT_DIR/$VOICEOVER_EVIDENCE_RELATIVE"
 accessibility_preflight_script="$ROOT_DIR/$ACCESSIBILITY_PREFLIGHT_RELATIVE"
 voiceover_evidence_blocker_count=0
+voiceover_status_passed=0
 voiceover_blocker() {
   blocker "$1"
   voiceover_evidence_blocker_count=$((voiceover_evidence_blocker_count + 1))
@@ -1050,6 +1053,7 @@ fi
 if [[ ! -f "$voiceover_evidence_file" ]]; then
   voiceover_blocker "missing VoiceOver accessibility evidence file: $VOICEOVER_EVIDENCE_RELATIVE"
 else
+  grep -Fx "Status: passed" "$voiceover_evidence_file" >/dev/null && voiceover_status_passed=1
   for required_marker in "${VOICEOVER_REQUIRED_MARKERS[@]}"; do
     if [[ "$required_marker" == "Status: passed" ]]; then
       marker_present=0
@@ -1138,6 +1142,14 @@ else
       voiceover_blocker "VoiceOver accessibility evidence app build does not match packaging metadata: expected $EXPECTED_VOICEOVER_APP_BUILD"
     fi
   fi
+
+  if [[ "$voiceover_status_passed" -eq 1 ]]; then
+    expected_source_commit="$(source_commit)"
+    voiceover_source_commit="$(normalize_voiceover_context_value "$(voiceover_context_value "Source commit")")"
+    if [[ -n "$voiceover_source_commit" && "$voiceover_source_commit" != "$expected_source_commit" ]]; then
+      voiceover_blocker "VoiceOver accessibility evidence source commit does not match current git commit: expected $expected_source_commit"
+    fi
+  fi
 fi
 if [[ "$voiceover_evidence_blocker_count" -gt 0 ]]; then
   printf "NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass by running ./script/create_voiceover_evidence.sh --passed with complete release-candidate context, --capture-runtime-ax-smoke, complete focus-path notes, and no pending/template/unchecked markers; the generated evidence must include the runtime AX smoke OK line with unlabeledButtons=0, genericButtons=0, and crudSignals=8/8.\n"
@@ -1146,6 +1158,7 @@ fi
 section "Competitor hands-on evidence"
 competitor_evidence_file="$ROOT_DIR/$COMPETITOR_EVIDENCE_RELATIVE"
 competitor_evidence_blocker_count=0
+competitor_status_passed=0
 competitor_template_pattern='(^|[^[:alnum:]_])(pending|todo|tbd|placeholder|sample|example)([^[:alnum:]_]|$)|replace me|macOS/browser versions|competitor app/account tiers|whether any paid trial'
 competitor_blocker() {
   blocker "$1"
@@ -1206,6 +1219,7 @@ competitor_benchmark_file="$ROOT_DIR/$COMPETITOR_BENCHMARK_RELATIVE"
 if [[ ! -f "$competitor_evidence_file" ]]; then
   competitor_blocker "missing competitor hands-on evidence file: $COMPETITOR_EVIDENCE_RELATIVE"
 else
+  grep -Fx "Status: passed" "$competitor_evidence_file" >/dev/null && competitor_status_passed=1
   for required_marker in "${COMPETITOR_REQUIRED_MARKERS[@]}"; do
     if [[ "$required_marker" == "Status: passed" ]]; then
       marker_present=0
@@ -1288,6 +1302,14 @@ else
       competitor_blocker "Competitor hands-on evidence has boilerplate decision delta: $decision_label"
     fi
   done
+
+  if [[ "$competitor_status_passed" -eq 1 ]]; then
+    expected_source_commit="$(source_commit)"
+    competitor_source_commit="$(normalize_voiceover_context_value "$(competitor_context_value "Source commit")")"
+    if [[ -n "$competitor_source_commit" && "$competitor_source_commit" != "$expected_source_commit" ]]; then
+      competitor_blocker "Competitor hands-on evidence source commit does not match current git commit: expected $expected_source_commit"
+    fi
+  fi
 fi
 if [[ ! -f "$competitor_benchmark_file" ]]; then
   competitor_blocker "missing competitor benchmark document: $COMPETITOR_BENCHMARK_RELATIVE"

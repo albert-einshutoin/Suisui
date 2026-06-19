@@ -9,11 +9,12 @@ Do not set `Status: passed` until every item below is verified on the signed or 
 - macOS version: macOS 26.5
 - App build: `0.1.0 (1)`
 - Bundle identifier: `dev.solopm.app`
+- Source commit:
 - Checked by:
 - Check date: 2026-06-19
 - Evidence source: `dist/SoloPM.app manual VoiceOver pass`
 - Accessibility environment:
-- Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8
+- Runtime AX smoke:
 
 ## Setup
 
@@ -21,7 +22,7 @@ Do not set `Status: passed` until every item below is verified on the signed or 
 2. Launch `dist/SoloPM.app`.
 3. Seed the Project Board with at least one active project and one task with a due date.
 4. Open the Project Board window and keep the right inspector visible.
-5. Run `./script/check_accessibility_preflight.sh --runtime` and paste the OK line into `Runtime AX smoke`.
+5. Run `./script/create_voiceover_evidence.sh --passed --capture-runtime-ax-smoke ...` after the manual pass, or run `./script/check_accessibility_preflight.sh --runtime` and paste the OK line into `Runtime AX smoke`.
 6. Navigate using keyboard and VoiceOver commands before using the pointer.
 
 ## Required Focus Path

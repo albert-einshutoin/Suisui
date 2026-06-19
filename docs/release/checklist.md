@@ -231,6 +231,8 @@ Run the automated local gate sweep first. It verifies CI, SQLite CRUD, runtime a
 
 The final readiness report treats skipped automated proof gates as blockers by default. Run the sweep command for a full local proof, point the report at a clean-tree automated preflight evidence file, or run the individual `SOLOPM_*_PREFLIGHT=1` / smoke flags below when narrowing failures. Do not claim release readiness from the default report output if CI, SQLite CRUD, runtime accessible CRUD, Xcode build, visible launch, or runtime AX were skipped.
 
+Manual VoiceOver and competitor hands-on evidence record the current `Source commit`; rerun those manual passes after code changes instead of reusing evidence from an older release candidate.
+
 ```bash
 ./script/check_automated_release_preflight.sh
 SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/check_automated_release_preflight.sh

@@ -10,6 +10,7 @@ CHECK_DATE="$(date +%F)"
 EVIDENCE_SOURCE="Notion/Todoist/Linear/Motion 2-4 hour hands-on pass"
 ENVIRONMENT=""
 CONFIRM_MANUAL_HANDS_ON=0
+SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
 NOTION_NOTE=""
 TODOIST_NOTE=""
 LINEAR_NOTE=""
@@ -269,6 +270,11 @@ write_context() {
     printf '%s\n' '- Checked by:'
   fi
   printf -- '- Check date: %s\n' "$CHECK_DATE"
+  if [[ "$EVIDENCE_STATUS" == "passed" ]]; then
+    printf -- '- Source commit: `%s`\n' "$SOURCE_COMMIT"
+  else
+    printf '%s\n' '- Source commit:'
+  fi
   printf -- '- Evidence source: `%s`\n' "$EVIDENCE_SOURCE"
   if [[ -n "$ENVIRONMENT" ]]; then
     printf -- '- Environment: %s\n' "$ENVIRONMENT"
@@ -342,6 +348,8 @@ write_hands_on_benchmark() {
     printf -- 'Verified: %s\n' "$CHECK_DATE"
     printf '\n'
     printf -- 'Reviewed by: %s\n' "$CHECKED_BY"
+    printf '\n'
+    printf -- 'Source commit: `%s`\n' "$SOURCE_COMMIT"
     printf '\n'
     printf -- 'Environment: %s\n' "$ENVIRONMENT"
     printf '\n'

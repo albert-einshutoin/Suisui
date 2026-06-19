@@ -2354,6 +2354,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/check_automated_release_preflight.sh"))
         XCTAssertTrue(checklist.contains("Evidence-file mode requires a clean tracked source tree"))
         XCTAssertTrue(checklist.contains("When the final report reuses this evidence, it verifies the generator identity, UTC timestamp, source commit, clean-tree marker, app name, Xcode workspace/scheme/configuration/destination, every automated proof gate, and the manual-evidence boundary text."))
+        XCTAssertTrue(checklist.contains("Manual VoiceOver and competitor hands-on evidence record the current `Source commit`"))
+        XCTAssertTrue(checklist.contains("rerun those manual passes after code changes instead of reusing evidence from an older release candidate"))
         XCTAssertTrue(checklist.contains("This automated sweep does not replace manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper evidence."))
         XCTAssertTrue(checklist.contains("The final readiness report treats skipped automated proof gates as blockers by default."))
         XCTAssertTrue(checklist.contains("Do not claim release readiness from the default report output if CI, SQLite CRUD, runtime accessible CRUD, Xcode build, visible launch, or runtime AX were skipped."))
@@ -2422,6 +2424,7 @@ final class ReleasePipelineTests: XCTestCase {
             try? FileManager.default.removeItem(at: passedURL)
             try? FileManager.default.removeItem(at: runtimeAXSmokeScriptURL)
         }
+        let currentShortCommit = String(try currentGitCommit().prefix(7))
 
         let pendingResult = try runScript(
             "script/create_voiceover_evidence.sh",
@@ -2433,6 +2436,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(pendingEvidence.contains("Status: pending"))
         XCTAssertTrue(pendingEvidence.contains("- App build: `0.1.0 (1)`"))
         XCTAssertTrue(pendingEvidence.contains("- Bundle identifier: `dev.solopm.app`"))
+        XCTAssertTrue(pendingEvidence.contains("- Source commit:"))
+        XCTAssertFalse(pendingEvidence.contains("- Source commit: `\(currentShortCommit)`"))
         XCTAssertTrue(pendingEvidence.contains("- Accessibility environment:"))
         XCTAssertTrue(pendingEvidence.contains("- Runtime AX smoke:"))
         XCTAssertTrue(pendingEvidence.contains("- [ ] Project navigation"))
@@ -2745,6 +2750,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(passedEvidence.contains("Status: passed"))
         XCTAssertTrue(passedEvidence.contains("- App build: `0.1.0 (1)`"))
         XCTAssertTrue(passedEvidence.contains("- Bundle identifier: `dev.solopm.app`"))
+        XCTAssertTrue(passedEvidence.contains("- Source commit: `\(currentShortCommit)`"))
         XCTAssertTrue(passedEvidence.contains("- Checked by: SoloPM Release Owner"))
         XCTAssertTrue(passedEvidence.contains("- Check date: 2026-06-19"))
         XCTAssertTrue(passedEvidence.contains("- Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display"))
@@ -2864,6 +2870,7 @@ final class ReleasePipelineTests: XCTestCase {
             try? FileManager.default.removeItem(at: passedURL)
             try? FileManager.default.removeItem(at: benchmarkURL)
         }
+        let currentShortCommit = String(try currentGitCommit().prefix(7))
 
         let pendingResult = try runScript(
             "script/create_competitor_hands_on_evidence.sh",
@@ -2878,6 +2885,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(pendingEvidence.contains("- [ ] Linear"))
         XCTAssertTrue(pendingEvidence.contains("- [ ] Motion"))
         XCTAssertTrue(pendingEvidence.contains("- Environment:"))
+        XCTAssertTrue(pendingEvidence.contains("- Source commit:"))
+        XCTAssertFalse(pendingEvidence.contains("- Source commit: `\(currentShortCommit)`"))
         XCTAssertTrue(pendingEvidence.contains("Do not set `Status: passed` until every competitor path below is verified"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: benchmarkURL.path))
 
@@ -3111,6 +3120,7 @@ final class ReleasePipelineTests: XCTestCase {
         let passedEvidence = try String(contentsOf: passedURL, encoding: .utf8)
         XCTAssertTrue(passedEvidence.contains("Status: passed"))
         XCTAssertTrue(passedEvidence.contains("- Checked by: SoloPM Product Reviewer"))
+        XCTAssertTrue(passedEvidence.contains("- Source commit: `\(currentShortCommit)`"))
         XCTAssertTrue(passedEvidence.contains("- Check date: 2026-06-19"))
         XCTAssertTrue(passedEvidence.contains("- Environment: macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used"))
         XCTAssertTrue(passedEvidence.contains("- Notion: passed - Board setup was flexible but required manual schema decisions before task entry felt fast."))
@@ -3127,6 +3137,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(passedEvidence.localizedCaseInsensitiveContains("placeholder"))
         let benchmark = try String(contentsOf: benchmarkURL, encoding: .utf8)
         XCTAssertTrue(benchmark.contains("# Competitor Benchmark and Hands-On Findings"))
+        XCTAssertTrue(benchmark.contains("Source commit: `\(currentShortCommit)`"))
         XCTAssertTrue(benchmark.contains("## Hands-On Findings"))
         XCTAssertTrue(benchmark.contains("Notion: Board setup was flexible but required manual schema decisions before task entry felt fast."))
         XCTAssertTrue(benchmark.contains("Todoist: Quick Add made capture fast, but project context still needed review after entry."))
@@ -3170,7 +3181,6 @@ final class ReleasePipelineTests: XCTestCase {
             try "final class \(targetName)RuntimeSource {}\n"
                 .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
         }
-
         try readPackageFile("script/release_readiness_report.sh")
             .write(to: reportURL, atomically: true, encoding: .utf8)
         try """
@@ -3269,6 +3279,7 @@ final class ReleasePipelineTests: XCTestCase {
             try "final class \(targetName)RuntimeSource {}\n"
                 .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
         }
+        let currentShortCommit = String(try currentGitCommit().prefix(7))
 
         try readPackageFile("script/release_readiness_report.sh")
             .write(to: reportURL, atomically: true, encoding: .utf8)
@@ -3286,6 +3297,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         - Checked by: SoloPM Product Reviewer
         - Check date: 2026-06-19
+        - Source commit: `\(currentShortCommit)`
         - Evidence source: `Hands-on local account notes plus official source links`
         - Environment: macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used
         - Scope: Notion -> Todoist -> Linear -> Motion
@@ -3878,6 +3890,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("unlabeledButtons=0"))
         XCTAssertTrue(script.contains("genericButtons=0"))
         XCTAssertTrue(script.contains("crudSignals=8/8"))
+        XCTAssertTrue(script.contains("VoiceOver accessibility evidence source commit does not match current git commit"))
         XCTAssertTrue(script.contains("packaging/app_metadata.env"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence bundle identifier does not match packaging metadata"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence app build does not match packaging metadata"))
@@ -3898,6 +3911,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Competitor hands-on evidence is not marked passed"))
         XCTAssertTrue(script.contains("Competitor hands-on evidence still contains pending/template/placeholder text"))
         XCTAssertTrue(script.contains("Competitor hands-on evidence still contains unchecked checklist markers"))
+        XCTAssertTrue(script.contains("Competitor hands-on evidence source commit does not match current git commit"))
         XCTAssertTrue(script.contains("Competitor benchmark still reads as desk research or a hands-on worksheet"))
         XCTAssertTrue(script.contains("macOS/browser versions|competitor app/account tiers|whether any paid trial"))
         XCTAssertTrue(script.contains("NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass"))
@@ -3936,6 +3950,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Tracked source tree:"))
         XCTAssertTrue(script.contains("tracked_source_tree_status()"))
         XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" status --porcelain --untracked-files=no"))
+        XCTAssertTrue(phase.contains("[x] VoiceOver / competitor hands-on の手動証跡は `Source commit` を記録し、`Status: passed` の場合は現在の git commit と一致しない証跡をrelease blockerにする。"))
         XCTAssertTrue(script.contains("Blocker groups:"))
         XCTAssertTrue(script.contains("BLOCKER_MESSAGES=()"))
         XCTAssertTrue(script.contains("BLOCKER_MESSAGES+=(\"$1\")"))
@@ -4770,6 +4785,7 @@ final class ReleasePipelineTests: XCTestCase {
         - macOS version: macOS 15.5
         - App build: `0.1.0 (1)`
         - Bundle identifier: `dev.solopm.app`
+        - Source commit: `deadbee`
         - Checked by: SoloPM Release Owner
         - Check date: 2026-02-31
         - Evidence source: `dist/SoloPM.app` manual pass
@@ -4871,6 +4887,7 @@ final class ReleasePipelineTests: XCTestCase {
         - macOS version: macOS 15.5
         - App build: `0.1.0 (1)`
         - Bundle identifier: `dev.solopm.app`
+        - Source commit: `deadbee`
         - Checked by: SoloPM Release Owner
         - Check date: 2099-01-01
         - Evidence source: `dist/SoloPM.app` manual pass
@@ -4899,6 +4916,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         - Checked by: SoloPM Product Reviewer
         - Check date: 2099-01-01
+        - Source commit: `deadbee`
         - Evidence source: `Real local hands-on pass`
         - Environment: macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used
         - Scope: Notion -> Todoist -> Linear -> Motion
@@ -4930,7 +4948,9 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence has future release context date: Check date"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence source commit does not match current git commit"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence has future review context date: Check date"))
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence source commit does not match current git commit"))
         XCTAssertFalse(result.output.contains("VoiceOver accessibility evidence missing concrete focus note"))
         XCTAssertFalse(result.output.contains("Competitor hands-on evidence missing concrete note"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
