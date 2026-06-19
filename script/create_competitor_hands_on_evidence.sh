@@ -39,6 +39,26 @@ require_passed_value() {
   fi
 }
 
+require_clean_tracked_source_tree_for_passed_evidence() {
+  local tracked_source_status
+
+  if ! command -v git >/dev/null 2>&1; then
+    echo "BLOCKER: competitor hands-on passed evidence requires git to verify the release source tree" >&2
+    exit 2
+  fi
+
+  if ! git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "BLOCKER: competitor hands-on passed evidence requires a git worktree" >&2
+    exit 2
+  fi
+
+  tracked_source_status="$(git -C "$ROOT_DIR" status --porcelain --untracked-files=no)"
+  if [[ -n "$tracked_source_status" ]]; then
+    echo "BLOCKER: competitor hands-on passed evidence requires a clean tracked source tree. Commit or revert tracked source changes, then rerun ./script/create_competitor_hands_on_evidence.sh --pending for this release candidate." >&2
+    exit 2
+  fi
+}
+
 is_boilerplate_competitor_value() {
   local normalized
   normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[[:punct:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
@@ -500,6 +520,7 @@ write_hands_on_benchmark() {
 }
 
 if [[ "$EVIDENCE_STATUS" == "passed" ]]; then
+  require_clean_tracked_source_tree_for_passed_evidence
   write_passed_evidence
   write_hands_on_benchmark
 else

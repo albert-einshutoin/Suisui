@@ -288,6 +288,44 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(example.contains("Do not copy this example as final release evidence."))
     }
 
+    func testManualEvidenceScriptsRequireCleanTrackedSourceTreeBeforeWritingPassedEvidence() throws {
+        let voiceOverScript = try readPackageFile("script/create_voiceover_evidence.sh")
+        let competitorScript = try readPackageFile("script/create_competitor_hands_on_evidence.sh")
+        let releaseEvidenceScript = try readPackageFile("script/create_release_evidence.sh")
+        let checklist = try readPackageFile("docs/release/checklist.md")
+        let phase = try readPackageFile("tasks/Phase10-ReleaseReadinessRuntime.md")
+
+        for script in [voiceOverScript, competitorScript, releaseEvidenceScript] {
+            XCTAssertTrue(script.contains("require_clean_tracked_source_tree_for_passed_evidence"))
+            XCTAssertGreaterThanOrEqual(script.components(separatedBy: "require_clean_tracked_source_tree_for_passed_evidence").count - 1, 2)
+            XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" status --porcelain --untracked-files=no"))
+            XCTAssertTrue(script.contains("requires a clean tracked source tree"))
+            XCTAssertTrue(script.contains("Commit or revert tracked source changes"))
+        }
+
+        let voiceOverGuardRange = try XCTUnwrap(voiceOverScript.range(of: "require_clean_tracked_source_tree_for_passed_evidence"))
+        let voiceOverWriteRange = try XCTUnwrap(voiceOverScript.range(of: "write_passed_evidence"))
+        XCTAssertLessThan(
+            voiceOverGuardRange.lowerBound,
+            voiceOverWriteRange.lowerBound
+        )
+        let competitorGuardRange = try XCTUnwrap(competitorScript.range(of: "require_clean_tracked_source_tree_for_passed_evidence"))
+        let competitorWriteRange = try XCTUnwrap(competitorScript.range(of: "write_passed_evidence"))
+        XCTAssertLessThan(
+            competitorGuardRange.lowerBound,
+            competitorWriteRange.lowerBound
+        )
+        let releaseGuardRange = try XCTUnwrap(releaseEvidenceScript.range(of: "require_clean_tracked_source_tree_for_passed_evidence"))
+        let releaseWriteRange = try XCTUnwrap(releaseEvidenceScript.range(of: "mv \"$tmp_file\" \"$OUTPUT_FILE\""))
+        XCTAssertLessThan(
+            releaseGuardRange.lowerBound,
+            releaseWriteRange.lowerBound
+        )
+
+        XCTAssertTrue(checklist.contains("Direct manual evidence scripts also require a clean tracked source tree before writing passed evidence."))
+        XCTAssertTrue(phase.contains("[x] Direct manual evidence scripts reject dirty tracked source trees before writing passed VoiceOver, competitor, or release-machine evidence."))
+    }
+
     func testReleaseMachineEvidencePreparationWritesWorksheetAndCommandWithoutPassingEvidence() throws {
         let worksheetURL = packageRoot()
             .appendingPathComponent(".build/test-release-machine-worksheet.md")
