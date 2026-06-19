@@ -3545,6 +3545,7 @@ final class ReleasePipelineTests: XCTestCase {
         let mcpComplianceURL = scriptDirectory.appendingPathComponent("verify_mcp_compliance.sh")
         let ciURL = scriptsDirectory.appendingPathComponent("ci.sh")
         let evidenceURL = tmpDirectory.appendingPathComponent("automated-release-preflight.md")
+        let actionSummaryURL = fixtureRoot.appendingPathComponent("release-actions.md")
 
         try? FileManager.default.removeItem(at: fixtureRoot)
         try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
@@ -3683,9 +3684,11 @@ final class ReleasePipelineTests: XCTestCase {
             ["bash", reportURL.path],
             environment: [
                 "SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ACTIONS_FILE": actionSummaryURL.path,
                 "SOLOPM_XCODE_CONFIGURATION": "Release"
             ]
         )
+        let actionSummary = try String(contentsOf: actionSummaryURL, encoding: .utf8)
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("== Automated preflight evidence =="))
@@ -3704,6 +3707,18 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(result.output.contains("accessibility runtime preflight was not run"))
         XCTAssertFalse(result.output.contains("automated proof fixture should not run"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
+        XCTAssertTrue(actionSummary.contains("## Automated Proof Gates"))
+        XCTAssertTrue(actionSummary.contains("- [x] Automated preflight evidence accepted: `.tmp/automated-release-preflight.md`"))
+        XCTAssertTrue(actionSummary.contains("- Source commit: `\(currentShortCommit)`"))
+        XCTAssertTrue(actionSummary.contains("- Generated at: `2026-06-19T12:30:44Z`"))
+        XCTAssertTrue(actionSummary.contains("- [x] Release CI: passed"))
+        XCTAssertTrue(actionSummary.contains("- [x] Local CRUD smoke: passed"))
+        XCTAssertTrue(actionSummary.contains("- [x] Runtime accessible CRUD smoke: passed"))
+        XCTAssertTrue(actionSummary.contains("- [x] Xcode build preflight: passed"))
+        XCTAssertTrue(actionSummary.contains("- [x] Launch preflight: passed"))
+        XCTAssertTrue(actionSummary.contains("- [x] Runtime accessibility preflight: passed"))
+        XCTAssertTrue(actionSummary.contains("- [x] MCP compliance preflight: passed"))
+        XCTAssertFalse(actionSummary.contains("- Run: `SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh`"))
     }
 
     func testReleaseReadinessReportRejectsAutomatedPreflightEvidenceForDifferentAppContext() throws {
@@ -4081,6 +4096,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("write_blocker_bucket_line \"Release Machine\""))
         XCTAssertTrue(script.contains("write_blocker_bucket_line \"Phase Checklist\""))
         XCTAssertTrue(script.contains("## Automated Proof Gates"))
+        XCTAssertTrue(script.contains("Automated preflight evidence accepted"))
+        XCTAssertTrue(script.contains("automated_preflight_context_value \"Generated at\""))
+        XCTAssertTrue(script.contains("for required_gate in \"${AUTOMATED_PREFLIGHT_REQUIRED_GATES[@]}\""))
         XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh"))
         XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/release_readiness_report.sh"))
         XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/check_automated_release_preflight.sh"))
@@ -4105,6 +4123,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] action summary は今回の実行で発生した具体blockerを `Current Blocker Groups` のチェックリストとして列挙する。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Blocker Buckets` で Automated Proof Gates / Manual VoiceOver / Competitor Hands-On / Release Machine / Phase Checklist / Other の残件数を分類する。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Release Environment Blockers` に `verify_release_environment.sh` の `BLOCKER:` 明細を相対パス化して列挙し、機密っぽい値を転記しない。"))
+        XCTAssertTrue(phase.contains("[x] action summary は clean-tree automated preflight evidence が有効な場合、accepted evidence、source commit、generated at、passed gatesを表示し、再実行指示だけを出さない。"))
     }
 
     func testReleaseReadinessReportWritesSpecificReleaseEnvironmentBlockersToActionSummary() throws {

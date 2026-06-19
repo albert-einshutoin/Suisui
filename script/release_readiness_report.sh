@@ -300,6 +300,28 @@ collect_release_environment_blockers() {
   done <<<"$output"
 }
 
+write_automated_proof_gate_actions() {
+  local required_gate
+
+  printf "## Automated Proof Gates\n"
+  if automated_preflight_evidence_covers "Release CI"; then
+    printf -- "- [x] Automated preflight evidence accepted: \`%s\`\n" "${AUTOMATED_PREFLIGHT_EVIDENCE_PATH#"$ROOT_DIR/"}"
+    printf -- "- Source commit: \`%s\`\n" "$(automated_preflight_context_value "Source commit")"
+    printf -- "- Generated at: \`%s\`\n" "$(automated_preflight_context_value "Generated at")"
+    printf -- "- This proves local automated gates only; it does not mark manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper checks as passed.\n"
+    for required_gate in "${AUTOMATED_PREFLIGHT_REQUIRED_GATES[@]}"; do
+      printf -- "- [x] %s: passed\n" "$required_gate"
+    done
+  elif [[ "$AUTOMATED_PROOF_GATES" == "1" ]]; then
+    printf -- "- Automated proof gates were requested in this report. Inspect the report output for pass/fail details before treating any automated gate as proven.\n"
+  else
+    printf -- "- Run: \`SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh\`\n"
+    printf -- "- Or reuse clean-tree evidence in the report: \`SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/release_readiness_report.sh\`\n"
+    printf -- "- Or produce clean-tree evidence: \`SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/check_automated_release_preflight.sh\`\n"
+  fi
+  printf "\n"
+}
+
 write_release_actions() {
   local status="$1"
   local action_path="$RELEASE_ACTIONS_FILE"
@@ -371,15 +393,7 @@ write_release_actions() {
       printf "\n"
     fi
 
-    printf "## Automated Proof Gates\n"
-    if [[ "$AUTOMATED_PROOF_GATES" == "1" ]]; then
-      printf -- "- Automated proof gates were requested in this report. Inspect the report output for pass/fail details before treating any automated gate as proven.\n"
-    else
-      printf -- "- Run: \`SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh\`\n"
-      printf -- "- Or reuse clean-tree evidence in the report: \`SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/release_readiness_report.sh\`\n"
-      printf -- "- Or produce clean-tree evidence: \`SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/check_automated_release_preflight.sh\`\n"
-    fi
-    printf "\n"
+    write_automated_proof_gate_actions
 
     printf "## Manual VoiceOver\n"
     printf -- "- Run the source/runtime accessibility preflight first, then perform a real VoiceOver pass.\n"
