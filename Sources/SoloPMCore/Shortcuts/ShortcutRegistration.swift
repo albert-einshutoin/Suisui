@@ -64,7 +64,7 @@ public final class ShortcutSettingsViewModel: ObservableObject {
             state = try client.registerVoiceCaptureShortcut(.defaultVoiceCapture)
             errorMessage = nil
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = UserFacingErrorMessageSanitizer.message(from: error)
         }
     }
 
@@ -73,7 +73,7 @@ public final class ShortcutSettingsViewModel: ObservableObject {
             state = try client.unregisterVoiceCaptureShortcut()
             errorMessage = nil
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = UserFacingErrorMessageSanitizer.message(from: error)
         }
     }
 }

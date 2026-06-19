@@ -72,7 +72,7 @@ public final class LaunchAtLoginSettingsViewModel: ObservableObject {
             errorMessage = nil
         } catch {
             status = client.status()
-            errorMessage = error.localizedDescription
+            errorMessage = UserFacingErrorMessageSanitizer.message(from: error)
         }
     }
 }

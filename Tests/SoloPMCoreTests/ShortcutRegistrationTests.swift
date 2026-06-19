@@ -29,4 +29,33 @@ final class ShortcutRegistrationTests: XCTestCase {
 
         XCTAssertFalse(viewModel.canRegister)
     }
+
+    func testShortcutRegistrationErrorsAreRedactedBeforeUserDisplay() {
+        let viewModel = ShortcutSettingsViewModel(client: ThrowingShortcutClient())
+
+        viewModel.registerDefaultVoiceCaptureShortcut()
+
+        XCTAssertEqual(viewModel.errorMessage, "Shortcut registration failed with [REDACTED_SECRET]")
+        XCTAssertFalse(viewModel.errorMessage?.contains("sk-shortcut-secret") ?? true)
+    }
+}
+
+private struct ThrowingShortcutClient: ShortcutClient {
+    func state() -> ShortcutRegistrationState {
+        ShortcutRegistrationState()
+    }
+
+    func registerVoiceCaptureShortcut(_ shortcut: KeyboardShortcut) throws -> ShortcutRegistrationState {
+        throw ShortcutSecretError()
+    }
+
+    func unregisterVoiceCaptureShortcut() throws -> ShortcutRegistrationState {
+        throw ShortcutSecretError()
+    }
+}
+
+private struct ShortcutSecretError: Error, CustomStringConvertible {
+    var description: String {
+        "Shortcut registration failed with sk-shortcut-secret"
+    }
 }

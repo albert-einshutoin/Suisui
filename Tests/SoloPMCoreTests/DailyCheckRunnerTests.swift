@@ -149,6 +149,17 @@ final class DailyCheckRunnerTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testLaunchAtLoginSettingsViewModelRedactsToggleErrorsBeforeUserDisplay() {
+        let viewModel = LaunchAtLoginSettingsViewModel(client: ThrowingLaunchAtLoginClient())
+
+        viewModel.setEnabled(true)
+
+        XCTAssertEqual(viewModel.status, .disabled)
+        XCTAssertEqual(viewModel.errorMessage, "Launch at Login failed with [REDACTED_SECRET]")
+        XCTAssertFalse(viewModel.errorMessage?.contains("sk-login-secret") ?? true)
+    }
+
     func testSQLiteDailyCheckStateStorePersistsLastRunAt() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase4)
@@ -222,6 +233,22 @@ private struct StaticLaunchAtLoginClient: LaunchAtLoginClient {
 
     func setEnabled(_ enabled: Bool) throws -> LaunchAtLoginStatus {
         currentStatus
+    }
+}
+
+private struct ThrowingLaunchAtLoginClient: LaunchAtLoginClient {
+    func status() -> LaunchAtLoginStatus {
+        .disabled
+    }
+
+    func setEnabled(_ enabled: Bool) throws -> LaunchAtLoginStatus {
+        throw LaunchAtLoginSecretError()
+    }
+}
+
+private struct LaunchAtLoginSecretError: Error, LocalizedError {
+    var errorDescription: String? {
+        "Launch at Login failed with sk-login-secret"
     }
 }
 
