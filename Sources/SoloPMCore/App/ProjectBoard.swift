@@ -710,8 +710,50 @@ public final class ProjectBoardViewModel: ObservableObject {
             }
             errorMessage = nil
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
         }
+    }
+
+    private static func userFacingMessage(for error: Error) -> String {
+        guard let decodingError = error as? LocalStoreDecodingError else {
+            return String(describing: error)
+        }
+
+        return repairGuidance(for: decodingError)
+    }
+
+    private static func repairGuidance(for error: LocalStoreDecodingError) -> String {
+        let action = "Restore from backup or repair the local database, then reopen SoloPM."
+        switch error {
+        case .invalidStringArray(let column):
+            return "Local board data needs repair: \(column) contains invalid list JSON. \(action)"
+        case .invalidDoubleArray(let column):
+            return "Local board data needs repair: \(column) contains invalid numeric vector JSON. \(action)"
+        case .invalidStringMap(let column):
+            return "Local board data needs repair: \(column) contains invalid key-value JSON. \(action)"
+        case .inconsistentDimensions(let column, let expected, let actual):
+            return "Local board data needs repair: \(column) has \(actual) values, expected \(expected). \(action)"
+        case .missingRequiredColumn(let column):
+            return "Local board data needs repair: \(column) is missing. \(action)"
+        case .invalidInt64(let column, let value):
+            return "Local board data needs repair: \(column) contains invalid integer value \(quotedDisplayValue(value)). \(action)"
+        case .invalidEnum(let column, let value):
+            return "Local board data needs repair: \(column) contains unsupported value \(quotedDisplayValue(value)). \(action)"
+        case .invalidDate(let column, let value):
+            return "Local board data needs repair: \(column) contains invalid date value \(quotedDisplayValue(value)). \(action)"
+        }
+    }
+
+    private static func quotedDisplayValue(_ value: String) -> String {
+        let normalized = value
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\t", with: " ")
+        let maxVisibleCharacters = 80
+        guard normalized.count > maxVisibleCharacters else {
+            return "\"\(normalized)\""
+        }
+        return "\"\(String(normalized.prefix(maxVisibleCharacters)))...\""
     }
 
     public func setShowsArchivedProjects(_ isShown: Bool) {
@@ -755,7 +797,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             errorMessage = "Task title is required."
             return nil
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
             return nil
         }
     }
@@ -804,7 +846,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             errorMessage = "Project title is required."
             return nil
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
             return nil
         }
     }
@@ -822,7 +864,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             errorMessage = "Project title is required."
             return nil
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
             return nil
         }
     }
@@ -840,7 +882,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         } catch ProjectBoardStoreError.emptyProjectTitle {
             errorMessage = "Project title is required."
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
         }
     }
 
@@ -855,7 +897,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             self.selectedProjectID = selectedProjectID
             onChange()
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
         }
     }
 
@@ -871,7 +913,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             load()
             onChange()
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
         }
     }
 
@@ -886,7 +928,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             self.selectedProjectID = selectedProjectID
             onChange()
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
         }
     }
 
@@ -902,7 +944,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             load()
             onChange()
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
         }
     }
 
@@ -937,7 +979,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         } catch ProjectBoardStoreError.emptyTitle {
             errorMessage = "Task title is required."
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
         }
     }
 
@@ -1011,7 +1053,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             if let createdProjectID {
                 try? store.deleteProject(id: createdProjectID)
             }
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
         }
     }
 
@@ -1093,7 +1135,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         } catch ProjectBoardStoreError.emptyTitle {
             errorMessage = "Task title is required."
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
         }
     }
 
@@ -1116,7 +1158,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
             errorMessage = "Restore the project before moving tasks."
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
         }
     }
 
@@ -1139,7 +1181,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
             errorMessage = "Restore the project before moving tasks."
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
         }
     }
 
@@ -1186,7 +1228,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             errorMessage = "Restore the project before moving tasks."
             return false
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
             return false
         }
     }
@@ -1202,7 +1244,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             load()
             onChange()
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
         }
     }
 
@@ -1230,7 +1272,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             errorMessage = "Restore the project before linking artifacts."
             return nil
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
             return nil
         }
     }
@@ -1249,7 +1291,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             errorMessage = "Artifact link is no longer available."
             return false
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
             return false
         }
     }
@@ -1266,7 +1308,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         } catch ProjectBoardStoreError.emptyTitle {
             errorMessage = "Task title is required."
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
         }
     }
 
@@ -1289,7 +1331,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         } catch ProjectBoardStoreError.emptyTitle {
             errorMessage = "Task title is required."
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingMessage(for: error)
         }
     }
 

@@ -1091,6 +1091,51 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertFalse(viewModel.isEmptyProjectStateVisible)
     }
 
+    @MainActor
+    func testProjectBoardViewModelShowsRepairGuidanceForCorruptedLocalJSON() {
+        let viewModel = ProjectBoardViewModel(
+            store: AlwaysFailingProjectBoardStore(error: LocalStoreDecodingError.invalidStringArray(column: "projects.tags_json"))
+        )
+
+        viewModel.load()
+
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Local board data needs repair: projects.tags_json contains invalid list JSON. Restore from backup or repair the local database, then reopen SoloPM."
+        )
+        XCTAssertFalse(viewModel.isEmptyProjectStateVisible)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelShowsRepairGuidanceForUnsupportedStoredEnum() {
+        let viewModel = ProjectBoardViewModel(
+            store: AlwaysFailingProjectBoardStore(error: LocalStoreDecodingError.invalidEnum(column: "projects.status", value: "parked"))
+        )
+
+        viewModel.load()
+
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Local board data needs repair: projects.status contains unsupported value \"parked\". Restore from backup or repair the local database, then reopen SoloPM."
+        )
+        XCTAssertFalse(viewModel.isEmptyProjectStateVisible)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelTruncatesLongCorruptedValuesInRepairGuidance() {
+        let oversizedValue = "\(String(repeating: "x", count: 90))\nnext line"
+        let viewModel = ProjectBoardViewModel(
+            store: AlwaysFailingProjectBoardStore(error: LocalStoreDecodingError.invalidDate(column: "tasks.due_at", value: oversizedValue))
+        )
+
+        viewModel.load()
+
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Local board data needs repair: tasks.due_at contains invalid date value \"\(String(repeating: "x", count: 80))...\". Restore from backup or repair the local database, then reopen SoloPM."
+        )
+    }
+
     private func makeStore() throws -> SQLiteProjectBoardStore {
         try makeStoreBundle().board
     }
@@ -1126,7 +1171,11 @@ private extension ProjectBoardProject {
 }
 
 private struct AlwaysFailingProjectBoardStore: ProjectBoardStore {
-    private var error: Error { ProjectBoardStoreTestError.unavailable }
+    private let error: Error
+
+    init(error: Error = ProjectBoardStoreTestError.unavailable) {
+        self.error = error
+    }
 
     func loadSnapshot() throws -> ProjectBoardSnapshot {
         throw error
