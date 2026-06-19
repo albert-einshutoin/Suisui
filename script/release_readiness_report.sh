@@ -744,6 +744,11 @@ write_release_actions() {
 
     write_automated_proof_gate_actions
 
+    printf "## Manual Evidence Source Hygiene\n"
+    printf -- "- Direct manual evidence scripts enforce the same clean tracked source tree guard before writing passed evidence.\n"
+    printf -- "- This includes \`./script/create_voiceover_evidence.sh --passed\`, \`./script/create_competitor_hands_on_evidence.sh --passed\`, and \`./script/create_release_evidence.sh\`.\n"
+    printf -- "- Do not bypass the generated command files to work around a dirty tree. Commit or revert tracked source changes, regenerate the candidate/worksheet command, then record evidence for the current release candidate.\n\n"
+
     printf "## Manual VoiceOver\n"
     printf -- "- Prepare the deterministic review candidate before the manual pass. Use \`--no-launch\` to inspect the isolated database first, then run without it to build and open the candidate app.\n\n"
     write_voiceover_review_candidate_command
