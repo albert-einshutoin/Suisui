@@ -195,6 +195,8 @@ Before checking the Phase 11 competitor benchmark item, replace `docs/release/ev
 
 Use the generator so a pending worksheet cannot be mistaken for a pass:
 
+Each competitor note and Ship / Defer / Reject delta must identify what was actually observed or decided during the hands-on pass. Boilerplate notes such as `Verified.`, `Passed.`, `OK`, `No issues`, or unedited `Concrete ... observation from the hands-on pass.` examples are rejected by both the generator and `release_readiness_report.sh`.
+
 ```bash
 ./script/create_competitor_hands_on_evidence.sh --pending
 ./script/create_competitor_hands_on_evidence.sh --passed \

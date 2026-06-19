@@ -198,6 +198,40 @@ is_boilerplate_voiceover_note() {
   esac
 }
 
+is_boilerplate_competitor_value() {
+  local normalized
+  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[[:punct:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
+  case "$normalized" in
+    verified|\
+    checked|\
+    confirmed|\
+    passed|\
+    ok|\
+    okay|\
+    works|\
+    "looks good"|\
+    "all good"|\
+    "no issue"|\
+    "no issues"|\
+    "hands on complete"|\
+    "hands on completed"|\
+    "manual pass complete"|\
+    "manual pass completed"|\
+    "concrete notion observation"*|\
+    "concrete todoist observation"*|\
+    "concrete linear observation"*|\
+    "concrete motion observation"*|\
+    "solopm public alpha behavior to ship based on the benchmark"|\
+    "behavior to defer until stronger reliability or demand evidence exists"|\
+    "behavior to keep out of public alpha scope")
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 is_manual_phase_gate() {
   local item="$1"
   grep -Eiq '(手動確認|実機|支援技術|VoiceOver|hands-on|2-4[[:space:]]*hour|2-4時間|Developer ID|notarization|notarized|公証|Gatekeeper|clean environment|clean 環境|別ユーザー|login item|signed app|signed / notarized|署名|release-machine|manual evidence)' <<<"$item"
@@ -793,6 +827,8 @@ else
 
     if grep -Eiq "$competitor_template_pattern" <<<"$note_value"; then
       competitor_blocker "Competitor hands-on evidence has template concrete note: $note_label"
+    elif is_boilerplate_competitor_value "$note_value"; then
+      competitor_blocker "Competitor hands-on evidence has boilerplate concrete note: $note_label"
     fi
   done
 
@@ -807,6 +843,8 @@ else
 
     if grep -Eiq "$competitor_template_pattern" <<<"$decision_value"; then
       competitor_blocker "Competitor hands-on evidence has template decision delta: $decision_label"
+    elif is_boilerplate_competitor_value "$decision_value"; then
+      competitor_blocker "Competitor hands-on evidence has boilerplate decision delta: $decision_label"
     fi
   done
 fi

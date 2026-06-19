@@ -2221,6 +2221,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("docs/release/evidence/competitor-hands-on.md"))
         XCTAssertTrue(checklist.contains("./script/create_competitor_hands_on_evidence.sh --pending"))
         XCTAssertTrue(checklist.contains("./script/create_competitor_hands_on_evidence.sh --passed"))
+        XCTAssertTrue(checklist.contains("Each competitor note and Ship / Defer / Reject delta must identify what was actually observed or decided during the hands-on pass."))
         XCTAssertTrue(checklist.contains("--environment \"macOS/browser versions, competitor app/account tiers, and whether any paid trial was used\""))
         XCTAssertTrue(checklist.contains("--confirm-manual-hands-on"))
         XCTAssertTrue(checklist.contains("Notion -> Todoist -> Linear -> Motion"))
@@ -2737,6 +2738,72 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(futureDateResult.output.contains("--check-date must not be in the future"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
 
+        let boilerplateNoteResult = try runScript(
+            "script/create_competitor_hands_on_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "SoloPM Product Reviewer",
+                "--check-date", "2026-06-19",
+                "--environment", "macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used",
+                "--notion-note", "Verified.",
+                "--todoist-note", "Quick Add made capture fast, but project context still needed review after entry.",
+                "--linear-note", "Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.",
+                "--motion-note", "Scheduling suggestions were useful only when the reason and deadline impact were visible.",
+                "--ship", "Keep fast local capture, board status movement, and right inspector as the public alpha loop.",
+                "--defer", "Natural-language dates and autonomous scheduling stay out until reliability evidence exists.",
+                "--reject", "Team cycles, initiatives, and external SaaS sync stay outside public alpha scope.",
+                "--output", passedURL.path,
+                "--confirm-manual-hands-on"
+            ]
+        )
+        XCTAssertNotEqual(boilerplateNoteResult.exitCode, 0)
+        XCTAssertTrue(boilerplateNoteResult.output.contains("--notion-note must include concrete competitor hands-on details"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
+        let copiedTemplateNoteResult = try runScript(
+            "script/create_competitor_hands_on_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "SoloPM Product Reviewer",
+                "--check-date", "2026-06-19",
+                "--environment", "macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used",
+                "--notion-note", "Board setup was flexible but required manual schema decisions before task entry felt fast.",
+                "--todoist-note", "Concrete Todoist observation from the hands-on pass.",
+                "--linear-note", "Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.",
+                "--motion-note", "Scheduling suggestions were useful only when the reason and deadline impact were visible.",
+                "--ship", "Keep fast local capture, board status movement, and right inspector as the public alpha loop.",
+                "--defer", "Natural-language dates and autonomous scheduling stay out until reliability evidence exists.",
+                "--reject", "Team cycles, initiatives, and external SaaS sync stay outside public alpha scope.",
+                "--output", passedURL.path,
+                "--confirm-manual-hands-on"
+            ]
+        )
+        XCTAssertNotEqual(copiedTemplateNoteResult.exitCode, 0)
+        XCTAssertTrue(copiedTemplateNoteResult.output.contains("--todoist-note must include concrete competitor hands-on details"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
+        let copiedDecisionTemplateResult = try runScript(
+            "script/create_competitor_hands_on_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "SoloPM Product Reviewer",
+                "--check-date", "2026-06-19",
+                "--environment", "macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used",
+                "--notion-note", "Board setup was flexible but required manual schema decisions before task entry felt fast.",
+                "--todoist-note", "Quick Add made capture fast, but project context still needed review after entry.",
+                "--linear-note", "Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.",
+                "--motion-note", "Scheduling suggestions were useful only when the reason and deadline impact were visible.",
+                "--ship", "SoloPM public-alpha behavior to ship based on the benchmark.",
+                "--defer", "Natural-language dates and autonomous scheduling stay out until reliability evidence exists.",
+                "--reject", "Team cycles, initiatives, and external SaaS sync stay outside public alpha scope.",
+                "--output", passedURL.path,
+                "--confirm-manual-hands-on"
+            ]
+        )
+        XCTAssertNotEqual(copiedDecisionTemplateResult.exitCode, 0)
+        XCTAssertTrue(copiedDecisionTemplateResult.output.contains("--ship must include concrete competitor hands-on details"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
         let passedResult = try runScript(
             "script/create_competitor_hands_on_evidence.sh",
             arguments: [
@@ -2823,17 +2890,17 @@ final class ReleasePipelineTests: XCTestCase {
 
         ## Verified Hands-On Path
 
-        - Notion: passed -
-        - Todoist: passed -
+        - Notion: passed - Verified.
+        - Todoist: passed - Concrete Todoist observation from the hands-on pass.
         - Linear: passed -
         - Motion: passed -
         - No external SaaS sync or team workflow was added to SoloPM public alpha scope because of this benchmark.
 
         ## Ship / Defer / Reject Delta
 
-        - Ship:
-        - Defer:
-        - Reject:
+        - Ship: SoloPM public-alpha behavior to ship based on the benchmark.
+        - Defer: Behavior to defer until stronger reliability or demand evidence exists.
+        - Reject: Behavior to keep out of public alpha scope.
         """.write(to: evidenceDirectory.appendingPathComponent("competitor-hands-on.md"), atomically: true, encoding: .utf8)
         try "- [x] fixture phase is complete\n"
             .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
@@ -2848,13 +2915,13 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence has invalid review context date: Check date"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing review context: Environment"))
-        XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing concrete note: Notion"))
-        XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing concrete note: Todoist"))
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate concrete note: Notion"))
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate concrete note: Todoist"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing concrete note: Linear"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing concrete note: Motion"))
-        XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing decision delta: Ship"))
-        XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing decision delta: Defer"))
-        XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing decision delta: Reject"))
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate decision delta: Ship"))
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate decision delta: Defer"))
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate decision delta: Reject"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
     }
 

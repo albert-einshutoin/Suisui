@@ -34,6 +34,51 @@ require_passed_value() {
   fi
 }
 
+is_boilerplate_competitor_value() {
+  local normalized
+  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[[:punct:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
+  case "$normalized" in
+    verified|\
+    checked|\
+    confirmed|\
+    passed|\
+    ok|\
+    okay|\
+    works|\
+    "looks good"|\
+    "all good"|\
+    "no issue"|\
+    "no issues"|\
+    "hands on complete"|\
+    "hands on completed"|\
+    "manual pass complete"|\
+    "manual pass completed"|\
+    "concrete notion observation"*|\
+    "concrete todoist observation"*|\
+    "concrete linear observation"*|\
+    "concrete motion observation"*|\
+    "solopm public alpha behavior to ship based on the benchmark"|\
+    "behavior to defer until stronger reliability or demand evidence exists"|\
+    "behavior to keep out of public alpha scope")
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+require_concrete_competitor_value() {
+  local flag="$1"
+  local value="$2"
+
+  require_passed_value "$flag" "$value"
+  if is_boilerplate_competitor_value "$value"; then
+    echo "$flag must include concrete competitor hands-on details" >&2
+    exit 2
+  fi
+}
+
 is_placeholder_environment() {
   local normalized
   normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
@@ -198,13 +243,13 @@ if [[ "$EVIDENCE_STATUS" == "passed" ]]; then
     echo "--environment must describe the actual hands-on environment" >&2
     exit 2
   fi
-  require_passed_value "--notion-note" "$NOTION_NOTE"
-  require_passed_value "--todoist-note" "$TODOIST_NOTE"
-  require_passed_value "--linear-note" "$LINEAR_NOTE"
-  require_passed_value "--motion-note" "$MOTION_NOTE"
-  require_passed_value "--ship" "$SHIP_DELTA"
-  require_passed_value "--defer" "$DEFER_DELTA"
-  require_passed_value "--reject" "$REJECT_DELTA"
+  require_concrete_competitor_value "--notion-note" "$NOTION_NOTE"
+  require_concrete_competitor_value "--todoist-note" "$TODOIST_NOTE"
+  require_concrete_competitor_value "--linear-note" "$LINEAR_NOTE"
+  require_concrete_competitor_value "--motion-note" "$MOTION_NOTE"
+  require_concrete_competitor_value "--ship" "$SHIP_DELTA"
+  require_concrete_competitor_value "--defer" "$DEFER_DELTA"
+  require_concrete_competitor_value "--reject" "$REJECT_DELTA"
 fi
 
 mkdir -p "$(dirname "$OUTPUT_FILE")"
