@@ -236,6 +236,8 @@ The final readiness report treats skipped automated proof gates as blockers. Run
 SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/check_automated_release_preflight.sh
 ```
 
+Evidence-file mode requires a clean tracked source tree, so commit or discard tracked changes before producing release proof.
+
 ```bash
 source packaging/app_metadata.env
 export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"

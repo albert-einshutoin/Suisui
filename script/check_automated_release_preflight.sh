@@ -27,6 +27,22 @@ section() {
   printf "\n== %s ==\n" "$1"
 }
 
+require_clean_source_tree_for_evidence() {
+  if [[ -z "$AUTOMATED_PREFLIGHT_EVIDENCE_FILE" ]]; then
+    return 0
+  fi
+
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "BLOCKER: automated preflight evidence requires a git worktree" >&2
+    exit 2
+  fi
+
+  if ! git diff --quiet -- . || ! git diff --cached --quiet -- .; then
+    echo "BLOCKER: automated preflight evidence requires a clean tracked source tree" >&2
+    exit 2
+  fi
+}
+
 write_automated_preflight_evidence() {
   if [[ -z "$AUTOMATED_PREFLIGHT_EVIDENCE_FILE" ]]; then
     return 0
@@ -37,15 +53,11 @@ write_automated_preflight_evidence() {
     evidence_file="$ROOT_DIR/$evidence_file"
   fi
 
-  local evidence_dir generated_at source_commit source_tree_state
+  local evidence_dir generated_at source_commit
   evidence_dir="$(dirname "$evidence_file")"
   mkdir -p "$evidence_dir"
   generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   source_commit="$(git rev-parse --short HEAD 2>/dev/null || printf "unknown")"
-  source_tree_state="clean"
-  if ! git diff --quiet -- . || ! git diff --cached --quiet -- .; then
-    source_tree_state="dirty"
-  fi
 
   cat > "$evidence_file" <<EOF
 # Automated Release Preflight Evidence
@@ -53,7 +65,7 @@ write_automated_preflight_evidence() {
 Status: passed
 Generated at: $generated_at
 Source commit: $source_commit
-Tracked source tree: $source_tree_state
+Tracked source tree: clean
 App: $APP_NAME
 Xcode workspace: $XCODE_WORKSPACE_RELATIVE
 Xcode scheme: $XCODE_SCHEME
@@ -108,6 +120,8 @@ cleanup() {
   rm -rf "$TMP_DIR"
 }
 trap cleanup EXIT
+
+require_clean_source_tree_for_evidence
 
 section "Release CI"
 ./scripts/ci.sh
