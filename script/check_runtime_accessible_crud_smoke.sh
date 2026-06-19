@@ -14,7 +14,7 @@ source "$METADATA_FILE"
 
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
-TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS:-18}"
+TIMEOUT_SECONDS="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_TIMEOUT_SECONDS:-30}"
 KEEP_DATABASE="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_KEEP_DATABASE:-0}"
 SQLITE3="${SQLITE3:-sqlite3}"
 
@@ -33,6 +33,7 @@ mkdir -p "$ROOT_DIR/.tmp"
 tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/solopm-runtime-accessible-crud.XXXXXX")"
 database_path="$tmp_dir/SoloPM-runtime-accessible-crud.sqlite"
 created_project_id=""
+created_task_id=""
 
 cleanup() {
   /usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
@@ -434,6 +435,17 @@ waitForTextFieldContaining "AX Runtime CRUD Project"
 pressButtonContaining "Saves edits to the selected project"
 verify_single_value "renamed project" "SELECT title FROM projects WHERE id=$created_project_id;" "AX Runtime CRUD Project"
 
+pressButtonContaining "Opens the inline composer for a new local task"
+waitForTextFieldContaining "Enter the task name"
+setTextFieldContaining "Enter the task name" "AX Runtime CRUD Task"
+waitForTextFieldContaining "AX Runtime CRUD Task"
+pressButtonContaining "Creates the task in the local SoloPM database."
+verify_single_value "created task" "SELECT count(*) FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime CRUD Task' AND status='backlog' AND source_command='app.project-board';" "1"
+created_task_id="$(wait_for_nonempty_value "created task id" "SELECT id FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime CRUD Task' ORDER BY id DESC LIMIT 1;")"
+/usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
+wait_for_no_app_process
+launch_app_for_seed_project "$created_project_id"
+
 pressButtonContaining "Completes the selected project"
 verify_single_value "completed project" "SELECT status FROM projects WHERE id=$created_project_id;" "completed"
 
@@ -441,5 +453,6 @@ pressButtonContaining "Deletes the selected project"
 sleep 1
 pressConfirmationButtonContaining "Delete Project" "Deletes the selected project after confirmation."
 verify_single_value "deleted project" "SELECT count(*) FROM projects WHERE id=$created_project_id;" "0"
+verify_single_value "deleted task cascade" "SELECT count(*) FROM tasks WHERE id=$created_task_id OR project_id=$created_project_id;" "0"
 
-printf "OK: runtime accessible CRUD smoke created, renamed, completed, and deleted a project through the visible app\n"
+printf "OK: runtime accessible CRUD smoke created, renamed, completed, and deleted a project and task through the visible app\n"

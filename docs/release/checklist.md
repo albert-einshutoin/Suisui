@@ -165,7 +165,7 @@ When reviewing a local release candidate in a visible macOS session, include the
 SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT=1 ./script/release_readiness_report.sh
 ```
 
-Before claiming local CRUD is product-ready, run the runtime accessible CRUD smoke. It builds `dist/SoloPM.app`, launches it with an isolated `SOLOPM_DATABASE_PATH`, selects a seeded Project Board via `SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION`, then uses macOS Accessibility to create, rename, complete, and delete a project through the visible app while verifying the SQLite rows changed:
+Before claiming local CRUD is product-ready, run the runtime accessible CRUD smoke. It builds `dist/SoloPM.app`, launches it with an isolated `SOLOPM_DATABASE_PATH`, selects a seeded Project Board via `SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION`, then uses macOS Accessibility to create, rename, complete, and delete a project, create a task, and verify project deletion removes the task from SQLite:
 
 ```bash
 ./script/check_runtime_accessible_crud_smoke.sh
