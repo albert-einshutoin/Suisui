@@ -647,6 +647,30 @@ final class ExternalMCPTests: XCTestCase {
     }
 
     @MainActor
+    func testExternalMCPSettingsViewModelShowsRepairGuidanceForCorruptedLocalRegistrationData() throws {
+        let registration = MCPServerRegistration(
+            id: "local",
+            displayName: "Local MCP",
+            command: "/usr/bin/env",
+            arguments: ["node", "server.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let store = ToggleFailingMCPServerRegistrationStore(registrations: [registration])
+        let viewModel = ExternalMCPSettingsViewModel(store: store)
+
+        store.loadError = LocalStoreDecodingError.invalidStringMap(column: "mcp_server_registrations.environment_json")
+        viewModel.refresh()
+
+        XCTAssertEqual(viewModel.registration, registration)
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Local MCP registration data needs repair: mcp_server_registrations.environment_json contains invalid key-value JSON. Restore from backup or repair the local database, then reopen SoloPM."
+        )
+    }
+
+    @MainActor
     func testExternalMCPSettingsViewModelReportsStoreSaveFailureWithoutInternalErrorName() throws {
         let store = ToggleFailingMCPServerRegistrationStore(registrations: [])
         let viewModel = ExternalMCPSettingsViewModel(store: store)
@@ -944,6 +968,78 @@ final class ExternalMCPTests: XCTestCase {
             try SQLiteMigrationRunner.migrate(connection: reopenedConnection, migrations: CoreMigrations.current)
 
             XCTAssertEqual(try SQLiteMCPServerRegistrationStore(connection: reopenedConnection).loadRegistrations(), [registration])
+        }
+    }
+
+    func testSQLiteMCPRegistrationStoreRejectsCorruptedArgumentsJSONInsteadOfDroppingRegistration() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteMCPServerRegistrationStore(connection: connection)
+        try store.saveRegistrations([MCPServerRegistration(
+            id: "local",
+            displayName: "Local MCP",
+            command: "/usr/bin/env",
+            arguments: ["node", "server.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )])
+
+        try connection.execute("UPDATE mcp_server_registrations SET arguments_json = 'not-json' WHERE id = 'local';")
+
+        XCTAssertThrowsError(try store.loadRegistrations()) { error in
+            XCTAssertEqual(
+                error as? LocalStoreDecodingError,
+                .invalidStringArray(column: "mcp_server_registrations.arguments_json")
+            )
+        }
+    }
+
+    func testSQLiteMCPRegistrationStoreRejectsCorruptedEnvironmentJSONInsteadOfDroppingSecrets() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteMCPServerRegistrationStore(connection: connection)
+        try store.saveRegistrations([MCPServerRegistration(
+            id: "local",
+            displayName: "Local MCP",
+            command: "/usr/bin/env",
+            arguments: [],
+            environment: ["GITHUB_TOKEN": .keychain(.githubToken)],
+            workingDirectory: nil,
+            isEnabled: true
+        )])
+
+        try connection.execute("UPDATE mcp_server_registrations SET environment_json = 'not-json' WHERE id = 'local';")
+
+        XCTAssertThrowsError(try store.loadRegistrations()) { error in
+            XCTAssertEqual(
+                error as? LocalStoreDecodingError,
+                .invalidStringMap(column: "mcp_server_registrations.environment_json")
+            )
+        }
+    }
+
+    func testSQLiteMCPRegistrationStoreRejectsCorruptedEnabledStateInsteadOfDisablingRegistration() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteMCPServerRegistrationStore(connection: connection)
+        try store.saveRegistrations([MCPServerRegistration(
+            id: "local",
+            displayName: "Local MCP",
+            command: "/usr/bin/env",
+            arguments: [],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )])
+
+        try connection.execute("UPDATE mcp_server_registrations SET is_enabled = 'maybe' WHERE id = 'local';")
+
+        XCTAssertThrowsError(try store.loadRegistrations()) { error in
+            XCTAssertEqual(
+                error as? LocalStoreDecodingError,
+                .invalidEnum(column: "mcp_server_registrations.is_enabled", value: "maybe")
+            )
         }
     }
 
@@ -2689,6 +2785,7 @@ private final class ToggleFailingMCPServerRegistrationStore: MCPServerRegistrati
     private var registrations: [MCPServerRegistration]
     var shouldFailLoads = false
     var shouldFailSaves = false
+    var loadError: Error?
 
     init(registrations: [MCPServerRegistration]) {
         self.registrations = registrations
@@ -2697,6 +2794,9 @@ private final class ToggleFailingMCPServerRegistrationStore: MCPServerRegistrati
     func loadRegistrations() throws -> [MCPServerRegistration] {
         lock.lock()
         defer { lock.unlock() }
+        if let loadError {
+            throw loadError
+        }
         if shouldFailLoads {
             throw MCPRegistrationStoreError.decodingFailed
         }

@@ -157,6 +157,8 @@ public final class SQLiteMCPServerRegistrationStore: MCPServerRegistrationStore,
             return try connection
                 .queryRows("SELECT * FROM mcp_server_registrations ORDER BY sort_order ASC, id ASC;")
                 .map(Self.registration(row:))
+        } catch let error as LocalStoreDecodingError {
+            throw error
         } catch let error as MCPRegistrationStoreError {
             throw error
         } catch {
@@ -292,23 +294,56 @@ public final class SQLiteMCPServerRegistrationStore: MCPServerRegistrationStore,
     }
 
     private static func registration(row: [String: String]) throws -> MCPServerRegistration {
-        guard let id = row["id"],
-              let displayName = row["display_name"],
-              let command = row["command"],
-              let argumentsJSON = row["arguments_json"],
-              let environmentJSON = row["environment_json"] else {
-            throw MCPRegistrationStoreError.decodingFailed
-        }
+        let id = try requiredColumn("id", in: row)
+        let displayName = try requiredColumn("display_name", in: row)
+        let command = try requiredColumn("command", in: row)
+        let argumentsJSON = try requiredColumn("arguments_json", in: row)
+        let environmentJSON = try requiredColumn("environment_json", in: row)
+        let isEnabledValue = try requiredColumn("is_enabled", in: row)
 
         return MCPServerRegistration(
             id: id,
             displayName: displayName,
             command: command,
-            arguments: try jsonValue(argumentsJSON),
-            environment: try jsonValue(environmentJSON),
+            arguments: try stringArray(argumentsJSON, column: "mcp_server_registrations.arguments_json"),
+            environment: try environmentMap(environmentJSON, column: "mcp_server_registrations.environment_json"),
             workingDirectory: row["working_directory"]?.nilIfEmpty,
-            isEnabled: row["is_enabled"] == "1"
+            isEnabled: try boolValue(isEnabledValue, column: "mcp_server_registrations.is_enabled")
         )
+    }
+
+    private static func requiredColumn(_ column: String, in row: [String: String]) throws -> String {
+        guard let value = row[column] else {
+            throw LocalStoreDecodingError.missingRequiredColumn(column: "mcp_server_registrations.\(column)")
+        }
+        return value
+    }
+
+    private static func stringArray(_ string: String, column: String) throws -> [String] {
+        do {
+            return try jsonValue(string)
+        } catch {
+            throw LocalStoreDecodingError.invalidStringArray(column: column)
+        }
+    }
+
+    private static func environmentMap(_ string: String, column: String) throws -> [String: MCPEnvironmentReference] {
+        do {
+            return try jsonValue(string)
+        } catch {
+            throw LocalStoreDecodingError.invalidStringMap(column: column)
+        }
+    }
+
+    private static func boolValue(_ value: String, column: String) throws -> Bool {
+        switch value {
+        case "0":
+            return false
+        case "1":
+            return true
+        default:
+            throw LocalStoreDecodingError.invalidEnum(column: column, value: value)
+        }
     }
 
     private static func jsonString<T: Encodable>(_ value: T) throws -> String {
@@ -751,6 +786,8 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
 
     private static func storeErrorMessage(_ error: Error) -> String {
         switch error {
+        case let error as LocalStoreDecodingError:
+            return localDataRepairMessage(for: error)
         case MCPRegistrationStoreError.decodingFailed:
             return "MCP registrations could not be loaded from the local database."
         case MCPRegistrationStoreError.encodingFailed:
@@ -758,6 +795,40 @@ public final class ExternalMCPSettingsViewModel: ObservableObject {
         default:
             return String(describing: error)
         }
+    }
+
+    private static func localDataRepairMessage(for error: LocalStoreDecodingError) -> String {
+        let action = "Restore from backup or repair the local database, then reopen SoloPM."
+        switch error {
+        case .invalidStringArray(let column):
+            return "Local MCP registration data needs repair: \(column) contains invalid list JSON. \(action)"
+        case .invalidDoubleArray(let column):
+            return "Local MCP registration data needs repair: \(column) contains invalid numeric vector JSON. \(action)"
+        case .invalidStringMap(let column):
+            return "Local MCP registration data needs repair: \(column) contains invalid key-value JSON. \(action)"
+        case .inconsistentDimensions(let column, let expected, let actual):
+            return "Local MCP registration data needs repair: \(column) has \(actual) values, expected \(expected). \(action)"
+        case .missingRequiredColumn(let column):
+            return "Local MCP registration data needs repair: \(column) is missing. \(action)"
+        case .invalidInt64(let column, let value):
+            return "Local MCP registration data needs repair: \(column) contains invalid integer value \(quotedDisplayValue(value)). \(action)"
+        case .invalidEnum(let column, let value):
+            return "Local MCP registration data needs repair: \(column) contains unsupported value \(quotedDisplayValue(value)). \(action)"
+        case .invalidDate(let column, let value):
+            return "Local MCP registration data needs repair: \(column) contains invalid date value \(quotedDisplayValue(value)). \(action)"
+        }
+    }
+
+    private static func quotedDisplayValue(_ value: String) -> String {
+        let normalized = value
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\t", with: " ")
+        let maxVisibleCharacters = 80
+        guard normalized.count > maxVisibleCharacters else {
+            return "\"\(normalized)\""
+        }
+        return "\"\(String(normalized.prefix(maxVisibleCharacters)))...\""
     }
 
     private static func argumentErrorMessage(_ error: Error) -> String {
