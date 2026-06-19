@@ -78,6 +78,8 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testClientFollowsToolsListPaginationCursor"))
         XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testClientRejectsMalformedToolsListPaginationCursor"))
         XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testClientRejectsRepeatedToolsListPaginationCursor"))
+        XCTAssertTrue(complianceReview.contains("Tool name policy"))
+        XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testToolsListRejectsInvalidToolNames"))
         XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testToolsListRejectsUnsupportedInputSchemaDialect"))
         XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testToolsListRejectsNonObjectPropertySchemas"))
     }

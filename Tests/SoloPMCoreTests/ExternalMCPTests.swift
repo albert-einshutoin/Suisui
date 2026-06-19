@@ -1760,6 +1760,54 @@ final class ExternalMCPTests: XCTestCase {
         }
     }
 
+    func testToolsListRejectsInvalidToolNames() async throws {
+        let cases: [(toolName: JSONValue, expectedReason: String)] = [
+            (
+                .string("bad tool"),
+                "Tool entry name must use only ASCII letters, digits, underscore, hyphen, or dot."
+            ),
+            (
+                .string(String(repeating: "a", count: 129)),
+                "Tool entry name must be between 1 and 128 characters."
+            ),
+            (
+                .number(42),
+                "Tool entry missing name."
+            )
+        ]
+
+        for testCase in cases {
+            let transport = RecordingMCPTransport { request in
+                if request.method == "tools/list" {
+                    return MCPJSONRPCResponse(
+                        id: request.id,
+                        result: .object([
+                            "tools": .array([
+                                .object([
+                                    "name": testCase.toolName,
+                                    "description": .string("Invalid name."),
+                                    "inputSchema": .object(["type": .string("object")])
+                                ])
+                            ])
+                        ])
+                    )
+                }
+                return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+            }
+            let client = MCPClient(serverID: "fake", transport: transport)
+
+            do {
+                _ = try await client.listTools()
+                XCTFail("invalid tool name should fail")
+            } catch let error as MCPClientError {
+                XCTAssertEqual(
+                    error,
+                    .invalidResponse(serverID: "fake", method: "tools/list", reason: testCase.expectedReason)
+                )
+            }
+        }
+    }
+
     func testToolsListRequiresToolInputSchema() async throws {
         let missingSchemaTransport = RecordingMCPTransport { request in
             if request.method == "tools/list" {

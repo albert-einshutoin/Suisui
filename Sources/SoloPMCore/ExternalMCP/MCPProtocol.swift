@@ -94,6 +94,7 @@ public struct MCPToolDefinition: Equatable, Sendable {
         guard let name = object["name"]?.stringValue, !name.isEmpty else {
             throw MCPClientError.invalidResponse(serverID: "", method: "tools/list", reason: "Tool entry missing name.")
         }
+        try validateName(name)
         let description: String
         if let descriptionValue = object["description"] {
             guard let parsedDescription = descriptionValue.stringValue else {
@@ -196,6 +197,34 @@ public struct MCPToolDefinition: Equatable, Sendable {
                     reason: "Tool entry inputSchema.properties.\(propertyName) must be an object."
                 )
             }
+        }
+    }
+
+    private static func validateName(_ name: String) throws {
+        guard name.count <= 128 else {
+            throw MCPClientError.invalidResponse(
+                serverID: "",
+                method: "tools/list",
+                reason: "Tool entry name must be between 1 and 128 characters."
+            )
+        }
+        guard name.unicodeScalars.allSatisfy(Self.isAllowedNameScalar) else {
+            throw MCPClientError.invalidResponse(
+                serverID: "",
+                method: "tools/list",
+                reason: "Tool entry name must use only ASCII letters, digits, underscore, hyphen, or dot."
+            )
+        }
+    }
+
+    private static func isAllowedNameScalar(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 48...57, 65...90, 97...122:
+            return true
+        case 45, 46, 95:
+            return true
+        default:
+            return false
         }
     }
 
