@@ -57,13 +57,18 @@ final class MCPInspectorEvidenceTests: XCTestCase {
 
         for content in [complianceReview, evidence] {
             XCTAssertTrue(content.contains("Stable baseline: `2025-11-25`"))
+            XCTAssertTrue(content.contains("Official stable latest: `2025-11-25`"))
             XCTAssertTrue(content.contains("Draft watchlist: `2026-07-28`"))
+            XCTAssertTrue(content.contains("release-candidate"))
+            XCTAssertTrue(content.contains("final specification is scheduled for 2026-07-28"))
             XCTAssertTrue(content.contains("not a full MCP host"))
         }
         XCTAssertTrue(script.contains("Stable baseline:"))
         XCTAssertTrue(script.contains("2025-11-25"))
+        XCTAssertTrue(script.contains("Official stable latest:"))
         XCTAssertTrue(script.contains("Draft watchlist:"))
         XCTAssertTrue(script.contains("2026-07-28"))
+        XCTAssertTrue(script.contains("final specification is scheduled for 2026-07-28"))
         XCTAssertTrue(script.contains("not a full MCP host"))
         XCTAssertTrue(complianceReview.contains("SoloPM does not send per-request protocol metadata"))
         XCTAssertTrue(complianceReview.contains("server/discover"))

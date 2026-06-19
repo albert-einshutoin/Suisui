@@ -103,7 +103,9 @@ MCP_EVIDENCE_REQUIRED_MARKERS=(
   "Generated:"
   "Scope: validate the release MCP stdio fixture"
   'Stable baseline: `2025-11-25`'
+  'Official stable latest: `2025-11-25`'
   'Draft watchlist: `2026-07-28`'
+  "2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28."
   "not a full MCP host"
   "initialize -> tools/list -> tools/call"
   "MCP Inspector CLI tools/list"

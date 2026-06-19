@@ -3880,6 +3880,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("== MCP Inspector evidence =="))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Draft watchlist: `2026-07-28`"))
+        XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Official stable latest: `2025-11-25`"))
+        XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: 2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28."))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: MCP Inspector CLI tools/call"))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: malformed-json"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
