@@ -166,7 +166,7 @@
   - [x] Project OverviewのArtifacts panelから絶対パスのexpected artifactを追加でき、Project snapshotへ即反映する。相対パスはworkspace未確定として保存せず、mock artifact rowを作らない。
   - [x] Project OverviewのArtifact行からlocal artifact linkを削除でき、実ファイルを削除せずSQLite snapshotだけを更新する。存在しないlink削除は成功扱いにせず、ユーザーへmissing stateを返す。
   - [x] Review Executeの `filesystem.create_markdown_file` / `filesystem.create_artifacts_from_frame` は `projectId` / `taskId` を受けた場合、作成ファイルをSQLite `artifacts` へ `created` linkとして保存し、Project Overviewへ実成果物として戻す。
-- [ ] 完了条件: Notion的な柔軟さ、Linear的な速度、Todoist的な即時入力のうち、SoloPMに必要な部分だけが実装される。
+- [x] 完了条件: Notion的な柔軟さ、Linear的な速度、Todoist的な即時入力のうち、SoloPMに必要な部分だけが実装される。
 
 ## P11-032: Today and Inbox workflow
 

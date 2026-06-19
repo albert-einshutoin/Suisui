@@ -1597,9 +1597,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(benchmark.contains("Project overview with tasks/artifacts/timeline/suggestions | Adopted"))
         XCTAssertTrue(benchmark.contains("Project expected artifact links | Adopted"))
         XCTAssertTrue(benchmark.contains("Menu bar Quick Add to Inbox | Adopted"))
+        XCTAssertTrue(benchmark.contains("Phase 11 Fit Closure"))
+        XCTAssertTrue(benchmark.contains("Notion-like flexible project context"))
+        XCTAssertTrue(benchmark.contains("Linear-like execution speed"))
+        XCTAssertTrue(benchmark.contains("Todoist-like immediate input"))
+        XCTAssertTrue(benchmark.contains("AppExperienceSourceTests.testProjectDetailOrganizesTasksArtifactsTimelineAndSuggestions"))
+        XCTAssertTrue(benchmark.contains("ProjectBoardStoreTests.testProjectBoardViewModelQuickCapturePersistsToSQLiteInbox"))
         XCTAssertTrue(benchmark.contains("VC-Grade Feature Fit"))
         XCTAssertTrue(phase.contains("[x] 競合benchmarkから採用/非採用判断が残っている。"))
-        XCTAssertTrue(phase.contains("[ ] 完了条件: Notion的な柔軟さ、Linear的な速度、Todoist的な即時入力のうち、SoloPMに必要な部分だけが実装される。"))
+        XCTAssertTrue(phase.contains("[x] 完了条件: Notion的な柔軟さ、Linear的な速度、Todoist的な即時入力のうち、SoloPMに必要な部分だけが実装される。"))
     }
 
     func testInvestorReviewTiesFeaturesToRetentionMonetizationAndRisk() throws {

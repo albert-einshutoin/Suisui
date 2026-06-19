@@ -4,6 +4,12 @@ Verified: 2026-06-19
 
 Scope: Notion, Todoist, Linear, and Motion were reviewed from official product/help/docs pages. This is not a full hands-on trial record. Treat it as product benchmark evidence for SoloPM feature fit; visual screenshot evidence remains tracked in Phase 11.
 
+Official references rechecked on 2026-06-19:
+- Notion board/status model: https://www.notion.com/help/boards
+- Todoist Quick Add: https://www.todoist.com/help/articles/use-task-quick-add-in-todoist-va4Lhpzz
+- Linear quick navigation and command-menu model: https://linear.app/docs/conceptual-model
+- Motion automatic scheduling positioning: https://www.usemotion.com/help
+
 ## Decision Summary
 
 | Competitor signal | User pain it solves | SoloPM fit | Decision |
@@ -104,6 +110,18 @@ SoloPM implication:
 | AI weekly project status | Defer | Strong Notion/Linear fit, but must be review-before-apply and local-data grounded. | LLM schema tests and audit log. |
 | Custom database schema builder | Reject for MVP | Increases setup cost and makes SoloPM less opinionated. | Revisit only if users request non-task entities repeatedly. |
 | Team cycles/initiatives/capacity planning | Reject for MVP | SoloPM is personal PM, not a team issue tracker. | Revisit only for paid team edition. |
+
+## Phase 11 Fit Closure
+
+The Phase 11 productization gate is satisfied for the subset SoloPM actually needs:
+
+| Competitor trait | SoloPM implementation | Evidence |
+| --- | --- | --- |
+| Notion-like flexible project context | Project Overview shows tasks, artifacts, timeline, and local suggestions. Artifact links provide flexible project evidence without arbitrary database schemas. | `AppExperienceSourceTests.testProjectDetailOrganizesTasksArtifactsTimelineAndSuggestions`, `ProjectBoardStoreTests.testCreateProjectArtifactPersistsExpectedArtifactInSnapshot`, `ProjectBoardStoreTests.testDeleteProjectArtifactRemovesLinkFromSnapshot` |
+| Linear-like execution speed | Board cards support one-click status move controls, drag/drop status changes, keyboard shortcuts, and a stable right inspector for repeated edits. | `AppExperienceSourceTests.testKanbanTaskCardsExposeMouseDrivenStatusMoveControls`, `AppExperienceSourceTests.testKanbanCardsUseTaskComponentDragPreview`, `AppExperienceSourceTests.testInspectorsExposeKeyboardOnlyCrudShortcuts` |
+| Todoist-like immediate input | Menu bar Quick Add and Inbox capture create local SQLite tasks without opening the full Project Board; Inline Task Composer supports fast board-column task creation. | `AppExperienceSourceTests.testMenuBarPanelProvidesFastInboxCaptureWithRuntimeBoardViewModel`, `ProjectBoardStoreTests.testProjectBoardViewModelQuickCapturePersistsToSQLiteInbox`, `AppExperienceSourceTests.testInlineTaskComposerExposesKeyboardAndVoiceOverCreateAnchors` |
+
+Not adopted for public alpha: Notion-style arbitrary database builders, Linear-style team cycles/initiatives, and Motion-style autonomous rescheduling. Those would make the app broader but less trustworthy before release evidence, calendar semantics, and user control are stronger.
 
 ## VC-Grade Feature Fit
 
