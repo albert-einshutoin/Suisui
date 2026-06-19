@@ -13,6 +13,7 @@ Do not set `Status: passed` until every item below is verified on the signed or 
 - Check date: 2026-06-19
 - Evidence source: `dist/SoloPM.app manual VoiceOver pass`
 - Accessibility environment:
+- Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=27, textFields=1, staticTexts=24, unlabeledButtons=0
 
 ## Setup
 
@@ -20,7 +21,8 @@ Do not set `Status: passed` until every item below is verified on the signed or 
 2. Launch `dist/SoloPM.app`.
 3. Seed the Project Board with at least one active project and one task with a due date.
 4. Open the Project Board window and keep the right inspector visible.
-5. Navigate using keyboard and VoiceOver commands before using the pointer.
+5. Run `./script/check_accessibility_preflight.sh --runtime` and paste the OK line into `Runtime AX smoke`.
+6. Navigate using keyboard and VoiceOver commands before using the pointer.
 
 ## Required Focus Path
 
