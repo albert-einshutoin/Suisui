@@ -136,7 +136,7 @@
 
 - [x] Settingsに `Sync` セクションを追加し、Plan、Status、Last attempt、Data included、Upgrade requiredを表示する。
 - [x] Freeでは同期toggleをdisabledにし、押した時も外部通信を発火しない。
-- [x] Pro未構成では「Sync backend is not configured」と表示し、成功バッジを出さない。
+- [x] Pro未構成では「Sync backend is not configured」と表示し、同期toggleもdisabledにして成功バッジや空成功を出さない。
 - [x] `ui-samples/07.png` の設定密度を参考に、AI Provider / MCP / Sync / Privacy が一画面で状態確認できるよう整理する。
 - [x] Settings詳細FormをOverview / Appearance / AI / MCP / Sync / Privacyのtabへ分割し、Status確認・Theme変更・provider設定・MCP登録・Sync gate・Privacy設定の到達先を明確にする。
 - [x] AI tabのprovider詳細fieldは選択中providerだけを表示し、非選択providerのAPI key、model、local executable欄を同時表示しない。

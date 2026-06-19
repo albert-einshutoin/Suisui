@@ -94,6 +94,7 @@ final class SyncEntitlementTests: XCTestCase {
         XCTAssertEqual(viewModel.statusLabel, "Upgrade required")
         XCTAssertEqual(viewModel.dataIncludedLabel, "Projects, Tasks, Settings")
         XCTAssertFalse(viewModel.canEnableSync)
+        XCTAssertEqual(viewModel.syncUnavailableLabel, "Upgrade required")
 
         viewModel.startSync()
 
@@ -113,11 +114,35 @@ final class SyncEntitlementTests: XCTestCase {
 
         XCTAssertEqual(viewModel.planLabel, "Pro")
         XCTAssertEqual(viewModel.statusLabel, "Sync backend is not configured")
-        XCTAssertTrue(viewModel.canEnableSync)
+        XCTAssertFalse(viewModel.canEnableSync)
+        XCTAssertEqual(viewModel.syncUnavailableLabel, "Sync backend is not configured")
 
         viewModel.startSync()
 
         XCTAssertEqual(viewModel.errorMessage, "Sync backend is not configured.")
+    }
+
+    @MainActor
+    func testSyncSettingsViewModelAllowsProToggleOnlyWhenBackendIsConfigured() {
+        let networkClient = RecordingSyncNetworkClient()
+        let viewModel = SyncSettingsViewModel(
+            service: SyncService(
+                entitlementStore: StaticEntitlementStore(plan: .pro),
+                configuration: SyncConfiguration(backendEndpoint: URL(string: "https://sync.solopm.example/v1")),
+                networkClient: networkClient
+            )
+        )
+
+        XCTAssertEqual(viewModel.planLabel, "Pro")
+        XCTAssertEqual(viewModel.statusLabel, "Ready")
+        XCTAssertTrue(viewModel.canEnableSync)
+        XCTAssertNil(viewModel.syncUnavailableLabel)
+
+        viewModel.setSyncEnabled(true)
+
+        XCTAssertTrue(viewModel.isSyncEnabled)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(networkClient.startCallCount, 1)
     }
 }
 

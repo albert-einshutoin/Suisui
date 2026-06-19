@@ -236,7 +236,20 @@ public final class SyncSettingsViewModel: ObservableObject {
     }
 
     public var canEnableSync: Bool {
-        status.plan.allows(.externalSync)
+        status.state == .idle
+    }
+
+    public var syncUnavailableLabel: String? {
+        switch status.state {
+        case .idle, .syncing:
+            nil
+        case .upgradeRequired:
+            "Upgrade required"
+        case .backendNotConfigured:
+            "Sync backend is not configured"
+        case .failed:
+            "Sync is unavailable"
+        }
     }
 
     public func setSyncEnabled(_ isEnabled: Bool) {

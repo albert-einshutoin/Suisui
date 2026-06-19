@@ -991,8 +991,8 @@ private struct SettingsView: View {
                     Label("External Sync", systemImage: "arrow.triangle.2.circlepath")
                 }
                 .disabled(!syncViewModel.canEnableSync)
-                if !syncViewModel.canEnableSync {
-                    Label("Upgrade required", systemImage: "lock")
+                if let syncUnavailableLabel = syncViewModel.syncUnavailableLabel {
+                    Label(syncUnavailableLabel, systemImage: "lock")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
