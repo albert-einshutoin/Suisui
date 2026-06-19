@@ -361,17 +361,21 @@ verify_seed "1" "VoiceOver release project selection" "SELECT CASE WHEN count(*)
 
 launch_env_file="$ROOT_DIR/.tmp/voiceover-review/launch.env"
 evidence_command_file="$ROOT_DIR/.tmp/voiceover-review/create-evidence-command.sh"
+pending_evidence_file="$ROOT_DIR/.tmp/voiceover-review/accessibility-voiceover-pending-$SOURCE_COMMIT.md"
+pending_evidence_source="dist/$APP_NAME.app manual VoiceOver pass using $database_path project:$seed_project_id"
 {
   printf 'SOLOPM_DATABASE_PATH=%q\n' "$database_path"
   printf 'SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=%q\n' "project:$seed_project_id"
 } >"$launch_env_file"
 write_voiceover_evidence_command "$evidence_command_file" "$database_path" "$seed_project_id"
+./script/create_voiceover_evidence.sh --pending --output "$pending_evidence_file" --evidence-source "$pending_evidence_source" >/dev/null
 
 printf 'OK: VoiceOver review candidate ready\n'
 printf 'Database: %s\n' "$database_path"
 printf 'Project ID: %s\n' "$seed_project_id"
 printf 'Artifact: VoiceOver review artifact -> %s\n' "$VOICEOVER_REVIEW_ARTIFACT_PATH"
 printf 'Launch env: %s\n' "$launch_env_file"
+printf 'Pending evidence: %s\n' "$pending_evidence_file"
 printf 'Evidence command: %s\n' "$evidence_command_file"
 
 if [[ "$launch_app" -eq 1 ]]; then

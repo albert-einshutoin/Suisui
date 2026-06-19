@@ -3954,6 +3954,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SELECT CASE WHEN count(*) = 5 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$seed_project_id\""))
         XCTAssertTrue(script.contains("evidence_command_file=\"$ROOT_DIR/.tmp/voiceover-review/create-evidence-command.sh\""))
+        XCTAssertTrue(script.contains("pending_evidence_file=\"$ROOT_DIR/.tmp/voiceover-review/accessibility-voiceover-pending-$SOURCE_COMMIT.md\""))
+        XCTAssertTrue(script.contains("./script/create_voiceover_evidence.sh --pending --output \"$pending_evidence_file\""))
         XCTAssertTrue(script.contains("write_voiceover_evidence_command()"))
         XCTAssertTrue(script.contains("SOURCE_COMMIT=\"$(git -C \"$ROOT_DIR\" rev-parse --short HEAD 2>/dev/null || printf \"unknown\")\""))
         XCTAssertTrue(script.contains("REPO_ROOT=%q"))
@@ -3969,6 +3971,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("focus leaves sidebar, board, inspector, and inline confirmation panels"))
         XCTAssertFalse(script.contains("focus leaves sidebar, board, inspector, and dialogs"))
         XCTAssertTrue(script.contains("chmod +x \"$output_path\""))
+        XCTAssertTrue(script.contains("Pending evidence: %s\\n"))
         XCTAssertTrue(script.contains("Evidence command: %s\\n"))
         XCTAssertTrue(script.contains("OK: VoiceOver review candidate ready"))
         XCTAssertTrue(script.contains("--no-launch"))
@@ -3977,8 +3980,10 @@ final class ReleasePipelineTests: XCTestCase {
 
         let releaseChecklist = try readPackageFile("docs/release/checklist.md")
         XCTAssertTrue(releaseChecklist.contains("The generated VoiceOver evidence command requires a clean tracked source tree, pins the source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit."))
+        XCTAssertTrue(releaseChecklist.contains("The script also writes `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` so the reviewer can inspect the current release-candidate context without modifying tracked evidence."))
         let phase11 = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
         XCTAssertTrue(phase11.contains("[x] `script/prepare_voiceover_review_candidate.sh` pins `.tmp/voiceover-review/create-evidence-command.sh` to a clean tracked source tree and the source commit it was generated for"))
+        XCTAssertTrue(phase11.contains("[x] `script/prepare_voiceover_review_candidate.sh` writes `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` with the current release-candidate `Source commit` without modifying tracked evidence."))
     }
 
     func testReleaseReadinessReportCanUseAutomatedPreflightEvidenceInsteadOfRerunningLocalProofGates() throws {
