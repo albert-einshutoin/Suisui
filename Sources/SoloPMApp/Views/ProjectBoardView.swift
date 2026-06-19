@@ -1032,10 +1032,14 @@ private struct InlineTaskComposer: View {
                 .textFieldStyle(.roundedBorder)
                 .focused($isTitleFocused)
                 .onSubmit(submit)
+                .accessibilityIdentifier("inline-task-title")
+                .accessibilityHint("Enter the task name before creating it in the local SoloPM database.")
 
             TextField("Detail", text: $detail, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(2...3)
+                .accessibilityIdentifier("inline-task-detail")
+                .accessibilityHint("Optionally describe the task context.")
 
             HStack {
                 Picker("Priority", selection: $priority) {
@@ -1045,9 +1049,13 @@ private struct InlineTaskComposer: View {
                 }
                 .labelsHidden()
                 .frame(width: 112)
+                .accessibilityIdentifier("inline-task-priority")
+                .accessibilityHint("Sets the initial task priority.")
 
                 TextField("Due", text: $dueAt)
                     .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("inline-task-due")
+                    .accessibilityHint("Optionally enter a due date for the new local task.")
             }
 
             HStack {
@@ -1055,10 +1063,16 @@ private struct InlineTaskComposer: View {
                     Label("Add", systemImage: "checkmark")
                 }
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .keyboardShortcut(.return, modifiers: [.command])
+                .accessibilityIdentifier("inline-task-create")
+                .accessibilityHint("Creates the task in the local SoloPM database.")
 
                 Button(action: onCancel) {
                     Label("Cancel", systemImage: "xmark")
                 }
+                .keyboardShortcut(.escape, modifiers: [])
+                .accessibilityIdentifier("inline-task-cancel")
+                .accessibilityHint("Cancels task creation and returns focus to the board column.")
             }
             .font(.caption)
         }
@@ -1072,6 +1086,10 @@ private struct InlineTaskComposer: View {
         .onAppear {
             isTitleFocused = true
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("inline-task-composer-\(status.rawValue)")
+        .accessibilityLabel("New task in \(status.title)")
+        .accessibilityHint("Create a local task in the \(status.title) column without leaving the board.")
     }
 
     private func submit() {

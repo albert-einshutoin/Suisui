@@ -188,6 +188,7 @@
   - [x] Task card本体のOpen Detailsとstatus move controlsを別フォーカス対象に分け、支援技術で移動ボタンがカード要約に埋もれないことをsource testで固定する。
   - [x] Sidebar -> board detail -> task card -> inspector edit/save/delete のsource-level focus anchorsを固定する。
   - [x] Task / Project inspector のfield、提案適用、save、complete、restore、archive、deleteにaccessibility identifier / hintを付け、主要CRUDと提案操作が支援技術で追えることをsource testで固定する。
+  - [x] Inline Task Composerにtitle/detail/priority/due/create/cancelのaccessibility identifier / hintとCommand+Return/Escapeを付ける。
   - [x] Inbox / Today workflowのrow、Quick Add、分類action、Today summary、time blockにsource-level accessibility identifiers / hints / keyboard anchorsを付ける。
   - [x] `release_readiness_report.sh` は `docs/release/evidence/accessibility-voiceover.md` の `Status: passed` と必須focus path markerを検証し、pending証跡をblockerにする。
   - [x] `release_readiness_report.sh` はVoiceOver証跡のrelease-candidate context空欄/テンプレート値をblockerにする。

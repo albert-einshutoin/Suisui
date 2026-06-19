@@ -282,6 +282,31 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".help(\"Open Settings\")"))
     }
 
+    func testInlineTaskComposerExposesKeyboardAndVoiceOverCreateAnchors() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+        let audit = try readPackageFile("docs/ux/click-path-audit.md")
+        let composerStart = try XCTUnwrap(source.range(of: "private struct InlineTaskComposer"))
+        let cardStart = try XCTUnwrap(source.range(of: "private struct BoardTaskCard"))
+        let composerSource = String(source[composerStart.lowerBound..<cardStart.lowerBound])
+
+        XCTAssertTrue(composerSource.contains(".accessibilityIdentifier(\"inline-task-composer-\\(status.rawValue)\")"))
+        XCTAssertTrue(composerSource.contains(".accessibilityLabel(\"New task in \\(status.title)\")"))
+        XCTAssertTrue(composerSource.contains(".accessibilityHint(\"Create a local task in the \\(status.title) column without leaving the board.\")"))
+        XCTAssertTrue(composerSource.contains(".accessibilityIdentifier(\"inline-task-title\")"))
+        XCTAssertTrue(composerSource.contains(".accessibilityIdentifier(\"inline-task-detail\")"))
+        XCTAssertTrue(composerSource.contains(".accessibilityIdentifier(\"inline-task-priority\")"))
+        XCTAssertTrue(composerSource.contains(".accessibilityIdentifier(\"inline-task-due\")"))
+        XCTAssertTrue(composerSource.contains(".accessibilityIdentifier(\"inline-task-create\")"))
+        XCTAssertTrue(composerSource.contains(".accessibilityIdentifier(\"inline-task-cancel\")"))
+        XCTAssertTrue(composerSource.contains(".keyboardShortcut(.return, modifiers: [.command])"))
+        XCTAssertTrue(composerSource.contains(".keyboardShortcut(.escape, modifiers: [])"))
+        XCTAssertTrue(composerSource.contains(".accessibilityHint(\"Creates the task in the local SoloPM database.\")"))
+        XCTAssertTrue(composerSource.contains(".accessibilityHint(\"Cancels task creation and returns focus to the board column.\")"))
+        XCTAssertTrue(phase.contains("[x] Inline Task Composerにtitle/detail/priority/due/create/cancelのaccessibility identifier / hintとCommand+Return/Escapeを付ける。"))
+        XCTAssertTrue(audit.contains("Inline Task Composerはtitle/detail/priority/due/create/cancelにaccessibility anchorsを持ち"))
+    }
+
     func testInspectorsExposeKeyboardOnlyCrudShortcuts() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let projectInspectorStart = try XCTUnwrap(source.range(of: "private struct ProjectInspectorView"))
