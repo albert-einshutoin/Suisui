@@ -4406,6 +4406,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/release_readiness_report.sh"))
         XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/check_automated_release_preflight.sh"))
         XCTAssertTrue(script.contains("## Manual VoiceOver"))
+        XCTAssertTrue(script.contains("write_voiceover_review_candidate_command()"))
+        XCTAssertTrue(script.contains("./script/prepare_voiceover_review_candidate.sh --no-launch"))
+        XCTAssertTrue(script.contains("./script/prepare_voiceover_review_candidate.sh"))
+        XCTAssertTrue(script.contains(".tmp/voiceover-review/create-evidence-command.sh"))
         XCTAssertTrue(script.contains("./script/create_voiceover_evidence.sh --passed"))
         XCTAssertTrue(script.contains("--capture-runtime-ax-smoke"))
         XCTAssertTrue(script.contains("--project-navigation-note \"<VoiceOver observation for sidebar project navigation>\""))
@@ -4669,6 +4673,13 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(actionSummary.contains("## Manual VoiceOver Blockers"))
+        XCTAssertTrue(actionSummary.contains("""
+        ```bash
+        ./script/prepare_voiceover_review_candidate.sh --no-launch
+        ./script/prepare_voiceover_review_candidate.sh
+        ```
+        """))
+        XCTAssertTrue(actionSummary.contains(".tmp/voiceover-review/create-evidence-command.sh"))
         XCTAssertTrue(actionSummary.contains("```bash\n./script/create_voiceover_evidence.sh --passed \\"))
         XCTAssertTrue(actionSummary.contains("--project-navigation-note \"<VoiceOver observation for sidebar project navigation>\""))
         XCTAssertTrue(actionSummary.contains("--confirm-manual-voiceover-pass"))

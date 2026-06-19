@@ -563,6 +563,13 @@ write_voiceover_manual_evidence_command() {
   printf '%s\n' '```'
 }
 
+write_voiceover_review_candidate_command() {
+  printf '%s\n' '```bash'
+  printf '%s\n' './script/prepare_voiceover_review_candidate.sh --no-launch'
+  printf '%s\n' './script/prepare_voiceover_review_candidate.sh'
+  printf '%s\n' '```'
+}
+
 write_competitor_hands_on_evidence_command() {
   printf '%s\n' '```bash'
   printf '%s\n' './script/create_competitor_hands_on_evidence.sh --pending'
@@ -736,8 +743,12 @@ write_release_actions() {
     write_automated_proof_gate_actions
 
     printf "## Manual VoiceOver\n"
+    printf -- "- Prepare the deterministic review candidate before the manual pass. Use \`--no-launch\` to inspect the isolated database first, then run without it to build and open the candidate app.\n\n"
+    write_voiceover_review_candidate_command
+    printf "\n"
+    printf -- "- The candidate writes \`.tmp/voiceover-review/create-evidence-command.sh\` with the same database/project context. Replace every placeholder in that generated command with concrete VoiceOver observations before running it.\n"
     printf -- "- Run the source/runtime accessibility preflight first, then perform a real VoiceOver pass.\n"
-    printf -- "- Replace every placeholder below with concrete observations from the real release-candidate app before running it.\n\n"
+    printf -- "- If you do not use the generated command file, replace every placeholder below with concrete observations from the real release-candidate app before running it.\n\n"
     write_voiceover_manual_evidence_command
     printf "\n"
     printf -- "- Required evidence stays manual: concrete Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector observations.\n\n"
