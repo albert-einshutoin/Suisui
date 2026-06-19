@@ -601,17 +601,23 @@ else
 
   if [[ "$ACCESSIBILITY_RUNTIME_PREFLIGHT" == "1" ]]; then
     set +e
-    accessibility_runtime_preflight_output="$("$accessibility_preflight_script" --runtime 2>&1)"
+    accessibility_runtime_preflight_output="$("$accessibility_preflight_script" --runtime --skip-source-anchors 2>&1)"
     accessibility_runtime_preflight_status=$?
     set -e
+    accessibility_runtime_preflight_report_output="$(
+      printf "%s\n" "$accessibility_runtime_preflight_output" |
+        grep -Fxv "This is not a substitute for the manual VoiceOver pass." || true
+    )"
 
     if [[ "$accessibility_runtime_preflight_status" -ne 0 ]]; then
-      if [[ -n "$accessibility_runtime_preflight_output" ]]; then
-        printf "%s\n" "$accessibility_runtime_preflight_output"
+      if [[ -n "$accessibility_runtime_preflight_report_output" ]]; then
+        printf "%s\n" "$accessibility_runtime_preflight_report_output"
       fi
       voiceover_blocker "accessibility runtime preflight failed"
     else
-      printf "%s\n" "$accessibility_runtime_preflight_output"
+      if [[ -n "$accessibility_runtime_preflight_report_output" ]]; then
+        printf "%s\n" "$accessibility_runtime_preflight_report_output"
+      fi
     fi
   else
     printf "INFO: accessibility runtime preflight skipped; set SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT=1 to include the visible AX smoke check.\n"

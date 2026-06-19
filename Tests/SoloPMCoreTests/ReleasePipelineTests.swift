@@ -2673,6 +2673,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains(#"Sources/SoloPMApp/Views/ProjectWorkflowViews.swift::.keyboardShortcut(\"4\", modifiers: [.command])"#))
         XCTAssertTrue(script.contains("Sources/SoloPMApp/SoloPMApp.swift::.keyboardShortcut(.return, modifiers: [.command])"))
         XCTAssertTrue(script.contains("--runtime"))
+        XCTAssertTrue(script.contains("--skip-source-anchors"))
         XCTAssertTrue(script.contains("System Events"))
         XCTAssertTrue(script.contains("MIN_AX_BUTTONS"))
         XCTAssertTrue(script.contains("MIN_AX_TEXT_FIELDS"))
@@ -3222,7 +3223,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("script/check_accessibility_preflight.sh"))
         XCTAssertTrue(script.contains("--source-only"))
         XCTAssertTrue(script.contains("SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT"))
-        XCTAssertTrue(script.contains("--runtime"))
+        XCTAssertTrue(script.contains("--runtime --skip-source-anchors"))
         XCTAssertTrue(script.contains("accessibility runtime preflight failed"))
         XCTAssertTrue(script.contains("accessibility source preflight failed"))
         XCTAssertTrue(script.contains("docs/release/evidence/accessibility-voiceover.md"))
@@ -4489,9 +4490,15 @@ final class ReleasePipelineTests: XCTestCase {
         case "${1:-}" in
           --source-only)
             printf "source preflight ok\\n"
+            printf "This is not a substitute for the manual VoiceOver pass.\\n"
             ;;
           --runtime)
-            printf "runtime preflight ok\\n"
+            if [[ "${2:-}" == "--skip-source-anchors" ]]; then
+              printf "runtime preflight ok without duplicate source anchors\\n"
+            else
+              printf "runtime preflight ok\\n"
+            fi
+            printf "This is not a substitute for the manual VoiceOver pass.\\n"
             ;;
           *)
             echo "unexpected accessibility preflight argument: ${1:-}" >&2
@@ -4526,7 +4533,9 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("source preflight ok"))
-        XCTAssertTrue(result.output.contains("runtime preflight ok"))
+        XCTAssertTrue(result.output.contains("runtime preflight ok without duplicate source anchors"))
+        XCTAssertEqual(result.output.components(separatedBy: "source preflight ok").count - 1, 1)
+        XCTAssertEqual(result.output.components(separatedBy: "This is not a substitute for the manual VoiceOver pass.").count - 1, 1)
         XCTAssertFalse(result.output.contains("accessibility runtime preflight failed"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
     }

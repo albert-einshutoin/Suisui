@@ -17,6 +17,7 @@ APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 SOURCE_ONLY=1
 RUN_RUNTIME=0
 LAUNCH_APP=1
+SKIP_SOURCE_ANCHORS=0
 TIMEOUT_SECONDS=12
 MIN_AX_BUTTONS=5
 MIN_AX_TEXT_FIELDS=1
@@ -73,7 +74,7 @@ REQUIRED_SOURCE_ANCHORS=(
 )
 
 usage() {
-  printf '%s\n' "usage: $0 [--source-only|--runtime] [--app-bundle PATH] [--skip-launch] [--timeout SECONDS]"
+  printf '%s\n' "usage: $0 [--source-only|--runtime] [--skip-source-anchors] [--app-bundle PATH] [--skip-launch] [--timeout SECONDS]"
   printf '%s\n' ""
   printf '%s\n' "Checks accessibility anchors before the manual VoiceOver release pass."
   printf '%s\n' "This is not a substitute for the manual VoiceOver pass."
@@ -90,6 +91,10 @@ while [[ "$#" -gt 0 ]]; do
     --runtime)
       SOURCE_ONLY=0
       RUN_RUNTIME=1
+      shift
+      ;;
+    --skip-source-anchors)
+      SKIP_SOURCE_ANCHORS=1
       shift
       ;;
     --app-bundle)
@@ -121,30 +126,37 @@ if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
   exit 2
 fi
 
-missing_count=0
-for anchor in "${REQUIRED_SOURCE_ANCHORS[@]}"; do
-  source_file="${anchor%%::*}"
-  needle="${anchor#*::}"
-  source_path="$ROOT_DIR/$source_file"
-
-  if [[ ! -f "$source_path" ]]; then
-    echo "BLOCKER: missing source file for accessibility preflight: $source_file" >&2
-    missing_count=$((missing_count + 1))
-    continue
-  fi
-
-  if ! grep -F "$needle" "$source_path" >/dev/null; then
-    echo "BLOCKER: missing accessibility anchor '$needle' in $source_file" >&2
-    missing_count=$((missing_count + 1))
-  fi
-done
-
-if [[ "$missing_count" -gt 0 ]]; then
-  echo "accessibility source anchor preflight failed" >&2
-  exit 1
+if [[ "$SKIP_SOURCE_ANCHORS" -eq 1 && "$RUN_RUNTIME" -ne 1 ]]; then
+  echo "--skip-source-anchors requires --runtime" >&2
+  exit 2
 fi
 
-printf 'OK: accessibility source anchors are present (%d anchors)\n' "${#REQUIRED_SOURCE_ANCHORS[@]}"
+if [[ "$SKIP_SOURCE_ANCHORS" -ne 1 ]]; then
+  missing_count=0
+  for anchor in "${REQUIRED_SOURCE_ANCHORS[@]}"; do
+    source_file="${anchor%%::*}"
+    needle="${anchor#*::}"
+    source_path="$ROOT_DIR/$source_file"
+
+    if [[ ! -f "$source_path" ]]; then
+      echo "BLOCKER: missing source file for accessibility preflight: $source_file" >&2
+      missing_count=$((missing_count + 1))
+      continue
+    fi
+
+    if ! grep -F "$needle" "$source_path" >/dev/null; then
+      echo "BLOCKER: missing accessibility anchor '$needle' in $source_file" >&2
+      missing_count=$((missing_count + 1))
+    fi
+  done
+
+  if [[ "$missing_count" -gt 0 ]]; then
+    echo "accessibility source anchor preflight failed" >&2
+    exit 1
+  fi
+
+  printf 'OK: accessibility source anchors are present (%d anchors)\n' "${#REQUIRED_SOURCE_ANCHORS[@]}"
+fi
 
 if [[ "$SOURCE_ONLY" -eq 1 && "$RUN_RUNTIME" -eq 0 ]]; then
   printf '%s\n' 'This is not a substitute for the manual VoiceOver pass.'
