@@ -3700,6 +3700,7 @@ final class ReleasePipelineTests: XCTestCase {
         let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
         let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
         let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let actionSummaryURL = fixtureRoot.appendingPathComponent("release-actions.md")
 
         try? FileManager.default.removeItem(at: fixtureRoot)
         try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
@@ -3723,7 +3724,11 @@ final class ReleasePipelineTests: XCTestCase {
             .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
 
-        let result = try runTool(["bash", reportURL.path])
+        let result = try runTool(
+            ["bash", reportURL.path],
+            environment: ["SOLOPM_RELEASE_ACTIONS_FILE": actionSummaryURL.path]
+        )
+        let actionSummary = try String(contentsOf: actionSummaryURL, encoding: .utf8)
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("Unchecked implementation phase items:"))
@@ -3732,6 +3737,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("Unchecked manual/release phase gates:"))
         XCTAssertTrue(result.output.contains("signed app の login item 設定をオン / オフできる。"))
         XCTAssertTrue(result.output.contains("phase checklist still has unchecked manual/release gates"))
+        XCTAssertTrue(actionSummary.contains("## Phase Checklist Items"))
+        XCTAssertTrue(actionSummary.contains("Unchecked implementation phase items:"))
+        XCTAssertTrue(actionSummary.contains("Implement durable local CRUD recovery for corrupted project rows."))
+        XCTAssertTrue(actionSummary.contains("Unchecked manual/release phase gates:"))
+        XCTAssertTrue(actionSummary.contains("signed app の login item 設定をオン / オフできる。"))
     }
 
     func testReleaseReadinessReportIncludesPhase11AndIgnoresFuturePhasePlanning() throws {

@@ -213,6 +213,24 @@ write_release_actions() {
     fi
     printf "\n"
 
+    if [[ -n "$phase_implementation_unchecked" || -n "$phase_manual_unchecked" ]]; then
+      printf "## Phase Checklist Items\n"
+      if [[ -n "$phase_implementation_unchecked" ]]; then
+        printf "Unchecked implementation phase items:\n"
+        while IFS= read -r phase_item; do
+          printf -- "- [ ] %s\n" "${phase_item#"$ROOT_DIR/"}"
+        done <<<"$phase_implementation_unchecked"
+        printf "\n"
+      fi
+      if [[ -n "$phase_manual_unchecked" ]]; then
+        printf "Unchecked manual/release phase gates:\n"
+        while IFS= read -r phase_item; do
+          printf -- "- [ ] %s\n" "${phase_item#"$ROOT_DIR/"}"
+        done <<<"$phase_manual_unchecked"
+        printf "\n"
+      fi
+    fi
+
     printf "## Automated Proof Gates\n"
     if [[ "$AUTOMATED_PROOF_GATES" == "1" ]]; then
       printf -- "- Automated proof gates were requested in this report. Inspect the report output for pass/fail details before treating any automated gate as proven.\n"
