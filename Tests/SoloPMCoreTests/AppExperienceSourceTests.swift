@@ -134,6 +134,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(sidebarSource.contains("SoloPMAppearancePreference"))
         XCTAssertFalse(sidebarSource.contains("Picker(\"Theme\""))
         XCTAssertFalse(sidebarSource.contains("Picker(\"Appearance\""))
+        XCTAssertFalse(sidebarSource.contains("Light"))
+        XCTAssertFalse(sidebarSource.contains("Dark"))
+        XCTAssertFalse(sidebarSource.contains("System"))
+        XCTAssertFalse(sidebarSource.contains("sun.max"))
+        XCTAssertFalse(sidebarSource.contains("moon"))
+        XCTAssertFalse(sidebarSource.contains("circle.lefthalf.filled"))
+        XCTAssertFalse(sidebarSource.contains("settings-theme-picker"))
+        XCTAssertFalse(sidebarSource.contains("appearancePreference"))
+        XCTAssertFalse(sidebarSource.contains(".pickerStyle(.segmented)"))
 
         let toolbarStart = try XCTUnwrap(boardSource.range(of: ".toolbar {"))
         let inspectorStart = try XCTUnwrap(boardSource.range(of: ".inspector(isPresented: inspectorBinding)"))
@@ -145,6 +154,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(toolbarSource.contains("SoloPMAppearancePreference"))
         XCTAssertFalse(toolbarSource.contains("Picker(\"Theme\""))
         XCTAssertFalse(toolbarSource.contains("Picker(\"Appearance\""))
+        XCTAssertFalse(toolbarSource.contains("Light"))
+        XCTAssertFalse(toolbarSource.contains("Dark"))
+        XCTAssertFalse(toolbarSource.contains("System"))
+        XCTAssertFalse(toolbarSource.contains("sun.max"))
+        XCTAssertFalse(toolbarSource.contains("moon"))
+        XCTAssertFalse(toolbarSource.contains("circle.lefthalf.filled"))
+        XCTAssertFalse(toolbarSource.contains("settings-theme-picker"))
+        XCTAssertFalse(toolbarSource.contains("appearancePreference"))
+        XCTAssertFalse(toolbarSource.contains(".pickerStyle(.segmented)"))
     }
 
     func testProjectBoardDropPayloadsAreValidatedByViewModel() throws {
