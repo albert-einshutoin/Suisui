@@ -207,6 +207,7 @@
   - [x] VoiceOver証跡はVoiceOver/keyboard/deviceの実環境contextがない場合release readyにしない。
   - [x] `script/check_accessibility_preflight.sh` はsource-level accessibility anchorsを確認し、任意のruntime AX smokeで手動VoiceOver前の崩れを検出できる。
   - [x] `script/check_accessibility_preflight.sh` はTask inspectorのdetail/status/priority/due/suggestion/save/deleteとProject inspectorのtitle/suggestion/save/complete/restore/archive/deleteを必須anchorとして監視する。
+  - [x] `script/check_accessibility_preflight.sh` はProject OverviewのTask snapshot、Local Suggestions、Artifactsの支援技術CRUD入口もsource anchorとして監視する。
   - [x] `script/check_accessibility_preflight.sh` は主要CRUDのkeyboard shortcutsをsource anchorとして監視する。
   - [x] `script/check_accessibility_preflight.sh --runtime` は見えているrelease候補windowのunlabeled AX buttonsとhelp/child textなしgeneric `button` labelをblockerにする。
   - [x] `script/check_accessibility_preflight.sh --runtime` はProject Board上のShow Archived、Add Project、Add Task、Save、Complete、Archive、Deleteのbutton help signalsを `crudSignals=8/8` としてblocker化する。
