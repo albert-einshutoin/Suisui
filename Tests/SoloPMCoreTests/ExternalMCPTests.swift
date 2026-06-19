@@ -637,6 +637,7 @@ final class ExternalMCPTests: XCTestCase {
                                 "description": .string("Read structured project status."),
                                 "inputSchema": .object(["type": .string("object")]),
                                 "outputSchema": .object([
+                                    "$schema": .string("http://json-schema.org/draft-07/schema#"),
                                     "type": .string("object"),
                                     "properties": .object([
                                         "status": .object(["type": .string("string")])
@@ -654,6 +655,7 @@ final class ExternalMCPTests: XCTestCase {
 
         let tools = try await client.listTools()
 
+        XCTAssertEqual(tools.first?.outputSchema?["$schema"], .string("http://json-schema.org/draft-07/schema#"))
         XCTAssertEqual(tools.first?.outputSchema?["type"], .string("object"))
         XCTAssertEqual(tools.first?.outputSchema?["required"], .array([.string("status")]))
     }
@@ -2677,6 +2679,40 @@ final class ExternalMCPTests: XCTestCase {
 
         XCTAssertEqual(tools.map(\.name), ["read_status"])
         XCTAssertEqual(tools.first?.inputSchema["$schema"], .string("https://json-schema.org/draft/2020-12/schema"))
+    }
+
+    func testToolsListAcceptsExplicitDraft07InputSchemaDialect() async throws {
+        let validSchemaTransport = RecordingMCPTransport { request in
+            if request.method == "tools/list" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "tools": .array([
+                            .object([
+                                "name": .string("calculate_sum"),
+                                "description": .string("Add two numbers"),
+                                "inputSchema": .object([
+                                    "$schema": .string("http://json-schema.org/draft-07/schema#"),
+                                    "type": .string("object"),
+                                    "required": .array([.string("a"), .string("b")]),
+                                    "properties": .object([
+                                        "a": .object(["type": .string("number")]),
+                                        "b": .object(["type": .string("number")])
+                                    ])
+                                ])
+                            ])
+                        ])
+                    ])
+                )
+            }
+            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+        }
+        let client = MCPClient(serverID: "fake", transport: validSchemaTransport)
+
+        let tools = try await client.listTools()
+
+        XCTAssertEqual(tools.map(\.name), ["calculate_sum"])
+        XCTAssertEqual(tools.first?.inputSchema["$schema"], .string("http://json-schema.org/draft-07/schema#"))
     }
 
     func testToolsListRejectsNonStringDescriptionMetadata() async throws {

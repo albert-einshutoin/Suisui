@@ -345,7 +345,11 @@ public struct MCPToolDefinition: Equatable, Sendable {
         case "https://json-schema.org/draft/2020-12/schema",
              "https://json-schema.org/draft/2020-12/schema#",
              "http://json-schema.org/draft/2020-12/schema",
-             "http://json-schema.org/draft/2020-12/schema#":
+             "http://json-schema.org/draft/2020-12/schema#",
+             "https://json-schema.org/draft-07/schema",
+             "https://json-schema.org/draft-07/schema#",
+             "http://json-schema.org/draft-07/schema",
+             "http://json-schema.org/draft-07/schema#":
             return true
         default:
             return false
