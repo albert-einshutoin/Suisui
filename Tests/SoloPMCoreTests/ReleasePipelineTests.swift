@@ -3662,6 +3662,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Generated at:"))
         XCTAssertTrue(script.contains("Source commit:"))
         XCTAssertTrue(script.contains("Blocker groups:"))
+        XCTAssertTrue(script.contains("BLOCKER_MESSAGES=()"))
+        XCTAssertTrue(script.contains("BLOCKER_MESSAGES+=(\"$1\")"))
+        XCTAssertTrue(script.contains("## Current Blocker Groups"))
+        XCTAssertTrue(script.contains("for blocker_message in \"${BLOCKER_MESSAGES[@]}\""))
+        XCTAssertTrue(script.contains("printf -- \"- [ ] %s\\n\" \"$blocker_message\""))
         XCTAssertTrue(script.contains("## Automated Proof Gates"))
         XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh"))
         XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/check_automated_release_preflight.sh"))
@@ -3681,6 +3686,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(checklist.contains("SOLOPM_RELEASE_ACTIONS_FILE=.tmp/release-actions.md ./script/release_readiness_report.sh"))
         XCTAssertTrue(phase.contains("[x] `release_readiness_report.sh` は `SOLOPM_RELEASE_ACTIONS_FILE` 指定時に残blockerのoperator action summaryを書き出す。"))
+        XCTAssertTrue(phase.contains("[x] action summary は今回の実行で発生した具体blockerを `Current Blocker Groups` のチェックリストとして列挙する。"))
     }
 
     func testReleaseReadinessReportClassifiesUncheckedPhaseItems() throws {

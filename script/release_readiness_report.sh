@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BLOCKER_COUNT=0
+BLOCKER_MESSAGES=()
 APP_METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 RELEASE_ACTIONS_FILE="${SOLOPM_RELEASE_ACTIONS_FILE:-}"
 AUTOMATED_PROOF_GATES="${SOLOPM_AUTOMATED_PROOF_GATES:-0}"
@@ -145,6 +146,7 @@ section() {
 
 blocker() {
   BLOCKER_COUNT=$((BLOCKER_COUNT + 1))
+  BLOCKER_MESSAGES+=("$1")
   printf "BLOCKER: %s\n" "$1"
 }
 
@@ -183,6 +185,16 @@ write_release_actions() {
     printf "Blocker groups: %d\n\n" "$BLOCKER_COUNT"
     printf "This file is an action summary, not release evidence.\n"
     printf "It does not mark manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper checks as passed.\n\n"
+
+    printf "## Current Blocker Groups\n"
+    if [[ "${#BLOCKER_MESSAGES[@]}" -eq 0 ]]; then
+      printf -- "- [x] No blocker groups were recorded in this report run.\n"
+    else
+      for blocker_message in "${BLOCKER_MESSAGES[@]}"; do
+        printf -- "- [ ] %s\n" "$blocker_message"
+      done
+    fi
+    printf "\n"
 
     printf "## Automated Proof Gates\n"
     if [[ "$AUTOMATED_PROOF_GATES" == "1" ]]; then
