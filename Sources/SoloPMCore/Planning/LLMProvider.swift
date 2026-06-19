@@ -81,10 +81,10 @@ enum LLMHTTPErrorMessageExtractor {
 
 enum ProviderErrorMessageSanitizer {
     static func message(from error: Error) -> String {
-        DeveloperSecretRedactor()
-            .redact(error.localizedDescription)
-            .text
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        UserFacingErrorMessageSanitizer.message(
+            from: error,
+            fallback: "The provider request failed."
+        )
     }
 }
 

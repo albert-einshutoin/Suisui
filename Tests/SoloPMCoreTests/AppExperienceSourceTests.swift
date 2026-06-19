@@ -17,6 +17,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains("Create a task to review the SoloPM Phase 1 UI"))
     }
 
+    func testAVFoundationAudioRecorderRedactsSystemErrorMessages() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Adapters/AVFoundationAudioRecorder.swift")
+
+        XCTAssertEqual(source.components(separatedBy: "UserFacingErrorMessageSanitizer.message(").count - 1, 2)
+        XCTAssertEqual(source.components(separatedBy: "from: error").count - 1, 2)
+        XCTAssertFalse(source.contains("state = .failed(error.localizedDescription)"))
+        XCTAssertFalse(source.contains("throw AudioRecorderError.failed(error.localizedDescription)"))
+    }
+
     func testProjectBoardSurfaceUsesKanbanLayout() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")

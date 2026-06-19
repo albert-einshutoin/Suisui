@@ -47,7 +47,7 @@ public struct PlanningAuditRecorder: Sendable {
                 metadata: [
                     "provider": providerID,
                     "input_summary": summarize(input),
-                    "error": String(describing: error)
+                    "error": UserFacingErrorMessageSanitizer.message(from: error)
                 ]
             )
         )

@@ -716,7 +716,10 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     private static func userFacingMessage(for error: Error) -> String {
         guard let decodingError = error as? LocalStoreDecodingError else {
-            return String(describing: error)
+            return UserFacingErrorMessageSanitizer.message(
+                from: error,
+                fallback: "Project board unavailable"
+            )
         }
 
         return repairGuidance(for: decodingError)

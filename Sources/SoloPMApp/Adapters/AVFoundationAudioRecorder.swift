@@ -56,8 +56,12 @@ final class AVFoundationAudioRecorder: AudioRecorder {
         } catch let error as AudioRecorderError {
             throw error
         } catch {
-            state = .failed(error.localizedDescription)
-            throw AudioRecorderError.failed(error.localizedDescription)
+            let message = UserFacingErrorMessageSanitizer.message(
+                from: error,
+                fallback: "Audio recording failed."
+            )
+            state = .failed(message)
+            throw AudioRecorderError.failed(message)
         }
     }
 
@@ -72,8 +76,12 @@ final class AVFoundationAudioRecorder: AudioRecorder {
         do {
             try replaceItem(at: outputURL, with: recorder.url)
         } catch {
-            state = .failed(error.localizedDescription)
-            throw AudioRecorderError.failed(error.localizedDescription)
+            let message = UserFacingErrorMessageSanitizer.message(
+                from: error,
+                fallback: "Audio recording could not be saved."
+            )
+            state = .failed(message)
+            throw AudioRecorderError.failed(message)
         }
 
         let audio = RecordedAudio(

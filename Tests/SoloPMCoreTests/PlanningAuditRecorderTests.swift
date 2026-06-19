@@ -27,4 +27,30 @@ final class PlanningAuditRecorderTests: XCTestCase {
         XCTAssertEqual(logger.recordedEvents.last?.metadata["plan_id"], "plan-1")
         XCTAssertEqual(logger.recordedEvents.first?.metadata["input_summary"], "[REDACTED]")
     }
+
+    func testPlanningAuditRecorderRedactsFailureErrorBeforeLoggerBoundary() throws {
+        let logger = InMemoryAuditLogger()
+        let recorder = PlanningAuditRecorder(logger: logger)
+        let secret = "sk-" + "planningAuditSecret123"
+
+        try recorder.recordFailed(
+            input: "Create a task",
+            providerID: "openai",
+            error: PlanningAuditSecretError(message: "provider failed token=\(secret)&request_id=planning-audit-1")
+        )
+
+        XCTAssertEqual(
+            logger.recordedEvents.first?.metadata["error"],
+            "provider failed token=[REDACTED_SECRET]&request_id=planning-audit-1"
+        )
+        XCTAssertFalse(logger.recordedEvents.first?.metadata["error"]?.contains(secret) ?? true)
+    }
+}
+
+private struct PlanningAuditSecretError: Error, CustomStringConvertible {
+    var message: String
+
+    var description: String {
+        message
+    }
 }

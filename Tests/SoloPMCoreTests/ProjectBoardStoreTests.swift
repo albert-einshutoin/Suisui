@@ -1146,6 +1146,24 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelRedactsUnexpectedLoadErrorMessages() {
+        let secret = "sk-" + "projectBoardSecret123"
+        let viewModel = ProjectBoardViewModel(
+            store: AlwaysFailingProjectBoardStore(
+                error: ProjectBoardSecretError(message: "board load failed token=\(secret)&request_id=project-board-1")
+            )
+        )
+
+        viewModel.load()
+
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "board load failed token=[REDACTED_SECRET]&request_id=project-board-1"
+        )
+        XCTAssertFalse(viewModel.errorMessage?.contains(secret) ?? true)
+    }
+
+    @MainActor
     func testProjectBoardViewModelShowsRepairGuidanceForCorruptedLocalJSON() {
         let viewModel = ProjectBoardViewModel(
             store: AlwaysFailingProjectBoardStore(error: LocalStoreDecodingError.invalidStringArray(column: "projects.tags_json"))
@@ -1289,6 +1307,14 @@ private struct AlwaysFailingProjectBoardStore: ProjectBoardStore {
 
     func deleteProjectArtifact(id: Int64) throws {
         throw error
+    }
+}
+
+private struct ProjectBoardSecretError: Error, CustomStringConvertible {
+    var message: String
+
+    var description: String {
+        message
     }
 }
 

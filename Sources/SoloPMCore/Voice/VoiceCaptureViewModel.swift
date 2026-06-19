@@ -162,7 +162,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     }
 
     private func capturePlanningAuditFailure(_ error: Error) {
-        auditErrorMessage = "Planning audit log failed: \(String(describing: error))"
+        auditErrorMessage = "Planning audit log failed: \(UserFacingErrorMessageSanitizer.message(from: error))"
     }
 
     private func userMessage(for error: Error) -> String {
@@ -175,21 +175,25 @@ public final class VoiceCaptureViewModel: ObservableObject {
             case .notRecording:
                 return "Recording has not started."
             case .failed(let message):
-                return message
+                return UserFacingErrorMessageSanitizer.message(from: message)
             }
         }
 
         if let sttError = error as? STTProviderError {
             switch sttError {
             case .unavailable(let message):
-                return message
+                return UserFacingErrorMessageSanitizer.message(from: message)
             case .permissionDenied:
                 return "Speech transcription permission is required."
             case .modelMissing(let message), .transcriptionFailed(let message):
-                return message
+                return UserFacingErrorMessageSanitizer.message(from: message)
             }
         }
 
-        return String(describing: error)
+        if let llmError = error as? LLMProviderError {
+            return UserFacingErrorMessageSanitizer.message(from: llmError.userMessage)
+        }
+
+        return UserFacingErrorMessageSanitizer.message(from: error)
     }
 }
