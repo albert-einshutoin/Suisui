@@ -156,8 +156,11 @@ is_manual_phase_gate() {
 
 is_iso_date() {
   local value="$1"
+  local normalized
   value="$(printf '%s' "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-  [[ "$value" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
+  [[ "$value" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
+  normalized="$(/bin/date -j -f '%Y-%m-%d' "$value" '+%Y-%m-%d' 2>/dev/null)" || return 1
+  [[ "$normalized" == "$value" ]]
 }
 
 assert_screenshot_has_visible_content() {

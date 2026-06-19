@@ -2226,6 +2226,32 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(invalidDateResult.output.contains("--check-date must use YYYY-MM-DD"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
 
+        let invalidCalendarDateResult = try runScript(
+            "script/create_voiceover_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "Release reviewer",
+                "--macos-version", "macOS 15.5",
+                "--check-date", "2026-02-31",
+                "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
+                "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
+                "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
+                "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
+                "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
+                "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
+                "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
+                "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
+                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--output", passedURL.path,
+                "--confirm-manual-voiceover-pass"
+            ]
+        )
+        XCTAssertNotEqual(invalidCalendarDateResult.exitCode, 0)
+        XCTAssertTrue(invalidCalendarDateResult.output.contains("--check-date must use YYYY-MM-DD"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
         let passedResult = try runScript(
             "script/create_voiceover_evidence.sh",
             arguments: [
@@ -2436,6 +2462,28 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(invalidDateResult.output.contains("--check-date must use YYYY-MM-DD"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
 
+        let invalidCalendarDateResult = try runScript(
+            "script/create_competitor_hands_on_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "Product reviewer",
+                "--check-date", "2026-02-31",
+                "--environment", "macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used",
+                "--notion-note", "Board setup was flexible but required manual schema decisions before task entry felt fast.",
+                "--todoist-note", "Quick Add made capture fast, but project context still needed review after entry.",
+                "--linear-note", "Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.",
+                "--motion-note", "Scheduling suggestions were useful only when the reason and deadline impact were visible.",
+                "--ship", "Keep fast local capture, board status movement, and right inspector as the public alpha loop.",
+                "--defer", "Natural-language dates and autonomous scheduling stay out until reliability evidence exists.",
+                "--reject", "Team cycles, initiatives, and external SaaS sync stay outside public alpha scope.",
+                "--output", passedURL.path,
+                "--confirm-manual-hands-on"
+            ]
+        )
+        XCTAssertNotEqual(invalidCalendarDateResult.exitCode, 0)
+        XCTAssertTrue(invalidCalendarDateResult.output.contains("--check-date must use YYYY-MM-DD"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
         let passedResult = try runScript(
             "script/create_competitor_hands_on_evidence.sh",
             arguments: [
@@ -2516,7 +2564,7 @@ final class ReleasePipelineTests: XCTestCase {
         ## Review Context
 
         - Checked by: Product reviewer
-        - Check date: June 19, 2026
+        - Check date: 2026-02-31
         - Evidence source: `Real local hands-on pass`
         - Scope: Notion -> Todoist -> Linear -> Motion
 
@@ -3449,7 +3497,7 @@ final class ReleasePipelineTests: XCTestCase {
         - App build: `0.1.0 (1)`
         - Bundle identifier: `dev.solopm.app`
         - Checked by: Release reviewer
-        - Check date: June 19, 2026
+        - Check date: 2026-02-31
         - Evidence source: `dist/SoloPM.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
 

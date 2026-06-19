@@ -52,7 +52,11 @@ is_placeholder_environment() {
 }
 
 is_iso_date() {
-  [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
+  local value="$1"
+  local normalized
+  [[ "$value" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
+  normalized="$(/bin/date -j -f '%Y-%m-%d' "$value" '+%Y-%m-%d' 2>/dev/null)" || return 1
+  [[ "$normalized" == "$value" ]]
 }
 
 while [[ "$#" -gt 0 ]]; do
@@ -148,7 +152,7 @@ if [[ "$EVIDENCE_STATUS" == "passed" ]]; then
     exit 2
   fi
   if ! is_iso_date "$CHECK_DATE"; then
-    echo "--check-date must use YYYY-MM-DD" >&2
+    echo "--check-date must use YYYY-MM-DD and be a real calendar date" >&2
     exit 2
   fi
   require_passed_value "--environment" "$ENVIRONMENT"
