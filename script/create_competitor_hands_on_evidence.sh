@@ -59,6 +59,13 @@ is_iso_date() {
   [[ "$normalized" == "$value" ]]
 }
 
+is_future_date() {
+  local value="$1"
+  local today
+  today="$(/bin/date '+%Y-%m-%d')"
+  [[ "$value" > "$today" ]]
+}
+
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --pending)
@@ -153,6 +160,10 @@ if [[ "$EVIDENCE_STATUS" == "passed" ]]; then
   fi
   if ! is_iso_date "$CHECK_DATE"; then
     echo "--check-date must use YYYY-MM-DD and be a real calendar date" >&2
+    exit 2
+  fi
+  if is_future_date "$CHECK_DATE"; then
+    echo "--check-date must not be in the future" >&2
     exit 2
   fi
   require_passed_value "--environment" "$ENVIRONMENT"

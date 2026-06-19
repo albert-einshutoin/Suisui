@@ -163,6 +163,14 @@ is_iso_date() {
   [[ "$normalized" == "$value" ]]
 }
 
+is_future_date() {
+  local value="$1"
+  local today
+  value="$(printf '%s' "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  today="$(/bin/date '+%Y-%m-%d')"
+  is_iso_date "$value" && [[ "$value" > "$today" ]]
+}
+
 assert_screenshot_has_visible_content() {
   local image_path="$1"
   /usr/bin/swift "$ROOT_DIR/script/ui_evidence_content_check.swift" "$image_path"
@@ -570,6 +578,8 @@ else
 
     if [[ "$context_label" == "Check date" ]] && ! is_iso_date "$context_value"; then
       voiceover_blocker "VoiceOver accessibility evidence has invalid release context date: $context_label"
+    elif [[ "$context_label" == "Check date" ]] && is_future_date "$context_value"; then
+      voiceover_blocker "VoiceOver accessibility evidence has future release context date: $context_label"
     fi
   done
 
@@ -710,6 +720,8 @@ else
 
     if [[ "$context_label" == "Check date" ]] && ! is_iso_date "$context_value"; then
       competitor_blocker "Competitor hands-on evidence has invalid review context date: $context_label"
+    elif [[ "$context_label" == "Check date" ]] && is_future_date "$context_value"; then
+      competitor_blocker "Competitor hands-on evidence has future review context date: $context_label"
     fi
   done
 

@@ -2252,6 +2252,32 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(invalidCalendarDateResult.output.contains("--check-date must use YYYY-MM-DD"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
 
+        let futureDateResult = try runScript(
+            "script/create_voiceover_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "Release reviewer",
+                "--macos-version", "macOS 15.5",
+                "--check-date", "2099-01-01",
+                "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
+                "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
+                "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
+                "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
+                "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
+                "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
+                "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
+                "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
+                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--output", passedURL.path,
+                "--confirm-manual-voiceover-pass"
+            ]
+        )
+        XCTAssertNotEqual(futureDateResult.exitCode, 0)
+        XCTAssertTrue(futureDateResult.output.contains("--check-date must not be in the future"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
         let passedResult = try runScript(
             "script/create_voiceover_evidence.sh",
             arguments: [
@@ -2482,6 +2508,28 @@ final class ReleasePipelineTests: XCTestCase {
         )
         XCTAssertNotEqual(invalidCalendarDateResult.exitCode, 0)
         XCTAssertTrue(invalidCalendarDateResult.output.contains("--check-date must use YYYY-MM-DD"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
+        let futureDateResult = try runScript(
+            "script/create_competitor_hands_on_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "Product reviewer",
+                "--check-date", "2099-01-01",
+                "--environment", "macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used",
+                "--notion-note", "Board setup was flexible but required manual schema decisions before task entry felt fast.",
+                "--todoist-note", "Quick Add made capture fast, but project context still needed review after entry.",
+                "--linear-note", "Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.",
+                "--motion-note", "Scheduling suggestions were useful only when the reason and deadline impact were visible.",
+                "--ship", "Keep fast local capture, board status movement, and right inspector as the public alpha loop.",
+                "--defer", "Natural-language dates and autonomous scheduling stay out until reliability evidence exists.",
+                "--reject", "Team cycles, initiatives, and external SaaS sync stay outside public alpha scope.",
+                "--output", passedURL.path,
+                "--confirm-manual-hands-on"
+            ]
+        )
+        XCTAssertNotEqual(futureDateResult.exitCode, 0)
+        XCTAssertTrue(futureDateResult.output.contains("--check-date must not be in the future"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
 
         let passedResult = try runScript(
@@ -3536,6 +3584,127 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Delete Task confirmation"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: No keyboard trap"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: No unlabeled primary CRUD controls"))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+    }
+
+    func testReleaseReadinessReportFailsWhenManualEvidenceCheckDateIsFuture() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-future-manual-evidence-date", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let packagingDirectory = fixtureRoot.appendingPathComponent("packaging", isDirectory: true)
+        let evidenceDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("release", isDirectory: true)
+            .appendingPathComponent("evidence", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let releasePreflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+        let accessibilityPreflightURL = scriptDirectory.appendingPathComponent("check_accessibility_preflight.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: packagingDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: evidenceDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "accessibility source ok\\n"
+        """.write(to: accessibilityPreflightURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: releasePreflightURL, atomically: true, encoding: .utf8)
+        try """
+        APP_NAME=SoloPM
+        BUNDLE_IDENTIFIER=dev.solopm.app
+        MARKETING_VERSION=0.1.0
+        CURRENT_PROJECT_VERSION=1
+        """.write(to: packagingDirectory.appendingPathComponent("app_metadata.env"), atomically: true, encoding: .utf8)
+        try """
+        # VoiceOver Accessibility Evidence
+
+        Status: passed
+
+        ## Release Candidate Context
+
+        - macOS version: macOS 15.5
+        - App build: `0.1.0 (1)`
+        - Bundle identifier: `dev.solopm.app`
+        - Checked by: Release reviewer
+        - Check date: 2099-01-01
+        - Evidence source: `dist/SoloPM.app` manual pass
+        - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
+
+        ## Verified Focus Path
+
+        - Project navigation: passed - Sidebar navigation announced destination and counts.
+        - Project board detail: passed - Board detail announced project context.
+        - Open task: passed - Task card opened from keyboard focus.
+        - Inline Task Composer: passed - Composer fields, create, and cancel were reachable.
+        - Status controls: passed - Status move buttons announced target status.
+        - Task inspector: passed - Inspector fields and actions were reachable.
+        - Save Changes: passed - Save activated from keyboard.
+        - Delete Task confirmation: passed - Destructive confirmation was announced.
+        - No keyboard trap: passed - Focus left every primary region.
+        - No unlabeled primary CRUD controls: passed - Primary CRUD controls had labels.
+        """.write(to: evidenceDirectory.appendingPathComponent("accessibility-voiceover.md"), atomically: true, encoding: .utf8)
+        try """
+        # Competitor Hands-On Evidence
+
+        Status: passed
+
+        ## Review Context
+
+        - Checked by: Product reviewer
+        - Check date: 2099-01-01
+        - Evidence source: `Real local hands-on pass`
+        - Environment: macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used
+        - Scope: Notion -> Todoist -> Linear -> Motion
+
+        ## Verified Hands-On Path
+
+        - Notion: passed - Board setup was flexible but required manual schema decisions before task entry felt fast.
+        - Todoist: passed - Quick Add made capture fast, but project context still needed review after entry.
+        - Linear: passed - Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.
+        - Motion: passed - Scheduling suggestions were useful only when the reason and deadline impact were visible.
+        - No external SaaS sync or team workflow was added to SoloPM public alpha scope because of this benchmark.
+
+        ## Ship / Defer / Reject Delta
+
+        - Ship: Keep fast local capture, board status movement, and right inspector as the public alpha loop.
+        - Defer: Natural-language dates and autonomous scheduling stay out until reliability evidence exists.
+        - Reject: Team cycles, initiatives, and external SaaS sync stay outside public alpha scope.
+        """.write(to: evidenceDirectory.appendingPathComponent("competitor-hands-on.md"), atomically: true, encoding: .utf8)
+        try "- [x] release gate checked\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] release readme checked\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        for url in [reportURL, releasePreflightURL, accessibilityPreflightURL] {
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        }
+
+        let result = try runTool(["bash", reportURL.path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence has future release context date: Check date"))
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence has future review context date: Check date"))
+        XCTAssertFalse(result.output.contains("VoiceOver accessibility evidence missing concrete focus note"))
+        XCTAssertFalse(result.output.contains("Competitor hands-on evidence missing concrete note"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
     }
 
