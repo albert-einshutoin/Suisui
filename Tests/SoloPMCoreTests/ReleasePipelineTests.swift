@@ -2347,10 +2347,41 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("--environment \"macOS/browser versions, competitor app/account tiers, and whether any paid trial was used\""))
         XCTAssertTrue(checklist.contains("--confirm-manual-hands-on"))
         XCTAssertTrue(checklist.contains("Notion -> Todoist -> Linear -> Motion"))
+        XCTAssertTrue(checklist.contains("./script/check_automated_release_preflight.sh"))
+        XCTAssertTrue(checklist.contains("This automated sweep does not replace manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper evidence."))
         XCTAssertTrue(checklist.contains("./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("SOLOPM_RELEASE_CI_PREFLIGHT=1 ./script/release_readiness_report.sh"))
+        XCTAssertTrue(checklist.contains("SOLOPM_LOCAL_CRUD_SMOKE=1 ./script/release_readiness_report.sh"))
+        XCTAssertTrue(checklist.contains("SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT=1 ./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("SOLOPM_RELEASE_XCODE_PREFLIGHT=1 ./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("SOLOPM_BUILD_CONFIGURATION=release SOLOPM_RELEASE_LAUNCH_PREFLIGHT=1 ./script/release_readiness_report.sh"))
+    }
+
+    func testAutomatedReleasePreflightScriptRunsRealLocalGatesWithoutFakingManualEvidence() throws {
+        let script = try readPackageFile("script/check_automated_release_preflight.sh")
+        let checklist = try readPackageFile("docs/release/checklist.md")
+
+        XCTAssertTrue(script.contains("./scripts/ci.sh"))
+        XCTAssertTrue(script.contains("./script/check_local_crud_smoke.sh"))
+        XCTAssertTrue(script.contains("./script/check_runtime_accessible_crud_smoke.sh"))
+        XCTAssertTrue(script.contains("xcodebuild"))
+        XCTAssertTrue(script.contains(".swiftpm/xcode/package.xcworkspace"))
+        XCTAssertTrue(script.contains("-scheme \"$XCODE_SCHEME\""))
+        XCTAssertTrue(script.contains("./script/build_and_run.sh --verify"))
+        XCTAssertTrue(script.contains("./script/check_accessibility_preflight.sh --runtime --skip-launch"))
+        XCTAssertTrue(script.contains("./script/verify_mcp_compliance.sh"))
+        XCTAssertTrue(script.contains("manual VoiceOver"))
+        XCTAssertTrue(script.contains("competitor hands-on"))
+        XCTAssertTrue(script.contains("signing/notarization/Sparkle/Gatekeeper"))
+        XCTAssertTrue(script.contains("automated release preflight passed"))
+        XCTAssertTrue(script.contains("This does not mark the release ready."))
+        XCTAssertTrue(script.contains("terminate_app"))
+        XCTAssertFalse(script.contains("create_voiceover_evidence.sh --passed"))
+        XCTAssertFalse(script.contains("create_competitor_hands_on_evidence.sh --passed"))
+        XCTAssertFalse(script.contains("Status: passed"))
+        XCTAssertFalse(script.contains("confirm-manual-voiceover-pass"))
+        XCTAssertFalse(script.contains("confirm-manual-hands-on"))
+        XCTAssertTrue(checklist.contains("./script/check_automated_release_preflight.sh"))
     }
 
     func testVoiceOverEvidenceGeneratorWritesPendingAndPassedEvidence() throws {
