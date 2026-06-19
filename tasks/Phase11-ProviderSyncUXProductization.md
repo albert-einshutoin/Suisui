@@ -200,6 +200,7 @@
   - [x] `release_readiness_report.sh` はVoiceOver証跡のrelease-candidate context空欄/テンプレート値をblockerにする。
   - [x] `docs/release/evidence/accessibility-voiceover.md` は実機確認者がmacOS/build/checked-by/failure notesを埋められる形にする。
   - [x] `script/create_voiceover_evidence.sh` はpending worksheetとpassed evidenceをmetadata付きで生成し、実機確認フラグなしのpassed証跡作成を拒否する。
+  - [x] `script/check_accessibility_preflight.sh` はsource-level accessibility anchorsを確認し、任意のruntime AX smokeで手動VoiceOver前の崩れを検出できる。
   - [ ] 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。
 - [x] `script/capture_ui_evidence.sh` は一時HOME、seed済みProject board、Light/Dark/System切替、window captureを使う。
   - [x] `capture_ui_evidence.sh` はcapture前にappを前面化し、黒画面/低情報量PNGをrelease evidenceとして残さず失敗させる。

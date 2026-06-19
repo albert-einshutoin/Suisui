@@ -146,6 +146,13 @@ script/capture_ui_evidence.sh --doctor
 script/capture_ui_evidence.sh
 ```
 
+Run the accessibility preflight before the manual VoiceOver pass. The source-only check is safe for CI/local review; the runtime check launches `dist/SoloPM.app` and requires macOS Accessibility permission for Terminal/Codex:
+
+```bash
+./script/check_accessibility_preflight.sh --source-only
+./script/check_accessibility_preflight.sh --runtime
+```
+
 Then replace `docs/release/evidence/accessibility-voiceover.md` with the real VoiceOver pass for the same release-candidate app. The final file must use `Status: passed`, complete the release-candidate context fields, include the Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector path, and remove all pending/template language.
 
 Use the generator to avoid stale bundle/build metadata:

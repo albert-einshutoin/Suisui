@@ -2100,6 +2100,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("Draft watchlist: `2026-07-28`"))
         XCTAssertTrue(checklist.contains("script/capture_ui_evidence.sh"))
         XCTAssertTrue(checklist.contains("docs/release/evidence/accessibility-voiceover.md"))
+        XCTAssertTrue(checklist.contains("./script/check_accessibility_preflight.sh --source-only"))
+        XCTAssertTrue(checklist.contains("./script/check_accessibility_preflight.sh --runtime"))
         XCTAssertTrue(checklist.contains("./script/create_voiceover_evidence.sh --pending"))
         XCTAssertTrue(checklist.contains("./script/create_voiceover_evidence.sh --passed"))
         XCTAssertTrue(checklist.contains("--confirm-manual-voiceover-pass"))
@@ -2171,6 +2173,35 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(passedEvidence.localizedCaseInsensitiveContains("pending"))
         XCTAssertFalse(passedEvidence.contains("- [ ]"))
         XCTAssertFalse(passedEvidence.localizedCaseInsensitiveContains("placeholder"))
+    }
+
+    func testAccessibilityPreflightChecksSourceAnchorsAndDocumentsRuntimeBoundary() throws {
+        let script = try readPackageFile("script/check_accessibility_preflight.sh")
+        let checklist = try readPackageFile("docs/release/checklist.md")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+
+        XCTAssertTrue(script.contains("REQUIRED_SOURCE_ANCHORS"))
+        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-sidebar"))
+        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-detail"))
+        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::inline-task-create"))
+        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::task-status-move-controls"))
+        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-save"))
+        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-delete"))
+        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-inspector-save"))
+        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift::sidebar-destination-"))
+        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift::inbox-quick-add-button"))
+        XCTAssertTrue(script.contains("--runtime"))
+        XCTAssertTrue(script.contains("System Events"))
+        XCTAssertTrue(script.contains("This is not a substitute for the manual VoiceOver pass."))
+
+        let result = try runScript("script/check_accessibility_preflight.sh", arguments: ["--source-only"])
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("OK: accessibility source anchors are present"))
+
+        XCTAssertTrue(checklist.contains("./script/check_accessibility_preflight.sh --source-only"))
+        XCTAssertTrue(checklist.contains("./script/check_accessibility_preflight.sh --runtime"))
+        XCTAssertTrue(phase.contains("[x] `script/check_accessibility_preflight.sh` はsource-level accessibility anchorsを確認し、任意のruntime AX smokeで手動VoiceOver前の崩れを検出できる。"))
+        XCTAssertTrue(phase.contains("[ ] 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。"))
     }
 
     func testReleaseReadinessReportAggregatesRuntimeMockScanTasksAndPreflight() throws {
