@@ -51,6 +51,10 @@ is_placeholder_environment() {
   esac
 }
 
+is_iso_date() {
+  [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
+}
+
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --pending)
@@ -141,6 +145,10 @@ if [[ "$EVIDENCE_STATUS" == "passed" ]]; then
   fi
   if [[ -z "${CHECK_DATE//[[:space:]]/}" ]]; then
     echo "--check-date is required with --passed" >&2
+    exit 2
+  fi
+  if ! is_iso_date "$CHECK_DATE"; then
+    echo "--check-date must use YYYY-MM-DD" >&2
     exit 2
   fi
   require_passed_value "--environment" "$ENVIRONMENT"

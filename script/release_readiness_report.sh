@@ -154,6 +154,12 @@ is_manual_phase_gate() {
   grep -Eiq '(手動確認|実機|支援技術|VoiceOver|hands-on|2-4[[:space:]]*hour|2-4時間|Developer ID|notarization|notarized|公証|Gatekeeper|clean environment|clean 環境|別ユーザー|login item|signed app|signed / notarized|署名|release-machine|manual evidence)' <<<"$item"
 }
 
+is_iso_date() {
+  local value="$1"
+  value="$(printf '%s' "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  [[ "$value" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
+}
+
 assert_screenshot_has_visible_content() {
   local image_path="$1"
   /usr/bin/swift "$ROOT_DIR/script/ui_evidence_content_check.swift" "$image_path"
@@ -558,6 +564,10 @@ else
     if grep -Eiq '(pending|todo|tbd|placeholder|sample|example|replace me|signed or release-candidate|VoiceOver/keyboard/device details|VoiceOver / keyboard / device details|manual pass environment|accessibility environment)' <<<"$context_value"; then
       voiceover_blocker "VoiceOver accessibility evidence has template release context: $context_label"
     fi
+
+    if [[ "$context_label" == "Check date" ]] && ! is_iso_date "$context_value"; then
+      voiceover_blocker "VoiceOver accessibility evidence has invalid release context date: $context_label"
+    fi
   done
 
   for note_label in "${VOICEOVER_REQUIRED_NOTE_LABELS[@]}"; do
@@ -693,6 +703,10 @@ else
 
     if grep -Eiq "$competitor_template_pattern" <<<"$context_value"; then
       competitor_blocker "Competitor hands-on evidence has template review context: $context_label"
+    fi
+
+    if [[ "$context_label" == "Check date" ]] && ! is_iso_date "$context_value"; then
+      competitor_blocker "Competitor hands-on evidence has invalid review context date: $context_label"
     fi
   done
 
