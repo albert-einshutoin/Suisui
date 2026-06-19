@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BLOCKER_COUNT=0
 APP_METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
+RELEASE_ACTIONS_FILE="${SOLOPM_RELEASE_ACTIONS_FILE:-}"
 AUTOMATED_PROOF_GATES="${SOLOPM_AUTOMATED_PROOF_GATES:-0}"
 RELEASE_CI_PREFLIGHT="${SOLOPM_RELEASE_CI_PREFLIGHT:-$AUTOMATED_PROOF_GATES}"
 RELEASE_CI_PREFLIGHT_RELATIVE="scripts/ci.sh"
@@ -145,6 +146,70 @@ section() {
 blocker() {
   BLOCKER_COUNT=$((BLOCKER_COUNT + 1))
   printf "BLOCKER: %s\n" "$1"
+}
+
+source_commit() {
+  git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown"
+}
+
+write_release_actions() {
+  local status="$1"
+  local action_path="$RELEASE_ACTIONS_FILE"
+
+  if [[ -z "$action_path" ]]; then
+    return 0
+  fi
+
+  if [[ "$action_path" != /* ]]; then
+    action_path="$ROOT_DIR/$action_path"
+  fi
+
+  mkdir -p "$(dirname "$action_path")"
+  {
+    printf "# SoloPM Release Actions\n\n"
+    case "$status" in
+      not-ready)
+        printf "Status: not-ready\n"
+        ;;
+      ready)
+        printf "Status: ready\n"
+        ;;
+      *)
+        printf "Status: %s\n" "$status"
+        ;;
+    esac
+    printf "Generated at: %s\n" "$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    printf "Source commit: %s\n" "$(source_commit)"
+    printf "Blocker groups: %d\n\n" "$BLOCKER_COUNT"
+    printf "This file is an action summary, not release evidence.\n"
+    printf "It does not mark manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper checks as passed.\n\n"
+
+    printf "## Automated Proof Gates\n"
+    if [[ "$AUTOMATED_PROOF_GATES" == "1" ]]; then
+      printf -- "- Automated proof gates were requested in this report. Inspect the report output for pass/fail details before treating any automated gate as proven.\n"
+    else
+      printf -- "- Run: \`SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh\`\n"
+      printf -- "- Or produce clean-tree evidence: \`SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/check_automated_release_preflight.sh\`\n"
+    fi
+    printf "\n"
+
+    printf "## Manual VoiceOver\n"
+    printf -- "- Run the source/runtime accessibility preflight first, then perform a real VoiceOver pass.\n"
+    printf -- "- Generator command: \`./script/create_voiceover_evidence.sh --passed --capture-runtime-ax-smoke --confirm-manual-voiceover-pass ...\`\n"
+    printf -- "- Required evidence stays manual: concrete Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector observations.\n\n"
+
+    printf "## Competitor Hands-On\n"
+    printf -- "- Complete the 2-4 hour Notion, Todoist, Linear, and Motion hands-on pass before release.\n"
+    printf -- "- Generator command: \`./script/create_competitor_hands_on_evidence.sh --passed --benchmark-output docs/product/competitor-benchmark.md --confirm-manual-hands-on ...\`\n"
+    printf -- "- Record Ship / Defer / Reject decisions and keep external SaaS sync/team workflow outside public alpha scope.\n\n"
+
+    printf "## Release Machine\n"
+    printf -- "- Follow \`docs/release/checklist.md\` on the release machine.\n"
+    printf -- "- Configure \`packaging/signing.env\`, \`packaging/notarization.env\`, production Sparkle feed/key, signed/notarized/stapled app, appcast metadata, and \`packaging/release-evidence.json\`.\n"
+    printf -- "- Verify with \`./script/verify_release_environment.sh\` before expecting the readiness report to pass.\n"
+  } >"$action_path"
+
+  printf "Release action summary written to %s\n" "${action_path#"$ROOT_DIR/"}"
 }
 
 append_line() {
@@ -1020,8 +1085,10 @@ fi
 
 section "Summary"
 if [[ "$BLOCKER_COUNT" -gt 0 ]]; then
+  write_release_actions "not-ready"
   printf "NOT READY: %d blocker group(s) remain.\n" "$BLOCKER_COUNT"
   exit 2
 fi
 
+write_release_actions "ready"
 printf "READY: runtime, task checklist, automated proof gates, and release environment gates passed.\n"

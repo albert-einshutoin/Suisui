@@ -1280,6 +1280,14 @@
 - [x] `LocalStoreTests` / `ProjectTaskKnowledgeToolTests` / `ProjectBoardStoreTests` / `ActionPlanDomainTests` / `ActionPlanSchemaTests` で永続削除、schema、risk、registry、UI ViewModelを固定する。
 - [x] 完了条件: Project CRUD の delete がUI専用操作でもmockでもなく、ローカル永続DBに対する一貫したCRUDとして成立する。
 
+### P10-161: Release readiness report writes the next operator actions
+
+- [x] `release_readiness_report.sh` は `SOLOPM_RELEASE_ACTIONS_FILE` 指定時に残blockerのoperator action summaryを書き出す。
+- [x] action summary は `Status`、UTC生成時刻、source commit、blocker group数、Automated Proof Gates、Manual VoiceOver、Competitor Hands-On、Release Machine の次アクションを含む。
+- [x] action summary は release evidence ではなく、VoiceOver / competitor hands-on / signing / notarization / Sparkle / Gatekeeper を完了扱いにしないことを明記する。
+- [x] `ReleasePipelineTests` と `docs/release/checklist.md` で operator action summary の生成導線を固定する。
+- [x] 完了条件: `release_readiness_report.sh` が `NOT READY` のままでも、次に実行すべき手動・自動・release-machine作業が1ファイルに集約される。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

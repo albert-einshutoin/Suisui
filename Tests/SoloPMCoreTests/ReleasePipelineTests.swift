@@ -3650,6 +3650,39 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("BLOCKER"))
     }
 
+    func testReleaseReadinessReportCanWriteOperatorActionSummaryWithoutPassingManualGates() throws {
+        let script = try readPackageFile("script/release_readiness_report.sh")
+        let checklist = try readPackageFile("docs/release/checklist.md")
+        let phase = try readPackageFile("tasks/Phase10-ReleaseReadinessRuntime.md")
+
+        XCTAssertTrue(script.contains("SOLOPM_RELEASE_ACTIONS_FILE"))
+        XCTAssertTrue(script.contains("# SoloPM Release Actions"))
+        XCTAssertTrue(script.contains("Status: not-ready"))
+        XCTAssertTrue(script.contains("Status: ready"))
+        XCTAssertTrue(script.contains("Generated at:"))
+        XCTAssertTrue(script.contains("Source commit:"))
+        XCTAssertTrue(script.contains("Blocker groups:"))
+        XCTAssertTrue(script.contains("## Automated Proof Gates"))
+        XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh"))
+        XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/check_automated_release_preflight.sh"))
+        XCTAssertTrue(script.contains("## Manual VoiceOver"))
+        XCTAssertTrue(script.contains("./script/create_voiceover_evidence.sh --passed"))
+        XCTAssertTrue(script.contains("--capture-runtime-ax-smoke"))
+        XCTAssertTrue(script.contains("## Competitor Hands-On"))
+        XCTAssertTrue(script.contains("./script/create_competitor_hands_on_evidence.sh --passed"))
+        XCTAssertTrue(script.contains("--benchmark-output docs/product/competitor-benchmark.md"))
+        XCTAssertTrue(script.contains("## Release Machine"))
+        XCTAssertTrue(script.contains("packaging/signing.env"))
+        XCTAssertTrue(script.contains("packaging/notarization.env"))
+        XCTAssertTrue(script.contains("./script/verify_release_environment.sh"))
+        XCTAssertTrue(script.contains("This file is an action summary, not release evidence."))
+        XCTAssertTrue(script.contains("does not mark manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper checks as passed"))
+        XCTAssertTrue(script.contains("Release action summary written to"))
+
+        XCTAssertTrue(checklist.contains("SOLOPM_RELEASE_ACTIONS_FILE=.tmp/release-actions.md ./script/release_readiness_report.sh"))
+        XCTAssertTrue(phase.contains("[x] `release_readiness_report.sh` は `SOLOPM_RELEASE_ACTIONS_FILE` 指定時に残blockerのoperator action summaryを書き出す。"))
+    }
+
     func testReleaseReadinessReportClassifiesUncheckedPhaseItems() throws {
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-release-readiness-phase-classification", isDirectory: true)

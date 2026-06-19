@@ -242,6 +242,7 @@ Evidence-file mode requires a clean tracked source tree, so commit or discard tr
 source packaging/app_metadata.env
 export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"
 ./script/release_readiness_report.sh
+SOLOPM_RELEASE_ACTIONS_FILE=.tmp/release-actions.md ./script/release_readiness_report.sh
 SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh
 SOLOPM_RELEASE_CI_PREFLIGHT=1 ./script/release_readiness_report.sh
 SOLOPM_LOCAL_CRUD_SMOKE=1 ./script/release_readiness_report.sh
