@@ -144,6 +144,7 @@
 - [x] AI tabのprovider詳細fieldは選択中providerだけを表示し、非選択providerのAPI key、model、local executable欄を同時表示しない。
 - [x] AI tabはprovider picker直下に選択中providerの状態、smoke readiness、次の操作を表示し、詳細fieldを読む前に未設定理由が分かる。
 - [x] Sync tabはtoggle前にPro価値、Freeのlocal-only境界、backend未構成時の次状態を表示し、課金価値がdisabled toggleだけに埋もれない。
+- [x] Overview tabにPro Value rowを追加し、Sync/MCPタブを開く前に有料価値とFree/local-only/fail-closed境界が分かる。
 - [x] 完了条件: ユーザーは自分のデータが同期されているか、なぜ同期できないかを1画面で理解できる。
 
 ## P11-030: UX click-path audit

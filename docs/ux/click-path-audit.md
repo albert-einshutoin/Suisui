@@ -23,7 +23,7 @@
 | --- | --- | --- |
 | Project Board | 起動時のメインwindow、menu barの `Project Board` | SidebarにInbox、Today、Projectsが固定表示され、Project overview/board/list、task composer、inspectorを扱う主要画面。 |
 | Voice Command | board toolbarの `Voice Command`、menu barの `Voice Command` | CaptureとAI action reviewの導線がある。現状ではInboxの代替に近い。 |
-| Settings | macOS app menuの `Settings...`、`Command+,`、macOS Settings scene | 先頭のStatus OverviewでAI Provider、MCP、Sync、Privacyを確認できる。ThemeはSettings内のAppearance tabに集約する。 |
+| Settings | macOS app menuの `Settings...`、`Command+,`、macOS Settings scene | 先頭のStatus OverviewでAI Provider、MCP、Sync、Privacyを確認でき、続くSettings Overview Pro Value rowでSync/MCPの有料価値とFree/local-only/fail-closed境界が分かる。ThemeはSettings内のAppearance tabに集約する。 |
 | Inbox | sidebarの `Inbox` | 未処理taskを実データから表示し、Task化、Project化、今日へ予定、後で確認を選択中itemへ1クリックで適用できる。 |
 | Today | sidebarの `Today` | due/overdueの未完了taskを実データから表示し、overdue/today件数、local focus suggestion、30分単位のtime block、task inspectorへつながる。 |
 
@@ -65,6 +65,7 @@
 | 別MCP serverの接続確認 | Settings -> 対象server rowの `Check` | 2 | Pass | Picker切替を不要にし、rowのCheckで対象serverを選択して接続確認できる。 |
 | MCP実行境界確認 | Settings -> MCP tab | 1 | Pass | MCP paid execution boundary rowで、登録/接続確認はFreeでも可能、tools/callはProかつentitlement/policy/approval必須だと分かる。 |
 | Sync状態確認 | Settings -> Status Overviewを見る | 1 | Pass | Planと状態がSettings先頭で分かる。Sync tabではpaid value rowがPro価値、Freeのlocal-only境界、backend未構成状態をtoggle前に示す。 |
+| Pro価値確認 | Settings -> OverviewのPro Value rowを見る | 1 | Pass | Settings Overview Pro Value rowで、SyncとAdvanced MCP Executionの価値、Free/local-only、backend未構成、tools/call前のentitlement/policy/approval境界がタブ移動なしで分かる。 |
 | Free userでSync開始 | Settings -> `External Sync` toggle | 2 | Pass | network前にupgrade gateで止まる。Free stays local / no data leaves this Mac の境界もtoggle前に見える。 |
 | text commandからplan生成 | Voice Command -> 入力 -> `Generate Plan` | 2 | Pass | 生成後にreview panelが同じ画面へ出る。 |
 | 録音からplan生成 | Voice Command -> `Record` -> `Stop` -> `Generate Plan` | 4 | Watch | 音声captureとしては自然だが、Inbox代替としては重い。 |
@@ -120,7 +121,7 @@ User pull: Project overviewでTask、Artifact、Timeline、Local suggestionが�
 
 Retention hook: Todayは日次のdefault surfaceに近づき、Project overviewは週次/案件単位の確認面になった。次はkeyboard/focusとスクリーンショット検証を詰め、繰り返し操作の摩擦を減らす。
 
-Monetization: Syncとadvanced MCPのgateは実装済みだが、価値がSettingsの中に埋もれている。Pro価値はdisabled toggleではなくstatus cardとして見える必要がある。
+Monetization: Syncとadvanced MCPのgateは実装済み。Pro価値はSettings Overview Pro Value row、Sync paid value row、MCP paid execution boundary rowで、disabled toggleではなくstatus rowとして見える。
 
 Risk: Artifact追加は絶対パスに限定してworkspace推測を避け、削除もDB linkだけに限定したため、local-firstの安全性は保てている。一方、相対パスやworkspace default連携はまだ未対応なので、次のUI作業はaccessibilityとvisual evidenceを優先する。
 

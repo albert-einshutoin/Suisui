@@ -1340,6 +1340,31 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("settingsViewModel.settings.notificationsEnabled"))
     }
 
+    func testSettingsOverviewSurfacesProValueWithoutOpeningSyncOrMCPTabs() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let audit = try readPackageFile("docs/ux/click-path-audit.md")
+        let investorReview = try readPackageFile("docs/product/investor-review.md")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+        let overviewStart = try XCTUnwrap(appSource.range(of: "private var overviewSettingsTab: some View"))
+        let appearanceStart = try XCTUnwrap(appSource.range(of: "private var appearanceSettingsTab: some View"))
+        let overviewSource = String(appSource[overviewStart.lowerBound..<appearanceStart.lowerBound])
+
+        XCTAssertTrue(overviewSource.contains("Section(\"Pro Value\")"))
+        XCTAssertTrue(overviewSource.contains("ProValueOverviewRow("))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-pro-value-overview-row\")"))
+        XCTAssertTrue(overviewSource.contains("syncValueLabel: syncPaidValueLabel"))
+        XCTAssertTrue(overviewSource.contains("syncBoundaryLabel: syncSafetyBoundaryLabel"))
+        XCTAssertTrue(overviewSource.contains("mcpValueLabel: mcpExecutionValueLabel"))
+        XCTAssertTrue(overviewSource.contains("mcpBoundaryLabel: mcpExecutionSafetyBoundaryLabel"))
+        XCTAssertLessThan(
+            try XCTUnwrap(overviewSource.range(of: "SettingsStatusOverview(")).lowerBound,
+            try XCTUnwrap(overviewSource.range(of: "ProValueOverviewRow(")).lowerBound
+        )
+        XCTAssertTrue(audit.contains("Settings Overview Pro Value row"))
+        XCTAssertTrue(investorReview.contains("Settings Overview now surfaces Pro value and fail-closed boundaries before opening Sync or MCP tabs"))
+        XCTAssertTrue(phase.contains("[x] Overview tabにPro Value rowを追加し、Sync/MCPタブを開く前に有料価値とFree/local-only/fail-closed境界が分かる。"))
+    }
+
     func testSettingsSurfaceUsesTabbedCategoriesInsteadOfOneLongForm() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let appearanceSectionSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsAppearanceSection.swift")

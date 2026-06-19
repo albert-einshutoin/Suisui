@@ -905,6 +905,19 @@ private struct SettingsView: View {
                 )
             }
 
+            Section("Pro Value") {
+                ProValueOverviewRow(
+                    syncStatusLabel: syncViewModel.statusLabel,
+                    syncValueLabel: syncPaidValueLabel,
+                    syncBoundaryLabel: syncSafetyBoundaryLabel,
+                    syncTone: syncOverviewTone,
+                    mcpStatusLabel: mcpExecutionStatusLabel,
+                    mcpValueLabel: mcpExecutionValueLabel,
+                    mcpBoundaryLabel: mcpExecutionSafetyBoundaryLabel,
+                    mcpTone: mcpExecutionTone
+                )
+            }
+
         }
         .formStyle(.grouped)
     }
@@ -1976,6 +1989,123 @@ private struct MCPPaidExecutionBoundaryRow: View {
         .accessibilityIdentifier("mcp-paid-execution-boundary-row")
         .accessibilityLabel("MCP paid execution boundary")
         .accessibilityValue("\(planLabel), \(statusLabel), \(boundaryLabel)")
+    }
+}
+
+private struct ProValueOverviewRow: View {
+    let syncStatusLabel: String
+    let syncValueLabel: String
+    let syncBoundaryLabel: String
+    let syncTone: SettingsStatusTone
+    let mcpStatusLabel: String
+    let mcpValueLabel: String
+    let mcpBoundaryLabel: String
+    let mcpTone: SettingsStatusTone
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Pro unlocks sync and advanced MCP execution", systemImage: "sparkles")
+                .font(.subheadline.weight(.semibold))
+
+            Text("Local Project and Task CRUD stays free. Paid paths fail closed before upload or tools/call when entitlement, backend, policy, or approval is missing.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 14) {
+                    ProValueOverviewItem(
+                        title: "Sync",
+                        statusLabel: syncStatusLabel,
+                        valueLabel: syncValueLabel,
+                        boundaryLabel: syncBoundaryLabel,
+                        tone: syncTone,
+                        systemImage: "arrow.triangle.2.circlepath"
+                    )
+                    Divider()
+                    ProValueOverviewItem(
+                        title: "MCP Execution",
+                        statusLabel: mcpStatusLabel,
+                        valueLabel: mcpValueLabel,
+                        boundaryLabel: mcpBoundaryLabel,
+                        tone: mcpTone,
+                        systemImage: "point.3.connected.trianglepath.dotted"
+                    )
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    ProValueOverviewItem(
+                        title: "Sync",
+                        statusLabel: syncStatusLabel,
+                        valueLabel: syncValueLabel,
+                        boundaryLabel: syncBoundaryLabel,
+                        tone: syncTone,
+                        systemImage: "arrow.triangle.2.circlepath"
+                    )
+                    Divider()
+                    ProValueOverviewItem(
+                        title: "MCP Execution",
+                        statusLabel: mcpStatusLabel,
+                        valueLabel: mcpValueLabel,
+                        boundaryLabel: mcpBoundaryLabel,
+                        tone: mcpTone,
+                        systemImage: "point.3.connected.trianglepath.dotted"
+                    )
+                }
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("settings-pro-value-overview-row")
+        .accessibilityLabel("Pro value overview")
+        .accessibilityValue("\(syncStatusLabel). \(syncBoundaryLabel). \(mcpStatusLabel). \(mcpBoundaryLabel)")
+    }
+}
+
+private struct ProValueOverviewItem: View {
+    let title: String
+    let statusLabel: String
+    let valueLabel: String
+    let boundaryLabel: String
+    let tone: SettingsStatusTone
+    let systemImage: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: systemImage)
+                .foregroundStyle(tone.color)
+                .frame(width: 18)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+
+                Text(statusLabel)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(tone.color)
+                    .lineLimit(1)
+
+                Text(valueLabel)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Label(boundaryLabel, systemImage: "lock.shield")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
+        .accessibilityValue("\(statusLabel), \(boundaryLabel)")
     }
 }
 
