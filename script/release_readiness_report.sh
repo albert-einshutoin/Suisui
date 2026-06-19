@@ -710,7 +710,7 @@ else
   fi
 fi
 if [[ "$voiceover_evidence_blocker_count" -gt 0 ]]; then
-  printf "NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass, Status: passed, complete release-candidate context, complete focus-path notes, and no pending/template/unchecked markers.\n"
+  printf "NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass, Status: passed, complete release-candidate context, the runtime AX smoke OK line with unlabeledButtons=0, complete focus-path notes, and no pending/template/unchecked markers.\n"
 fi
 
 section "Competitor hands-on evidence"

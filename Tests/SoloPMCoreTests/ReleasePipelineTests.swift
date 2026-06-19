@@ -3245,6 +3245,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence bundle identifier does not match packaging metadata"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence app build does not match packaging metadata"))
         XCTAssertTrue(script.contains("NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass"))
+        XCTAssertTrue(script.contains("runtime AX smoke OK line with unlabeledButtons=0"))
         XCTAssertTrue(script.contains("complete release-candidate context"))
         XCTAssertTrue(script.contains("section \"Competitor hands-on evidence\""))
         XCTAssertTrue(script.contains("docs/release/evidence/competitor-hands-on.md"))
