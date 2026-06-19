@@ -221,6 +221,38 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         try updateFields(id: id, title: title, status: status)
     }
 
+    func updateTitleForProjectBoard(id: Int64, title: String) throws -> ProjectRecord {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let normalizedTitle = try StoreFieldValidation.requiredTrimmed(title, argument: "title", tool: .projectUpdate)
+        try connection.execute(
+            """
+            UPDATE projects
+            SET title = '\(SQL.escape(normalizedTitle))',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = \(id);
+            """
+        )
+        return try getForProjectBoardLocked(id: id)
+    }
+
+    func updateStatusForProjectBoard(id: Int64, status: String) throws -> ProjectRecord {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let normalizedStatus = try StoreFieldValidation.projectStatus(status, tool: .projectUpdate)
+        try connection.execute(
+            """
+            UPDATE projects
+            SET status = '\(SQL.escape(normalizedStatus))',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = \(id);
+            """
+        )
+        return try getForProjectBoardLocked(id: id)
+    }
+
     public func updateFields(
         id: Int64,
         title: String? = nil,
@@ -293,6 +325,25 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         try update(id: id, status: "active")
     }
 
+    func completeForProjectBoard(id: Int64, taskStore: SQLiteTaskStore) throws -> ProjectRecord {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return try connection.transaction {
+            try connection.execute(
+                """
+                UPDATE projects
+                SET status = 'completed',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = \(id);
+                """
+            )
+            let record = try getForProjectBoardLocked(id: id)
+            _ = try taskStore.completeOpenTasks(projectID: id)
+            return record
+        }
+    }
+
     public func complete(id: Int64, taskStore: SQLiteTaskStore) throws -> ProjectRecord {
         lock.lock()
         defer { lock.unlock() }
@@ -345,12 +396,41 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         return result
     }
 
+    func deleteForProjectBoard(id: Int64) throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        _ = try getForProjectBoardLocked(id: id)
+        let childTaskPredicate = "project_id = \(id)"
+        let linkedProjectOrTaskPredicate = "project_id = \(id) OR task_id IN (SELECT id FROM tasks WHERE project_id = \(id))"
+        let taskDeadlinePredicate = "target_type = 'task' AND target_id IN (SELECT id FROM tasks WHERE project_id = \(id))"
+        let projectDeadlinePredicate = "target_type = 'project' AND target_id = \(id)"
+        let artifactPredicate = linkedProjectOrTaskPredicate
+
+        try connection.transaction {
+            try deleteRowsIfTableExistsLocked(table: "calendar_links", where: linkedProjectOrTaskPredicate)
+            try deleteRowsIfTableExistsLocked(table: "reminder_links", where: linkedProjectOrTaskPredicate)
+            try deleteRowsIfTableExistsLocked(table: "deadline_rules", where: "(\(projectDeadlinePredicate)) OR (\(taskDeadlinePredicate))")
+            try deleteRowsIfTableExistsLocked(table: "artifacts", where: artifactPredicate)
+            try connection.execute("DELETE FROM tasks WHERE \(childTaskPredicate);")
+            try connection.execute("DELETE FROM projects WHERE id = \(id);")
+        }
+    }
+
     public func list(includeArchived: Bool = false) throws -> [ProjectRecord] {
         lock.lock()
         defer { lock.unlock() }
 
         let filter = includeArchived ? "" : "WHERE status != 'archived'"
         return try connection.queryRows("SELECT * FROM projects \(filter) ORDER BY id DESC;").map(ProjectRecord.init(row:))
+    }
+
+    func listForProjectBoard(includeArchived: Bool = false) throws -> [ProjectRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let filter = includeArchived ? "" : "WHERE status != 'archived'"
+        return try connection.queryRows("SELECT * FROM projects \(filter) ORDER BY id DESC;").map(ProjectRecord.init(projectBoardRow:))
     }
 
     public func listDeadlineCandidates() throws -> [ProjectRecord] {
@@ -370,6 +450,20 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return try getLocked(id: id)
+    }
+
+    func getForProjectBoard(id: Int64) throws -> ProjectRecord {
+        lock.lock()
+        defer { lock.unlock() }
+        return try getForProjectBoardLocked(id: id)
+    }
+
+    private func getForProjectBoardLocked(id: Int64) throws -> ProjectRecord {
+        guard let row = try connection.queryRows("SELECT * FROM projects WHERE id = \(id) LIMIT 1;").first else {
+            throw ToolExecutionError.executionFailed(.projectGet, "Project \(id) was not found.")
+        }
+
+        return try ProjectRecord(projectBoardRow: row)
     }
 
     private func getLocked(id: Int64) throws -> ProjectRecord {
@@ -994,6 +1088,23 @@ private extension ProjectRecord {
                 try SQL.requiredString(row["tags_json"], column: "projects.tags_json"),
                 column: "projects.tags_json"
             ),
+            sourceCommand: SQL.nilIfEmpty(row["source_command"])
+        )
+    }
+
+    init(projectBoardRow row: [String: String]) throws {
+        let status = try StoreFieldValidation.persistedProjectStatus(
+            try SQL.requiredString(row["status"], column: "projects.status"),
+            column: "projects.status"
+        )
+        self.init(
+            id: try SQL.requiredInt64(row["id"], column: "projects.id"),
+            title: try SQL.requiredString(row["title"], column: "projects.title"),
+            status: status,
+            priority: SQL.nilIfEmpty(row["priority"]),
+            deadline: SQL.nilIfEmpty(row["deadline"]),
+            workspacePath: SQL.nilIfEmpty(row["workspace_path"]),
+            tags: [],
             sourceCommand: SQL.nilIfEmpty(row["source_command"])
         )
     }

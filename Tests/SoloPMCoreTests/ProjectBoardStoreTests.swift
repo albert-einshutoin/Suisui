@@ -89,6 +89,60 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(loadedProject.artifacts.last?.taskID, task.id)
     }
 
+    func testLoadSnapshotToleratesCorruptedProjectTagsBecauseBoardDoesNotUseTags() throws {
+        let stores = try makeStoreBundle()
+        let project = try stores.projects.create(title: "Launch Readiness", tags: ["alpha"])
+        _ = try stores.tasks.create(
+            title: "Keep board usable",
+            projectID: project.id,
+            status: "planned"
+        )
+
+        try stores.connection.execute("UPDATE projects SET tags_json = 'not-json' WHERE id = \(project.id);")
+
+        XCTAssertThrowsError(try stores.projects.get(id: project.id)) { error in
+            XCTAssertEqual(error as? LocalStoreDecodingError, .invalidStringArray(column: "projects.tags_json"))
+        }
+
+        let snapshot = try stores.board.loadSnapshot(includeArchived: true)
+        let loadedProject = try XCTUnwrap(snapshot.projects.first { $0.id == project.id })
+
+        XCTAssertEqual(loadedProject.title, "Launch Readiness")
+        XCTAssertEqual(loadedProject.column(.planned)?.tasks.map(\.title), ["Keep board usable"])
+
+        let addedTask = try stores.board.createTask(ProjectBoardTaskDraft(
+            projectID: project.id,
+            title: "Add follow-up",
+            status: .backlog
+        ))
+        let artifact = try stores.board.createProjectArtifact(
+            projectID: project.id,
+            expectedPath: "/tmp/solopm/release-plan.md"
+        )
+
+        XCTAssertEqual(addedTask.title, "Add follow-up")
+        XCTAssertEqual(artifact.projectID, project.id)
+
+        let renamed = try stores.board.updateProject(id: project.id, title: "Alpha Launch Readiness")
+        let completed = try stores.board.completeProject(id: project.id)
+        let restoresCompletedProject = try stores.board.createTask(ProjectBoardTaskDraft(
+            projectID: project.id,
+            title: "Restore active status",
+            status: .planned
+        ))
+        let archived = try stores.board.archiveProject(id: project.id)
+        let restored = try stores.board.restoreProject(id: project.id)
+
+        XCTAssertEqual(renamed.title, "Alpha Launch Readiness")
+        XCTAssertTrue(completed.isCompleted)
+        XCTAssertEqual(restoresCompletedProject.title, "Restore active status")
+        XCTAssertTrue(archived.isArchived)
+        XCTAssertFalse(restored.isArchived)
+
+        try stores.board.deleteProject(id: project.id)
+        XCTAssertFalse(try stores.board.loadSnapshot(includeArchived: true).projects.contains { $0.id == project.id })
+    }
+
     func testCreateProjectArtifactPersistsExpectedArtifactInSnapshot() throws {
         let stores = try makeStoreBundle()
         let project = try stores.board.createProject(title: "Launch Readiness")

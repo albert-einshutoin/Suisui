@@ -329,34 +329,34 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     @discardableResult
     public func updateProject(id: Int64, title: String) throws -> ProjectBoardProject {
         let normalizedTitle = try normalizedProjectTitle(title)
-        let record = try projectStore.update(id: id, title: normalizedTitle)
+        let record = try projectStore.updateTitleForProjectBoard(id: id, title: normalizedTitle)
         let boardData = try loadBoardData(includeArchived: true)
         return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts)
     }
 
     @discardableResult
     public func completeProject(id: Int64) throws -> ProjectBoardProject {
-        let record = try projectStore.complete(id: id, taskStore: taskStore)
+        let record = try projectStore.completeForProjectBoard(id: id, taskStore: taskStore)
         let boardData = try loadBoardData(includeArchived: true)
         return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts)
     }
 
     @discardableResult
     public func archiveProject(id: Int64) throws -> ProjectBoardProject {
-        let record = try projectStore.archive(id: id)
+        let record = try projectStore.updateStatusForProjectBoard(id: id, status: "archived")
         let boardData = try loadBoardData(includeArchived: true)
         return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts)
     }
 
     @discardableResult
     public func restoreProject(id: Int64) throws -> ProjectBoardProject {
-        let record = try projectStore.restore(id: id)
+        let record = try projectStore.updateStatusForProjectBoard(id: id, status: "active")
         let boardData = try loadBoardData(includeArchived: true)
         return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts)
     }
 
     public func deleteProject(id: Int64) throws {
-        _ = try projectStore.delete(id: id)
+        try projectStore.deleteForProjectBoard(id: id)
     }
 
     @discardableResult
@@ -413,7 +413,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
 
     @discardableResult
     public func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact {
-        let project = try projectStore.get(id: projectID)
+        let project = try projectStore.getForProjectBoard(id: projectID)
         if project.status == "archived" {
             throw ProjectBoardStoreError.archivedProjectCannotAcceptArtifacts
         }
@@ -434,23 +434,23 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     }
 
     private func prepareProjectForTaskMutation(projectID: Int64, taskStatus: ProjectTaskStatus) throws {
-        let project = try projectStore.get(id: projectID)
+        let project = try projectStore.getForProjectBoard(id: projectID)
         if project.status == "archived" {
             throw ProjectBoardStoreError.archivedProjectCannotAcceptTasks
         }
 
         if project.status == "completed", taskStatus != .done {
-            _ = try projectStore.restore(id: projectID)
+            _ = try projectStore.updateStatusForProjectBoard(id: projectID, status: "active")
         }
     }
 
     private func ensureProjects(includeArchived: Bool) throws -> [ProjectRecord] {
-        let activeProjects = try projectStore.list()
+        let activeProjects = try projectStore.listForProjectBoard()
         if activeProjects.isEmpty {
             _ = try projectStore.create(title: "Inbox", tags: ["local"], sourceCommand: "app.project-board")
         }
 
-        return try projectStore.list(includeArchived: includeArchived)
+        return try projectStore.listForProjectBoard(includeArchived: includeArchived)
     }
 
     private func loadBoardData(includeArchived: Bool) throws -> (
@@ -465,7 +465,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
 
         if taskRecords.contains(where: { $0.projectID == nil }) {
             fallbackProjectID = try ensureActiveInboxProject().id
-            projects = try projectStore.list(includeArchived: includeArchived)
+            projects = try projectStore.listForProjectBoard(includeArchived: includeArchived)
         } else {
             fallbackProjectID = nil
         }
@@ -477,7 +477,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     }
 
     private func ensureActiveInboxProject() throws -> ProjectRecord {
-        if let inbox = try projectStore.list().first(where: { $0.title == "Inbox" }) {
+        if let inbox = try projectStore.listForProjectBoard().first(where: { $0.title == "Inbox" }) {
             return inbox
         }
 
