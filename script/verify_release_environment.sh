@@ -430,6 +430,7 @@ is_placeholder_checked_by() {
   case "$normalized" in
     name|\
     reviewer|\
+    "reviewer name"|\
     "release reviewer"|\
     "product reviewer"|\
     tester|\

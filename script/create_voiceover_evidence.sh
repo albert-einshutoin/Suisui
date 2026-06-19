@@ -18,6 +18,7 @@ MARKETING_VERSION="${MARKETING_VERSION:?MARKETING_VERSION is required}"
 CURRENT_PROJECT_VERSION="${CURRENT_PROJECT_VERSION:?CURRENT_PROJECT_VERSION is required}"
 
 OUTPUT_FILE="$ROOT_DIR/docs/release/evidence/accessibility-voiceover.md"
+ACCESSIBILITY_PREFLIGHT_SCRIPT="${SOLOPM_ACCESSIBILITY_PREFLIGHT_SCRIPT:-$ROOT_DIR/script/check_accessibility_preflight.sh}"
 VOICEOVER_STATUS="pending"
 CHECKED_BY=""
 CHECK_DATE="$(date +%F)"
@@ -25,6 +26,7 @@ MACOS_VERSION="macOS $(sw_vers -productVersion 2>/dev/null || printf 'unknown')"
 EVIDENCE_SOURCE="dist/$APP_NAME.app manual VoiceOver pass"
 ACCESSIBILITY_ENVIRONMENT=""
 RUNTIME_AX_SMOKE_NOTE=""
+CAPTURE_RUNTIME_AX_SMOKE=0
 CONFIRM_MANUAL_PASS=0
 PROJECT_NAVIGATION_NOTE=""
 PROJECT_BOARD_DETAIL_NOTE=""
@@ -38,7 +40,7 @@ NO_KEYBOARD_TRAP_NOTE=""
 NO_UNLABELED_CRUD_NOTE=""
 
 usage() {
-  printf '%s\n' "usage: $0 (--pending|--passed) [--output PATH] [--checked-by NAME] [--macos-version VERSION] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--accessibility-environment TEXT] [--runtime-ax-smoke-note TEXT] [--project-navigation-note TEXT] [--project-board-detail-note TEXT] [--open-task-note TEXT] [--inline-task-composer-note TEXT] [--status-controls-note TEXT] [--task-inspector-note TEXT] [--save-changes-note TEXT] [--delete-confirmation-note TEXT] [--no-keyboard-trap-note TEXT] [--no-unlabeled-crud-note TEXT] [--confirm-manual-voiceover-pass]"
+  printf '%s\n' "usage: $0 (--pending|--passed) [--output PATH] [--checked-by NAME] [--macos-version VERSION] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--accessibility-environment TEXT] [--runtime-ax-smoke-note TEXT|--capture-runtime-ax-smoke] [--project-navigation-note TEXT] [--project-board-detail-note TEXT] [--open-task-note TEXT] [--inline-task-composer-note TEXT] [--status-controls-note TEXT] [--task-inspector-note TEXT] [--save-changes-note TEXT] [--delete-confirmation-note TEXT] [--no-keyboard-trap-note TEXT] [--no-unlabeled-crud-note TEXT] [--confirm-manual-voiceover-pass]"
   printf '%s\n' ""
   printf '%s\n' "Use --pending to write a safe worksheet that release readiness will reject."
   printf '%s\n' "Use --passed only after a real VoiceOver pass on the release-candidate app."
@@ -107,6 +109,37 @@ require_runtime_ax_smoke_note() {
   done
 }
 
+capture_runtime_ax_smoke_note() {
+  local output
+  local status
+  local ok_line
+
+  if [[ -z "${ACCESSIBILITY_PREFLIGHT_SCRIPT//[[:space:]]/}" ]]; then
+    echo "SOLOPM_ACCESSIBILITY_PREFLIGHT_SCRIPT is empty" >&2
+    exit 2
+  fi
+
+  set +e
+  output="$(bash "$ACCESSIBILITY_PREFLIGHT_SCRIPT" --runtime --skip-launch 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -ne 0 ]]; then
+    printf '%s\n' "$output" >&2
+    echo "--capture-runtime-ax-smoke failed; keep the release-candidate Project Board visible and rerun the accessibility preflight" >&2
+    exit 2
+  fi
+
+  ok_line="$(printf '%s\n' "$output" | grep -F "OK: runtime AX smoke visible" | tail -n 1 || true)"
+  if [[ -z "${ok_line//[[:space:]]/}" ]]; then
+    printf '%s\n' "$output" >&2
+    echo "--capture-runtime-ax-smoke could not find the runtime AX smoke OK line" >&2
+    exit 2
+  fi
+
+  RUNTIME_AX_SMOKE_NOTE="$ok_line"
+}
+
 is_placeholder_accessibility_environment() {
   local normalized
   normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
@@ -129,6 +162,7 @@ is_placeholder_checked_by() {
   case "$normalized" in
     name|\
     reviewer|\
+    "reviewer name"|\
     "release reviewer"|\
     "product reviewer"|\
     tester|\
@@ -198,6 +232,10 @@ while [[ "$#" -gt 0 ]]; do
     --runtime-ax-smoke-note)
       RUNTIME_AX_SMOKE_NOTE="${2:-}"
       shift 2
+      ;;
+    --capture-runtime-ax-smoke)
+      CAPTURE_RUNTIME_AX_SMOKE=1
+      shift
       ;;
     --project-navigation-note)
       PROJECT_NAVIGATION_NOTE="${2:-}"
@@ -300,6 +338,9 @@ if [[ "$VOICEOVER_STATUS" == "passed" ]]; then
   require_concrete_voiceover_note "--delete-confirmation-note" "$DELETE_CONFIRMATION_NOTE"
   require_concrete_voiceover_note "--no-keyboard-trap-note" "$NO_KEYBOARD_TRAP_NOTE"
   require_concrete_voiceover_note "--no-unlabeled-crud-note" "$NO_UNLABELED_CRUD_NOTE"
+  if [[ "$CAPTURE_RUNTIME_AX_SMOKE" -eq 1 ]]; then
+    capture_runtime_ax_smoke_note
+  fi
   require_runtime_ax_smoke_note "$RUNTIME_AX_SMOKE_NOTE"
 fi
 
@@ -346,7 +387,7 @@ write_pending_evidence() {
     printf '%s\n' '2. Launch `dist/SoloPM.app`.'
     printf '%s\n' '3. Seed the Project Board with at least one active project and one task with a due date.'
     printf '%s\n' '4. Open the Project Board window and keep the right inspector visible.'
-    printf '%s\n' '5. Run `./script/check_accessibility_preflight.sh --runtime` and paste the OK line into `Runtime AX smoke`.'
+    printf '%s\n' '5. Run `./script/create_voiceover_evidence.sh --passed --capture-runtime-ax-smoke ...` after the manual pass, or run `./script/check_accessibility_preflight.sh --runtime` and paste the OK line into `Runtime AX smoke`.'
     printf '%s\n' '6. Navigate using keyboard and VoiceOver commands before using the pointer.'
     printf '\n'
     printf '%s\n' '## Required Focus Path'

@@ -2312,7 +2312,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("manual release evidence"))
         XCTAssertTrue(checklist.contains("reject blank, placeholder, sample, example, todo, replace-style, or weak environment descriptions"))
         XCTAssertTrue(checklist.contains("Manual environment must include the macOS version, clean user or VM/install context, and hardware or CPU architecture."))
-        XCTAssertTrue(checklist.contains("blank reviewer names, placeholder role names"))
+        XCTAssertTrue(checklist.contains("blank reviewer names, placeholder names such as \"Reviewer Name\""))
         XCTAssertTrue(checklist.contains("placeholder role names such as \"Release reviewer\" or \"Product reviewer\""))
         XCTAssertTrue(checklist.contains("manual release flags require an explicit review note"))
         XCTAssertTrue(checklist.contains("source git commit is recorded in release evidence"))
@@ -2330,6 +2330,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("./script/check_accessibility_preflight.sh --runtime"))
         XCTAssertTrue(checklist.contains("./script/create_voiceover_evidence.sh --pending"))
         XCTAssertTrue(checklist.contains("./script/create_voiceover_evidence.sh --passed"))
+        XCTAssertTrue(checklist.contains("--capture-runtime-ax-smoke"))
         XCTAssertTrue(checklist.contains("--runtime-ax-smoke-note"))
         XCTAssertTrue(checklist.contains("--accessibility-environment \"VoiceOver/keyboard/device details used for the manual pass\""))
         XCTAssertTrue(checklist.contains("--project-navigation-note"))
@@ -2391,9 +2392,12 @@ final class ReleasePipelineTests: XCTestCase {
             .appendingPathComponent(".build/test-voiceover-evidence-pending.md")
         let passedURL = packageRoot()
             .appendingPathComponent(".build/test-voiceover-evidence-passed.md")
+        let runtimeAXSmokeScriptURL = packageRoot()
+            .appendingPathComponent(".build/test-capture-runtime-ax-smoke.sh")
         defer {
             try? FileManager.default.removeItem(at: pendingURL)
             try? FileManager.default.removeItem(at: passedURL)
+            try? FileManager.default.removeItem(at: runtimeAXSmokeScriptURL)
         }
 
         let pendingResult = try runScript(
@@ -2466,7 +2470,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_voiceover_evidence.sh",
             arguments: [
                 "--passed",
-                "--checked-by", "Release reviewer",
+                "--checked-by", "Reviewer Name",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
@@ -2617,6 +2621,76 @@ final class ReleasePipelineTests: XCTestCase {
         )
         XCTAssertNotEqual(copiedTemplateNoteResult.exitCode, 0)
         XCTAssertTrue(copiedTemplateNoteResult.output.contains("--project-navigation-note must include concrete VoiceOver verification details"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        if [[ "${1:-}" != "--runtime" || "${2:-}" != "--skip-launch" ]]; then
+          echo "unexpected arguments: $*" >&2
+          exit 2
+        fi
+        echo "OK: accessibility source anchors are present (47 anchors)"
+        echo "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8"
+        echo "This is not a substitute for the manual VoiceOver pass."
+        """.write(to: runtimeAXSmokeScriptURL, atomically: true, encoding: .utf8)
+
+        let capturedRuntimeAXSmokeResult = try runScript(
+            "script/create_voiceover_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "SoloPM Release Owner",
+                "--macos-version", "macOS 15.5",
+                "--check-date", "2026-06-19",
+                "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
+                "--capture-runtime-ax-smoke",
+                "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
+                "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
+                "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
+                "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
+                "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
+                "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
+                "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
+                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--output", passedURL.path,
+                "--confirm-manual-voiceover-pass"
+            ],
+            environment: ["SOLOPM_ACCESSIBILITY_PREFLIGHT_SCRIPT": runtimeAXSmokeScriptURL.path]
+        )
+        XCTAssertEqual(capturedRuntimeAXSmokeResult.exitCode, 0, capturedRuntimeAXSmokeResult.output)
+        let capturedRuntimeAXSmokeEvidence = try String(contentsOf: passedURL, encoding: .utf8)
+        XCTAssertTrue(capturedRuntimeAXSmokeEvidence.contains("- Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8"))
+        XCTAssertFalse(capturedRuntimeAXSmokeEvidence.contains("This is not a substitute for the manual VoiceOver pass."))
+        XCTAssertFalse(capturedRuntimeAXSmokeEvidence.localizedCaseInsensitiveContains("pending"))
+        try? FileManager.default.removeItem(at: passedURL)
+
+        let capturedWithoutManualPassResult = try runScript(
+            "script/create_voiceover_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "SoloPM Release Owner",
+                "--macos-version", "macOS 15.5",
+                "--check-date", "2026-06-19",
+                "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
+                "--capture-runtime-ax-smoke",
+                "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
+                "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
+                "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
+                "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
+                "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
+                "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
+                "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
+                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--output", passedURL.path
+            ],
+            environment: ["SOLOPM_ACCESSIBILITY_PREFLIGHT_SCRIPT": runtimeAXSmokeScriptURL.path]
+        )
+        XCTAssertNotEqual(capturedWithoutManualPassResult.exitCode, 0)
+        XCTAssertTrue(capturedWithoutManualPassResult.output.contains("--confirm-manual-voiceover-pass is required with --passed"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
 
         let passedResult = try runScript(
@@ -2840,7 +2914,7 @@ final class ReleasePipelineTests: XCTestCase {
             "script/create_competitor_hands_on_evidence.sh",
             arguments: [
                 "--passed",
-                "--checked-by", "Product reviewer",
+                "--checked-by", "Reviewer Name",
                 "--check-date", "2026-06-19",
                 "--environment", "macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used",
                 "--notion-note", "Board setup was flexible but required manual schema decisions before task entry felt fast.",
@@ -4550,7 +4624,7 @@ final class ReleasePipelineTests: XCTestCase {
         - macOS version: macOS 15.5
         - App build: `0.1.0 (1)`
         - Bundle identifier: `dev.solopm.app`
-        - Checked by: Release reviewer
+        - Checked by: Reviewer Name
         - Check date: 2026-06-19
         - Evidence source: `dist/SoloPM.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
@@ -4576,7 +4650,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         ## Review Context
 
-        - Checked by: Product reviewer
+        - Checked by: Reviewer Name
         - Check date: 2026-06-19
         - Evidence source: `Real local hands-on pass`
         - Environment: macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used

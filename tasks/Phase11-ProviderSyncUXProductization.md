@@ -210,6 +210,7 @@
   - [x] `script/check_accessibility_preflight.sh --runtime` はProject Board上のShow Archived、Add Project、Add Task、Save、Complete、Archive、Deleteのbutton help signalsを `crudSignals=8/8` としてblocker化する。
   - [x] `script/check_runtime_accessible_crud_smoke.sh` は隔離 `SOLOPM_DATABASE_PATH` と `SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION` を使い、実アプリのAccessibility操作でProjectの作成、リネーム保存、完了、削除、Task作成、Task更新、Task status移動、Task直接削除、Project削除時のTask cascade削除がSQLiteに反映されることを検証する。
   - [x] VoiceOver passed evidence は同じrelease候補で実行したruntime AX smoke OK行、`unlabeledButtons=0`、`genericButtons=0`、`crudSignals=8/8` を含まない場合release readyにしない。
+  - [x] `script/create_voiceover_evidence.sh --capture-runtime-ax-smoke` は手動VoiceOver証跡の作成時に同じrelease候補のruntime AX smoke OK行を自動取得し、古いコピー済みcountsでrelease readyを偽らない。
   - [ ] 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。
 - [x] `script/capture_ui_evidence.sh` は一時HOME、seed済みProject board、Light/Dark/System切替、window captureを使う。
   - [x] `capture_ui_evidence.sh` はcapture前にappを前面化し、黒画面/低情報量PNGをrelease evidenceとして残さず失敗させる。

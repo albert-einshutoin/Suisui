@@ -96,7 +96,7 @@ export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERS
 
 Set manual check flags only for that signed and notarized build. Each flag maps to a Manual Checks bullet below; do not set a flag unless that exact check was performed on the same release artifact. Record the OS, hardware, install location, and clean user/profile details in `--manual-environment`.
 Do not leave the template text in `--manual-environment`; `create_release_evidence.sh` and `verify_release_environment.sh` reject blank, placeholder, sample, example, todo, replace-style, or weak environment descriptions. Manual environment must include the macOS version, clean user or VM/install context, and hardware or CPU architecture.
-Keep `--checked-by` and `--note` concrete as well; blank reviewer names, placeholder role names such as "Release reviewer" or "Product reviewer", blank review notes, and boilerplate notes such as "Manual checks completed" are rejected so the evidence identifies who reviewed the release and why the checks were accepted; manual release flags require an explicit review note.
+Keep `--checked-by` and `--note` concrete as well; blank reviewer names, placeholder names such as "Reviewer Name", and placeholder role names such as "Release reviewer" or "Product reviewer" are rejected, as are blank review notes and boilerplate notes such as "Manual checks completed", so the evidence identifies who reviewed the release and why the checks were accepted; manual release flags require an explicit review note.
 The evidence scripts reject manual flags whose `--note` does not mention the matching observed proof.
 The source git commit is recorded in release evidence and checked against package evidence during final preflight, so regenerate the signed package and evidence after any source commit changes.
 Use `packaging/release-evidence.example.json` only as the schema template; do not copy it as final evidence without running the script.
@@ -183,7 +183,7 @@ Each focus-path note must name the concrete VoiceOver observation, control, or f
 ./script/create_voiceover_evidence.sh --passed \
   --checked-by "Reviewer Name" \
   --accessibility-environment "VoiceOver/keyboard/device details used for the manual pass" \
-  --runtime-ax-smoke-note "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8" \
+  --capture-runtime-ax-smoke \
   --project-navigation-note "Concrete VoiceOver observation for sidebar Inbox, Today, and Project navigation." \
   --project-board-detail-note "Concrete VoiceOver observation for selected project board context." \
   --open-task-note "Concrete VoiceOver observation for opening task details without pointer drag." \
@@ -196,6 +196,8 @@ Each focus-path note must name the concrete VoiceOver observation, control, or f
   --no-unlabeled-crud-note "Concrete VoiceOver observation that primary CRUD controls have labels or help." \
   --confirm-manual-voiceover-pass
 ```
+
+Use `--runtime-ax-smoke-note "OK: runtime AX smoke visible, ..."` only when the runtime AX smoke was already captured from the same release-candidate app. Prefer `--capture-runtime-ax-smoke` during the manual pass so the generator copies the OK line directly from `./script/check_accessibility_preflight.sh --runtime --skip-launch` without carrying stale counts into the evidence.
 
 12. Competitor hands-on evidence
 
