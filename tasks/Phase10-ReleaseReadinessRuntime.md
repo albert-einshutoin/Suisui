@@ -256,6 +256,7 @@
 - [x] `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/release_readiness_report.sh` は、同一commitのclean-tree自動proof証跡を検証してCI / SQLite CRUD / runtime accessible CRUD / Xcode / launch / runtime AXのskip blockerを解除できる。
 - [x] 自動proof証跡の再利用時は generator、UTC timestamp、source commit、App名、Xcode workspace / scheme / configuration / destination、manual evidence境界文言を検証し、別appや別build文脈の証跡流用を拒否する。
 - [x] VoiceOver / competitor hands-on の手動証跡は `Source commit` を記録し、`Status: passed` の場合は現在の git commit と一致しない証跡をrelease blockerにする。
+- [x] competitor benchmark の `Source commit` も `Status: passed` の competitor hands-on 証跡と同じrelease候補commitであることをrelease blockerにする。
 - [x] `release_readiness_report.sh` は CI、SQLite CRUD、runtime accessible CRUD、Xcode build、visible-window launch、runtime AX をskipしたままrelease readyにしない。
 - [x] `SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh` で自動proof gateをまとめてfinal report内に含められる。
 - [x] 自動 preflight は manual VoiceOver、competitor hands-on、signing / notarization / Sparkle / Gatekeeper evidence を完了扱いにしない。

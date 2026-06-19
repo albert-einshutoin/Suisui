@@ -1215,6 +1215,22 @@ competitor_decision_value() {
     }
   ' "$competitor_evidence_file" || true
 }
+competitor_benchmark_source_commit() {
+  awk '
+    index($0, "Source commit:") == 1 {
+      value = $0
+      sub("^Source commit:[[:space:]]*", "", value)
+      print value
+      found = 1
+      exit
+    }
+    END {
+      if (found != 1) {
+        exit 1
+      }
+    }
+  ' "$competitor_benchmark_file" || true
+}
 competitor_benchmark_file="$ROOT_DIR/$COMPETITOR_BENCHMARK_RELATIVE"
 if [[ ! -f "$competitor_evidence_file" ]]; then
   competitor_blocker "missing competitor hands-on evidence file: $COMPETITOR_EVIDENCE_RELATIVE"
@@ -1314,6 +1330,14 @@ fi
 if [[ ! -f "$competitor_benchmark_file" ]]; then
   competitor_blocker "missing competitor benchmark document: $COMPETITOR_BENCHMARK_RELATIVE"
 else
+  if [[ "$competitor_status_passed" -eq 1 ]]; then
+    expected_source_commit="$(source_commit)"
+    competitor_benchmark_commit="$(normalize_voiceover_context_value "$(competitor_benchmark_source_commit)")"
+    if [[ -n "$competitor_benchmark_commit" && "$competitor_benchmark_commit" != "$expected_source_commit" ]]; then
+      competitor_blocker "Competitor benchmark source commit does not match current git commit: expected $expected_source_commit"
+    fi
+  fi
+
   if grep -Eiq '(not a full hands-on trial record|release candidate hands-on worksheet|manual evidence to attach after the pass)' "$competitor_benchmark_file"; then
     competitor_blocker "Competitor benchmark still reads as desk research or a hands-on worksheet"
   fi
