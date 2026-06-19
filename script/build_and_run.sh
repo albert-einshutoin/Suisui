@@ -7,6 +7,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 SPARKLE_ENV_FILE="$ROOT_DIR/packaging/sparkle.env"
 
+export TMPDIR="${SOLOPM_TMPDIR:-$ROOT_DIR/.tmp/}"
+export SWIFTPM_MODULECACHE_OVERRIDE="${SWIFTPM_MODULECACHE_OVERRIDE:-$ROOT_DIR/.build/module-cache}"
+mkdir -p "$TMPDIR" "$SWIFTPM_MODULECACHE_OVERRIDE"
+
 if [[ ! -f "$METADATA_FILE" ]]; then
   echo "missing metadata file: $METADATA_FILE" >&2
   exit 2
@@ -88,40 +92,40 @@ while IFS= read -r -d '' dylib_path; do
   /usr/bin/ditto "$dylib_path" "$APP_FRAMEWORKS/$(basename "$dylib_path")"
 done < <(find "$BUILD_DIR" -maxdepth 1 -type f -name "*.dylib" -print0)
 
-cat >"$INFO_PLIST" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleExecutable</key>
-  <string>$APP_NAME</string>
-  <key>CFBundleIdentifier</key>
-  <string>$BUNDLE_IDENTIFIER</string>
-  <key>CFBundleDisplayName</key>
-  <string>$APP_NAME</string>
-  <key>CFBundleName</key>
-  <string>$APP_NAME</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>CFBundleShortVersionString</key>
-  <string>$MARKETING_VERSION</string>
-  <key>CFBundleVersion</key>
-  <string>$CURRENT_PROJECT_VERSION</string>
-  <key>LSApplicationCategoryType</key>
-  <string>$APP_CATEGORY</string>
-  <key>LSMinimumSystemVersion</key>
-  <string>$MIN_SYSTEM_VERSION</string>
-  <key>NSPrincipalClass</key>
-  <string>NSApplication</string>
-  <key>NSQuitAlwaysKeepsWindows</key>
-  <false/>
-  <key>NSMicrophoneUsageDescription</key>
-  <string>SoloPM uses the microphone when you explicitly start voice capture.</string>
-  <key>NSHumanReadableCopyright</key>
-  <string>$COPYRIGHT</string>
-</dict>
-</plist>
-PLIST
+{
+  printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>'
+  printf '%s\n' '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+  printf '%s\n' '<plist version="1.0">'
+  printf '%s\n' '<dict>'
+  printf '%s\n' '  <key>CFBundleExecutable</key>'
+  printf '  <string>%s</string>\n' "$APP_NAME"
+  printf '%s\n' '  <key>CFBundleIdentifier</key>'
+  printf '  <string>%s</string>\n' "$BUNDLE_IDENTIFIER"
+  printf '%s\n' '  <key>CFBundleDisplayName</key>'
+  printf '  <string>%s</string>\n' "$APP_NAME"
+  printf '%s\n' '  <key>CFBundleName</key>'
+  printf '  <string>%s</string>\n' "$APP_NAME"
+  printf '%s\n' '  <key>CFBundlePackageType</key>'
+  printf '%s\n' '  <string>APPL</string>'
+  printf '%s\n' '  <key>CFBundleShortVersionString</key>'
+  printf '  <string>%s</string>\n' "$MARKETING_VERSION"
+  printf '%s\n' '  <key>CFBundleVersion</key>'
+  printf '  <string>%s</string>\n' "$CURRENT_PROJECT_VERSION"
+  printf '%s\n' '  <key>LSApplicationCategoryType</key>'
+  printf '  <string>%s</string>\n' "$APP_CATEGORY"
+  printf '%s\n' '  <key>LSMinimumSystemVersion</key>'
+  printf '  <string>%s</string>\n' "$MIN_SYSTEM_VERSION"
+  printf '%s\n' '  <key>NSPrincipalClass</key>'
+  printf '%s\n' '  <string>NSApplication</string>'
+  printf '%s\n' '  <key>NSQuitAlwaysKeepsWindows</key>'
+  printf '%s\n' '  <false/>'
+  printf '%s\n' '  <key>NSMicrophoneUsageDescription</key>'
+  printf '%s\n' '  <string>SoloPM uses the microphone when you explicitly start voice capture.</string>'
+  printf '%s\n' '  <key>NSHumanReadableCopyright</key>'
+  printf '  <string>%s</string>\n' "$COPYRIGHT"
+  printf '%s\n' '</dict>'
+  printf '%s\n' '</plist>'
+} >"$INFO_PLIST"
 
 if [[ -n "$SPARKLE_FEED_URL" && -n "$SPARKLE_PUBLIC_ED_KEY" ]]; then
   /usr/libexec/PlistBuddy -c "Add :SUFeedURL string $SPARKLE_FEED_URL" "$INFO_PLIST"
