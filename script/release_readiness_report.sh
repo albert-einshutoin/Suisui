@@ -6,6 +6,8 @@ BLOCKER_COUNT=0
 APP_METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 RELEASE_CI_PREFLIGHT="${SOLOPM_RELEASE_CI_PREFLIGHT:-0}"
 RELEASE_CI_PREFLIGHT_RELATIVE="scripts/ci.sh"
+LOCAL_CRUD_SMOKE="${SOLOPM_LOCAL_CRUD_SMOKE:-0}"
+LOCAL_CRUD_SMOKE_RELATIVE="script/check_local_crud_smoke.sh"
 RELEASE_XCODE_PREFLIGHT="${SOLOPM_RELEASE_XCODE_PREFLIGHT:-0}"
 XCODE_WORKSPACE_RELATIVE=".swiftpm/xcode/package.xcworkspace"
 XCODE_SCHEME="${SOLOPM_XCODE_SCHEME:-SoloPM}"
@@ -324,6 +326,33 @@ elif [[ "$RELEASE_CI_PREFLIGHT" == "1" ]]; then
   fi
 else
   printf "INFO: release CI preflight skipped; set SOLOPM_RELEASE_CI_PREFLIGHT=1 to run %s inside this report.\n" "$RELEASE_CI_PREFLIGHT_RELATIVE"
+fi
+
+section "Local CRUD smoke"
+local_crud_smoke_script="$ROOT_DIR/$LOCAL_CRUD_SMOKE_RELATIVE"
+if [[ "$LOCAL_CRUD_SMOKE" != "0" && "$LOCAL_CRUD_SMOKE" != "1" ]]; then
+  blocker "SOLOPM_LOCAL_CRUD_SMOKE must be 0 or 1"
+elif [[ "$LOCAL_CRUD_SMOKE" == "1" ]]; then
+  if [[ ! -x "$local_crud_smoke_script" ]]; then
+    blocker "missing executable local CRUD smoke: $LOCAL_CRUD_SMOKE_RELATIVE"
+  else
+    set +e
+    local_crud_smoke_output="$("$local_crud_smoke_script" 2>&1)"
+    local_crud_smoke_status=$?
+    set -e
+
+    if [[ -n "$local_crud_smoke_output" ]]; then
+      printf "%s\n" "$local_crud_smoke_output"
+    fi
+
+    if [[ "$local_crud_smoke_status" -ne 0 ]]; then
+      blocker "local CRUD smoke failed"
+    else
+      printf "OK: local CRUD smoke passed\n"
+    fi
+  fi
+else
+  printf "INFO: local CRUD smoke skipped; set SOLOPM_LOCAL_CRUD_SMOKE=1 to run %s inside this report.\n" "$LOCAL_CRUD_SMOKE_RELATIVE"
 fi
 
 section "Release Xcode preflight"

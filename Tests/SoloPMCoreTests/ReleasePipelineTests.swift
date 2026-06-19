@@ -3171,6 +3171,78 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("OK: competitor hands-on evidence covers Notion, Todoist, Linear, Motion, and public alpha scope boundaries"))
     }
 
+    func testLocalCRUDSmokeScriptRunsFocusedPersistentStoreToolAndCLIPaths() throws {
+        let script = try readPackageFile("script/check_local_crud_smoke.sh")
+
+        XCTAssertTrue(script.contains("swift test --filter \"$FOCUSED_CRUD_FILTER\""))
+        XCTAssertTrue(script.contains("ProjectBoardStoreTests/testCreateTaskPersistsRequestedColumnMetadataAndDetail"))
+        XCTAssertTrue(script.contains("ProjectBoardStoreTests/testUpdateTaskMovesCardAcrossColumnsAndUpdatesMetadata"))
+        XCTAssertTrue(script.contains("ProjectBoardStoreTests/testMoveTaskPersistsNewStatusWithoutLosingMetadata"))
+        XCTAssertTrue(script.contains("ProjectBoardStoreTests/testDeleteTaskRemovesCardFromPersistentSnapshot"))
+        XCTAssertTrue(script.contains("ProjectBoardStoreTests/testCreateUpdateAndCompleteProjectAppearInBoardSnapshot"))
+        XCTAssertTrue(script.contains("ProjectBoardStoreTests/testArchivedProjectCanBeLoadedAndRestoredToActiveBoard"))
+        XCTAssertTrue(script.contains("ProjectBoardStoreTests/testProjectBoardViewModelQuickCapturePersistsToSQLiteInbox"))
+        XCTAssertTrue(script.contains("ProjectTaskKnowledgeToolTests/testTaskUpdateToolPersistsEditableTaskMetadataAndMovesProject"))
+        XCTAssertTrue(script.contains("ProjectTaskKnowledgeToolTests/testProjectDeleteToolDeletesPersistentProjectGraphWithApproval"))
+        XCTAssertTrue(script.contains("SoloPMCLIReadOnlyReporterTests/testStatusReadsPersistentProjectTaskAndKnowledgeCounts"))
+        XCTAssertTrue(script.contains("SoloPMCLIReadOnlyReporterTests/testTasksDueReadsDueTasksAndExcludesCompletedArchivedOrCompletedProjectTasks"))
+        XCTAssertTrue(script.contains("OK: local CRUD smoke covered SQLite project/task CRUD, project lifecycle, MCP tool mutations, quick capture, and CLI read paths"))
+        XCTAssertFalse(script.contains("swift test\n"))
+    }
+
+    func testReleaseReadinessReportCanRunLocalCRUDSmokeWhenEnabled() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-local-crud-smoke", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+        let crudSmokeURL = scriptDirectory.appendingPathComponent("check_local_crud_smoke.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: preflightURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "local crud fixture smoke invoked\\n"
+        exit 23
+        """.write(to: crudSmokeURL, atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        for url in [reportURL, preflightURL, crudSmokeURL] {
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        }
+
+        let result = try runTool(["bash", reportURL.path], environment: ["SOLOPM_LOCAL_CRUD_SMOKE": "1"])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("== Local CRUD smoke =="))
+        XCTAssertTrue(result.output.contains("local crud fixture smoke invoked"))
+        XCTAssertTrue(result.output.contains("BLOCKER: local CRUD smoke failed"))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+    }
+
     func testReleaseReadinessReportAggregatesRuntimeMockScanTasksAndPreflight() throws {
         let script = try readPackageFile("script/release_readiness_report.sh")
         let contentCheckScript = try readPackageFile("script/ui_evidence_content_check.swift")
@@ -3184,6 +3256,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SOLOPM_RELEASE_CI_PREFLIGHT"))
         XCTAssertTrue(script.contains("scripts/ci.sh"))
         XCTAssertTrue(script.contains("release CI preflight failed"))
+        XCTAssertTrue(script.contains("SOLOPM_LOCAL_CRUD_SMOKE"))
+        XCTAssertTrue(script.contains("script/check_local_crud_smoke.sh"))
+        XCTAssertTrue(script.contains("local CRUD smoke failed"))
         XCTAssertTrue(script.contains("SOLOPM_RELEASE_XCODE_PREFLIGHT"))
         XCTAssertTrue(script.contains(".swiftpm/xcode/package.xcworkspace"))
         XCTAssertTrue(script.contains("xcodebuild"))

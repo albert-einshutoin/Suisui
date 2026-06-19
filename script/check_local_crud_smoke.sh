@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+FOCUSED_CRUD_FILTER="ProjectBoardStoreTests/testCreateTaskPersistsRequestedColumnMetadataAndDetail|ProjectBoardStoreTests/testUpdateTaskMovesCardAcrossColumnsAndUpdatesMetadata|ProjectBoardStoreTests/testMoveTaskPersistsNewStatusWithoutLosingMetadata|ProjectBoardStoreTests/testDeleteTaskRemovesCardFromPersistentSnapshot|ProjectBoardStoreTests/testCreateUpdateAndCompleteProjectAppearInBoardSnapshot|ProjectBoardStoreTests/testArchivedProjectCanBeLoadedAndRestoredToActiveBoard|ProjectBoardStoreTests/testProjectBoardViewModelQuickCapturePersistsToSQLiteInbox|ProjectTaskKnowledgeToolTests/testTaskUpdateToolPersistsEditableTaskMetadataAndMovesProject|ProjectTaskKnowledgeToolTests/testProjectDeleteToolDeletesPersistentProjectGraphWithApproval|SoloPMCLIReadOnlyReporterTests/testStatusReadsPersistentProjectTaskAndKnowledgeCounts|SoloPMCLIReadOnlyReporterTests/testTasksDueReadsDueTasksAndExcludesCompletedArchivedOrCompletedProjectTasks"
+
+printf "== Local CRUD smoke tests ==\n"
+swift test --filter "$FOCUSED_CRUD_FILTER"
+printf "OK: local CRUD smoke covered SQLite project/task CRUD, project lifecycle, MCP tool mutations, quick capture, and CLI read paths\n"
