@@ -162,5 +162,11 @@ write_automated_preflight_evidence
 
 printf "\nOK: automated release preflight passed\n"
 printf "This does not mark the release ready.\n"
-printf "NEXT: run SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh to combine automated proof gates with the remaining release blockers.\n"
+if [[ -n "$AUTOMATED_PREFLIGHT_EVIDENCE_FILE" ]]; then
+  printf "NEXT: run "
+  printf 'SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=%q ./script/release_readiness_report.sh' "$AUTOMATED_PREFLIGHT_EVIDENCE_FILE"
+  printf " to reuse this evidence with the remaining release blockers.\n"
+else
+  printf "NEXT: run SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh to combine automated proof gates with the remaining release blockers.\n"
+fi
 printf "NEXT: complete manual VoiceOver, competitor hands-on, and signing/notarization/Sparkle/Gatekeeper evidence before release.\n"
