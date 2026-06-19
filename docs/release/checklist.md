@@ -173,6 +173,7 @@ Use the generator to avoid stale bundle/build metadata:
 ./script/create_voiceover_evidence.sh --pending
 ./script/create_voiceover_evidence.sh --passed \
   --checked-by "Reviewer Name" \
+  --accessibility-environment "VoiceOver/keyboard/device details used for the manual pass" \
   --project-navigation-note "Concrete VoiceOver observation for sidebar Inbox, Today, and Project navigation." \
   --project-board-detail-note "Concrete VoiceOver observation for selected project board context." \
   --open-task-note "Concrete VoiceOver observation for opening task details without pointer drag." \

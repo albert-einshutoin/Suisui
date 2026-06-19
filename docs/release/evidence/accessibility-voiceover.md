@@ -12,6 +12,7 @@ Do not set `Status: passed` until every item below is verified on the signed or 
 - Checked by:
 - Check date: 2026-06-19
 - Evidence source: `dist/SoloPM.app manual VoiceOver pass`
+- Accessibility environment:
 
 ## Setup
 

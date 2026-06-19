@@ -58,6 +58,7 @@ VOICEOVER_REQUIRED_CONTEXT_LABELS=(
   "Checked by"
   "Check date"
   "Evidence source"
+  "Accessibility environment"
 )
 VOICEOVER_REQUIRED_NOTE_LABELS=(
   "Project navigation"
@@ -523,7 +524,7 @@ else
       continue
     fi
 
-    if grep -Eiq '(pending|todo|tbd|placeholder|sample|example|replace me|signed or release-candidate)' <<<"$context_value"; then
+    if grep -Eiq '(pending|todo|tbd|placeholder|sample|example|replace me|signed or release-candidate|VoiceOver/keyboard/device details|VoiceOver / keyboard / device details|manual pass environment|accessibility environment)' <<<"$context_value"; then
       voiceover_blocker "VoiceOver accessibility evidence has template release context: $context_label"
     fi
   done

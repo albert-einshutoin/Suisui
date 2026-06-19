@@ -23,6 +23,7 @@ CHECKED_BY=""
 CHECK_DATE="$(date +%F)"
 MACOS_VERSION="macOS $(sw_vers -productVersion 2>/dev/null || printf 'unknown')"
 EVIDENCE_SOURCE="dist/$APP_NAME.app manual VoiceOver pass"
+ACCESSIBILITY_ENVIRONMENT=""
 CONFIRM_MANUAL_PASS=0
 PROJECT_NAVIGATION_NOTE=""
 PROJECT_BOARD_DETAIL_NOTE=""
@@ -36,7 +37,7 @@ NO_KEYBOARD_TRAP_NOTE=""
 NO_UNLABELED_CRUD_NOTE=""
 
 usage() {
-  printf '%s\n' "usage: $0 (--pending|--passed) [--output PATH] [--checked-by NAME] [--macos-version VERSION] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--project-navigation-note TEXT] [--project-board-detail-note TEXT] [--open-task-note TEXT] [--inline-task-composer-note TEXT] [--status-controls-note TEXT] [--task-inspector-note TEXT] [--save-changes-note TEXT] [--delete-confirmation-note TEXT] [--no-keyboard-trap-note TEXT] [--no-unlabeled-crud-note TEXT] [--confirm-manual-voiceover-pass]"
+  printf '%s\n' "usage: $0 (--pending|--passed) [--output PATH] [--checked-by NAME] [--macos-version VERSION] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--accessibility-environment TEXT] [--project-navigation-note TEXT] [--project-board-detail-note TEXT] [--open-task-note TEXT] [--inline-task-composer-note TEXT] [--status-controls-note TEXT] [--task-inspector-note TEXT] [--save-changes-note TEXT] [--delete-confirmation-note TEXT] [--no-keyboard-trap-note TEXT] [--no-unlabeled-crud-note TEXT] [--confirm-manual-voiceover-pass]"
   printf '%s\n' ""
   printf '%s\n' "Use --pending to write a safe worksheet that release readiness will reject."
   printf '%s\n' "Use --passed only after a real VoiceOver pass on the release-candidate app."
@@ -50,6 +51,22 @@ require_passed_value() {
     echo "$flag is required with --passed" >&2
     exit 2
   fi
+}
+
+is_placeholder_accessibility_environment() {
+  local normalized
+  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$normalized" in
+    *"voiceover/keyboard/device details"*|\
+    *"voiceover / keyboard / device details"*|\
+    *"manual pass environment"*|\
+    *"accessibility environment"*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 while [[ "$#" -gt 0 ]]; do
@@ -80,6 +97,10 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --evidence-source)
       EVIDENCE_SOURCE="${2:-}"
+      shift 2
+      ;;
+    --accessibility-environment)
+      ACCESSIBILITY_ENVIRONMENT="${2:-}"
       shift 2
       ;;
     --project-navigation-note)
@@ -156,6 +177,11 @@ if [[ "$VOICEOVER_STATUS" == "passed" ]]; then
     echo "--macos-version and --check-date are required with --passed" >&2
     exit 2
   fi
+  require_passed_value "--accessibility-environment" "$ACCESSIBILITY_ENVIRONMENT"
+  if is_placeholder_accessibility_environment "$ACCESSIBILITY_ENVIRONMENT"; then
+    echo "--accessibility-environment must describe the actual VoiceOver, keyboard, and device environment" >&2
+    exit 2
+  fi
   require_passed_value "--project-navigation-note" "$PROJECT_NAVIGATION_NOTE"
   require_passed_value "--project-board-detail-note" "$PROJECT_BOARD_DETAIL_NOTE"
   require_passed_value "--open-task-note" "$OPEN_TASK_NOTE"
@@ -183,6 +209,11 @@ write_context() {
   fi
   printf -- '- Check date: %s\n' "$CHECK_DATE"
   printf -- '- Evidence source: `%s`\n' "$EVIDENCE_SOURCE"
+  if [[ -n "$ACCESSIBILITY_ENVIRONMENT" ]]; then
+    printf -- '- Accessibility environment: %s\n' "$ACCESSIBILITY_ENVIRONMENT"
+  else
+    printf '%s\n' '- Accessibility environment:'
+  fi
 }
 
 write_pending_evidence() {

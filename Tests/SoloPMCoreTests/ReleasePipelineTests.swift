@@ -2106,6 +2106,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("./script/check_accessibility_preflight.sh --runtime"))
         XCTAssertTrue(checklist.contains("./script/create_voiceover_evidence.sh --pending"))
         XCTAssertTrue(checklist.contains("./script/create_voiceover_evidence.sh --passed"))
+        XCTAssertTrue(checklist.contains("--accessibility-environment \"VoiceOver/keyboard/device details used for the manual pass\""))
         XCTAssertTrue(checklist.contains("--project-navigation-note"))
         XCTAssertTrue(checklist.contains("--project-board-detail-note"))
         XCTAssertTrue(checklist.contains("--inline-task-composer-note"))
@@ -2144,6 +2145,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(pendingEvidence.contains("Status: pending"))
         XCTAssertTrue(pendingEvidence.contains("- App build: `0.1.0 (1)`"))
         XCTAssertTrue(pendingEvidence.contains("- Bundle identifier: `dev.solopm.app`"))
+        XCTAssertTrue(pendingEvidence.contains("- Accessibility environment:"))
         XCTAssertTrue(pendingEvidence.contains("- [ ] Project navigation"))
         XCTAssertTrue(pendingEvidence.contains("- [ ] Inline Task Composer"))
         XCTAssertTrue(pendingEvidence.contains("Do not set `Status: passed` until every item below is verified"))
@@ -2163,12 +2165,39 @@ final class ReleasePipelineTests: XCTestCase {
                 "--checked-by", "Release reviewer",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
+                "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
                 "--output", passedURL.path,
                 "--confirm-manual-voiceover-pass"
             ]
         )
         XCTAssertNotEqual(missingNotesResult.exitCode, 0)
         XCTAssertTrue(missingNotesResult.output.contains("--project-navigation-note is required with --passed"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
+        let placeholderEnvironmentResult = try runScript(
+            "script/create_voiceover_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "Release reviewer",
+                "--macos-version", "macOS 15.5",
+                "--check-date", "2026-06-19",
+                "--accessibility-environment", "VoiceOver/keyboard/device details used for the manual pass",
+                "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
+                "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
+                "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
+                "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
+                "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
+                "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
+                "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
+                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--output", passedURL.path,
+                "--confirm-manual-voiceover-pass"
+            ]
+        )
+        XCTAssertNotEqual(placeholderEnvironmentResult.exitCode, 0)
+        XCTAssertTrue(placeholderEnvironmentResult.output.contains("--accessibility-environment must describe the actual VoiceOver, keyboard, and device environment"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
 
         let passedResult = try runScript(
@@ -2178,6 +2207,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--checked-by", "Release reviewer",
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
+                "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
                 "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
                 "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
                 "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
@@ -2200,6 +2230,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(passedEvidence.contains("- Bundle identifier: `dev.solopm.app`"))
         XCTAssertTrue(passedEvidence.contains("- Checked by: Release reviewer"))
         XCTAssertTrue(passedEvidence.contains("- Check date: 2026-06-19"))
+        XCTAssertTrue(passedEvidence.contains("- Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display"))
         XCTAssertTrue(passedEvidence.contains("- Project navigation: passed - Sidebar Inbox, Today, and selected project rows announce destination and counts in order."))
         XCTAssertTrue(passedEvidence.contains("- Project board detail: passed - Selected project board announces project title before card navigation begins."))
         XCTAssertTrue(passedEvidence.contains("- Open task: passed - Task card details open from keyboard focus without relying on drag."))
@@ -2530,6 +2561,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence still contains unchecked checklist markers"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence missing release context"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence has template release context"))
+        XCTAssertTrue(script.contains("VoiceOver/keyboard/device details|VoiceOver / keyboard / device details|manual pass environment"))
         XCTAssertTrue(script.contains("packaging/app_metadata.env"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence bundle identifier does not match packaging metadata"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence app build does not match packaging metadata"))
@@ -3143,6 +3175,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Checked by:
         - Check date:
         - Evidence source: signed or release-candidate `dist/SoloPM.app`
+        - Accessibility environment:
 
         - [ ] Project navigation
         - Project board detail
@@ -3169,6 +3202,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing release context: App build"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing release context: Checked by"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing release context: Check date"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing release context: Accessibility environment"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence has template release context: Evidence source"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence still contains unchecked checklist markers"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
@@ -3228,6 +3262,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Checked by: Release reviewer
         - Check date: 2026-06-19
         - Evidence source: `dist/SoloPM.app` manual pass
+        - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
 
         - Project navigation: passed
         - Project board detail: passed
@@ -3312,6 +3347,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Checked by: Release reviewer
         - Check date: 2026-06-19
         - Evidence source: `dist/SoloPM.app` manual pass
+        - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
 
         ## Verified Focus Path
 
