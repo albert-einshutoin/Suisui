@@ -38,6 +38,7 @@ ACCESSIBILITY_PREFLIGHT_RELATIVE="script/check_accessibility_preflight.sh"
 ACCESSIBILITY_RUNTIME_PREFLIGHT="${SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT:-$AUTOMATED_PROOF_GATES}"
 COMPETITOR_EVIDENCE_RELATIVE="docs/release/evidence/competitor-hands-on.md"
 COMPETITOR_BENCHMARK_RELATIVE="docs/product/competitor-benchmark.md"
+MCP_REVIEW_RELATIVE="docs/mcp-compliance.md"
 MCP_EVIDENCE_RELATIVE="docs/release/evidence/mcp-inspector.md"
 MCP_COMPLIANCE_RELATIVE="script/verify_mcp_compliance.sh"
 RUNTIME_SOURCE_DIRS=(
@@ -137,6 +138,19 @@ MCP_EVIDENCE_REQUIRED_MARKERS=(
   "invalid-schema"
   "timeout"
   "exit: 0"
+)
+MCP_REVIEW_REQUIRED_MARKERS=(
+  'Stable baseline: `2025-11-25`'
+  'Official stable latest: `2025-11-25`'
+  "MCP specification 2025-11-25: https://modelcontextprotocol.io/specification/2025-11-25"
+  'Draft watchlist: `2026-07-28`'
+  "Draft versioning watchlist: https://modelcontextprotocol.io/specification/draft/basic/versioning"
+  "Draft discovery watchlist: https://modelcontextprotocol.io/specification/draft/server/discover"
+  "SoloPM does not send per-request protocol metadata"
+  "server/discover"
+  "will not claim draft or full-host compatibility"
+  "not a full MCP host"
+  "client-side stdio Tools"
 )
 AUTOMATED_PREFLIGHT_REQUIRED_GATES=(
   "Release CI"
@@ -1569,6 +1583,22 @@ else
 fi
 
 section "MCP Inspector evidence"
+mcp_review_file="$ROOT_DIR/$MCP_REVIEW_RELATIVE"
+if [[ ! -f "$mcp_review_file" ]]; then
+  blocker "missing MCP compliance review: $MCP_REVIEW_RELATIVE"
+else
+  mcp_review_missing_marker_count=0
+  for required_marker in "${MCP_REVIEW_REQUIRED_MARKERS[@]}"; do
+    if ! grep -F "$required_marker" "$mcp_review_file" >/dev/null; then
+      blocker "MCP compliance review is missing marker: $required_marker"
+      mcp_review_missing_marker_count=$((mcp_review_missing_marker_count + 1))
+    fi
+  done
+  if [[ "$mcp_review_missing_marker_count" -eq 0 ]]; then
+    printf "OK: MCP compliance review covers stable baseline, draft boundary, release subset, and non-host positioning\n"
+  fi
+fi
+
 mcp_compliance_script="$ROOT_DIR/$MCP_COMPLIANCE_RELATIVE"
 if [[ ! -x "$mcp_compliance_script" ]]; then
   blocker "missing executable MCP compliance verifier: $MCP_COMPLIANCE_RELATIVE"

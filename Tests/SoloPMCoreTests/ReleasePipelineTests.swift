@@ -4052,9 +4052,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("--benchmark-output docs/product/competitor-benchmark.md"))
         XCTAssertTrue(script.contains("section \"MCP Inspector evidence\""))
         XCTAssertTrue(script.contains("script/verify_mcp_compliance.sh"))
+        XCTAssertTrue(script.contains("docs/mcp-compliance.md"))
         XCTAssertTrue(script.contains("SOLOPM_MCP_EVIDENCE_FILE=\"$mcp_runtime_evidence_file\""))
         XCTAssertTrue(script.contains("MCP compliance verifier failed"))
         XCTAssertTrue(script.contains("MCP compliance verifier output is missing marker"))
+        XCTAssertTrue(script.contains("MCP compliance review is missing marker"))
+        XCTAssertTrue(script.contains("OK: MCP compliance review covers stable baseline, draft boundary, release subset, and non-host positioning"))
         XCTAssertTrue(script.contains("docs/release/evidence/mcp-inspector.md"))
         XCTAssertTrue(script.contains("Stable baseline: `2025-11-25`"))
         XCTAssertTrue(script.contains("Official stable source: https://modelcontextprotocol.io/specification/2025-11-25"))
@@ -5962,6 +5965,113 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: 2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28."))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: MCP Inspector CLI tools/call"))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: malformed-json"))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
+    }
+
+    func testReleaseReadinessReportFailsWhenMCPComplianceReviewIsIncomplete() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-incomplete-mcp-compliance-review", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let docsDirectory = fixtureRoot.appendingPathComponent("docs", isDirectory: true)
+        let evidenceDirectory = docsDirectory
+            .appendingPathComponent("release", isDirectory: true)
+            .appendingPathComponent("evidence", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+        let mcpVerifierURL = scriptDirectory.appendingPathComponent("verify_mcp_compliance.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: evidenceDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        let completeMCPEvidence = """
+        # MCP Inspector Evidence
+
+        Generated: 2026-06-19T00:00:00Z
+
+        Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and SoloPM's local JSON-RPC smoke checks.
+
+        Stable baseline: `2025-11-25`
+
+        Official stable latest: `2025-11-25`
+
+        Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
+
+        Draft watchlist: `2026-07-28`
+
+        Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+
+        2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28.
+
+        Release positioning: SoloPM is not a full MCP host; this evidence covers stable client-side stdio Tools only.
+
+        Success path: `initialize -> tools/list -> tools/call`
+
+        ## MCP Inspector CLI tools/list
+        exit: 0
+
+        ## MCP Inspector CLI tools/call
+        exit: 0
+
+        ## SoloPM local smoke success
+        malformed-json
+        mismatched-id
+        invalid-schema
+        timeout
+        exit: 0
+        """
+        try completeMCPEvidence.write(to: evidenceDirectory.appendingPathComponent("mcp-inspector.md"), atomically: true, encoding: .utf8)
+        try """
+        # SoloPM MCP Compliance Review
+
+        Stable baseline: `2025-11-25`
+
+        Release positioning: SoloPM is not a full MCP host.
+        """.write(to: docsDirectory.appendingPathComponent("mcp-compliance.md"), atomically: true, encoding: .utf8)
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: preflightURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        cat >"${SOLOPM_MCP_EVIDENCE_FILE:?}" <<'EOF'
+        \(completeMCPEvidence)
+        EOF
+        printf "MCP compliance evidence written to %s\\n" "$SOLOPM_MCP_EVIDENCE_FILE"
+        """.write(to: mcpVerifierURL, atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        for url in [reportURL, preflightURL, mcpVerifierURL] {
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        }
+
+        let result = try runTool(["bash", reportURL.path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("== MCP Inspector evidence =="))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official stable latest: `2025-11-25`"))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Draft watchlist: `2026-07-28`"))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: will not claim draft or full-host compatibility"))
+        XCTAssertTrue(result.output.contains("OK: MCP Inspector evidence covers stable baseline, draft boundary, tools/list, tools/call, and failure taxonomy"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
