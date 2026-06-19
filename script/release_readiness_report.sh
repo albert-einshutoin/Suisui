@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BLOCKER_COUNT=0
 BLOCKER_MESSAGES=()
+RELEASE_ENVIRONMENT_BLOCKER_MESSAGES=()
 APP_METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 RELEASE_ACTIONS_FILE="${SOLOPM_RELEASE_ACTIONS_FILE:-}"
 AUTOMATED_PROOF_GATES="${SOLOPM_AUTOMATED_PROOF_GATES:-0}"
@@ -272,6 +273,33 @@ write_blocker_bucket_summary() {
   printf "\n"
 }
 
+collect_release_environment_blockers() {
+  local output="$1"
+  local line
+  local normalized
+  local lowered
+  local root_prefix="$ROOT_DIR/"
+
+  RELEASE_ENVIRONMENT_BLOCKER_MESSAGES=()
+
+  while IFS= read -r line; do
+    normalized="${line#- }"
+    if [[ "$normalized" != BLOCKER:* ]]; then
+      continue
+    fi
+
+    normalized="${normalized#BLOCKER: }"
+    normalized="${normalized//$root_prefix/}"
+    lowered="$(printf "%s" "$normalized" | tr '[:upper:]' '[:lower:]')"
+    case "$lowered" in
+      *password*|*token*|*secret*)
+        normalized="release environment blocker contained a sensitive field; inspect verify_release_environment.sh output locally"
+        ;;
+    esac
+    RELEASE_ENVIRONMENT_BLOCKER_MESSAGES+=("$normalized")
+  done <<<"$output"
+}
+
 write_release_actions() {
   local status="$1"
   local action_path="$RELEASE_ACTIONS_FILE"
@@ -333,6 +361,14 @@ write_release_actions() {
         done <<<"$phase_manual_unchecked"
         printf "\n"
       fi
+    fi
+
+    if [[ "${#RELEASE_ENVIRONMENT_BLOCKER_MESSAGES[@]}" -gt 0 ]]; then
+      printf "## Release Environment Blockers\n"
+      for release_environment_blocker in "${RELEASE_ENVIRONMENT_BLOCKER_MESSAGES[@]}"; do
+        printf -- "- [ ] %s\n" "$release_environment_blocker"
+      done
+      printf "\n"
     fi
 
     printf "## Automated Proof Gates\n"
@@ -1493,6 +1529,7 @@ set -e
 
 printf "%s\n" "$preflight_output"
 if [[ "$preflight_status" -ne 0 ]]; then
+  collect_release_environment_blockers "$preflight_output"
   blocker "release environment preflight did not pass"
   printf "NEXT: complete docs/release/checklist.md release-machine steps: configure packaging/signing.env, packaging/notarization.env, production Sparkle feed/key, signed/notarized app, appcast, and packaging/release-evidence.json; then rerun ./script/release_readiness_report.sh.\n"
 else

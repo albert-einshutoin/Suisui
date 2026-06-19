@@ -4057,6 +4057,13 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Tracked source tree:"))
         XCTAssertTrue(script.contains("tracked_source_tree_status()"))
         XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" status --porcelain --untracked-files=no"))
+        XCTAssertTrue(script.contains("RELEASE_ENVIRONMENT_BLOCKER_MESSAGES=()"))
+        XCTAssertTrue(script.contains("collect_release_environment_blockers()"))
+        XCTAssertTrue(script.contains("normalized=\"${line#- }\""))
+        XCTAssertTrue(script.contains("normalized=\"${normalized#BLOCKER: }\""))
+        XCTAssertTrue(script.contains("normalized=\"${normalized//$root_prefix/}\""))
+        XCTAssertTrue(script.contains("## Release Environment Blockers"))
+        XCTAssertTrue(script.contains("release environment blocker contained a sensitive field"))
         XCTAssertTrue(phase.contains("[x] VoiceOver / competitor hands-on の手動証跡は `Source commit` を記録し、`Status: passed` の場合は現在の git commit と一致しない証跡をrelease blockerにする。"))
         XCTAssertTrue(phase.contains("[x] competitor benchmark の `Source commit` も `Status: passed` の competitor hands-on 証跡と同じrelease候補commitであることをrelease blockerにする。"))
         XCTAssertTrue(script.contains("Blocker groups:"))
@@ -4097,6 +4104,66 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] action summary は `Source commit` と tracked source tree の clean / dirty / unavailable 状態を併記する。"))
         XCTAssertTrue(phase.contains("[x] action summary は今回の実行で発生した具体blockerを `Current Blocker Groups` のチェックリストとして列挙する。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Blocker Buckets` で Automated Proof Gates / Manual VoiceOver / Competitor Hands-On / Release Machine / Phase Checklist / Other の残件数を分類する。"))
+        XCTAssertTrue(phase.contains("[x] action summary は `Release Environment Blockers` に `verify_release_environment.sh` の `BLOCKER:` 明細を相対パス化して列挙し、機密っぽい値を転記しない。"))
+    }
+
+    func testReleaseReadinessReportWritesSpecificReleaseEnvironmentBlockersToActionSummary() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-release-environment-actions", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+        let actionSummaryURL = fixtureRoot.appendingPathComponent("release-actions.md")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+        printf "release environment fixture\\n"
+        printf "Blockers:\\n"
+        printf -- "- BLOCKER: missing local signing config: $ROOT_DIR/packaging/signing.env\\n"
+        printf -- "- BLOCKER: release app bundle is missing Sparkle framework: $ROOT_DIR/dist/SoloPM.app/Contents/Frameworks/Sparkle.framework\\n"
+        printf -- "- BLOCKER: notarization token failed: super-secret-token\\n"
+        exit 23
+        """.write(to: preflightURL, atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: preflightURL.path)
+
+        let result = try runTool(
+            ["bash", reportURL.path],
+            environment: ["SOLOPM_RELEASE_ACTIONS_FILE": actionSummaryURL.path]
+        )
+        let actionSummary = try String(contentsOf: actionSummaryURL, encoding: .utf8)
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release environment preflight did not pass"))
+        XCTAssertTrue(actionSummary.contains("## Release Environment Blockers"))
+        XCTAssertTrue(actionSummary.contains("- [ ] missing local signing config: packaging/signing.env"))
+        XCTAssertTrue(actionSummary.contains("- [ ] release app bundle is missing Sparkle framework: dist/SoloPM.app/Contents/Frameworks/Sparkle.framework"))
+        XCTAssertTrue(actionSummary.contains("- [ ] release environment blocker contained a sensitive field; inspect verify_release_environment.sh output locally"))
+        XCTAssertFalse(actionSummary.contains(fixtureRoot.path))
+        XCTAssertFalse(actionSummary.contains("super-secret-token"))
     }
 
     func testReleaseReadinessReportClassifiesUncheckedPhaseItems() throws {

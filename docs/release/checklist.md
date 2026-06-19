@@ -256,7 +256,7 @@ SOLOPM_RELEASE_XCODE_PREFLIGHT=1 ./script/release_readiness_report.sh
 SOLOPM_BUILD_CONFIGURATION=release SOLOPM_RELEASE_LAUNCH_PREFLIGHT=1 ./script/release_readiness_report.sh
 ```
 
-The action summary groups remaining blockers into Automated Proof Gates, Manual VoiceOver, Competitor Hands-On, Release Machine, Phase Checklist, and Other buckets.
+The action summary groups remaining blockers into Automated Proof Gates, Manual VoiceOver, Competitor Hands-On, Release Machine, Phase Checklist, and Other buckets. When release environment preflight fails, it also copies the concrete `BLOCKER:` lines from `verify_release_environment.sh` into a `Release Environment Blockers` section with repo-relative paths and without secret-like values.
 
 14. tag
 
