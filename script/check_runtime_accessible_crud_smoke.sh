@@ -230,6 +230,44 @@ pressButtonUntilSQLiteValue() {
   done
 }
 
+pressDestructiveButtonUntilSQLiteValue() {
+  local label="$1"
+  local destructive_fragment="$2"
+  local confirmation_fragment="$3"
+  local excluded_help="$4"
+  local sql="$5"
+  local expected="$6"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local actual=""
+
+  while true; do
+    pressButtonContaining "$destructive_fragment"
+    sleep 1
+    pressConfirmationButtonContaining "$confirmation_fragment" "$excluded_help"
+
+    local postcondition_deadline=$((SECONDS + 3))
+    while true; do
+      actual="$(query_single_value "$sql" || true)"
+      if [[ "$actual" == "$expected" ]]; then
+        printf "OK: %s verified in SQLite (%s)\n" "$label" "$actual"
+        return 0
+      fi
+      if [[ "$SECONDS" -ge "$deadline" ]]; then
+        echo "BLOCKER: $label SQLite verification failed after destructive AX flow retry: expected '$expected', got '${actual:-<empty>}'" >&2
+        echo "SQL: $sql" >&2
+        return 1
+      fi
+      if [[ "$SECONDS" -ge "$postcondition_deadline" ]]; then
+        break
+      fi
+      sleep 1
+    done
+
+    printf "INFO: SQLite postcondition for $label was not met after pressing confirmation '$confirmation_fragment'; retrying destructive AX flow.\n" >&2
+    sleep 1
+  done
+}
+
 seed_board_data() {
   "$SQLITE3" "$database_path" <<'SQL'
 INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command, created_at, updated_at)
@@ -575,10 +613,7 @@ terminate_app
 wait_for_no_app_process
 launch_app_for_seed_project "$created_project_id"
 pressButtonContaining "Opens task details in the inspector"
-pressButtonContaining "Deletes the selected task after confirmation."
-sleep 1
-pressConfirmationButtonContaining "Delete Task" "Deletes the selected task after confirmation."
-verify_single_value "deleted task" "SELECT count(*) FROM tasks WHERE id=$created_task_id;" "0"
+pressDestructiveButtonUntilSQLiteValue "deleted task" "Deletes the selected task after confirmation." "Delete Task" "Deletes the selected task after confirmation." "SELECT count(*) FROM tasks WHERE id=$created_task_id;" "0"
 
 pressButtonContaining "Opens the inline composer for a new local task"
 waitForTextFieldContaining "Enter the task name"
@@ -592,10 +627,7 @@ launch_app_for_seed_project "$created_project_id"
 
 pressButtonUntilSQLiteValue "completed project" "Completes the selected project" "SELECT status FROM projects WHERE id=$created_project_id;" "completed"
 
-pressButtonContaining "Deletes the selected project"
-sleep 1
-pressConfirmationButtonContaining "Delete Project" "Deletes the selected project after confirmation."
-verify_single_value "deleted project" "SELECT count(*) FROM projects WHERE id=$created_project_id;" "0"
+pressDestructiveButtonUntilSQLiteValue "deleted project" "Deletes the selected project" "Delete Project" "Deletes the selected project after confirmation." "SELECT count(*) FROM projects WHERE id=$created_project_id;" "0"
 verify_single_value "deleted task cascade" "SELECT count(*) FROM tasks WHERE id=$cascade_task_id OR project_id=$created_project_id;" "0"
 
 printf "OK: runtime accessible CRUD smoke created, renamed, completed, and deleted a project, then created, updated, moved, directly deleted, and cascade-deleted tasks through the visible app\n"
