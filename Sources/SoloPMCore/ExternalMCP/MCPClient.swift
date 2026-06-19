@@ -79,17 +79,32 @@ public final class MCPClient: @unchecked Sendable {
     }
 
     public func listTools() async throws -> [MCPToolDefinition] {
-        let request = makeRequest(method: "tools/list", params: .object([:]))
-        let result = try await send(request)
-        let object = try result.requireResultObject(serverID: serverID, method: "tools/list")
-        guard let tools = object["tools"]?.arrayValue else {
-            throw MCPClientError.invalidResponse(serverID: serverID, method: "tools/list", reason: "Missing result.tools array.")
-        }
-        do {
-            return try tools.map(MCPToolDefinition.parse)
-        } catch let error as MCPClientError {
-            throw MCPClientError.invalidResponse(serverID: serverID, method: "tools/list", reason: error.responseReason)
-        }
+        var cursor: String?
+        var seenCursors = Set<String>()
+        var definitions: [MCPToolDefinition] = []
+
+        repeat {
+            var params: [String: JSONValue] = [:]
+            if let cursor {
+                params["cursor"] = .string(cursor)
+            }
+
+            let request = makeRequest(method: "tools/list", params: .object(params))
+            let result = try await send(request)
+            let object = try result.requireResultObject(serverID: serverID, method: "tools/list")
+            guard let tools = object["tools"]?.arrayValue else {
+                throw MCPClientError.invalidResponse(serverID: serverID, method: "tools/list", reason: "Missing result.tools array.")
+            }
+            do {
+                definitions.append(contentsOf: try tools.map(MCPToolDefinition.parse))
+            } catch let error as MCPClientError {
+                throw MCPClientError.invalidResponse(serverID: serverID, method: "tools/list", reason: error.responseReason)
+            }
+
+            cursor = try nextToolsListCursor(from: object, seenCursors: &seenCursors)
+        } while cursor != nil
+
+        return definitions
     }
 
     public func callTool(name: String, arguments: [String: JSONValue]) async throws -> MCPToolCallResult {
@@ -188,6 +203,37 @@ public final class MCPClient: @unchecked Sendable {
             group.cancelAll()
             return response
         }
+    }
+
+    private func nextToolsListCursor(
+        from object: [String: JSONValue],
+        seenCursors: inout Set<String>
+    ) throws -> String? {
+        guard let nextCursorValue = object["nextCursor"] else {
+            return nil
+        }
+        guard let nextCursor = nextCursorValue.stringValue else {
+            throw MCPClientError.invalidResponse(
+                serverID: serverID,
+                method: "tools/list",
+                reason: "result.nextCursor must be a string when present."
+            )
+        }
+        guard !nextCursor.isEmpty else {
+            throw MCPClientError.invalidResponse(
+                serverID: serverID,
+                method: "tools/list",
+                reason: "result.nextCursor must not be empty."
+            )
+        }
+        guard seenCursors.insert(nextCursor).inserted else {
+            throw MCPClientError.invalidResponse(
+                serverID: serverID,
+                method: "tools/list",
+                reason: "result.nextCursor repeated a previously seen cursor."
+            )
+        }
+        return nextCursor
     }
 }
 

@@ -1,6 +1,6 @@
 # MCP Inspector Evidence
 
-Generated: 2026-06-18T22:49:16Z
+Generated: 2026-06-19T02:33:47Z
 
 Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and SoloPM's local JSON-RPC smoke checks.
 
@@ -17,7 +17,7 @@ Success path: `initialize -> tools/list -> tools/call`
 ## MCP Inspector CLI tools/list
 
 ```console
-$ npx -y @modelcontextprotocol/inspector --cli node fixtures/mcp/stdio-fixture-server.mjs --method tools/list
+$ npx --loglevel error -y @modelcontextprotocol/inspector --cli node fixtures/mcp/stdio-fixture-server.mjs --method tools/list
 {
   "tools": [
     {
@@ -46,7 +46,7 @@ exit: 0
 ## MCP Inspector CLI tools/call
 
 ```console
-$ npx -y @modelcontextprotocol/inspector --cli node fixtures/mcp/stdio-fixture-server.mjs --method tools/call --tool-name read_status --tool-arg project=soloPM
+$ npx --loglevel error -y @modelcontextprotocol/inspector --cli node fixtures/mcp/stdio-fixture-server.mjs --method tools/call --tool-name read_status --tool-arg project=soloPM
 {
   "content": [
     {

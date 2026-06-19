@@ -12,7 +12,7 @@ EVIDENCE_FILE="${SOLOPM_MCP_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/mcp-i
 if [[ -n "${SOLOPM_MCP_INSPECTOR_BIN:-}" ]]; then
   INSPECTOR_COMMAND=("$SOLOPM_MCP_INSPECTOR_BIN")
 else
-  INSPECTOR_COMMAND=(npx -y @modelcontextprotocol/inspector)
+  INSPECTOR_COMMAND=(npx --loglevel error -y @modelcontextprotocol/inspector)
 fi
 
 mkdir -p "$(dirname "$EVIDENCE_FILE")"

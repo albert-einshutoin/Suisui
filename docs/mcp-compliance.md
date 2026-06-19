@@ -32,6 +32,7 @@ Primary references:
 | Initialized notification | Implemented | `MCPClient.initialize` sends `notifications/initialized` only after a successful initialize result, and regression tests verify invalid initialize responses do not emit it. |
 | Protocol version negotiation | Implemented for current release | SoloPM offers `2025-11-25`, rejects unsupported server response versions, and shows the accepted server version in Settings after Check Connection. |
 | Tools list | Implemented | `MCPClient.listTools` calls `tools/list` and parses `tools` as an array of tool definitions. |
+| Tools list pagination | Implemented | `MCPClient.listTools` follows `result.nextCursor` with `params.cursor`, rejects malformed cursor metadata, and guards against repeated cursors so paginated servers are not silently truncated. |
 | Tools call | Implemented | `MCPClient.callTool` calls `tools/call` with `name` and `arguments`, and parses `content`, `isError`, and `structuredContent`. |
 | Tool schema typing | Implemented for release subset | `inputSchema` is required, root `type` must be `object`, omitted `$schema` is treated as JSON Schema 2020-12, explicit 2020-12 dialect is accepted, unsupported dialects are rejected with `invalid-schema`, `required` must be an array of strings, and every `properties.*` schema must be an object. Full JSON Schema keyword validation is not claimed yet. |
 | Tool permission | Implemented for SoloPM policy | Unknown external tools default to disabled; write tools require approval; dangerous tools are blocked even after paid entitlement approval. |
@@ -50,6 +51,9 @@ Primary references:
 ## Tests That Currently Guard Compliance
 
 - `ExternalMCPTests.testClientInitializesListsAndCallsToolsWith20251125Protocol`
+- `ExternalMCPTests.testClientFollowsToolsListPaginationCursor`
+- `ExternalMCPTests.testClientRejectsMalformedToolsListPaginationCursor`
+- `ExternalMCPTests.testClientRejectsRepeatedToolsListPaginationCursor`
 - `ExternalMCPTests.testClientRejectsUnsupportedInitializeProtocolVersionBeforeInitializedNotification`
 - `ExternalMCPTests.testClientRejectsNonObjectInitializeServerInfo`
 - `ExternalMCPTests.testClientRejectsNonStringInitializeServerName`

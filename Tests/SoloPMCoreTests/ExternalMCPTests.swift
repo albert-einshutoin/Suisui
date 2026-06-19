@@ -17,6 +17,108 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(transport.recordedRequests.first?.params?.objectValue?["protocolVersion"], .string("2025-11-25"))
     }
 
+    func testClientFollowsToolsListPaginationCursor() async throws {
+        let transport = RecordingMCPTransport { request in
+            if request.method != "tools/list" {
+                return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+            }
+            let cursor = request.params?.objectValue?["cursor"]?.stringValue
+            if cursor == nil {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "tools": .array([
+                            MCPToolDefinition(
+                                name: "read_status",
+                                title: "Read Status",
+                                description: "Read local project status.",
+                                inputSchema: ["type": .string("object")]
+                            ).jsonValue
+                        ]),
+                        "nextCursor": .string("page-2")
+                    ])
+                )
+            }
+            return MCPJSONRPCResponse(
+                id: request.id,
+                result: .object([
+                    "tools": .array([
+                        MCPToolDefinition(
+                            name: "write_issue",
+                            title: "Write Issue",
+                            description: "Create an issue.",
+                            inputSchema: ["type": .string("object")]
+                        ).jsonValue
+                    ])
+                ])
+            )
+        }
+        let client = MCPClient(serverID: "paged", transport: transport)
+
+        let tools = try await client.listTools()
+
+        XCTAssertEqual(tools.map(\.name), ["read_status", "write_issue"])
+        let listRequests = transport.recordedRequests.filter { $0.method == "tools/list" }
+        XCTAssertEqual(listRequests.count, 2)
+        XCTAssertEqual(listRequests[0].params, .object([:]))
+        XCTAssertEqual(listRequests[1].params?.objectValue?["cursor"], .string("page-2"))
+    }
+
+    func testClientRejectsMalformedToolsListPaginationCursor() async throws {
+        let transport = RecordingMCPTransport { request in
+            MCPJSONRPCResponse(
+                id: request.id,
+                result: .object([
+                    "tools": .array([]),
+                    "nextCursor": .number(42)
+                ])
+            )
+        }
+        let client = MCPClient(serverID: "paged", transport: transport)
+
+        do {
+            _ = try await client.listTools()
+            XCTFail("non-string tools/list nextCursor should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(
+                    serverID: "paged",
+                    method: "tools/list",
+                    reason: "result.nextCursor must be a string when present."
+                )
+            )
+        }
+    }
+
+    func testClientRejectsRepeatedToolsListPaginationCursor() async throws {
+        let transport = RecordingMCPTransport { request in
+            MCPJSONRPCResponse(
+                id: request.id,
+                result: .object([
+                    "tools": .array([]),
+                    "nextCursor": .string("same-page")
+                ])
+            )
+        }
+        let client = MCPClient(serverID: "paged", transport: transport)
+
+        do {
+            _ = try await client.listTools()
+            XCTFail("repeated tools/list nextCursor should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(
+                    serverID: "paged",
+                    method: "tools/list",
+                    reason: "result.nextCursor repeated a previously seen cursor."
+                )
+            )
+        }
+        XCTAssertEqual(transport.recordedRequests.filter { $0.method == "tools/list" }.count, 2)
+    }
+
     func testClientRejectsNonObjectInitializeServerInfo() async throws {
         let transport = RecordingMCPTransport { request in
             MCPJSONRPCResponse(

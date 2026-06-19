@@ -6,6 +6,7 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         let script = try readPackageFile("script/verify_mcp_compliance.sh")
 
         XCTAssertTrue(script.contains("@modelcontextprotocol/inspector"))
+        XCTAssertTrue(script.contains("--loglevel error"))
         XCTAssertTrue(script.contains("--cli"))
         XCTAssertTrue(script.contains("--method tools/list"))
         XCTAssertTrue(script.contains("--method tools/call"))
@@ -73,6 +74,10 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertTrue(complianceReview.contains("Tool schema typing | Implemented for release subset"))
         XCTAssertTrue(complianceReview.contains("omitted `$schema` is treated as JSON Schema 2020-12"))
         XCTAssertTrue(complianceReview.contains("unsupported dialects are rejected with `invalid-schema`"))
+        XCTAssertTrue(complianceReview.contains("Tools list pagination"))
+        XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testClientFollowsToolsListPaginationCursor"))
+        XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testClientRejectsMalformedToolsListPaginationCursor"))
+        XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testClientRejectsRepeatedToolsListPaginationCursor"))
         XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testToolsListRejectsUnsupportedInputSchemaDialect"))
         XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testToolsListRejectsNonObjectPropertySchemas"))
     }
