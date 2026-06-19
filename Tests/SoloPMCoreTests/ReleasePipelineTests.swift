@@ -4793,6 +4793,13 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("printf -- \"- [ ] %s\\n\" \"$blocker_message\""))
         XCTAssertTrue(script.contains("blocker_bucket_for_message()"))
         XCTAssertTrue(script.contains("write_blocker_bucket_summary()"))
+        XCTAssertTrue(script.contains("write_operator_priority_queue()"))
+        XCTAssertTrue(script.contains("## Operator Priority Queue"))
+        XCTAssertTrue(script.contains("write_operator_priority_queue_line"))
+        XCTAssertTrue(script.contains("\"VoiceOver manual pass\""))
+        XCTAssertTrue(script.contains("\"Competitor hands-on pass\""))
+        XCTAssertTrue(script.contains("\"Release-machine runbook\""))
+        XCTAssertTrue(script.contains("Phase checklist routing clears the remaining manual checklist blocker after the linked evidence is accepted."))
         XCTAssertTrue(script.contains("## Blocker Buckets"))
         XCTAssertTrue(script.contains("write_blocker_bucket_line \"Automated Proof Gates\""))
         XCTAssertTrue(script.contains("write_blocker_bucket_line \"Manual VoiceOver\""))
@@ -4862,6 +4869,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Release action summary written to"))
 
         XCTAssertTrue(checklist.contains("SOLOPM_RELEASE_ACTIONS_FILE=.tmp/release-actions.md ./script/release_readiness_report.sh"))
+        XCTAssertTrue(checklist.contains("The Operator Priority Queue appears before the full blocker list and shows the highest-impact manual lanes, the blocker count each lane can clear, and the next command or generated helper to use."))
         XCTAssertTrue(checklist.contains("The action summary groups remaining blockers into Automated Proof Gates, Manual VoiceOver, Competitor Hands-On, Release Machine, Phase Checklist, and Other buckets."))
         XCTAssertTrue(checklist.contains("The action summary includes a Local Product Gate Status section so reviewers can distinguish current-commit local MCP/data/CRUD proof from manual and release-machine blockers."))
         XCTAssertTrue(checklist.contains("routes unchecked manual gates to Manual VoiceOver, Competitor Hands-On, Release Machine, Login Item Manual Check, or Manual Review"))
@@ -4876,6 +4884,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] `release_readiness_report.sh` は `SOLOPM_RELEASE_ACTIONS_FILE` 指定時に残blockerのoperator action summaryを書き出す。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Source commit` と tracked source tree の clean / dirty / unavailable 状態を併記する。"))
         XCTAssertTrue(phase.contains("[x] action summary は今回の実行で発生した具体blockerを `Current Blocker Groups` のチェックリストとして列挙する。"))
+        XCTAssertTrue(phase.contains("[x] action summary は `Operator Priority Queue` を `Current Blocker Groups` より前に出し、手動VoiceOver、競合hands-on、release-machineのどれを先に実施すれば何件のblockerを減らせるかを示す。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Blocker Buckets` で Automated Proof Gates / Manual VoiceOver / Competitor Hands-On / Release Machine / Phase Checklist / Other の残件数を分類する。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Release Environment Blockers` に `verify_release_environment.sh` の `BLOCKER:` 明細を相対パス化して列挙し、機密っぽい値を転記しない。"))
         XCTAssertTrue(phase.contains("[x] action summary は release environment blocker を Signing Configuration / Notarization / Sparkle / Appcast / Gatekeeper / Release Evidence / Source Hygiene / Local Inspection に分類し"))
@@ -5112,6 +5121,13 @@ final class ReleasePipelineTests: XCTestCase {
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(actionSummary.contains("## Operator Priority Queue"))
+        XCTAssertTrue(actionSummary.contains("- [ ] VoiceOver manual pass clears up to"))
+        XCTAssertTrue(actionSummary.contains("- [ ] Competitor hands-on pass clears up to"))
+        XCTAssertLessThan(
+            try XCTUnwrap(actionSummary.range(of: "## Operator Priority Queue")).lowerBound,
+            try XCTUnwrap(actionSummary.range(of: "## Current Blocker Groups")).lowerBound
+        )
         XCTAssertTrue(actionSummary.contains("## Manual VoiceOver Blockers"))
         XCTAssertTrue(actionSummary.contains("""
         ```bash

@@ -1290,6 +1290,7 @@
 - [x] action summary は `Status`、UTC生成時刻、source commit、blocker group数、Automated Proof Gates、Manual VoiceOver、Competitor Hands-On、Release Machine の次アクションを含む。
 - [x] action summary は `Source commit` と tracked source tree の clean / dirty / unavailable 状態を併記する。
 - [x] action summary は今回の実行で発生した具体blockerを `Current Blocker Groups` のチェックリストとして列挙する。
+- [x] action summary は `Operator Priority Queue` を `Current Blocker Groups` より前に出し、手動VoiceOver、競合hands-on、release-machineのどれを先に実施すれば何件のblockerを減らせるかを示す。
 - [x] action summary は `Blocker Buckets` で Automated Proof Gates / Manual VoiceOver / Competitor Hands-On / Release Machine / Phase Checklist / Other の残件数を分類する。
 - [x] action summary は `Release Environment Blockers` に `verify_release_environment.sh` の `BLOCKER:` 明細を相対パス化して列挙し、機密っぽい値を転記しない。
 - [x] action summary は release environment blocker を Signing Configuration / Notarization / Sparkle / Appcast / Gatekeeper / Release Evidence / Source Hygiene / Local Inspection に分類し、release-machine作業の順序を読み取れるようにする。

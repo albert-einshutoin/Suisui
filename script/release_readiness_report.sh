@@ -257,6 +257,67 @@ write_blocker_bucket_line() {
   printf -- "- [%s] %s: %d blocker group(s)\n" "$marker" "$label" "$count"
 }
 
+blocker_bucket_count() {
+  local expected_bucket="$1"
+  local count=0
+  local blocker_message
+  local blocker_bucket
+
+  for blocker_message in "${BLOCKER_MESSAGES[@]}"; do
+    blocker_bucket="$(blocker_bucket_for_message "$blocker_message")"
+    if [[ "$blocker_bucket" == "$expected_bucket" ]]; then
+      ((count += 1))
+    fi
+  done
+
+  printf "%d" "$count"
+}
+
+write_operator_priority_queue_line() {
+  local label="$1"
+  local count="$2"
+  local next_action="$3"
+
+  if [[ "$count" -gt 0 ]]; then
+    printf -- "- [ ] %s clears up to %d blocker group(s). Next: %s\n" "$label" "$count" "$next_action"
+  else
+    printf -- "- [x] %s has no active blocker groups in this report run.\n" "$label"
+  fi
+}
+
+write_operator_priority_queue() {
+  local voiceover_count
+  local competitor_count
+  local release_machine_count
+  local phase_count
+
+  voiceover_count="$(blocker_bucket_count "Manual VoiceOver")"
+  competitor_count="$(blocker_bucket_count "Competitor Hands-On")"
+  release_machine_count="$(blocker_bucket_count "Release Machine")"
+  phase_count="$(blocker_bucket_count "Phase Checklist")"
+
+  printf "## Operator Priority Queue\n"
+  write_operator_priority_queue_line \
+    "VoiceOver manual pass" \
+    "$voiceover_count" \
+    "run \`./script/prepare_voiceover_review_candidate.sh\`, complete \`.tmp/voiceover-review/create-evidence-command.sh\`, then rerun readiness."
+  write_operator_priority_queue_line \
+    "Competitor hands-on pass" \
+    "$competitor_count" \
+    "run \`./script/create_competitor_hands_on_evidence.sh --pending\`, fill \`.tmp/competitor-hands-on/create-evidence-command.sh\`, then rerun readiness."
+  write_operator_priority_queue_line \
+    "Release-machine runbook" \
+    "$release_machine_count" \
+    "run \`./script/prepare_release_machine_evidence.sh\`, complete signing/notarization/Sparkle/Gatekeeper evidence, then rerun readiness."
+
+  if [[ "$phase_count" -gt 0 ]]; then
+    printf -- "- [ ] Phase checklist routing clears the remaining manual checklist blocker after the linked evidence is accepted.\n"
+  else
+    printf -- "- [x] Phase checklist has no active blocker groups in this report run.\n"
+  fi
+  printf "\n"
+}
+
 write_blocker_bucket_summary() {
   local automated_count=0
   local voiceover_count=0
@@ -796,6 +857,8 @@ write_release_actions() {
     printf "Blocker groups: %d\n\n" "$BLOCKER_COUNT"
     printf "This file is an action summary, not release evidence.\n"
     printf "It does not mark manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper checks as passed.\n\n"
+
+    write_operator_priority_queue
 
     printf "## Current Blocker Groups\n"
     if [[ "${#BLOCKER_MESSAGES[@]}" -eq 0 ]]; then
