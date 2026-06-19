@@ -90,4 +90,5 @@ SOLOPM_MCP_EVIDENCE_FILE="$MCP_EVIDENCE_FILE" ./script/verify_mcp_compliance.sh
 
 printf "\nOK: automated release preflight passed\n"
 printf "This does not mark the release ready.\n"
+printf "NEXT: run SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh to combine automated proof gates with the remaining release blockers.\n"
 printf "NEXT: complete manual VoiceOver, competitor hands-on, and signing/notarization/Sparkle/Gatekeeper evidence before release.\n"

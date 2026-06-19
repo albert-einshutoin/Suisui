@@ -4,17 +4,18 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BLOCKER_COUNT=0
 APP_METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
-RELEASE_CI_PREFLIGHT="${SOLOPM_RELEASE_CI_PREFLIGHT:-0}"
+AUTOMATED_PROOF_GATES="${SOLOPM_AUTOMATED_PROOF_GATES:-0}"
+RELEASE_CI_PREFLIGHT="${SOLOPM_RELEASE_CI_PREFLIGHT:-$AUTOMATED_PROOF_GATES}"
 RELEASE_CI_PREFLIGHT_RELATIVE="scripts/ci.sh"
-LOCAL_CRUD_SMOKE="${SOLOPM_LOCAL_CRUD_SMOKE:-0}"
+LOCAL_CRUD_SMOKE="${SOLOPM_LOCAL_CRUD_SMOKE:-$AUTOMATED_PROOF_GATES}"
 LOCAL_CRUD_SMOKE_RELATIVE="script/check_local_crud_smoke.sh"
-RUNTIME_ACCESSIBLE_CRUD_SMOKE="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SMOKE:-0}"
+RUNTIME_ACCESSIBLE_CRUD_SMOKE="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SMOKE:-$AUTOMATED_PROOF_GATES}"
 RUNTIME_ACCESSIBLE_CRUD_SMOKE_RELATIVE="script/check_runtime_accessible_crud_smoke.sh"
-RELEASE_XCODE_PREFLIGHT="${SOLOPM_RELEASE_XCODE_PREFLIGHT:-0}"
+RELEASE_XCODE_PREFLIGHT="${SOLOPM_RELEASE_XCODE_PREFLIGHT:-$AUTOMATED_PROOF_GATES}"
 XCODE_WORKSPACE_RELATIVE=".swiftpm/xcode/package.xcworkspace"
 XCODE_SCHEME="${SOLOPM_XCODE_SCHEME:-SoloPM}"
 XCODE_DESTINATION="${SOLOPM_XCODE_DESTINATION:-platform=macOS}"
-RELEASE_LAUNCH_PREFLIGHT="${SOLOPM_RELEASE_LAUNCH_PREFLIGHT:-0}"
+RELEASE_LAUNCH_PREFLIGHT="${SOLOPM_RELEASE_LAUNCH_PREFLIGHT:-$AUTOMATED_PROOF_GATES}"
 RELEASE_LAUNCH_PREFLIGHT_RELATIVE="script/build_and_run.sh"
 MOCK_PATTERN="(?i:fake|mock|fixture|canned|stub|skeleton|todo|fixme|not[[:space:]_-]*implemented|notimplemented|inmemory)|(?i:(^|[^[:alnum:]_])(demo|sample|placeholder)([^[:alnum:]_]|$))|Static[A-Za-z0-9_]*|:memory:|fatalError|preconditionFailure"
 UI_EVIDENCE_RELATIVE="docs/release/evidence/ui-screenshots.md"
@@ -24,7 +25,7 @@ UI_SCREENSHOT_MIN_WIDTH=640
 UI_SCREENSHOT_MIN_HEIGHT=420
 VOICEOVER_EVIDENCE_RELATIVE="docs/release/evidence/accessibility-voiceover.md"
 ACCESSIBILITY_PREFLIGHT_RELATIVE="script/check_accessibility_preflight.sh"
-ACCESSIBILITY_RUNTIME_PREFLIGHT="${SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT:-0}"
+ACCESSIBILITY_RUNTIME_PREFLIGHT="${SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT:-$AUTOMATED_PROOF_GATES}"
 COMPETITOR_EVIDENCE_RELATIVE="docs/release/evidence/competitor-hands-on.md"
 COMPETITOR_BENCHMARK_RELATIVE="docs/product/competitor-benchmark.md"
 MCP_EVIDENCE_RELATIVE="docs/release/evidence/mcp-inspector.md"
@@ -269,6 +270,10 @@ assert_screenshot_has_visible_content() {
 }
 
 printf "SoloPM release readiness report\n"
+
+if [[ "$AUTOMATED_PROOF_GATES" != "0" && "$AUTOMATED_PROOF_GATES" != "1" ]]; then
+  blocker "SOLOPM_AUTOMATED_PROOF_GATES must be 0 or 1"
+fi
 
 section "Runtime mock/fake/fixture scan"
 if ! command -v rg >/dev/null 2>&1; then
