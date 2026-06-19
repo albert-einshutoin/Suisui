@@ -2106,6 +2106,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("./script/create_voiceover_evidence.sh --passed"))
         XCTAssertTrue(checklist.contains("--confirm-manual-voiceover-pass"))
         XCTAssertTrue(checklist.contains("Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector"))
+        XCTAssertTrue(checklist.contains("docs/release/evidence/competitor-hands-on.md"))
+        XCTAssertTrue(checklist.contains("./script/create_competitor_hands_on_evidence.sh --pending"))
+        XCTAssertTrue(checklist.contains("./script/create_competitor_hands_on_evidence.sh --passed"))
+        XCTAssertTrue(checklist.contains("--confirm-manual-hands-on"))
+        XCTAssertTrue(checklist.contains("Notion -> Todoist -> Linear -> Motion"))
         XCTAssertTrue(checklist.contains("./script/release_readiness_report.sh"))
     }
 
@@ -2204,6 +2209,65 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[ ] 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。"))
     }
 
+    func testCompetitorHandsOnEvidenceGeneratorWritesPendingAndPassedEvidence() throws {
+        let pendingURL = packageRoot()
+            .appendingPathComponent(".build/test-competitor-hands-on-pending.md")
+        let passedURL = packageRoot()
+            .appendingPathComponent(".build/test-competitor-hands-on-passed.md")
+        defer {
+            try? FileManager.default.removeItem(at: pendingURL)
+            try? FileManager.default.removeItem(at: passedURL)
+        }
+
+        let pendingResult = try runScript(
+            "script/create_competitor_hands_on_evidence.sh",
+            arguments: ["--pending", "--output", pendingURL.path]
+        )
+
+        XCTAssertEqual(pendingResult.exitCode, 0, pendingResult.output)
+        let pendingEvidence = try String(contentsOf: pendingURL, encoding: .utf8)
+        XCTAssertTrue(pendingEvidence.contains("Status: pending"))
+        XCTAssertTrue(pendingEvidence.contains("- [ ] Notion"))
+        XCTAssertTrue(pendingEvidence.contains("- [ ] Todoist"))
+        XCTAssertTrue(pendingEvidence.contains("- [ ] Linear"))
+        XCTAssertTrue(pendingEvidence.contains("- [ ] Motion"))
+        XCTAssertTrue(pendingEvidence.contains("Do not set `Status: passed` until every competitor path below is verified"))
+
+        let unsafePassedResult = try runScript(
+            "script/create_competitor_hands_on_evidence.sh",
+            arguments: ["--passed", "--checked-by", "Product reviewer", "--output", passedURL.path]
+        )
+        XCTAssertNotEqual(unsafePassedResult.exitCode, 0)
+        XCTAssertTrue(unsafePassedResult.output.contains("--confirm-manual-hands-on is required with --passed"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
+        let passedResult = try runScript(
+            "script/create_competitor_hands_on_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "Product reviewer",
+                "--check-date", "2026-06-19",
+                "--output", passedURL.path,
+                "--confirm-manual-hands-on"
+            ]
+        )
+
+        XCTAssertEqual(passedResult.exitCode, 0, passedResult.output)
+        let passedEvidence = try String(contentsOf: passedURL, encoding: .utf8)
+        XCTAssertTrue(passedEvidence.contains("Status: passed"))
+        XCTAssertTrue(passedEvidence.contains("- Checked by: Product reviewer"))
+        XCTAssertTrue(passedEvidence.contains("- Check date: 2026-06-19"))
+        XCTAssertTrue(passedEvidence.contains("- Notion: passed"))
+        XCTAssertTrue(passedEvidence.contains("- Todoist: passed"))
+        XCTAssertTrue(passedEvidence.contains("- Linear: passed"))
+        XCTAssertTrue(passedEvidence.contains("- Motion: passed"))
+        XCTAssertTrue(passedEvidence.contains("No external SaaS sync or team workflow was added to SoloPM public alpha scope"))
+        XCTAssertTrue(passedEvidence.contains("Ship / Defer / Reject Delta"))
+        XCTAssertFalse(passedEvidence.localizedCaseInsensitiveContains("pending"))
+        XCTAssertFalse(passedEvidence.contains("- [ ]"))
+        XCTAssertFalse(passedEvidence.localizedCaseInsensitiveContains("placeholder"))
+    }
+
     func testReleaseReadinessReportAggregatesRuntimeMockScanTasksAndPreflight() throws {
         let script = try readPackageFile("script/release_readiness_report.sh")
         let contentCheckScript = try readPackageFile("script/ui_evidence_content_check.swift")
@@ -2258,6 +2322,18 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence app build does not match packaging metadata"))
         XCTAssertTrue(script.contains("NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass"))
         XCTAssertTrue(script.contains("complete release-candidate context"))
+        XCTAssertTrue(script.contains("section \"Competitor hands-on evidence\""))
+        XCTAssertTrue(script.contains("docs/release/evidence/competitor-hands-on.md"))
+        XCTAssertTrue(script.contains("Notion"))
+        XCTAssertTrue(script.contains("Todoist"))
+        XCTAssertTrue(script.contains("Linear"))
+        XCTAssertTrue(script.contains("Motion"))
+        XCTAssertTrue(script.contains("No external SaaS sync or team workflow was added"))
+        XCTAssertTrue(script.contains("missing competitor hands-on evidence file"))
+        XCTAssertTrue(script.contains("Competitor hands-on evidence is not marked passed"))
+        XCTAssertTrue(script.contains("Competitor hands-on evidence still contains pending/template/placeholder text"))
+        XCTAssertTrue(script.contains("Competitor hands-on evidence still contains unchecked checklist markers"))
+        XCTAssertTrue(script.contains("NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass"))
         XCTAssertTrue(script.contains("section \"MCP Inspector evidence\""))
         XCTAssertTrue(script.contains("docs/release/evidence/mcp-inspector.md"))
         XCTAssertTrue(script.contains("Stable baseline: `2025-11-25`"))

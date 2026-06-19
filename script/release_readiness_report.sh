@@ -11,6 +11,7 @@ UI_SCREENSHOT_MIN_BYTES=50000
 UI_SCREENSHOT_MIN_WIDTH=640
 UI_SCREENSHOT_MIN_HEIGHT=420
 VOICEOVER_EVIDENCE_RELATIVE="docs/release/evidence/accessibility-voiceover.md"
+COMPETITOR_EVIDENCE_RELATIVE="docs/release/evidence/competitor-hands-on.md"
 MCP_EVIDENCE_RELATIVE="docs/release/evidence/mcp-inspector.md"
 RUNTIME_SOURCE_DIRS=(
   "$ROOT_DIR/Sources/SoloPMCore"
@@ -46,6 +47,21 @@ VOICEOVER_REQUIRED_CONTEXT_LABELS=(
   "Checked by"
   "Check date"
   "Evidence source"
+)
+COMPETITOR_REQUIRED_MARKERS=(
+  "Status: passed"
+  "Notion"
+  "Todoist"
+  "Linear"
+  "Motion"
+  "No external SaaS sync or team workflow was added"
+  "Ship / Defer / Reject Delta"
+)
+COMPETITOR_REQUIRED_CONTEXT_LABELS=(
+  "Checked by"
+  "Check date"
+  "Evidence source"
+  "Scope"
 )
 MCP_EVIDENCE_REQUIRED_MARKERS=(
   "Generated:"
@@ -346,6 +362,82 @@ else
 fi
 if [[ "$voiceover_evidence_blocker_count" -gt 0 ]]; then
   printf "NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass, Status: passed, complete release-candidate context, complete focus-path notes, and no pending/template/unchecked markers.\n"
+fi
+
+section "Competitor hands-on evidence"
+competitor_evidence_file="$ROOT_DIR/$COMPETITOR_EVIDENCE_RELATIVE"
+competitor_evidence_blocker_count=0
+competitor_template_pattern='(^|[^[:alnum:]_])(pending|todo|tbd|placeholder|sample|example)([^[:alnum:]_]|$)|replace me'
+competitor_blocker() {
+  blocker "$1"
+  competitor_evidence_blocker_count=$((competitor_evidence_blocker_count + 1))
+}
+competitor_context_value() {
+  local context_label="$1"
+  awk -v label="$context_label" '
+    index($0, "- " label ":") == 1 {
+      value = $0
+      sub("^- " label ":[[:space:]]*", "", value)
+      print value
+      found = 1
+      exit
+    }
+    END {
+      if (found != 1) {
+        exit 1
+      }
+    }
+  ' "$competitor_evidence_file" || true
+}
+if [[ ! -f "$competitor_evidence_file" ]]; then
+  competitor_blocker "missing competitor hands-on evidence file: $COMPETITOR_EVIDENCE_RELATIVE"
+else
+  for required_marker in "${COMPETITOR_REQUIRED_MARKERS[@]}"; do
+    if [[ "$required_marker" == "Status: passed" ]]; then
+      marker_present=0
+      grep -Fx "Status: passed" "$competitor_evidence_file" >/dev/null && marker_present=1
+    else
+      marker_present=0
+      grep -F "$required_marker" "$competitor_evidence_file" >/dev/null && marker_present=1
+    fi
+
+    if [[ "$marker_present" -ne 1 ]]; then
+      case "$required_marker" in
+        "Status: passed")
+          competitor_blocker "Competitor hands-on evidence is not marked passed"
+          ;;
+        *)
+          competitor_blocker "Competitor hands-on evidence is missing marker: $required_marker"
+          ;;
+      esac
+    fi
+  done
+
+  if grep -Eiq "$competitor_template_pattern" "$competitor_evidence_file"; then
+    competitor_blocker "Competitor hands-on evidence still contains pending/template/placeholder text"
+  fi
+  if grep -F -- '- [ ]' "$competitor_evidence_file" >/dev/null; then
+    competitor_blocker "Competitor hands-on evidence still contains unchecked checklist markers"
+  fi
+
+  for context_label in "${COMPETITOR_REQUIRED_CONTEXT_LABELS[@]}"; do
+    context_value="$(competitor_context_value "$context_label")"
+    compact_context_value="$(tr -d '[:space:]' <<<"$context_value")"
+
+    if [[ -z "$compact_context_value" ]]; then
+      competitor_blocker "Competitor hands-on evidence missing review context: $context_label"
+      continue
+    fi
+
+    if grep -Eiq "$competitor_template_pattern" <<<"$context_value"; then
+      competitor_blocker "Competitor hands-on evidence has template review context: $context_label"
+    fi
+  done
+fi
+if [[ "$competitor_evidence_blocker_count" -gt 0 ]]; then
+  printf "NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass, Status: passed, complete reviewer/date/source context, complete Notion/Todoist/Linear/Motion notes, and no pending/template/unchecked markers.\n"
+else
+  printf "OK: competitor hands-on evidence covers Notion, Todoist, Linear, Motion, and public alpha scope boundaries\n"
 fi
 
 section "MCP Inspector evidence"

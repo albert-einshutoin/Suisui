@@ -162,7 +162,18 @@ Use the generator to avoid stale bundle/build metadata:
 ./script/create_voiceover_evidence.sh --passed --checked-by "Reviewer Name" --confirm-manual-voiceover-pass
 ```
 
-12. final readiness report
+12. Competitor hands-on evidence
+
+Before checking the Phase 11 competitor benchmark item, replace `docs/release/evidence/competitor-hands-on.md` with the real 2-4 hour hands-on record. The final file must use `Status: passed`, complete reviewer/date/source context, include the Notion -> Todoist -> Linear -> Motion path, document the Ship / Defer / Reject Delta, and explicitly confirm that no external SaaS sync or team workflow was added to public alpha scope.
+
+Use the generator so a pending worksheet cannot be mistaken for a pass:
+
+```bash
+./script/create_competitor_hands_on_evidence.sh --pending
+./script/create_competitor_hands_on_evidence.sh --passed --checked-by "Reviewer Name" --confirm-manual-hands-on
+```
+
+13. final readiness report
 
 ```bash
 source packaging/app_metadata.env
@@ -170,13 +181,13 @@ export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERS
 ./script/release_readiness_report.sh
 ```
 
-13. tag
+14. tag
 
 ```bash
 git tag -a v0.1.0-alpha.1 -m "SoloPM 0.1.0 alpha 1"
 ```
 
-14. release notes
+15. release notes
 
 Use [public-alpha.md](public-alpha.md) as the base. Include artifact names, checksums, supported macOS version, Known Issues, and rollback instructions.
 
