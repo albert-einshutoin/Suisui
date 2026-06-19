@@ -561,6 +561,12 @@ write_voiceover_manual_evidence_command() {
 
 write_competitor_hands_on_evidence_command() {
   printf '%s\n' '```bash'
+  printf '%s\n' './script/create_competitor_hands_on_evidence.sh --pending'
+  printf '%s\n' '```'
+  printf '%s\n' ''
+  printf '%s\n' 'The pending command writes `.tmp/competitor-hands-on/create-evidence-command.sh`. Edit that generated command after the hands-on pass, replace every placeholder with concrete observations, then run it. The explicit passed form is:'
+  printf '%s\n' ''
+  printf '%s\n' '```bash'
   printf '%s\n' './script/create_competitor_hands_on_evidence.sh --passed \'
   printf '%s\n' '  --checked-by "<reviewer name>" \'
   printf '%s\n' '  --environment "<macOS/browser versions, competitor account tiers, paid trial status>" \'
@@ -734,6 +740,7 @@ write_release_actions() {
 
     printf "## Competitor Hands-On\n"
     printf -- "- Complete the 2-4 hour Notion, Todoist, Linear, and Motion hands-on pass before release.\n"
+    printf -- "- Run the pending generator first if you want a fill-in command at \`.tmp/competitor-hands-on/create-evidence-command.sh\`.\n"
     printf -- "- Replace every placeholder below with concrete observations and Ship / Defer / Reject decisions before running it.\n\n"
     write_competitor_hands_on_evidence_command
     printf "\n"
@@ -930,9 +937,20 @@ is_boilerplate_competitor_value() {
     "concrete todoist observation"*|\
     "concrete linear observation"*|\
     "concrete motion observation"*|\
+    "hands on notion project database board task and artifact observation"|\
+    "hands on todoist quick add board list drag movement today upcoming observation"|\
+    "hands on linear project issue detail keyboard command and triage observation"|\
+    "hands on linear project issue status sidebar keyboard command observation"|\
+    "hands on motion scheduling risk deadline change and recommendation explanation observation"|\
+    "hands on motion dated task prioritization schedule risk explanation observation"|\
     "solopm public alpha behavior to ship based on the benchmark"|\
+    "solopm behavior to ship now based on the hands on benchmark"|\
+    "public alpha behavior observed during the hands on pass that should ship"|\
     "behavior to defer until stronger reliability or demand evidence exists"|\
-    "behavior to keep out of public alpha scope")
+    "behavior deferred until reliability or demand evidence is stronger"|\
+    "behavior observed but deferred until stronger reliability or demand evidence exists"|\
+    "behavior to keep out of public alpha scope"|\
+    "behaviors deliberately kept out of public alpha scope")
       return 0
       ;;
     *)
@@ -1916,7 +1934,7 @@ else
   done
 fi
 if [[ "$competitor_evidence_blocker_count" -gt 0 ]]; then
-  printf "NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass by running ./script/create_competitor_hands_on_evidence.sh --passed with complete reviewer/date/source/environment context, complete Notion/Todoist/Linear/Motion notes, Ship/Defer/Reject deltas, --benchmark-output docs/product/competitor-benchmark.md, and no pending/template/unchecked markers; the generator also updates docs/product/competitor-benchmark.md from worksheet/desk research to hands-on findings.\n"
+  printf "NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass by running ./script/create_competitor_hands_on_evidence.sh --pending, editing/running .tmp/competitor-hands-on/create-evidence-command.sh after replacing placeholders, or running ./script/create_competitor_hands_on_evidence.sh --passed with complete reviewer/date/source/environment context, complete Notion/Todoist/Linear/Motion notes, Ship/Defer/Reject deltas, --benchmark-output docs/product/competitor-benchmark.md, and no pending/template/unchecked markers; the generator also updates docs/product/competitor-benchmark.md from worksheet/desk research to hands-on findings.\n"
 else
   printf "OK: competitor hands-on evidence covers Notion, Todoist, Linear, Motion, and public alpha scope boundaries\n"
 fi

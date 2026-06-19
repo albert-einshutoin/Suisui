@@ -1297,6 +1297,7 @@
 - [x] action summary は Local Product Gate Status でcurrent commitのMCP/data/CRUD/local proofがgreenか、残りがmanual/release-machineかを明示する。
 - [x] action summary は `Manual VoiceOver Blockers` と `Competitor Hands-On Blockers` に手動証跡の不足項目を分離表示し、手動作業を完了扱いにしない。
 - [x] action summary は VoiceOver / competitor hands-on の証跡生成コマンドを必須フラグ込みで表示し、placeholderを実測値に置き換える必要を明記する。
+- [x] action summary は competitor hands-on の pending generator と `.tmp/competitor-hands-on/create-evidence-command.sh` を案内し、operatorがplaceholderを置換してからpassed証跡を作れるようにする。
 - [x] action summary は `Phase Checklist Items` に未チェックPhase項目のファイル名・行番号・本文を相対パスで列挙する。
 - [x] action summary は未チェックの手動Phase項目を Manual VoiceOver / Competitor Hands-On / Release Machine / Login Item Manual Check / Manual Review に分類し、どの証跡経路で解消するかを示す。
 - [x] action summary は Login Item Manual Check が残る場合、`create_release_evidence.sh` の `--login-item-toggle`、manual environment、review note を含む実行例を出し、単独checkboxではなく release artifact に紐づく evidence として扱う。

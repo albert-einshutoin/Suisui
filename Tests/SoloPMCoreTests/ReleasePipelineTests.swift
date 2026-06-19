@@ -3415,15 +3415,15 @@ final class ReleasePipelineTests: XCTestCase {
 
         - Notion: passed - Verified.
         - Todoist: passed - Concrete Todoist observation from the hands-on pass.
-        - Linear: passed -
-        - Motion: passed -
+        - Linear: passed - hands-on Linear project, issue detail, keyboard command, and triage observation
+        - Motion: passed - hands-on Motion dated task, prioritization, schedule/risk explanation observation
         - No external SaaS sync or team workflow was added to SoloPM public alpha scope because of this benchmark.
 
         ## Ship / Defer / Reject Delta
 
-        - Ship: SoloPM public-alpha behavior to ship based on the benchmark.
-        - Defer: Behavior to defer until stronger reliability or demand evidence exists.
-        - Reject: Behavior to keep out of public alpha scope.
+        - Ship: SoloPM behavior to ship now based on the hands-on benchmark.
+        - Defer: behavior deferred until reliability or demand evidence is stronger.
+        - Reject: behaviors deliberately kept out of public alpha scope.
         """.write(to: evidenceDirectory.appendingPathComponent("competitor-hands-on.md"), atomically: true, encoding: .utf8)
         try """
         # Competitor Benchmark and Feature Fit
@@ -3450,12 +3450,14 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing review context: Environment"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate concrete note: Notion"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate concrete note: Todoist"))
-        XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing concrete note: Linear"))
-        XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing concrete note: Motion"))
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate concrete note: Linear"))
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate concrete note: Motion"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate decision delta: Ship"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate decision delta: Defer"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate decision delta: Reject"))
         XCTAssertTrue(result.output.contains("Competitor benchmark still reads as desk research or a hands-on worksheet"))
+        XCTAssertTrue(result.output.contains("./script/create_competitor_hands_on_evidence.sh --pending"))
+        XCTAssertTrue(result.output.contains(".tmp/competitor-hands-on/create-evidence-command.sh"))
         XCTAssertTrue(result.output.contains("./script/create_competitor_hands_on_evidence.sh --passed"))
         XCTAssertTrue(result.output.contains("--benchmark-output docs/product/competitor-benchmark.md"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
@@ -4303,6 +4305,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Competitor benchmark still reads as desk research or a hands-on worksheet"))
         XCTAssertTrue(script.contains("macOS/browser versions|competitor app/account tiers|whether any paid trial"))
         XCTAssertTrue(script.contains("NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass"))
+        XCTAssertTrue(script.contains("./script/create_competitor_hands_on_evidence.sh --pending"))
+        XCTAssertTrue(script.contains(".tmp/competitor-hands-on/create-evidence-command.sh"))
         XCTAssertTrue(script.contains("./script/create_competitor_hands_on_evidence.sh --passed"))
         XCTAssertTrue(script.contains("--benchmark-output docs/product/competitor-benchmark.md"))
         XCTAssertTrue(script.contains("section \"MCP Inspector evidence\""))
@@ -4400,6 +4404,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("--project-navigation-note \"<VoiceOver observation for sidebar project navigation>\""))
         XCTAssertTrue(script.contains("--no-unlabeled-crud-note \"<VoiceOver observation proving primary CRUD controls have labels or help>\""))
         XCTAssertTrue(script.contains("## Competitor Hands-On"))
+        XCTAssertTrue(script.contains("Run the pending generator first if you want a fill-in command at \\`.tmp/competitor-hands-on/create-evidence-command.sh\\`."))
+        XCTAssertTrue(script.contains("./script/create_competitor_hands_on_evidence.sh --pending"))
+        XCTAssertTrue(script.contains(".tmp/competitor-hands-on/create-evidence-command.sh"))
         XCTAssertTrue(script.contains("./script/create_competitor_hands_on_evidence.sh --passed"))
         XCTAssertTrue(script.contains("--benchmark-output docs/product/competitor-benchmark.md"))
         XCTAssertTrue(script.contains("--notion-note \"<hands-on Notion project database, board, task, and artifact observation>\""))
@@ -4422,6 +4429,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("The action summary includes a Local Product Gate Status section so reviewers can distinguish current-commit local MCP/data/CRUD proof from manual and release-machine blockers."))
         XCTAssertTrue(checklist.contains("routes unchecked manual gates to Manual VoiceOver, Competitor Hands-On, Release Machine, Login Item Manual Check, or Manual Review"))
         XCTAssertTrue(checklist.contains("routes verifier blockers to Signing Configuration, Notarization, Sparkle / Appcast, Gatekeeper / Stapling, Release Evidence, Source Hygiene, or Local Inspection"))
+        XCTAssertTrue(checklist.contains("The Competitor Hands-On section includes the pending generator and `.tmp/competitor-hands-on/create-evidence-command.sh` path before the final passed command"))
         XCTAssertTrue(phase.contains("[x] `release_readiness_report.sh` は `SOLOPM_RELEASE_ACTIONS_FILE` 指定時に残blockerのoperator action summaryを書き出す。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Source commit` と tracked source tree の clean / dirty / unavailable 状態を併記する。"))
         XCTAssertTrue(phase.contains("[x] action summary は今回の実行で発生した具体blockerを `Current Blocker Groups` のチェックリストとして列挙する。"))
@@ -4431,6 +4439,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] action summary は clean-tree automated preflight evidence が有効な場合、accepted evidence、source commit、generated at、passed gatesを表示し、再実行指示だけを出さない。"))
         XCTAssertTrue(phase.contains("[x] action summary は Local Product Gate Status でcurrent commitのMCP/data/CRUD/local proofがgreenか、残りがmanual/release-machineかを明示する。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Manual VoiceOver Blockers` と `Competitor Hands-On Blockers` に手動証跡の不足項目を分離表示し、手動作業を完了扱いにしない。"))
+        XCTAssertTrue(phase.contains("[x] action summary は competitor hands-on の pending generator と `.tmp/competitor-hands-on/create-evidence-command.sh` を案内し、operatorがplaceholderを置換してからpassed証跡を作れるようにする。"))
         XCTAssertTrue(phase.contains("[x] action summary は未チェックの手動Phase項目を Manual VoiceOver / Competitor Hands-On / Release Machine / Login Item Manual Check / Manual Review に分類し"))
         XCTAssertTrue(phase.contains("[x] action summary は Release Machine blocker が残る場合、署名、notarization、package、appcast、release evidence、final preflight の順序付きコマンドを出す。"))
     }
@@ -4658,6 +4667,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("- [ ] VoiceOver accessibility evidence missing release context: Source commit"))
         XCTAssertTrue(actionSummary.contains("- [ ] VoiceOver accessibility evidence missing concrete focus note: Task inspector"))
         XCTAssertTrue(actionSummary.contains("## Competitor Hands-On Blockers"))
+        XCTAssertTrue(actionSummary.contains("```bash\n./script/create_competitor_hands_on_evidence.sh --pending"))
+        XCTAssertTrue(actionSummary.contains(".tmp/competitor-hands-on/create-evidence-command.sh"))
         XCTAssertTrue(actionSummary.contains("```bash\n./script/create_competitor_hands_on_evidence.sh --passed \\"))
         XCTAssertTrue(actionSummary.contains("--todoist-note \"<hands-on Todoist quick add, board/list, drag movement, Today/Upcoming observation>\""))
         XCTAssertTrue(actionSummary.contains("--confirm-manual-hands-on"))
