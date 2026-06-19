@@ -86,6 +86,7 @@ public struct ExternalMCPToolExecutor: Sendable {
 
         do {
             let result = try await client.callTool(name: toolName, arguments: arguments)
+            try validateStructuredOutputIfNeeded(result, descriptor: descriptor)
             var metadata = auditMetadata(
                 toolName: toolName,
                 arguments: arguments,
@@ -113,6 +114,75 @@ public struct ExternalMCPToolExecutor: Sendable {
             metadata["error"] = redactor.redact(String(describing: error)).text
             try auditLogger.record(AuditEvent(category: "external_mcp", action: "\(server.id).\(toolName)", status: .failed, metadata: metadata))
             throw error
+        }
+    }
+
+    private func validateStructuredOutputIfNeeded(
+        _ result: MCPToolCallResult,
+        descriptor: ExternalMCPToolDescriptor
+    ) throws {
+        guard !result.isError else {
+            return
+        }
+        guard let outputSchema = descriptor.definition.outputSchema else {
+            return
+        }
+        guard let structuredContent = result.structuredContent else {
+            throw MCPClientError.invalidResponse(
+                serverID: server.id,
+                method: "tools/call",
+                reason: "Missing result.structuredContent for tool outputSchema."
+            )
+        }
+        guard let structuredObject = structuredContent.objectValue else {
+            throw MCPClientError.invalidResponse(
+                serverID: server.id,
+                method: "tools/call",
+                reason: "result.structuredContent must be an object for tool outputSchema."
+            )
+        }
+
+        try validateRequiredOutputFields(outputSchema: outputSchema, structuredObject: structuredObject)
+        try validatePrimitiveOutputTypes(outputSchema: outputSchema, structuredObject: structuredObject)
+    }
+
+    private func validateRequiredOutputFields(
+        outputSchema: [String: JSONValue],
+        structuredObject: [String: JSONValue]
+    ) throws {
+        guard case .array(let requiredFields)? = outputSchema["required"] else {
+            return
+        }
+
+        for field in requiredFields.compactMap(\.stringValue) where structuredObject[field] == nil {
+            throw MCPClientError.invalidResponse(
+                serverID: server.id,
+                method: "tools/call",
+                reason: "structuredContent missing required output field: \(field)."
+            )
+        }
+    }
+
+    private func validatePrimitiveOutputTypes(
+        outputSchema: [String: JSONValue],
+        structuredObject: [String: JSONValue]
+    ) throws {
+        guard let propertySchemas = outputSchema["properties"]?.objectValue else {
+            return
+        }
+
+        for propertyName in propertySchemas.keys.sorted() {
+            guard let value = structuredObject[propertyName],
+                  let expectedType = propertySchemas[propertyName]?.objectValue?["type"]?.stringValue else {
+                continue
+            }
+            guard value.matchesOutputSchemaType(expectedType) else {
+                throw MCPClientError.invalidResponse(
+                    serverID: server.id,
+                    method: "tools/call",
+                    reason: "structuredContent.\(propertyName) must match outputSchema type \(expectedType)."
+                )
+            }
         }
     }
 
@@ -165,6 +235,36 @@ public struct ExternalMCPToolExecutor: Sendable {
             "secret",
             "token"
         ].contains { normalized.contains($0) }
+    }
+}
+
+private extension JSONValue {
+    func matchesOutputSchemaType(_ expectedType: String) -> Bool {
+        switch expectedType {
+        case "string":
+            if case .string = self { return true }
+            return false
+        case "number":
+            if case .number = self { return true }
+            return false
+        case "integer":
+            guard case .number(let value) = self else { return false }
+            return value.isFinite && value.rounded(.towardZero) == value
+        case "boolean":
+            if case .bool = self { return true }
+            return false
+        case "object":
+            if case .object = self { return true }
+            return false
+        case "array":
+            if case .array = self { return true }
+            return false
+        case "null":
+            if case .null = self { return true }
+            return false
+        default:
+            return true
+        }
     }
 }
 

@@ -34,8 +34,8 @@ Primary references:
 | Tools list | Implemented | `MCPClient.listTools` calls `tools/list` and parses `tools` as an array of tool definitions. |
 | Tools list pagination | Implemented | `MCPClient.listTools` follows `result.nextCursor` with `params.cursor`, rejects malformed cursor metadata, and guards against repeated cursors so paginated servers are not silently truncated. |
 | Tool name policy | Implemented for release subset | MCP marks 1-128 character ASCII tool names with letters, digits, underscore, hyphen, and dot as the interoperable shape, and expects names to be unique within a server. SoloPM treats names outside that shape or duplicate names across paginated responses as invalid to keep Settings, audit rows, and approval policies deterministic. |
-| Tools call | Implemented | `MCPClient.callTool` calls `tools/call` with `name` and `arguments`, and parses `content`, `isError`, and `structuredContent`. |
-| Tool schema typing | Implemented for release subset | `inputSchema` is required, root `type` must be `object`, omitted `$schema` is treated as JSON Schema 2020-12, explicit 2020-12 dialect is accepted, unsupported dialects are rejected with `invalid-schema`, `required` must be an array of strings, and every `properties.*` schema must be an object. Full JSON Schema keyword validation is not claimed yet. |
+| Tools call | Implemented | `MCPClient.callTool` calls `tools/call` with `name` and `arguments`, and parses `content`, `isError`, and `structuredContent`. Successful tool results with a declared `outputSchema` are validated before success audit; tool execution errors with `isError = true` stay actionable and skip output schema validation. |
+| Tool schema typing | Implemented for release subset | `inputSchema` is required, root `type` must be `object`, omitted `$schema` is treated as JSON Schema 2020-12, explicit 2020-12 dialect is accepted, unsupported dialects are rejected with `invalid-schema`, `required` must be an array of strings, and every `properties.*` schema must be an object. `outputSchema` is optional, must be a JSON object when present, may omit root `type`, rejects non-object root `type`, and validates `structuredContent` required fields plus primitive property types. Full JSON Schema keyword validation is not claimed yet. |
 | Tool permission | Implemented for SoloPM policy | Unknown external tools default to disabled; write tools require approval; dangerous tools are blocked even after paid entitlement approval. |
 | Paid execution boundary | Implemented | External MCP registrations and diagnostics are available on Free, but `tools/call` execution requires `FeatureGate.advancedMCPExecution`; ADR 0008 records the decision. |
 | Audit | Implemented | External MCP execution records server/tool identity, permission, approval state, duration, result/error, and redacted arguments. |
@@ -65,6 +65,13 @@ Primary references:
 - `ExternalMCPTests.testMCPStdioTransportReportsMalformedJSONAsInvalidResponse`
 - `ExternalMCPTests.testClientRejectsNonBooleanToolCallIsError`
 - `ExternalMCPTests.testClientRejectsNonStringToolCallTextContent`
+- `ExternalMCPTests.testToolsListParsesStructuredOutputSchema`
+- `ExternalMCPTests.testToolsListRejectsMalformedOutputSchema`
+- `ExternalMCPTests.testExternalMCPExecutionAcceptsStructuredContentMatchingOutputSchema`
+- `ExternalMCPTests.testExternalMCPExecutionRequiresStructuredContentWhenOutputSchemaProvided`
+- `ExternalMCPTests.testExternalMCPExecutionRejectsStructuredContentViolatingOutputSchema`
+- `ExternalMCPTests.testExternalMCPExecutionRejectsStructuredContentTypeMismatch`
+- `ExternalMCPTests.testExternalMCPExecutionSkipsOutputSchemaValidationForToolErrors`
 - `ExternalMCPTests.testToolsListRejectsInvalidToolInputSchema`
 - `ExternalMCPTests.testToolsListRequiresToolInputSchema`
 - `ExternalMCPTests.testToolsListRequiresObjectRootInputSchemaType`
@@ -88,7 +95,7 @@ Primary references:
 ## Gaps Before Claiming Full Compliance
 
 - Add a deeper method-by-method matrix for optional capabilities before adding Resources, Prompts, or Streamable HTTP.
-- Add comprehensive JSON Schema keyword validation only when SoloPM needs to reason about server tool arguments beyond the release subset. The current release validates MCP-required schema shape and dialect boundaries, but does not claim full keyword-level JSON Schema validation.
+- Add comprehensive JSON Schema keyword validation only when SoloPM needs to reason about server tool arguments or outputs beyond the release subset. The current release validates MCP-required schema shape, dialect boundaries, `outputSchema` object shape, required structured output fields, and primitive output types, but does not claim full keyword-level JSON Schema validation.
 - Track the draft `2026-07-28` discovery / metadata model separately from the release baseline.
 - Add Streamable HTTP only after stdio compliance evidence is stable.
 

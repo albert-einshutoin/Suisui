@@ -83,6 +83,16 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testToolsListRejectsDuplicateToolNamesAcrossPages"))
         XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testToolsListRejectsUnsupportedInputSchemaDialect"))
         XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testToolsListRejectsNonObjectPropertySchemas"))
+        XCTAssertTrue(complianceReview.contains("outputSchema"))
+        XCTAssertTrue(complianceReview.contains("structuredContent"))
+        XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testToolsListParsesStructuredOutputSchema"))
+        XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testToolsListRejectsMalformedOutputSchema"))
+        XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testExternalMCPExecutionRequiresStructuredContentWhenOutputSchemaProvided"))
+        XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testExternalMCPExecutionRejectsStructuredContentViolatingOutputSchema"))
+        XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testExternalMCPExecutionRejectsStructuredContentTypeMismatch"))
+        XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testExternalMCPExecutionSkipsOutputSchemaValidationForToolErrors"))
+        XCTAssertTrue(evidence.contains("Structured output and `outputSchema` release-subset validation"))
+        XCTAssertTrue(evidence.contains("ExternalMCPTests.testToolsListParsesStructuredOutputSchema"))
     }
 
     func testInspectorVerificationScriptRunsWithFakeInspectorWithoutNetwork() throws {

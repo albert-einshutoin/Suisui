@@ -69,12 +69,20 @@ public struct MCPToolDefinition: Equatable, Sendable {
     public var title: String?
     public var description: String
     public var inputSchema: [String: JSONValue]
+    public var outputSchema: [String: JSONValue]?
 
-    public init(name: String, title: String? = nil, description: String, inputSchema: [String: JSONValue]) {
+    public init(
+        name: String,
+        title: String? = nil,
+        description: String,
+        inputSchema: [String: JSONValue],
+        outputSchema: [String: JSONValue]? = nil
+    ) {
         self.name = name
         self.title = title
         self.description = description
         self.inputSchema = inputSchema
+        self.outputSchema = outputSchema
     }
 
     public var jsonValue: JSONValue {
@@ -85,6 +93,9 @@ public struct MCPToolDefinition: Equatable, Sendable {
         ]
         if let title {
             object["title"] = .string(title)
+        }
+        if let outputSchema {
+            object["outputSchema"] = .object(outputSchema)
         }
         return .object(object)
     }
@@ -130,11 +141,26 @@ public struct MCPToolDefinition: Equatable, Sendable {
         }
         try validateInputSchema(schemaObject)
         inputSchema = schemaObject
+        let outputSchema: [String: JSONValue]?
+        if let outputSchemaValue = object["outputSchema"] {
+            guard let schemaObject = outputSchemaValue.objectValue else {
+                throw MCPClientError.invalidResponse(
+                    serverID: "",
+                    method: "tools/list",
+                    reason: "Tool entry outputSchema must be an object when present."
+                )
+            }
+            try validateOutputSchema(schemaObject)
+            outputSchema = schemaObject
+        } else {
+            outputSchema = nil
+        }
         return MCPToolDefinition(
             name: name,
             title: title,
             description: description,
-            inputSchema: inputSchema
+            inputSchema: inputSchema,
+            outputSchema: outputSchema
         )
     }
 
@@ -197,6 +223,83 @@ public struct MCPToolDefinition: Equatable, Sendable {
                     reason: "Tool entry inputSchema.properties.\(propertyName) must be an object."
                 )
             }
+        }
+    }
+
+    private static func validateOutputSchema(_ outputSchema: [String: JSONValue]) throws {
+        try validateSchemaDialect(
+            outputSchema,
+            fieldName: "outputSchema",
+            supportedDialect: isSupportedInputSchemaDialect
+        )
+
+        if let type = outputSchema["type"] {
+            guard type == .string("object") else {
+                throw MCPClientError.invalidResponse(
+                    serverID: "",
+                    method: "tools/list",
+                    reason: "Tool entry outputSchema.type must be \"object\" when present."
+                )
+            }
+        }
+
+        if let required = outputSchema["required"] {
+            guard case .array(let values) = required else {
+                throw MCPClientError.invalidResponse(
+                    serverID: "",
+                    method: "tools/list",
+                    reason: "Tool entry outputSchema.required must be an array of strings."
+                )
+            }
+            for value in values where value.stringValue == nil {
+                throw MCPClientError.invalidResponse(
+                    serverID: "",
+                    method: "tools/list",
+                    reason: "Tool entry outputSchema.required must be an array of strings."
+                )
+            }
+        }
+
+        if let properties = outputSchema["properties"] {
+            guard let propertySchemas = properties.objectValue else {
+                throw MCPClientError.invalidResponse(
+                    serverID: "",
+                    method: "tools/list",
+                    reason: "Tool entry outputSchema.properties must be an object."
+                )
+            }
+
+            for (propertyName, propertySchema) in propertySchemas where propertySchema.objectValue == nil {
+                throw MCPClientError.invalidResponse(
+                    serverID: "",
+                    method: "tools/list",
+                    reason: "Tool entry outputSchema.properties.\(propertyName) must be an object."
+                )
+            }
+        }
+    }
+
+    private static func validateSchemaDialect(
+        _ schema: [String: JSONValue],
+        fieldName: String,
+        supportedDialect: (String) -> Bool
+    ) throws {
+        guard let dialect = schema["$schema"] else {
+            return
+        }
+        guard let dialectString = dialect.stringValue else {
+            throw MCPClientError.invalidResponse(
+                serverID: "",
+                method: "tools/list",
+                reason: "Tool entry \(fieldName).$schema must be a string when present."
+            )
+        }
+        guard supportedDialect(dialectString) else {
+            throw MCPClientError.invalidResponse(
+                serverID: "",
+                method: "tools/list",
+                reason: "Tool entry \(fieldName).$schema is not supported: \(dialectString)."
+            )
         }
     }
 

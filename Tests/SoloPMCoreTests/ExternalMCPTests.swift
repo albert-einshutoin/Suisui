@@ -478,6 +478,116 @@ final class ExternalMCPTests: XCTestCase {
         }
     }
 
+    func testToolsListParsesStructuredOutputSchema() async throws {
+        let transport = RecordingMCPTransport { request in
+            if request.method == "tools/list" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "tools": .array([
+                            .object([
+                                "name": .string("read_status"),
+                                "description": .string("Read structured project status."),
+                                "inputSchema": .object(["type": .string("object")]),
+                                "outputSchema": .object([
+                                    "type": .string("object"),
+                                    "properties": .object([
+                                        "status": .object(["type": .string("string")])
+                                    ]),
+                                    "required": .array([.string("status")])
+                                ])
+                            ])
+                        ])
+                    ])
+                )
+            }
+            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+        }
+        let client = MCPClient(serverID: "structured", transport: transport)
+
+        let tools = try await client.listTools()
+
+        XCTAssertEqual(tools.first?.outputSchema?["type"], .string("object"))
+        XCTAssertEqual(tools.first?.outputSchema?["required"], .array([.string("status")]))
+    }
+
+    func testToolsListRejectsMalformedOutputSchema() async throws {
+        let cases: [(schema: JSONValue, expectedReason: String)] = [
+            (
+                .string("not-an-object"),
+                "Tool entry outputSchema must be an object when present."
+            ),
+            (
+                .object([
+                    "type": .string("array")
+                ]),
+                "Tool entry outputSchema.type must be \"object\" when present."
+            ),
+            (
+                .object([
+                    "type": .string("object"),
+                    "required": .array([.number(42)])
+                ]),
+                "Tool entry outputSchema.required must be an array of strings."
+            ),
+            (
+                .object([
+                    "$schema": .number(42),
+                    "type": .string("object")
+                ]),
+                "Tool entry outputSchema.$schema must be a string when present."
+            ),
+            (
+                .object([
+                    "type": .string("object"),
+                    "properties": .array([])
+                ]),
+                "Tool entry outputSchema.properties must be an object."
+            ),
+            (
+                .object([
+                    "type": .string("object"),
+                    "properties": .object([
+                        "status": .string("not-a-schema")
+                    ])
+                ]),
+                "Tool entry outputSchema.properties.status must be an object."
+            )
+        ]
+
+        for testCase in cases {
+            let transport = RecordingMCPTransport { request in
+                if request.method == "tools/list" {
+                    return MCPJSONRPCResponse(
+                        id: request.id,
+                        result: .object([
+                            "tools": .array([
+                                .object([
+                                    "name": .string("read_status"),
+                                    "description": .string("Malformed output schema."),
+                                    "inputSchema": .object(["type": .string("object")]),
+                                    "outputSchema": testCase.schema
+                                ])
+                            ])
+                        ])
+                    )
+                }
+                return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+            }
+            let client = MCPClient(serverID: "structured", transport: transport)
+
+            do {
+                _ = try await client.listTools()
+                XCTFail("malformed outputSchema should fail")
+            } catch let error as MCPClientError {
+                XCTAssertEqual(
+                    error,
+                    .invalidResponse(serverID: "structured", method: "tools/list", reason: testCase.expectedReason)
+                )
+            }
+        }
+    }
+
     @MainActor
     func testExternalMCPSettingsViewModelPersistsRegistration() throws {
         let store = InMemoryMCPServerRegistrationStore()
@@ -1451,6 +1561,212 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(logger.recordedEvents.last?.metadata["result"], "succeeded")
     }
 
+    func testExternalMCPExecutionAcceptsStructuredContentMatchingOutputSchema() async throws {
+        let logger = InMemoryAuditLogger()
+        let transport = RecordingMCPTransport { request in
+            if request.method == "tools/call" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "content": .array([
+                            MCPContentItem(type: "text", text: "{\"status\":\"ok\",\"openTasks\":2}").jsonValue
+                        ]),
+                        "structuredContent": .object([
+                            "status": .string("ok"),
+                            "openTasks": .number(2)
+                        ])
+                    ])
+                )
+            }
+            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+        }
+        let executor = makeExecutor(
+            transport: transport,
+            policies: ["read_status": .read],
+            auditLogger: logger,
+            tools: [structuredReadStatusTool()]
+        )
+
+        let result = try await executor.call(
+            toolName: "read_status",
+            arguments: [:],
+            context: ToolExecutionContext(source: .developerTool)
+        )
+
+        XCTAssertEqual(result.structuredContent?.objectValue?["status"], .string("ok"))
+        XCTAssertEqual(logger.recordedEvents.map(\.status), [.started, .succeeded])
+        XCTAssertEqual(logger.recordedEvents.last?.metadata["result"], "succeeded")
+    }
+
+    func testExternalMCPExecutionRequiresStructuredContentWhenOutputSchemaProvided() async throws {
+        let logger = InMemoryAuditLogger()
+        let transport = RecordingMCPTransport { request in
+            if request.method == "tools/call" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "content": .array([MCPContentItem(type: "text", text: "status: ok").jsonValue])
+                    ])
+                )
+            }
+            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+        }
+        let executor = makeExecutor(
+            transport: transport,
+            policies: ["read_status": .read],
+            auditLogger: logger,
+            tools: [structuredReadStatusTool()]
+        )
+
+        do {
+            _ = try await executor.call(
+                toolName: "read_status",
+                arguments: [:],
+                context: ToolExecutionContext(source: .developerTool)
+            )
+            XCTFail("tools/call without structuredContent should fail when outputSchema exists")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(
+                    serverID: "fake",
+                    method: "tools/call",
+                    reason: "Missing result.structuredContent for tool outputSchema."
+                )
+            )
+        }
+
+        XCTAssertEqual(logger.recordedEvents.map(\.status), [.started, .failed])
+        XCTAssertTrue(logger.recordedEvents.last?.metadata["error"]?.contains("Missing result.structuredContent") ?? false)
+    }
+
+    func testExternalMCPExecutionRejectsStructuredContentViolatingOutputSchema() async throws {
+        let logger = InMemoryAuditLogger()
+        let transport = RecordingMCPTransport { request in
+            if request.method == "tools/call" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "content": .array([
+                            MCPContentItem(type: "text", text: "{\"openTasks\":2}").jsonValue
+                        ]),
+                        "structuredContent": .object([
+                            "openTasks": .number(2)
+                        ])
+                    ])
+                )
+            }
+            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+        }
+        let executor = makeExecutor(
+            transport: transport,
+            policies: ["read_status": .read],
+            auditLogger: logger,
+            tools: [structuredReadStatusTool()]
+        )
+
+        do {
+            _ = try await executor.call(
+                toolName: "read_status",
+                arguments: [:],
+                context: ToolExecutionContext(source: .developerTool)
+            )
+            XCTFail("structuredContent missing required output should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(
+                    serverID: "fake",
+                    method: "tools/call",
+                    reason: "structuredContent missing required output field: status."
+                )
+            )
+        }
+
+        XCTAssertEqual(logger.recordedEvents.map(\.status), [.started, .failed])
+        XCTAssertTrue(logger.recordedEvents.last?.metadata["error"]?.contains("structuredContent missing required output field") ?? false)
+    }
+
+    func testExternalMCPExecutionRejectsStructuredContentTypeMismatch() async throws {
+        let logger = InMemoryAuditLogger()
+        let transport = RecordingMCPTransport { request in
+            if request.method == "tools/call" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "content": .array([
+                            MCPContentItem(type: "text", text: "{\"status\":42,\"openTasks\":2}").jsonValue
+                        ]),
+                        "structuredContent": .object([
+                            "status": .number(42),
+                            "openTasks": .number(2)
+                        ])
+                    ])
+                )
+            }
+            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+        }
+        let executor = makeExecutor(
+            transport: transport,
+            policies: ["read_status": .read],
+            auditLogger: logger,
+            tools: [structuredReadStatusTool()]
+        )
+
+        do {
+            _ = try await executor.call(
+                toolName: "read_status",
+                arguments: [:],
+                context: ToolExecutionContext(source: .developerTool)
+            )
+            XCTFail("structuredContent type mismatch should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(
+                    serverID: "fake",
+                    method: "tools/call",
+                    reason: "structuredContent.status must match outputSchema type string."
+                )
+            )
+        }
+
+        XCTAssertEqual(logger.recordedEvents.map(\.status), [.started, .failed])
+    }
+
+    func testExternalMCPExecutionSkipsOutputSchemaValidationForToolErrors() async throws {
+        let logger = InMemoryAuditLogger()
+        let transport = RecordingMCPTransport { request in
+            if request.method == "tools/call" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "content": .array([MCPContentItem(type: "text", text: "Invalid input").jsonValue]),
+                        "isError": .bool(true)
+                    ])
+                )
+            }
+            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+        }
+        let executor = makeExecutor(
+            transport: transport,
+            policies: ["read_status": .read],
+            auditLogger: logger,
+            tools: [structuredReadStatusTool()]
+        )
+
+        let result = try await executor.call(
+            toolName: "read_status",
+            arguments: [:],
+            context: ToolExecutionContext(source: .developerTool)
+        )
+
+        XCTAssertTrue(result.isError)
+        XCTAssertNil(result.structuredContent)
+        XCTAssertEqual(logger.recordedEvents.map(\.status), [.started, .succeeded])
+        XCTAssertEqual(logger.recordedEvents.last?.metadata["result"], "tool_error")
+    }
+
     func testReadExecutionAuditsSensitiveArgumentKeyEvenWhenValueHasSpaces() async throws {
         let logger = InMemoryAuditLogger()
         let transport = ExternalMCPTestKit.makeFakeServerTransport()
@@ -2136,14 +2452,16 @@ final class ExternalMCPTests: XCTestCase {
         policies: [String: ExternalMCPToolPermission],
         auditLogger: any AuditLogger = InMemoryAuditLogger(),
         processController: any MCPProcessController = RecordingMCPProcessController(),
-        entitlementStore: any EntitlementStore = StaticMCPEntitlementStore(plan: .pro)
+        entitlementStore: any EntitlementStore = StaticMCPEntitlementStore(plan: .pro),
+        tools: [MCPToolDefinition] = ExternalMCPTestKit.fakeToolDefinitions()
     ) -> ExternalMCPToolExecutor {
         makeExecutor(
             client: MCPClient(serverID: "fake", transport: transport),
             policies: policies,
             auditLogger: auditLogger,
             processController: processController,
-            entitlementStore: entitlementStore
+            entitlementStore: entitlementStore,
+            tools: tools
         )
     }
 
@@ -2152,12 +2470,13 @@ final class ExternalMCPTests: XCTestCase {
         policies: [String: ExternalMCPToolPermission],
         auditLogger: any AuditLogger = InMemoryAuditLogger(),
         processController: any MCPProcessController = RecordingMCPProcessController(),
-        entitlementStore: any EntitlementStore = StaticMCPEntitlementStore(plan: .pro)
+        entitlementStore: any EntitlementStore = StaticMCPEntitlementStore(plan: .pro),
+        tools: [MCPToolDefinition] = ExternalMCPTestKit.fakeToolDefinitions()
     ) -> ExternalMCPToolExecutor {
         let server = MCPRegisteredServerDescriptor(id: "fake", displayName: "Fake MCP")
         let registry = ExternalMCPToolRegistry(
             server: server,
-            tools: ExternalMCPTestKit.fakeToolDefinitions(),
+            tools: tools,
             classifier: ExternalMCPToolClassifier(explicitPolicies: policies)
         )
         return ExternalMCPToolExecutor(
@@ -2167,6 +2486,23 @@ final class ExternalMCPTests: XCTestCase {
             auditLogger: auditLogger,
             processController: processController,
             entitlementChecker: EntitlementChecker(store: entitlementStore)
+        )
+    }
+
+    private func structuredReadStatusTool() -> MCPToolDefinition {
+        MCPToolDefinition(
+            name: "read_status",
+            title: "Read Status",
+            description: "Read structured project status.",
+            inputSchema: ["type": .string("object")],
+            outputSchema: [
+                "type": .string("object"),
+                "properties": .object([
+                    "status": .object(["type": .string("string")]),
+                    "openTasks": .object(["type": .string("integer")])
+                ]),
+                "required": .array([.string("status")])
+            ]
         )
     }
 
