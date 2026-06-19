@@ -4128,6 +4128,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("- [x] MCP compliance preflight: passed"))
         XCTAssertTrue(actionSummary.contains("## Local Product Gate Status"))
         XCTAssertTrue(actionSummary.contains("Local product gates"))
+        XCTAssertTrue(actionSummary.contains("The generated VoiceOver evidence command is pinned to a clean tracked source tree and the source commit it was created for."))
+        XCTAssertTrue(actionSummary.contains("The generated competitor hands-on evidence command is pinned to a clean tracked source tree and the source commit it was created for."))
+        XCTAssertTrue(actionSummary.contains("The generated release-machine evidence command is pinned to a clean tracked source tree and the source commit it was created for."))
         XCTAssertFalse(actionSummary.contains("- Run: `SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh`"))
     }
 
@@ -4570,6 +4573,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("./script/prepare_release_machine_evidence.sh"))
         XCTAssertTrue(script.contains(".tmp/release-machine/release-machine-worksheet.md"))
         XCTAssertTrue(script.contains(".tmp/release-machine/create-release-evidence-command.sh"))
+        XCTAssertTrue(script.contains("The generated VoiceOver evidence command is pinned to a clean tracked source tree and the source commit it was created for."))
+        XCTAssertTrue(script.contains("The generated competitor hands-on evidence command is pinned to a clean tracked source tree and the source commit it was created for."))
+        XCTAssertTrue(script.contains("The generated release-machine evidence command is pinned to a clean tracked source tree and the source commit it was created for."))
         XCTAssertTrue(script.contains("packaging/signing.env"))
         XCTAssertTrue(script.contains("packaging/notarization.env"))
         XCTAssertTrue(script.contains("write_release_machine_runbook_command()"))
@@ -4601,6 +4607,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] action summary は Local Product Gate Status でcurrent commitのMCP/data/CRUD/local proofがgreenか、残りがmanual/release-machineかを明示する。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Manual VoiceOver Blockers` と `Competitor Hands-On Blockers` に手動証跡の不足項目を分離表示し、手動作業を完了扱いにしない。"))
         XCTAssertTrue(phase.contains("[x] action summary は competitor hands-on の pending generator と `.tmp/competitor-hands-on/create-evidence-command.sh` を案内し、operatorがplaceholderを置換してからpassed証跡を作れるようにする。"))
+        XCTAssertTrue(phase.contains("[x] action summary は VoiceOver / competitor hands-on / release-machine の生成済み証跡コマンドが clean tracked source tree と生成時 source commit にpinされ、source変更後は再生成が必要なことを表示する。"))
         XCTAssertTrue(phase.contains("[x] action summary は未チェックの手動Phase項目を Manual VoiceOver / Competitor Hands-On / Release Machine / Login Item Manual Check / Manual Review に分類し"))
         XCTAssertTrue(phase.contains("[x] action summary は Release Machine blocker が残る場合、署名、notarization、package、appcast、release evidence、final preflight の順序付きコマンドを出す。"))
         XCTAssertTrue(phase.contains("[x] `script/prepare_release_machine_evidence.sh` は `.tmp/release-machine/release-machine-worksheet.md` と `.tmp/release-machine/create-release-evidence-command.sh` を生成し"))
