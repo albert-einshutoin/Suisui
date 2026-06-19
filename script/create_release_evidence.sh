@@ -193,6 +193,55 @@ trim_text() {
   printf "%s" "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
 }
 
+manual_environment_lacks_release_context() {
+  local normalized
+  normalized="$(trim_text "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[[:space:]]+/ /g')"
+
+  case "$normalized" in
+    *macos*)
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+
+  case "$normalized" in
+    *"clean user"*|\
+    *"clean vm"*|\
+    *"clean environment"*|\
+    *"fresh user"*|\
+    *"separate user"*|\
+    *"virtual machine"*|\
+    *"vm"*|\
+    *install*)
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+
+  case "$normalized" in
+    *arm64*|\
+    *arm64e*|\
+    *x86_64*|\
+    *intel*|\
+    *"apple silicon"*|\
+    *macbook*|\
+    *"mac mini"*|\
+    *"mac studio"*|\
+    *imac*|\
+    *m1*|\
+    *m2*|\
+    *m3*|\
+    *m4*)
+      return 1
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+}
+
 is_placeholder_manual_environment() {
   local normalized
   normalized="$(trim_text "$1" | tr '[:upper:]' '[:lower:]')"
@@ -207,7 +256,7 @@ is_placeholder_manual_environment() {
       return 0
       ;;
     *)
-      return 1
+      manual_environment_lacks_release_context "$1"
       ;;
   esac
 }
