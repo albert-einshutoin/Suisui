@@ -53,6 +53,7 @@
 
 - [x] 外部MCP tool permissionを `read` / `draft` / `writeWithApproval` / `dangerous` / `disabled` のまま維持し、unknownはdisabledに倒す。
 - [x] Pro限定MCP機能を追加する場合、Freeでは登録保存は可能でも実行はentitlement gateで止めるか、登録自体をPro gateで止めるかをADRにする。
+- [x] MCP tabは登録編集前にPro実行価値、Freeで可能な登録/接続確認、tools/call前のentitlement/approval/policy境界を表示する。
 - [x] Write系MCPはユーザー承認なしで `tools/call` へ到達しないことを regression test で固定する。
 - [x] MCP audit metadataに server id、tool name、permission、approval、duration、redacted arguments が必ず残ることを再確認する。
 - [x] MCP stdio登録の `command` 欄は実行ファイルだけを許可し、`node server.js` のような複合入力は保存前に `arguments` 欄へ分離する案内を出す。

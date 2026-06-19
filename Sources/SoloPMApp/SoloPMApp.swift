@@ -1315,6 +1315,14 @@ private struct SettingsView: View {
                     }
                 }
 
+                MCPPaidExecutionBoundaryRow(
+                    planLabel: syncViewModel.planLabel,
+                    statusLabel: mcpExecutionStatusLabel,
+                    valueLabel: mcpExecutionValueLabel,
+                    boundaryLabel: mcpExecutionSafetyBoundaryLabel,
+                    tone: mcpExecutionTone
+                )
+
                 Toggle(
                     isOn: Binding(
                         get: { externalMCPViewModel.registration.isEnabled },
@@ -1590,6 +1598,26 @@ private struct SettingsView: View {
             return .danger
         }
         return externalMCPViewModel.display.isEnabled ? .warning : .neutral
+    }
+
+    private var mcpExecutionStatusLabel: String {
+        syncViewModel.status.plan.allows(.advancedMCPExecution) ? "Execution unlocked" : "Execution gated"
+    }
+
+    private var mcpExecutionValueLabel: String {
+        let requiredPlan = FeatureGate.advancedMCPExecution.requiredPlan.displayName
+        if syncViewModel.status.plan.allows(.advancedMCPExecution) {
+            return "Advanced MCP tools can execute on \(syncViewModel.planLabel)."
+        }
+        return "\(requiredPlan) is required before external MCP tools can execute."
+    }
+
+    private var mcpExecutionSafetyBoundaryLabel: String {
+        "Register and Check stay available; tools/call still requires entitlement, tool policy, and approval."
+    }
+
+    private var mcpExecutionTone: SettingsStatusTone {
+        syncViewModel.status.plan.allows(.advancedMCPExecution) ? .ready : .warning
     }
 
     private var syncOverviewTone: SettingsStatusTone {
@@ -1892,6 +1920,54 @@ private struct SyncValueStatusRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("sync-paid-value-row")
         .accessibilityLabel("Sync paid value and safety boundary")
+        .accessibilityValue("\(planLabel), \(statusLabel), \(boundaryLabel)")
+    }
+}
+
+private struct MCPPaidExecutionBoundaryRow: View {
+    let planLabel: String
+    let statusLabel: String
+    let valueLabel: String
+    let boundaryLabel: String
+    let tone: SettingsStatusTone
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "point.3.connected.trianglepath.dotted")
+                .foregroundStyle(tone.color)
+                .frame(width: 20)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(planLabel) MCP Execution")
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Text(statusLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(tone.color)
+                    .lineLimit(1)
+
+                Text(valueLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Label(boundaryLabel, systemImage: "checkmark.seal")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("mcp-paid-execution-boundary-row")
+        .accessibilityLabel("MCP paid execution boundary")
         .accessibilityValue("\(planLabel), \(statusLabel), \(boundaryLabel)")
     }
 }

@@ -1323,6 +1323,31 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] 複数MCP serverの接続確認をPicker切替ではなくserver row上の `Check`"))
     }
 
+    func testMCPSettingsTabSurfacesPaidExecutionBoundaryBeforeRegistrationEditing() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let executionSource = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPExecution.swift")
+        let audit = try readPackageFile("docs/ux/click-path-audit.md")
+        let investorReview = try readPackageFile("docs/product/investor-review.md")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+        let mcpStart = try XCTUnwrap(appSource.range(of: "private var mcpSettingsTab: some View"))
+        let statusStart = try XCTUnwrap(appSource.range(of: "private var activeAIProviderStatusLabel"))
+        let mcpTabSource = String(appSource[mcpStart.lowerBound..<statusStart.lowerBound])
+
+        XCTAssertTrue(appSource.contains("MCPPaidExecutionBoundaryRow("))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"mcp-paid-execution-boundary-row\")"))
+        XCTAssertTrue(appSource.contains("private var mcpExecutionValueLabel: String"))
+        XCTAssertTrue(appSource.contains("private var mcpExecutionSafetyBoundaryLabel: String"))
+        XCTAssertTrue(appSource.contains("FeatureGate.advancedMCPExecution.requiredPlan.displayName"))
+        XCTAssertTrue(executionSource.contains("entitlementChecker.require(.advancedMCPExecution)"))
+        XCTAssertLessThan(
+            try XCTUnwrap(mcpTabSource.range(of: "MCPPaidExecutionBoundaryRow(")).lowerBound,
+            try XCTUnwrap(mcpTabSource.range(of: "Toggle(")).lowerBound
+        )
+        XCTAssertTrue(audit.contains("MCP paid execution boundary row"))
+        XCTAssertTrue(investorReview.contains("MCP now surfaces Pro execution value and approval safety before registration editing"))
+        XCTAssertTrue(phase.contains("[x] MCP tabは登録編集前にPro実行価値、Freeで可能な登録/接続確認、tools/call前のentitlement/approval/policy境界を表示する。"))
+    }
+
     func testClickPathAuditTracksTaskCardFocusUpgradeAndRemainingManualEvidence() throws {
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
