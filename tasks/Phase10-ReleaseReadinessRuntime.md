@@ -1299,6 +1299,7 @@
 - [x] action summary は `Phase Checklist Items` に未チェックPhase項目のファイル名・行番号・本文を相対パスで列挙する。
 - [x] action summary は未チェックの手動Phase項目を Manual VoiceOver / Competitor Hands-On / Release Machine / Login Item Manual Check / Manual Review に分類し、どの証跡経路で解消するかを示す。
 - [x] action summary は Login Item Manual Check が残る場合、`create_release_evidence.sh` の `--login-item-toggle`、manual environment、review note を含む実行例を出し、単独checkboxではなく release artifact に紐づく evidence として扱う。
+- [x] action summary は Release Machine blocker が残る場合、署名、notarization、package、appcast、release evidence、final preflight の順序付きコマンドを出す。
 - [x] action summary は release evidence ではなく、VoiceOver / competitor hands-on / signing / notarization / Sparkle / Gatekeeper を完了扱いにしないことを明記する。
 - [x] `ReleasePipelineTests` と `docs/release/checklist.md` で operator action summary の生成導線を固定する。
 - [x] 完了条件: `release_readiness_report.sh` が `NOT READY` のままでも、次に実行すべき手動・自動・release-machine作業が1ファイルに集約される。

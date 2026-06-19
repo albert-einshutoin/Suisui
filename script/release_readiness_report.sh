@@ -537,6 +537,49 @@ write_release_evidence_login_item_command() {
   printf '%s\n' '```'
 }
 
+write_release_machine_runbook_command() {
+  printf '%s\n' '```bash'
+  printf '%s\n' '# 1. Configure local release secrets; these files stay on the release machine.'
+  printf '%s\n' '[ -f packaging/signing.env ] || cp packaging/signing.env.example packaging/signing.env'
+  printf '%s\n' '[ -f packaging/notarization.env ] || cp packaging/notarization.env.example packaging/notarization.env'
+  printf '%s\n' '[ -f packaging/sparkle.env ] || cp packaging/sparkle.env.example packaging/sparkle.env'
+  printf '%s\n' '$EDITOR packaging/signing.env packaging/notarization.env packaging/sparkle.env'
+  printf '%s\n' ''
+  printf '%s\n' '# 2. Validate signing and notarization prerequisites.'
+  printf '%s\n' './script/verify_signing_setup.sh'
+  printf '%s\n' 'SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh'
+  printf '%s\n' ''
+  printf '%s\n' '# 3. Build, sign, notarize, and package both user download and Sparkle artifacts.'
+  printf '%s\n' 'SOLOPM_BUILD_CONFIGURATION=release ./script/build_and_run.sh --build-only'
+  printf '%s\n' './script/sign_app.sh'
+  printf '%s\n' './script/notarize_app.sh'
+  printf '%s\n' 'SOLOPM_PACKAGE_FORMAT=all ./script/package_release.sh'
+  printf '%s\n' ''
+  printf '%s\n' '# 4. Generate and verify the release appcast.'
+  printf '%s\n' 'SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/generate_appcast.sh'
+  printf '%s\n' 'SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml'
+  printf '%s\n' ''
+  printf '%s\n' '# 5. Bind manual release evidence to the generated DMG checksum.'
+  printf '%s\n' 'source packaging/app_metadata.env'
+  printf '%s\n' 'export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"'
+  printf '%s\n' './script/create_release_evidence.sh --force \'
+  printf '%s\n' '  --release-machine-launch \'
+  printf '%s\n' '  --checksum-verification \'
+  printf '%s\n' '  --clean-dmg-install \'
+  printf '%s\n' '  --applications-folder-install \'
+  printf '%s\n' '  --gatekeeper-accepted \'
+  printf '%s\n' '  --clean-environment-launch \'
+  printf '%s\n' '  --login-item-toggle \'
+  printf '%s\n' '  --sparkle-appcast-metadata \'
+  printf '%s\n' '  --manual-environment "<macOS version, hardware, clean user or VM/install context>" \'
+  printf '%s\n' '  --checked-by "<reviewer name>" \'
+  printf '%s\n' '  --note "<concrete note covering every enabled manual release flag>"'
+  printf '%s\n' ''
+  printf '%s\n' '# 6. Final release-machine validation.'
+  printf '%s\n' 'SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh'
+  printf '%s\n' '```'
+}
+
 write_release_actions() {
   local status="$1"
   local action_path="$RELEASE_ACTIONS_FILE"
@@ -643,6 +686,9 @@ write_release_actions() {
     printf -- "- Follow \`docs/release/checklist.md\` on the release machine.\n"
     printf -- "- Configure \`packaging/signing.env\`, \`packaging/notarization.env\`, production Sparkle feed/key, signed/notarized/stapled app, appcast metadata, and \`packaging/release-evidence.json\`.\n"
     printf -- "- Verify with \`./script/verify_release_environment.sh\` before expecting the readiness report to pass.\n"
+    printf -- "- Replace placeholders below with production values and real manual observations before running the commands.\n\n"
+    write_release_machine_runbook_command
+    printf "\n"
   } >"$action_path"
 
   printf "Release action summary written to %s\n" "${action_path#"$ROOT_DIR/"}"

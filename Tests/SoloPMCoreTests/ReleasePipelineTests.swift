@@ -4181,6 +4181,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("## Release Machine"))
         XCTAssertTrue(script.contains("packaging/signing.env"))
         XCTAssertTrue(script.contains("packaging/notarization.env"))
+        XCTAssertTrue(script.contains("write_release_machine_runbook_command()"))
+        XCTAssertTrue(script.contains("./script/verify_signing_setup.sh"))
+        XCTAssertTrue(script.contains("SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh"))
+        XCTAssertTrue(script.contains("SOLOPM_PACKAGE_FORMAT=all ./script/package_release.sh"))
+        XCTAssertTrue(script.contains("SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/generate_appcast.sh"))
         XCTAssertTrue(script.contains("./script/verify_release_environment.sh"))
         XCTAssertTrue(script.contains("This file is an action summary, not release evidence."))
         XCTAssertTrue(script.contains("does not mark manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper checks as passed"))
@@ -4199,6 +4204,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] action summary は clean-tree automated preflight evidence が有効な場合、accepted evidence、source commit、generated at、passed gatesを表示し、再実行指示だけを出さない。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Manual VoiceOver Blockers` と `Competitor Hands-On Blockers` に手動証跡の不足項目を分離表示し、手動作業を完了扱いにしない。"))
         XCTAssertTrue(phase.contains("[x] action summary は未チェックの手動Phase項目を Manual VoiceOver / Competitor Hands-On / Release Machine / Login Item Manual Check / Manual Review に分類し"))
+        XCTAssertTrue(phase.contains("[x] action summary は Release Machine blocker が残る場合、署名、notarization、package、appcast、release evidence、final preflight の順序付きコマンドを出す。"))
     }
 
     func testReleaseReadinessReportWritesSpecificReleaseEnvironmentBlockersToActionSummary() throws {
@@ -4502,6 +4508,14 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("--login-item-toggle \\"))
         XCTAssertTrue(actionSummary.contains("--manual-environment \"<macOS version, hardware, clean user or VM/install context>\" \\"))
         XCTAssertTrue(actionSummary.contains("--note \"<concrete note covering Settings launch-at-login toggle on and off in the signed app>\""))
+        XCTAssertTrue(actionSummary.contains("## Release Machine"))
+        XCTAssertTrue(actionSummary.contains("```bash\n# 1. Configure local release secrets"))
+        XCTAssertTrue(actionSummary.contains("./script/verify_signing_setup.sh"))
+        XCTAssertTrue(actionSummary.contains("SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh"))
+        XCTAssertTrue(actionSummary.contains("SOLOPM_PACKAGE_FORMAT=all ./script/package_release.sh"))
+        XCTAssertTrue(actionSummary.contains("SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/generate_appcast.sh"))
+        XCTAssertTrue(actionSummary.contains("SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml"))
+        XCTAssertTrue(actionSummary.contains("SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh"))
     }
 
     func testReleaseReadinessReportIncludesPhase11AndIgnoresFuturePhasePlanning() throws {
