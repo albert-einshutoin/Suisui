@@ -191,6 +191,87 @@ tracked_source_tree_status() {
   fi
 }
 
+blocker_bucket_for_message() {
+  local message="$1"
+
+  case "$message" in
+    *"automated preflight"*|*"release CI preflight"*|*"local CRUD smoke"*|*"runtime accessible CRUD smoke"*|*"release Xcode preflight"*|*"release launch preflight"*|*"accessibility runtime preflight"*|*"UI screenshot"*|*"MCP compliance"*)
+      printf "Automated Proof Gates"
+      ;;
+    *"VoiceOver"*|*"accessibility"*)
+      printf "Manual VoiceOver"
+      ;;
+    *"Competitor"*|*"competitor"*|*"benchmark"*)
+      printf "Competitor Hands-On"
+      ;;
+    *"phase checklist"*)
+      printf "Phase Checklist"
+      ;;
+    *"release environment"*|*"signing"*|*"notarization"*|*"notarized"*|*"Sparkle"*|*"Gatekeeper"*)
+      printf "Release Machine"
+      ;;
+    *)
+      printf "Other"
+      ;;
+  esac
+}
+
+write_blocker_bucket_line() {
+  local label="$1"
+  local count="$2"
+  local marker="x"
+
+  if [[ "$count" -gt 0 ]]; then
+    marker=" "
+  fi
+
+  printf -- "- [%s] %s: %d blocker group(s)\n" "$marker" "$label" "$count"
+}
+
+write_blocker_bucket_summary() {
+  local automated_count=0
+  local voiceover_count=0
+  local competitor_count=0
+  local release_machine_count=0
+  local phase_count=0
+  local other_count=0
+  local blocker_message
+  local blocker_bucket
+
+  for blocker_message in "${BLOCKER_MESSAGES[@]}"; do
+    blocker_bucket="$(blocker_bucket_for_message "$blocker_message")"
+    case "$blocker_bucket" in
+      "Automated Proof Gates")
+        ((automated_count += 1))
+        ;;
+      "Manual VoiceOver")
+        ((voiceover_count += 1))
+        ;;
+      "Competitor Hands-On")
+        ((competitor_count += 1))
+        ;;
+      "Release Machine")
+        ((release_machine_count += 1))
+        ;;
+      "Phase Checklist")
+        ((phase_count += 1))
+        ;;
+      *)
+        ((other_count += 1))
+        ;;
+    esac
+  done
+
+  printf "## Blocker Buckets\n"
+  write_blocker_bucket_line "Automated Proof Gates" "$automated_count"
+  write_blocker_bucket_line "Manual VoiceOver" "$voiceover_count"
+  write_blocker_bucket_line "Competitor Hands-On" "$competitor_count"
+  write_blocker_bucket_line "Release Machine" "$release_machine_count"
+  write_blocker_bucket_line "Phase Checklist" "$phase_count"
+  write_blocker_bucket_line "Other" "$other_count"
+  printf "\n"
+}
+
 write_release_actions() {
   local status="$1"
   local action_path="$RELEASE_ACTIONS_FILE"
@@ -233,6 +314,8 @@ write_release_actions() {
       done
     fi
     printf "\n"
+
+    write_blocker_bucket_summary
 
     if [[ -n "$phase_implementation_unchecked" || -n "$phase_manual_unchecked" ]]; then
       printf "## Phase Checklist Items\n"
