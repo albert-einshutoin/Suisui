@@ -3711,6 +3711,9 @@ final class ReleasePipelineTests: XCTestCase {
         Scope: validate the release MCP stdio fixture
         Stable baseline: `2025-11-25`
         Official stable latest: `2025-11-25`
+        Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
+        Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/
+        EMA remote authorization is not a SoloPM public-alpha release target
         Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
         Draft watchlist: `2026-07-28`
         Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
@@ -4120,6 +4123,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("docs/release/evidence/mcp-inspector.md"))
         XCTAssertTrue(script.contains("Stable baseline: `2025-11-25`"))
         XCTAssertTrue(script.contains("Official stable source: https://modelcontextprotocol.io/specification/2025-11-25"))
+        XCTAssertTrue(script.contains("Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18"))
+        XCTAssertTrue(script.contains("Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/"))
+        XCTAssertTrue(script.contains("EMA remote authorization is not a SoloPM public-alpha release target"))
         XCTAssertTrue(script.contains("Draft watchlist: `2026-07-28`"))
         XCTAssertTrue(script.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
         XCTAssertTrue(script.contains("Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/"))
@@ -4364,6 +4370,9 @@ final class ReleasePipelineTests: XCTestCase {
         Scope: validate the release MCP stdio fixture
         Stable baseline: `2025-11-25`
         Official stable latest: `2025-11-25`
+        Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
+        Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/
+        EMA remote authorization is not a SoloPM public-alpha release target
         Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
         Draft watchlist: `2026-07-28`
         Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
@@ -6127,6 +6136,12 @@ final class ReleasePipelineTests: XCTestCase {
         Stable baseline: `2025-11-25`
 
         Official stable latest: `2025-11-25`
+
+        Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
+
+        Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/
+
+        EMA remote authorization is not a SoloPM public-alpha release target
 
         Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
 

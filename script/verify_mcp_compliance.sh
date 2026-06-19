@@ -73,13 +73,19 @@ Official stable latest: \`2025-11-25\`
 
 Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
 
+Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
+
+Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/
+
+EMA remote authorization is not a SoloPM public-alpha release target
+
 Draft watchlist: \`2026-07-28\`
 
 Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
 
 2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28.
 
-Release positioning: SoloPM is not a full MCP host; this evidence covers stable client-side stdio Tools only. Resources, Prompts, Streamable HTTP, OAuth/remote MCP, draft per-request protocol metadata, and draft server/discover are not release targets.
+Release positioning: SoloPM is not a full MCP host; this evidence covers stable client-side stdio Tools only. Resources, Prompts, Streamable HTTP, OAuth/remote MCP, Enterprise-Managed Authorization, draft per-request protocol metadata, and draft server/discover are not release targets.
 
 Fixture: \`fixtures/mcp/stdio-fixture-server.mjs\`
 

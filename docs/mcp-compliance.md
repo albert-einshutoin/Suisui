@@ -8,14 +8,18 @@ SoloPM の外部MCP実装は、MCP specification `2025-11-25` を基準にする
 
 - Stable baseline: `2025-11-25`
 - Official stable latest: `2025-11-25`
+- Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
 - Draft watchlist: `2026-07-28`
 - Release positioning: SoloPM is not a full MCP host; it supports the stable stdio Tools subset described in this document.
 
 `2026-07-28` は draft / release-candidate として監視するが、今回の release target には含めない。The final specification is scheduled for 2026-07-28. SoloPM does not send per-request protocol metadata, does not implement draft `server/discover`, and will not claim draft or full-host compatibility until those paths are implemented, tested, and inspector-backed.
 
+Enterprise-Managed Authorization is stable as of 2026-06-18 and remains a watchlist item for SoloPM because this public alpha intentionally excludes remote MCP authorization flows. EMA remote authorization is not a SoloPM public-alpha release target; adding it later requires a separate product/security design for remote servers, organization identity, token storage, and consent/audit UX.
+
 Primary references:
 
 - MCP specification 2025-11-25: https://modelcontextprotocol.io/specification/2025-11-25
+- Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/
 - Lifecycle: https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle
 - Tools: https://modelcontextprotocol.io/specification/2025-11-25/server/tools
 - Architecture: https://modelcontextprotocol.io/docs/learn/architecture
@@ -45,6 +49,7 @@ Primary references:
 | Resources | Not implemented | No `resources/list` or resource read path is exposed; Settings displays "Not supported in this release". |
 | Prompts | Not implemented | No `prompts/list` or prompt get path is exposed; Settings displays "Not supported in this release". |
 | Streamable HTTP | Not implemented | Architecture leaves transport protocol extensibility, but only stdio is release path. |
+| Enterprise-Managed Authorization | Not implemented | EMA is now a stable MCP extension, but SoloPM public alpha has no remote MCP authorization flow. Keep it in the watchlist and do not market SoloPM as supporting enterprise-managed remote authorization. |
 | Draft modern protocol metadata | Not implemented | The draft `2026-07-28` path uses modern per-request protocol metadata and discovery. SoloPM remains on the stable `2025-11-25` initialize lifecycle for this release. |
 | Draft server discovery | Not implemented | `server/discover` is draft-only for SoloPM's current release boundary and must not be advertised as supported. |
 | Official Inspector evidence | Recorded | `script/verify_mcp_compliance.sh` runs the official MCP Inspector CLI against `fixtures/mcp/stdio-fixture-server.mjs`; `docs/release/evidence/mcp-inspector.md` records `tools/list`, `tools/call`, and failure taxonomy smoke output. |
@@ -102,6 +107,7 @@ Primary references:
 - Add a deeper method-by-method matrix for optional capabilities before adding Resources, Prompts, or Streamable HTTP.
 - Add comprehensive JSON Schema keyword validation only when SoloPM needs to reason about server tool arguments or outputs beyond the release subset. The current release validates MCP-required schema shape, dialect boundaries, `outputSchema` object shape, required structured output fields, and primitive output types, but does not claim full keyword-level JSON Schema validation.
 - Track the draft `2026-07-28` discovery / metadata model separately from the release baseline.
+- Track stable Enterprise-Managed Authorization separately from the local stdio release subset before adding remote MCP servers.
 - Add Streamable HTTP only after stdio compliance evidence is stable.
 
 ## Product Decision
