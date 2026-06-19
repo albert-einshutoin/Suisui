@@ -6,6 +6,10 @@ BLOCKER_COUNT=0
 APP_METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 RELEASE_CI_PREFLIGHT="${SOLOPM_RELEASE_CI_PREFLIGHT:-0}"
 RELEASE_CI_PREFLIGHT_RELATIVE="scripts/ci.sh"
+RELEASE_XCODE_PREFLIGHT="${SOLOPM_RELEASE_XCODE_PREFLIGHT:-0}"
+XCODE_WORKSPACE_RELATIVE=".swiftpm/xcode/package.xcworkspace"
+XCODE_SCHEME="${SOLOPM_XCODE_SCHEME:-SoloPM}"
+XCODE_DESTINATION="${SOLOPM_XCODE_DESTINATION:-platform=macOS}"
 MOCK_PATTERN="(?i:fake|mock|fixture|canned|stub|skeleton|todo|fixme|not[[:space:]_-]*implemented|notimplemented|inmemory)|(?i:(^|[^[:alnum:]_])(demo|sample|placeholder)([^[:alnum:]_]|$))|Static[A-Za-z0-9_]*|:memory:|fatalError|preconditionFailure"
 UI_EVIDENCE_RELATIVE="docs/release/evidence/ui-screenshots.md"
 UI_SCREENSHOT_RELATIVE_DIR="docs/release/evidence/ui-screenshots"
@@ -196,6 +200,42 @@ elif [[ "$RELEASE_CI_PREFLIGHT" == "1" ]]; then
   fi
 else
   printf "INFO: release CI preflight skipped; set SOLOPM_RELEASE_CI_PREFLIGHT=1 to run %s inside this report.\n" "$RELEASE_CI_PREFLIGHT_RELATIVE"
+fi
+
+section "Release Xcode preflight"
+xcode_workspace="$ROOT_DIR/$XCODE_WORKSPACE_RELATIVE"
+if [[ "$RELEASE_XCODE_PREFLIGHT" != "0" && "$RELEASE_XCODE_PREFLIGHT" != "1" ]]; then
+  blocker "SOLOPM_RELEASE_XCODE_PREFLIGHT must be 0 or 1"
+elif [[ "$RELEASE_XCODE_PREFLIGHT" == "1" ]]; then
+  if ! command -v xcodebuild >/dev/null 2>&1; then
+    blocker "xcodebuild is required for release Xcode preflight"
+  elif [[ ! -d "$xcode_workspace" ]]; then
+    blocker "missing SwiftPM Xcode workspace: $XCODE_WORKSPACE_RELATIVE"
+  else
+    set +e
+    release_xcode_preflight_output="$(
+      xcodebuild \
+        -workspace "$xcode_workspace" \
+        -scheme "$XCODE_SCHEME" \
+        -configuration Debug \
+        -destination "$XCODE_DESTINATION" \
+        build 2>&1
+    )"
+    release_xcode_preflight_status=$?
+    set -e
+
+    if [[ -n "$release_xcode_preflight_output" ]]; then
+      printf "%s\n" "$release_xcode_preflight_output"
+    fi
+
+    if [[ "$release_xcode_preflight_status" -ne 0 ]]; then
+      blocker "release Xcode preflight failed"
+    else
+      printf "OK: release Xcode preflight passed\n"
+    fi
+  fi
+else
+  printf "INFO: release Xcode preflight skipped; set SOLOPM_RELEASE_XCODE_PREFLIGHT=1 to run xcodebuild against %s.\n" "$XCODE_WORKSPACE_RELATIVE"
 fi
 
 section "Phase checklist blockers"
