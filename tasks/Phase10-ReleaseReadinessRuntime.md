@@ -251,6 +251,7 @@
 - [x] `tasks/README.md` のテンプレート用 unchecked 項目は release blocker から除外する。
 - [x] report は残 gate がある間は `NOT READY` と exit 2 を返す。
 - [x] `script/check_automated_release_preflight.sh` で CI、SQLite CRUD、runtime accessible CRUD、Xcode build、visible-window launch、runtime AX、MCP compliance を一括検証できる。
+- [x] `release_readiness_report.sh` は CI、SQLite CRUD、runtime accessible CRUD、Xcode build、visible-window launch、runtime AX をskipしたままrelease readyにしない。
 - [x] 自動 preflight は manual VoiceOver、competitor hands-on、signing / notarization / Sparkle / Gatekeeper evidence を完了扱いにしない。
 - [x] 完了条件: VC / investor 目線の残 blocker を毎回同じ出力で確認できる。
 

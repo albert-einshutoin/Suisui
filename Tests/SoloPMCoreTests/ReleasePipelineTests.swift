@@ -2352,6 +2352,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("Notion -> Todoist -> Linear -> Motion"))
         XCTAssertTrue(checklist.contains("./script/check_automated_release_preflight.sh"))
         XCTAssertTrue(checklist.contains("This automated sweep does not replace manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper evidence."))
+        XCTAssertTrue(checklist.contains("The final readiness report treats skipped automated proof gates as blockers."))
+        XCTAssertTrue(checklist.contains("Do not claim release readiness from the default report output if CI, SQLite CRUD, runtime accessible CRUD, Xcode build, visible launch, or runtime AX were skipped."))
         XCTAssertTrue(checklist.contains("./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("SOLOPM_RELEASE_CI_PREFLIGHT=1 ./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("SOLOPM_LOCAL_CRUD_SMOKE=1 ./script/release_readiness_report.sh"))
@@ -3214,7 +3216,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("Competitor benchmark still reads as desk research or a hands-on worksheet"))
         XCTAssertTrue(result.output.contains("./script/create_competitor_hands_on_evidence.sh --passed"))
         XCTAssertTrue(result.output.contains("--benchmark-output docs/product/competitor-benchmark.md"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportAllowsHandsOnBenchmarkWithOfficialSourceLinks() throws {
@@ -3437,7 +3439,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("== Local CRUD smoke =="))
         XCTAssertTrue(result.output.contains("local crud fixture smoke invoked"))
         XCTAssertTrue(result.output.contains("BLOCKER: local CRUD smoke failed"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportCanRunRuntimeAccessibleCRUDSmokeWhenEnabled() throws {
@@ -3490,7 +3492,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("== Runtime accessible CRUD smoke =="))
         XCTAssertTrue(result.output.contains("runtime accessible crud fixture smoke invoked"))
         XCTAssertTrue(result.output.contains("BLOCKER: runtime accessible CRUD smoke failed"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportAggregatesRuntimeMockScanTasksAndPreflight() throws {
@@ -3506,21 +3508,26 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SOLOPM_RELEASE_CI_PREFLIGHT"))
         XCTAssertTrue(script.contains("scripts/ci.sh"))
         XCTAssertTrue(script.contains("release CI preflight failed"))
+        XCTAssertTrue(script.contains("release CI preflight was not run"))
         XCTAssertTrue(script.contains("SOLOPM_LOCAL_CRUD_SMOKE"))
         XCTAssertTrue(script.contains("script/check_local_crud_smoke.sh"))
         XCTAssertTrue(script.contains("local CRUD smoke failed"))
+        XCTAssertTrue(script.contains("local CRUD smoke was not run"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SMOKE"))
         XCTAssertTrue(script.contains("script/check_runtime_accessible_crud_smoke.sh"))
         XCTAssertTrue(script.contains("runtime accessible CRUD smoke failed"))
+        XCTAssertTrue(script.contains("runtime accessible CRUD smoke was not run"))
         XCTAssertTrue(script.contains("SOLOPM_RELEASE_XCODE_PREFLIGHT"))
         XCTAssertTrue(script.contains(".swiftpm/xcode/package.xcworkspace"))
         XCTAssertTrue(script.contains("xcodebuild"))
         XCTAssertTrue(script.contains("-scheme \"$XCODE_SCHEME\""))
         XCTAssertTrue(script.contains("release Xcode preflight failed"))
+        XCTAssertTrue(script.contains("release Xcode preflight was not run"))
         XCTAssertTrue(script.contains("SOLOPM_RELEASE_LAUNCH_PREFLIGHT"))
         XCTAssertTrue(script.contains("script/build_and_run.sh"))
         XCTAssertTrue(script.contains("--verify"))
         XCTAssertTrue(script.contains("release launch preflight failed"))
+        XCTAssertTrue(script.contains("release launch preflight was not run"))
         XCTAssertTrue(script.contains("Static[A-Za-z0-9_]*"))
         XCTAssertFalse(script.contains("Fake|Mock|InMemory|Static|Demo|sample|canned|stub"))
         XCTAssertTrue(script.contains("Phase0-Phase11"))
@@ -3553,6 +3560,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT"))
         XCTAssertTrue(script.contains("--runtime --skip-source-anchors"))
         XCTAssertTrue(script.contains("accessibility runtime preflight failed"))
+        XCTAssertTrue(script.contains("accessibility runtime preflight was not run"))
         XCTAssertTrue(script.contains("accessibility source preflight failed"))
         XCTAssertTrue(script.contains("docs/release/evidence/accessibility-voiceover.md"))
         XCTAssertTrue(script.contains("Status: passed"))
@@ -3606,6 +3614,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Stable baseline: `2025-11-25`"))
         XCTAssertTrue(script.contains("Official stable source: https://modelcontextprotocol.io/specification/2025-11-25"))
         XCTAssertTrue(script.contains("Draft watchlist: `2026-07-28`"))
+        XCTAssertTrue(script.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
         XCTAssertTrue(script.contains("Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/"))
         XCTAssertTrue(script.contains("MCP Inspector CLI tools/list"))
         XCTAssertTrue(script.contains("MCP Inspector CLI tools/call"))
@@ -3747,7 +3756,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("missing runtime source directory: Sources/SoloPMApp"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportFailsClosedWhenRuntimeScanCommandErrors() throws {
@@ -3801,7 +3810,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("rg exploded"))
         XCTAssertTrue(result.output.contains("runtime mock/fake/fixture scan failed"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportBlocksRuntimeFixtureTerminology() throws {
@@ -3849,7 +3858,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("KnowledgeAdvanced.swift"))
         XCTAssertTrue(result.output.contains("RetrievalFixture"))
         XCTAssertTrue(result.output.contains("runtime source contains mock/fake/fixture/demo/test-only markers"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportShowsReleaseMachineNextActionsWhenPreflightFails() throws {
@@ -3898,7 +3907,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("packaging/signing.env"))
         XCTAssertTrue(result.output.contains("packaging/notarization.env"))
         XCTAssertTrue(result.output.contains("production Sparkle feed/key"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportFailsWhenUIScreenshotEvidenceFilesAreMissing() throws {
@@ -3966,7 +3975,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("missing UI screenshot file: docs/release/evidence/ui-screenshots/project-board-light.png"))
         XCTAssertTrue(result.output.contains("NEXT: run script/capture_ui_evidence.sh --doctor"))
         XCTAssertTrue(result.output.contains("then run script/capture_ui_evidence.sh on a visible macOS session with Screen Recording permission"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportFailsWhenUIScreenshotEvidenceIsBlank() throws {
@@ -4071,7 +4080,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/settings-overview-dark.png"))
         XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/settings-mcp-light.png"))
         XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/settings-mcp-dark.png"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportFailsWhenVoiceOverEvidenceIsMissing() throws {
@@ -4120,7 +4129,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("== VoiceOver accessibility evidence =="))
         XCTAssertTrue(result.output.contains("missing VoiceOver accessibility evidence file: docs/release/evidence/accessibility-voiceover.md"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportFailsWhenVoiceOverEvidenceIsPendingTemplate() throws {
@@ -4188,7 +4197,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("./script/create_voiceover_evidence.sh --passed"))
         XCTAssertTrue(result.output.contains("--capture-runtime-ax-smoke"))
         XCTAssertTrue(result.output.contains("complete release-candidate context"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportFailsWhenVoiceOverEvidencePassedButReleaseContextIsBlank() throws {
@@ -4269,7 +4278,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing release context: Runtime AX smoke"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence has template release context: Evidence source"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence still contains unchecked checklist markers"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportFailsWhenVoiceOverEvidenceDoesNotMatchAppMetadata() throws {
@@ -4355,7 +4364,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(result.output.contains("VoiceOver accessibility evidence is not marked passed"))
         XCTAssertFalse(result.output.contains("VoiceOver accessibility evidence still contains pending/template/placeholder text"))
         XCTAssertFalse(result.output.contains("VoiceOver accessibility evidence still contains unchecked checklist markers"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportFailsWhenVoiceOverEvidenceLacksConcreteFocusNotes() throws {
@@ -4450,7 +4459,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Delete Task confirmation"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: No keyboard trap"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: No unlabeled primary CRUD controls"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportFailsWhenManualEvidenceCheckDateIsFuture() throws {
@@ -4572,7 +4581,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence has future review context date: Check date"))
         XCTAssertFalse(result.output.contains("VoiceOver accessibility evidence missing concrete focus note"))
         XCTAssertFalse(result.output.contains("Competitor hands-on evidence missing concrete note"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportRejectsPlaceholderManualEvidenceReviewers() throws {
@@ -4696,7 +4705,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(result.output.contains("Competitor hands-on evidence missing concrete note"))
         XCTAssertFalse(result.output.contains("VoiceOver accessibility evidence has future release context date"))
         XCTAssertFalse(result.output.contains("Competitor hands-on evidence has future review context date"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportFailsWhenAccessibilitySourcePreflightFails() throws {
@@ -4788,7 +4797,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("missing accessibility anchor 'task-inspector-save'"))
         XCTAssertTrue(result.output.contains("accessibility source preflight failed"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportCanRunRuntimeAccessibilityPreflightWhenEnabled() throws {
@@ -4875,7 +4884,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual(result.output.components(separatedBy: "source preflight ok").count - 1, 1)
         XCTAssertEqual(result.output.components(separatedBy: "This is not a substitute for the manual VoiceOver pass.").count - 1, 1)
         XCTAssertFalse(result.output.contains("accessibility runtime preflight failed"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportCanRunReleaseCIPreflightWhenEnabled() throws {
@@ -4939,7 +4948,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("release ci preflight ok"))
         XCTAssertFalse(result.output.contains("release CI preflight failed"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportCanRunXcodePreflightWhenEnabled() throws {
@@ -5015,7 +5024,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains(".swiftpm/xcode/package.xcworkspace"))
         XCTAssertTrue(result.output.contains("-scheme SoloPM"))
         XCTAssertFalse(result.output.contains("release Xcode preflight failed"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportCanRunLaunchPreflightWhenEnabled() throws {
@@ -5083,7 +5092,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("release launch preflight ok"))
         XCTAssertTrue(result.output.contains("OK: Project Board window visible"))
         XCTAssertFalse(result.output.contains("release launch preflight failed"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportFailsWhenMCPInspectorEvidenceIsMissing() throws {
@@ -5127,7 +5136,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("== MCP Inspector evidence =="))
         XCTAssertTrue(result.output.contains("missing MCP Inspector evidence file: docs/release/evidence/mcp-inspector.md"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportFailsWhenMCPInspectorEvidenceIsIncomplete() throws {
@@ -5191,7 +5200,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: 2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28."))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: MCP Inspector CLI tools/call"))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: malformed-json"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportFailsWhenMCPComplianceVerifierFails() throws {
@@ -5279,7 +5288,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("== MCP Inspector evidence =="))
         XCTAssertTrue(result.output.contains("BLOCKER: MCP protocol schema drift"))
         XCTAssertTrue(result.output.contains("MCP compliance verifier failed"))
-        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
     func testReleaseReadinessRuntimeMarkerPatternCatchesLowercaseMarkersWithoutCommonFalsePositives() throws {

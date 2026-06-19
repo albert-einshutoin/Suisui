@@ -331,6 +331,7 @@ elif [[ "$RELEASE_CI_PREFLIGHT" == "1" ]]; then
   fi
 else
   printf "INFO: release CI preflight skipped; set SOLOPM_RELEASE_CI_PREFLIGHT=1 to run %s inside this report.\n" "$RELEASE_CI_PREFLIGHT_RELATIVE"
+  blocker "release CI preflight was not run"
 fi
 
 section "Local CRUD smoke"
@@ -358,6 +359,7 @@ elif [[ "$LOCAL_CRUD_SMOKE" == "1" ]]; then
   fi
 else
   printf "INFO: local CRUD smoke skipped; set SOLOPM_LOCAL_CRUD_SMOKE=1 to run %s inside this report.\n" "$LOCAL_CRUD_SMOKE_RELATIVE"
+  blocker "local CRUD smoke was not run"
 fi
 
 section "Runtime accessible CRUD smoke"
@@ -385,6 +387,7 @@ elif [[ "$RUNTIME_ACCESSIBLE_CRUD_SMOKE" == "1" ]]; then
   fi
 else
   printf "INFO: runtime accessible CRUD smoke skipped; set SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SMOKE=1 to run %s against the visible app and isolated SQLite database.\n" "$RUNTIME_ACCESSIBLE_CRUD_SMOKE_RELATIVE"
+  blocker "runtime accessible CRUD smoke was not run"
 fi
 
 section "Release Xcode preflight"
@@ -421,6 +424,7 @@ elif [[ "$RELEASE_XCODE_PREFLIGHT" == "1" ]]; then
   fi
 else
   printf "INFO: release Xcode preflight skipped; set SOLOPM_RELEASE_XCODE_PREFLIGHT=1 to run xcodebuild against %s.\n" "$XCODE_WORKSPACE_RELATIVE"
+  blocker "release Xcode preflight was not run"
 fi
 
 section "Release launch preflight"
@@ -448,6 +452,7 @@ elif [[ "$RELEASE_LAUNCH_PREFLIGHT" == "1" ]]; then
   fi
 else
   printf "INFO: release launch preflight skipped; set SOLOPM_RELEASE_LAUNCH_PREFLIGHT=1 to run %s --verify inside this report.\n" "$RELEASE_LAUNCH_PREFLIGHT_RELATIVE"
+  blocker "release launch preflight was not run"
 fi
 
 section "Phase checklist blockers"
@@ -682,6 +687,7 @@ else
     fi
   else
     printf "INFO: accessibility runtime preflight skipped; set SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT=1 to include the visible AX smoke check.\n"
+    blocker "accessibility runtime preflight was not run"
   fi
 fi
 if [[ ! -f "$voiceover_evidence_file" ]]; then
@@ -1013,4 +1019,4 @@ if [[ "$BLOCKER_COUNT" -gt 0 ]]; then
   exit 2
 fi
 
-printf "READY: runtime, task checklist, and release environment gates passed.\n"
+printf "READY: runtime, task checklist, automated proof gates, and release environment gates passed.\n"

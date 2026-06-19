@@ -229,6 +229,8 @@ Each competitor note and Ship / Defer / Reject delta must identify what was actu
 
 Run the automated local gate sweep first. It verifies CI, SQLite CRUD, runtime accessible CRUD, Xcode build, visible-window launch, runtime AX, and MCP compliance gates in one command. This automated sweep does not replace manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper evidence.
 
+The final readiness report treats skipped automated proof gates as blockers. Run the sweep command for a full local proof, or run the individual `SOLOPM_*_PREFLIGHT=1` / smoke flags below when narrowing failures. Do not claim release readiness from the default report output if CI, SQLite CRUD, runtime accessible CRUD, Xcode build, visible launch, or runtime AX were skipped.
+
 ```bash
 ./script/check_automated_release_preflight.sh
 ```
