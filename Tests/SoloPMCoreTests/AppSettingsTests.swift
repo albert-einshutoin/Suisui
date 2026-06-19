@@ -555,6 +555,57 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(loaded.isOpenCodeLocalExecutionApproved)
     }
 
+    @MainActor
+    func testAppSettingsViewModelReportsSettingsSaveFailureWithoutInternalErrorName() throws {
+        let viewModel = AppSettingsViewModel(
+            settingsStore: FailingSaveAppSettingsStore(),
+            secretStore: InMemorySecretStore()
+        )
+
+        viewModel.setNotificationsEnabled(true)
+        viewModel.saveSettings()
+
+        XCTAssertEqual(viewModel.errorMessage, "App settings could not be saved.")
+        XCTAssertFalse(viewModel.errorMessage?.contains("unexpectedStatus") ?? true)
+        XCTAssertNil(viewModel.successMessage)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelReportsAPIKeySaveFailureWithoutInternalStatusOrRawKey() throws {
+        let rawKey = "sk-live-secret-value"
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: try makeUserDefaults("APIKeySaveFailure")),
+            secretStore: FailingWriteSecretStore(saveError: SecretStoreError.unexpectedStatus(-34018))
+        )
+
+        viewModel.updateOpenAIAPIKeyInput(rawKey)
+        viewModel.saveOpenAIAPIKey()
+
+        XCTAssertEqual(viewModel.errorMessage, "API key could not be saved to Keychain.")
+        XCTAssertFalse(viewModel.errorMessage?.contains(rawKey) ?? true)
+        XCTAssertFalse(viewModel.errorMessage?.contains("unexpectedStatus") ?? true)
+        XCTAssertNil(viewModel.successMessage)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelReportsAPIKeyDeleteFailureWithoutInternalStatus() throws {
+        let secretStore = FailingWriteSecretStore(
+            values: [.openRouterAPIKey: "sk-or-live-secret"],
+            deleteError: SecretStoreError.unexpectedStatus(-25300)
+        )
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: try makeUserDefaults("APIKeyDeleteFailure")),
+            secretStore: secretStore
+        )
+
+        viewModel.deleteOpenRouterAPIKey()
+
+        XCTAssertEqual(viewModel.errorMessage, "API key could not be removed from Keychain.")
+        XCTAssertFalse(viewModel.errorMessage?.contains("unexpectedStatus") ?? true)
+        XCTAssertNil(viewModel.successMessage)
+        XCTAssertEqual(try secretStore.read(.openRouterAPIKey), "sk-or-live-secret")
+    }
+
     func testAppSettingsValidatesGroqBaseURLBeforeSaving() {
         let blank = AppSettings(groqBaseURLString: "   ")
         let insecure = AppSettings(groqBaseURLString: "http://api.groq.com/openai/v1")
@@ -765,6 +816,62 @@ final class AppSettingsTests: XCTestCase {
         viewModel.setSTTProvider(.localWhisperCpp)
 
         XCTAssertEqual(viewModel.settings.sttProvider, .openAITranscribe)
+    }
+
+    private func makeUserDefaults(_ label: String) throws -> UserDefaults {
+        let suiteName = "SoloPM.AppSettingsTests.\(label).\(UUID().uuidString)"
+        return try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    }
+}
+
+private struct FailingSaveAppSettingsStore: AppSettingsStore {
+    func load() throws -> AppSettings {
+        .default
+    }
+
+    func save(_ settings: AppSettings) throws {
+        throw SecretStoreError.unexpectedStatus(-34018)
+    }
+}
+
+private final class FailingWriteSecretStore: SecretStore, @unchecked Sendable {
+    private var values: [SecretKey: String]
+    private let saveError: Error?
+    private let deleteError: Error?
+    private let lock = NSLock()
+
+    init(
+        values: [SecretKey: String] = [:],
+        saveError: Error? = nil,
+        deleteError: Error? = nil
+    ) {
+        self.values = values
+        self.saveError = saveError
+        self.deleteError = deleteError
+    }
+
+    func save(_ value: String, for key: SecretKey) throws {
+        if let saveError {
+            throw saveError
+        }
+        lock.lock()
+        defer { lock.unlock() }
+        values[key] = value
+    }
+
+    func read(_ key: SecretKey) throws -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return values[key]
+    }
+
+    func delete(_ key: SecretKey) throws {
+        if let deleteError {
+            throw deleteError
+        }
+        lock.lock()
+        defer { lock.unlock() }
+        values.removeValue(forKey: key)
     }
 }
 

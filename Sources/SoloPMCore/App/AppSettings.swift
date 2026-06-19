@@ -439,6 +439,9 @@ public final class AppSettingsViewModel: ObservableObject {
     private let settingsStore: any AppSettingsStore
     private let secretStore: any SecretStore
     private var rejectedAIProvider: AIProvider?
+    private static let settingsSaveFailureMessage = "App settings could not be saved."
+    private static let apiKeySaveFailureMessage = "API key could not be saved to Keychain."
+    private static let apiKeyDeleteFailureMessage = "API key could not be removed from Keychain."
 
     public init(settingsStore: any AppSettingsStore, secretStore: any SecretStore) {
         self.settingsStore = settingsStore
@@ -622,7 +625,7 @@ public final class AppSettingsViewModel: ObservableObject {
             errorMessage = nil
             successMessage = "Settings saved."
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.settingsSaveFailureMessage
             successMessage = nil
         }
     }
@@ -693,7 +696,7 @@ public final class AppSettingsViewModel: ObservableObject {
             errorMessage = nil
             successMessage = "API key saved to Keychain."
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.apiKeySaveFailureMessage
             successMessage = nil
         }
     }
@@ -717,7 +720,7 @@ public final class AppSettingsViewModel: ObservableObject {
             errorMessage = nil
             successMessage = "OpenRouter API key saved to Keychain."
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.apiKeySaveFailureMessage
             successMessage = nil
         }
     }
@@ -741,7 +744,7 @@ public final class AppSettingsViewModel: ObservableObject {
             errorMessage = nil
             successMessage = "Anthropic API key saved to Keychain."
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.apiKeySaveFailureMessage
             successMessage = nil
         }
     }
@@ -765,7 +768,7 @@ public final class AppSettingsViewModel: ObservableObject {
             errorMessage = nil
             successMessage = "Gemini API key saved to Keychain."
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.apiKeySaveFailureMessage
             successMessage = nil
         }
     }
@@ -789,7 +792,7 @@ public final class AppSettingsViewModel: ObservableObject {
             errorMessage = nil
             successMessage = "Groq API key saved to Keychain."
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.apiKeySaveFailureMessage
             successMessage = nil
         }
     }
@@ -804,7 +807,7 @@ public final class AppSettingsViewModel: ObservableObject {
             errorMessage = nil
             successMessage = "API key removed."
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.apiKeyDeleteFailureMessage
             successMessage = nil
         }
     }
@@ -819,7 +822,7 @@ public final class AppSettingsViewModel: ObservableObject {
             errorMessage = nil
             successMessage = "OpenRouter API key removed."
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.apiKeyDeleteFailureMessage
             successMessage = nil
         }
     }
@@ -834,7 +837,7 @@ public final class AppSettingsViewModel: ObservableObject {
             errorMessage = nil
             successMessage = "Anthropic API key removed."
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.apiKeyDeleteFailureMessage
             successMessage = nil
         }
     }
@@ -849,7 +852,7 @@ public final class AppSettingsViewModel: ObservableObject {
             errorMessage = nil
             successMessage = "Gemini API key removed."
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.apiKeyDeleteFailureMessage
             successMessage = nil
         }
     }
@@ -864,7 +867,7 @@ public final class AppSettingsViewModel: ObservableObject {
             errorMessage = nil
             successMessage = "Groq API key removed."
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.apiKeyDeleteFailureMessage
             successMessage = nil
         }
     }
