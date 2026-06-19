@@ -149,6 +149,29 @@ append_line() {
   printf "%s" "$current"
 }
 
+is_placeholder_checked_by() {
+  local normalized
+  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
+  case "$normalized" in
+    name|\
+    reviewer|\
+    "release reviewer"|\
+    "product reviewer"|\
+    tester|\
+    qa|\
+    unknown|\
+    tbd|\
+    todo|\
+    n/a|\
+    na)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 is_manual_phase_gate() {
   local item="$1"
   grep -Eiq '(手動確認|実機|支援技術|VoiceOver|hands-on|2-4[[:space:]]*hour|2-4時間|Developer ID|notarization|notarized|公証|Gatekeeper|clean environment|clean 環境|別ユーザー|login item|signed app|signed / notarized|署名|release-machine|manual evidence)' <<<"$item"
@@ -572,7 +595,10 @@ else
       continue
     fi
 
-    if grep -Eiq '(pending|todo|tbd|placeholder|sample|example|replace me|signed or release-candidate|VoiceOver/keyboard/device details|VoiceOver / keyboard / device details|manual pass environment|accessibility environment)' <<<"$context_value"; then
+    has_template_context=0
+    grep -Eiq '(pending|todo|tbd|placeholder|sample|example|replace me|signed or release-candidate|VoiceOver/keyboard/device details|VoiceOver / keyboard / device details|manual pass environment|accessibility environment)' <<<"$context_value" && has_template_context=1
+    [[ "$context_label" == "Checked by" ]] && is_placeholder_checked_by "$context_value" && has_template_context=1
+    if [[ "$has_template_context" -eq 1 ]]; then
       voiceover_blocker "VoiceOver accessibility evidence has template release context: $context_label"
     fi
 
@@ -714,7 +740,10 @@ else
       continue
     fi
 
-    if grep -Eiq "$competitor_template_pattern" <<<"$context_value"; then
+    has_template_context=0
+    grep -Eiq "$competitor_template_pattern" <<<"$context_value" && has_template_context=1
+    [[ "$context_label" == "Checked by" ]] && is_placeholder_checked_by "$context_value" && has_template_context=1
+    if [[ "$has_template_context" -eq 1 ]]; then
       competitor_blocker "Competitor hands-on evidence has template review context: $context_label"
     fi
 

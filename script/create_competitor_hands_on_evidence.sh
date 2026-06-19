@@ -51,6 +51,29 @@ is_placeholder_environment() {
   esac
 }
 
+is_placeholder_checked_by() {
+  local normalized
+  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
+  case "$normalized" in
+    name|\
+    reviewer|\
+    "release reviewer"|\
+    "product reviewer"|\
+    tester|\
+    qa|\
+    unknown|\
+    tbd|\
+    todo|\
+    n/a|\
+    na)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 is_iso_date() {
   local value="$1"
   local normalized
@@ -152,6 +175,10 @@ if [[ "$EVIDENCE_STATUS" == "passed" ]]; then
   fi
   if [[ -z "${CHECKED_BY//[[:space:]]/}" ]]; then
     echo "--checked-by is required with --passed" >&2
+    exit 2
+  fi
+  if is_placeholder_checked_by "$CHECKED_BY"; then
+    echo "--checked-by must name the actual reviewer" >&2
     exit 2
   fi
   if [[ -z "${CHECK_DATE//[[:space:]]/}" ]]; then

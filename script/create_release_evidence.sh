@@ -212,6 +212,29 @@ is_placeholder_manual_environment() {
   esac
 }
 
+is_placeholder_checked_by() {
+  local normalized
+  normalized="$(trim_text "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[[:space:]]+/ /g')"
+  case "$normalized" in
+    name|\
+    reviewer|\
+    "release reviewer"|\
+    "product reviewer"|\
+    tester|\
+    qa|\
+    unknown|\
+    tbd|\
+    todo|\
+    n/a|\
+    na)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 is_boilerplate_review_note() {
   local normalized
   normalized="$(trim_text "$1" | tr '[:upper:]' '[:lower:]')"
@@ -506,6 +529,10 @@ fi
 CHECKED_BY="$(trim_text "$CHECKED_BY")"
 if [[ -z "$CHECKED_BY" ]]; then
   echo "release evidence requires --checked-by to name the reviewer" >&2
+  exit 2
+fi
+if is_placeholder_checked_by "$CHECKED_BY"; then
+  echo "release evidence requires --checked-by to name the actual reviewer" >&2
   exit 2
 fi
 
