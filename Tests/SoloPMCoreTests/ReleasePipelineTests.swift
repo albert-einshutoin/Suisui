@@ -2197,6 +2197,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift::inbox-quick-add-button"))
         XCTAssertTrue(script.contains("--runtime"))
         XCTAssertTrue(script.contains("System Events"))
+        XCTAssertTrue(script.contains("MIN_AX_BUTTONS"))
+        XCTAssertTrue(script.contains("MIN_AX_TEXT_FIELDS"))
+        XCTAssertTrue(script.contains("MIN_AX_STATIC_TEXTS"))
+        XCTAssertTrue(script.contains("runtime AX smoke has too few buttons"))
+        XCTAssertTrue(script.contains("runtime AX smoke has too few text fields"))
+        XCTAssertTrue(script.contains("runtime AX smoke has too few static texts"))
         XCTAssertTrue(script.contains("This is not a substitute for the manual VoiceOver pass."))
 
         let result = try runScript("script/check_accessibility_preflight.sh", arguments: ["--source-only"])
@@ -2205,6 +2211,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(checklist.contains("./script/check_accessibility_preflight.sh --source-only"))
         XCTAssertTrue(checklist.contains("./script/check_accessibility_preflight.sh --runtime"))
+        XCTAssertTrue(checklist.contains("fewer than the minimum buttons, text fields, or static texts"))
         XCTAssertTrue(phase.contains("[x] `script/check_accessibility_preflight.sh` はsource-level accessibility anchorsを確認し、任意のruntime AX smokeで手動VoiceOver前の崩れを検出できる。"))
         XCTAssertTrue(phase.contains("[ ] 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。"))
     }

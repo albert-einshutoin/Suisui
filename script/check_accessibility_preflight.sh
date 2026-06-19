@@ -18,6 +18,9 @@ SOURCE_ONLY=1
 RUN_RUNTIME=0
 LAUNCH_APP=1
 TIMEOUT_SECONDS=12
+MIN_AX_BUTTONS=5
+MIN_AX_TEXT_FIELDS=1
+MIN_AX_STATIC_TEXTS=5
 
 REQUIRED_SOURCE_ANCHORS=(
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-sidebar"
@@ -52,6 +55,7 @@ usage() {
   printf '%s\n' ""
   printf '%s\n' "Checks accessibility anchors before the manual VoiceOver release pass."
   printf '%s\n' "This is not a substitute for the manual VoiceOver pass."
+  printf '%s\n' "Runtime smoke fails when the visible window has fewer than $MIN_AX_BUTTONS buttons, $MIN_AX_TEXT_FIELDS text field, or $MIN_AX_STATIC_TEXTS static texts."
 }
 
 while [[ "$#" -gt 0 ]]; do
@@ -151,9 +155,12 @@ while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do
 done
 
 set +e
-ax_output="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' 2>&1
+ax_output="$(/usr/bin/osascript - "$APP_NAME" "$MIN_AX_BUTTONS" "$MIN_AX_TEXT_FIELDS" "$MIN_AX_STATIC_TEXTS" <<'APPLESCRIPT' 2>&1
 on run argv
   set appName to item 1 of argv
+  set minButtons to (item 2 of argv) as integer
+  set minTextFields to (item 3 of argv) as integer
+  set minStaticTexts to (item 4 of argv) as integer
   tell application "System Events"
     if not (exists process appName) then error appName & " process is not visible to System Events"
     tell process appName
@@ -163,6 +170,9 @@ on run argv
       set buttonCount to count of buttons of entire contents of firstWindow
       set textFieldCount to count of text fields of entire contents of firstWindow
       set staticTextCount to count of static texts of entire contents of firstWindow
+      if buttonCount < minButtons then error "runtime AX smoke has too few buttons: " & buttonCount & " < " & minButtons
+      if textFieldCount < minTextFields then error "runtime AX smoke has too few text fields: " & textFieldCount & " < " & minTextFields
+      if staticTextCount < minStaticTexts then error "runtime AX smoke has too few static texts: " & staticTextCount & " < " & minStaticTexts
       return "OK: runtime AX smoke visible, windows=" & windowCount & ", buttons=" & buttonCount & ", textFields=" & textFieldCount & ", staticTexts=" & staticTextCount
     end tell
   end tell
