@@ -208,7 +208,9 @@ SQL
 
 pressButtonContaining() {
   local fragment="$1"
-  /usr/bin/osascript - "$APP_NAME" "$fragment" <<'APPLESCRIPT'
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/osascript - "$APP_NAME" "$fragment" <<'APPLESCRIPT'
 on run argv
   set appName to item 1 of argv
   set fragment to item 2 of argv
@@ -258,12 +260,23 @@ on run argv
   error "button signal not found: " & fragment
 end run
 APPLESCRIPT
+    then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: failed to press button in AX tree: $fragment" >&2
+      return 1
+    fi
+    sleep 1
+  done
 }
 
 pressConfirmationButtonContaining() {
   local fragment="$1"
   local excluded_help="$2"
-  /usr/bin/osascript - "$APP_NAME" "$fragment" "$excluded_help" <<'APPLESCRIPT'
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/osascript - "$APP_NAME" "$fragment" "$excluded_help" <<'APPLESCRIPT'
 on run argv
   set appName to item 1 of argv
   set fragment to item 2 of argv
@@ -314,6 +327,15 @@ on run argv
   error "confirmation button signal not found: " & fragment
 end run
 APPLESCRIPT
+    then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: failed to press confirmation button in AX tree: $fragment" >&2
+      return 1
+    fi
+    sleep 1
+  done
 }
 
 setTextFieldContaining() {
