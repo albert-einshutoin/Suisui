@@ -1312,6 +1312,13 @@
 - [x] `ReleasePipelineTests` と `docs/release/checklist.md` で operator action summary の生成導線を固定する。
 - [x] 完了条件: `release_readiness_report.sh` が `NOT READY` のままでも、次に実行すべき手動・自動・release-machine作業が1ファイルに集約される。
 
+### P10-162: Release CI preflight does not leave Swift temporary directories
+
+- [x] `scripts/ci.sh` は `SOLOPM_CI_TMP_ROOT` / `SOLOPM_CI_TMPDIR` を使って SwiftPM の `TMPDIR` を release preflight 専用領域へ隔離する。
+- [x] `scripts/ci.sh` は自分で作った `solopm-ci-tmp.*` を `EXIT INT TERM` trap で削除し、`swift test` が作る `TemporaryDirectory.*` を `.tmp` 直下に積み上げない。
+- [x] `ReleasePipelineTests` で `TMPDIR` export が `swift test` より前に実行され、CI tmpdir cleanup が定義されていることを固定する。
+- [x] 完了条件: automated release preflight を繰り返しても検証用 `.tmp` に不要な Swift temporary directory が蓄積せず、manual evidence / action summary の確認ノイズを増やさない。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

@@ -31,6 +31,22 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("export TMPDIR=\"${SOLOPM_TMPDIR:-$ROOT_DIR/.tmp/}\""))
     }
 
+    func testCIScriptUsesDedicatedTemporaryRootAndCleansItUp() throws {
+        let script = try readPackageFile("scripts/ci.sh")
+
+        XCTAssertTrue(script.contains("CI_TMP_ROOT=\"${SOLOPM_CI_TMP_ROOT:-$ROOT_DIR/.tmp}\""))
+        XCTAssertTrue(script.contains("CI_TMPDIR_CREATED=0"))
+        XCTAssertTrue(script.contains("mktemp -d \"$CI_TMP_ROOT/solopm-ci-tmp.XXXXXX\""))
+        XCTAssertTrue(script.contains("export TMPDIR=\"$CI_TMPDIR/\""))
+        XCTAssertTrue(script.contains("cleanup_ci_tmpdir()"))
+        XCTAssertTrue(script.contains("rm -rf \"$CI_TMPDIR\""))
+        XCTAssertTrue(script.contains("trap cleanup_ci EXIT INT TERM"))
+        XCTAssertLessThan(
+            try XCTUnwrap(script.range(of: "export TMPDIR=\"$CI_TMPDIR/\"")).lowerBound,
+            try XCTUnwrap(script.range(of: "swift test")).lowerBound
+        )
+    }
+
     func testNotarizationScriptUsesStoredCredentialsStaplingAndLogRecovery() throws {
         let script = try readPackageFile("script/notarize_app.sh")
 
