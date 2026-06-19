@@ -161,19 +161,60 @@ on run argv
   set minButtons to (item 2 of argv) as integer
   set minTextFields to (item 3 of argv) as integer
   set minStaticTexts to (item 4 of argv) as integer
+  set bestSummary to ""
+  set bestScore to -1
+  set bestButtonCount to 0
+  set bestTextFieldCount to 0
+  set bestStaticTextCount to 0
   tell application "System Events"
     if not (exists process appName) then error appName & " process is not visible to System Events"
     tell process appName
       set windowCount to count of windows
       if windowCount < 1 then error appName & " has no visible windows"
-      set firstWindow to window 1
-      set buttonCount to count of buttons of entire contents of firstWindow
-      set textFieldCount to count of text fields of entire contents of firstWindow
-      set staticTextCount to count of static texts of entire contents of firstWindow
-      if buttonCount < minButtons then error "runtime AX smoke has too few buttons: " & buttonCount & " < " & minButtons
-      if textFieldCount < minTextFields then error "runtime AX smoke has too few text fields: " & textFieldCount & " < " & minTextFields
-      if staticTextCount < minStaticTexts then error "runtime AX smoke has too few static texts: " & staticTextCount & " < " & minStaticTexts
-      return "OK: runtime AX smoke visible, windows=" & windowCount & ", buttons=" & buttonCount & ", textFields=" & textFieldCount & ", staticTexts=" & staticTextCount
+      repeat with windowIndex from 1 to windowCount
+        set currentWindow to window windowIndex
+        set windowName to ""
+        try
+          set windowName to name of currentWindow as text
+        end try
+        set buttonCount to 0
+        set textFieldCount to 0
+        set staticTextCount to 0
+        set axItems to entire contents of currentWindow
+        repeat with axItem in axItems
+          set itemRole to ""
+          try
+            set itemRole to role of axItem as text
+          end try
+          if itemRole is "AXButton" then set buttonCount to buttonCount + 1
+          if itemRole is "AXTextField" or itemRole is "AXTextArea" then set textFieldCount to textFieldCount + 1
+          if itemRole is "AXStaticText" then set staticTextCount to staticTextCount + 1
+        end repeat
+        set currentSummary to "window=" & windowIndex & " name=" & windowName & ", buttons=" & buttonCount & ", textFields=" & textFieldCount & ", staticTexts=" & staticTextCount
+        set currentScore to buttonCount + textFieldCount + staticTextCount
+        if bestSummary is "" then
+          set bestSummary to currentSummary
+          set bestScore to currentScore
+          set bestButtonCount to buttonCount
+          set bestTextFieldCount to textFieldCount
+          set bestStaticTextCount to staticTextCount
+        else if currentScore > bestScore then
+          set bestSummary to currentSummary
+          set bestScore to currentScore
+          set bestButtonCount to buttonCount
+          set bestTextFieldCount to textFieldCount
+          set bestStaticTextCount to staticTextCount
+        end if
+        if buttonCount >= minButtons and textFieldCount >= minTextFields and staticTextCount >= minStaticTexts then
+          return "OK: runtime AX smoke visible, windows=" & windowCount & ", " & currentSummary
+        end if
+      end repeat
+      if bestSummary is "" then set bestSummary to "windows=" & windowCount & ", no AX elements inspected"
+      if bestSummary does not contain "buttons=" then error "runtime AX smoke could not inspect visible window AX elements: " & bestSummary
+      if bestButtonCount < minButtons then error "runtime AX smoke has too few buttons: " & bestButtonCount & " < " & minButtons & " (" & bestSummary & ")"
+      if bestTextFieldCount < minTextFields then error "runtime AX smoke has too few text fields: " & bestTextFieldCount & " < " & minTextFields & " (" & bestSummary & ")"
+      if bestStaticTextCount < minStaticTexts then error "runtime AX smoke has too few static texts: " & bestStaticTextCount & " < " & minStaticTexts & " (" & bestSummary & ")"
+      error "runtime AX smoke did not find a qualifying visible window: " & bestSummary
     end tell
   end tell
 end run
