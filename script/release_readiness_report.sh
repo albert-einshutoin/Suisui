@@ -133,7 +133,7 @@ if [[ -d "$ROOT_DIR/tasks" ]]; then
   while IFS= read -r phase_file; do
     phase_name="$(basename "$phase_file")"
     case "$phase_name" in
-      Phase[0-9].md|Phase[0-9]-*.md|Phase10.md|Phase10-*.md)
+      Phase[0-9].md|Phase[0-9]-*.md|Phase10.md|Phase10-*.md|Phase11.md|Phase11-*.md)
         unchecked_items="$(rg -n --with-filename -- "- \\[ \\]" "$phase_file" || true)"
         if [[ -n "$unchecked_items" ]]; then
           if [[ -n "$phase_unchecked" ]]; then
@@ -153,7 +153,7 @@ if [[ -n "$phase_unchecked" ]]; then
   printf "%s\n" "$phase_unchecked"
   blocker "phase checklist still has unchecked release/manual gates"
 else
-  printf "OK: no unchecked items in release phase checklists (Phase0-Phase10)\n"
+  printf "OK: no unchecked items in release phase checklists (Phase0-Phase11)\n"
 fi
 
 if [[ -n "$readme_template_unchecked" ]]; then

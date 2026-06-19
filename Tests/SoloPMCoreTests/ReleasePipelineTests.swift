@@ -2185,8 +2185,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("(?i:(^|[^[:alnum:]_])(demo|sample|placeholder)([^[:alnum:]_]|$))"))
         XCTAssertTrue(script.contains("Static[A-Za-z0-9_]*"))
         XCTAssertFalse(script.contains("Fake|Mock|InMemory|Static|Demo|sample|canned|stub"))
-        XCTAssertTrue(script.contains("Phase0-Phase10"))
+        XCTAssertTrue(script.contains("Phase0-Phase11"))
         XCTAssertTrue(script.contains("Phase10-*.md"))
+        XCTAssertTrue(script.contains("Phase11-*.md"))
         XCTAssertTrue(script.contains("find \"$ROOT_DIR/tasks\""))
         XCTAssertTrue(script.contains("--with-filename"))
         XCTAssertTrue(script.contains("tasks/README.md"))
@@ -2236,6 +2237,59 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("MCP Inspector evidence is missing marker"))
         XCTAssertTrue(script.contains("OK: MCP Inspector evidence covers stable baseline, draft boundary, tools/list, tools/call, and failure taxonomy"))
         XCTAssertTrue(script.contains("BLOCKER"))
+    }
+
+    func testReleaseReadinessReportIncludesPhase11AndIgnoresFuturePhasePlanning() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-phase11-scope", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let evidenceDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("release", isDirectory: true)
+            .appendingPathComponent("evidence", isDirectory: true)
+        let screenshotDirectory = evidenceDirectory.appendingPathComponent("ui-screenshots", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: screenshotDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: preflightURL, atomically: true, encoding: .utf8)
+        try "- [x] Phase 10 complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase10-ReleaseReadinessRuntime.md"), atomically: true, encoding: .utf8)
+        try "- [ ] Phase 11 productization gate\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase11-ProviderSyncUXProductization.md"), atomically: true, encoding: .utf8)
+        try "- [ ] Phase 12 future idea\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase12-Future.md"), atomically: true, encoding: .utf8)
+        try "- [x] template examples are ignored\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: preflightURL.path)
+
+        let result = try runTool(["bash", reportURL.path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("Phase11-ProviderSyncUXProductization.md:1:- [ ] Phase 11 productization gate"))
+        XCTAssertFalse(result.output.contains("Phase12-Future.md"))
     }
 
     func testReleaseReadinessReportFailsWhenRuntimeSourceDirectoryIsMissing() throws {

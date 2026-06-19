@@ -1106,9 +1106,9 @@
 
 ### P10-141b: Future phase planning is not a current release blocker
 
-- [x] `release_readiness_report.sh` は `Phase11+` の future planning を現在リリースの blocker にしない。
-- [x] release checklist scan は Phase0〜Phase10 の現在 release gate に限定する。
-- [x] `ReleasePipelineTests` で Phase10 までに限定されることを固定する。
+- [x] `release_readiness_report.sh` は `Phase12+` の future planning を現在リリースの blocker にしない。
+- [x] release checklist scan は Phase0〜Phase11 の現在 release gate に限定する。
+- [x] `ReleasePipelineTests` で Phase11 までに限定されることを固定する。
 - [x] Phase checklist blocker はファイル名と行番号を出し、未完了gateの場所を追えるようにする。
 - [x] 完了条件: 次フェーズの未完了計画を追加しても、現在リリースの `NOT READY` 理由が水増しされない。
 
