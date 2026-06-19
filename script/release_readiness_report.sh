@@ -754,6 +754,7 @@ write_release_actions() {
     write_voiceover_review_candidate_command
     printf "\n"
     printf -- "- The candidate writes \`.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md\` so you can inspect the release-candidate context without modifying tracked evidence.\n"
+    printf -- "- For this action summary, the expected pending preview path is \`.tmp/voiceover-review/accessibility-voiceover-pending-%s.md\`.\n" "$(source_commit)"
     printf -- "- The candidate writes \`.tmp/voiceover-review/create-evidence-command.sh\` with the same database/project context. Replace every placeholder in that generated command with concrete VoiceOver observations before running it.\n"
     printf -- "- The generated VoiceOver evidence command is pinned to a clean tracked source tree and the source commit it was created for. Rerun \`./script/prepare_voiceover_review_candidate.sh\` after source changes instead of reusing an older command.\n"
     printf -- "- Run the source/runtime accessibility preflight first, then perform a real VoiceOver pass.\n"
@@ -765,6 +766,7 @@ write_release_actions() {
     printf "## Competitor Hands-On\n"
     printf -- "- Complete the 2-4 hour Notion, Todoist, Linear, and Motion hands-on pass before release.\n"
     printf -- "- Run the pending generator first if you want a review worksheet at \`.tmp/competitor-hands-on/hands-on-worksheet.md\` and a fill-in command at \`.tmp/competitor-hands-on/create-evidence-command.sh\`.\n"
+    printf -- "- For this action summary, the expected pending evidence path is \`.tmp/competitor-hands-on/competitor-hands-on-pending-%s.md\`.\n" "$(source_commit)"
     printf -- "- The generated competitor hands-on evidence command is pinned to a clean tracked source tree and the source commit it was created for. Rerun \`./script/create_competitor_hands_on_evidence.sh --pending\` after source changes instead of reusing an older command.\n"
     printf -- "- Replace every placeholder below with concrete observations and Ship / Defer / Reject decisions before running it.\n\n"
     write_competitor_hands_on_evidence_command
