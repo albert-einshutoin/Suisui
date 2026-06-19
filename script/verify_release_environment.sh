@@ -375,6 +375,29 @@ is_placeholder_manual_environment() {
   esac
 }
 
+is_placeholder_checked_by() {
+  local normalized
+  normalized="$(trim_text "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[[:space:]]+/ /g')"
+  case "$normalized" in
+    name|\
+    reviewer|\
+    "release reviewer"|\
+    "product reviewer"|\
+    tester|\
+    qa|\
+    unknown|\
+    tbd|\
+    todo|\
+    n/a|\
+    na)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 is_boilerplate_review_note() {
   local normalized
   normalized="$(trim_text "$1" | tr '[:upper:]' '[:lower:]')"
@@ -475,6 +498,22 @@ require_evidence_concrete_manual_environment() {
 
   if is_placeholder_manual_environment "$value"; then
     add_blocker "release evidence manual check environment is not concrete: manualChecks.environment"
+  fi
+}
+
+require_evidence_concrete_reviewer() {
+  local value
+
+  if ! value="$(plutil -extract "review.checkedBy" raw -o - "$RELEASE_EVIDENCE_FILE" 2>/dev/null)"; then
+    add_blocker "release evidence missing reviewer: review.checkedBy"
+    return
+  fi
+
+  value="$(trim_text "$value")"
+  if [[ -z "$value" ]]; then
+    add_blocker "release evidence missing reviewer: review.checkedBy must be non-empty"
+  elif is_placeholder_checked_by "$value"; then
+    add_blocker "release evidence reviewer is not concrete: review.checkedBy"
   fi
 }
 
@@ -809,7 +848,7 @@ if [[ -f "$RELEASE_EVIDENCE_FILE" ]]; then
     require_evidence_true "manualChecks.loginItemToggle" "login item toggle in signed app"
     require_evidence_true "manualChecks.sparkleAppcastMetadata" "Sparkle appcast metadata check"
     require_evidence_concrete_manual_environment
-    require_evidence_non_empty "review.checkedBy" "reviewer"
+    require_evidence_concrete_reviewer
     require_evidence_non_empty "review.checkedAt" "review timestamp"
     require_evidence_review_notes
     require_evidence_manual_note_proofs
