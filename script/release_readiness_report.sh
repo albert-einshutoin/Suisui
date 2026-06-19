@@ -316,6 +316,108 @@ collect_release_environment_blockers() {
   done <<<"$output"
 }
 
+release_environment_route_for_blocker() {
+  local blocker_message="$1"
+  local lowered
+
+  lowered="$(printf "%s" "$blocker_message" | tr '[:upper:]' '[:lower:]')"
+  case "$lowered" in
+    *"sensitive field"*|*"inspect verify_release_environment.sh output locally"*)
+      printf "Local Inspection"
+      ;;
+    *"source tree"*|*"tracked source"*)
+      printf "Source Hygiene"
+      ;;
+    *"notarization"*|*"notary"*|*"notarize"*)
+      printf "Notarization"
+      ;;
+    *"gatekeeper"*|*"stapled"*|*"stapler"*)
+      printf "Gatekeeper / Stapling"
+      ;;
+    *"sparkle"*|*"appcast"*|*"sufeedurl"*|*"supublicedkey"*|*"edsignature"*|*"enclosure"*)
+      printf "Sparkle / Appcast"
+      ;;
+    *"release evidence"*|*"package evidence"*|*"manual checks"*|*"create_release_evidence"*)
+      printf "Release Evidence"
+      ;;
+    *"signing"*|*"developer id"*|*"codesign"*|*"hardened runtime"*|*"entitlements"*)
+      printf "Signing Configuration"
+      ;;
+    *)
+      printf "Local Inspection"
+      ;;
+  esac
+}
+
+write_release_environment_route_group() {
+  local label="$1"
+  local items="$2"
+  local item
+
+  if [[ -z "$items" ]]; then
+    return 0
+  fi
+
+  printf "%s blockers:\n" "$label"
+  while IFS= read -r item; do
+    [[ -z "$item" ]] && continue
+    printf -- "- [ ] %s\n" "$item"
+  done <<<"$items"
+  printf "\n"
+}
+
+write_release_environment_routes() {
+  local blocker_message
+  local route
+  local signing_items=""
+  local notarization_items=""
+  local sparkle_items=""
+  local gatekeeper_items=""
+  local evidence_items=""
+  local source_hygiene_items=""
+  local local_inspection_items=""
+
+  if [[ "${#RELEASE_ENVIRONMENT_BLOCKER_MESSAGES[@]}" -eq 0 ]]; then
+    return 0
+  fi
+
+  for blocker_message in "${RELEASE_ENVIRONMENT_BLOCKER_MESSAGES[@]}"; do
+    route="$(release_environment_route_for_blocker "$blocker_message")"
+    case "$route" in
+      "Signing Configuration")
+        signing_items="$(append_line "$signing_items" "$blocker_message")"
+        ;;
+      "Notarization")
+        notarization_items="$(append_line "$notarization_items" "$blocker_message")"
+        ;;
+      "Sparkle / Appcast")
+        sparkle_items="$(append_line "$sparkle_items" "$blocker_message")"
+        ;;
+      "Gatekeeper / Stapling")
+        gatekeeper_items="$(append_line "$gatekeeper_items" "$blocker_message")"
+        ;;
+      "Release Evidence")
+        evidence_items="$(append_line "$evidence_items" "$blocker_message")"
+        ;;
+      "Source Hygiene")
+        source_hygiene_items="$(append_line "$source_hygiene_items" "$blocker_message")"
+        ;;
+      *)
+        local_inspection_items="$(append_line "$local_inspection_items" "$blocker_message")"
+        ;;
+    esac
+  done
+
+  printf "## Release Environment Routes\n"
+  write_release_environment_route_group "Signing Configuration" "$signing_items"
+  write_release_environment_route_group "Notarization" "$notarization_items"
+  write_release_environment_route_group "Sparkle / Appcast" "$sparkle_items"
+  write_release_environment_route_group "Gatekeeper / Stapling" "$gatekeeper_items"
+  write_release_environment_route_group "Release Evidence" "$evidence_items"
+  write_release_environment_route_group "Source Hygiene" "$source_hygiene_items"
+  write_release_environment_route_group "Local Inspection" "$local_inspection_items"
+}
+
 collect_manual_action_blocker() {
   local action_group="$1"
   local message="$2"
@@ -480,6 +582,7 @@ write_release_actions() {
         printf -- "- [ ] %s\n" "$release_environment_blocker"
       done
       printf "\n"
+      write_release_environment_routes
     fi
 
     write_manual_evidence_blocker_actions

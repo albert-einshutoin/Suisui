@@ -4126,11 +4126,18 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("VOICEOVER_ACTION_BLOCKERS=()"))
         XCTAssertTrue(script.contains("COMPETITOR_ACTION_BLOCKERS=()"))
         XCTAssertTrue(script.contains("collect_release_environment_blockers()"))
+        XCTAssertTrue(script.contains("release_environment_route_for_blocker()"))
+        XCTAssertTrue(script.contains("write_release_environment_routes()"))
         XCTAssertTrue(script.contains("collect_manual_action_blocker()"))
         XCTAssertTrue(script.contains("normalized=\"${line#- }\""))
         XCTAssertTrue(script.contains("normalized=\"${normalized#BLOCKER: }\""))
         XCTAssertTrue(script.contains("normalized=\"${normalized//$root_prefix/}\""))
         XCTAssertTrue(script.contains("## Release Environment Blockers"))
+        XCTAssertTrue(script.contains("## Release Environment Routes"))
+        XCTAssertTrue(script.contains("Signing Configuration"))
+        XCTAssertTrue(script.contains("Sparkle / Appcast"))
+        XCTAssertTrue(script.contains("Gatekeeper / Stapling"))
+        XCTAssertTrue(script.contains("Release Evidence"))
         XCTAssertTrue(script.contains("## Manual VoiceOver Blockers"))
         XCTAssertTrue(script.contains("## Competitor Hands-On Blockers"))
         XCTAssertTrue(script.contains("release environment blocker contained a sensitive field"))
@@ -4182,11 +4189,13 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("SOLOPM_RELEASE_ACTIONS_FILE=.tmp/release-actions.md ./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("The action summary groups remaining blockers into Automated Proof Gates, Manual VoiceOver, Competitor Hands-On, Release Machine, Phase Checklist, and Other buckets."))
         XCTAssertTrue(checklist.contains("routes unchecked manual gates to Manual VoiceOver, Competitor Hands-On, Release Machine, Login Item Manual Check, or Manual Review"))
+        XCTAssertTrue(checklist.contains("routes verifier blockers to Signing Configuration, Notarization, Sparkle / Appcast, Gatekeeper / Stapling, Release Evidence, Source Hygiene, or Local Inspection"))
         XCTAssertTrue(phase.contains("[x] `release_readiness_report.sh` は `SOLOPM_RELEASE_ACTIONS_FILE` 指定時に残blockerのoperator action summaryを書き出す。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Source commit` と tracked source tree の clean / dirty / unavailable 状態を併記する。"))
         XCTAssertTrue(phase.contains("[x] action summary は今回の実行で発生した具体blockerを `Current Blocker Groups` のチェックリストとして列挙する。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Blocker Buckets` で Automated Proof Gates / Manual VoiceOver / Competitor Hands-On / Release Machine / Phase Checklist / Other の残件数を分類する。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Release Environment Blockers` に `verify_release_environment.sh` の `BLOCKER:` 明細を相対パス化して列挙し、機密っぽい値を転記しない。"))
+        XCTAssertTrue(phase.contains("[x] action summary は release environment blocker を Signing Configuration / Notarization / Sparkle / Appcast / Gatekeeper / Release Evidence / Source Hygiene / Local Inspection に分類し"))
         XCTAssertTrue(phase.contains("[x] action summary は clean-tree automated preflight evidence が有効な場合、accepted evidence、source commit、generated at、passed gatesを表示し、再実行指示だけを出さない。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Manual VoiceOver Blockers` と `Competitor Hands-On Blockers` に手動証跡の不足項目を分離表示し、手動作業を完了扱いにしない。"))
         XCTAssertTrue(phase.contains("[x] action summary は未チェックの手動Phase項目を Manual VoiceOver / Competitor Hands-On / Release Machine / Login Item Manual Check / Manual Review に分類し"))
@@ -4224,6 +4233,8 @@ final class ReleasePipelineTests: XCTestCase {
         printf "Blockers:\\n"
         printf -- "- BLOCKER: missing local signing config: $ROOT_DIR/packaging/signing.env\\n"
         printf -- "- BLOCKER: release app bundle is missing Sparkle framework: $ROOT_DIR/dist/SoloPM.app/Contents/Frameworks/Sparkle.framework\\n"
+        printf -- "- BLOCKER: dist app failed Gatekeeper assessment: $ROOT_DIR/dist/SoloPM.app\\n"
+        printf -- "- BLOCKER: missing local release evidence: run ./script/create_release_evidence.sh after packaging and manual checks\\n"
         printf -- "- BLOCKER: notarization token failed: super-secret-token\\n"
         exit 23
         """.write(to: preflightURL, atomically: true, encoding: .utf8)
@@ -4246,7 +4257,15 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("## Release Environment Blockers"))
         XCTAssertTrue(actionSummary.contains("- [ ] missing local signing config: packaging/signing.env"))
         XCTAssertTrue(actionSummary.contains("- [ ] release app bundle is missing Sparkle framework: dist/SoloPM.app/Contents/Frameworks/Sparkle.framework"))
+        XCTAssertTrue(actionSummary.contains("- [ ] dist app failed Gatekeeper assessment: dist/SoloPM.app"))
+        XCTAssertTrue(actionSummary.contains("- [ ] missing local release evidence: run ./script/create_release_evidence.sh after packaging and manual checks"))
         XCTAssertTrue(actionSummary.contains("- [ ] release environment blocker contained a sensitive field; inspect verify_release_environment.sh output locally"))
+        XCTAssertTrue(actionSummary.contains("## Release Environment Routes"))
+        XCTAssertTrue(actionSummary.contains("Signing Configuration blockers:\n- [ ] missing local signing config: packaging/signing.env"))
+        XCTAssertTrue(actionSummary.contains("Sparkle / Appcast blockers:\n- [ ] release app bundle is missing Sparkle framework: dist/SoloPM.app/Contents/Frameworks/Sparkle.framework"))
+        XCTAssertTrue(actionSummary.contains("Gatekeeper / Stapling blockers:\n- [ ] dist app failed Gatekeeper assessment: dist/SoloPM.app"))
+        XCTAssertTrue(actionSummary.contains("Release Evidence blockers:\n- [ ] missing local release evidence: run ./script/create_release_evidence.sh after packaging and manual checks"))
+        XCTAssertTrue(actionSummary.contains("Local Inspection blockers:\n- [ ] release environment blocker contained a sensitive field; inspect verify_release_environment.sh output locally"))
         XCTAssertFalse(actionSummary.contains(fixtureRoot.path))
         XCTAssertFalse(actionSummary.contains("super-secret-token"))
     }
