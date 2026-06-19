@@ -130,11 +130,51 @@ final class STTProviderTests: XCTestCase {
         XCTAssertEqual(transcript.duration, 1.25)
     }
 
+    func testOpenAITranscribeProviderRedactsTransportErrorMessages() async throws {
+        let audioURL = try writeTemporaryAudio()
+        let secret = "sk-" + "audioTransportSecret123"
+        let provider = OpenAITranscribeProvider(
+            secretStore: InMemorySecretStore(values: [.openAIAPIKey: "sk-test"]),
+            httpClient: ThrowingSTTHTTPDataClient(
+                error: NSError(
+                    domain: "SoloPMAudioTransport",
+                    code: -1,
+                    userInfo: [
+                        NSLocalizedDescriptionKey: "Upload failed for https://proxy.local?token=\(secret)&request_id=audio-1"
+                    ]
+                )
+            )
+        )
+
+        do {
+            _ = try await provider.transcribe(
+                RecordedAudio(fileURL: audioURL, format: .m4a)
+            )
+            XCTFail("Expected transport failure.")
+        } catch {
+            guard case .transcriptionFailed(let message) = error as? STTProviderError else {
+                return XCTFail("Expected transcription failure, got \(error)")
+            }
+            XCTAssertTrue(message.contains("Upload failed"))
+            XCTAssertTrue(message.contains("request_id=audio-1"))
+            XCTAssertFalse(message.contains(secret))
+            XCTAssertTrue(message.contains("[REDACTED_SECRET]"))
+        }
+    }
+
     private func writeTemporaryAudio() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("solopm-stt-test-\(UUID().uuidString).m4a")
         try Data("audio".utf8).write(to: url)
         return url
+    }
+}
+
+private struct ThrowingSTTHTTPDataClient: HTTPDataClient {
+    var error: Error
+
+    func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        throw error
     }
 }
 

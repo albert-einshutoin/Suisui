@@ -50,7 +50,7 @@ public struct OpenAITranscribeProvider: SpeechToTextProvider {
         do {
             (data, response) = try await httpClient.data(for: request)
         } catch {
-            throw STTProviderError.transcriptionFailed(error.localizedDescription)
+            throw STTProviderError.transcriptionFailed(ProviderErrorMessageSanitizer.message(from: error))
         }
 
         guard (200..<300).contains(response.statusCode) else {

@@ -34,4 +34,22 @@ final class LLMProviderErrorTests: XCTestCase {
 
         XCTAssertEqual(message, "provider rejected token=[REDACTED_SECRET] for request req-1")
     }
+
+    func testProviderErrorMessageSanitizerRedactsTransportErrors() {
+        let secret = "sk-" + "transportSecret123"
+        let error = NSError(
+            domain: "SoloPMTransport",
+            code: -1,
+            userInfo: [
+                NSLocalizedDescriptionKey: "Connection failed for https://proxy.local?api_key=\(secret)&request_id=net-1"
+            ]
+        )
+
+        let message = ProviderErrorMessageSanitizer.message(from: error)
+
+        XCTAssertTrue(message.contains("Connection failed"))
+        XCTAssertTrue(message.contains("request_id=net-1"))
+        XCTAssertFalse(message.contains(secret))
+        XCTAssertTrue(message.contains("[REDACTED_SECRET]"))
+    }
 }

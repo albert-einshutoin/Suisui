@@ -157,7 +157,7 @@ public struct GeminiDirectProvider: LLMProvider {
         } catch let error as LLMProviderError {
             throw error
         } catch {
-            throw LLMProviderError.network(error.localizedDescription)
+            throw LLMProviderError.network(ProviderErrorMessageSanitizer.message(from: error))
         }
 
         guard (200..<300).contains(response.statusCode) else {

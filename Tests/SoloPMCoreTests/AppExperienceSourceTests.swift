@@ -1725,6 +1725,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let chatSource = try readPackageFile("Sources/SoloPMCore/Planning/ChatCompletionsCompatibleProvider.swift")
         let claudeSource = try readPackageFile("Sources/SoloPMCore/Planning/ClaudeMessagesProvider.swift")
         let geminiSource = try readPackageFile("Sources/SoloPMCore/Planning/GeminiDirectProvider.swift")
+        let sttSource = try readPackageFile("Sources/SoloPMCore/Voice/STTProviders.swift")
 
         XCTAssertTrue(llmProviderSource.contains("LLMHTTPErrorMessageExtractor"))
         XCTAssertTrue(llmProviderSource.contains("Unexpected error body"))
@@ -1733,12 +1734,23 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(chatSource.contains("LLMHTTPErrorMessageExtractor.message(from: data)"))
         XCTAssertTrue(claudeSource.contains("LLMHTTPErrorMessageExtractor.message(from: data)"))
         XCTAssertTrue(geminiSource.contains("LLMHTTPErrorMessageExtractor.message(from: data)"))
+        XCTAssertTrue(llmProviderSource.contains("ProviderErrorMessageSanitizer"))
+        XCTAssertTrue(responsesSource.contains("ProviderErrorMessageSanitizer.message(from: error)"))
+        XCTAssertTrue(chatSource.contains("ProviderErrorMessageSanitizer.message(from: error)"))
+        XCTAssertTrue(claudeSource.contains("ProviderErrorMessageSanitizer.message(from: error)"))
+        XCTAssertTrue(geminiSource.contains("ProviderErrorMessageSanitizer.message(from: error)"))
+        XCTAssertTrue(sttSource.contains("ProviderErrorMessageSanitizer.message(from: error)"))
         XCTAssertTrue(claudeSource.contains("Claude Messages HTTP"))
         XCTAssertTrue(geminiSource.contains("Gemini Direct HTTP"))
         XCTAssertFalse(responsesSource.contains("No error message."))
         XCTAssertFalse(chatSource.contains("No error message."))
         XCTAssertFalse(claudeSource.contains("No error message."))
         XCTAssertFalse(geminiSource.contains("No error message."))
+        XCTAssertFalse(responsesSource.contains("LLMProviderError.network(error.localizedDescription)"))
+        XCTAssertFalse(chatSource.contains("LLMProviderError.network(error.localizedDescription)"))
+        XCTAssertFalse(claudeSource.contains("LLMProviderError.network(error.localizedDescription)"))
+        XCTAssertFalse(geminiSource.contains("LLMProviderError.network(error.localizedDescription)"))
+        XCTAssertFalse(sttSource.contains("STTProviderError.transcriptionFailed(error.localizedDescription)"))
     }
 
     func testProductBenchmarkDocumentsAdoptDeferRejectDecisions() throws {

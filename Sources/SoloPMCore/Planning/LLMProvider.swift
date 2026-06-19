@@ -79,6 +79,15 @@ enum LLMHTTPErrorMessageExtractor {
     }
 }
 
+enum ProviderErrorMessageSanitizer {
+    static func message(from error: Error) -> String {
+        DeveloperSecretRedactor()
+            .redact(error.localizedDescription)
+            .text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 private struct ProviderErrorResponseBody: Decodable {
     var error: ProviderErrorBody
 }
