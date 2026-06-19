@@ -961,6 +961,13 @@ private struct SettingsView: View {
                 LabeledContent("Status", value: syncViewModel.statusLabel)
                 LabeledContent("Last Attempt", value: syncViewModel.lastAttemptLabel)
                 LabeledContent("Data Included", value: syncViewModel.dataIncludedLabel)
+                SyncValueStatusRow(
+                    planLabel: syncViewModel.planLabel,
+                    statusLabel: syncViewModel.statusLabel,
+                    valueLabel: syncPaidValueLabel,
+                    boundaryLabel: syncSafetyBoundaryLabel,
+                    tone: syncOverviewTone
+                )
                 Toggle(
                     isOn: Binding(
                         get: { syncViewModel.isSyncEnabled },
@@ -1596,6 +1603,32 @@ private struct SettingsView: View {
         }
     }
 
+    private var syncPaidValueLabel: String {
+        switch syncViewModel.statusLabel {
+        case "Ready", "Syncing":
+            "Projects, Tasks, and Settings are ready to sync."
+        case "Sync backend is not configured":
+            "Pro plan detected. Sync backend is not configured."
+        case "Upgrade required":
+            "Pro is required for Projects, Tasks, and Settings sync."
+        default:
+            "Sync keeps the local data classes explicit before any upload."
+        }
+    }
+
+    private var syncSafetyBoundaryLabel: String {
+        switch syncViewModel.statusLabel {
+        case "Ready", "Syncing":
+            "Only selected SoloPM data classes are included."
+        case "Sync backend is not configured":
+            "No upload starts while the backend is missing."
+        case "Upgrade required":
+            "Free stays local. No data leaves this Mac."
+        default:
+            "Sync fails closed before external communication."
+        }
+    }
+
     private var privacyOverviewStatusLabel: String {
         settingsViewModel.settings.notificationsEnabled ? "Notifications on" : "Notifications off"
     }
@@ -1811,6 +1844,55 @@ private struct SelectedAIProviderStatusRow: View {
         .accessibilityIdentifier("ai-provider-readiness-row")
         .accessibilityLabel("AI provider readiness")
         .accessibilityValue("\(providerName), \(statusLabel), \(nextActionLabel)")
+    }
+}
+
+private struct SyncValueStatusRow: View {
+    let planLabel: String
+    let statusLabel: String
+    let valueLabel: String
+    let boundaryLabel: String
+    let tone: SettingsStatusTone
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .foregroundStyle(tone.color)
+                .frame(width: 20)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(planLabel) Sync")
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Text(statusLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(tone.color)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Text(valueLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Label(boundaryLabel, systemImage: "lock.shield")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("sync-paid-value-row")
+        .accessibilityLabel("Sync paid value and safety boundary")
+        .accessibilityValue("\(planLabel), \(statusLabel), \(boundaryLabel)")
     }
 }
 

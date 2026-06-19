@@ -1280,6 +1280,28 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(syncSource.contains("return SyncStartResult(startedAt: Date())"))
     }
 
+    func testSyncSettingsTabSurfacesPaidValueAndLocalBoundaryBeforeToggle() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let audit = try readPackageFile("docs/ux/click-path-audit.md")
+        let investorReview = try readPackageFile("docs/product/investor-review.md")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+        let syncStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
+        let providerStart = try XCTUnwrap(appSource.range(of: "@ViewBuilder\n    private var selectedProviderConfigurationFields"))
+        let syncSource = String(appSource[syncStart.lowerBound..<providerStart.lowerBound])
+
+        XCTAssertTrue(appSource.contains("SyncValueStatusRow("))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"sync-paid-value-row\")"))
+        XCTAssertTrue(appSource.contains("private var syncPaidValueLabel: String"))
+        XCTAssertTrue(appSource.contains("private var syncSafetyBoundaryLabel: String"))
+        XCTAssertLessThan(
+            try XCTUnwrap(syncSource.range(of: "SyncValueStatusRow(")).lowerBound,
+            try XCTUnwrap(syncSource.range(of: "Toggle(")).lowerBound
+        )
+        XCTAssertTrue(audit.contains("Sync paid value row"))
+        XCTAssertTrue(investorReview.contains("Settings/Sync now surfaces the Pro value and local-only safety boundary before the toggle"))
+        XCTAssertTrue(phase.contains("[x] Sync tabはtoggle前にPro価値、Freeのlocal-only境界、backend未構成時の次状態を表示し、課金価値がdisabled toggleだけに埋もれない。"))
+    }
+
     func testSettingsSurfaceShowsInlineMCPServerRowsWithCheckActions() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let mcpSource = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")

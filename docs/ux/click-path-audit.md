@@ -62,8 +62,8 @@
 | OpenCode Local設定 | Settings -> executable/workspace/model入力 -> approval toggle -> save | 5+ | Watch | 複数fieldが必要な設定だが、readiness rowが executable / workspace / approval の不足を先に示す。設定量自体はlocal subprocess providerの安全境界として許容する。 |
 | 選択中MCP serverの接続確認 | Settings -> server rowの `Check` | 2 | Pass | 各server rowにEnabled/Disabled、接続結果、protocol versionを表示する。 |
 | 別MCP serverの接続確認 | Settings -> 対象server rowの `Check` | 2 | Pass | Picker切替を不要にし、rowのCheckで対象serverを選択して接続確認できる。 |
-| Sync状態確認 | Settings -> Status Overviewを見る | 1 | Pass | Planと状態がSettings先頭で分かる。詳細な対象dataはSync sectionに残る。 |
-| Free userでSync開始 | Settings -> `External Sync` toggle | 2 | Pass | network前にupgrade gateで止まる。 |
+| Sync状態確認 | Settings -> Status Overviewを見る | 1 | Pass | Planと状態がSettings先頭で分かる。Sync tabではpaid value rowがPro価値、Freeのlocal-only境界、backend未構成状態をtoggle前に示す。 |
+| Free userでSync開始 | Settings -> `External Sync` toggle | 2 | Pass | network前にupgrade gateで止まる。Free stays local / no data leaves this Mac の境界もtoggle前に見える。 |
 | text commandからplan生成 | Voice Command -> 入力 -> `Generate Plan` | 2 | Pass | 生成後にreview panelが同じ画面へ出る。 |
 | 録音からplan生成 | Voice Command -> `Record` -> `Stop` -> `Generate Plan` | 4 | Watch | 音声captureとしては自然だが、Inbox代替としては重い。 |
 | Review実行 | `Approve` -> `Execute` | 2 | Pass | write actionは承認必須。approval不要なら1クリックで実行できる。 |
@@ -104,6 +104,7 @@ PR未作成のため、現時点ではcurrent branchの改善commitとsource tes
 | AI provider設定 | provider pickerの選択を自動保存し、選択中providerのfieldだけを表示する。 | `Sources/SoloPMApp/SoloPMApp.swift`, `Sources/SoloPMCore/App/AppSettings.swift`, `Sources/SoloPMCore/App/LLMProviderCatalog.swift` | `AppExperienceSourceTests.testAISettingsTabShowsOnlySelectedProviderFields`, `AppSettingsTests.testAppSettingsViewModelPersistsProviderSelectionWhenSelected` |
 | MCP接続確認 | Settings内のserver rowから対象serverを2クリックでCheckし、Picker切替を不要にする。 | `Sources/SoloPMApp/SoloPMApp.swift`, `Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift` | `AppExperienceSourceTests.testSettingsSurfaceShowsInlineMCPServerRowsWithCheckActions`, `ExternalMCPTests.testExternalMCPSettingsViewModelChecksSpecificRegistrationFromInlineRow` |
 | Sync gate | Free userはExternal Sync開始前にdomain層で止め、Proでもbackend未構成ならmock successにしない。 | `Sources/SoloPMApp/SoloPMApp.swift`, `Sources/SoloPMCore/App/SyncService.swift`, `Sources/SoloPMCore/App/Entitlements.swift` | `AppExperienceSourceTests.testSettingsSurfaceShowsSyncGateWithoutMockSuccessPath`, `SyncEntitlementTests.testSyncServiceFreeStartFailsBeforeNetworkClientIsReached`, `SyncEntitlementTests.testSyncServiceProWithoutBackendDoesNotReturnMockSuccess` |
+| Sync paid value row | Sync toggle前にPro価値、Freeのlocal-only境界、backend未構成時のno-upload状態を表示し、有料機能がdisabled toggleだけに見えないようにする。 | `Sources/SoloPMApp/SoloPMApp.swift` | `AppExperienceSourceTests.testSyncSettingsTabSurfacesPaidValueAndLocalBoundaryBeforeToggle` |
 
 ## プロダクトレビュー
 
