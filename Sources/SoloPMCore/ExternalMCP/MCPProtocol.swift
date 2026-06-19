@@ -56,11 +56,20 @@ public struct MCPJSONRPCError: Codable, Equatable, Sendable {
 
 public struct MCPInitializeResult: Equatable, Sendable {
     public var protocolVersion: String
-    public var serverName: String?
+    public var serverName: String
+    public var serverVersion: String
+    public var serverCapabilities: [String: JSONValue]
 
-    public init(protocolVersion: String, serverName: String?) {
+    public init(
+        protocolVersion: String,
+        serverName: String,
+        serverVersion: String = "",
+        serverCapabilities: [String: JSONValue] = [:]
+    ) {
         self.protocolVersion = protocolVersion
         self.serverName = serverName
+        self.serverVersion = serverVersion
+        self.serverCapabilities = serverCapabilities
     }
 }
 

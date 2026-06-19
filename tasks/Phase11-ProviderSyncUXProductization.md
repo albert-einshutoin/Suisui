@@ -38,8 +38,9 @@
 - [x] MCP推奨のtool name範囲をSoloPMの安全境界として実装し、1-128文字のASCII英数字/underscore/hyphen/dot以外はfail fastする。
 - [x] paginated `tools/list` 全体で重複tool nameを拒否し、Settings catalog / audit / approval policyが同名toolで上書きされないようにする。
 - [x] `tools/list` の `nextCursor` paginationを追跡し、複数ページのtool catalogを途中で切らず、malformed / repeated cursorをfail fastする。
+- [x] `initialize` result の `capabilities` / `serverInfo.name` / `serverInfo.version` を必須として検証し、不完全なserverには `notifications/initialized` を送らない。
 - [x] `tools/list` の `inputSchema` 欠落、root `type != object`、unsupported `$schema` dialect、非object property schemaを拒否し、MCP 2025-11-25のJSON Schema 2020-12境界をrelease subsetとして固定する。
-- [x] `tools/list` の `outputSchema` をrelease subsetとしてparse/validateし、`tools/call` 成功時は `structuredContent` の必須fieldとprimitive typeを検証してからsuccess auditへ進む。`isError = true` のtool実行エラーはLLMが自己修正できるactionable resultとしてschema検証をskipする。
+- [x] `tools/list` の `outputSchema` をrelease subsetとしてparse/validateし、`tools/call` 成功時は object `structuredContent` の必須fieldとprimitive typeを検証してからsuccess auditへ進む。`isError = true` のtool実行エラーはLLMが自己修正できるactionable resultとしてschema検証をskipする。
 - [x] `resources/list` / `prompts/list` は未対応としてUIとdocsで明示し、対応済みのように表示しない。
 - [x] `2026-07-28` draft / release-candidate の per-request protocol metadata と `server/discover` は今回のrelease target外として、`docs/mcp-compliance.md` と `docs/release/evidence/mcp-inspector.md` に明記する。
 - [x] 完了条件: 仕様の「実装済み」「未対応」「後続」の境界が投資家/OSS contributorに説明できる。

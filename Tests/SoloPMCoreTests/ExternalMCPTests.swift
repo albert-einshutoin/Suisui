@@ -146,6 +146,7 @@ final class ExternalMCPTests: XCTestCase {
                 id: request.id,
                 result: .object([
                     "protocolVersion": .string(MCPProtocolVersion.v2025_11_25.rawValue),
+                    "capabilities": .object([:]),
                     "serverInfo": .string("not-an-object")
                 ])
             )
@@ -161,9 +162,98 @@ final class ExternalMCPTests: XCTestCase {
                 .invalidResponse(
                     serverID: "bad-init",
                     method: "initialize",
-                    reason: "result.serverInfo must be an object when present."
+                    reason: "result.serverInfo must be an object."
                 )
             )
+        }
+    }
+
+    func testClientRequiresInitializeCapabilitiesObject() async throws {
+        let cases: [(result: [String: JSONValue], expectedReason: String)] = [
+            (
+                [
+                    "protocolVersion": .string(MCPProtocolVersion.v2025_11_25.rawValue),
+                    "serverInfo": .object([
+                        "name": .string("bad-init"),
+                        "version": .string("0.1.0")
+                    ])
+                ],
+                "Missing result.capabilities."
+            ),
+            (
+                [
+                    "protocolVersion": .string(MCPProtocolVersion.v2025_11_25.rawValue),
+                    "capabilities": .string("not-an-object"),
+                    "serverInfo": .object([
+                        "name": .string("bad-init"),
+                        "version": .string("0.1.0")
+                    ])
+                ],
+                "result.capabilities must be an object."
+            )
+        ]
+
+        for testCase in cases {
+            let transport = RecordingMCPTransport { request in
+                MCPJSONRPCResponse(id: request.id, result: .object(testCase.result))
+            }
+            let client = MCPClient(serverID: "bad-init", transport: transport)
+
+            do {
+                _ = try await client.initialize()
+                XCTFail("missing or malformed initialize capabilities should fail")
+            } catch let error as MCPClientError {
+                XCTAssertEqual(
+                    error,
+                    .invalidResponse(serverID: "bad-init", method: "initialize", reason: testCase.expectedReason)
+                )
+            }
+            XCTAssertEqual(transport.recordedMethods, ["initialize"])
+        }
+    }
+
+    func testClientRequiresInitializeServerInfoNameAndVersion() async throws {
+        let cases: [(serverInfo: [String: JSONValue], expectedReason: String)] = [
+            (
+                ["version": .string("0.1.0")],
+                "Missing result.serverInfo.name."
+            ),
+            (
+                [
+                    "name": .string("bad-init"),
+                    "version": .number(42)
+                ],
+                "result.serverInfo.version must be a string."
+            ),
+            (
+                ["name": .string("bad-init")],
+                "Missing result.serverInfo.version."
+            )
+        ]
+
+        for testCase in cases {
+            let transport = RecordingMCPTransport { request in
+                MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "protocolVersion": .string(MCPProtocolVersion.v2025_11_25.rawValue),
+                        "capabilities": .object([:]),
+                        "serverInfo": .object(testCase.serverInfo)
+                    ])
+                )
+            }
+            let client = MCPClient(serverID: "bad-init", transport: transport)
+
+            do {
+                _ = try await client.initialize()
+                XCTFail("missing or malformed initialize serverInfo should fail")
+            } catch let error as MCPClientError {
+                XCTAssertEqual(
+                    error,
+                    .invalidResponse(serverID: "bad-init", method: "initialize", reason: testCase.expectedReason)
+                )
+            }
+            XCTAssertEqual(transport.recordedMethods, ["initialize"])
         }
     }
 
@@ -173,8 +263,10 @@ final class ExternalMCPTests: XCTestCase {
                 id: request.id,
                 result: .object([
                     "protocolVersion": .string(MCPProtocolVersion.v2025_11_25.rawValue),
+                    "capabilities": .object([:]),
                     "serverInfo": .object([
-                        "name": .number(42)
+                        "name": .number(42),
+                        "version": .string("0.1.0")
                     ])
                 ])
             )
@@ -190,7 +282,7 @@ final class ExternalMCPTests: XCTestCase {
                 .invalidResponse(
                     serverID: "bad-init",
                     method: "initialize",
-                    reason: "result.serverInfo.name must be a string when present."
+                    reason: "result.serverInfo.name must be a string."
                 )
             )
         }
@@ -202,7 +294,11 @@ final class ExternalMCPTests: XCTestCase {
                 id: request.id,
                 result: .object([
                     "protocolVersion": .string("2024-11-05"),
-                    "serverInfo": .object(["name": .string("legacy-mcp")])
+                    "capabilities": .object([:]),
+                    "serverInfo": .object([
+                        "name": .string("legacy-mcp"),
+                        "version": .string("0.1.0")
+                    ])
                 ])
             )
         }
@@ -459,6 +555,36 @@ final class ExternalMCPTests: XCTestCase {
                     serverID: "invalid-is-error",
                     method: "tools/call",
                     reason: "result.isError must be a boolean when present."
+                )
+            )
+        }
+    }
+
+    func testClientRejectsNonObjectToolCallStructuredContent() async throws {
+        let transport = RecordingMCPTransport { request in
+            if request.method == "tools/call" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "content": .array([MCPContentItem(type: "text", text: "status: ok").jsonValue]),
+                        "structuredContent": .string("not-an-object")
+                    ])
+                )
+            }
+            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+        }
+        let client = MCPClient(serverID: "invalid-structured-content", transport: transport)
+
+        do {
+            _ = try await client.callTool(name: "read_status", arguments: [:])
+            XCTFail("non-object structuredContent should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(
+                    serverID: "invalid-structured-content",
+                    method: "tools/call",
+                    reason: "result.structuredContent must be an object when present."
                 )
             )
         }
@@ -2701,7 +2827,7 @@ final class ExternalMCPTests: XCTestCase {
         while IFS= read -r line; do
           case "$line" in
             *\\"id\\":1*)
-              printf '%s\\n' '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","serverInfo":{"name":"stdio-fake"}}}'
+              printf '%s\\n' '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{"listChanged":false}},"serverInfo":{"name":"stdio-fake","version":"0.1.0"}}}'
               ;;
             *\\"method\\":\\"notifications/initialized\\"*)
               ;;
@@ -2797,7 +2923,10 @@ private final class GatedMCPListTransport: MCPClientTransport, @unchecked Sendab
                 result: .object([
                     "protocolVersion": .string(MCPProtocolVersion.v2025_11_25.rawValue),
                     "capabilities": .object(["tools": .object(["listChanged": .bool(true)])]),
-                    "serverInfo": .object(["name": .string("gated-mcp")])
+                    "serverInfo": .object([
+                        "name": .string("gated-mcp"),
+                        "version": .string("0.1.0")
+                    ])
                 ])
             )
         case "tools/list":

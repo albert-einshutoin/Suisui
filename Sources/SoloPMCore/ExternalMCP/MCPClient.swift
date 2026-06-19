@@ -50,32 +50,37 @@ public final class MCPClient: @unchecked Sendable {
                 reason: "Unsupported result.protocolVersion: \(protocolVersion)."
             )
         }
-        let serverName: String?
-        if let serverInfoValue = object["serverInfo"] {
-            guard let serverInfo = serverInfoValue.objectValue else {
-                throw MCPClientError.invalidResponse(
-                    serverID: serverID,
-                    method: "initialize",
-                    reason: "result.serverInfo must be an object when present."
-                )
-            }
-            if let serverNameValue = serverInfo["name"] {
-                guard let parsedServerName = serverNameValue.stringValue else {
-                    throw MCPClientError.invalidResponse(
-                        serverID: serverID,
-                        method: "initialize",
-                        reason: "result.serverInfo.name must be a string when present."
-                    )
-                }
-                serverName = parsedServerName
-            } else {
-                serverName = nil
-            }
-        } else {
-            serverName = nil
+        guard let capabilitiesValue = object["capabilities"] else {
+            throw MCPClientError.invalidResponse(serverID: serverID, method: "initialize", reason: "Missing result.capabilities.")
+        }
+        guard let capabilities = capabilitiesValue.objectValue else {
+            throw MCPClientError.invalidResponse(serverID: serverID, method: "initialize", reason: "result.capabilities must be an object.")
+        }
+        guard let serverInfoValue = object["serverInfo"] else {
+            throw MCPClientError.invalidResponse(serverID: serverID, method: "initialize", reason: "Missing result.serverInfo.")
+        }
+        guard let serverInfo = serverInfoValue.objectValue else {
+            throw MCPClientError.invalidResponse(serverID: serverID, method: "initialize", reason: "result.serverInfo must be an object.")
+        }
+        guard let serverNameValue = serverInfo["name"] else {
+            throw MCPClientError.invalidResponse(serverID: serverID, method: "initialize", reason: "Missing result.serverInfo.name.")
+        }
+        guard let serverName = serverNameValue.stringValue else {
+            throw MCPClientError.invalidResponse(serverID: serverID, method: "initialize", reason: "result.serverInfo.name must be a string.")
+        }
+        guard let serverVersionValue = serverInfo["version"] else {
+            throw MCPClientError.invalidResponse(serverID: serverID, method: "initialize", reason: "Missing result.serverInfo.version.")
+        }
+        guard let serverVersion = serverVersionValue.stringValue else {
+            throw MCPClientError.invalidResponse(serverID: serverID, method: "initialize", reason: "result.serverInfo.version must be a string.")
         }
         try await transport.notify(MCPJSONRPCNotification(method: "notifications/initialized"))
-        return MCPInitializeResult(protocolVersion: protocolVersion, serverName: serverName)
+        return MCPInitializeResult(
+            protocolVersion: protocolVersion,
+            serverName: serverName,
+            serverVersion: serverVersion,
+            serverCapabilities: capabilities
+        )
     }
 
     public func listTools() async throws -> [MCPToolDefinition] {
@@ -150,10 +155,23 @@ public final class MCPClient: @unchecked Sendable {
         } else {
             isError = false
         }
+        let structuredContent: JSONValue?
+        if let structuredContentValue = object["structuredContent"] {
+            guard structuredContentValue.objectValue != nil else {
+                throw MCPClientError.invalidResponse(
+                    serverID: serverID,
+                    method: "tools/call",
+                    reason: "result.structuredContent must be an object when present."
+                )
+            }
+            structuredContent = structuredContentValue
+        } else {
+            structuredContent = nil
+        }
         return MCPToolCallResult(
             content: content,
             isError: isError,
-            structuredContent: object["structuredContent"]
+            structuredContent: structuredContent
         )
     }
 
