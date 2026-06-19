@@ -93,18 +93,25 @@ final class AppExperienceSourceTests: XCTestCase {
     func testAppearanceSelectionIsConfiguredOnlyFromSettings() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let appearanceSectionSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsAppearanceSection.swift")
 
-        XCTAssertTrue(appSource.contains("Section(\"Appearance\")"))
-        XCTAssertTrue(appSource.contains("Picker(\"Theme\", selection: $appearancePreference)"))
-        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-theme-picker\")"))
-        XCTAssertEqual(appSource.components(separatedBy: "settings-theme-picker").count - 1, 1)
-        XCTAssertEqual(appSource.components(separatedBy: "Section(\"Appearance\")").count - 1, 1)
-        XCTAssertEqual(appSource.components(separatedBy: "Picker(\"Theme\"").count - 1, 1)
+        XCTAssertTrue(appSource.contains("SettingsAppearanceSection(appearancePreference: $appearancePreference)"))
+        XCTAssertEqual(appSource.components(separatedBy: "SettingsAppearanceSection(appearancePreference: $appearancePreference)").count - 1, 1)
+        XCTAssertTrue(appearanceSectionSource.contains("Section(\"Appearance\")"))
+        XCTAssertTrue(appearanceSectionSource.contains("Picker(\"Theme\", selection: $appearancePreference)"))
+        XCTAssertTrue(appearanceSectionSource.contains(".accessibilityIdentifier(\"settings-theme-picker\")"))
+        XCTAssertEqual(appearanceSectionSource.components(separatedBy: "settings-theme-picker").count - 1, 1)
+        XCTAssertEqual(appearanceSectionSource.components(separatedBy: "Section(\"Appearance\")").count - 1, 1)
+        XCTAssertEqual(appearanceSectionSource.components(separatedBy: "Picker(\"Theme\"").count - 1, 1)
         let settingsRange = try XCTUnwrap(appSource.range(of: "Settings {"))
-        let appearanceRange = try XCTUnwrap(appSource.range(of: "Section(\"Appearance\")"))
+        let appearanceRange = try XCTUnwrap(appSource.range(of: "SettingsAppearanceSection(appearancePreference: $appearancePreference)"))
         XCTAssertLessThan(settingsRange.lowerBound, appearanceRange.lowerBound)
+        XCTAssertFalse(appSource.contains(".accessibilityIdentifier(\"settings-theme-picker\")"))
+        XCTAssertFalse(appSource.contains("Picker(\"Theme\", selection: $appearancePreference)"))
         XCTAssertFalse(boardSource.contains("AppearancePicker"))
         XCTAssertFalse(boardSource.contains("SidebarAppearanceSection"))
+        XCTAssertFalse(boardSource.contains("SettingsAppearanceSection"))
+        XCTAssertFalse(boardSource.contains("settings-theme-picker"))
         XCTAssertFalse(boardSource.contains("Section(\"Appearance\")"))
         XCTAssertFalse(boardSource.contains("Picker(\"Theme\""))
         XCTAssertFalse(boardSource.contains("Picker(\"Appearance\""))
@@ -171,7 +178,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("private var effectiveAppearancePreference: SoloPMAppearancePreference"))
         XCTAssertTrue(appSource.contains("SoloPMAppearancePreference.environmentOverride ?? appearancePreference"))
         XCTAssertTrue(appSource.contains(".preferredColorScheme(effectiveAppearancePreference.colorScheme)"))
-        XCTAssertTrue(appSource.contains("Section(\"Appearance\")"))
+        XCTAssertTrue(appSource.contains("SettingsAppearanceSection(appearancePreference: $appearancePreference)"))
         XCTAssertFalse(boardSource.contains("@AppStorage(SoloPMAppearancePreference.storageKey)"))
         XCTAssertFalse(boardSource.contains(".preferredColorScheme(appearancePreference.colorScheme)"))
     }
@@ -1141,7 +1148,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
         let overviewRange = try XCTUnwrap(appSource.range(of: "SettingsStatusOverview("))
-        let appearanceRange = try XCTUnwrap(appSource.range(of: "Section(\"Appearance\")"))
+        let appearanceRange = try XCTUnwrap(appSource.range(of: "SettingsAppearanceSection(appearancePreference: $appearancePreference)"))
 
         XCTAssertLessThan(overviewRange.lowerBound, appearanceRange.lowerBound)
         XCTAssertTrue(appSource.contains("Section(\"Status Overview\")"))
@@ -1157,6 +1164,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testSettingsSurfaceUsesTabbedCategoriesInsteadOfOneLongForm() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let appearanceSectionSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsAppearanceSection.swift")
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
 
@@ -1185,7 +1193,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let mcpSource = String(appSource[mcpStart.lowerBound..<appSource.endIndex])
 
         XCTAssertTrue(overviewSource.contains("Section(\"Status Overview\")"))
-        XCTAssertTrue(overviewSource.contains("Section(\"Appearance\")"))
+        XCTAssertTrue(overviewSource.contains("SettingsAppearanceSection(appearancePreference: $appearancePreference)"))
+        XCTAssertTrue(appearanceSectionSource.contains("Section(\"Appearance\")"))
         XCTAssertTrue(aiSource.contains("Section(\"AI\")"))
         XCTAssertTrue(aiSource.contains("Section(\"Voice\")"))
         XCTAssertTrue(mcpSource.contains("Section(\"External MCP\")"))

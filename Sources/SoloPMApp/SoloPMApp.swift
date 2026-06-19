@@ -897,17 +897,7 @@ private struct SettingsView: View {
                 )
             }
 
-            Section("Appearance") {
-                Picker("Theme", selection: $appearancePreference) {
-                    ForEach(SoloPMAppearancePreference.allCases) { preference in
-                        Label(preference.label, systemImage: preference.systemImage)
-                            .tag(preference)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .accessibilityIdentifier("settings-theme-picker")
-                .accessibilityHint("Changes the appearance for all SoloPM windows.")
-            }
+            SettingsAppearanceSection(appearancePreference: $appearancePreference)
 
         }
         .formStyle(.grouped)
