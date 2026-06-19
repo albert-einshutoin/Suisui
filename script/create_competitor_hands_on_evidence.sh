@@ -7,6 +7,7 @@ EVIDENCE_STATUS="pending"
 CHECKED_BY=""
 CHECK_DATE="$(date +%F)"
 EVIDENCE_SOURCE="Notion/Todoist/Linear/Motion 2-4 hour hands-on pass"
+ENVIRONMENT=""
 CONFIRM_MANUAL_HANDS_ON=0
 NOTION_NOTE=""
 TODOIST_NOTE=""
@@ -17,7 +18,7 @@ DEFER_DELTA=""
 REJECT_DELTA=""
 
 usage() {
-  printf '%s\n' "usage: $0 (--pending|--passed) [--output PATH] [--checked-by NAME] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--notion-note TEXT] [--todoist-note TEXT] [--linear-note TEXT] [--motion-note TEXT] [--ship TEXT] [--defer TEXT] [--reject TEXT] [--confirm-manual-hands-on]"
+  printf '%s\n' "usage: $0 (--pending|--passed) [--output PATH] [--checked-by NAME] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--environment TEXT] [--notion-note TEXT] [--todoist-note TEXT] [--linear-note TEXT] [--motion-note TEXT] [--ship TEXT] [--defer TEXT] [--reject TEXT] [--confirm-manual-hands-on]"
   printf '%s\n' ""
   printf '%s\n' "Use --pending to write a safe worksheet that release readiness will reject."
   printf '%s\n' "Use --passed only after a real Notion -> Todoist -> Linear -> Motion hands-on pass."
@@ -31,6 +32,23 @@ require_passed_value() {
     echo "$flag is required with --passed" >&2
     exit 2
   fi
+}
+
+is_placeholder_environment() {
+  local normalized
+  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$normalized" in
+    *"macos/browser versions"*|\
+    *"macos / browser versions"*|\
+    *"competitor app/account tiers"*|\
+    *"competitor app / account tiers"*|\
+    *"whether any paid trial"*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 while [[ "$#" -gt 0 ]]; do
@@ -57,6 +75,10 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --evidence-source)
       EVIDENCE_SOURCE="${2:-}"
+      shift 2
+      ;;
+    --environment)
+      ENVIRONMENT="${2:-}"
       shift 2
       ;;
     --notion-note)
@@ -121,6 +143,11 @@ if [[ "$EVIDENCE_STATUS" == "passed" ]]; then
     echo "--check-date is required with --passed" >&2
     exit 2
   fi
+  require_passed_value "--environment" "$ENVIRONMENT"
+  if is_placeholder_environment "$ENVIRONMENT"; then
+    echo "--environment must describe the actual hands-on environment" >&2
+    exit 2
+  fi
   require_passed_value "--notion-note" "$NOTION_NOTE"
   require_passed_value "--todoist-note" "$TODOIST_NOTE"
   require_passed_value "--linear-note" "$LINEAR_NOTE"
@@ -142,6 +169,11 @@ write_context() {
   fi
   printf -- '- Check date: %s\n' "$CHECK_DATE"
   printf -- '- Evidence source: `%s`\n' "$EVIDENCE_SOURCE"
+  if [[ -n "$ENVIRONMENT" ]]; then
+    printf -- '- Environment: %s\n' "$ENVIRONMENT"
+  else
+    printf '%s\n' '- Environment:'
+  fi
   printf '%s\n' '- Scope: Notion -> Todoist -> Linear -> Motion'
 }
 

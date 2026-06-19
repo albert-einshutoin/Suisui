@@ -2115,6 +2115,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("docs/release/evidence/competitor-hands-on.md"))
         XCTAssertTrue(checklist.contains("./script/create_competitor_hands_on_evidence.sh --pending"))
         XCTAssertTrue(checklist.contains("./script/create_competitor_hands_on_evidence.sh --passed"))
+        XCTAssertTrue(checklist.contains("--environment \"macOS/browser versions, competitor app/account tiers, and whether any paid trial was used\""))
         XCTAssertTrue(checklist.contains("--confirm-manual-hands-on"))
         XCTAssertTrue(checklist.contains("Notion -> Todoist -> Linear -> Motion"))
         XCTAssertTrue(checklist.contains("./script/release_readiness_report.sh"))
@@ -2275,6 +2276,8 @@ final class ReleasePipelineTests: XCTestCase {
             .appendingPathComponent(".build/test-competitor-hands-on-pending.md")
         let passedURL = packageRoot()
             .appendingPathComponent(".build/test-competitor-hands-on-passed.md")
+        try? FileManager.default.removeItem(at: pendingURL)
+        try? FileManager.default.removeItem(at: passedURL)
         defer {
             try? FileManager.default.removeItem(at: pendingURL)
             try? FileManager.default.removeItem(at: passedURL)
@@ -2292,6 +2295,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(pendingEvidence.contains("- [ ] Todoist"))
         XCTAssertTrue(pendingEvidence.contains("- [ ] Linear"))
         XCTAssertTrue(pendingEvidence.contains("- [ ] Motion"))
+        XCTAssertTrue(pendingEvidence.contains("- Environment:"))
         XCTAssertTrue(pendingEvidence.contains("Do not set `Status: passed` until every competitor path below is verified"))
 
         let unsafePassedResult = try runScript(
@@ -2308,6 +2312,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--passed",
                 "--checked-by", "Product reviewer",
                 "--check-date", "2026-06-19",
+                "--environment", "macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used",
                 "--output", passedURL.path,
                 "--confirm-manual-hands-on"
             ]
@@ -2316,12 +2321,35 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(missingNotesResult.output.contains("--notion-note is required with --passed"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
 
+        let placeholderEnvironmentResult = try runScript(
+            "script/create_competitor_hands_on_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "Product reviewer",
+                "--check-date", "2026-06-19",
+                "--environment", "macOS/browser versions, competitor app/account tiers, and whether any paid trial was used",
+                "--notion-note", "Board setup was flexible but required manual schema decisions before task entry felt fast.",
+                "--todoist-note", "Quick Add made capture fast, but project context still needed review after entry.",
+                "--linear-note", "Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.",
+                "--motion-note", "Scheduling suggestions were useful only when the reason and deadline impact were visible.",
+                "--ship", "Keep fast local capture, board status movement, and right inspector as the public alpha loop.",
+                "--defer", "Natural-language dates and autonomous scheduling stay out until reliability evidence exists.",
+                "--reject", "Team cycles, initiatives, and external SaaS sync stay outside public alpha scope.",
+                "--output", passedURL.path,
+                "--confirm-manual-hands-on"
+            ]
+        )
+        XCTAssertNotEqual(placeholderEnvironmentResult.exitCode, 0)
+        XCTAssertTrue(placeholderEnvironmentResult.output.contains("--environment must describe the actual hands-on environment"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
         let passedResult = try runScript(
             "script/create_competitor_hands_on_evidence.sh",
             arguments: [
                 "--passed",
                 "--checked-by", "Product reviewer",
                 "--check-date", "2026-06-19",
+                "--environment", "macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used",
                 "--notion-note", "Board setup was flexible but required manual schema decisions before task entry felt fast.",
                 "--todoist-note", "Quick Add made capture fast, but project context still needed review after entry.",
                 "--linear-note", "Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.",
@@ -2339,6 +2367,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(passedEvidence.contains("Status: passed"))
         XCTAssertTrue(passedEvidence.contains("- Checked by: Product reviewer"))
         XCTAssertTrue(passedEvidence.contains("- Check date: 2026-06-19"))
+        XCTAssertTrue(passedEvidence.contains("- Environment: macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used"))
         XCTAssertTrue(passedEvidence.contains("- Notion: passed - Board setup was flexible but required manual schema decisions before task entry felt fast."))
         XCTAssertTrue(passedEvidence.contains("- Todoist: passed - Quick Add made capture fast, but project context still needed review after entry."))
         XCTAssertTrue(passedEvidence.contains("- Linear: passed - Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work."))
@@ -2423,6 +2452,7 @@ final class ReleasePipelineTests: XCTestCase {
         let result = try runTool(["bash", reportURL.path])
 
         XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing review context: Environment"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing concrete note: Notion"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing concrete note: Todoist"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing concrete note: Linear"))
@@ -2516,6 +2546,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Competitor hands-on evidence is not marked passed"))
         XCTAssertTrue(script.contains("Competitor hands-on evidence still contains pending/template/placeholder text"))
         XCTAssertTrue(script.contains("Competitor hands-on evidence still contains unchecked checklist markers"))
+        XCTAssertTrue(script.contains("macOS/browser versions|competitor app/account tiers|whether any paid trial"))
         XCTAssertTrue(script.contains("NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass"))
         XCTAssertTrue(script.contains("section \"MCP Inspector evidence\""))
         XCTAssertTrue(script.contains("script/verify_mcp_compliance.sh"))

@@ -84,6 +84,7 @@ COMPETITOR_REQUIRED_CONTEXT_LABELS=(
   "Checked by"
   "Check date"
   "Evidence source"
+  "Environment"
   "Scope"
 )
 COMPETITOR_REQUIRED_NOTE_LABELS=(
@@ -562,7 +563,7 @@ fi
 section "Competitor hands-on evidence"
 competitor_evidence_file="$ROOT_DIR/$COMPETITOR_EVIDENCE_RELATIVE"
 competitor_evidence_blocker_count=0
-competitor_template_pattern='(^|[^[:alnum:]_])(pending|todo|tbd|placeholder|sample|example)([^[:alnum:]_]|$)|replace me'
+competitor_template_pattern='(^|[^[:alnum:]_])(pending|todo|tbd|placeholder|sample|example)([^[:alnum:]_]|$)|replace me|macOS/browser versions|competitor app/account tiers|whether any paid trial'
 competitor_blocker() {
   blocker "$1"
   competitor_evidence_blocker_count=$((competitor_evidence_blocker_count + 1))
@@ -692,7 +693,7 @@ else
   done
 fi
 if [[ "$competitor_evidence_blocker_count" -gt 0 ]]; then
-  printf "NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass, Status: passed, complete reviewer/date/source context, complete Notion/Todoist/Linear/Motion notes, and no pending/template/unchecked markers.\n"
+  printf "NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass, Status: passed, complete reviewer/date/source/environment context, complete Notion/Todoist/Linear/Motion notes, and no pending/template/unchecked markers.\n"
 else
   printf "OK: competitor hands-on evidence covers Notion, Todoist, Linear, Motion, and public alpha scope boundaries\n"
 fi

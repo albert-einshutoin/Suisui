@@ -188,7 +188,7 @@ Use the generator to avoid stale bundle/build metadata:
 
 12. Competitor hands-on evidence
 
-Before checking the Phase 11 competitor benchmark item, replace `docs/release/evidence/competitor-hands-on.md` with the real 2-4 hour hands-on record. The final file must use `Status: passed`, complete reviewer/date/source context, include the Notion -> Todoist -> Linear -> Motion path, document the Ship / Defer / Reject Delta, and explicitly confirm that no external SaaS sync or team workflow was added to public alpha scope.
+Before checking the Phase 11 competitor benchmark item, replace `docs/release/evidence/competitor-hands-on.md` with the real 2-4 hour hands-on record. The final file must use `Status: passed`, complete reviewer/date/source/environment context, include the Notion -> Todoist -> Linear -> Motion path, document the Ship / Defer / Reject Delta, and explicitly confirm that no external SaaS sync or team workflow was added to public alpha scope.
 
 Use the generator so a pending worksheet cannot be mistaken for a pass:
 
@@ -196,6 +196,7 @@ Use the generator so a pending worksheet cannot be mistaken for a pass:
 ./script/create_competitor_hands_on_evidence.sh --pending
 ./script/create_competitor_hands_on_evidence.sh --passed \
   --checked-by "Reviewer Name" \
+  --environment "macOS/browser versions, competitor app/account tiers, and whether any paid trial was used" \
   --notion-note "Concrete Notion observation from the hands-on pass." \
   --todoist-note "Concrete Todoist observation from the hands-on pass." \
   --linear-note "Concrete Linear observation from the hands-on pass." \

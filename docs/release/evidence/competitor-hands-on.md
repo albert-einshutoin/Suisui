@@ -9,6 +9,7 @@ Do not set `Status: passed` until every competitor path below is verified for 2-
 - Checked by:
 - Check date: 2026-06-19
 - Evidence source: `Notion/Todoist/Linear/Motion 2-4 hour hands-on pass`
+- Environment:
 - Scope: Notion -> Todoist -> Linear -> Motion
 
 ## Required Hands-On Path
