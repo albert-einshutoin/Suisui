@@ -7,14 +7,28 @@ final class ReleasePipelineTests: XCTestCase {
     func testBuildAndRunSerializesDistBundleRebuilds() throws {
         let script = try readPackageFile("script/build_and_run.sh")
 
-        XCTAssertTrue(script.contains("BUILD_AND_RUN_LOCK_DIR=\"$TMPDIR/build_and_run.lock\""))
+        XCTAssertTrue(script.contains("BUILD_AND_RUN_LOCK_DIR=\"$BUILD_AND_RUN_TMP_ROOT/build_and_run.lock\""))
         XCTAssertTrue(script.contains("while ! mkdir \"$BUILD_AND_RUN_LOCK_DIR\""))
-        XCTAssertTrue(script.contains("trap release_build_and_run_lock EXIT INT TERM"))
+        XCTAssertTrue(script.contains("trap cleanup_build_and_run EXIT INT TERM"))
         XCTAssertTrue(script.contains("BLOCKER: timed out waiting for build/run lock"))
         XCTAssertLessThan(
             try XCTUnwrap(script.range(of: "acquire_build_and_run_lock")).lowerBound,
             try XCTUnwrap(script.range(of: "rm -rf \"$APP_BUNDLE\"")).lowerBound
         )
+    }
+
+    func testBuildAndRunUsesDedicatedTemporaryRootAndCleansItUp() throws {
+        let script = try readPackageFile("script/build_and_run.sh")
+
+        XCTAssertTrue(script.contains("BUILD_AND_RUN_TMP_ROOT=\"${SOLOPM_TMP_ROOT:-$ROOT_DIR/.tmp}\""))
+        XCTAssertTrue(script.contains("BUILD_AND_RUN_TMPDIR_CREATED=0"))
+        XCTAssertTrue(script.contains("mktemp -d \"$BUILD_AND_RUN_TMP_ROOT/solopm-build-and-run-tmp.XXXXXX\""))
+        XCTAssertTrue(script.contains("export TMPDIR=\"$BUILD_AND_RUN_TMPDIR/\""))
+        XCTAssertTrue(script.contains("cleanup_build_and_run_tmpdir()"))
+        XCTAssertTrue(script.contains("rm -rf \"$BUILD_AND_RUN_TMPDIR\""))
+        XCTAssertTrue(script.contains("cleanup_build_and_run()"))
+        XCTAssertTrue(script.contains("cleanup_build_and_run_tmpdir"))
+        XCTAssertFalse(script.contains("export TMPDIR=\"${SOLOPM_TMPDIR:-$ROOT_DIR/.tmp/}\""))
     }
 
     func testNotarizationScriptUsesStoredCredentialsStaplingAndLogRecovery() throws {

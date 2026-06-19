@@ -7,7 +7,18 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 SPARKLE_ENV_FILE="$ROOT_DIR/packaging/sparkle.env"
 
-export TMPDIR="${SOLOPM_TMPDIR:-$ROOT_DIR/.tmp/}"
+BUILD_AND_RUN_TMP_ROOT="${SOLOPM_TMP_ROOT:-$ROOT_DIR/.tmp}"
+BUILD_AND_RUN_TMPDIR_CREATED=0
+
+mkdir -p "$BUILD_AND_RUN_TMP_ROOT"
+if [[ -n "${SOLOPM_TMPDIR:-}" ]]; then
+  BUILD_AND_RUN_TMPDIR="${SOLOPM_TMPDIR%/}"
+else
+  BUILD_AND_RUN_TMPDIR="$(mktemp -d "$BUILD_AND_RUN_TMP_ROOT/solopm-build-and-run-tmp.XXXXXX")"
+  BUILD_AND_RUN_TMPDIR_CREATED=1
+fi
+
+export TMPDIR="$BUILD_AND_RUN_TMPDIR/"
 export SWIFTPM_MODULECACHE_OVERRIDE="${SWIFTPM_MODULECACHE_OVERRIDE:-$ROOT_DIR/.build/module-cache}"
 SWIFTPM_CACHE_PATH="${SOLOPM_SWIFTPM_CACHE_PATH:-$ROOT_DIR/.build/swiftpm-cache}"
 mkdir -p "$TMPDIR" "$SWIFTPM_MODULECACHE_OVERRIDE" "$SWIFTPM_CACHE_PATH"
@@ -41,7 +52,7 @@ SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
 SPARKLE_PUBLIC_ED_KEY="${SOLOPM_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
 VERIFY_TIMEOUT_SECONDS="${SOLOPM_VERIFY_TIMEOUT_SECONDS:-12}"
 PROJECT_BOARD_WINDOW_NAME="${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}"
-BUILD_AND_RUN_LOCK_DIR="$TMPDIR/build_and_run.lock"
+BUILD_AND_RUN_LOCK_DIR="$BUILD_AND_RUN_TMP_ROOT/build_and_run.lock"
 BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS="${SOLOPM_BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS:-120}"
 BUILD_AND_RUN_LOCK_ACQUIRED=0
 
@@ -73,6 +84,18 @@ release_build_and_run_lock() {
   fi
 }
 
+cleanup_build_and_run_tmpdir() {
+  if [[ "${BUILD_AND_RUN_TMPDIR_CREATED:-0}" == "1" ]]; then
+    rm -rf "$BUILD_AND_RUN_TMPDIR"
+    BUILD_AND_RUN_TMPDIR_CREATED=0
+  fi
+}
+
+cleanup_build_and_run() {
+  release_build_and_run_lock
+  cleanup_build_and_run_tmpdir
+}
+
 acquire_build_and_run_lock() {
   local deadline=$((SECONDS + BUILD_AND_RUN_LOCK_TIMEOUT_SECONDS))
   while ! mkdir "$BUILD_AND_RUN_LOCK_DIR" >/dev/null 2>&1; do
@@ -86,8 +109,8 @@ acquire_build_and_run_lock() {
   BUILD_AND_RUN_LOCK_ACQUIRED=1
 }
 
+trap cleanup_build_and_run EXIT INT TERM
 acquire_build_and_run_lock
-trap release_build_and_run_lock EXIT INT TERM
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
