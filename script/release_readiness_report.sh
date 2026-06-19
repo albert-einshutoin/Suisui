@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BLOCKER_COUNT=0
+APP_METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 MOCK_PATTERN="(?i:fake|mock|fixture|canned|stub|skeleton|todo|fixme|not[[:space:]_-]*implemented|notimplemented|inmemory)|(?i:(^|[^[:alnum:]_])(demo|sample|placeholder)([^[:alnum:]_]|$))|Static[A-Za-z0-9_]*|:memory:|fatalError|preconditionFailure"
 UI_EVIDENCE_RELATIVE="docs/release/evidence/ui-screenshots.md"
 UI_SCREENSHOT_RELATIVE_DIR="docs/release/evidence/ui-screenshots"
@@ -61,6 +62,17 @@ MCP_EVIDENCE_REQUIRED_MARKERS=(
   "timeout"
   "exit: 0"
 )
+
+if [[ -f "$APP_METADATA_FILE" ]]; then
+  # shellcheck source=/dev/null
+  source "$APP_METADATA_FILE"
+fi
+
+EXPECTED_VOICEOVER_BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:-}"
+EXPECTED_VOICEOVER_APP_BUILD=""
+if [[ -n "${MARKETING_VERSION:-}" && -n "${CURRENT_PROJECT_VERSION:-}" ]]; then
+  EXPECTED_VOICEOVER_APP_BUILD="$MARKETING_VERSION ($CURRENT_PROJECT_VERSION)"
+fi
 
 section() {
   printf "\n== %s ==\n" "$1"
@@ -250,6 +262,28 @@ voiceover_blocker() {
   blocker "$1"
   voiceover_evidence_blocker_count=$((voiceover_evidence_blocker_count + 1))
 }
+voiceover_context_value() {
+  local context_label="$1"
+  awk -v label="$context_label" '
+    index($0, "- " label ":") == 1 {
+      value = $0
+      sub("^- " label ":[[:space:]]*", "", value)
+      print value
+      found = 1
+      exit
+    }
+    END {
+      if (found != 1) {
+        exit 1
+      }
+    }
+  ' "$voiceover_evidence_file" || true
+}
+normalize_voiceover_context_value() {
+  local context_value="$1"
+  context_value="${context_value//\`/}"
+  printf '%s' "$context_value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
 if [[ ! -f "$voiceover_evidence_file" ]]; then
   voiceover_blocker "missing VoiceOver accessibility evidence file: $VOICEOVER_EVIDENCE_RELATIVE"
 else
@@ -282,22 +316,7 @@ else
   fi
 
   for context_label in "${VOICEOVER_REQUIRED_CONTEXT_LABELS[@]}"; do
-    context_value="$(
-      awk -v label="$context_label" '
-        index($0, "- " label ":") == 1 {
-          value = $0
-          sub("^- " label ":[[:space:]]*", "", value)
-          print value
-          found = 1
-          exit
-        }
-        END {
-          if (found != 1) {
-            exit 1
-          }
-        }
-      ' "$voiceover_evidence_file" || true
-    )"
+    context_value="$(voiceover_context_value "$context_label")"
     compact_context_value="$(tr -d '[:space:]' <<<"$context_value")"
 
     if [[ -z "$compact_context_value" ]]; then
@@ -309,6 +328,20 @@ else
       voiceover_blocker "VoiceOver accessibility evidence has template release context: $context_label"
     fi
   done
+
+  if [[ -n "$EXPECTED_VOICEOVER_BUNDLE_IDENTIFIER" ]]; then
+    voiceover_bundle_identifier="$(normalize_voiceover_context_value "$(voiceover_context_value "Bundle identifier")")"
+    if [[ -n "$voiceover_bundle_identifier" && "$voiceover_bundle_identifier" != "$EXPECTED_VOICEOVER_BUNDLE_IDENTIFIER" ]]; then
+      voiceover_blocker "VoiceOver accessibility evidence bundle identifier does not match packaging metadata: expected $EXPECTED_VOICEOVER_BUNDLE_IDENTIFIER"
+    fi
+  fi
+
+  if [[ -n "$EXPECTED_VOICEOVER_APP_BUILD" ]]; then
+    voiceover_app_build="$(normalize_voiceover_context_value "$(voiceover_context_value "App build")")"
+    if [[ -n "$voiceover_app_build" && "$voiceover_app_build" != "$EXPECTED_VOICEOVER_APP_BUILD" ]]; then
+      voiceover_blocker "VoiceOver accessibility evidence app build does not match packaging metadata: expected $EXPECTED_VOICEOVER_APP_BUILD"
+    fi
+  fi
 fi
 if [[ "$voiceover_evidence_blocker_count" -gt 0 ]]; then
   printf "NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass, Status: passed, complete release-candidate context, complete focus-path notes, and no pending/template/unchecked markers.\n"

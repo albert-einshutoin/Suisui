@@ -7,11 +7,11 @@ Do not set `Status: passed` until every item below is verified on the signed or 
 ## Release Candidate Context
 
 - macOS version:
-- App build:
-- Bundle identifier: `dev.solopm.SoloPM`
+- App build: `0.1.0 (1)`
+- Bundle identifier: `dev.solopm.app`
 - Checked by:
 - Check date:
-- Evidence source: signed or release-candidate `dist/SoloPM.app`
+- Evidence source: `dist/SoloPM.app` release-candidate manual pass
 
 ## Setup
 
