@@ -34,6 +34,7 @@ tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/solopm-runtime-accessible-crud.XXXXXX")"
 database_path="$tmp_dir/SoloPM-runtime-accessible-crud.sqlite"
 created_project_id=""
 created_task_id=""
+cascade_task_id=""
 
 cleanup() {
   /usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
@@ -68,10 +69,24 @@ wait_for_no_app_process() {
   done
 }
 
+activate_app() {
+  /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 &
+  local osascript_pid=$!
+  for _ in {1..20}; do
+    if ! kill -0 "$osascript_pid" >/dev/null 2>&1; then
+      wait "$osascript_pid" >/dev/null 2>&1 || true
+      return 0
+    fi
+    sleep 0.1
+  done
+  kill "$osascript_pid" >/dev/null 2>&1 || true
+  wait "$osascript_pid" >/dev/null 2>&1 || true
+}
+
 launch_app_for_database_migration() {
   pkill -x "$APP_NAME" >/dev/null 2>&1 || true
   /usr/bin/open -n -F --env "SOLOPM_DATABASE_PATH=$database_path" "$APP_BUNDLE"
-  /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 || true
+  activate_app
   wait_for_app_process
 }
 
@@ -82,14 +97,14 @@ launch_app_for_seed_project() {
     --env "SOLOPM_DATABASE_PATH=$database_path" \
     --env "SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=project:$seed_project_id" \
     "$APP_BUNDLE"
-  /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 || true
+  activate_app
   wait_for_app_process
 }
 
 launch_app_for_crud_mutation() {
   pkill -x "$APP_NAME" >/dev/null 2>&1 || true
   /usr/bin/open -n -F --env "SOLOPM_DATABASE_PATH=$database_path" "$APP_BUNDLE"
-  /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 || true
+  activate_app
   wait_for_app_process
 }
 
@@ -198,7 +213,11 @@ on run argv
             set buttonHelp to value of attribute "AXHelp" of axItem as text
           end try
           set signalText to buttonName & " " & buttonTitle & " " & buttonDescription & " " & buttonHelp
-          if signalText contains fragment then
+          set isEnabled to true
+          try
+            set isEnabled to enabled of axItem as boolean
+          end try
+          if isEnabled and signalText contains fragment then
             try
               perform action "AXPress" of axItem
               return "pressed " & fragment
@@ -250,7 +269,11 @@ on run argv
             set buttonHelp to value of attribute "AXHelp" of axItem as text
           end try
           set signalText to buttonName & " " & buttonTitle & " " & buttonDescription & " " & buttonHelp
-          if (signalText contains fragment) and not (signalText contains excludedHelp) then
+          set isEnabled to true
+          try
+            set isEnabled to enabled of axItem as boolean
+          end try
+          if isEnabled and (signalText contains fragment) and not (signalText contains excludedHelp) then
             try
               perform action "AXPress" of axItem
               return "pressed confirmation " & fragment
@@ -268,7 +291,9 @@ APPLESCRIPT
 setTextFieldContaining() {
   local fragment="$1"
   local replacement="$2"
-  /usr/bin/osascript - "$APP_NAME" "$fragment" "$replacement" <<'APPLESCRIPT'
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/osascript - "$APP_NAME" "$fragment" "$replacement" <<'APPLESCRIPT'
 on run argv
   set appName to item 1 of argv
   set fragment to item 2 of argv
@@ -335,6 +360,15 @@ on run argv
   error "text field signal not found: " & fragment
 end run
 APPLESCRIPT
+    then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: failed to set text field in AX tree: $fragment" >&2
+      return 1
+    fi
+    sleep 1
+  done
 }
 
 waitForTextFieldContaining() {
@@ -442,6 +476,30 @@ waitForTextFieldContaining "AX Runtime CRUD Task"
 pressButtonContaining "Creates the task in the local SoloPM database."
 verify_single_value "created task" "SELECT count(*) FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime CRUD Task' AND status='backlog' AND source_command='app.project-board';" "1"
 created_task_id="$(wait_for_nonempty_value "created task id" "SELECT id FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime CRUD Task' ORDER BY id DESC LIMIT 1;")"
+
+pressButtonContaining "Opens task details in the inspector"
+waitForTextFieldContaining "AX Runtime CRUD Task"
+setTextFieldContaining "AX Runtime CRUD Task" "AX Runtime CRUD Task Updated"
+pressButtonContaining "Saves edits to the selected task in the local SoloPM database."
+verify_single_value "renamed task" "SELECT title FROM tasks WHERE id=$created_task_id;" "AX Runtime CRUD Task Updated"
+pressButtonContaining "Changes AX Runtime CRUD Task"
+verify_single_value "advanced task status" "SELECT status FROM tasks WHERE id=$created_task_id;" "planned"
+/usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
+wait_for_no_app_process
+launch_app_for_seed_project "$created_project_id"
+pressButtonContaining "Opens task details in the inspector"
+pressButtonContaining "Deletes the selected task after confirmation."
+sleep 1
+pressConfirmationButtonContaining "Delete Task" "Deletes the selected task after confirmation."
+verify_single_value "deleted task" "SELECT count(*) FROM tasks WHERE id=$created_task_id;" "0"
+
+pressButtonContaining "Opens the inline composer for a new local task"
+waitForTextFieldContaining "Enter the task name"
+setTextFieldContaining "Enter the task name" "AX Runtime Cascade Task"
+waitForTextFieldContaining "AX Runtime Cascade Task"
+pressButtonContaining "Creates the task in the local SoloPM database."
+verify_single_value "created cascade task" "SELECT count(*) FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Cascade Task' AND status='backlog' AND source_command='app.project-board';" "1"
+cascade_task_id="$(wait_for_nonempty_value "cascade task id" "SELECT id FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Cascade Task' ORDER BY id DESC LIMIT 1;")"
 /usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
 wait_for_no_app_process
 launch_app_for_seed_project "$created_project_id"
@@ -453,6 +511,6 @@ pressButtonContaining "Deletes the selected project"
 sleep 1
 pressConfirmationButtonContaining "Delete Project" "Deletes the selected project after confirmation."
 verify_single_value "deleted project" "SELECT count(*) FROM projects WHERE id=$created_project_id;" "0"
-verify_single_value "deleted task cascade" "SELECT count(*) FROM tasks WHERE id=$created_task_id OR project_id=$created_project_id;" "0"
+verify_single_value "deleted task cascade" "SELECT count(*) FROM tasks WHERE id=$cascade_task_id OR project_id=$created_project_id;" "0"
 
-printf "OK: runtime accessible CRUD smoke created, renamed, completed, and deleted a project and task through the visible app\n"
+printf "OK: runtime accessible CRUD smoke created, renamed, completed, and deleted a project, then created, updated, moved, directly deleted, and cascade-deleted tasks through the visible app\n"
