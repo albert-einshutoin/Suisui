@@ -204,6 +204,7 @@
   - [x] VoiceOver証跡はVoiceOver/keyboard/deviceの実環境contextがない場合release readyにしない。
   - [x] `script/check_accessibility_preflight.sh` はsource-level accessibility anchorsを確認し、任意のruntime AX smokeで手動VoiceOver前の崩れを検出できる。
   - [x] `script/check_accessibility_preflight.sh` はTask inspectorのdetail/status/priority/due/suggestion/save/deleteとProject inspectorのtitle/suggestion/save/complete/restore/archive/deleteを必須anchorとして監視する。
+  - [x] `script/check_accessibility_preflight.sh` は主要CRUDのkeyboard shortcutsをsource anchorとして監視する。
   - [ ] 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。
 - [x] `script/capture_ui_evidence.sh` は一時HOME、seed済みProject board、Light/Dark/System切替、window captureを使う。
   - [x] `capture_ui_evidence.sh` はcapture前にappを前面化し、黒画面/低情報量PNGをrelease evidenceとして残さず失敗させる。

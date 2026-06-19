@@ -150,7 +150,7 @@ script/capture_ui_evidence.sh --doctor
 script/capture_ui_evidence.sh
 ```
 
-Run the accessibility preflight before the manual VoiceOver pass. The source-only check is safe for CI/local review; the runtime check launches `dist/SoloPM.app` and requires macOS Accessibility permission for Terminal/Codex:
+Run the accessibility preflight before the manual VoiceOver pass. The source-only check is safe for CI/local review and verifies both accessibility anchors and primary CRUD keyboard shortcuts; the runtime check launches `dist/SoloPM.app` and requires macOS Accessibility permission for Terminal/Codex:
 
 ```bash
 ./script/check_accessibility_preflight.sh --source-only
