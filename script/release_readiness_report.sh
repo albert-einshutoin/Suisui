@@ -14,6 +14,7 @@ VOICEOVER_EVIDENCE_RELATIVE="docs/release/evidence/accessibility-voiceover.md"
 ACCESSIBILITY_PREFLIGHT_RELATIVE="script/check_accessibility_preflight.sh"
 COMPETITOR_EVIDENCE_RELATIVE="docs/release/evidence/competitor-hands-on.md"
 MCP_EVIDENCE_RELATIVE="docs/release/evidence/mcp-inspector.md"
+MCP_COMPLIANCE_RELATIVE="script/verify_mcp_compliance.sh"
 RUNTIME_SOURCE_DIRS=(
   "$ROOT_DIR/Sources/SoloPMCore"
   "$ROOT_DIR/Sources/SoloPMApp"
@@ -576,6 +577,37 @@ else
 fi
 
 section "MCP Inspector evidence"
+mcp_compliance_script="$ROOT_DIR/$MCP_COMPLIANCE_RELATIVE"
+if [[ ! -x "$mcp_compliance_script" ]]; then
+  blocker "missing executable MCP compliance verifier: $MCP_COMPLIANCE_RELATIVE"
+else
+  mcp_runtime_evidence_file="$(mktemp)"
+  set +e
+  mcp_compliance_output="$(SOLOPM_MCP_EVIDENCE_FILE="$mcp_runtime_evidence_file" "$mcp_compliance_script" 2>&1)"
+  mcp_compliance_status=$?
+  set -e
+
+  printf "%s\n" "$mcp_compliance_output"
+  if [[ "$mcp_compliance_status" -ne 0 ]]; then
+    blocker "MCP compliance verifier failed"
+  elif [[ ! -f "$mcp_runtime_evidence_file" ]]; then
+    blocker "MCP compliance verifier did not write runtime evidence"
+  else
+    mcp_runtime_missing_marker_count=0
+    for required_marker in "${MCP_EVIDENCE_REQUIRED_MARKERS[@]}"; do
+      if ! grep -F "$required_marker" "$mcp_runtime_evidence_file" >/dev/null; then
+        blocker "MCP compliance verifier output is missing marker: $required_marker"
+        mcp_runtime_missing_marker_count=$((mcp_runtime_missing_marker_count + 1))
+      fi
+    done
+
+    if [[ "$mcp_runtime_missing_marker_count" -eq 0 ]]; then
+      printf "OK: MCP compliance verifier passed\n"
+    fi
+  fi
+  rm -f "$mcp_runtime_evidence_file"
+fi
+
 mcp_evidence_file="$ROOT_DIR/$MCP_EVIDENCE_RELATIVE"
 if [[ ! -f "$mcp_evidence_file" ]]; then
   blocker "missing MCP Inspector evidence file: $MCP_EVIDENCE_RELATIVE"
