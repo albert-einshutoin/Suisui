@@ -314,7 +314,7 @@ private struct ProjectBoardDetail: View {
             }
 
             if project.isArchived {
-                ArchivedProjectPlaceholder()
+                ArchivedProjectReadOnlyState()
             } else {
                 switch displayMode {
                 case .overview:
@@ -354,7 +354,7 @@ private struct ProjectBoardDetail: View {
     }
 }
 
-private struct ArchivedProjectPlaceholder: View {
+private struct ArchivedProjectReadOnlyState: View {
     var body: some View {
         ContentUnavailableView(
             "Archived Project",

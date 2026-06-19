@@ -4004,7 +4004,7 @@ final class ReleasePipelineTests: XCTestCase {
         try """
         let settings = [AVSampleRateKey: 44_100]
         let openCodeModelID = "opencode-model"
-        private struct ArchivedProjectPlaceholder {}
+        private struct ArchivedProjectReadOnlyState {}
         static func buildProductionValue() {}
         """.write(to: benignFile, atomically: true, encoding: .utf8)
 

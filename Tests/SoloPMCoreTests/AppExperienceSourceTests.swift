@@ -80,7 +80,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testProjectAddTaskFromOverviewOpensVisibleBoardComposer() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let detailStart = try XCTUnwrap(source.range(of: "private struct ProjectBoardDetail"))
-        let archivedStart = try XCTUnwrap(source.range(of: "private struct ArchivedProjectPlaceholder"))
+        let archivedStart = try XCTUnwrap(source.range(of: "private struct ArchivedProjectReadOnlyState"))
         let detailSource = String(source[detailStart.lowerBound..<archivedStart.lowerBound])
 
         XCTAssertTrue(detailSource.contains("private func startComposingTask(status: ProjectTaskStatus = .backlog)"))
