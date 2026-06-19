@@ -70,6 +70,11 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertTrue(complianceReview.contains("MCPInspectorEvidenceTests.testComplianceReviewAndEvidenceRecordStableSpecAndDraftBoundary"))
         XCTAssertTrue(complianceReview.contains("stdio command boundary"))
         XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testExternalMCPSettingsRejectsCompositeCommandBeforeSavingRegistration"))
+        XCTAssertTrue(complianceReview.contains("Tool schema typing | Implemented for release subset"))
+        XCTAssertTrue(complianceReview.contains("omitted `$schema` is treated as JSON Schema 2020-12"))
+        XCTAssertTrue(complianceReview.contains("unsupported dialects are rejected with `invalid-schema`"))
+        XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testToolsListRejectsUnsupportedInputSchemaDialect"))
+        XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testToolsListRejectsNonObjectPropertySchemas"))
     }
 
     func testInspectorVerificationScriptRunsWithFakeInspectorWithoutNetwork() throws {

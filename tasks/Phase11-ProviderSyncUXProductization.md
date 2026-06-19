@@ -35,6 +35,7 @@
 - [x] `notifications/initialized` が `initialize` 成功後にだけ送られることをテストする。
 - [x] `protocolVersion` は `2025-11-25` を提示し、serverが返したversionを監査/Settings表示へ残す。
 - [x] `tools/list` responseの `name` / `title` / `description` / `inputSchema` 型不一致を fail fast する既存テストを compliance matrix にリンクする。
+- [x] `tools/list` の `inputSchema` 欠落、root `type != object`、unsupported `$schema` dialect、非object property schemaを拒否し、MCP 2025-11-25のJSON Schema 2020-12境界をrelease subsetとして固定する。
 - [x] `resources/list` / `prompts/list` は未対応としてUIとdocsで明示し、対応済みのように表示しない。
 - [x] `2026-07-28` draft / release-candidate の per-request protocol metadata と `server/discover` は今回のrelease target外として、`docs/mcp-compliance.md` と `docs/release/evidence/mcp-inspector.md` に明記する。
 - [x] 完了条件: 仕様の「実装済み」「未対応」「後続」の境界が投資家/OSS contributorに説明できる。

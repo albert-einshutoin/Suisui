@@ -1658,6 +1658,103 @@ final class ExternalMCPTests: XCTestCase {
         }
     }
 
+    func testToolsListRequiresToolInputSchema() async throws {
+        let missingSchemaTransport = RecordingMCPTransport { request in
+            if request.method == "tools/list" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "tools": .array([
+                            .object([
+                                "name": .string("missing_schema"),
+                                "description": .string("Missing schema")
+                            ])
+                        ])
+                    ])
+                )
+            }
+            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+        }
+        let client = MCPClient(serverID: "fake", transport: missingSchemaTransport)
+
+        do {
+            _ = try await client.listTools()
+            XCTFail("missing inputSchema should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(serverID: "fake", method: "tools/list", reason: "Tool entry inputSchema is required.")
+            )
+        }
+    }
+
+    func testToolsListRequiresObjectRootInputSchemaType() async throws {
+        let wrongRootTypeTransport = RecordingMCPTransport { request in
+            if request.method == "tools/list" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "tools": .array([
+                            .object([
+                                "name": .string("wrong_root"),
+                                "description": .string("Wrong root type"),
+                                "inputSchema": .object([
+                                    "type": .string("array")
+                                ])
+                            ])
+                        ])
+                    ])
+                )
+            }
+            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+        }
+        let client = MCPClient(serverID: "fake", transport: wrongRootTypeTransport)
+
+        do {
+            _ = try await client.listTools()
+            XCTFail("non-object root inputSchema should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(serverID: "fake", method: "tools/list", reason: "Tool entry inputSchema.type must be \"object\".")
+            )
+        }
+    }
+
+    func testToolsListRejectsUnsupportedInputSchemaDialect() async throws {
+        let unsupportedDialectTransport = RecordingMCPTransport { request in
+            if request.method == "tools/list" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "tools": .array([
+                            .object([
+                                "name": .string("draft4"),
+                                "description": .string("Unsupported dialect"),
+                                "inputSchema": .object([
+                                    "$schema": .string("http://json-schema.org/draft-04/schema#"),
+                                    "type": .string("object")
+                                ])
+                            ])
+                        ])
+                    ])
+                )
+            }
+            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+        }
+        let client = MCPClient(serverID: "fake", transport: unsupportedDialectTransport)
+
+        do {
+            _ = try await client.listTools()
+            XCTFail("unsupported inputSchema dialect should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(serverID: "fake", method: "tools/list", reason: "Tool entry inputSchema.$schema is not supported: http://json-schema.org/draft-04/schema#.")
+            )
+        }
+    }
+
     func testToolsListRejectsMalformedRequiredSchema() async throws {
         let malformedRequiredTransport = RecordingMCPTransport { request in
             if request.method == "tools/list" {
@@ -1690,6 +1787,76 @@ final class ExternalMCPTests: XCTestCase {
                 .invalidResponse(serverID: "fake", method: "tools/list", reason: "Tool entry inputSchema.required must be an array of strings.")
             )
         }
+    }
+
+    func testToolsListRejectsNonObjectPropertySchemas() async throws {
+        let malformedPropertyTransport = RecordingMCPTransport { request in
+            if request.method == "tools/list" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "tools": .array([
+                            .object([
+                                "name": .string("bad_property"),
+                                "description": .string("Malformed property schema"),
+                                "inputSchema": .object([
+                                    "$schema": .string("https://json-schema.org/draft/2020-12/schema"),
+                                    "type": .string("object"),
+                                    "properties": .object([
+                                        "title": .string("string")
+                                    ])
+                                ])
+                            ])
+                        ])
+                    ])
+                )
+            }
+            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+        }
+        let client = MCPClient(serverID: "fake", transport: malformedPropertyTransport)
+
+        do {
+            _ = try await client.listTools()
+            XCTFail("non-object property schema should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(serverID: "fake", method: "tools/list", reason: "Tool entry inputSchema.properties.title must be an object.")
+            )
+        }
+    }
+
+    func testToolsListAcceptsDefault202012InputSchemaDialect() async throws {
+        let validSchemaTransport = RecordingMCPTransport { request in
+            if request.method == "tools/list" {
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object([
+                        "tools": .array([
+                            .object([
+                                "name": .string("read_status"),
+                                "description": .string("Read status"),
+                                "inputSchema": .object([
+                                    "$schema": .string("https://json-schema.org/draft/2020-12/schema"),
+                                    "type": .string("object"),
+                                    "required": .array([.string("project")]),
+                                    "properties": .object([
+                                        "project": .object(["type": .string("string")])
+                                    ])
+                                ])
+                            ])
+                        ])
+                    ])
+                )
+            }
+            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+        }
+        let client = MCPClient(serverID: "fake", transport: validSchemaTransport)
+
+        let tools = try await client.listTools()
+
+        XCTAssertEqual(tools.map(\.name), ["read_status"])
+        XCTAssertEqual(tools.first?.inputSchema["$schema"], .string("https://json-schema.org/draft/2020-12/schema"))
     }
 
     func testToolsListRejectsNonStringDescriptionMetadata() async throws {

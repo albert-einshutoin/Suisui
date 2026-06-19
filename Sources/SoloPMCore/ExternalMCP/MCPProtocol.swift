@@ -121,15 +121,14 @@ public struct MCPToolDefinition: Equatable, Sendable {
             title = nil
         }
         let inputSchema: [String: JSONValue]
-        if let inputSchemaValue = object["inputSchema"] {
-            guard let schemaObject = inputSchemaValue.objectValue else {
-                throw MCPClientError.invalidResponse(serverID: "", method: "tools/list", reason: "Tool entry inputSchema must be an object.")
-            }
-            try validateInputSchema(schemaObject)
-            inputSchema = schemaObject
-        } else {
-            inputSchema = ["type": .string("object")]
+        guard let inputSchemaValue = object["inputSchema"] else {
+            throw MCPClientError.invalidResponse(serverID: "", method: "tools/list", reason: "Tool entry inputSchema is required.")
         }
+        guard let schemaObject = inputSchemaValue.objectValue else {
+            throw MCPClientError.invalidResponse(serverID: "", method: "tools/list", reason: "Tool entry inputSchema must be an object.")
+        }
+        try validateInputSchema(schemaObject)
+        inputSchema = schemaObject
         return MCPToolDefinition(
             name: name,
             title: title,
@@ -139,6 +138,31 @@ public struct MCPToolDefinition: Equatable, Sendable {
     }
 
     private static func validateInputSchema(_ inputSchema: [String: JSONValue]) throws {
+        if let dialect = inputSchema["$schema"] {
+            guard let dialectString = dialect.stringValue else {
+                throw MCPClientError.invalidResponse(
+                    serverID: "",
+                    method: "tools/list",
+                    reason: "Tool entry inputSchema.$schema must be a string when present."
+                )
+            }
+            guard isSupportedInputSchemaDialect(dialectString) else {
+                throw MCPClientError.invalidResponse(
+                    serverID: "",
+                    method: "tools/list",
+                    reason: "Tool entry inputSchema.$schema is not supported: \(dialectString)."
+                )
+            }
+        }
+
+        guard inputSchema["type"] == .string("object") else {
+            throw MCPClientError.invalidResponse(
+                serverID: "",
+                method: "tools/list",
+                reason: "Tool entry inputSchema.type must be \"object\"."
+            )
+        }
+
         if let required = inputSchema["required"] {
             guard case .array(let values) = required else {
                 throw MCPClientError.invalidResponse(
@@ -156,12 +180,34 @@ public struct MCPToolDefinition: Equatable, Sendable {
             }
         }
 
-        if let properties = inputSchema["properties"], properties.objectValue == nil {
-            throw MCPClientError.invalidResponse(
-                serverID: "",
-                method: "tools/list",
-                reason: "Tool entry inputSchema.properties must be an object."
-            )
+        if let properties = inputSchema["properties"] {
+            guard let propertySchemas = properties.objectValue else {
+                throw MCPClientError.invalidResponse(
+                    serverID: "",
+                    method: "tools/list",
+                    reason: "Tool entry inputSchema.properties must be an object."
+                )
+            }
+
+            for (propertyName, propertySchema) in propertySchemas where propertySchema.objectValue == nil {
+                throw MCPClientError.invalidResponse(
+                    serverID: "",
+                    method: "tools/list",
+                    reason: "Tool entry inputSchema.properties.\(propertyName) must be an object."
+                )
+            }
+        }
+    }
+
+    private static func isSupportedInputSchemaDialect(_ dialect: String) -> Bool {
+        switch dialect {
+        case "https://json-schema.org/draft/2020-12/schema",
+             "https://json-schema.org/draft/2020-12/schema#",
+             "http://json-schema.org/draft/2020-12/schema",
+             "http://json-schema.org/draft/2020-12/schema#":
+            return true
+        default:
+            return false
         }
     }
 }
