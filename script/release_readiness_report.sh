@@ -154,6 +154,22 @@ source_commit() {
   git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown"
 }
 
+tracked_source_tree_status() {
+  local tracked_changes
+
+  if ! git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    printf "unavailable"
+    return 0
+  fi
+
+  tracked_changes="$(git -C "$ROOT_DIR" status --porcelain --untracked-files=no 2>/dev/null || true)"
+  if [[ -n "$tracked_changes" ]]; then
+    printf "dirty"
+  else
+    printf "clean"
+  fi
+}
+
 write_release_actions() {
   local status="$1"
   local action_path="$RELEASE_ACTIONS_FILE"
@@ -182,6 +198,7 @@ write_release_actions() {
     esac
     printf "Generated at: %s\n" "$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
     printf "Source commit: %s\n" "$(source_commit)"
+    printf "Tracked source tree: %s\n" "$(tracked_source_tree_status)"
     printf "Blocker groups: %d\n\n" "$BLOCKER_COUNT"
     printf "This file is an action summary, not release evidence.\n"
     printf "It does not mark manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper checks as passed.\n\n"

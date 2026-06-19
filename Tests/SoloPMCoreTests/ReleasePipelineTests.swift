@@ -3661,6 +3661,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Status: ready"))
         XCTAssertTrue(script.contains("Generated at:"))
         XCTAssertTrue(script.contains("Source commit:"))
+        XCTAssertTrue(script.contains("Tracked source tree:"))
+        XCTAssertTrue(script.contains("tracked_source_tree_status()"))
+        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" status --porcelain --untracked-files=no"))
         XCTAssertTrue(script.contains("Blocker groups:"))
         XCTAssertTrue(script.contains("BLOCKER_MESSAGES=()"))
         XCTAssertTrue(script.contains("BLOCKER_MESSAGES+=(\"$1\")"))
@@ -3686,6 +3689,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(checklist.contains("SOLOPM_RELEASE_ACTIONS_FILE=.tmp/release-actions.md ./script/release_readiness_report.sh"))
         XCTAssertTrue(phase.contains("[x] `release_readiness_report.sh` は `SOLOPM_RELEASE_ACTIONS_FILE` 指定時に残blockerのoperator action summaryを書き出す。"))
+        XCTAssertTrue(phase.contains("[x] action summary は `Source commit` と tracked source tree の clean / dirty / unavailable 状態を併記する。"))
         XCTAssertTrue(phase.contains("[x] action summary は今回の実行で発生した具体blockerを `Current Blocker Groups` のチェックリストとして列挙する。"))
     }
 
