@@ -197,7 +197,7 @@
   - [x] `capture_ui_evidence.sh` はcapture前にappを前面化し、黒画面/低情報量PNGをrelease evidenceとして残さず失敗させる。
   - [x] `capture_ui_evidence.sh` はScreen Recording権限やwindow capture失敗時に、選択window情報と再実行手順を出す。
   - [x] `capture_ui_evidence.sh --doctor` はrelease evidenceを書かずにScreen Recordingの可視ピクセル取得を事前診断する。
-- [x] `release_readiness_report.sh` は `ui-screenshots.md` だけでなく Light/Dark/System PNG の存在、サイズ、寸法を検証し、欠落や小さすぎる画像をblockerにする。
+- [x] `release_readiness_report.sh` は `ui-screenshots.md` だけでなく Project Board Light/Dark/System、Settings Overview Light/Dark、MCP Settings Light/Dark PNG の存在、サイズ、寸法を検証し、欠落や小さすぎる画像をblockerにする。
 - [x] Light/Dark/System切替後にカード、サイドバー、インスペクタのコントラストが破綻しないことをスクリーンショットで確認する。
 - [ ] 完了条件: マウス、キーボード、支援技術のどれでも主要CRUDが完結する。
 
@@ -228,7 +228,7 @@
 - [x] Proユーザーでもsync backend未構成時はmock successにならない。
 - [x] UX click-path auditで主要操作のクリック数が記録され、改善PRと紐づいている。
   - [x] `docs/ux/click-path-audit.md` の改善紐づけ表で、PR未作成の現時点はcurrent branchの改善commit/source testに対応づけ、PR作成時にdescriptionへ転記する方針を明記する。
-- [ ] `ui-samples/` を参考にした画面密度・インスペクタ・Settingsの改善がスクリーンショットで検証されている。
+- [x] `ui-samples/` を参考にした画面密度・インスペクタ・Settingsの改善がスクリーンショットで検証されている。
 - [x] 競合benchmarkから採用/非採用判断が残っている。
 - [x] `swift test`、`./scripts/ci.sh`、`xcodebuild ... -scheme SoloPM build` がgreen。
 

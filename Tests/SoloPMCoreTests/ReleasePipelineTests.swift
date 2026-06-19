@@ -1980,6 +1980,7 @@ final class ReleasePipelineTests: XCTestCase {
 
     func testReleaseReadinessReportAggregatesRuntimeMockScanTasksAndPreflight() throws {
         let script = try readPackageFile("script/release_readiness_report.sh")
+        let contentCheckScript = try readPackageFile("script/ui_evidence_content_check.swift")
 
         XCTAssertTrue(script.contains("Sources/SoloPMCore"))
         XCTAssertTrue(script.contains("Sources/SoloPMApp"))
@@ -2001,9 +2002,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("section \"UI screenshot evidence\""))
         XCTAssertTrue(script.contains("docs/release/evidence/ui-screenshots.md"))
         XCTAssertTrue(script.contains("project-board-light.png"))
+        XCTAssertTrue(script.contains("settings-overview-light.png"))
+        XCTAssertTrue(script.contains("settings-mcp-light.png"))
         XCTAssertTrue(script.contains("sips -g pixelWidth -g pixelHeight"))
         XCTAssertTrue(script.contains("assert_screenshot_has_visible_content"))
-        XCTAssertTrue(script.contains("CGImageSourceCreateWithURL"))
+        XCTAssertTrue(script.contains("ui_evidence_content_check.swift"))
+        XCTAssertTrue(contentCheckScript.contains("CGImageSourceCreateWithURL"))
         XCTAssertTrue(script.contains("UI screenshot appears blank or too low contrast"))
         XCTAssertTrue(script.contains("missing UI screenshot file"))
         XCTAssertTrue(script.contains("UI screenshot is unexpectedly small"))
@@ -2272,6 +2276,10 @@ final class ReleasePipelineTests: XCTestCase {
         - Light: `docs/release/evidence/ui-screenshots/project-board-light.png`
         - Dark: `docs/release/evidence/ui-screenshots/project-board-dark.png`
         - System: `docs/release/evidence/ui-screenshots/project-board-system.png`
+        - Settings Overview Light: `docs/release/evidence/ui-screenshots/settings-overview-light.png`
+        - Settings Overview Dark: `docs/release/evidence/ui-screenshots/settings-overview-dark.png`
+        - MCP Settings Light: `docs/release/evidence/ui-screenshots/settings-mcp-light.png`
+        - MCP Settings Dark: `docs/release/evidence/ui-screenshots/settings-mcp-dark.png`
         """.write(to: evidenceDirectory.appendingPathComponent("ui-screenshots.md"), atomically: true, encoding: .utf8)
         try "- [x] fixture phase is complete\n"
             .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
@@ -2320,6 +2328,12 @@ final class ReleasePipelineTests: XCTestCase {
 
         try readPackageFile("script/release_readiness_report.sh")
             .write(to: reportURL, atomically: true, encoding: .utf8)
+        try readPackageFile("script/ui_evidence_content_check.swift")
+            .write(
+                to: scriptDirectory.appendingPathComponent("ui_evidence_content_check.swift"),
+                atomically: true,
+                encoding: .utf8
+            )
         try """
         #!/usr/bin/env bash
         set -euo pipefail
@@ -2337,6 +2351,10 @@ final class ReleasePipelineTests: XCTestCase {
         - Light: `docs/release/evidence/ui-screenshots/project-board-light.png`
         - Dark: `docs/release/evidence/ui-screenshots/project-board-dark.png`
         - System: `docs/release/evidence/ui-screenshots/project-board-system.png`
+        - Settings Overview Light: `docs/release/evidence/ui-screenshots/settings-overview-light.png`
+        - Settings Overview Dark: `docs/release/evidence/ui-screenshots/settings-overview-dark.png`
+        - MCP Settings Light: `docs/release/evidence/ui-screenshots/settings-mcp-light.png`
+        - MCP Settings Dark: `docs/release/evidence/ui-screenshots/settings-mcp-dark.png`
         """.write(to: evidenceDirectory.appendingPathComponent("ui-screenshots.md"), atomically: true, encoding: .utf8)
         try """
         # VoiceOver Accessibility Evidence
@@ -2358,7 +2376,7 @@ final class ReleasePipelineTests: XCTestCase {
         try "- [x] fixture readme has no template blockers\n"
             .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
 
-        for screenshotFilename in ["project-board-light.png", "project-board-dark.png", "project-board-system.png"] {
+        for screenshotFilename in ["project-board-light.png", "project-board-dark.png", "project-board-system.png", "settings-overview-light.png", "settings-overview-dark.png", "settings-mcp-light.png", "settings-mcp-dark.png"] {
             try writeSolidPNG(
                 to: screenshotDirectory.appendingPathComponent(screenshotFilename),
                 width: 800,
@@ -2379,6 +2397,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/project-board-light.png"))
         XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/project-board-dark.png"))
         XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/project-board-system.png"))
+        XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/settings-overview-light.png"))
+        XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/settings-overview-dark.png"))
+        XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/settings-mcp-light.png"))
+        XCTAssertTrue(result.output.contains("UI screenshot appears blank or too low contrast: docs/release/evidence/ui-screenshots/settings-mcp-dark.png"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
     }
 

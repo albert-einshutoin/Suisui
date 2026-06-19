@@ -56,7 +56,7 @@
 | Project完了 | Project inspector -> `Complete Project` | 2 | Pass | headerから削除し、選択中Projectの操作をinspectorに集約した。 |
 | Project archive/delete | Project inspector -> action -> confirm | 3 | Pass | 破壊的操作なので確認があるのは妥当。 |
 | boardからSettingsを開く | toolbar gear | 1 | Pass | menu barからも2クリックで開ける。 |
-| Theme変更 | Settings -> `Theme` segment | 2 | Pass | ThemeはSettingsに集約済み。 |
+| Theme変更 | Settings -> Overview -> `Theme` segment | 2 | Pass | ThemeはSettings Overviewに集約済み。Project Boardのサイドバー下/右上にはTheme controlを置かない。 |
 | AI Provider状態確認 | Settings -> Status OverviewまたはAI tabのProvider Readiness summaryを見る | 1 | Pass | 現在のproviderと認証/承認状態は先頭で分かり、AI tabでは全providerの設定状態をprovider切替なしで確認できる。 |
 | AI Provider変更 | Settings -> provider picker -> provider | 2 | Pass | Provider選択時に自動保存されるため、保存ボタンを探す必要がない。AI Provider readiness rowで選択中providerの状態、smoke readiness、次の操作がすぐ分かる。 |
 | Provider API key保存 | Settings -> API key field -> save key | 3 | Pass | 初期設定として3操作は残るが、readiness rowが「Keychainへ保存」「再入力」「manual smoke」の次操作を出すため迷子になりにくい。 |
@@ -79,9 +79,9 @@
 | Task card metadata stripはsource-levelで改善済み | Task card metadata strip はstatus / priority / dueを固定寸法chipに分離し、狭いKanban列ではadaptive gridへ逃がす。drag affordanceは右上の固定サイズiconとして残り、Open task領域とstatus move controlsから分離済み。 | Done | Light/Dark/Systemスクリーンショットでtitle、状態、優先度、期限、drag affordanceが重ならないことを確認済み。 |
 | Task card screenshot証跡は生成・目視確認済み | Task cardのtitle/status/priority/due/drag affordanceは実装済み。`docs/release/evidence/ui-screenshots/` のLight/Dark/System PNGで一時HOME、seed済みProject board、window captureの証跡を残した。 | Done | 以後のUI変更では `script/capture_ui_evidence.sh` を再実行し、生成PNGを目視確認する。 |
 | Inspector summaryはsource-levelで改善済み | Task / Project inspector はcompact summaryを先頭に追加済み。Taskはstatus/priority/due/project、Projectはstatus/open tasks/total tasks/artifactsを詳細Form前に表示し、右ペインを開いた直後の文脈把握を早くする。 | Done | Light/Dark/Systemスクリーンショットでsummary、編集field、danger actionが狭いinspector幅でも重ならないことを確認済み。 |
-| Settings詳細Formはtab分割済み | Settings詳細FormはOverview / AI / MCP / Sync / Privacyのtabへ分割済み。Status OverviewとThemeはOverview、provider詳細はAI、MCP登録/権限/auditはMCP、同期はSync、通知/起動/WatcherはPrivacyに分けた。 | Done | AI Provider readiness summaryでproviderごとのvalidation stateもAI tab内に集約済み。 |
+| Settings詳細Formはtab分割済み | Settings詳細FormはOverview / AI / MCP / Sync / Privacyのtabへ分割済み。Status OverviewとThemeはOverview、provider詳細はAI、MCP登録/権限/auditはMCP、同期はSync、通知/起動/WatcherはPrivacyに分けた。 | Done | `settings-overview-light.png` / `settings-overview-dark.png` でTheme pickerがSettings Overviewにあり、Project Boardには重複Theme controlがないことを確認済み。 |
 | Provider詳細設定は選択中providerだけを表示するcompact panelへ分離済み | Provider pickerの下に選択中providerに必要なfieldだけを出すため、他providerのAPI key、model、local executableは同時表示されない。AI Provider readiness summaryでは全providerのConfigured / Not configured / Local / Setup required / Approval requiredを短く見られる。 | Done | 未選択providerの状態確認にprovider切替は不要。 |
-| MCP server別の接続状態証跡はsource test中心 | 複数server rowのinline statusとrow単位Checkは実装済みだが、実アプリで複数serverを並べたスクリーンショット証跡はまだ弱い。 | P1 | MCP server listを含むSettings screenshotをlight/darkで保存する。 |
+| MCP server別の接続状態証跡は生成・目視確認済み | 複数server rowのinline statusとrow単位Checkは実装済み。`settings-mcp-light.png` / `settings-mcp-dark.png` で複数server、Free MCP execution gate、row単位Check導線を確認済み。 | Done | 以後のSettings変更では `script/capture_ui_evidence.sh` を再実行し、Settings Overview / MCP PNGを目視確認する。 |
 | accessibility検証が未完了 | Task card、column add、status move、destructive confirmationのlabel/helpはsource testで固定し、Task cardのOpen Detailsとstatus move controlsも別フォーカス対象に分離した。Sidebar -> board detail -> task card -> inspectorのsource-level VoiceOver focus anchors are fixed。Task / Project inspectorのfield、提案適用、保存、complete、restore、archive、deleteはaccessibility identifier / hintを持ち、キーボードだけで実行できる。Inbox / Todayのrow、Quick Add、分類action、Today summary、time blockにsource-level accessibility identifiers / hints / keyboard anchorsを追加済み。Light/Dark/System screenshot evidenceは生成・目視確認済み。実機VoiceOver focus order確認は残る。 | P1 | VoiceOverでProject board -> card -> inspectorの順序を確認し、崩れを修正する。 |
 
 ## 改善紐づけ
@@ -125,5 +125,5 @@ Risk: Artifact追加は絶対パスに限定してworkspace推測を避け、削
 ## 次の実装候補
 
 1. P11-033: 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。
-2. P11-036: MCP server listを含むSettings screenshotをlight/darkで保存する。
-3. P11-040: Notion / Todoist / Linear / Motion の実操作メモを追加し、desk researchとの差分だけ更新する。
+2. P11-040: Notion / Todoist / Linear / Motion の実操作メモを追加し、desk researchとの差分だけ更新する。
+3. P5/P10: Developer ID signing / notarization / Sparkle appcast のrelease-machine gateを埋める。
