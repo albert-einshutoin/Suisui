@@ -621,6 +621,8 @@ write_release_evidence_login_item_command() {
 
 write_release_machine_runbook_command() {
   printf '%s\n' '```bash'
+  printf '%s\n' './script/prepare_release_machine_evidence.sh'
+  printf '%s\n' ''
   printf '%s\n' '# 1. Configure local release secrets; these files stay on the release machine.'
   printf '%s\n' '[ -f packaging/signing.env ] || cp packaging/signing.env.example packaging/signing.env'
   printf '%s\n' '[ -f packaging/notarization.env ] || cp packaging/notarization.env.example packaging/notarization.env'
@@ -773,6 +775,7 @@ write_release_actions() {
 
     printf "## Release Machine\n"
     printf -- "- Follow \`docs/release/checklist.md\` on the release machine.\n"
+    printf -- "- Run \`./script/prepare_release_machine_evidence.sh\` first to create \`.tmp/release-machine/release-machine-worksheet.md\` and \`.tmp/release-machine/create-release-evidence-command.sh\` before performing manual release checks.\n"
     printf -- "- Configure \`packaging/signing.env\`, \`packaging/notarization.env\`, production Sparkle feed/key, signed/notarized/stapled app, appcast metadata, and \`packaging/release-evidence.json\`.\n"
     printf -- "- Verify with \`./script/verify_release_environment.sh\` before expecting the readiness report to pass.\n"
     printf -- "- Replace placeholders below with production values and real manual observations before running the commands.\n\n"
@@ -2028,6 +2031,7 @@ printf "%s\n" "$preflight_output"
 if [[ "$preflight_status" -ne 0 ]]; then
   collect_release_environment_blockers "$preflight_output"
   blocker "release environment preflight did not pass"
+  printf "NEXT: run ./script/prepare_release_machine_evidence.sh on the release machine to create the manual release worksheet and evidence command before recording release evidence.\n"
   printf "NEXT: complete docs/release/checklist.md release-machine steps: configure packaging/signing.env, packaging/notarization.env, production Sparkle feed/key, signed/notarized app, appcast, and packaging/release-evidence.json; then rerun ./script/release_readiness_report.sh.\n"
 else
   printf "OK: release environment preflight passed\n"

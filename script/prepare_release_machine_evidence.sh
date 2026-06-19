@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
+WORKSHEET_FILE="$ROOT_DIR/.tmp/release-machine/release-machine-worksheet.md"
+COMMAND_FILE="$ROOT_DIR/.tmp/release-machine/create-release-evidence-command.sh"
+EVIDENCE_OUTPUT_FILE="packaging/release-evidence.json"
+
+usage() {
+  printf '%s\n' "usage: $0 [--worksheet-output PATH] [--command-output PATH]"
+  printf '%s\n' ""
+  printf '%s\n' "Writes a release-machine worksheet and a fill-in create_release_evidence.sh command."
+  printf '%s\n' "This script does not create release evidence or mark signing/notarization/manual gates passed."
+}
+
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --worksheet-output)
+      WORKSHEET_FILE="${2:-}"
+      shift 2
+      ;;
+    --command-output)
+      COMMAND_FILE="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -z "$WORKSHEET_FILE" || -z "$COMMAND_FILE" ]]; then
+  echo "worksheet and command output paths must not be blank" >&2
+  exit 2
+fi
+
+if [[ ! -f "$METADATA_FILE" ]]; then
+  echo "missing metadata file: $METADATA_FILE" >&2
+  exit 2
+fi
+
+# shellcheck source=/dev/null
+source "$METADATA_FILE"
+
+APP_NAME="${APP_NAME:?APP_NAME is required}"
+MARKETING_VERSION="${MARKETING_VERSION:?MARKETING_VERSION is required}"
+CURRENT_PROJECT_VERSION="${CURRENT_PROJECT_VERSION:?CURRENT_PROJECT_VERSION is required}"
+SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
+ARTIFACT_SHA256_FILE="dist/releases/$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"
+
+display_path() {
+  local path="$1"
+  if [[ "$path" == "$ROOT_DIR/"* ]]; then
+    printf '%s' "${path#"$ROOT_DIR/"}"
+  else
+    printf '%s' "$path"
+  fi
+}
+
+write_worksheet() {
+  mkdir -p "$(dirname "$WORKSHEET_FILE")"
+
+  {
+    printf '%s\n' '# Release Machine Evidence Worksheet'
+    printf '\n'
+    printf '%s\n' 'Status: pending'
+    printf '\n'
+    printf '%s\n' 'This worksheet is not release evidence. Fill it on the release machine after building, signing, notarizing, packaging, and manually checking the release artifact.'
+    printf '\n'
+    printf '%s\n' '## Candidate Metadata'
+    printf '\n'
+    printf -- '- Release candidate source commit: `%s`\n' "$SOURCE_COMMIT"
+    printf -- '- App: `%s`\n' "$APP_NAME"
+    printf -- '- Version: `%s`\n' "$MARKETING_VERSION"
+    printf -- '- Build: `%s`\n' "$CURRENT_PROJECT_VERSION"
+    printf -- '- App bundle: `dist/%s.app`\n' "$APP_NAME"
+    printf -- '- Artifact checksum: `%s`\n' "$ARTIFACT_SHA256_FILE"
+    printf -- '- Evidence output: `%s`\n' "$EVIDENCE_OUTPUT_FILE"
+    printf -- '- Evidence command: `%s`\n' "$(display_path "$COMMAND_FILE")"
+    printf '\n'
+    printf '%s\n' '## Prerequisite Checks'
+    printf '\n'
+    printf '%s\n' '- [ ] Developer ID signing identity is configured and verified.'
+    printf '%s\n' '- [ ] Notary profile is configured and verified online.'
+    printf '%s\n' '- [ ] Production Sparkle feed URL and public EdDSA key are configured.'
+    printf '%s\n' '- [ ] Release app is signed, notarized, and stapled.'
+    printf '%s\n' '- [ ] DMG and Sparkle artifacts were generated from this source commit.'
+    printf '%s\n' '- [ ] Release appcast verifies with `SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml`.'
+    printf '\n'
+    printf '%s\n' '## Manual Release Checks To Perform'
+    printf '\n'
+    printf '%s\n' '- [ ] Release-machine launch: open `dist/SoloPM.app` after signing/notarization.'
+    printf '%s\n' '- [ ] Checksum verification: verify the DMG SHA-256 against the generated `.sha256` file.'
+    printf '%s\n' '- [ ] Clean DMG install: download/open the DMG in a clean user or VM.'
+    printf '%s\n' '- [ ] Applications folder install: drag SoloPM to `/Applications` and launch it there.'
+    printf '%s\n' '- [ ] Gatekeeper acceptance: confirm `spctl` or Finder launch accepts the stapled app.'
+    printf '%s\n' '- [ ] Clean environment launch: first launch succeeds in the clean user or VM.'
+    printf '%s\n' '- [ ] Launch at Login toggle: Settings toggles Launch at Login on and off in the signed app.'
+    printf '%s\n' '- [ ] Sparkle appcast metadata: appcast points to this version/build and artifact.'
+    printf '\n'
+    printf '%s\n' '## Evidence Command'
+    printf '\n'
+    printf -- 'Run `%s` only after every checked item above is true.\n' "$(display_path "$COMMAND_FILE")"
+    printf '%s\n' 'Replace every placeholder in that command with concrete observations from this worksheet.'
+  } >"$WORKSHEET_FILE"
+}
+
+write_command() {
+  mkdir -p "$(dirname "$COMMAND_FILE")"
+
+  {
+    printf '%s\n' '#!/usr/bin/env bash'
+    printf '%s\n' 'set -euo pipefail'
+    printf '\n'
+    printf '%s\n' '# Generated by script/prepare_release_machine_evidence.sh.'
+    printf '# Fill %s while reviewing, then replace every placeholder below.\n' "$WORKSHEET_FILE"
+    printf '%s\n' '# This command must only be run after the signed, notarized, stapled release artifact and appcast are verified.'
+    printf '\n'
+    printf 'REPO_ROOT=%q\n' "$ROOT_DIR"
+    printf '%s\n' 'cd "$REPO_ROOT"'
+    printf '\n'
+    printf '%s\n' 'source packaging/app_metadata.env'
+    printf '%s\n' 'export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"'
+    printf '\n'
+    printf '%s\n' './script/create_release_evidence.sh --force \'
+    printf '%s\n' '  --release-machine-launch \'
+    printf '%s\n' '  --checksum-verification \'
+    printf '%s\n' '  --clean-dmg-install \'
+    printf '%s\n' '  --applications-folder-install \'
+    printf '%s\n' '  --gatekeeper-accepted \'
+    printf '%s\n' '  --clean-environment-launch \'
+    printf '%s\n' '  --login-item-toggle \'
+    printf '%s\n' '  --sparkle-appcast-metadata \'
+    printf '%s\n' '  --manual-environment "<macOS version, hardware, clean user or VM/install context>" \'
+    printf '%s\n' '  --checked-by "<reviewer name>" \'
+    printf '%s\n' '  --note "<concrete note covering release-machine launch, checksum SHA-256, clean DMG install, /Applications launch, Gatekeeper/spctl acceptance, clean environment first launch, Launch at Login toggle on/off, and Sparkle appcast metadata>"'
+  } >"$COMMAND_FILE"
+
+  chmod +x "$COMMAND_FILE"
+}
+
+write_worksheet
+write_command
+
+printf 'Release machine worksheet written: %s\n' "$WORKSHEET_FILE"
+printf 'Release evidence command written: %s\n' "$COMMAND_FILE"
