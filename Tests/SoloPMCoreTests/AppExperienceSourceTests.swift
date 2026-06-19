@@ -567,7 +567,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".accessibilityElement(children: .contain)"))
         XCTAssertTrue(source.contains(".accessibilityLabel(\"Open task \\(task.title)\")"))
         XCTAssertTrue(source.contains(".accessibilityValue(accessibilityValueText)"))
-        XCTAssertTrue(source.contains(".accessibilityHint(\"Opens task details in the inspector. Use the status controls below to move without dragging.\")"))
+        XCTAssertTrue(source.contains(".accessibilityHint(\"Opens task details in the inspector. Task inspector fields can then be edited without dragging.\")"))
         XCTAssertTrue(source.contains(".accessibilityLabel(\"Status controls for \\(task.title)\")"))
         XCTAssertTrue(source.contains(".accessibilityHint(\"Moves the task between board columns.\")"))
         XCTAssertTrue(source.contains(".accessibilityLabel(\"Add task to \\(column.title)\")"))

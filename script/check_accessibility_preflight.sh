@@ -32,6 +32,14 @@ REQUIRED_RUNTIME_CRUD_MARKERS=(
   "Archives the selected project"
   "Deletes the selected project"
 )
+REQUIRED_RUNTIME_FOCUS_MARKERS=(
+  "Project navigation=>Project navigation"
+  "Project board detail=>Review project tasks, open a task card, then use the inspector for edits."
+  "Open task=>Opens task details in the inspector"
+  "Inline Task Composer=>Opens the inline composer for a new local task"
+  "Status controls=>Moves the task between board columns"
+  "Task inspector=>Task inspector"
+)
 
 REQUIRED_SOURCE_ANCHORS=(
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-sidebar"
@@ -99,7 +107,7 @@ usage() {
   printf '%s\n' ""
   printf '%s\n' "Checks accessibility anchors before the manual VoiceOver release pass."
   printf '%s\n' "This is not a substitute for the manual VoiceOver pass."
-  printf '%s\n' "Runtime smoke fails when the visible window has fewer than $MIN_AX_BUTTONS buttons, $MIN_AX_TEXT_FIELDS text field, $MIN_AX_STATIC_TEXTS static texts, unlabeled buttons, generic button labels without help or child text, or missing primary CRUD button help signals."
+  printf '%s\n' "Runtime smoke fails when the visible window has fewer than $MIN_AX_BUTTONS buttons, $MIN_AX_TEXT_FIELDS text field, $MIN_AX_STATIC_TEXTS static texts, unlabeled buttons, generic button labels without help or child text, missing primary CRUD button help signals, or missing VoiceOver focus path signals."
 }
 
 while [[ "$#" -gt 0 ]]; do
@@ -221,9 +229,18 @@ for required_runtime_crud_marker in "${REQUIRED_RUNTIME_CRUD_MARKERS[@]}"; do
   fi
 done
 required_runtime_crud_marker_count="${#REQUIRED_RUNTIME_CRUD_MARKERS[@]}"
+required_runtime_focus_markers_joined=""
+for required_runtime_focus_marker in "${REQUIRED_RUNTIME_FOCUS_MARKERS[@]}"; do
+  if [[ -z "$required_runtime_focus_markers_joined" ]]; then
+    required_runtime_focus_markers_joined="$required_runtime_focus_marker"
+  else
+    required_runtime_focus_markers_joined="${required_runtime_focus_markers_joined}|||${required_runtime_focus_marker}"
+  fi
+done
+required_runtime_focus_marker_count="${#REQUIRED_RUNTIME_FOCUS_MARKERS[@]}"
 while true; do
   set +e
-  ax_output="$(/usr/bin/osascript - "$APP_NAME" "$MIN_AX_BUTTONS" "$MIN_AX_TEXT_FIELDS" "$MIN_AX_STATIC_TEXTS" "$required_runtime_crud_markers_joined" "$required_runtime_crud_marker_count" <<APPLESCRIPT 2>&1
+  ax_output="$(/usr/bin/osascript - "$APP_NAME" "$MIN_AX_BUTTONS" "$MIN_AX_TEXT_FIELDS" "$MIN_AX_STATIC_TEXTS" "$required_runtime_crud_markers_joined" "$required_runtime_crud_marker_count" "$required_runtime_focus_markers_joined" "$required_runtime_focus_marker_count" <<APPLESCRIPT 2>&1
 on run argv
   set appName to item 1 of argv
   set minButtons to (item 2 of argv) as integer
@@ -231,9 +248,12 @@ on run argv
   set minStaticTexts to (item 4 of argv) as integer
   set requiredCRUDMarkersRaw to item 5 of argv
   set requiredCRUDMarkerCount to (item 6 of argv) as integer
+  set requiredFocusMarkersRaw to item 7 of argv
+  set requiredFocusMarkerCount to (item 8 of argv) as integer
   set previousTextItemDelimiters to text item delimiters of AppleScript
   set text item delimiters of AppleScript to "|||"
   set requiredCRUDMarkers to text items of requiredCRUDMarkersRaw
+  set requiredFocusMarkers to text items of requiredFocusMarkersRaw
   set text item delimiters of AppleScript to previousTextItemDelimiters
   set bestSummary to ""
   set bestScore to -1
@@ -244,6 +264,8 @@ on run argv
   set bestGenericButtonCount to 0
   set bestCRUDSignalCount to 0
   set bestMissingCRUDSignals to ""
+  set bestFocusPathSignalCount to 0
+  set bestMissingFocusPathSignals to ""
   tell application "System Events"
     if not (exists process appName) then error appName & " process is not visible to System Events"
     tell process appName
@@ -262,12 +284,34 @@ on run argv
         set genericButtonCount to 0
         set genericButtonDetails to ""
         set buttonSignalText to ""
+        set focusPathSignalText to ""
         set axItems to entire contents of currentWindow
         repeat with axItem in axItems
           set itemRole to ""
+          set itemName to ""
+          set itemTitle to ""
+          set itemValue to ""
+          set itemDescription to ""
+          set itemHelp to ""
           try
             set itemRole to role of axItem as text
           end try
+          try
+            set itemName to name of axItem as text
+          end try
+          try
+            set itemTitle to value of attribute "AXTitle" of axItem as text
+          end try
+          try
+            set itemValue to value of axItem as text
+          end try
+          try
+            set itemDescription to description of axItem as text
+          end try
+          try
+            set itemHelp to value of attribute "AXHelp" of axItem as text
+          end try
+          set focusPathSignalText to focusPathSignalText & " " & itemName & " " & itemTitle & " " & itemValue & " " & itemDescription & " " & itemHelp
           if itemRole is "AXButton" then
             set buttonCount to buttonCount + 1
             set buttonName to ""
@@ -349,7 +393,30 @@ on run argv
             end if
           end if
         end repeat
-        set currentSummary to "window=" & windowIndex & " name=" & windowName & ", buttons=" & buttonCount & ", textFields=" & textFieldCount & ", staticTexts=" & staticTextCount & ", unlabeledButtons=" & unlabeledButtonCount & ", genericButtons=" & genericButtonCount & ", crudSignals=" & crudSignalCount & "/" & requiredCRUDMarkerCount
+        set focusPathSignalCount to 0
+        set missingFocusPathSignals to ""
+        repeat with requiredFocusMarker in requiredFocusMarkers
+          set requiredFocusMarkerText to requiredFocusMarker as text
+          if requiredFocusMarkerText is not "" then
+            set requiredFocusMarkerLabel to requiredFocusMarkerText
+            set requiredFocusMarkerNeedle to requiredFocusMarkerText
+            set focusMarkerSeparatorOffset to offset of "=>" in requiredFocusMarkerText
+            if focusMarkerSeparatorOffset > 0 then
+              set requiredFocusMarkerLabel to text 1 thru (focusMarkerSeparatorOffset - 1) of requiredFocusMarkerText
+              set requiredFocusMarkerNeedle to text (focusMarkerSeparatorOffset + 2) thru -1 of requiredFocusMarkerText
+            end if
+            if focusPathSignalText contains requiredFocusMarkerNeedle then
+              set focusPathSignalCount to focusPathSignalCount + 1
+            else
+              if missingFocusPathSignals is "" then
+                set missingFocusPathSignals to requiredFocusMarkerLabel
+              else
+                set missingFocusPathSignals to missingFocusPathSignals & "; " & requiredFocusMarkerLabel
+              end if
+            end if
+          end if
+        end repeat
+        set currentSummary to "window=" & windowIndex & " name=" & windowName & ", buttons=" & buttonCount & ", textFields=" & textFieldCount & ", staticTexts=" & staticTextCount & ", unlabeledButtons=" & unlabeledButtonCount & ", genericButtons=" & genericButtonCount & ", crudSignals=" & crudSignalCount & "/" & requiredCRUDMarkerCount & ", focusPathSignals=" & focusPathSignalCount & "/" & requiredFocusMarkerCount
         if genericButtonDetails is not "" then set currentSummary to currentSummary & ", genericButtonDetails=" & genericButtonDetails
         set currentScore to buttonCount + textFieldCount + staticTextCount
         if bestSummary is "" then
@@ -362,6 +429,8 @@ on run argv
           set bestGenericButtonCount to genericButtonCount
           set bestCRUDSignalCount to crudSignalCount
           set bestMissingCRUDSignals to missingCRUDSignals
+          set bestFocusPathSignalCount to focusPathSignalCount
+          set bestMissingFocusPathSignals to missingFocusPathSignals
         else if currentScore > bestScore then
           set bestSummary to currentSummary
           set bestScore to currentScore
@@ -372,8 +441,10 @@ on run argv
           set bestGenericButtonCount to genericButtonCount
           set bestCRUDSignalCount to crudSignalCount
           set bestMissingCRUDSignals to missingCRUDSignals
+          set bestFocusPathSignalCount to focusPathSignalCount
+          set bestMissingFocusPathSignals to missingFocusPathSignals
         end if
-        if buttonCount >= minButtons and textFieldCount >= minTextFields and staticTextCount >= minStaticTexts and unlabeledButtonCount is 0 and genericButtonCount is 0 and crudSignalCount is requiredCRUDMarkerCount then
+        if buttonCount >= minButtons and textFieldCount >= minTextFields and staticTextCount >= minStaticTexts and unlabeledButtonCount is 0 and genericButtonCount is 0 and crudSignalCount is requiredCRUDMarkerCount and focusPathSignalCount is requiredFocusMarkerCount then
           return "OK: runtime AX smoke visible, windows=" & windowCount & ", " & currentSummary
         end if
       end repeat
@@ -385,6 +456,7 @@ on run argv
       if bestUnlabeledButtonCount > 0 then error "runtime AX smoke has unlabeled buttons: " & bestUnlabeledButtonCount & " (" & bestSummary & ")"
       if bestGenericButtonCount > 0 then error "runtime AX smoke has generic button labels without help or child text: " & bestGenericButtonCount & " (" & bestSummary & ")"
       if bestCRUDSignalCount < requiredCRUDMarkerCount then error "runtime AX smoke is missing primary CRUD button labels or help: " & bestMissingCRUDSignals & " (" & bestSummary & ")"
+      if bestFocusPathSignalCount < requiredFocusMarkerCount then error "runtime AX smoke is missing VoiceOver focus path labels or help: " & bestMissingFocusPathSignals & " (" & bestSummary & ")"
       error "runtime AX smoke did not find a qualifying visible window: " & bestSummary
     end tell
   end tell

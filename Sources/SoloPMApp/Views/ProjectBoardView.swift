@@ -1128,7 +1128,7 @@ private struct BoardTaskCard: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Open task \(task.title)")
             .accessibilityValue(accessibilityValueText)
-            .accessibilityHint("Opens task details in the inspector. Use the status controls below to move without dragging.")
+            .accessibilityHint("Opens task details in the inspector. Task inspector fields can then be edited without dragging.")
             .accessibilityIdentifier("task-card-open-details")
             .accessibilitySortPriority(2)
 
