@@ -2248,12 +2248,33 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(unsafePassedResult.output.contains("--confirm-manual-hands-on is required with --passed"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
 
+        let missingNotesResult = try runScript(
+            "script/create_competitor_hands_on_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "Product reviewer",
+                "--check-date", "2026-06-19",
+                "--output", passedURL.path,
+                "--confirm-manual-hands-on"
+            ]
+        )
+        XCTAssertNotEqual(missingNotesResult.exitCode, 0)
+        XCTAssertTrue(missingNotesResult.output.contains("--notion-note is required with --passed"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
         let passedResult = try runScript(
             "script/create_competitor_hands_on_evidence.sh",
             arguments: [
                 "--passed",
                 "--checked-by", "Product reviewer",
                 "--check-date", "2026-06-19",
+                "--notion-note", "Board setup was flexible but required manual schema decisions before task entry felt fast.",
+                "--todoist-note", "Quick Add made capture fast, but project context still needed review after entry.",
+                "--linear-note", "Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.",
+                "--motion-note", "Scheduling suggestions were useful only when the reason and deadline impact were visible.",
+                "--ship", "Keep fast local capture, board status movement, and right inspector as the public alpha loop.",
+                "--defer", "Natural-language dates and autonomous scheduling stay out until reliability evidence exists.",
+                "--reject", "Team cycles, initiatives, and external SaaS sync stay outside public alpha scope.",
                 "--output", passedURL.path,
                 "--confirm-manual-hands-on"
             ]
@@ -2264,15 +2285,98 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(passedEvidence.contains("Status: passed"))
         XCTAssertTrue(passedEvidence.contains("- Checked by: Product reviewer"))
         XCTAssertTrue(passedEvidence.contains("- Check date: 2026-06-19"))
-        XCTAssertTrue(passedEvidence.contains("- Notion: passed"))
-        XCTAssertTrue(passedEvidence.contains("- Todoist: passed"))
-        XCTAssertTrue(passedEvidence.contains("- Linear: passed"))
-        XCTAssertTrue(passedEvidence.contains("- Motion: passed"))
+        XCTAssertTrue(passedEvidence.contains("- Notion: passed - Board setup was flexible but required manual schema decisions before task entry felt fast."))
+        XCTAssertTrue(passedEvidence.contains("- Todoist: passed - Quick Add made capture fast, but project context still needed review after entry."))
+        XCTAssertTrue(passedEvidence.contains("- Linear: passed - Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work."))
+        XCTAssertTrue(passedEvidence.contains("- Motion: passed - Scheduling suggestions were useful only when the reason and deadline impact were visible."))
         XCTAssertTrue(passedEvidence.contains("No external SaaS sync or team workflow was added to SoloPM public alpha scope"))
         XCTAssertTrue(passedEvidence.contains("Ship / Defer / Reject Delta"))
+        XCTAssertTrue(passedEvidence.contains("- Ship: Keep fast local capture, board status movement, and right inspector as the public alpha loop."))
+        XCTAssertTrue(passedEvidence.contains("- Defer: Natural-language dates and autonomous scheduling stay out until reliability evidence exists."))
+        XCTAssertTrue(passedEvidence.contains("- Reject: Team cycles, initiatives, and external SaaS sync stay outside public alpha scope."))
         XCTAssertFalse(passedEvidence.localizedCaseInsensitiveContains("pending"))
         XCTAssertFalse(passedEvidence.contains("- [ ]"))
         XCTAssertFalse(passedEvidence.localizedCaseInsensitiveContains("placeholder"))
+    }
+
+    func testReleaseReadinessReportFailsWhenCompetitorEvidenceLacksConcreteNotes() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-weak-competitor-evidence", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let evidenceDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("release", isDirectory: true)
+            .appendingPathComponent("evidence", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: evidenceDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: preflightURL, atomically: true, encoding: .utf8)
+        try """
+        # Competitor Hands-On Evidence
+
+        Status: passed
+
+        ## Review Context
+
+        - Checked by: Product reviewer
+        - Check date: 2026-06-19
+        - Evidence source: `Real local hands-on pass`
+        - Scope: Notion -> Todoist -> Linear -> Motion
+
+        ## Verified Hands-On Path
+
+        - Notion: passed -
+        - Todoist: passed -
+        - Linear: passed -
+        - Motion: passed -
+        - No external SaaS sync or team workflow was added to SoloPM public alpha scope because of this benchmark.
+
+        ## Ship / Defer / Reject Delta
+
+        - Ship:
+        - Defer:
+        - Reject:
+        """.write(to: evidenceDirectory.appendingPathComponent("competitor-hands-on.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: preflightURL.path)
+
+        let result = try runTool(["bash", reportURL.path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing concrete note: Notion"))
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing concrete note: Todoist"))
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing concrete note: Linear"))
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing concrete note: Motion"))
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing decision delta: Ship"))
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing decision delta: Defer"))
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing decision delta: Reject"))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
     }
 
     func testReleaseReadinessReportAggregatesRuntimeMockScanTasksAndPreflight() throws {

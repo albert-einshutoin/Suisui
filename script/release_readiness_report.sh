@@ -63,6 +63,17 @@ COMPETITOR_REQUIRED_CONTEXT_LABELS=(
   "Evidence source"
   "Scope"
 )
+COMPETITOR_REQUIRED_NOTE_LABELS=(
+  "Notion"
+  "Todoist"
+  "Linear"
+  "Motion"
+)
+COMPETITOR_REQUIRED_DECISION_LABELS=(
+  "Ship"
+  "Defer"
+  "Reject"
+)
 MCP_EVIDENCE_REQUIRED_MARKERS=(
   "Generated:"
   "Scope: validate the release MCP stdio fixture"
@@ -389,6 +400,40 @@ competitor_context_value() {
     }
   ' "$competitor_evidence_file" || true
 }
+competitor_note_value() {
+  local note_label="$1"
+  awk -v label="$note_label" '
+    index($0, "- " label ": passed -") == 1 {
+      value = $0
+      sub("^- " label ": passed -[[:space:]]*", "", value)
+      print value
+      found = 1
+      exit
+    }
+    END {
+      if (found != 1) {
+        exit 1
+      }
+    }
+  ' "$competitor_evidence_file" || true
+}
+competitor_decision_value() {
+  local decision_label="$1"
+  awk -v label="$decision_label" '
+    index($0, "- " label ":") == 1 {
+      value = $0
+      sub("^- " label ":[[:space:]]*", "", value)
+      print value
+      found = 1
+      exit
+    }
+    END {
+      if (found != 1) {
+        exit 1
+      }
+    }
+  ' "$competitor_evidence_file" || true
+}
 if [[ ! -f "$competitor_evidence_file" ]]; then
   competitor_blocker "missing competitor hands-on evidence file: $COMPETITOR_EVIDENCE_RELATIVE"
 else
@@ -431,6 +476,34 @@ else
 
     if grep -Eiq "$competitor_template_pattern" <<<"$context_value"; then
       competitor_blocker "Competitor hands-on evidence has template review context: $context_label"
+    fi
+  done
+
+  for note_label in "${COMPETITOR_REQUIRED_NOTE_LABELS[@]}"; do
+    note_value="$(competitor_note_value "$note_label")"
+    compact_note_value="$(tr -d '[:space:]' <<<"$note_value")"
+
+    if [[ -z "$compact_note_value" ]]; then
+      competitor_blocker "Competitor hands-on evidence missing concrete note: $note_label"
+      continue
+    fi
+
+    if grep -Eiq "$competitor_template_pattern" <<<"$note_value"; then
+      competitor_blocker "Competitor hands-on evidence has template concrete note: $note_label"
+    fi
+  done
+
+  for decision_label in "${COMPETITOR_REQUIRED_DECISION_LABELS[@]}"; do
+    decision_value="$(competitor_decision_value "$decision_label")"
+    compact_decision_value="$(tr -d '[:space:]' <<<"$decision_value")"
+
+    if [[ -z "$compact_decision_value" ]]; then
+      competitor_blocker "Competitor hands-on evidence missing decision delta: $decision_label"
+      continue
+    fi
+
+    if grep -Eiq "$competitor_template_pattern" <<<"$decision_value"; then
+      competitor_blocker "Competitor hands-on evidence has template decision delta: $decision_label"
     fi
   done
 fi

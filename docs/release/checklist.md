@@ -172,7 +172,16 @@ Use the generator so a pending worksheet cannot be mistaken for a pass:
 
 ```bash
 ./script/create_competitor_hands_on_evidence.sh --pending
-./script/create_competitor_hands_on_evidence.sh --passed --checked-by "Reviewer Name" --confirm-manual-hands-on
+./script/create_competitor_hands_on_evidence.sh --passed \
+  --checked-by "Reviewer Name" \
+  --notion-note "Concrete Notion observation from the hands-on pass." \
+  --todoist-note "Concrete Todoist observation from the hands-on pass." \
+  --linear-note "Concrete Linear observation from the hands-on pass." \
+  --motion-note "Concrete Motion observation from the hands-on pass." \
+  --ship "SoloPM public-alpha behavior to ship based on the benchmark." \
+  --defer "Behavior to defer until stronger reliability or demand evidence exists." \
+  --reject "Behavior to keep out of public alpha scope." \
+  --confirm-manual-hands-on
 ```
 
 13. final readiness report

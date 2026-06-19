@@ -8,12 +8,29 @@ CHECKED_BY=""
 CHECK_DATE="$(date +%F)"
 EVIDENCE_SOURCE="Notion/Todoist/Linear/Motion 2-4 hour hands-on pass"
 CONFIRM_MANUAL_HANDS_ON=0
+NOTION_NOTE=""
+TODOIST_NOTE=""
+LINEAR_NOTE=""
+MOTION_NOTE=""
+SHIP_DELTA=""
+DEFER_DELTA=""
+REJECT_DELTA=""
 
 usage() {
-  printf '%s\n' "usage: $0 (--pending|--passed) [--output PATH] [--checked-by NAME] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--confirm-manual-hands-on]"
+  printf '%s\n' "usage: $0 (--pending|--passed) [--output PATH] [--checked-by NAME] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--notion-note TEXT] [--todoist-note TEXT] [--linear-note TEXT] [--motion-note TEXT] [--ship TEXT] [--defer TEXT] [--reject TEXT] [--confirm-manual-hands-on]"
   printf '%s\n' ""
   printf '%s\n' "Use --pending to write a safe worksheet that release readiness will reject."
   printf '%s\n' "Use --passed only after a real Notion -> Todoist -> Linear -> Motion hands-on pass."
+}
+
+require_passed_value() {
+  local flag="$1"
+  local value="$2"
+
+  if [[ -z "${value//[[:space:]]/}" ]]; then
+    echo "$flag is required with --passed" >&2
+    exit 2
+  fi
 }
 
 while [[ "$#" -gt 0 ]]; do
@@ -40,6 +57,34 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --evidence-source)
       EVIDENCE_SOURCE="${2:-}"
+      shift 2
+      ;;
+    --notion-note)
+      NOTION_NOTE="${2:-}"
+      shift 2
+      ;;
+    --todoist-note)
+      TODOIST_NOTE="${2:-}"
+      shift 2
+      ;;
+    --linear-note)
+      LINEAR_NOTE="${2:-}"
+      shift 2
+      ;;
+    --motion-note)
+      MOTION_NOTE="${2:-}"
+      shift 2
+      ;;
+    --ship)
+      SHIP_DELTA="${2:-}"
+      shift 2
+      ;;
+    --defer)
+      DEFER_DELTA="${2:-}"
+      shift 2
+      ;;
+    --reject)
+      REJECT_DELTA="${2:-}"
       shift 2
       ;;
     --confirm-manual-hands-on)
@@ -76,6 +121,13 @@ if [[ "$EVIDENCE_STATUS" == "passed" ]]; then
     echo "--check-date is required with --passed" >&2
     exit 2
   fi
+  require_passed_value "--notion-note" "$NOTION_NOTE"
+  require_passed_value "--todoist-note" "$TODOIST_NOTE"
+  require_passed_value "--linear-note" "$LINEAR_NOTE"
+  require_passed_value "--motion-note" "$MOTION_NOTE"
+  require_passed_value "--ship" "$SHIP_DELTA"
+  require_passed_value "--defer" "$DEFER_DELTA"
+  require_passed_value "--reject" "$REJECT_DELTA"
 fi
 
 mkdir -p "$(dirname "$OUTPUT_FILE")"
@@ -135,17 +187,17 @@ write_passed_evidence() {
     printf '\n'
     printf '%s\n' '## Verified Hands-On Path'
     printf '\n'
-    printf '%s\n' '- Notion: passed - Project database, board grouping, task creation, and artifact/doc/link context were reviewed.'
-    printf '%s\n' '- Todoist: passed - Quick Add, date/priority/project capture, board/list switching, drag movement, and Today/Upcoming were reviewed.'
-    printf '%s\n' '- Linear: passed - Project/issue creation, status movement, details/sidebar, keyboard flow, and triage-like intake were reviewed.'
-    printf '%s\n' '- Motion: passed - Dated/prioritized tasks, scheduling/risk surfaces, deadline adjustment, and recommendation explanation were reviewed.'
+    printf -- '- Notion: passed - %s\n' "$NOTION_NOTE"
+    printf -- '- Todoist: passed - %s\n' "$TODOIST_NOTE"
+    printf -- '- Linear: passed - %s\n' "$LINEAR_NOTE"
+    printf -- '- Motion: passed - %s\n' "$MOTION_NOTE"
     printf '%s\n' '- No external SaaS sync or team workflow was added to SoloPM public alpha scope because of this benchmark.'
     printf '\n'
     printf '%s\n' '## Ship / Defer / Reject Delta'
     printf '\n'
-    printf '%s\n' '- Ship: Keep local Inbox/Menu Bar capture, Project Overview, board status movement, and right inspector as the public alpha loop.'
-    printf '%s\n' '- Defer: Natural-language date parsing, calendar layout, AI status updates, and autonomous scheduling stay outside public alpha until reliability evidence exists.'
-    printf '%s\n' '- Reject: Arbitrary database builders, team cycles, initiatives, and external SaaS sync remain out of public alpha scope.'
+    printf -- '- Ship: %s\n' "$SHIP_DELTA"
+    printf -- '- Defer: %s\n' "$DEFER_DELTA"
+    printf -- '- Reject: %s\n' "$REJECT_DELTA"
   } >"$OUTPUT_FILE"
 }
 
