@@ -95,7 +95,7 @@ public struct ActionExecutor: Sendable {
                 working.markAction(
                     id: item.id,
                     status: .failed,
-                    errorMessage: String(describing: error),
+                    errorMessage: userFacingToolErrorMessage(for: error),
                     failureRecovery: Self.failureRecovery(for: error)
                 )
                 recordToolEventOrMarkAuditFailure(
@@ -233,7 +233,7 @@ public struct ActionExecutor: Sendable {
         do {
             try recordReviewEvent(action: action, status: status, session: session)
         } catch {
-            session.auditErrorMessage = "Action audit log failed: \(String(describing: error))"
+            session.auditErrorMessage = "Action audit log could not be saved."
         }
     }
 
@@ -248,7 +248,26 @@ public struct ActionExecutor: Sendable {
         do {
             try recordToolEvent(tool: tool, status: status, actionID: actionID, result: result, error: error)
         } catch {
-            session.auditErrorMessage = "Action audit log failed: \(String(describing: error))"
+            session.auditErrorMessage = "Action audit log could not be saved."
+        }
+    }
+
+    private func userFacingToolErrorMessage(for error: Error) -> String {
+        switch error {
+        case ToolExecutionError.duplicateTool(let tool):
+            return "Tool \(tool.rawValue) is registered more than once."
+        case ToolExecutionError.unknownTool(let tool):
+            return "Tool \(tool.rawValue) is not available."
+        case ToolExecutionError.approvalRequired(let tool):
+            return "Approval is required before running \(tool.rawValue)."
+        case ToolExecutionError.dangerousToolBlocked(let tool):
+            return "Tool \(tool.rawValue) is blocked for safety."
+        case ToolExecutionError.validationFailed(let tool, let message):
+            return "Invalid arguments for \(tool.rawValue): \(redacted(message))"
+        case ToolExecutionError.executionFailed(let tool, let message):
+            return "\(tool.rawValue) failed: \(redacted(message))"
+        default:
+            return "Action failed. Review the action details and try again."
         }
     }
 }

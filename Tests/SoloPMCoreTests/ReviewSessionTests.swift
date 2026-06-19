@@ -269,12 +269,13 @@ final class ActionExecutorTests: XCTestCase {
             PlanAction(id: "read", tool: .projectList)
         ]))
 
-        _ = try ActionExecutor(registry: registry, auditLogger: logger).execute(session)
+        let executed = try ActionExecutor(registry: registry, auditLogger: logger).execute(session)
 
         let toolEvent = try XCTUnwrap(logger.recordedEvents.first { $0.category == "tool" && $0.status == .failed })
         let error = try XCTUnwrap(toolEvent.metadata["error"])
         XCTAssertFalse(error.contains(secret))
         XCTAssertTrue(error.contains("[REDACTED_SECRET]"))
+        XCTAssertEqual(executed.items.first?.errorMessage, "project.list failed: provider token=[REDACTED_SECRET] rejected")
     }
 
     func testExecutorPreservesSucceededToolStateWhenAuditFailsAfterExecutionStarts() throws {
@@ -293,7 +294,7 @@ final class ActionExecutorTests: XCTestCase {
         XCTAssertEqual(executed.executionStatus, .completed)
         XCTAssertEqual(executed.items.first?.executionStatus, .succeeded)
         XCTAssertEqual(executed.items.first?.result?.summary, "ok")
-        XCTAssertEqual(executed.auditErrorMessage, "Action audit log failed: unavailable")
+        XCTAssertEqual(executed.auditErrorMessage, "Action audit log could not be saved.")
     }
 }
 

@@ -45,7 +45,7 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.canApprove)
 
         XCTAssertFalse(viewModel.approveOrReportError())
-        XCTAssertEqual(viewModel.errorMessage, "approvalNotRequired")
+        XCTAssertEqual(viewModel.errorMessage, "This action plan does not require approval.")
     }
 
     func testExecuteOrReportErrorSurfacesApprovalPreflightFailure() throws {
@@ -62,7 +62,7 @@ final class ReviewSessionViewModelTests: XCTestCase {
         )
 
         XCTAssertFalse(viewModel.executeOrReportError())
-        XCTAssertEqual(viewModel.errorMessage, "approvalRequired")
+        XCTAssertEqual(viewModel.errorMessage, "Approve this action plan before executing it.")
         XCTAssertEqual(viewModel.session.executionStatus, .notStarted)
     }
 
@@ -80,7 +80,7 @@ final class ReviewSessionViewModelTests: XCTestCase {
         )
 
         XCTAssertFalse(viewModel.approveOrReportError())
-        XCTAssertEqual(viewModel.errorMessage, "approvalNotRequired")
+        XCTAssertEqual(viewModel.errorMessage, "This action plan does not require approval.")
 
         XCTAssertTrue(viewModel.executeOrReportError())
         XCTAssertNil(viewModel.errorMessage)
@@ -198,7 +198,7 @@ final class ReviewSessionViewModelTests: XCTestCase {
 
         viewModel.updateStringArgument(actionID: "task", key: "title", value: "Review")
 
-        XCTAssertEqual(viewModel.auditErrorMessage, "Review audit log failed: unavailable")
+        XCTAssertEqual(viewModel.auditErrorMessage, "Review audit log could not be saved.")
     }
 
     func testAuditFailureDuringExecuteFailureIsSurfacedWithExecutorError() throws {
@@ -219,8 +219,8 @@ final class ReviewSessionViewModelTests: XCTestCase {
 
         XCTAssertThrowsError(try viewModel.execute())
 
-        XCTAssertEqual(viewModel.errorMessage, "unavailable")
-        XCTAssertEqual(viewModel.auditErrorMessage, "Review audit log failed: unavailable")
+        XCTAssertEqual(viewModel.errorMessage, "Review execution could not be completed.")
+        XCTAssertEqual(viewModel.auditErrorMessage, "Review audit log could not be saved.")
     }
 
     func testExecutorAuditFailureAfterToolSuccessIsSurfacedWithoutLosingSessionResult() throws {
@@ -243,7 +243,7 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.session.executionStatus, .completed)
         XCTAssertEqual(viewModel.session.items.first?.executionStatus, .succeeded)
         XCTAssertEqual(viewModel.session.items.first?.result?.summary, "ok")
-        XCTAssertEqual(viewModel.auditErrorMessage, "Action audit log failed: unavailable")
+        XCTAssertEqual(viewModel.auditErrorMessage, "Action audit log could not be saved.")
     }
 
     func testBlankOptionalCRUDFieldDisablesExecutionBeforeApproval() throws {

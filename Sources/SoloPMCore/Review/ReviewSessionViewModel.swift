@@ -80,7 +80,7 @@ public final class ReviewSessionViewModel: ObservableObject {
             try approve()
             return true
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingErrorMessage(for: error)
             return false
         }
     }
@@ -104,7 +104,7 @@ public final class ReviewSessionViewModel: ObservableObject {
                 self.auditErrorMessage = auditErrorMessage
             }
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingErrorMessage(for: error)
             recordAudit(action: "session.execute", status: .failed)
             throw error
         }
@@ -116,7 +116,7 @@ public final class ReviewSessionViewModel: ObservableObject {
             try execute()
             return true
         } catch {
-            errorMessage = String(describing: error)
+            errorMessage = Self.userFacingErrorMessage(for: error)
             return false
         }
     }
@@ -162,7 +162,26 @@ public final class ReviewSessionViewModel: ObservableObject {
         do {
             try record(action: action, status: status, actionID: actionID)
         } catch {
-            auditErrorMessage = "Review audit log failed: \(String(describing: error))"
+            auditErrorMessage = "Review audit log could not be saved."
+        }
+    }
+
+    private static func userFacingErrorMessage(for error: Error) -> String {
+        switch error {
+        case ReviewSessionError.approvalNotRequired:
+            return "This action plan does not require approval."
+        case ReviewSessionError.approvalRequired, ActionExecutorError.approvalRequired:
+            return "Approve this action plan before executing it."
+        case ReviewSessionError.approvalBlocked(let reason), ActionExecutorError.approvalBlocked(let reason):
+            return "Approval is blocked: \(reason)"
+        case ReviewSessionError.actionNotFound:
+            return "The selected action is no longer available."
+        case ActionExecutorError.noEnabledActions:
+            return "Enable at least one action before executing it."
+        case ActionExecutorError.validationFailed:
+            return "Fix the highlighted action issues before executing."
+        default:
+            return "Review execution could not be completed."
         }
     }
 }
