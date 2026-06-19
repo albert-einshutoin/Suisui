@@ -22,6 +22,7 @@ VOICEOVER_EVIDENCE_RELATIVE="docs/release/evidence/accessibility-voiceover.md"
 ACCESSIBILITY_PREFLIGHT_RELATIVE="script/check_accessibility_preflight.sh"
 ACCESSIBILITY_RUNTIME_PREFLIGHT="${SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT:-0}"
 COMPETITOR_EVIDENCE_RELATIVE="docs/release/evidence/competitor-hands-on.md"
+COMPETITOR_BENCHMARK_RELATIVE="docs/product/competitor-benchmark.md"
 MCP_EVIDENCE_RELATIVE="docs/release/evidence/mcp-inspector.md"
 MCP_COMPLIANCE_RELATIVE="script/verify_mcp_compliance.sh"
 RUNTIME_SOURCE_DIRS=(
@@ -762,6 +763,7 @@ competitor_decision_value() {
     }
   ' "$competitor_evidence_file" || true
 }
+competitor_benchmark_file="$ROOT_DIR/$COMPETITOR_BENCHMARK_RELATIVE"
 if [[ ! -f "$competitor_evidence_file" ]]; then
   competitor_blocker "missing competitor hands-on evidence file: $COMPETITOR_EVIDENCE_RELATIVE"
 else
@@ -848,8 +850,21 @@ else
     fi
   done
 fi
+if [[ ! -f "$competitor_benchmark_file" ]]; then
+  competitor_blocker "missing competitor benchmark document: $COMPETITOR_BENCHMARK_RELATIVE"
+else
+  if grep -Eiq '(not a full hands-on trial record|release candidate hands-on worksheet|manual evidence to attach after the pass)' "$competitor_benchmark_file"; then
+    competitor_blocker "Competitor benchmark still reads as desk research or a hands-on worksheet"
+  fi
+
+  for benchmark_marker in "## Hands-On Findings" "Notion" "Todoist" "Linear" "Motion" "Ship / Defer / Reject"; do
+    if ! grep -F "$benchmark_marker" "$competitor_benchmark_file" >/dev/null; then
+      competitor_blocker "Competitor benchmark missing hands-on marker: $benchmark_marker"
+    fi
+  done
+fi
 if [[ "$competitor_evidence_blocker_count" -gt 0 ]]; then
-  printf "NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass, Status: passed, complete reviewer/date/source/environment context, complete Notion/Todoist/Linear/Motion notes, and no pending/template/unchecked markers.\n"
+  printf "NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass, Status: passed, complete reviewer/date/source/environment context, complete Notion/Todoist/Linear/Motion notes, and no pending/template/unchecked markers; also update docs/product/competitor-benchmark.md from worksheet/desk research to hands-on findings.\n"
 else
   printf "OK: competitor hands-on evidence covers Notion, Todoist, Linear, Motion, and public alpha scope boundaries\n"
 fi

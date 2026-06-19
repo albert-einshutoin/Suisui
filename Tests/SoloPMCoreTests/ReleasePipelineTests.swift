@@ -2338,6 +2338,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("--confirm-manual-voiceover-pass"))
         XCTAssertTrue(checklist.contains("Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector"))
         XCTAssertTrue(checklist.contains("docs/release/evidence/competitor-hands-on.md"))
+        XCTAssertTrue(checklist.contains("docs/product/competitor-benchmark.md"))
+        XCTAssertTrue(checklist.contains("Update the benchmark document from worksheet/desk research to hands-on findings before final release readiness."))
         XCTAssertTrue(checklist.contains("./script/create_competitor_hands_on_evidence.sh --pending"))
         XCTAssertTrue(checklist.contains("./script/create_competitor_hands_on_evidence.sh --passed"))
         XCTAssertTrue(checklist.contains("Each competitor note and Ship / Defer / Reject delta must identify what was actually observed or decided during the hands-on pass."))
@@ -2968,6 +2970,9 @@ final class ReleasePipelineTests: XCTestCase {
         let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
         let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
         let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let productDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("product", isDirectory: true)
         let evidenceDirectory = fixtureRoot
             .appendingPathComponent("docs", isDirectory: true)
             .appendingPathComponent("release", isDirectory: true)
@@ -2978,6 +2983,7 @@ final class ReleasePipelineTests: XCTestCase {
         try? FileManager.default.removeItem(at: fixtureRoot)
         try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: productDirectory, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: evidenceDirectory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: fixtureRoot) }
 
@@ -3021,6 +3027,16 @@ final class ReleasePipelineTests: XCTestCase {
         - Defer: Behavior to defer until stronger reliability or demand evidence exists.
         - Reject: Behavior to keep out of public alpha scope.
         """.write(to: evidenceDirectory.appendingPathComponent("competitor-hands-on.md"), atomically: true, encoding: .utf8)
+        try """
+        # Competitor Benchmark and Feature Fit
+
+        Scope: Notion, Todoist, Linear, and Motion were reviewed from official product/help/docs pages. This is not a full hands-on trial record.
+
+        ## Release Candidate Hands-On Worksheet
+
+        Manual evidence to attach after the pass:
+        - Date, reviewer, macOS/browser/app versions, account tier used, and whether a paid trial was required.
+        """.write(to: productDirectory.appendingPathComponent("competitor-benchmark.md"), atomically: true, encoding: .utf8)
         try "- [x] fixture phase is complete\n"
             .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
         try "- [x] fixture readme has no template blockers\n"
@@ -3041,7 +3057,108 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate decision delta: Ship"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate decision delta: Defer"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate decision delta: Reject"))
+        XCTAssertTrue(result.output.contains("Competitor benchmark still reads as desk research or a hands-on worksheet"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+    }
+
+    func testReleaseReadinessReportAllowsHandsOnBenchmarkWithOfficialSourceLinks() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-hands-on-benchmark-sources", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let productDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("product", isDirectory: true)
+        let evidenceDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("release", isDirectory: true)
+            .appendingPathComponent("evidence", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: productDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: evidenceDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: preflightURL, atomically: true, encoding: .utf8)
+        try """
+        # Competitor Hands-On Evidence
+
+        Status: passed
+
+        ## Review Context
+
+        - Checked by: SoloPM Product Reviewer
+        - Check date: 2026-06-19
+        - Evidence source: `Hands-on local account notes plus official source links`
+        - Environment: macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used
+        - Scope: Notion -> Todoist -> Linear -> Motion
+
+        ## Verified Hands-On Path
+
+        - Notion: passed - Created a project database, switched to board view, added three cards, and confirmed setup choices before the first useful task were heavier than SoloPM.
+        - Todoist: passed - Used Quick Add with project and priority, switched to board layout, and confirmed capture was fast but destination review still mattered.
+        - Linear: passed - Created a project issue, moved status, opened detail sidebar, and confirmed keyboard operation was strong but team concepts were outside SoloPM alpha scope.
+        - Motion: passed - Created dated priority tasks and reviewed scheduling/risk surfaces, confirming recommendations need visible reasoning before applying.
+        - No external SaaS sync or team workflow was added to SoloPM public alpha scope because of this benchmark.
+
+        ## Ship / Defer / Reject Delta
+
+        - Ship: Keep local Inbox capture, board movement, and the right inspector because the hands-on pass showed those are the fastest repeated execution path.
+        - Defer: Keep natural-language dates and autonomous scheduling out until local date parsing and calendar trust have stronger evidence.
+        - Reject: Keep team cycles, initiatives, and external SaaS sync outside public alpha because the benchmark did not improve the solo local-first loop.
+        """.write(to: evidenceDirectory.appendingPathComponent("competitor-hands-on.md"), atomically: true, encoding: .utf8)
+        try """
+        # Competitor Benchmark and Feature Fit
+
+        Verified: 2026-06-19
+
+        Official references: official product/help/docs pages are retained as links next to the hands-on notes.
+
+        ## Hands-On Findings
+
+        - Notion: The hands-on board setup confirmed flexible structure is powerful, but first useful task capture is slower than SoloPM's fixed project/task model.
+        - Todoist: The hands-on Quick Add and board pass confirmed capture speed is the bar SoloPM must match with Inbox and menu bar entry.
+        - Linear: The hands-on project and issue detail pass confirmed the right inspector and keyboard shortcuts are worth shipping for repeated CRUD.
+        - Motion: The hands-on scheduling pass confirmed risk suggestions need visible reasoning and should not auto-apply in the public alpha.
+
+        ## Ship / Defer / Reject
+
+        - Ship: Fast Inbox capture, board status movement, and right-inspector CRUD.
+        - Defer: Natural-language dates, calendar layout, and autonomous scheduling until reliability evidence exists.
+        - Reject: Arbitrary database builders, team cycles, initiatives, and external SaaS sync for public alpha.
+        """.write(to: productDirectory.appendingPathComponent("competitor-benchmark.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: preflightURL.path)
+
+        let result = try runTool(["bash", reportURL.path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertFalse(result.output.contains("Competitor benchmark still reads as desk research or a hands-on worksheet"))
+        XCTAssertFalse(result.output.contains("Competitor benchmark missing hands-on marker"))
+        XCTAssertTrue(result.output.contains("OK: competitor hands-on evidence covers Notion, Todoist, Linear, Motion, and public alpha scope boundaries"))
     }
 
     func testReleaseReadinessReportAggregatesRuntimeMockScanTasksAndPreflight() throws {
@@ -3119,6 +3236,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("complete release-candidate context"))
         XCTAssertTrue(script.contains("section \"Competitor hands-on evidence\""))
         XCTAssertTrue(script.contains("docs/release/evidence/competitor-hands-on.md"))
+        XCTAssertTrue(script.contains("docs/product/competitor-benchmark.md"))
         XCTAssertTrue(script.contains("Notion"))
         XCTAssertTrue(script.contains("Todoist"))
         XCTAssertTrue(script.contains("Linear"))
@@ -3128,6 +3246,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Competitor hands-on evidence is not marked passed"))
         XCTAssertTrue(script.contains("Competitor hands-on evidence still contains pending/template/placeholder text"))
         XCTAssertTrue(script.contains("Competitor hands-on evidence still contains unchecked checklist markers"))
+        XCTAssertTrue(script.contains("Competitor benchmark still reads as desk research or a hands-on worksheet"))
         XCTAssertTrue(script.contains("macOS/browser versions|competitor app/account tiers|whether any paid trial"))
         XCTAssertTrue(script.contains("NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass"))
         XCTAssertTrue(script.contains("section \"MCP Inspector evidence\""))

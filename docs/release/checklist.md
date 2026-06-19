@@ -191,7 +191,9 @@ Each focus-path note must name the concrete VoiceOver observation, control, or f
 
 12. Competitor hands-on evidence
 
-Before checking the Phase 11 competitor benchmark item, replace `docs/release/evidence/competitor-hands-on.md` with the real 2-4 hour hands-on record. The final file must use `Status: passed`, complete reviewer/date/source/environment context, include the Notion -> Todoist -> Linear -> Motion path, document the Ship / Defer / Reject Delta, and explicitly confirm that no external SaaS sync or team workflow was added to public alpha scope.
+Before checking the Phase 11 competitor benchmark item, replace `docs/release/evidence/competitor-hands-on.md` with the real 2-4 hour hands-on record. Update `docs/product/competitor-benchmark.md` from worksheet/desk research to hands-on findings before final release readiness. The final evidence file must use `Status: passed`, complete reviewer/date/source/environment context, include the Notion -> Todoist -> Linear -> Motion path, document the Ship / Defer / Reject Delta, and explicitly confirm that no external SaaS sync or team workflow was added to public alpha scope.
+
+Update the benchmark document from worksheet/desk research to hands-on findings before final release readiness. The release report rejects `docs/product/competitor-benchmark.md` while it still says the work is not a full hands-on trial record, still contains the release-candidate worksheet, or lacks a `## Hands-On Findings` section covering Notion, Todoist, Linear, Motion, and Ship / Defer / Reject.
 
 Use the generator so a pending worksheet cannot be mistaken for a pass:
 
