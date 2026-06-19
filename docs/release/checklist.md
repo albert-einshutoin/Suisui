@@ -229,7 +229,7 @@ Each competitor note and Ship / Defer / Reject delta must identify what was actu
 
 Run the automated local gate sweep first. It verifies CI, SQLite CRUD, runtime accessible CRUD, Xcode build, visible-window launch, runtime AX, and MCP compliance gates in one command. This automated sweep does not replace manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper evidence.
 
-The final readiness report treats skipped automated proof gates as blockers. Run the sweep command for a full local proof, or run the individual `SOLOPM_*_PREFLIGHT=1` / smoke flags below when narrowing failures. Do not claim release readiness from the default report output if CI, SQLite CRUD, runtime accessible CRUD, Xcode build, visible launch, or runtime AX were skipped.
+The final readiness report treats skipped automated proof gates as blockers by default. Run the sweep command for a full local proof, point the report at a clean-tree automated preflight evidence file, or run the individual `SOLOPM_*_PREFLIGHT=1` / smoke flags below when narrowing failures. Do not claim release readiness from the default report output if CI, SQLite CRUD, runtime accessible CRUD, Xcode build, visible launch, or runtime AX were skipped.
 
 ```bash
 ./script/check_automated_release_preflight.sh
@@ -243,6 +243,7 @@ source packaging/app_metadata.env
 export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"
 ./script/release_readiness_report.sh
 SOLOPM_RELEASE_ACTIONS_FILE=.tmp/release-actions.md ./script/release_readiness_report.sh
+SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/release_readiness_report.sh
 SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh
 SOLOPM_RELEASE_CI_PREFLIGHT=1 ./script/release_readiness_report.sh
 SOLOPM_LOCAL_CRUD_SMOKE=1 ./script/release_readiness_report.sh

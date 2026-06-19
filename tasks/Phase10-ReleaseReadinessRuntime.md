@@ -253,6 +253,7 @@
 - [x] `script/check_automated_release_preflight.sh` で CI、SQLite CRUD、runtime accessible CRUD、Xcode build、visible-window launch、runtime AX、MCP compliance を一括検証できる。
 - [x] `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/check_automated_release_preflight.sh` で、自動proof gateのpass結果をレビュー可能なMarkdown証跡として保存できる。
 - [x] 自動proof証跡は clean tracked source tree でのみ生成し、未コミット差分を含む曖昧な証跡を拒否する。
+- [x] `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/release_readiness_report.sh` は、同一commitのclean-tree自動proof証跡を検証してCI / SQLite CRUD / runtime accessible CRUD / Xcode / launch / runtime AXのskip blockerを解除できる。
 - [x] `release_readiness_report.sh` は CI、SQLite CRUD、runtime accessible CRUD、Xcode build、visible-window launch、runtime AX をskipしたままrelease readyにしない。
 - [x] `SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh` で自動proof gateをまとめてfinal report内に含められる。
 - [x] 自動 preflight は manual VoiceOver、competitor hands-on、signing / notarization / Sparkle / Gatekeeper evidence を完了扱いにしない。
