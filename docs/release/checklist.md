@@ -233,6 +233,7 @@ The final readiness report treats skipped automated proof gates as blockers. Run
 
 ```bash
 ./script/check_automated_release_preflight.sh
+SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/check_automated_release_preflight.sh
 ```
 
 ```bash

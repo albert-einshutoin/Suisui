@@ -8,6 +8,7 @@ XCODE_WORKSPACE_RELATIVE=".swiftpm/xcode/package.xcworkspace"
 XCODE_SCHEME="${SOLOPM_XCODE_SCHEME:-SoloPM}"
 XCODE_DESTINATION="${SOLOPM_XCODE_DESTINATION:-platform=macOS}"
 XCODE_CONFIGURATION="${SOLOPM_XCODE_CONFIGURATION:-Debug}"
+AUTOMATED_PREFLIGHT_EVIDENCE_FILE="${SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE:-}"
 APP_NAME="SoloPM"
 
 if [[ -f "$METADATA_FILE" ]]; then
@@ -24,6 +25,60 @@ cd "$ROOT_DIR"
 
 section() {
   printf "\n== %s ==\n" "$1"
+}
+
+write_automated_preflight_evidence() {
+  if [[ -z "$AUTOMATED_PREFLIGHT_EVIDENCE_FILE" ]]; then
+    return 0
+  fi
+
+  local evidence_file="$AUTOMATED_PREFLIGHT_EVIDENCE_FILE"
+  if [[ "$evidence_file" != /* ]]; then
+    evidence_file="$ROOT_DIR/$evidence_file"
+  fi
+
+  local evidence_dir generated_at source_commit source_tree_state
+  evidence_dir="$(dirname "$evidence_file")"
+  mkdir -p "$evidence_dir"
+  generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  source_commit="$(git rev-parse --short HEAD 2>/dev/null || printf "unknown")"
+  source_tree_state="clean"
+  if ! git diff --quiet -- . || ! git diff --cached --quiet -- .; then
+    source_tree_state="dirty"
+  fi
+
+  cat > "$evidence_file" <<EOF
+# Automated Release Preflight Evidence
+
+Status: passed
+Generated at: $generated_at
+Source commit: $source_commit
+Tracked source tree: $source_tree_state
+App: $APP_NAME
+Xcode workspace: $XCODE_WORKSPACE_RELATIVE
+Xcode scheme: $XCODE_SCHEME
+Xcode configuration: $XCODE_CONFIGURATION
+Xcode destination: $XCODE_DESTINATION
+
+## Passed Gates
+
+- Release CI: passed
+- Local CRUD smoke: passed
+- Runtime accessible CRUD smoke: passed
+- Xcode build preflight: passed
+- Launch preflight: passed
+- Runtime accessibility preflight: passed
+- MCP compliance preflight: passed
+
+## Boundaries
+
+- This does not mark the release ready.
+- Manual VoiceOver evidence remains separate.
+- Competitor hands-on evidence remains separate.
+- Developer ID signing, notarization, Sparkle, Gatekeeper, and clean-environment evidence remain separate.
+EOF
+
+  printf "Automated release preflight evidence written to %s\n" "$evidence_file"
 }
 
 terminate_app() {
@@ -87,6 +142,8 @@ section "Runtime accessibility preflight"
 
 section "MCP compliance preflight"
 SOLOPM_MCP_EVIDENCE_FILE="$MCP_EVIDENCE_FILE" ./script/verify_mcp_compliance.sh
+
+write_automated_preflight_evidence
 
 printf "\nOK: automated release preflight passed\n"
 printf "This does not mark the release ready.\n"
