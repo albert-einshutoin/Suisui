@@ -2343,8 +2343,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("Update the benchmark document from worksheet/desk research to hands-on findings before final release readiness."))
         XCTAssertTrue(checklist.contains("./script/create_competitor_hands_on_evidence.sh --pending"))
         XCTAssertTrue(checklist.contains("./script/create_competitor_hands_on_evidence.sh --passed"))
+        XCTAssertTrue(checklist.contains("The passed generator writes both `docs/release/evidence/competitor-hands-on.md` and `docs/product/competitor-benchmark.md`"))
         XCTAssertTrue(checklist.contains("Each competitor note and Ship / Defer / Reject delta must identify what was actually observed or decided during the hands-on pass."))
         XCTAssertTrue(checklist.contains("--environment \"macOS/browser versions, competitor app/account tiers, and whether any paid trial was used\""))
+        XCTAssertTrue(checklist.contains("--benchmark-output docs/product/competitor-benchmark.md"))
         XCTAssertTrue(checklist.contains("--confirm-manual-hands-on"))
         XCTAssertTrue(checklist.contains("Notion -> Todoist -> Linear -> Motion"))
         XCTAssertTrue(checklist.contains("./script/check_automated_release_preflight.sh"))
@@ -2755,16 +2757,20 @@ final class ReleasePipelineTests: XCTestCase {
             .appendingPathComponent(".build/test-competitor-hands-on-pending.md")
         let passedURL = packageRoot()
             .appendingPathComponent(".build/test-competitor-hands-on-passed.md")
+        let benchmarkURL = packageRoot()
+            .appendingPathComponent(".build/test-competitor-hands-on-benchmark.md")
         try? FileManager.default.removeItem(at: pendingURL)
         try? FileManager.default.removeItem(at: passedURL)
+        try? FileManager.default.removeItem(at: benchmarkURL)
         defer {
             try? FileManager.default.removeItem(at: pendingURL)
             try? FileManager.default.removeItem(at: passedURL)
+            try? FileManager.default.removeItem(at: benchmarkURL)
         }
 
         let pendingResult = try runScript(
             "script/create_competitor_hands_on_evidence.sh",
-            arguments: ["--pending", "--output", pendingURL.path]
+            arguments: ["--pending", "--output", pendingURL.path, "--benchmark-output", benchmarkURL.path]
         )
 
         XCTAssertEqual(pendingResult.exitCode, 0, pendingResult.output)
@@ -2776,14 +2782,21 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(pendingEvidence.contains("- [ ] Motion"))
         XCTAssertTrue(pendingEvidence.contains("- Environment:"))
         XCTAssertTrue(pendingEvidence.contains("Do not set `Status: passed` until every competitor path below is verified"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: benchmarkURL.path))
 
         let unsafePassedResult = try runScript(
             "script/create_competitor_hands_on_evidence.sh",
-            arguments: ["--passed", "--checked-by", "SoloPM Product Reviewer", "--output", passedURL.path]
+            arguments: [
+                "--passed",
+                "--checked-by", "SoloPM Product Reviewer",
+                "--output", passedURL.path,
+                "--benchmark-output", benchmarkURL.path
+            ]
         )
         XCTAssertNotEqual(unsafePassedResult.exitCode, 0)
         XCTAssertTrue(unsafePassedResult.output.contains("--confirm-manual-hands-on is required with --passed"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: benchmarkURL.path))
 
         let missingNotesResult = try runScript(
             "script/create_competitor_hands_on_evidence.sh",
@@ -2799,6 +2812,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(missingNotesResult.exitCode, 0)
         XCTAssertTrue(missingNotesResult.output.contains("--notion-note is required with --passed"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: benchmarkURL.path))
 
         let placeholderEnvironmentResult = try runScript(
             "script/create_competitor_hands_on_evidence.sh",
@@ -2991,6 +3005,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--defer", "Natural-language dates and autonomous scheduling stay out until reliability evidence exists.",
                 "--reject", "Team cycles, initiatives, and external SaaS sync stay outside public alpha scope.",
                 "--output", passedURL.path,
+                "--benchmark-output", benchmarkURL.path,
                 "--confirm-manual-hands-on"
             ]
         )
@@ -3013,6 +3028,20 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(passedEvidence.localizedCaseInsensitiveContains("pending"))
         XCTAssertFalse(passedEvidence.contains("- [ ]"))
         XCTAssertFalse(passedEvidence.localizedCaseInsensitiveContains("placeholder"))
+        let benchmark = try String(contentsOf: benchmarkURL, encoding: .utf8)
+        XCTAssertTrue(benchmark.contains("# Competitor Benchmark and Hands-On Findings"))
+        XCTAssertTrue(benchmark.contains("## Hands-On Findings"))
+        XCTAssertTrue(benchmark.contains("Notion: Board setup was flexible but required manual schema decisions before task entry felt fast."))
+        XCTAssertTrue(benchmark.contains("Todoist: Quick Add made capture fast, but project context still needed review after entry."))
+        XCTAssertTrue(benchmark.contains("Linear: Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work."))
+        XCTAssertTrue(benchmark.contains("Motion: Scheduling suggestions were useful only when the reason and deadline impact were visible."))
+        XCTAssertTrue(benchmark.contains("## Ship / Defer / Reject"))
+        XCTAssertTrue(benchmark.contains("Ship: Keep fast local capture, board status movement, and right inspector as the public alpha loop."))
+        XCTAssertTrue(benchmark.contains("Defer: Natural-language dates and autonomous scheduling stay out until reliability evidence exists."))
+        XCTAssertTrue(benchmark.contains("Reject: Team cycles, initiatives, and external SaaS sync stay outside public alpha scope."))
+        XCTAssertFalse(benchmark.localizedCaseInsensitiveContains("release candidate hands-on worksheet"))
+        XCTAssertFalse(benchmark.localizedCaseInsensitiveContains("not a full hands-on trial record"))
+        XCTAssertFalse(benchmark.localizedCaseInsensitiveContains("manual evidence to attach after the pass"))
     }
 
     func testReleaseReadinessReportFailsWhenCompetitorEvidenceLacksConcreteNotes() throws {

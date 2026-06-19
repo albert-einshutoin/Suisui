@@ -203,7 +203,7 @@ Before checking the Phase 11 competitor benchmark item, replace `docs/release/ev
 
 Update the benchmark document from worksheet/desk research to hands-on findings before final release readiness. The release report rejects `docs/product/competitor-benchmark.md` while it still says the work is not a full hands-on trial record, still contains the release-candidate worksheet, or lacks a `## Hands-On Findings` section covering Notion, Todoist, Linear, Motion, and Ship / Defer / Reject.
 
-Use the generator so a pending worksheet cannot be mistaken for a pass:
+Use the generator so a pending worksheet cannot be mistaken for a pass. The passed generator writes both `docs/release/evidence/competitor-hands-on.md` and `docs/product/competitor-benchmark.md`, so the release report cannot be unblocked by updating only one of the two artifacts.
 
 Each competitor note and Ship / Defer / Reject delta must identify what was actually observed or decided during the hands-on pass. Boilerplate notes such as `Verified.`, `Passed.`, `OK`, `No issues`, or unedited `Concrete ... observation from the hands-on pass.` examples are rejected by both the generator and `release_readiness_report.sh`.
 
@@ -219,6 +219,7 @@ Each competitor note and Ship / Defer / Reject delta must identify what was actu
   --ship "SoloPM public-alpha behavior to ship based on the benchmark." \
   --defer "Behavior to defer until stronger reliability or demand evidence exists." \
   --reject "Behavior to keep out of public alpha scope." \
+  --benchmark-output docs/product/competitor-benchmark.md \
   --confirm-manual-hands-on
 ```
 

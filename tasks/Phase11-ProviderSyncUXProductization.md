@@ -225,6 +225,7 @@
 - [x] 公式docs/product pageベースの desk research を `docs/product/competitor-benchmark.md` に記録する。
 - [x] 実操作2-4時間で見るべき競合別クリックパス、測定項目、SoloPM採用/非採用判断基準を `docs/product/competitor-benchmark.md` に記録する。
 - [x] `script/create_competitor_hands_on_evidence.sh` と `release_readiness_report.sh` でpending/未チェックの競合hands-on証跡をrelease readyにしない。
+- [x] `script/create_competitor_hands_on_evidence.sh --passed` は手動確認済みの具体メモから `docs/product/competitor-benchmark.md` の `## Hands-On Findings` も同時生成する。
 - [x] 競合hands-on証跡はmacOS/browser/app version、account tier、paid trial有無を含む環境contextがない場合release readyにしない。
 - [x] Notion: 柔軟だが個人PM用途では構造化と運用設計が重い。SoloPMは「音声/AIで構造化済みのProject/Taskに落とす」ことで差別化する。
 - [x] Todoist: 速いcaptureと今日の整理が強い。SoloPMはInbox/Todayの即時入力とAI分類を取り込む。

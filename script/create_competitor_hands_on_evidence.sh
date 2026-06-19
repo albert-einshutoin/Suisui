@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT_FILE="$ROOT_DIR/docs/release/evidence/competitor-hands-on.md"
+BENCHMARK_FILE="$ROOT_DIR/docs/product/competitor-benchmark.md"
 EVIDENCE_STATUS="pending"
 CHECKED_BY=""
 CHECK_DATE="$(date +%F)"
@@ -18,10 +19,10 @@ DEFER_DELTA=""
 REJECT_DELTA=""
 
 usage() {
-  printf '%s\n' "usage: $0 (--pending|--passed) [--output PATH] [--checked-by NAME] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--environment TEXT] [--notion-note TEXT] [--todoist-note TEXT] [--linear-note TEXT] [--motion-note TEXT] [--ship TEXT] [--defer TEXT] [--reject TEXT] [--confirm-manual-hands-on]"
+  printf '%s\n' "usage: $0 (--pending|--passed) [--output PATH] [--benchmark-output PATH] [--checked-by NAME] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--environment TEXT] [--notion-note TEXT] [--todoist-note TEXT] [--linear-note TEXT] [--motion-note TEXT] [--ship TEXT] [--defer TEXT] [--reject TEXT] [--confirm-manual-hands-on]"
   printf '%s\n' ""
   printf '%s\n' "Use --pending to write a safe worksheet that release readiness will reject."
-  printf '%s\n' "Use --passed only after a real Notion -> Todoist -> Linear -> Motion hands-on pass."
+  printf '%s\n' "Use --passed only after a real Notion -> Todoist -> Linear -> Motion hands-on pass; it also writes the benchmark hands-on findings."
 }
 
 require_passed_value() {
@@ -146,6 +147,10 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --output)
       OUTPUT_FILE="${2:-}"
+      shift 2
+      ;;
+    --benchmark-output)
+      BENCHMARK_FILE="${2:-}"
       shift 2
       ;;
     --checked-by)
@@ -328,10 +333,49 @@ write_passed_evidence() {
   } >"$OUTPUT_FILE"
 }
 
+write_hands_on_benchmark() {
+  mkdir -p "$(dirname "$BENCHMARK_FILE")"
+  {
+    printf '%s\n' '# Competitor Benchmark and Hands-On Findings'
+    printf '\n'
+    printf -- 'Verified: %s\n' "$CHECK_DATE"
+    printf '\n'
+    printf -- 'Reviewed by: %s\n' "$CHECKED_BY"
+    printf '\n'
+    printf -- 'Environment: %s\n' "$ENVIRONMENT"
+    printf '\n'
+    printf -- 'Evidence source: `%s`\n' "$EVIDENCE_SOURCE"
+    printf '\n'
+    printf '%s\n' 'Scope: Notion -> Todoist -> Linear -> Motion'
+    printf '\n'
+    printf '%s\n' '## Hands-On Findings'
+    printf '\n'
+    printf -- '- Notion: %s\n' "$NOTION_NOTE"
+    printf -- '- Todoist: %s\n' "$TODOIST_NOTE"
+    printf -- '- Linear: %s\n' "$LINEAR_NOTE"
+    printf -- '- Motion: %s\n' "$MOTION_NOTE"
+    printf -- '- Public alpha scope: No external SaaS sync or team workflow was added to SoloPM public alpha scope because of this benchmark.\n'
+    printf '\n'
+    printf '%s\n' '## Ship / Defer / Reject'
+    printf '\n'
+    printf -- '- Ship: %s\n' "$SHIP_DELTA"
+    printf -- '- Defer: %s\n' "$DEFER_DELTA"
+    printf -- '- Reject: %s\n' "$REJECT_DELTA"
+    printf '\n'
+    printf '%s\n' '## Release Fit Closure'
+    printf '\n'
+    printf '%s\n' 'SoloPM remains scoped to personal, local-first project/task execution for the public alpha. The benchmark only changes release scope when the observed behavior improves the Inbox -> Board/Today -> Inspector loop without adding external SaaS sync, team workflow, or autonomous scheduling surprises.'
+  } >"$BENCHMARK_FILE"
+}
+
 if [[ "$EVIDENCE_STATUS" == "passed" ]]; then
   write_passed_evidence
+  write_hands_on_benchmark
 else
   write_pending_evidence
 fi
 
 printf 'Competitor hands-on evidence written: %s\n' "$OUTPUT_FILE"
+if [[ "$EVIDENCE_STATUS" == "passed" ]]; then
+  printf 'Competitor benchmark hands-on findings written: %s\n' "$BENCHMARK_FILE"
+fi
