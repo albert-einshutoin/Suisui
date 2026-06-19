@@ -290,7 +290,13 @@ on run argv
     if not (exists process appName) then error appName & " process is not visible to System Events"
     tell process appName
       if (count of windows) < 1 then error appName & " has no visible windows"
+      try
+        set frontmost to true
+      end try
       set currentWindow to window 1
+      try
+        perform action "AXRaise" of currentWindow
+      end try
       set axItems to entire contents of currentWindow
       repeat with axItem in axItems
         set itemRole to ""
@@ -432,11 +438,15 @@ on run argv
           set itemRole to role of axItem as text
         end try
         if itemRole is "AXTextField" or itemRole is "AXTextArea" then
+          set fieldIdentifier to ""
           set fieldName to ""
           set fieldTitle to ""
           set fieldDescription to ""
           set fieldHelp to ""
           set fieldValue to ""
+          try
+            set fieldIdentifier to value of attribute "AXIdentifier" of axItem as text
+          end try
           try
             set fieldName to name of axItem as text
           end try
@@ -452,7 +462,7 @@ on run argv
           try
             set fieldValue to value of axItem as text
           end try
-          set signalText to fieldName & " " & fieldTitle & " " & fieldDescription & " " & fieldHelp & " " & fieldValue
+          set signalText to fieldIdentifier & " " & fieldName & " " & fieldTitle & " " & fieldDescription & " " & fieldHelp & " " & fieldValue
           if signalText contains fragment then
             set previousClipboard to ""
             try
@@ -460,15 +470,16 @@ on run argv
             end try
             perform action "AXPress" of axItem
             set focused of axItem to true
-            delay 0.1
+            delay 0.2
             set the clipboard to replacement
             keystroke "a" using command down
             delay 0.1
-            keystroke "v" using command down
+            key code 51
             delay 0.1
-            try
-              set value of axItem to replacement
-            end try
+            keystroke "v" using command down
+            delay 0.3
+            key code 48
+            delay 0.2
             try
               set the clipboard to previousClipboard
             end try
@@ -513,11 +524,15 @@ on run argv
           set itemRole to role of axItem as text
         end try
         if itemRole is "AXTextField" or itemRole is "AXTextArea" then
+          set fieldIdentifier to ""
           set fieldName to ""
           set fieldTitle to ""
           set fieldDescription to ""
           set fieldHelp to ""
           set fieldValue to ""
+          try
+            set fieldIdentifier to value of attribute "AXIdentifier" of axItem as text
+          end try
           try
             set fieldName to name of axItem as text
           end try
@@ -533,7 +548,7 @@ on run argv
           try
             set fieldValue to value of axItem as text
           end try
-          set signalText to fieldName & " " & fieldTitle & " " & fieldDescription & " " & fieldHelp & " " & fieldValue
+          set signalText to fieldIdentifier & " " & fieldName & " " & fieldTitle & " " & fieldDescription & " " & fieldHelp & " " & fieldValue
           if signalText contains fragment then return "found text field " & fragment
         end if
       end repeat
@@ -589,22 +604,23 @@ terminate_app
 wait_for_no_app_process
 launch_app_for_seed_project "$created_project_id"
 
-waitForTextFieldContaining "Untitled Project"
-setTextFieldContaining "Untitled Project" "AX Runtime CRUD Project"
+waitForTextFieldContaining "project-inspector-title"
+setTextFieldContaining "project-inspector-title" "AX Runtime CRUD Project"
 waitForTextFieldContaining "AX Runtime CRUD Project"
 pressButtonContaining "Saves edits to the selected project"
 verify_single_value "renamed project" "SELECT title FROM projects WHERE id=$created_project_id;" "AX Runtime CRUD Project"
 
 pressButtonContaining "Opens the inline composer for a new local task"
-waitForTextFieldContaining "Enter the task name"
-setTextFieldContaining "Enter the task name" "AX Runtime CRUD Task"
+waitForTextFieldContaining "inline-task-title"
+setTextFieldContaining "inline-task-title" "AX Runtime CRUD Task"
 waitForTextFieldContaining "AX Runtime CRUD Task"
 pressButtonUntilSQLiteValue "created task" "Creates the task in the local SoloPM database." "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime CRUD Task' AND status='backlog' AND source_command='app.project-board';" "1"
 created_task_id="$(wait_for_nonempty_value "created task id" "SELECT id FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime CRUD Task' ORDER BY id DESC LIMIT 1;")"
 
 pressButtonContaining "Opens task details in the inspector"
-waitForTextFieldContaining "AX Runtime CRUD Task"
-setTextFieldContaining "AX Runtime CRUD Task" "AX Runtime CRUD Task Updated"
+waitForTextFieldContaining "task-inspector-title"
+setTextFieldContaining "task-inspector-title" "AX Runtime CRUD Task Updated"
+waitForTextFieldContaining "AX Runtime CRUD Task Updated"
 pressButtonContaining "Saves edits to the selected task in the local SoloPM database."
 verify_single_value "renamed task" "SELECT title FROM tasks WHERE id=$created_task_id;" "AX Runtime CRUD Task Updated"
 pressButtonContaining "Changes AX Runtime CRUD Task"
@@ -616,14 +632,15 @@ pressButtonContaining "Opens task details in the inspector"
 pressDestructiveButtonUntilSQLiteValue "deleted task" "Deletes the selected task after confirmation." "Delete Task" "Deletes the selected task after confirmation." "SELECT count(*) FROM tasks WHERE id=$created_task_id;" "0"
 
 pressButtonContaining "Opens the inline composer for a new local task"
-waitForTextFieldContaining "Enter the task name"
-setTextFieldContaining "Enter the task name" "AX Runtime Cascade Task"
+waitForTextFieldContaining "inline-task-title"
+setTextFieldContaining "inline-task-title" "AX Runtime Cascade Task"
 waitForTextFieldContaining "AX Runtime Cascade Task"
 pressButtonUntilSQLiteValue "created cascade task" "Creates the task in the local SoloPM database." "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Cascade Task' AND status='backlog' AND source_command='app.project-board';" "1"
 cascade_task_id="$(wait_for_nonempty_value "cascade task id" "SELECT id FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Cascade Task' ORDER BY id DESC LIMIT 1;")"
 terminate_app
 wait_for_no_app_process
 launch_app_for_seed_project "$created_project_id"
+waitForTextFieldContaining "project-inspector-title"
 
 pressButtonUntilSQLiteValue "completed project" "Completes the selected project" "SELECT status FROM projects WHERE id=$created_project_id;" "completed"
 
