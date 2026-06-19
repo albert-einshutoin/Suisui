@@ -214,6 +214,7 @@ export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERS
 ./script/release_readiness_report.sh
 SOLOPM_RELEASE_CI_PREFLIGHT=1 ./script/release_readiness_report.sh
 SOLOPM_RELEASE_XCODE_PREFLIGHT=1 ./script/release_readiness_report.sh
+SOLOPM_BUILD_CONFIGURATION=release SOLOPM_RELEASE_LAUNCH_PREFLIGHT=1 ./script/release_readiness_report.sh
 ```
 
 14. tag

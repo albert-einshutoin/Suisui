@@ -2120,6 +2120,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("SOLOPM_RELEASE_CI_PREFLIGHT=1 ./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("SOLOPM_RELEASE_XCODE_PREFLIGHT=1 ./script/release_readiness_report.sh"))
+        XCTAssertTrue(checklist.contains("SOLOPM_BUILD_CONFIGURATION=release SOLOPM_RELEASE_LAUNCH_PREFLIGHT=1 ./script/release_readiness_report.sh"))
     }
 
     func testVoiceOverEvidenceGeneratorWritesPendingAndPassedEvidence() throws {
@@ -2439,6 +2440,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("xcodebuild"))
         XCTAssertTrue(script.contains("-scheme \"$XCODE_SCHEME\""))
         XCTAssertTrue(script.contains("release Xcode preflight failed"))
+        XCTAssertTrue(script.contains("SOLOPM_RELEASE_LAUNCH_PREFLIGHT"))
+        XCTAssertTrue(script.contains("script/build_and_run.sh"))
+        XCTAssertTrue(script.contains("--verify"))
+        XCTAssertTrue(script.contains("release launch preflight failed"))
         XCTAssertTrue(script.contains("Static[A-Za-z0-9_]*"))
         XCTAssertFalse(script.contains("Fake|Mock|InMemory|Static|Demo|sample|canned|stub"))
         XCTAssertTrue(script.contains("Phase0-Phase11"))
@@ -3611,6 +3616,74 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains(".swiftpm/xcode/package.xcworkspace"))
         XCTAssertTrue(result.output.contains("-scheme SoloPM"))
         XCTAssertFalse(result.output.contains("release Xcode preflight failed"))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
+    }
+
+    func testReleaseReadinessReportCanRunLaunchPreflightWhenEnabled() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-launch-preflight", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let packagingDirectory = fixtureRoot.appendingPathComponent("packaging", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let releasePreflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+        let launchPreflightURL = scriptDirectory.appendingPathComponent("build_and_run.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: packagingDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        if [[ "${1:-}" != "--verify" ]]; then
+          echo "unexpected launch preflight argument: ${1:-}" >&2
+          exit 2
+        fi
+        printf "release launch preflight ok\\n"
+        printf "OK: Project Board window visible (100 40 40 1200 760)\\n"
+        """.write(to: launchPreflightURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: releasePreflightURL, atomically: true, encoding: .utf8)
+        try """
+        APP_NAME=SoloPM
+        BUNDLE_IDENTIFIER=dev.solopm.app
+        MARKETING_VERSION=0.1.0
+        CURRENT_PROJECT_VERSION=1
+        """.write(to: packagingDirectory.appendingPathComponent("app_metadata.env"), atomically: true, encoding: .utf8)
+        try "- [x] release gate checked\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] release readme checked\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        for url in [reportURL, releasePreflightURL, launchPreflightURL] {
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        }
+
+        let result = try runTool(
+            ["bash", reportURL.path],
+            environment: ["SOLOPM_RELEASE_LAUNCH_PREFLIGHT": "1"]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release launch preflight ok"))
+        XCTAssertTrue(result.output.contains("OK: Project Board window visible"))
+        XCTAssertFalse(result.output.contains("release launch preflight failed"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, and release environment gates passed."))
     }
 

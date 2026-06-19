@@ -10,6 +10,8 @@ RELEASE_XCODE_PREFLIGHT="${SOLOPM_RELEASE_XCODE_PREFLIGHT:-0}"
 XCODE_WORKSPACE_RELATIVE=".swiftpm/xcode/package.xcworkspace"
 XCODE_SCHEME="${SOLOPM_XCODE_SCHEME:-SoloPM}"
 XCODE_DESTINATION="${SOLOPM_XCODE_DESTINATION:-platform=macOS}"
+RELEASE_LAUNCH_PREFLIGHT="${SOLOPM_RELEASE_LAUNCH_PREFLIGHT:-0}"
+RELEASE_LAUNCH_PREFLIGHT_RELATIVE="script/build_and_run.sh"
 MOCK_PATTERN="(?i:fake|mock|fixture|canned|stub|skeleton|todo|fixme|not[[:space:]_-]*implemented|notimplemented|inmemory)|(?i:(^|[^[:alnum:]_])(demo|sample|placeholder)([^[:alnum:]_]|$))|Static[A-Za-z0-9_]*|:memory:|fatalError|preconditionFailure"
 UI_EVIDENCE_RELATIVE="docs/release/evidence/ui-screenshots.md"
 UI_SCREENSHOT_RELATIVE_DIR="docs/release/evidence/ui-screenshots"
@@ -236,6 +238,33 @@ elif [[ "$RELEASE_XCODE_PREFLIGHT" == "1" ]]; then
   fi
 else
   printf "INFO: release Xcode preflight skipped; set SOLOPM_RELEASE_XCODE_PREFLIGHT=1 to run xcodebuild against %s.\n" "$XCODE_WORKSPACE_RELATIVE"
+fi
+
+section "Release launch preflight"
+release_launch_preflight_script="$ROOT_DIR/$RELEASE_LAUNCH_PREFLIGHT_RELATIVE"
+if [[ "$RELEASE_LAUNCH_PREFLIGHT" != "0" && "$RELEASE_LAUNCH_PREFLIGHT" != "1" ]]; then
+  blocker "SOLOPM_RELEASE_LAUNCH_PREFLIGHT must be 0 or 1"
+elif [[ "$RELEASE_LAUNCH_PREFLIGHT" == "1" ]]; then
+  if [[ ! -x "$release_launch_preflight_script" ]]; then
+    blocker "missing executable release launch preflight: $RELEASE_LAUNCH_PREFLIGHT_RELATIVE"
+  else
+    set +e
+    release_launch_preflight_output="$("$release_launch_preflight_script" --verify 2>&1)"
+    release_launch_preflight_status=$?
+    set -e
+
+    if [[ -n "$release_launch_preflight_output" ]]; then
+      printf "%s\n" "$release_launch_preflight_output"
+    fi
+
+    if [[ "$release_launch_preflight_status" -ne 0 ]]; then
+      blocker "release launch preflight failed"
+    else
+      printf "OK: release launch preflight passed\n"
+    fi
+  fi
+else
+  printf "INFO: release launch preflight skipped; set SOLOPM_RELEASE_LAUNCH_PREFLIGHT=1 to run %s --verify inside this report.\n" "$RELEASE_LAUNCH_PREFLIGHT_RELATIVE"
 fi
 
 section "Phase checklist blockers"
