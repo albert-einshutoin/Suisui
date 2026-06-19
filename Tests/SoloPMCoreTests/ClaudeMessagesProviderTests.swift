@@ -6,7 +6,7 @@ final class ClaudeMessagesProviderTests: XCTestCase {
         let configuration = ClaudeMessagesConfiguration()
 
         XCTAssertEqual(configuration.baseURL.absoluteString, "https://api.anthropic.com/v1")
-        XCTAssertEqual(configuration.model, "claude-opus-4-6")
+        XCTAssertEqual(configuration.model, "claude-fable-5")
         XCTAssertEqual(configuration.maxTokens, 16_000)
         XCTAssertEqual(configuration.anthropicVersion, "2023-06-01")
     }

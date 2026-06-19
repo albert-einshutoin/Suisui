@@ -260,10 +260,14 @@
 - MCP tools: https://modelcontextprotocol.io/specification/2025-11-25/server/tools
 - MCP Inspector: https://modelcontextprotocol.io/docs/tools/inspector
 - OpenAI API reference: https://developers.openai.com/api/reference/overview/
+- OpenAI models: https://developers.openai.com/api/docs/models
 - Anthropic Messages API: https://docs.anthropic.com/en/api/messages
+- Anthropic models overview: https://platform.claude.com/docs/en/about-claude/models/overview
 - Gemini API docs: https://ai.google.dev/gemini-api/docs
 - Gemini OpenAI compatibility: https://ai.google.dev/gemini-api/docs/openai
+- Gemini 3.5 Flash model: https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash
 - Groq OpenAI compatibility: https://console.groq.com/docs/openai
+- Groq production models: https://console.groq.com/docs/models
 - OpenCode providers: https://opencode.ai/docs/providers/
 - Notion pricing/product AI: https://www.notion.com/pricing
 - Todoist pricing/AI Assist: https://www.todoist.com/pricing

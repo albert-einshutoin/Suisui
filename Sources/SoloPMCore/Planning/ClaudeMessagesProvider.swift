@@ -9,7 +9,7 @@ public struct ClaudeMessagesConfiguration: Equatable, Sendable {
 
     public init(
         baseURL: URL = URL(string: "https://api.anthropic.com/v1")!,
-        model: String = "claude-opus-4-6",
+        model: String = "claude-fable-5",
         maxTokens: Int = 16_000,
         timeoutInterval: TimeInterval = 60,
         anthropicVersion: String = "2023-06-01"

@@ -12,7 +12,7 @@ final class ChatCompletionsCompatibleProviderTests: XCTestCase {
     }
 
     func testOpenAICompatibleConfigurationUsesOpenAIKey() {
-        let configuration = ChatCompletionsCompatibleConfiguration.openAICompatible(model: "gpt-5.2")
+        let configuration = ChatCompletionsCompatibleConfiguration.openAICompatible(model: "gpt-5.5")
 
         XCTAssertEqual(configuration.providerID, "openai.chat_completions")
         XCTAssertEqual(configuration.baseURL.absoluteString, "https://api.openai.com/v1")

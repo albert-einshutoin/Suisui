@@ -33,7 +33,7 @@ final class LLMProviderCatalogTests: XCTestCase {
         let openAI = LLMProviderCatalog.entry(for: .openaiResponses)
         XCTAssertEqual(openAI.apiKeySecretKey, .openAIAPIKey)
         XCTAssertEqual(openAI.baseURL?.absoluteString, "https://api.openai.com/v1")
-        XCTAssertEqual(openAI.defaultModelID, "gpt-5.2")
+        XCTAssertEqual(openAI.defaultModelID, "gpt-5.5")
         XCTAssertEqual(openAI.requestFamily, .openAIResponses)
         XCTAssertTrue(openAI.supportsStructuredOutput)
 
@@ -58,7 +58,7 @@ final class LLMProviderCatalogTests: XCTestCase {
         let claude = LLMProviderCatalog.entry(for: .claudeMessages)
         XCTAssertEqual(claude.apiKeySecretKey, .anthropicAPIKey)
         XCTAssertEqual(claude.baseURL?.absoluteString, "https://api.anthropic.com/v1")
-        XCTAssertEqual(claude.defaultModelID, "claude-opus-4-6")
+        XCTAssertEqual(claude.defaultModelID, "claude-fable-5")
         XCTAssertEqual(claude.requestFamily, .anthropicMessages)
 
         let openCode = LLMProviderCatalog.entry(for: .opencodeLocal)

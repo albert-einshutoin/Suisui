@@ -112,7 +112,7 @@ public enum LLMProviderCatalog {
             isAvailableInCurrentBuild: true,
             apiKeySecretKey: .openAIAPIKey,
             baseURL: URL(string: "https://api.openai.com/v1")!,
-            defaultModelID: "gpt-5.2",
+            defaultModelID: "gpt-5.5",
             requestFamily: .openAIResponses,
             supportsStreaming: false,
             supportsStructuredOutput: true
@@ -123,7 +123,7 @@ public enum LLMProviderCatalog {
             isAvailableInCurrentBuild: true,
             apiKeySecretKey: .anthropicAPIKey,
             baseURL: URL(string: "https://api.anthropic.com/v1")!,
-            defaultModelID: "claude-opus-4-6",
+            defaultModelID: "claude-fable-5",
             requestFamily: .anthropicMessages,
             supportsStreaming: true,
             supportsStructuredOutput: true

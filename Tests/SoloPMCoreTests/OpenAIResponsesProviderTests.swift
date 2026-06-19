@@ -2,6 +2,14 @@ import XCTest
 @testable import SoloPMCore
 
 final class OpenAIResponsesProviderTests: XCTestCase {
+    func testConfigurationUsesOpenAIDefaults() {
+        let configuration = OpenAIResponsesConfiguration()
+
+        XCTAssertEqual(configuration.baseURL.absoluteString, "https://api.openai.com/v1")
+        XCTAssertEqual(configuration.model, "gpt-5.5")
+        XCTAssertEqual(configuration.timeoutInterval, 60)
+    }
+
     func testRequestBuilderUsesResponsesEndpointAndAuthorizationHeader() throws {
         let request = try OpenAIResponsesRequestBuilder(
             configuration: OpenAIResponsesConfiguration(

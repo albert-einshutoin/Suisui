@@ -7,7 +7,7 @@ public struct OpenAIResponsesConfiguration: Equatable, Sendable {
 
     public init(
         baseURL: URL = URL(string: "https://api.openai.com/v1")!,
-        model: String = "gpt-5.2",
+        model: String = "gpt-5.5",
         timeoutInterval: TimeInterval = 60
     ) {
         self.baseURL = baseURL
