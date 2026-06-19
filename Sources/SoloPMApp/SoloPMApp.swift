@@ -25,19 +25,19 @@ struct SoloPM: App {
     var body: some Scene {
         WindowGroup("SoloPM", id: "project-board") {
             ProjectBoardView(viewModel: AppRuntimeFactory.makeProjectBoardViewModel())
-                .preferredColorScheme(appearancePreference.colorScheme)
+                .preferredColorScheme(effectiveAppearancePreference.colorScheme)
         }
         .defaultSize(width: 1180, height: 760)
 
         Window("Voice Command", id: "voice-capture") {
             VoiceCaptureView(viewModel: AppRuntimeFactory.makeVoiceCaptureViewModel())
-                .preferredColorScheme(appearancePreference.colorScheme)
+                .preferredColorScheme(effectiveAppearancePreference.colorScheme)
         }
         .defaultSize(width: 560, height: 420)
 
         MenuBarExtra("SoloPM", systemImage: "checklist") {
             MenuBarPanel(controller: menuBarController, quickCaptureViewModel: menuBarQuickCaptureViewModel)
-                .preferredColorScheme(appearancePreference.colorScheme)
+                .preferredColorScheme(effectiveAppearancePreference.colorScheme)
         }
         .menuBarExtraStyle(.window)
 
@@ -49,8 +49,12 @@ struct SoloPM: App {
                 externalMCPViewModel: AppRuntimeFactory.makeExternalMCPSettingsViewModel(),
                 syncViewModel: AppRuntimeFactory.makeSyncSettingsViewModel()
             )
-            .preferredColorScheme(appearancePreference.colorScheme)
+            .preferredColorScheme(effectiveAppearancePreference.colorScheme)
         }
+    }
+
+    private var effectiveAppearancePreference: SoloPMAppearancePreference {
+        SoloPMAppearancePreference.environmentOverride ?? appearancePreference
     }
 }
 

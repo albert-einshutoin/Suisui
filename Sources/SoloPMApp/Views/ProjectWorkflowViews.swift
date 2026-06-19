@@ -44,6 +44,56 @@ enum ProjectBoardSidebarDestination: Hashable {
     }
 }
 
+enum ProjectBoardSelectionPersistence {
+    static let storageKey = "solopm.projectBoard.selectedDestination"
+    static let environmentOverrideKey = "SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION"
+    static let defaultRawValue = "today"
+
+    static var environmentOverrideRawValue: String? {
+        let rawValue = ProcessInfo.processInfo.environment[environmentOverrideKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return rawValue?.isEmpty == false ? rawValue : nil
+    }
+
+    static func rawValue(for destination: ProjectBoardSidebarDestination) -> String {
+        switch destination {
+        case .inbox:
+            return "inbox"
+        case .today:
+            return "today"
+        case .project(let projectID):
+            return "project:\(projectID)"
+        }
+    }
+
+    static func destination(
+        from rawValue: String,
+        availableProjects: [ProjectBoardProject]
+    ) -> ProjectBoardSidebarDestination {
+        switch rawValue {
+        case "inbox":
+            return .inbox
+        case "today":
+            return .today
+        default:
+            let parts = rawValue.split(separator: ":", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else {
+                return .today
+            }
+            switch parts[0] {
+            case "project":
+                guard let projectID = Int64(parts[1]),
+                      availableProjects.contains(where: { $0.id == projectID }) else {
+                    return .today
+                }
+                return .project(projectID)
+            default:
+                return .today
+            }
+        }
+    }
+}
+
 struct ProjectBoardSidebarDestinationRow: View {
     let destination: ProjectBoardSidebarDestination
     let count: Int

@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
     @StateObject private var viewModel: ProjectBoardViewModel
+    @AppStorage(ProjectBoardSelectionPersistence.storageKey) private var persistedSelectedDestinationRawValue = ProjectBoardSelectionPersistence.defaultRawValue
     @State private var displayMode: ProjectBoardDisplayMode = .board
     @State private var selectedDestination: ProjectBoardSidebarDestination? = .today
     @State private var isInspectorPresented = true
@@ -123,20 +124,15 @@ struct ProjectBoardView: View {
         .navigationTitle("SoloPM")
         .task {
             viewModel.load()
+            restoreSelectedDestinationIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
             viewModel.load()
+            restoreSelectedDestinationIfNeeded()
         }
         .onChange(of: selectedDestination) { _, destination in
-            switch destination {
-            case .project(let projectID):
-                viewModel.selectedProjectID = projectID
-                viewModel.selectedTaskID = nil
-                isInspectorPresented = true
-            case .inbox, .today, .none:
-                viewModel.selectedTaskID = nil
-                isInspectorPresented = false
-            }
+            persistSelectedDestination(destination)
+            applySelectedDestination(destination)
         }
         .onChange(of: viewModel.selectedTaskID) { _, selectedTaskID in
             if selectedTaskID != nil {
@@ -162,6 +158,40 @@ struct ProjectBoardView: View {
             return nil
         }
         return viewModel.snapshot.projects.first { $0.id == projectID }
+    }
+
+    private func restoreSelectedDestinationIfNeeded() {
+        let rawValue = ProjectBoardSelectionPersistence.environmentOverrideRawValue
+            ?? persistedSelectedDestinationRawValue
+        let destination = ProjectBoardSelectionPersistence.destination(
+            from: rawValue,
+            availableProjects: viewModel.snapshot.projects
+        )
+        selectedDestination = destination
+        persistSelectedDestination(destination)
+        applySelectedDestination(destination)
+    }
+
+    private func persistSelectedDestination(_ destination: ProjectBoardSidebarDestination?) {
+        guard ProjectBoardSelectionPersistence.environmentOverrideRawValue == nil else {
+            return
+        }
+        guard let destination else {
+            return
+        }
+        persistedSelectedDestinationRawValue = ProjectBoardSelectionPersistence.rawValue(for: destination)
+    }
+
+    private func applySelectedDestination(_ destination: ProjectBoardSidebarDestination?) {
+        switch destination {
+        case .project(let projectID):
+            viewModel.selectedProjectID = projectID
+            viewModel.selectedTaskID = nil
+            isInspectorPresented = true
+        case .inbox, .today, .none:
+            viewModel.selectedTaskID = nil
+            isInspectorPresented = false
+        }
     }
 }
 

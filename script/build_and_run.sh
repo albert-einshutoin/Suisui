@@ -9,7 +9,12 @@ SPARKLE_ENV_FILE="$ROOT_DIR/packaging/sparkle.env"
 
 export TMPDIR="${SOLOPM_TMPDIR:-$ROOT_DIR/.tmp/}"
 export SWIFTPM_MODULECACHE_OVERRIDE="${SWIFTPM_MODULECACHE_OVERRIDE:-$ROOT_DIR/.build/module-cache}"
-mkdir -p "$TMPDIR" "$SWIFTPM_MODULECACHE_OVERRIDE"
+SWIFTPM_CACHE_PATH="${SOLOPM_SWIFTPM_CACHE_PATH:-$ROOT_DIR/.build/swiftpm-cache}"
+mkdir -p "$TMPDIR" "$SWIFTPM_MODULECACHE_OVERRIDE" "$SWIFTPM_CACHE_PATH"
+SWIFT_BUILD_ARGS=(
+  --cache-path "$SWIFTPM_CACHE_PATH"
+  --manifest-cache local
+)
 
 if [[ ! -f "$METADATA_FILE" ]]; then
   echo "missing metadata file: $METADATA_FILE" >&2
@@ -52,12 +57,12 @@ SOLOPM_SPARKLE_CONFIG_QUIET=1 "$ROOT_DIR/script/validate_sparkle_release_config.
 
 case "$BUILD_CONFIGURATION" in
   debug)
-    swift build --product "$APP_NAME"
-    BUILD_DIR="$(swift build --show-bin-path)"
+    swift build "${SWIFT_BUILD_ARGS[@]}" --product "$APP_NAME"
+    BUILD_DIR="$(swift build "${SWIFT_BUILD_ARGS[@]}" --show-bin-path)"
     ;;
   release)
-    swift build -c release --product "$APP_NAME"
-    BUILD_DIR="$(swift build -c release --show-bin-path)"
+    swift build "${SWIFT_BUILD_ARGS[@]}" -c release --product "$APP_NAME"
+    BUILD_DIR="$(swift build "${SWIFT_BUILD_ARGS[@]}" -c release --show-bin-path)"
     ;;
   *)
     echo "SOLOPM_BUILD_CONFIGURATION must be debug or release" >&2

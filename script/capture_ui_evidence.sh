@@ -17,10 +17,14 @@ BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:?BUNDLE_IDENTIFIER is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 SCREENSHOT_DIR="${SOLOPM_UI_EVIDENCE_DIR:-$ROOT_DIR/docs/release/evidence/ui-screenshots}"
 EVIDENCE_FILE="${SOLOPM_UI_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/ui-screenshots.md}"
-EVIDENCE_HOME="${SOLOPM_UI_EVIDENCE_HOME:-$(mktemp -d "${TMPDIR:-/tmp}/solopm-ui-evidence.XXXXXX")}"
+EVIDENCE_TMPDIR="${SOLOPM_UI_EVIDENCE_TMPDIR:-$ROOT_DIR/.tmp}"
+mkdir -p "$EVIDENCE_TMPDIR"
+EVIDENCE_HOME="${SOLOPM_UI_EVIDENCE_HOME:-$(mktemp -d "$EVIDENCE_TMPDIR/solopm-ui-evidence.XXXXXX")}"
 KEEP_HOME="${SOLOPM_UI_EVIDENCE_KEEP_HOME:-0}"
 DRY_RUN=0
 DOCTOR=0
+PROJECT_BOARD_SELECTION_OVERRIDE=""
+APPEARANCE_OVERRIDE=""
 
 for arg in "$@"; do
   case "$arg" in
@@ -68,9 +72,17 @@ relative_path() {
 }
 
 app_env_args() {
-  printf '%s\0' \
+  local args=(
     --env "HOME=$EVIDENCE_HOME" \
     --env "CFFIXED_USER_HOME=$EVIDENCE_HOME"
+  )
+  if [[ -n "$PROJECT_BOARD_SELECTION_OVERRIDE" ]]; then
+    args+=(--env "SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$PROJECT_BOARD_SELECTION_OVERRIDE")
+  fi
+  if [[ -n "$APPEARANCE_OVERRIDE" ]]; then
+    args+=(--env "SOLOPM_APPEARANCE_PREFERENCE=$APPEARANCE_OVERRIDE")
+  fi
+  printf '%s\0' "${args[@]}"
 }
 
 open_evidence_app() {
@@ -153,6 +165,18 @@ guard let candidate = candidates.first else {
 
 print("\(candidate.id) \(candidate.x) \(candidate.y) \(candidate.width) \(candidate.height)")
 SWIFT
+}
+
+wait_for_window_capture_metadata() {
+  local metadata
+  for _ in {1..40}; do
+    if metadata="$(find_window_capture_metadata 2>/dev/null)"; then
+      printf '%s\n' "$metadata"
+      return 0
+    fi
+    sleep 0.25
+  done
+  find_window_capture_metadata
 }
 
 assert_screenshot_has_visible_content() {
@@ -248,8 +272,15 @@ print_capture_failure_guidance() {
 
 write_appearance_preference() {
   local appearance="$1"
-  HOME="$EVIDENCE_HOME" CFFIXED_USER_HOME="$EVIDENCE_HOME" \
-    /usr/bin/defaults write "$BUNDLE_IDENTIFIER" solopm.appearancePreference -string "$appearance"
+  write_app_preference solopm.appearancePreference "$appearance"
+}
+
+write_app_preference() {
+  local key="$1"
+  local value="$2"
+
+  mkdir -p "$EVIDENCE_HOME/Library/Preferences"
+  /usr/bin/defaults write "$EVIDENCE_HOME/Library/Preferences/$BUNDLE_IDENTIFIER" "$key" -string "$value"
 }
 
 seed_database() {
@@ -275,10 +306,25 @@ VALUES
 SQL
 }
 
+persist_project_board_selection() {
+  local database_path="$1"
+  local project_id
+  project_id="$(sqlite3 "$database_path" "SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1;")"
+
+  if [[ -z "$project_id" ]]; then
+    echo "seeded Launch Readiness project was not found." >&2
+    exit 1
+  fi
+
+  PROJECT_BOARD_SELECTION_OVERRIDE="project:$project_id"
+  write_app_preference solopm.projectBoard.selectedDestination "$PROJECT_BOARD_SELECTION_OVERRIDE"
+}
+
 capture_appearance() {
   local appearance="$1"
   local output_path="$2"
 
+  APPEARANCE_OVERRIDE="$appearance"
   write_appearance_preference "$appearance"
   pkill -x "$APP_NAME" >/dev/null 2>&1 || true
   open_evidence_app
@@ -287,7 +333,7 @@ capture_appearance() {
   sleep 1.5
 
   local window_metadata
-  window_metadata="$(find_window_capture_metadata)"
+  window_metadata="$(wait_for_window_capture_metadata)"
   read -r window_id window_x window_y window_width window_height <<<"$window_metadata"
   local window_context
   window_context="id=$window_id bounds=${window_width}x${window_height}+${window_x}+${window_y}"
@@ -446,6 +492,7 @@ wait_for_database "$DATABASE_PATH"
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
 seed_database "$DATABASE_PATH"
+persist_project_board_selection "$DATABASE_PATH"
 
 LIGHT_SCREENSHOT="$SCREENSHOT_DIR/project-board-light.png"
 DARK_SCREENSHOT="$SCREENSHOT_DIR/project-board-dark.png"

@@ -154,7 +154,7 @@
 - [x] Task card metadata strip はstatus / priority / dueを固定寸法chipに分離し、狭いKanban列ではadaptive gridへ逃がす。
 - [x] Project Detailではタスク一覧、成果物、タイムライン、AI提案をタブまたはセクションとして整理する。
 - [x] Project Overview / headerの `Add Task` は押下後にBoardへ切り替え、Backlogのinline composerを即表示する。Overview上で状態だけ変わり入力欄が見えない状態を残さない。
-- [ ] Task cardはタイトル、状態、優先度、期限、ドラッグ affordance が重ならず表示されることをスクリーンショットで確認する。
+- [x] Task cardはタイトル、状態、優先度、期限、ドラッグ affordance が重ならず表示されることをスクリーンショットで確認する。
 - [x] 右インスペクタは選択中タスク/プロジェクトの編集、削除、AI提案の適用を一箇所に集約する。
   - [x] 選択中Taskの編集、削除、Local suggestion適用はTask inspectorに集約する。
   - [x] 選択中Projectの編集、削除、Local suggestion適用を右インスペクタに統合する。
@@ -198,7 +198,7 @@
   - [x] `capture_ui_evidence.sh` はScreen Recording権限やwindow capture失敗時に、選択window情報と再実行手順を出す。
   - [x] `capture_ui_evidence.sh --doctor` はrelease evidenceを書かずにScreen Recordingの可視ピクセル取得を事前診断する。
 - [x] `release_readiness_report.sh` は `ui-screenshots.md` だけでなく Light/Dark/System PNG の存在、サイズ、寸法を検証し、欠落や小さすぎる画像をblockerにする。
-- [ ] Light/Dark/System切替後にカード、サイドバー、インスペクタのコントラストが破綻しないことをスクリーンショットで確認する。
+- [x] Light/Dark/System切替後にカード、サイドバー、インスペクタのコントラストが破綻しないことをスクリーンショットで確認する。
 - [ ] 完了条件: マウス、キーボード、支援技術のどれでも主要CRUDが完結する。
 
 ## P11-040: Competitor benchmark and feature fit

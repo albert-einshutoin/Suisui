@@ -76,13 +76,13 @@
 | --- | --- | --- | --- |
 | Inbox分類後のsuccess/undo/next selectionを実装済み | Project化、Schedule化、後で確認の実mutation後に結果メッセージ、直前操作のUndo、次のInbox item自動選択を出す。 | Done | 連続triageの実機操作で、Undo後の復元先と選択状態を確認する。 |
 | Today time blockはlocal plan止まり | Today viewはdue/overdue task、local focus suggestion、30分time blockを表示できるが、Calendarへの適用や自動再配置はまだしない。 | P2 | Calendar連携をrelease scopeに入れる場合だけ、適用前確認つきのschedule actionを追加する。 |
-| Task card metadata stripはsource-levelで改善済み | Task card metadata strip はstatus / priority / dueを固定寸法chipに分離し、狭いKanban列ではadaptive gridへ逃がす。drag affordanceは右上の固定サイズiconとして残り、Open task領域とstatus move controlsから分離済み。 | Done | 実機スクリーンショットでtitle、状態、優先度、期限、drag affordanceが重ならないことを確認する。 |
-| Task card screenshot証跡は自動生成フローを追加済み | Task cardのtitle/status/priority/due/drag affordanceは実装済み。Light/Dark/System screenshot evidence scriptは追加済みで、一時HOME、seed済みProject board、window captureとして生成する。 | P1 | Screen Recording権限のある実機で生成PNGを目視し、崩れがあればUIを修正する。 |
-| Inspector summaryはsource-levelで改善済み | Task / Project inspector はcompact summaryを先頭に追加済み。Taskはstatus/priority/due/project、Projectはstatus/open tasks/total tasks/artifactsを詳細Form前に表示し、右ペインを開いた直後の文脈把握を早くする。 | P2 | 実機スクリーンショットでsummary、編集field、danger actionが狭いinspector幅でも重ならないことを確認する。 |
+| Task card metadata stripはsource-levelで改善済み | Task card metadata strip はstatus / priority / dueを固定寸法chipに分離し、狭いKanban列ではadaptive gridへ逃がす。drag affordanceは右上の固定サイズiconとして残り、Open task領域とstatus move controlsから分離済み。 | Done | Light/Dark/Systemスクリーンショットでtitle、状態、優先度、期限、drag affordanceが重ならないことを確認済み。 |
+| Task card screenshot証跡は生成・目視確認済み | Task cardのtitle/status/priority/due/drag affordanceは実装済み。`docs/release/evidence/ui-screenshots/` のLight/Dark/System PNGで一時HOME、seed済みProject board、window captureの証跡を残した。 | Done | 以後のUI変更では `script/capture_ui_evidence.sh` を再実行し、生成PNGを目視確認する。 |
+| Inspector summaryはsource-levelで改善済み | Task / Project inspector はcompact summaryを先頭に追加済み。Taskはstatus/priority/due/project、Projectはstatus/open tasks/total tasks/artifactsを詳細Form前に表示し、右ペインを開いた直後の文脈把握を早くする。 | Done | Light/Dark/Systemスクリーンショットでsummary、編集field、danger actionが狭いinspector幅でも重ならないことを確認済み。 |
 | Settings詳細Formはtab分割済み | Settings詳細FormはOverview / AI / MCP / Sync / Privacyのtabへ分割済み。Status OverviewとThemeはOverview、provider詳細はAI、MCP登録/権限/auditはMCP、同期はSync、通知/起動/WatcherはPrivacyに分けた。 | Done | AI Provider readiness summaryでproviderごとのvalidation stateもAI tab内に集約済み。 |
 | Provider詳細設定は選択中providerだけを表示するcompact panelへ分離済み | Provider pickerの下に選択中providerに必要なfieldだけを出すため、他providerのAPI key、model、local executableは同時表示されない。AI Provider readiness summaryでは全providerのConfigured / Not configured / Local / Setup required / Approval requiredを短く見られる。 | Done | 未選択providerの状態確認にprovider切替は不要。 |
 | MCP server別の接続状態証跡はsource test中心 | 複数server rowのinline statusとrow単位Checkは実装済みだが、実アプリで複数serverを並べたスクリーンショット証跡はまだ弱い。 | P1 | MCP server listを含むSettings screenshotをlight/darkで保存する。 |
-| accessibility検証が未完了 | Task card、column add、status move、destructive confirmationのlabel/helpはsource testで固定し、Task cardのOpen Detailsとstatus move controlsも別フォーカス対象に分離した。Sidebar -> board detail -> task card -> inspectorのsource-level VoiceOver focus anchors are fixed。Task / Project inspectorのfield、提案適用、保存、complete、restore、archive、deleteはaccessibility identifier / hintを持ち、キーボードだけで実行できる。Inbox / Todayのrow、Quick Add、分類action、Today summary、time blockにsource-level accessibility identifiers / hints / keyboard anchorsを追加済み。Light/Dark/System screenshot evidence scriptは追加済み。実機VoiceOver focus order確認は残る。 | P1 | VoiceOverでProject board -> card -> inspectorの順序を確認し、崩れを修正する。 |
+| accessibility検証が未完了 | Task card、column add、status move、destructive confirmationのlabel/helpはsource testで固定し、Task cardのOpen Detailsとstatus move controlsも別フォーカス対象に分離した。Sidebar -> board detail -> task card -> inspectorのsource-level VoiceOver focus anchors are fixed。Task / Project inspectorのfield、提案適用、保存、complete、restore、archive、deleteはaccessibility identifier / hintを持ち、キーボードだけで実行できる。Inbox / Todayのrow、Quick Add、分類action、Today summary、time blockにsource-level accessibility identifiers / hints / keyboard anchorsを追加済み。Light/Dark/System screenshot evidenceは生成・目視確認済み。実機VoiceOver focus order確認は残る。 | P1 | VoiceOverでProject board -> card -> inspectorの順序を確認し、崩れを修正する。 |
 
 ## 改善紐づけ
 
@@ -124,6 +124,6 @@ Risk: Artifact追加は絶対パスに限定してworkspace推測を避け、削
 
 ## 次の実装候補
 
-1. P11-031: Task cardのlight/darkスクリーンショット検証を完了する。
-2. P11-033: 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。
+1. P11-033: 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。
+2. P11-036: MCP server listを含むSettings screenshotをlight/darkで保存する。
 3. P11-040: Notion / Todoist / Linear / Motion の実操作メモを追加し、desk researchとの差分だけ更新する。

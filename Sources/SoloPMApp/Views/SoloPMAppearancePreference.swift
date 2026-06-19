@@ -6,6 +6,16 @@ enum SoloPMAppearancePreference: String, CaseIterable, Identifiable {
     case dark
 
     static let storageKey = "solopm.appearancePreference"
+    static let environmentOverrideKey = "SOLOPM_APPEARANCE_PREFERENCE"
+
+    static var environmentOverride: SoloPMAppearancePreference? {
+        guard let rawValue = ProcessInfo.processInfo.environment[environmentOverrideKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !rawValue.isEmpty else {
+            return nil
+        }
+        return SoloPMAppearancePreference(rawValue: rawValue)
+    }
 
     var id: String { rawValue }
 
