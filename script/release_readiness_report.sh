@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BLOCKER_COUNT=0
 BLOCKER_MESSAGES=()
 RELEASE_ENVIRONMENT_BLOCKER_MESSAGES=()
+VOICEOVER_ACTION_BLOCKERS=()
+COMPETITOR_ACTION_BLOCKERS=()
 APP_METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 RELEASE_ACTIONS_FILE="${SOLOPM_RELEASE_ACTIONS_FILE:-}"
 AUTOMATED_PROOF_GATES="${SOLOPM_AUTOMATED_PROOF_GATES:-0}"
@@ -300,6 +302,40 @@ collect_release_environment_blockers() {
   done <<<"$output"
 }
 
+collect_manual_action_blocker() {
+  local action_group="$1"
+  local message="$2"
+
+  case "$action_group" in
+    voiceover)
+      VOICEOVER_ACTION_BLOCKERS+=("$message")
+      ;;
+    competitor)
+      COMPETITOR_ACTION_BLOCKERS+=("$message")
+      ;;
+  esac
+}
+
+write_manual_evidence_blocker_actions() {
+  local manual_blocker
+
+  if [[ "${#VOICEOVER_ACTION_BLOCKERS[@]}" -gt 0 ]]; then
+    printf "## Manual VoiceOver Blockers\n"
+    for manual_blocker in "${VOICEOVER_ACTION_BLOCKERS[@]}"; do
+      printf -- "- [ ] %s\n" "$manual_blocker"
+    done
+    printf "\n"
+  fi
+
+  if [[ "${#COMPETITOR_ACTION_BLOCKERS[@]}" -gt 0 ]]; then
+    printf "## Competitor Hands-On Blockers\n"
+    for manual_blocker in "${COMPETITOR_ACTION_BLOCKERS[@]}"; do
+      printf -- "- [ ] %s\n" "$manual_blocker"
+    done
+    printf "\n"
+  fi
+}
+
 write_automated_proof_gate_actions() {
   local required_gate
 
@@ -392,6 +428,8 @@ write_release_actions() {
       done
       printf "\n"
     fi
+
+    write_manual_evidence_blocker_actions
 
     write_automated_proof_gate_actions
 
@@ -1093,6 +1131,7 @@ accessibility_preflight_script="$ROOT_DIR/$ACCESSIBILITY_PREFLIGHT_RELATIVE"
 voiceover_evidence_blocker_count=0
 voiceover_status_passed=0
 voiceover_blocker() {
+  collect_manual_action_blocker "voiceover" "$1"
   blocker "$1"
   voiceover_evidence_blocker_count=$((voiceover_evidence_blocker_count + 1))
 }
@@ -1294,6 +1333,7 @@ competitor_evidence_blocker_count=0
 competitor_status_passed=0
 competitor_template_pattern='(^|[^[:alnum:]_])(pending|todo|tbd|placeholder|sample|example)([^[:alnum:]_]|$)|replace me|macOS/browser versions|competitor app/account tiers|whether any paid trial'
 competitor_blocker() {
+  collect_manual_action_blocker "competitor" "$1"
   blocker "$1"
   competitor_evidence_blocker_count=$((competitor_evidence_blocker_count + 1))
 }

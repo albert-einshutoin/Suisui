@@ -4073,11 +4073,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("tracked_source_tree_status()"))
         XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" status --porcelain --untracked-files=no"))
         XCTAssertTrue(script.contains("RELEASE_ENVIRONMENT_BLOCKER_MESSAGES=()"))
+        XCTAssertTrue(script.contains("VOICEOVER_ACTION_BLOCKERS=()"))
+        XCTAssertTrue(script.contains("COMPETITOR_ACTION_BLOCKERS=()"))
         XCTAssertTrue(script.contains("collect_release_environment_blockers()"))
+        XCTAssertTrue(script.contains("collect_manual_action_blocker()"))
         XCTAssertTrue(script.contains("normalized=\"${line#- }\""))
         XCTAssertTrue(script.contains("normalized=\"${normalized#BLOCKER: }\""))
         XCTAssertTrue(script.contains("normalized=\"${normalized//$root_prefix/}\""))
         XCTAssertTrue(script.contains("## Release Environment Blockers"))
+        XCTAssertTrue(script.contains("## Manual VoiceOver Blockers"))
+        XCTAssertTrue(script.contains("## Competitor Hands-On Blockers"))
         XCTAssertTrue(script.contains("release environment blocker contained a sensitive field"))
         XCTAssertTrue(phase.contains("[x] VoiceOver / competitor hands-on の手動証跡は `Source commit` を記録し、`Status: passed` の場合は現在の git commit と一致しない証跡をrelease blockerにする。"))
         XCTAssertTrue(phase.contains("[x] competitor benchmark の `Source commit` も `Status: passed` の competitor hands-on 証跡と同じrelease候補commitであることをrelease blockerにする。"))
@@ -4124,6 +4129,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] action summary は `Blocker Buckets` で Automated Proof Gates / Manual VoiceOver / Competitor Hands-On / Release Machine / Phase Checklist / Other の残件数を分類する。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Release Environment Blockers` に `verify_release_environment.sh` の `BLOCKER:` 明細を相対パス化して列挙し、機密っぽい値を転記しない。"))
         XCTAssertTrue(phase.contains("[x] action summary は clean-tree automated preflight evidence が有効な場合、accepted evidence、source commit、generated at、passed gatesを表示し、再実行指示だけを出さない。"))
+        XCTAssertTrue(phase.contains("[x] action summary は `Manual VoiceOver Blockers` と `Competitor Hands-On Blockers` に手動証跡の不足項目を分離表示し、手動作業を完了扱いにしない。"))
     }
 
     func testReleaseReadinessReportWritesSpecificReleaseEnvironmentBlockersToActionSummary() throws {
@@ -4183,6 +4189,161 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("- [ ] release environment blocker contained a sensitive field; inspect verify_release_environment.sh output locally"))
         XCTAssertFalse(actionSummary.contains(fixtureRoot.path))
         XCTAssertFalse(actionSummary.contains("super-secret-token"))
+    }
+
+    func testReleaseReadinessReportWritesManualEvidenceBlockersToActionSummary() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-manual-evidence-actions", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let evidenceDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("release", isDirectory: true)
+            .appendingPathComponent("evidence", isDirectory: true)
+        let productDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("product", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+        let accessibilityURL = scriptDirectory.appendingPathComponent("check_accessibility_preflight.sh")
+        let mcpComplianceURL = scriptDirectory.appendingPathComponent("verify_mcp_compliance.sh")
+        let actionSummaryURL = fixtureRoot.appendingPathComponent("release-actions.md")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: evidenceDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: productDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: preflightURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        if [[ "$*" == *"--runtime"* ]]; then
+          printf "OK: runtime AX smoke visible, windows=1, buttons=29, textFields=1, staticTexts=25, unlabeledButtons=0, genericButtons=0, crudSignals=8/8\\n"
+        else
+          printf "OK: accessibility source anchors are present (fixture)\\n"
+        fi
+        """.write(to: accessibilityURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        evidence_file="${SOLOPM_MCP_EVIDENCE_FILE:-}"
+        if [[ -n "$evidence_file" ]]; then
+          cat > "$evidence_file" <<'EOF'
+        Generated:
+        Scope: validate the release MCP stdio fixture
+        Stable baseline: `2025-11-25`
+        Official stable latest: `2025-11-25`
+        Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
+        Draft watchlist: `2026-07-28`
+        Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+        2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28.
+        not a full MCP host
+        initialize -> tools/list -> tools/call
+        MCP Inspector CLI tools/list
+        MCP Inspector CLI tools/call
+        SoloPM local smoke success
+        malformed-json
+        mismatched-id
+        invalid-schema
+        timeout
+        exit: 0
+        EOF
+        fi
+        printf "mcp compliance fixture ok\\n"
+        """.write(to: mcpComplianceURL, atomically: true, encoding: .utf8)
+        try """
+        # VoiceOver Accessibility Evidence
+
+        Status: pending
+
+        - macOS version:
+        - App build:
+        - Bundle identifier:
+        - Source commit:
+        - Checked by:
+        - Check date: 2026-06-19
+        - Evidence source: `docs/release/evidence/accessibility-voiceover.md`
+        - Accessibility environment:
+        - Runtime AX smoke:
+
+        ## Required Focus Path
+
+        - [ ] Project navigation: select Inbox, Today, and one Project from the sidebar.
+        - [ ] Save Changes: confirm keyboard activation reaches the local task save action.
+        """.write(to: evidenceDirectory.appendingPathComponent("accessibility-voiceover.md"), atomically: true, encoding: .utf8)
+        try """
+        # Competitor Hands-On Evidence
+
+        Status: pending
+
+        - Checked by:
+        - Check date: 2026-06-19
+        - Source commit:
+        - Evidence source: `docs/release/evidence/competitor-hands-on.md`
+        - Environment:
+        - Scope: Notion -> Todoist -> Linear -> Motion
+
+        ## Required Hands-On Path
+
+        - [ ] Notion: create a project database, board, three tasks, status grouping, and one artifact/doc/link.
+
+        ## Ship / Defer / Reject Delta
+
+        - Ship:
+        - Defer:
+        - Reject:
+        """.write(to: evidenceDirectory.appendingPathComponent("competitor-hands-on.md"), atomically: true, encoding: .utf8)
+        try """
+        # Competitor Benchmark and Hands-On Findings
+
+        Source commit:
+        """.write(to: productDirectory.appendingPathComponent("competitor-benchmark.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        for url in [reportURL, preflightURL, accessibilityURL, mcpComplianceURL] {
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        }
+
+        let result = try runTool(
+            ["bash", reportURL.path],
+            environment: [
+                "SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT": "1",
+                "SOLOPM_RELEASE_ACTIONS_FILE": actionSummaryURL.path
+            ]
+        )
+        let actionSummary = try String(contentsOf: actionSummaryURL, encoding: .utf8)
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(actionSummary.contains("## Manual VoiceOver Blockers"))
+        XCTAssertTrue(actionSummary.contains("- [ ] VoiceOver accessibility evidence is not marked passed"))
+        XCTAssertTrue(actionSummary.contains("- [ ] VoiceOver accessibility evidence missing release context: Source commit"))
+        XCTAssertTrue(actionSummary.contains("- [ ] VoiceOver accessibility evidence missing concrete focus note: Task inspector"))
+        XCTAssertTrue(actionSummary.contains("## Competitor Hands-On Blockers"))
+        XCTAssertTrue(actionSummary.contains("- [ ] Competitor hands-on evidence is not marked passed"))
+        XCTAssertTrue(actionSummary.contains("- [ ] Competitor hands-on evidence missing review context: Checked by"))
+        XCTAssertTrue(actionSummary.contains("- [ ] Competitor hands-on evidence missing concrete note: Todoist"))
+        XCTAssertTrue(actionSummary.contains("This file is an action summary, not release evidence."))
+        XCTAssertFalse(actionSummary.contains("Status: ready"))
     }
 
     func testReleaseReadinessReportClassifiesUncheckedPhaseItems() throws {
