@@ -1181,6 +1181,30 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] AI tabのprovider詳細fieldは選択中providerだけを表示し"))
     }
 
+    func testAISettingsTabShowsSelectedProviderReadinessBeforeProviderFields() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let audit = try readPackageFile("docs/ux/click-path-audit.md")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+        let aiStart = try XCTUnwrap(appSource.range(of: "private var aiSettingsTab: some View"))
+        let syncStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
+        let aiSource = String(appSource[aiStart.lowerBound..<syncStart.lowerBound])
+
+        XCTAssertTrue(appSource.contains("SelectedAIProviderStatusRow("))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"ai-provider-readiness-row\")"))
+        XCTAssertTrue(appSource.contains("private var providerReadinessDetailLabel: String"))
+        XCTAssertTrue(appSource.contains("private var activeAIProviderNextActionLabel: String"))
+        XCTAssertLessThan(
+            try XCTUnwrap(aiSource.range(of: "Picker(")).lowerBound,
+            try XCTUnwrap(aiSource.range(of: "SelectedAIProviderStatusRow(")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(aiSource.range(of: "SelectedAIProviderStatusRow(")).lowerBound,
+            try XCTUnwrap(aiSource.range(of: "selectedProviderConfigurationFields")).lowerBound
+        )
+        XCTAssertTrue(audit.contains("AI Provider readiness row"))
+        XCTAssertTrue(phase.contains("[x] AI tabはprovider picker直下に選択中providerの状態、smoke readiness、次の操作を表示し、詳細fieldを読む前に未設定理由が分かる。"))
+    }
+
     func testRuntimeLLMFactoryUsesClaudeMessagesProviderWithoutOpenAIFallback() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let factoryStart = try XCTUnwrap(appSource.range(of: "private static func makeLLMProvider"))

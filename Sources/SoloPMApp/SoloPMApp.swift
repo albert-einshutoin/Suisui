@@ -924,6 +924,13 @@ private struct SettingsView: View {
                             .tag(provider)
                     }
                 }
+                SelectedAIProviderStatusRow(
+                    providerName: settingsViewModel.settings.aiProvider.displayName,
+                    statusLabel: activeAIProviderStatusLabel,
+                    detailLabel: providerReadinessDetailLabel,
+                    nextActionLabel: activeAIProviderNextActionLabel,
+                    tone: activeAIProviderTone
+                )
                 selectedProviderConfigurationFields
             }
 
@@ -1478,14 +1485,93 @@ private struct SettingsView: View {
         }
     }
 
+    private var providerReadinessDetailLabel: String {
+        switch settingsViewModel.settings.aiProvider {
+        case .openaiResponses, .geminiOpenAICompatible:
+            "Smoke: \(providerSmokeDisplayLabel(settingsViewModel.openAIProviderSmokeStatusLabel))"
+        case .claudeMessages:
+            "Uses Anthropic Keychain secret with the Claude Messages runtime."
+        case .geminiDirect:
+            "Smoke: \(providerSmokeDisplayLabel(settingsViewModel.geminiProviderSmokeStatusLabel))"
+        case .groqOpenAICompatible:
+            "Smoke: \(providerSmokeDisplayLabel(settingsViewModel.groqProviderSmokeStatusLabel))"
+        case .opencodeLocal:
+            openCodeReadinessDetailLabel
+        case .openRouterCompatible:
+            "Uses OpenRouter Keychain secret with an OpenAI-compatible runtime."
+        case .ollamaCompatible:
+            "Local endpoint; API key is not required."
+        }
+    }
+
+    private var activeAIProviderNextActionLabel: String {
+        switch settingsViewModel.settings.aiProvider {
+        case .opencodeLocal:
+            if settingsViewModel.settings.openCodeExecutablePath == nil {
+                return "Set the OpenCode executable path."
+            }
+            if settingsViewModel.settings.openCodeWorkspacePath == nil {
+                return "Set the workspace path."
+            }
+            if !settingsViewModel.settings.isOpenCodeLocalExecutionApproved {
+                return "Review the local command and approve execution."
+            }
+            return "Generate a reviewed plan when you are ready."
+        case .ollamaCompatible:
+            return "Start the local Ollama-compatible server before planning."
+        default:
+            switch activeAIProviderStatusLabel {
+            case "Configured":
+                return "Generate a reviewed plan or run a manual smoke check."
+            case "Invalid":
+                return "Re-enter the provider API key in Keychain."
+            default:
+                return "Save the provider API key in Keychain."
+            }
+        }
+    }
+
     private var activeAIProviderTone: SettingsStatusTone {
+        if settingsViewModel.settings.aiProvider == .opencodeLocal,
+           openCodeReadinessDetailLabel != "Local execution is approved for the selected workspace." {
+            return .warning
+        }
+
         switch activeAIProviderStatusLabel {
         case "Configured", "Approved", "Local":
-            .ready
+            return .ready
         case "Invalid", "Unavailable":
-            .danger
+            return .danger
         default:
-            .warning
+            return .warning
+        }
+    }
+
+    private var openCodeReadinessDetailLabel: String {
+        if settingsViewModel.settings.openCodeExecutablePath == nil {
+            return "Executable path is required."
+        }
+        if settingsViewModel.settings.openCodeWorkspacePath == nil {
+            return "Workspace path is required."
+        }
+        if !settingsViewModel.settings.isOpenCodeLocalExecutionApproved {
+            return "Local execution approval is required."
+        }
+        return "Local execution is approved for the selected workspace."
+    }
+
+    private func providerSmokeDisplayLabel(_ rawLabel: String) -> String {
+        switch rawLabel {
+        case "readyForManualSmoke":
+            "Ready for manual smoke"
+        case "notConfigured":
+            "Not configured"
+        case "invalidConfiguration":
+            "Invalid configuration"
+        case "unavailable":
+            "Unavailable"
+        default:
+            rawLabel
         }
     }
 
@@ -1676,6 +1762,55 @@ private struct MCPServerConnectionBadge: View {
             return .red
         }
         return .secondary
+    }
+}
+
+private struct SelectedAIProviderStatusRow: View {
+    let providerName: String
+    let statusLabel: String
+    let detailLabel: String
+    let nextActionLabel: String
+    let tone: SettingsStatusTone
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: tone.systemImage)
+                .foregroundStyle(tone.color)
+                .frame(width: 20)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(providerName)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(providerName)
+
+                Text(statusLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(tone.color)
+                    .lineLimit(1)
+
+                Text(detailLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Label(nextActionLabel, systemImage: "arrow.right.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("ai-provider-readiness-row")
+        .accessibilityLabel("AI provider readiness")
+        .accessibilityValue("\(providerName), \(statusLabel), \(nextActionLabel)")
     }
 }
 

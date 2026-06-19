@@ -132,6 +132,7 @@
 - [x] `ui-samples/07.png` の設定密度を参考に、AI Provider / MCP / Sync / Privacy が一画面で状態確認できるよう整理する。
 - [x] Settings詳細FormをOverview / AI / MCP / Sync / Privacyのtabへ分割し、Status確認・Theme変更・provider設定・MCP登録・Sync gate・Privacy設定の到達先を明確にする。
 - [x] AI tabのprovider詳細fieldは選択中providerだけを表示し、非選択providerのAPI key、model、local executable欄を同時表示しない。
+- [x] AI tabはprovider picker直下に選択中providerの状態、smoke readiness、次の操作を表示し、詳細fieldを読む前に未設定理由が分かる。
 - [x] 完了条件: ユーザーは自分のデータが同期されているか、なぜ同期できないかを1画面で理解できる。
 
 ## P11-030: UX click-path audit
