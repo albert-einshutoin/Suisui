@@ -81,6 +81,7 @@ public final class MCPClient: @unchecked Sendable {
     public func listTools() async throws -> [MCPToolDefinition] {
         var cursor: String?
         var seenCursors = Set<String>()
+        var seenToolNames = Set<String>()
         var definitions: [MCPToolDefinition] = []
 
         repeat {
@@ -96,7 +97,17 @@ public final class MCPClient: @unchecked Sendable {
                 throw MCPClientError.invalidResponse(serverID: serverID, method: "tools/list", reason: "Missing result.tools array.")
             }
             do {
-                definitions.append(contentsOf: try tools.map(MCPToolDefinition.parse))
+                let pageDefinitions = try tools.map(MCPToolDefinition.parse)
+                for definition in pageDefinitions {
+                    guard seenToolNames.insert(definition.name).inserted else {
+                        throw MCPClientError.invalidResponse(
+                            serverID: serverID,
+                            method: "tools/list",
+                            reason: "Duplicate tool name in tools/list response: \(definition.name)."
+                        )
+                    }
+                }
+                definitions.append(contentsOf: pageDefinitions)
             } catch let error as MCPClientError {
                 throw MCPClientError.invalidResponse(serverID: serverID, method: "tools/list", reason: error.responseReason)
             }

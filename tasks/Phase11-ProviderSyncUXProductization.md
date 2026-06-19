@@ -36,6 +36,7 @@
 - [x] `protocolVersion` は `2025-11-25` を提示し、serverが返したversionを監査/Settings表示へ残す。
 - [x] `tools/list` responseの `name` / `title` / `description` / `inputSchema` 型不一致を fail fast する既存テストを compliance matrix にリンクする。
 - [x] MCP推奨のtool name範囲をSoloPMの安全境界として実装し、1-128文字のASCII英数字/underscore/hyphen/dot以外はfail fastする。
+- [x] paginated `tools/list` 全体で重複tool nameを拒否し、Settings catalog / audit / approval policyが同名toolで上書きされないようにする。
 - [x] `tools/list` の `nextCursor` paginationを追跡し、複数ページのtool catalogを途中で切らず、malformed / repeated cursorをfail fastする。
 - [x] `tools/list` の `inputSchema` 欠落、root `type != object`、unsupported `$schema` dialect、非object property schemaを拒否し、MCP 2025-11-25のJSON Schema 2020-12境界をrelease subsetとして固定する。
 - [x] `resources/list` / `prompts/list` は未対応としてUIとdocsで明示し、対応済みのように表示しない。

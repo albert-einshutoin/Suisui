@@ -1808,6 +1808,47 @@ final class ExternalMCPTests: XCTestCase {
         }
     }
 
+    func testToolsListRejectsDuplicateToolNamesAcrossPages() async throws {
+        let transport = RecordingMCPTransport { request in
+            if request.method == "tools/list" {
+                let cursor = request.params?.objectValue?["cursor"]?.stringValue
+                var result: [String: JSONValue] = [
+                    "tools": .array([
+                        .object([
+                            "name": .string("read_status"),
+                            "description": .string(cursor == nil ? "First page." : "Second page duplicate."),
+                            "inputSchema": .object(["type": .string("object")])
+                        ])
+                    ])
+                ]
+                if cursor == nil {
+                    result["nextCursor"] = .string("page-2")
+                }
+                return MCPJSONRPCResponse(
+                    id: request.id,
+                    result: .object(result)
+                )
+            }
+            return MCPJSONRPCResponse(id: request.id, result: .object([:]))
+        }
+        let client = MCPClient(serverID: "fake", transport: transport)
+
+        do {
+            _ = try await client.listTools()
+            XCTFail("duplicate tool names should fail")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(
+                    serverID: "fake",
+                    method: "tools/list",
+                    reason: "Duplicate tool name in tools/list response: read_status."
+                )
+            )
+        }
+        XCTAssertEqual(transport.recordedRequests.filter { $0.method == "tools/list" }.count, 2)
+    }
+
     func testToolsListRequiresToolInputSchema() async throws {
         let missingSchemaTransport = RecordingMCPTransport { request in
             if request.method == "tools/list" {
