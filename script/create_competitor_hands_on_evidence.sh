@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT_FILE="$ROOT_DIR/docs/release/evidence/competitor-hands-on.md"
 BENCHMARK_FILE="$ROOT_DIR/docs/product/competitor-benchmark.md"
 COMMAND_FILE="$ROOT_DIR/.tmp/competitor-hands-on/create-evidence-command.sh"
+WORKSHEET_FILE="$ROOT_DIR/.tmp/competitor-hands-on/hands-on-worksheet.md"
 EVIDENCE_STATUS="pending"
 CHECKED_BY=""
 CHECK_DATE="$(date +%F)"
@@ -21,10 +22,10 @@ DEFER_DELTA=""
 REJECT_DELTA=""
 
 usage() {
-  printf '%s\n' "usage: $0 (--pending|--passed) [--output PATH] [--benchmark-output PATH] [--command-output PATH] [--checked-by NAME] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--environment TEXT] [--notion-note TEXT] [--todoist-note TEXT] [--linear-note TEXT] [--motion-note TEXT] [--ship TEXT] [--defer TEXT] [--reject TEXT] [--confirm-manual-hands-on]"
+  printf '%s\n' "usage: $0 (--pending|--passed) [--output PATH] [--benchmark-output PATH] [--command-output PATH] [--worksheet-output PATH] [--checked-by NAME] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--environment TEXT] [--notion-note TEXT] [--todoist-note TEXT] [--linear-note TEXT] [--motion-note TEXT] [--ship TEXT] [--defer TEXT] [--reject TEXT] [--confirm-manual-hands-on]"
   printf '%s\n' ""
-  printf '%s\n' "Use --pending to write a safe worksheet that release readiness will reject."
-  printf '%s\n' "Use --pending to also write a fill-in command template for the later manual evidence pass."
+  printf '%s\n' "Use --pending to write safe pending evidence that release readiness will reject."
+  printf '%s\n' "Use --pending to also write a hands-on worksheet and fill-in command template for the later manual evidence pass."
   printf '%s\n' "Use --passed only after a real Notion -> Todoist -> Linear -> Motion hands-on pass; it also writes the benchmark hands-on findings."
 }
 
@@ -166,6 +167,10 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --command-output)
       COMMAND_FILE="${2:-}"
+      shift 2
+      ;;
+    --worksheet-output)
+      WORKSHEET_FILE="${2:-}"
       shift 2
       ;;
     --checked-by)
@@ -329,6 +334,62 @@ write_pending_evidence() {
   } >"$OUTPUT_FILE"
 }
 
+write_hands_on_worksheet() {
+  mkdir -p "$(dirname "$WORKSHEET_FILE")"
+
+  {
+    printf '%s\n' '# Competitor Hands-On Worksheet'
+    printf '\n'
+    printf '%s\n' 'Status: pending'
+    printf '\n'
+    printf '%s\n' 'This worksheet is not release evidence. Fill it during the real 2-4 hour Notion/Todoist/Linear/Motion pass, then run the generated passed command with concrete observations.'
+    printf '\n'
+    printf '%s\n' '## Candidate Metadata'
+    printf '\n'
+    printf -- '- Release candidate source commit: `%s`\n' "$SOURCE_COMMIT"
+    printf -- '- Output evidence: `%s`\n' "$OUTPUT_FILE"
+    printf -- '- Benchmark output: `%s`\n' "$BENCHMARK_FILE"
+    printf -- '- Passed command: `%s`\n' "$COMMAND_FILE"
+    printf -- '- Evidence source: `%s`\n' "$EVIDENCE_SOURCE"
+    printf '\n'
+    printf '%s\n' '## Review Context To Fill'
+    printf '\n'
+    printf '%s\n' '- Reviewer:'
+    printf -- '- Review date: %s\n' "$CHECK_DATE"
+    printf '%s\n' '- macOS version:'
+    printf '%s\n' '- Browser / desktop app versions:'
+    printf '%s\n' '- Account tiers / paid trial details:'
+    printf '%s\n' '- Screenshot or note locations kept outside release evidence:'
+    printf '\n'
+    printf '%s\n' '## Competitor Paths'
+    printf '\n'
+    printf '%s\n' '- [ ] Notion: create a project database, switch to board, add 3 tasks, group by status, attach one doc/link/artifact, and try summary/context review.'
+    printf '%s\n' '- [ ] Todoist: capture with Quick Add, set date/priority/project/section, switch board/list, drag a task, and scan Today/Upcoming.'
+    printf '%s\n' '- [ ] Linear: create a project and issue, move status, inspect details/sidebar density, use the command or keyboard flow, and process one triage-like item.'
+    printf '%s\n' '- [ ] Motion: create due/prioritized tasks, inspect schedule/risk surfaces, adjust a deadline, and record whether recommendation reasoning is understandable.'
+    printf '%s\n' '- [ ] No external SaaS sync or team workflow was added to SoloPM public alpha scope.'
+    printf '\n'
+    printf '%s\n' '## Measurements'
+    printf '\n'
+    printf '%s\n' '- Setup steps before first useful task:'
+    printf '%s\n' '- Clicks / keystrokes for capture and status movement:'
+    printf '%s\n' '- Inspector/detail clarity for repeated solo PM work:'
+    printf '%s\n' '- Automation or recommendation trust issues:'
+    printf '\n'
+    printf '%s\n' '## Ship / Defer / Reject Capture'
+    printf '\n'
+    printf '%s\n' '- Ship:'
+    printf '%s\n' '- Defer:'
+    printf '%s\n' '- Reject:'
+    printf '\n'
+    printf '%s\n' '## Closeout'
+    printf '\n'
+    printf '%s\n' '1. Replace every placeholder in the generated passed command with observations from this worksheet.'
+    printf '%s\n' '2. Run the generated command only after the hands-on pass is complete.'
+    printf '%s\n' '3. Rerun `./script/release_readiness_report.sh` and confirm the competitor hands-on section is green.'
+  } >"$WORKSHEET_FILE"
+}
+
 write_competitor_evidence_command() {
   local output_path="$1"
   mkdir -p "$(dirname "$output_path")"
@@ -338,6 +399,7 @@ write_competitor_evidence_command() {
     printf '%s\n' 'set -euo pipefail'
     printf '\n'
     printf '%s\n' '# Generated by script/create_competitor_hands_on_evidence.sh.'
+    printf '# Fill %s while reviewing, then replace every placeholder below.\n' "$WORKSHEET_FILE"
     printf '%s\n' '# Replace every placeholder below with concrete observations from the real Notion/Todoist/Linear/Motion hands-on pass before running.'
     printf '%s\n' '# This command must fail if placeholders are not replaced; it does not mark hands-on evidence as passed by itself.'
     printf '\n'
@@ -426,11 +488,13 @@ if [[ "$EVIDENCE_STATUS" == "passed" ]]; then
   write_hands_on_benchmark
 else
   write_pending_evidence
+  write_hands_on_worksheet
   write_competitor_evidence_command "$COMMAND_FILE"
 fi
 
 printf 'Competitor hands-on evidence written: %s\n' "$OUTPUT_FILE"
 if [[ "$EVIDENCE_STATUS" == "pending" ]]; then
+  printf 'Competitor hands-on worksheet written: %s\n' "$WORKSHEET_FILE"
   printf 'Competitor hands-on evidence command written: %s\n' "$COMMAND_FILE"
 fi
 if [[ "$EVIDENCE_STATUS" == "passed" ]]; then

@@ -575,7 +575,7 @@ write_competitor_hands_on_evidence_command() {
   printf '%s\n' './script/create_competitor_hands_on_evidence.sh --pending'
   printf '%s\n' '```'
   printf '%s\n' ''
-  printf '%s\n' 'The pending command writes `.tmp/competitor-hands-on/create-evidence-command.sh`. Edit that generated command after the hands-on pass, replace every placeholder with concrete observations, then run it. The explicit passed form is:'
+  printf '%s\n' 'The pending command writes `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/create-evidence-command.sh`. Fill the worksheet during the hands-on pass, then edit that generated command, replace every placeholder with concrete observations, and run it. The explicit passed form is:'
   printf '%s\n' ''
   printf '%s\n' '```bash'
   printf '%s\n' './script/create_competitor_hands_on_evidence.sh --passed \'
@@ -755,7 +755,7 @@ write_release_actions() {
 
     printf "## Competitor Hands-On\n"
     printf -- "- Complete the 2-4 hour Notion, Todoist, Linear, and Motion hands-on pass before release.\n"
-    printf -- "- Run the pending generator first if you want a fill-in command at \`.tmp/competitor-hands-on/create-evidence-command.sh\`.\n"
+    printf -- "- Run the pending generator first if you want a review worksheet at \`.tmp/competitor-hands-on/hands-on-worksheet.md\` and a fill-in command at \`.tmp/competitor-hands-on/create-evidence-command.sh\`.\n"
     printf -- "- Replace every placeholder below with concrete observations and Ship / Defer / Reject decisions before running it.\n\n"
     write_competitor_hands_on_evidence_command
     printf "\n"
@@ -1949,7 +1949,7 @@ else
   done
 fi
 if [[ "$competitor_evidence_blocker_count" -gt 0 ]]; then
-  printf "NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass by running ./script/create_competitor_hands_on_evidence.sh --pending, editing/running .tmp/competitor-hands-on/create-evidence-command.sh after replacing placeholders, or running ./script/create_competitor_hands_on_evidence.sh --passed with complete reviewer/date/source/environment context, complete Notion/Todoist/Linear/Motion notes, Ship/Defer/Reject deltas, --benchmark-output docs/product/competitor-benchmark.md, and no pending/template/unchecked markers; the generator also updates docs/product/competitor-benchmark.md from worksheet/desk research to hands-on findings.\n"
+  printf "NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass by running ./script/create_competitor_hands_on_evidence.sh --pending, filling .tmp/competitor-hands-on/hands-on-worksheet.md, editing/running .tmp/competitor-hands-on/create-evidence-command.sh after replacing placeholders, or running ./script/create_competitor_hands_on_evidence.sh --passed with complete reviewer/date/source/environment context, complete Notion/Todoist/Linear/Motion notes, Ship/Defer/Reject deltas, --benchmark-output docs/product/competitor-benchmark.md, and no pending/template/unchecked markers; the generator also updates docs/product/competitor-benchmark.md from worksheet/desk research to hands-on findings.\n"
 else
   printf "OK: competitor hands-on evidence covers Notion, Todoist, Linear, Motion, and public alpha scope boundaries\n"
 fi
