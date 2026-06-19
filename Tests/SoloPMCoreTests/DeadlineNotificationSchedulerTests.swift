@@ -59,10 +59,68 @@ final class DeadlineNotificationSchedulerTests: XCTestCase {
         XCTAssertEqual(result.status, .failed)
         XCTAssertTrue(result.message.contains("permission is denied"))
     }
+
+    func testSchedulerRedactsToolClientFailureMessages() throws {
+        let secret = "sk-notification-tool-secret"
+        let scheduler = DeadlineNotificationScheduler(
+            notificationClient: FailingNotificationClient(error: ToolClientError.invalidRequest("token=\(secret) could not schedule")),
+            dateProvider: FixedDateProvider(now: try Date.iso8601("2026-06-17T00:00:00Z")),
+            settings: AppSettings(timeZoneIdentifier: "UTC")
+        )
+        let rule = DeadlineRule(id: 10, target: .task(20), kind: .tMinus1)
+        let item = DeadlineItem(id: 20, kind: .task, title: "Secret task", dueAt: try Date.iso8601("2026-06-20T12:00:00Z"))
+
+        let result = scheduler.schedule(rule: rule, item: item)
+
+        XCTAssertEqual(result.status, .failed)
+        XCTAssertEqual(result.message, "token=[REDACTED_SECRET] could not schedule")
+        XCTAssertFalse(result.message.contains(secret))
+    }
+
+    func testSchedulerRedactsUnexpectedClientFailureMessages() throws {
+        let secret = "sk-notification-system-secret"
+        let scheduler = DeadlineNotificationScheduler(
+            notificationClient: FailingNotificationClient(error: SecretNotificationClientError(secret: secret)),
+            dateProvider: FixedDateProvider(now: try Date.iso8601("2026-06-17T00:00:00Z")),
+            settings: AppSettings(timeZoneIdentifier: "UTC")
+        )
+        let rule = DeadlineRule(id: 11, target: .task(20), kind: .tMinus1)
+        let item = DeadlineItem(id: 20, kind: .task, title: "Secret task", dueAt: try Date.iso8601("2026-06-20T12:00:00Z"))
+
+        let result = scheduler.schedule(rule: rule, item: item)
+
+        XCTAssertEqual(result.status, .failed)
+        XCTAssertEqual(result.message, "notification failed token=[REDACTED_SECRET]")
+        XCTAssertFalse(result.message.contains(secret))
+    }
 }
 
 private struct FixedDateProvider: DateProvider {
     let now: Date
+}
+
+private struct FailingNotificationClient: NotificationClient {
+    let error: Error
+
+    func schedule(_ draft: NotificationDraft) throws -> NotificationRecord {
+        throw error
+    }
+
+    func cancel(id: String) throws {
+        throw error
+    }
+
+    func listScheduled() throws -> [NotificationRecord] {
+        []
+    }
+}
+
+private struct SecretNotificationClientError: Error, CustomStringConvertible {
+    let secret: String
+
+    var description: String {
+        "notification failed token=\(secret)"
+    }
 }
 
 private extension Date {

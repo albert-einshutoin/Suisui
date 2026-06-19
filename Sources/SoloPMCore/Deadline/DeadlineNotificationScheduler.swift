@@ -102,14 +102,14 @@ public final class DeadlineNotificationScheduler: @unchecked Sendable {
                 status: .failed,
                 scheduledAt: notifyAt,
                 idempotencyKey: idempotencyKey,
-                message: error.message
+                message: UserFacingErrorMessageSanitizer.message(from: error.message)
             )
         } catch {
             return DeadlineNotificationScheduleResult(
                 status: .failed,
                 scheduledAt: notifyAt,
                 idempotencyKey: idempotencyKey,
-                message: String(describing: error)
+                message: UserFacingErrorMessageSanitizer.message(from: error)
             )
         }
     }

@@ -206,7 +206,7 @@ public final class SafeDailyCheckRunner: @unchecked Sendable {
 }
 
 private func dailyCheckAuditErrorMessage(_ error: Error) -> String {
-    "Daily check audit log failed: \(String(describing: error))"
+    "Daily check audit log failed: \(UserFacingErrorMessageSanitizer.message(from: error))"
 }
 
 public struct WatcherDiagnosticsSnapshot: Equatable, Sendable {

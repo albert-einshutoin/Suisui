@@ -85,6 +85,22 @@ final class DailyCheckRunnerTests: XCTestCase {
         XCTAssertEqual(result.auditErrorMessage, "Daily check audit log failed: unavailable")
     }
 
+    func testSafeDailyCheckRunnerRedactsAuditFailureBeforeUserDisplay() throws {
+        let secret = "sk-daily-audit-secret"
+        let runner = SafeDailyCheckRunner(
+            runner: FailingDailyCheckRunnable(),
+            dateProvider: FixedDateProvider(now: try Date.iso8601("2026-06-17T12:00:00Z")),
+            auditLogger: SecretFailingDailyCheckAuditLogger(secret: secret)
+        )
+
+        let result = runner.run(reason: .scheduledDaily)
+
+        XCTAssertEqual(result.status, .failed)
+        XCTAssertEqual(result.errorMessage, "scan failed")
+        XCTAssertEqual(result.auditErrorMessage, "Daily check audit log failed: audit failed token=[REDACTED_SECRET]")
+        XCTAssertFalse(result.auditErrorMessage?.contains(secret) ?? true)
+    }
+
     func testWatcherDiagnosticsProviderBuildsLastNextAndPermissionSnapshot() throws {
         var permissions = PermissionSnapshot.empty
         permissions.setStatus(.granted, for: .notifications)
@@ -273,6 +289,22 @@ private enum DailyCheckAuditTestError: Error, CustomStringConvertible {
 private struct FailingDailyCheckAuditLogger: AuditLogger {
     func record(_ event: AuditEvent) throws {
         throw DailyCheckAuditTestError.unavailable
+    }
+}
+
+private struct SecretFailingDailyCheckAuditLogger: AuditLogger {
+    let secret: String
+
+    func record(_ event: AuditEvent) throws {
+        throw SecretDailyCheckAuditTestError(secret: secret)
+    }
+}
+
+private struct SecretDailyCheckAuditTestError: Error, CustomStringConvertible {
+    let secret: String
+
+    var description: String {
+        "audit failed token=\(secret)"
     }
 }
 
