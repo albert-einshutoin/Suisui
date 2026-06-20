@@ -335,6 +335,66 @@ write_operator_priority_queue_line() {
   fi
 }
 
+manual_helper_relative_is_current() {
+  local relative_path="$1"
+  local expected_commit="$2"
+  local helper_path="$ROOT_DIR/$relative_path"
+
+  [[ -f "$helper_path" ]] &&
+    manual_helper_contains_current_source_commit "$helper_path" "$expected_commit"
+}
+
+voiceover_review_helpers_are_current() {
+  local expected_commit
+  expected_commit="$(source_commit)"
+
+  manual_helper_relative_is_current ".tmp/voiceover-review/accessibility-voiceover-pending-$expected_commit.md" "$expected_commit" &&
+    manual_helper_relative_is_current ".tmp/voiceover-review/launch.env" "$expected_commit" &&
+    manual_helper_relative_is_current ".tmp/voiceover-review/create-evidence-command.sh" "$expected_commit"
+}
+
+competitor_hands_on_helpers_are_current() {
+  local expected_commit
+  expected_commit="$(source_commit)"
+
+  manual_helper_relative_is_current ".tmp/competitor-hands-on/competitor-hands-on-pending-$expected_commit.md" "$expected_commit" &&
+    manual_helper_relative_is_current ".tmp/competitor-hands-on/competitor-benchmark-pending-$expected_commit.md" "$expected_commit" &&
+    manual_helper_relative_is_current ".tmp/competitor-hands-on/hands-on-worksheet.md" "$expected_commit" &&
+    manual_helper_relative_is_current ".tmp/competitor-hands-on/create-evidence-command.sh" "$expected_commit"
+}
+
+release_machine_helpers_are_current() {
+  local expected_commit
+  expected_commit="$(source_commit)"
+
+  manual_helper_relative_is_current ".tmp/release-machine/release-machine-worksheet.md" "$expected_commit" &&
+    manual_helper_relative_is_current ".tmp/release-machine/create-release-evidence-command.sh" "$expected_commit"
+}
+
+voiceover_priority_next_action() {
+  if voiceover_review_helpers_are_current; then
+    printf 'complete generated `.tmp/voiceover-review/create-evidence-command.sh`, run its validate-only path first, then rerun readiness.'
+  else
+    printf 'run `./script/prepare_release_manual_helpers.sh`, complete `.tmp/voiceover-review/create-evidence-command.sh`, then rerun readiness.'
+  fi
+}
+
+competitor_priority_next_action() {
+  if competitor_hands_on_helpers_are_current; then
+    printf 'fill generated `.tmp/competitor-hands-on/create-evidence-command.sh` after the 2-4h pass, run its validate-only path first, then rerun readiness.'
+  else
+    printf 'run `./script/prepare_release_manual_helpers.sh`, fill `.tmp/competitor-hands-on/create-evidence-command.sh`, then rerun readiness.'
+  fi
+}
+
+release_machine_priority_next_action() {
+  if release_machine_helpers_are_current; then
+    printf 'complete generated `.tmp/release-machine/create-release-evidence-command.sh` after signing/notarization/Sparkle/Gatekeeper checks, run its validate-only path first, then rerun readiness.'
+  else
+    printf 'run `./script/prepare_release_machine_evidence.sh`, complete signing/notarization/Sparkle/Gatekeeper evidence, then rerun readiness.'
+  fi
+}
+
 write_operator_priority_queue() {
   local voiceover_count
   local competitor_count
@@ -354,15 +414,15 @@ write_operator_priority_queue() {
   write_operator_priority_queue_line \
     "VoiceOver manual pass" \
     "$voiceover_count" \
-    "run \`./script/prepare_release_manual_helpers.sh\`, complete \`.tmp/voiceover-review/create-evidence-command.sh\`, then rerun readiness."
+    "$(voiceover_priority_next_action)"
   write_operator_priority_queue_line \
     "Competitor hands-on pass" \
     "$competitor_count" \
-    "run \`./script/prepare_release_manual_helpers.sh\`, fill \`.tmp/competitor-hands-on/create-evidence-command.sh\`, then rerun readiness."
+    "$(competitor_priority_next_action)"
   write_operator_priority_queue_line \
     "Release-machine runbook" \
     "$release_machine_count" \
-    "run \`./script/prepare_release_machine_evidence.sh\`, complete signing/notarization/Sparkle/Gatekeeper evidence, then rerun readiness." \
+    "$(release_machine_priority_next_action)" \
     "covers ${release_environment_item_count} release environment blocker item(s)"
 
   if [[ "$phase_count" -gt 0 ]]; then
