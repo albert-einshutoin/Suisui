@@ -1064,6 +1064,8 @@ write_release_actions() {
     printf "## Manual Evidence Source Hygiene\n"
     printf -- "- Direct manual evidence scripts enforce the same clean tracked source tree guard before writing passed evidence.\n"
     printf -- "- This includes \`./script/create_voiceover_evidence.sh --passed\`, \`./script/create_competitor_hands_on_evidence.sh --passed\`, and \`./script/create_release_evidence.sh\`.\n"
+    printf -- "- Generated manual/release command files must fail validation until every placeholder is replaced.\n"
+    printf -- "- A passing \`--validate-only\` run only means the command is ready to write evidence; it does not mean the manual pass is complete.\n"
     printf -- "- Do not bypass the generated command files to work around a dirty tree. Commit or revert tracked source changes, regenerate the candidate/worksheet command, then record evidence for the current release candidate.\n\n"
 
     write_manual_helper_freshness_actions
