@@ -244,11 +244,24 @@ Use the generator so pending evidence or a review worksheet cannot be mistaken f
 
 Running the pending generator also writes `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/create-evidence-command.sh`. Fill the worksheet during the hands-on pass, then use that generated command after the pass so the final evidence keeps the same output paths and required fields. Replace every placeholder in that generated command with concrete observations before running it; the script rejects the generated placeholders if they are not edited.
 The generated competitor hands-on command requires a clean tracked source tree, pins the source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit. Rerun `./script/create_competitor_hands_on_evidence.sh --pending` after any source commit changes so the worksheet, evidence file, benchmark output, and release candidate stay aligned.
+Run the generated competitor `--validate-only` command first; it performs the same passed-evidence validation without writing `docs/release/evidence/competitor-hands-on.md` or `docs/product/competitor-benchmark.md`. Only run the generated `--passed` command after validation succeeds and the real 2-4 hour hands-on pass is complete.
 
 Each competitor note and Ship / Defer / Reject delta must identify what was actually observed or decided during the hands-on pass. Boilerplate notes such as `Verified.`, `Passed.`, `OK`, `No issues`, or unedited `Concrete ... observation from the hands-on pass.` examples are rejected by both the generator and `release_readiness_report.sh`.
 
 ```bash
 ./script/create_competitor_hands_on_evidence.sh --pending
+./script/create_competitor_hands_on_evidence.sh --validate-only \
+  --checked-by "Reviewer Name" \
+  --environment "macOS/browser versions, competitor app/account tiers, and whether any paid trial was used" \
+  --notion-note "Concrete Notion observation from the hands-on pass." \
+  --todoist-note "Concrete Todoist observation from the hands-on pass." \
+  --linear-note "Concrete Linear observation from the hands-on pass." \
+  --motion-note "Concrete Motion observation from the hands-on pass." \
+  --ship "SoloPM public-alpha behavior to ship based on the benchmark." \
+  --defer "Behavior to defer until stronger reliability or demand evidence exists." \
+  --reject "Behavior to keep out of public alpha scope." \
+  --benchmark-output docs/product/competitor-benchmark.md \
+  --confirm-manual-hands-on
 ./script/create_competitor_hands_on_evidence.sh --passed \
   --checked-by "Reviewer Name" \
   --environment "macOS/browser versions, competitor app/account tiers, and whether any paid trial was used" \

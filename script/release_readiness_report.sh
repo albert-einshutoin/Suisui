@@ -950,6 +950,7 @@ write_release_actions() {
     printf -- "- Run the pending generator first if you want a review worksheet at \`.tmp/competitor-hands-on/hands-on-worksheet.md\` and a fill-in command at \`.tmp/competitor-hands-on/create-evidence-command.sh\`.\n"
     printf -- "- For this action summary, the expected pending evidence path is \`.tmp/competitor-hands-on/competitor-hands-on-pending-%s.md\`.\n" "$(source_commit)"
     printf -- "- The generated competitor hands-on evidence command is pinned to a clean tracked source tree and the source commit it was created for. Rerun \`./script/create_competitor_hands_on_evidence.sh --pending\` after source changes instead of reusing an older command.\n"
+    printf -- "- Run the generated \`--validate-only\` command first; it performs the same passed-evidence validation without writing \`docs/release/evidence/competitor-hands-on.md\` or \`docs/product/competitor-benchmark.md\`.\n"
     printf -- "- Replace every placeholder below with concrete observations and Ship / Defer / Reject decisions before running it.\n\n"
     write_competitor_hands_on_evidence_command
     printf "\n"

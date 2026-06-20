@@ -3386,6 +3386,8 @@ final class ReleasePipelineTests: XCTestCase {
             .appendingPathComponent(".build/test-competitor-hands-on-passed.md")
         let benchmarkURL = packageRoot()
             .appendingPathComponent(".build/test-competitor-hands-on-benchmark.md")
+        let validateOnlyURL = packageRoot()
+            .appendingPathComponent(".build/test-competitor-hands-on-validate-only.md")
         let commandURL = packageRoot()
             .appendingPathComponent(".build/test-competitor-hands-on-command.sh")
         let worksheetURL = packageRoot()
@@ -3393,12 +3395,14 @@ final class ReleasePipelineTests: XCTestCase {
         try? FileManager.default.removeItem(at: pendingURL)
         try? FileManager.default.removeItem(at: passedURL)
         try? FileManager.default.removeItem(at: benchmarkURL)
+        try? FileManager.default.removeItem(at: validateOnlyURL)
         try? FileManager.default.removeItem(at: commandURL)
         try? FileManager.default.removeItem(at: worksheetURL)
         defer {
             try? FileManager.default.removeItem(at: pendingURL)
             try? FileManager.default.removeItem(at: passedURL)
             try? FileManager.default.removeItem(at: benchmarkURL)
+            try? FileManager.default.removeItem(at: validateOnlyURL)
             try? FileManager.default.removeItem(at: commandURL)
             try? FileManager.default.removeItem(at: worksheetURL)
         }
@@ -3453,6 +3457,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(generatedCommand.contains("TRACKED_SOURCE_STATUS=\"$(git status --porcelain --untracked-files=no)\""))
         XCTAssertTrue(generatedCommand.contains("competitor hands-on evidence command requires a clean tracked source tree"))
         XCTAssertTrue(generatedCommand.contains("competitor hands-on evidence command was generated for source commit"))
+        XCTAssertTrue(generatedCommand.contains("# Validate the filled competitor hands-on command before writing tracked evidence."))
+        XCTAssertTrue(generatedCommand.contains("./script/create_competitor_hands_on_evidence.sh --validate-only \\"))
         XCTAssertTrue(generatedCommand.contains("./script/create_competitor_hands_on_evidence.sh --passed \\"))
         XCTAssertTrue(generatedCommand.contains("--checked-by \"<reviewer name>\" \\"))
         XCTAssertTrue(generatedCommand.contains("--environment \"<macOS/browser versions, competitor app/account tiers, and paid trial details>\" \\"))
@@ -3465,8 +3471,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(generatedCommand.contains("--confirm-manual-hands-on"))
         let releaseChecklist = try readPackageFile("docs/release/checklist.md")
         XCTAssertTrue(releaseChecklist.contains("The generated competitor hands-on command requires a clean tracked source tree, pins the source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit."))
+        XCTAssertTrue(releaseChecklist.contains("Run the generated competitor `--validate-only` command first; it performs the same passed-evidence validation without writing `docs/release/evidence/competitor-hands-on.md` or `docs/product/competitor-benchmark.md`."))
         let phase11 = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
         XCTAssertTrue(phase11.contains("[x] `script/create_competitor_hands_on_evidence.sh --pending` pins `.tmp/competitor-hands-on/create-evidence-command.sh` to a clean tracked source tree and the source commit it was generated for"))
+        XCTAssertTrue(phase11.contains("[x] `script/create_competitor_hands_on_evidence.sh --validate-only` validates the filled manual command without writing tracked evidence or benchmark findings."))
         let generatedCommandResult = try runTool(["bash", commandURL.path])
         XCTAssertNotEqual(generatedCommandResult.exitCode, 0)
         XCTAssertTrue(
@@ -3745,6 +3753,54 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(generatedDecisionTemplateResult.exitCode, 0)
         XCTAssertTrue(generatedDecisionTemplateResult.output.contains("--reject must include concrete competitor hands-on details"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
+        let validateOnlyResult = try runScript(
+            "script/create_competitor_hands_on_evidence.sh",
+            arguments: [
+                "--validate-only",
+                "--checked-by", "SoloPM Product Reviewer",
+                "--check-date", "2026-06-19",
+                "--environment", "macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used",
+                "--notion-note", "Board setup was flexible but required manual schema decisions before task entry felt fast.",
+                "--todoist-note", "Quick Add made capture fast, but project context still needed review after entry.",
+                "--linear-note", "Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.",
+                "--motion-note", "Scheduling suggestions were useful only when the reason and deadline impact were visible.",
+                "--ship", "Keep fast local capture, board status movement, and right inspector as the public alpha loop.",
+                "--defer", "Natural-language dates and autonomous scheduling stay out until reliability evidence exists.",
+                "--reject", "Team cycles, initiatives, and external SaaS sync stay outside public alpha scope.",
+                "--output", validateOnlyURL.path,
+                "--benchmark-output", benchmarkURL.path,
+                "--confirm-manual-hands-on"
+            ]
+        )
+        XCTAssertEqual(validateOnlyResult.exitCode, 0, validateOnlyResult.output)
+        XCTAssertTrue(validateOnlyResult.output.contains("OK: competitor hands-on evidence command is valid for current source commit"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: validateOnlyURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: benchmarkURL.path))
+
+        let validateOnlyPlaceholderResult = try runScript(
+            "script/create_competitor_hands_on_evidence.sh",
+            arguments: [
+                "--validate-only",
+                "--checked-by", "<reviewer name>",
+                "--check-date", "2026-06-19",
+                "--environment", "macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used",
+                "--notion-note", "Board setup was flexible but required manual schema decisions before task entry felt fast.",
+                "--todoist-note", "Quick Add made capture fast, but project context still needed review after entry.",
+                "--linear-note", "Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.",
+                "--motion-note", "Scheduling suggestions were useful only when the reason and deadline impact were visible.",
+                "--ship", "Keep fast local capture, board status movement, and right inspector as the public alpha loop.",
+                "--defer", "Natural-language dates and autonomous scheduling stay out until reliability evidence exists.",
+                "--reject", "Team cycles, initiatives, and external SaaS sync stay outside public alpha scope.",
+                "--output", validateOnlyURL.path,
+                "--benchmark-output", benchmarkURL.path,
+                "--confirm-manual-hands-on"
+            ]
+        )
+        XCTAssertNotEqual(validateOnlyPlaceholderResult.exitCode, 0)
+        XCTAssertTrue(validateOnlyPlaceholderResult.output.contains("--checked-by must name the actual reviewer"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: validateOnlyURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: benchmarkURL.path))
 
         let passedResult = try runScript(
             "script/create_competitor_hands_on_evidence.sh",
