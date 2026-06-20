@@ -823,29 +823,37 @@ write_release_machine_runbook_command() {
   printf '%s\n' '```'
 }
 
-manual_helper_contains_current_source_commit() {
+manual_command_helper_is_pinned_to_current_source_commit() {
   local helper_path="$1"
   local expected_commit="$2"
 
   [[ -f "$helper_path" ]] || return 1
 
-  if grep -Fq "Source commit: \`$expected_commit\`" "$helper_path"; then
-    return 0
-  fi
-  if grep -Fq "Release candidate source commit: \`$expected_commit\`" "$helper_path"; then
-    return 0
-  fi
-  if grep -Fq "EXPECTED_SOURCE_COMMIT=$expected_commit" "$helper_path"; then
-    return 0
-  fi
-  if grep -Fq "EXPECTED_SOURCE_COMMIT=\"$expected_commit\"" "$helper_path"; then
-    return 0
-  fi
-  if grep -Fq "EXPECTED_SOURCE_COMMIT='$expected_commit'" "$helper_path"; then
-    return 0
-  fi
+  grep -Eq "^[[:space:]]*EXPECTED_SOURCE_COMMIT=(\"$expected_commit\"|'$expected_commit'|$expected_commit)[[:space:]]*$" "$helper_path"
+}
 
-  return 1
+manual_markdown_helper_contains_current_source_commit() {
+  local helper_path="$1"
+  local expected_commit="$2"
+
+  [[ -f "$helper_path" ]] || return 1
+
+  grep -Fxq -- "- Source commit: \`$expected_commit\`" "$helper_path" ||
+    grep -Fxq -- "- Release candidate source commit: \`$expected_commit\`" "$helper_path"
+}
+
+manual_helper_contains_current_source_commit() {
+  local helper_path="$1"
+  local expected_commit="$2"
+
+  case "$helper_path" in
+    *.sh)
+      manual_command_helper_is_pinned_to_current_source_commit "$helper_path" "$expected_commit"
+      ;;
+    *)
+      manual_markdown_helper_contains_current_source_commit "$helper_path" "$expected_commit"
+      ;;
+  esac
 }
 
 write_manual_helper_freshness_item() {
