@@ -126,6 +126,7 @@ write_voiceover_evidence_command() {
     printf '# Candidate database: %q\n' "$candidate_database_path"
     printf '# Candidate selected destination: %q\n' "project:$candidate_project_id"
     printf '%s\n' '# Replace every placeholder below with concrete observations from the manual VoiceOver pass before running.'
+    printf '%s\n' '# This command must fail if placeholders are not replaced.'
     printf '\n'
     printf 'REPO_ROOT=%q\n' "$ROOT_DIR"
     printf '%s\n' 'cd "$REPO_ROOT"'
