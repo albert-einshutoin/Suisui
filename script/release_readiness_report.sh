@@ -699,7 +699,7 @@ write_competitor_hands_on_evidence_command() {
   printf '%s\n' './script/create_competitor_hands_on_evidence.sh --pending'
   printf '%s\n' '```'
   printf '%s\n' ''
-  printf '%s\n' 'The pending command writes `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/create-evidence-command.sh`. Fill the worksheet during the hands-on pass, then edit that generated command, replace every placeholder with concrete observations, and run it. If you bypass the generated command file, validate first and write only after validation succeeds:'
+  printf '%s\n' 'The pending command writes `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/create-evidence-command.sh`; the manual helper wrapper also writes `.tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md` for benchmark findings and Ship/Defer/Reject capture. Fill the worksheet during the hands-on pass, then edit that generated command, replace every placeholder with concrete observations, and run it. If you bypass the generated command file, validate first and write only after validation succeeds:'
   printf '%s\n' ''
   printf '%s\n' '```bash'
   write_competitor_hands_on_evidence_invocation "--validate-only"
@@ -920,6 +920,11 @@ write_manual_helper_freshness_actions() {
     ".tmp/competitor-hands-on/competitor-hands-on-pending-$expected_commit.md" \
     "$expected_commit" || stale_or_missing=1
   write_manual_helper_freshness_item \
+    "Competitor benchmark pending worksheet" \
+    "is generated for" \
+    ".tmp/competitor-hands-on/competitor-benchmark-pending-$expected_commit.md" \
+    "$expected_commit" || stale_or_missing=1
+  write_manual_helper_freshness_item \
     "Competitor worksheet" \
     "is generated for" \
     ".tmp/competitor-hands-on/hands-on-worksheet.md" \
@@ -1058,7 +1063,8 @@ write_release_actions() {
 
     printf "## Competitor Hands-On\n"
     printf -- "- Complete the 2-4 hour Notion, Todoist, Linear, and Motion hands-on pass before release.\n"
-    printf -- "- Run the pending generator first if you want a review worksheet at \`.tmp/competitor-hands-on/hands-on-worksheet.md\` and a fill-in command at \`.tmp/competitor-hands-on/create-evidence-command.sh\`.\n"
+    printf -- "- Run \`./script/prepare_release_manual_helpers.sh\` first if you want current-commit pending helper files for review.\n"
+    printf -- "- The competitor helper files include \`.tmp/competitor-hands-on/hands-on-worksheet.md\`, \`.tmp/competitor-hands-on/competitor-benchmark-pending-%s.md\`, and \`.tmp/competitor-hands-on/create-evidence-command.sh\`.\n" "$(source_commit)"
     printf -- "- For this action summary, the expected pending evidence path is \`.tmp/competitor-hands-on/competitor-hands-on-pending-%s.md\`.\n" "$(source_commit)"
     printf -- "- The generated competitor hands-on evidence command is pinned to a clean tracked source tree and the source commit it was created for. Rerun \`./script/prepare_release_manual_helpers.sh\` after source changes instead of reusing an older command.\n"
     printf -- "- Run the generated \`--validate-only\` command first; it performs the same passed-evidence validation without writing \`docs/release/evidence/competitor-hands-on.md\` or \`docs/product/competitor-benchmark.md\`.\n"

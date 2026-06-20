@@ -26,7 +26,7 @@ usage() {
   printf '%s\n' "usage: $0 (--pending|--passed|--validate-only) [--output PATH] [--benchmark-output PATH] [--command-output PATH] [--worksheet-output PATH] [--checked-by NAME] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--environment TEXT] [--notion-note TEXT] [--todoist-note TEXT] [--linear-note TEXT] [--motion-note TEXT] [--ship TEXT] [--defer TEXT] [--reject TEXT] [--confirm-manual-hands-on]"
   printf '%s\n' ""
   printf '%s\n' "Use --pending to write safe pending evidence that release readiness will reject."
-  printf '%s\n' "Use --pending to also write a hands-on worksheet and fill-in command template for the later manual evidence pass."
+  printf '%s\n' "Use --pending to also write a hands-on worksheet, benchmark worksheet, and fill-in command template for the later manual evidence pass."
   printf '%s\n' "Use --passed only after a real Notion -> Todoist -> Linear -> Motion hands-on pass; it also writes the benchmark hands-on findings."
   printf '%s\n' "Use --validate-only to run the passed-evidence validation without writing evidence or benchmark findings."
 }
@@ -421,6 +421,46 @@ write_hands_on_worksheet() {
   } >"$WORKSHEET_FILE"
 }
 
+write_pending_benchmark() {
+  mkdir -p "$(dirname "$BENCHMARK_FILE")"
+
+  {
+    printf '%s\n' '# Competitor Benchmark Pending Worksheet'
+    printf '\n'
+    printf '%s\n' 'Status: pending'
+    printf '\n'
+    printf '%s\n' 'This file is not release evidence. This release candidate hands-on worksheet must be replaced by passed benchmark findings after the real 2-4 hour Notion/Todoist/Linear/Motion pass.'
+    printf '\n'
+    printf '%s\n' '## Candidate Metadata'
+    printf '\n'
+    printf -- '- Source commit: `%s`\n' "$SOURCE_COMMIT"
+    printf -- '- Evidence output: `%s`\n' "$OUTPUT_FILE"
+    printf -- '- Passed benchmark output: `%s`\n' "$BENCHMARK_FILE"
+    printf -- '- Worksheet: `%s`\n' "$WORKSHEET_FILE"
+    printf -- '- Passed command: `%s`\n' "$COMMAND_FILE"
+    printf -- '- Evidence source: `%s`\n' "$EVIDENCE_SOURCE"
+    printf '\n'
+    printf '%s\n' '## Hands-On Findings To Fill'
+    printf '\n'
+    printf '%s\n' '- [ ] Notion: record setup cost, board/task flow, artifact/context handling, and whether SoloPM should ship, defer, or reject the behavior.'
+    printf '%s\n' '- [ ] Todoist: record capture speed, date/priority/project handling, board/list switching, and whether SoloPM should ship, defer, or reject the behavior.'
+    printf '%s\n' '- [ ] Linear: record issue/project status movement, detail sidebar density, keyboard command flow, and whether SoloPM should ship, defer, or reject the behavior.'
+    printf '%s\n' '- [ ] Motion: record scheduling/risk surfaces, deadline edits, recommendation explanation, and whether SoloPM should ship, defer, or reject the behavior.'
+    printf '\n'
+    printf '%s\n' '## Ship / Defer / Reject To Fill'
+    printf '\n'
+    printf '%s\n' '- Ship:'
+    printf '%s\n' '- Defer:'
+    printf '%s\n' '- Reject:'
+    printf '\n'
+    printf '%s\n' '## Closeout'
+    printf '\n'
+    printf '%s\n' '1. Replace this pending worksheet with `script/create_competitor_hands_on_evidence.sh --passed --benchmark-output ...` output after the hands-on pass.'
+    printf '%s\n' '2. Do not copy this file into `docs/product/competitor-benchmark.md` as passed evidence.'
+    printf '%s\n' '3. Rerun `./script/release_readiness_report.sh`; pending, unchecked, or worksheet language must remain a blocker.'
+  } >"$BENCHMARK_FILE"
+}
+
 write_competitor_evidence_invocation() {
   local mode="$1"
 
@@ -547,12 +587,14 @@ if [[ "$EVIDENCE_STATUS" == "passed" ]]; then
 else
   write_pending_evidence
   write_hands_on_worksheet
+  write_pending_benchmark
   write_competitor_evidence_command "$COMMAND_FILE"
 fi
 
 printf 'Competitor hands-on evidence written: %s\n' "$OUTPUT_FILE"
 if [[ "$EVIDENCE_STATUS" == "pending" ]]; then
   printf 'Competitor hands-on worksheet written: %s\n' "$WORKSHEET_FILE"
+  printf 'Competitor benchmark pending worksheet written: %s\n' "$BENCHMARK_FILE"
   printf 'Competitor hands-on evidence command written: %s\n' "$COMMAND_FILE"
 fi
 if [[ "$EVIDENCE_STATUS" == "passed" ]]; then

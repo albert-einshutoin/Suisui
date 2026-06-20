@@ -243,6 +243,7 @@
 - [x] `script/create_competitor_hands_on_evidence.sh --pending` は `.tmp/competitor-hands-on/create-evidence-command.sh` を生成し、operatorがplaceholderを具体観測へ置換して同じoutput/benchmark pathでpassed証跡を作れる。
 - [x] `script/create_competitor_hands_on_evidence.sh --pending` pins `.tmp/competitor-hands-on/create-evidence-command.sh` to a clean tracked source tree and the source commit it was generated for, and the generated command exits before writing evidence if the release candidate tree is dirty or the commit has changed.
 - [x] `script/create_competitor_hands_on_evidence.sh --pending` は `.tmp/competitor-hands-on/hands-on-worksheet.md` も生成し、2-4時間の手動レビュー中にcontext、クリックパス、測定、Ship/Defer/Rejectを取り漏らさない。
+- [x] `script/create_competitor_hands_on_evidence.sh --pending --benchmark-output .tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md` は競合別hands-on findingsとShip/Defer/Rejectのpending benchmark worksheetも生成し、final benchmark更新漏れを防ぐ。
 - [x] `script/create_competitor_hands_on_evidence.sh --validate-only` validates the filled manual command without writing tracked evidence or benchmark findings.
 - [x] action summary は VoiceOver の `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` preview と `.tmp/voiceover-review/create-evidence-command.sh` を案内し、operatorがtracked evidenceを汚さずrelease候補contextを確認できるようにする。
 - [x] action summary は VoiceOver / competitor hands-on の current `Source commit` に対応する pending evidence path も併記し、operatorが実ファイル名を推測しなくてよい。

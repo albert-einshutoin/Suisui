@@ -97,6 +97,8 @@ printf 'Manual release helpers prepared for current source commit: %s\n' "$SOURC
 printf -- '- VoiceOver pending preview: `%s`\n' "$VOICEOVER_PENDING_RELATIVE"
 printf -- '- VoiceOver evidence command: `%s`\n' "$VOICEOVER_COMMAND_RELATIVE"
 printf -- '- Competitor pending evidence: `%s`\n' "$COMPETITOR_PENDING_RELATIVE"
+printf -- '- Competitor benchmark pending worksheet: `%s`\n' "$COMPETITOR_BENCHMARK_PENDING_RELATIVE"
+printf -- '- Competitor worksheet: `.tmp/competitor-hands-on/hands-on-worksheet.md`\n'
 printf -- '- Competitor evidence command: `%s`\n' "$COMPETITOR_COMMAND_RELATIVE"
 printf -- '- Release machine worksheet: `%s`\n' "$RELEASE_MACHINE_WORKSHEET_RELATIVE"
 printf -- '- Release evidence command: `%s`\n' "$RELEASE_MACHINE_COMMAND_RELATIVE"

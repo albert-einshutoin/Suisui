@@ -2763,6 +2763,12 @@ final class ReleasePipelineTests: XCTestCase {
                 atomically: true,
                 encoding: .utf8
             )
+        try "- Source commit: `\(commit)`\n"
+            .write(
+                to: competitorDirectory.appendingPathComponent("competitor-benchmark-pending-\(commit).md"),
+                atomically: true,
+                encoding: .utf8
+            )
         try "- Source commit: `oldcafe`\n"
             .write(
                 to: competitorDirectory.appendingPathComponent("competitor-hands-on-pending-oldcafe.md"),
@@ -2797,6 +2803,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actions.contains("- [x] VoiceOver pending preview is generated for current source commit: `.tmp/voiceover-review/accessibility-voiceover-pending-\(commit).md`"))
         XCTAssertTrue(actions.contains("- [x] VoiceOver evidence command is pinned to current source commit: `.tmp/voiceover-review/create-evidence-command.sh`"))
         XCTAssertTrue(actions.contains("- [x] Competitor pending evidence is generated for current source commit: `.tmp/competitor-hands-on/competitor-hands-on-pending-\(commit).md`"))
+        XCTAssertTrue(actions.contains("- [x] Competitor benchmark pending worksheet is generated for current source commit: `.tmp/competitor-hands-on/competitor-benchmark-pending-\(commit).md`"))
         XCTAssertTrue(actions.contains("- [x] Competitor worksheet is generated for current source commit: `.tmp/competitor-hands-on/hands-on-worksheet.md`"))
         XCTAssertTrue(actions.contains("- [x] Competitor evidence command is pinned to current source commit: `.tmp/competitor-hands-on/create-evidence-command.sh`"))
         XCTAssertTrue(actions.contains("- [x] Release machine worksheet is generated for current source commit: `.tmp/release-machine/release-machine-worksheet.md`"))
@@ -2991,6 +2998,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("Manual release helpers prepared for current source commit: \(currentShortCommit)"))
         XCTAssertTrue(result.output.contains(".tmp/voiceover-review/accessibility-voiceover-pending-\(currentShortCommit).md"))
         XCTAssertTrue(result.output.contains(".tmp/competitor-hands-on/competitor-hands-on-pending-\(currentShortCommit).md"))
+        XCTAssertTrue(result.output.contains(".tmp/competitor-hands-on/competitor-benchmark-pending-\(currentShortCommit).md"))
+        XCTAssertTrue(result.output.contains(".tmp/competitor-hands-on/hands-on-worksheet.md"))
         XCTAssertTrue(result.output.contains(".tmp/release-machine/create-release-evidence-command.sh"))
         XCTAssertTrue(voiceOverArgs.contains("--no-launch --skip-build"))
         XCTAssertTrue(competitorArgs.contains("--pending --output .tmp/competitor-hands-on/competitor-hands-on-pending-\(currentShortCommit).md --benchmark-output .tmp/competitor-hands-on/competitor-benchmark-pending-\(currentShortCommit).md"))
@@ -3620,6 +3629,8 @@ final class ReleasePipelineTests: XCTestCase {
             .appendingPathComponent(".build/test-competitor-hands-on-pending.md")
         let passedURL = packageRoot()
             .appendingPathComponent(".build/test-competitor-hands-on-passed.md")
+        let pendingBenchmarkURL = packageRoot()
+            .appendingPathComponent(".build/test-competitor-hands-on-benchmark-pending.md")
         let benchmarkURL = packageRoot()
             .appendingPathComponent(".build/test-competitor-hands-on-benchmark.md")
         let validateOnlyURL = packageRoot()
@@ -3628,19 +3639,29 @@ final class ReleasePipelineTests: XCTestCase {
             .appendingPathComponent(".build/test-competitor-hands-on-command.sh")
         let worksheetURL = packageRoot()
             .appendingPathComponent(".build/test-competitor-hands-on-worksheet.md")
-        try? FileManager.default.removeItem(at: pendingURL)
-        try? FileManager.default.removeItem(at: passedURL)
-        try? FileManager.default.removeItem(at: benchmarkURL)
-        try? FileManager.default.removeItem(at: validateOnlyURL)
-        try? FileManager.default.removeItem(at: commandURL)
-        try? FileManager.default.removeItem(at: worksheetURL)
+        for artifactURL in [
+            pendingURL,
+            passedURL,
+            pendingBenchmarkURL,
+            benchmarkURL,
+            validateOnlyURL,
+            commandURL,
+            worksheetURL
+        ] {
+            try removeItemIfPresent(at: artifactURL)
+        }
         defer {
-            try? FileManager.default.removeItem(at: pendingURL)
-            try? FileManager.default.removeItem(at: passedURL)
-            try? FileManager.default.removeItem(at: benchmarkURL)
-            try? FileManager.default.removeItem(at: validateOnlyURL)
-            try? FileManager.default.removeItem(at: commandURL)
-            try? FileManager.default.removeItem(at: worksheetURL)
+            for artifactURL in [
+                pendingURL,
+                passedURL,
+                pendingBenchmarkURL,
+                benchmarkURL,
+                validateOnlyURL,
+                commandURL,
+                worksheetURL
+            ] {
+                try? removeItemIfPresent(at: artifactURL)
+            }
         }
         let currentShortCommit = String(try currentGitCommit().prefix(7))
 
@@ -3649,7 +3670,7 @@ final class ReleasePipelineTests: XCTestCase {
             arguments: [
                 "--pending",
                 "--output", pendingURL.path,
-                "--benchmark-output", benchmarkURL.path,
+                "--benchmark-output", pendingBenchmarkURL.path,
                 "--command-output", commandURL.path,
                 "--worksheet-output", worksheetURL.path
             ]
@@ -3666,6 +3687,20 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(pendingEvidence.contains("- Environment:"))
         XCTAssertTrue(pendingEvidence.contains("- Source commit: `\(currentShortCommit)`"))
         XCTAssertTrue(pendingEvidence.contains("Do not set `Status: passed` until every competitor path below is verified"))
+        let pendingBenchmark = try String(contentsOf: pendingBenchmarkURL, encoding: .utf8)
+        XCTAssertTrue(pendingBenchmark.contains("# Competitor Benchmark Pending Worksheet"))
+        XCTAssertTrue(pendingBenchmark.contains("Status: pending"))
+        XCTAssertTrue(pendingBenchmark.contains("This file is not release evidence."))
+        XCTAssertTrue(pendingBenchmark.contains("Source commit: `\(currentShortCommit)`"))
+        XCTAssertTrue(pendingBenchmark.contains("Evidence output: `\(pendingURL.path)`"))
+        XCTAssertTrue(pendingBenchmark.contains("Passed benchmark output: `\(pendingBenchmarkURL.path)`"))
+        XCTAssertTrue(pendingBenchmark.contains("## Hands-On Findings To Fill"))
+        XCTAssertTrue(pendingBenchmark.contains("- [ ] Notion:"))
+        XCTAssertTrue(pendingBenchmark.contains("- [ ] Todoist:"))
+        XCTAssertTrue(pendingBenchmark.contains("- [ ] Linear:"))
+        XCTAssertTrue(pendingBenchmark.contains("- [ ] Motion:"))
+        XCTAssertTrue(pendingBenchmark.contains("## Ship / Defer / Reject To Fill"))
+        XCTAssertFalse(pendingBenchmark.contains("Status: passed"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: benchmarkURL.path))
         let worksheet = try String(contentsOf: worksheetURL, encoding: .utf8)
         XCTAssertTrue(worksheet.contains("# Competitor Hands-On Worksheet"))
@@ -3673,6 +3708,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(worksheet.contains("This worksheet is not release evidence."))
         XCTAssertTrue(worksheet.contains("- Release candidate source commit: `\(currentShortCommit)`"))
         XCTAssertTrue(worksheet.contains("- Output evidence: `\(pendingURL.path)`"))
+        XCTAssertTrue(worksheet.contains("- Benchmark output: `\(pendingBenchmarkURL.path)`"))
         XCTAssertTrue(worksheet.contains("- Passed command: `\(commandURL.path)`"))
         XCTAssertTrue(worksheet.contains("## Review Context To Fill"))
         XCTAssertTrue(worksheet.contains("## Competitor Paths"))
@@ -3703,13 +3739,15 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(generatedCommand.contains("--linear-note \"<hands-on Linear project, issue detail, keyboard command, and triage observation>\" \\"))
         XCTAssertTrue(generatedCommand.contains("--motion-note \"<hands-on Motion scheduling, risk, deadline change, and recommendation explanation observation>\" \\"))
         XCTAssertTrue(generatedCommand.contains("--output \(pendingURL.path) \\"))
-        XCTAssertTrue(generatedCommand.contains("--benchmark-output \(benchmarkURL.path) \\"))
+        XCTAssertTrue(generatedCommand.contains("--benchmark-output \(pendingBenchmarkURL.path) \\"))
         XCTAssertTrue(generatedCommand.contains("--confirm-manual-hands-on"))
         let releaseChecklist = try readPackageFile("docs/release/checklist.md")
+        XCTAssertTrue(releaseChecklist.contains("Running the pending generator also writes `.tmp/competitor-hands-on/hands-on-worksheet.md`, `.tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md`, and `.tmp/competitor-hands-on/create-evidence-command.sh`."))
         XCTAssertTrue(releaseChecklist.contains("The generated competitor hands-on command requires a clean tracked source tree, pins the source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit."))
         XCTAssertTrue(releaseChecklist.contains("Run the generated competitor `--validate-only` command first; it performs the same passed-evidence validation without writing `docs/release/evidence/competitor-hands-on.md` or `docs/product/competitor-benchmark.md`."))
         let phase11 = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
         XCTAssertTrue(phase11.contains("[x] `script/create_competitor_hands_on_evidence.sh --pending` pins `.tmp/competitor-hands-on/create-evidence-command.sh` to a clean tracked source tree and the source commit it was generated for"))
+        XCTAssertTrue(phase11.contains("[x] `script/create_competitor_hands_on_evidence.sh --pending --benchmark-output .tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md` は競合別hands-on findingsとShip/Defer/Rejectのpending benchmark worksheetも生成し、final benchmark更新漏れを防ぐ。"))
         XCTAssertTrue(phase11.contains("[x] `script/create_competitor_hands_on_evidence.sh --validate-only` validates the filled manual command without writing tracked evidence or benchmark findings."))
         let generatedCommandResult = try runTool(["bash", commandURL.path])
         XCTAssertNotEqual(generatedCommandResult.exitCode, 0)
@@ -5309,8 +5347,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("--inline-task-composer-note \"<VoiceOver observation for title/detail/priority/due create flow>\""))
         XCTAssertTrue(script.contains("--no-unlabeled-crud-note \"<VoiceOver observation proving primary CRUD controls have labels or help>\""))
         XCTAssertTrue(script.contains("## Competitor Hands-On"))
-        XCTAssertTrue(script.contains("Run the pending generator first if you want a review worksheet at \\`.tmp/competitor-hands-on/hands-on-worksheet.md\\` and a fill-in command at \\`.tmp/competitor-hands-on/create-evidence-command.sh\\`."))
+        XCTAssertTrue(script.contains("Run \\`./script/prepare_release_manual_helpers.sh\\` first if you want current-commit pending helper files for review."))
+        XCTAssertTrue(script.contains("The competitor helper files include \\`.tmp/competitor-hands-on/hands-on-worksheet.md\\`, \\`.tmp/competitor-hands-on/competitor-benchmark-pending-%s.md\\`, and \\`.tmp/competitor-hands-on/create-evidence-command.sh\\`."))
         XCTAssertTrue(script.contains(".tmp/competitor-hands-on/hands-on-worksheet.md"))
+        XCTAssertTrue(script.contains(".tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md"))
         XCTAssertTrue(script.contains("./script/create_competitor_hands_on_evidence.sh --pending"))
         XCTAssertTrue(script.contains(".tmp/competitor-hands-on/create-evidence-command.sh"))
         XCTAssertTrue(script.contains("For this action summary, the expected pending evidence path is \\`.tmp/competitor-hands-on/competitor-hands-on-pending-%s.md\\`."))
@@ -5655,6 +5695,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains(".tmp/competitor-hands-on/hands-on-worksheet.md"))
         XCTAssertTrue(actionSummary.contains(".tmp/competitor-hands-on/create-evidence-command.sh"))
         XCTAssertTrue(actionSummary.contains(".tmp/competitor-hands-on/competitor-hands-on-pending-\(sourceCommit).md"))
+        XCTAssertTrue(actionSummary.contains(".tmp/competitor-hands-on/competitor-benchmark-pending-\(sourceCommit).md"))
         XCTAssertTrue(actionSummary.contains("```bash\n./script/create_competitor_hands_on_evidence.sh --validate-only \\"))
         XCTAssertTrue(actionSummary.contains("./script/create_competitor_hands_on_evidence.sh --passed \\"))
         let competitorSectionStart = try XCTUnwrap(actionSummary.range(of: "\n## Competitor Hands-On\n"))
@@ -7789,6 +7830,13 @@ final class ReleasePipelineTests: XCTestCase {
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func removeItemIfPresent(at url: URL) throws {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return
+        }
+        try FileManager.default.removeItem(at: url)
     }
 
     private var completeManualReleaseEvidenceNote: String {
