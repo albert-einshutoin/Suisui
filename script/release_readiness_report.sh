@@ -439,23 +439,23 @@ release_machine_helpers_are_current() {
 
 voiceover_priority_next_action() {
   if voiceover_review_helpers_are_current; then
-    printf 'complete generated `.tmp/voiceover-review/create-evidence-command.sh`, run its validate-only path first, then rerun readiness.'
+    printf 'fill `.tmp/voiceover-review/voiceover-worksheet.md` during the manual pass, complete generated `.tmp/voiceover-review/create-evidence-command.sh`, run its validate-only path first, then rerun readiness.'
   else
-    printf 'run `./script/prepare_release_manual_helpers.sh`, complete `.tmp/voiceover-review/create-evidence-command.sh`, then rerun readiness.'
+    printf 'run `./script/prepare_release_manual_helpers.sh`, fill `.tmp/voiceover-review/voiceover-worksheet.md`, complete `.tmp/voiceover-review/create-evidence-command.sh`, then rerun readiness.'
   fi
 }
 
 competitor_priority_next_action() {
   if competitor_hands_on_helpers_are_current; then
-    printf 'fill generated `.tmp/competitor-hands-on/create-evidence-command.sh` after the 2-4h pass, run its validate-only path first, then rerun readiness.'
+    printf 'fill `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/competitor-benchmark-pending-%s.md` during the 2-4h pass, complete generated `.tmp/competitor-hands-on/create-evidence-command.sh`, run its validate-only path first, then rerun readiness.' "$(source_commit)"
   else
-    printf 'run `./script/prepare_release_manual_helpers.sh`, fill `.tmp/competitor-hands-on/create-evidence-command.sh`, then rerun readiness.'
+    printf 'run `./script/prepare_release_manual_helpers.sh`, fill `.tmp/competitor-hands-on/hands-on-worksheet.md`, complete `.tmp/competitor-hands-on/create-evidence-command.sh`, then rerun readiness.'
   fi
 }
 
 release_machine_priority_next_action() {
   if release_machine_helpers_are_current; then
-    printf 'complete generated `.tmp/release-machine/create-release-evidence-command.sh` after signing/notarization/Sparkle/Gatekeeper checks, run its validate-only path first, then rerun readiness.'
+    printf 'fill `.tmp/release-machine/release-machine-worksheet.md` after signing/notarization/Sparkle/Gatekeeper checks, complete generated `.tmp/release-machine/create-release-evidence-command.sh`, run its validate-only path first, then rerun readiness.'
   else
     printf 'run `./script/prepare_release_machine_evidence.sh`, complete signing/notarization/Sparkle/Gatekeeper evidence, then rerun readiness.'
   fi
@@ -495,7 +495,7 @@ write_operator_priority_queue() {
     if [[ "$phase_manual_item_count" -gt 0 ]]; then
       printf -- "- [ ] Phase checklist routing tracks %d unchecked manual/release phase item(s); linked evidence blockers control release readiness while implementation or unmapped checklist items stay in Phase Checklist.\n" "$phase_manual_item_count"
       if phase_manual_unchecked_has_login_item_gate; then
-        printf -- "- [ ] Login Item manual check is part of Phase checklist routing. Next: use the signed release app, complete \`--login-item-toggle\` in \`.tmp/release-machine/create-release-evidence-command.sh\`, then rerun readiness.\n"
+        printf -- "- [ ] Login Item manual check is part of Phase checklist routing. Next: use the signed release app, complete \`--login-item-toggle\` in \`.tmp/release-machine/release-machine-worksheet.md\` and \`.tmp/release-machine/create-release-evidence-command.sh\`, then rerun readiness.\n"
       fi
     else
       printf -- "- [ ] Phase checklist has active implementation or unmapped manual review blocker group(s). Next: complete the listed Phase Checklist items, then rerun readiness.\n"
@@ -503,7 +503,7 @@ write_operator_priority_queue() {
   elif [[ "$phase_manual_item_count" -gt 0 ]]; then
     printf -- "- [x] Phase checklist manual gates are routed to evidence lanes; linked evidence blockers control release readiness.\n"
     if phase_manual_unchecked_has_login_item_gate; then
-      printf -- "- [ ] Login Item manual check is part of Phase checklist routing. Next: use the signed release app, complete \`--login-item-toggle\` in \`.tmp/release-machine/create-release-evidence-command.sh\`, then rerun readiness.\n"
+      printf -- "- [ ] Login Item manual check is part of Phase checklist routing. Next: use the signed release app, complete \`--login-item-toggle\` in \`.tmp/release-machine/release-machine-worksheet.md\` and \`.tmp/release-machine/create-release-evidence-command.sh\`, then rerun readiness.\n"
     fi
   else
     printf -- "- [x] Phase checklist has no active blocker groups in this report run.\n"

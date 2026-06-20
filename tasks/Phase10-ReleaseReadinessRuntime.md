@@ -1301,7 +1301,7 @@
 - [x] action summary は `Status`、UTC生成時刻、source commit、blocker group数、Automated Proof Gates、Manual VoiceOver、Competitor Hands-On、Release Machine の次アクションを含む。
 - [x] action summary は `Source commit` と tracked source tree の clean / dirty / unavailable 状態を併記する。
 - [x] action summary は今回の実行で発生した具体blockerを `Current Blocker Groups` のチェックリストとして列挙する。
-- [x] action summary は `Operator Priority Queue` を `Current Blocker Groups` より前に出し、手動VoiceOver、競合hands-on、release-machineのどれを先に実施すれば何件のblockerを減らせるか、release-machine内の環境blocker件数、Phase routing対象の手動項目数を示す。
+- [x] action summary は `Operator Priority Queue` を `Current Blocker Groups` より前に出し、手動VoiceOver、競合hands-on、release-machineのどれを先に実施すれば何件のblockerを減らせるか、release-machine内の環境blocker件数、Phase routing対象の手動項目数、worksheet -> generated command の順序を示す。
 - [x] action summary は `Blocker Buckets` で Automated Proof Gates / Manual VoiceOver / Competitor Hands-On / Release Machine / Phase Checklist / Other の残件数を分類する。
 - [x] action summary は `Release Environment Blockers` に `verify_release_environment.sh` の `BLOCKER:` 明細を相対パス化して列挙し、機密っぽい値を転記しない。
 - [x] action summary は release environment blocker を Signing Configuration / Notarization / Sparkle / Appcast / Gatekeeper / Release Evidence / Source Hygiene / Local Inspection に分類し、release-machine作業の順序を読み取れるようにする。
@@ -1318,7 +1318,7 @@
 - [x] action summary は `Phase Checklist Items` に未チェックPhase項目のファイル名・行番号・本文を相対パスで列挙する。
 - [x] action summary は未チェックの手動Phase項目を Manual VoiceOver / Competitor Hands-On / Release Machine / Login Item Manual Check / Manual Review に分類し、どの証跡経路で解消するかを示す。
 - [x] action summary は Login Item Manual Check が残る場合、`create_release_evidence.sh` の `--login-item-toggle`、manual environment、review note を含む実行例を出し、単独checkboxではなく release artifact に紐づく evidence として扱う。
-- [x] action summary は Login Item manual gate が残る場合、Operator Priority Queue に `--login-item-toggle` 付き release evidence command への導線を独立表示する。
+- [x] action summary は Login Item manual gate が残る場合、Operator Priority Queue に release-machine worksheet と `--login-item-toggle` 付き release evidence command への導線を独立表示する。
 - [x] action summary は Release Machine blocker が残る場合、署名、notarization、package、appcast、release evidence、final preflight の順序付きコマンドを出す。
 - [x] `script/prepare_release_machine_evidence.sh` は `.tmp/release-machine/release-machine-worksheet.md` と `.tmp/release-machine/create-release-evidence-command.sh` を生成し、signed/notarized/stapled artifact上の手動release確認を証跡JSON作成前に整理できる。
 - [x] `script/prepare_release_machine_evidence.sh` pins `.tmp/release-machine/create-release-evidence-command.sh` to a clean tracked source tree and the source commit it was generated for, and the generated command exits before writing evidence if the release candidate tree is dirty or the commit has changed.
