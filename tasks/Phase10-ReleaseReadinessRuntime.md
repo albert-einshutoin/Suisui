@@ -1312,6 +1312,7 @@
 - [x] `script/create_release_evidence.sh --validate-only` validates the filled release-machine command without writing `packaging/release-evidence.json`.
 - [x] Direct manual evidence scripts reject dirty tracked source trees before writing passed VoiceOver, competitor, or release-machine evidence.
 - [x] action summary は release evidence ではなく、VoiceOver / competitor hands-on / signing / notarization / Sparkle / Gatekeeper を完了扱いにしないことを明記する。
+- [x] action summary の VoiceOver / competitor hands-on の直接実行例は `--validate-only` を `--passed` より先に表示し、manual evidence を即書き込みしない導線にする。
 - [x] `script/prepare_release_manual_helpers.sh` は current source commit の VoiceOver pending preview / command、competitor worksheet / command、release-machine worksheet / command を一括再生成し、passed evidence を書かない。
 - [x] action summary の Manual Review Helper Freshness は stale/missing helper を見つけた場合、個別コマンドの羅列ではなく `./script/prepare_release_manual_helpers.sh` を次アクションとして提示する。
 - [x] `ReleasePipelineTests` と `docs/release/checklist.md` で operator action summary の生成導線を固定する。

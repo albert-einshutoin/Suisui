@@ -639,9 +639,10 @@ write_automated_proof_gate_actions() {
   printf "\n"
 }
 
-write_voiceover_manual_evidence_command() {
-  printf '%s\n' '```bash'
-  printf '%s\n' './script/create_voiceover_evidence.sh --passed \'
+write_voiceover_manual_evidence_invocation() {
+  local mode="$1"
+
+  printf './script/create_voiceover_evidence.sh %s \\\n' "$mode"
   printf '%s\n' '  --checked-by "<reviewer name>" \'
   printf '%s\n' '  --accessibility-environment "<macOS version, hardware, VoiceOver input method, clean user/install context>" \'
   printf '%s\n' '  --capture-runtime-ax-smoke \'
@@ -656,6 +657,13 @@ write_voiceover_manual_evidence_command() {
   printf '%s\n' '  --no-keyboard-trap-note "<VoiceOver observation proving focus leaves sidebar, board, inspector, and inline confirmation panels>" \'
   printf '%s\n' '  --no-unlabeled-crud-note "<VoiceOver observation proving primary CRUD controls have labels or help>" \'
   printf '%s\n' '  --confirm-manual-voiceover-pass'
+}
+
+write_voiceover_manual_evidence_command() {
+  printf '%s\n' '```bash'
+  write_voiceover_manual_evidence_invocation "--validate-only"
+  printf '%s\n' ''
+  write_voiceover_manual_evidence_invocation "--passed"
   printf '%s\n' '```'
 }
 
@@ -666,15 +674,10 @@ write_voiceover_review_candidate_command() {
   printf '%s\n' '```'
 }
 
-write_competitor_hands_on_evidence_command() {
-  printf '%s\n' '```bash'
-  printf '%s\n' './script/create_competitor_hands_on_evidence.sh --pending'
-  printf '%s\n' '```'
-  printf '%s\n' ''
-  printf '%s\n' 'The pending command writes `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/create-evidence-command.sh`. Fill the worksheet during the hands-on pass, then edit that generated command, replace every placeholder with concrete observations, and run it. The explicit passed form is:'
-  printf '%s\n' ''
-  printf '%s\n' '```bash'
-  printf '%s\n' './script/create_competitor_hands_on_evidence.sh --passed \'
+write_competitor_hands_on_evidence_invocation() {
+  local mode="$1"
+
+  printf './script/create_competitor_hands_on_evidence.sh %s \\\n' "$mode"
   printf '%s\n' '  --checked-by "<reviewer name>" \'
   printf '%s\n' '  --environment "<macOS/browser versions, competitor account tiers, paid trial status>" \'
   printf '%s\n' '  --notion-note "<hands-on Notion project database, board, task, and artifact observation>" \'
@@ -686,6 +689,19 @@ write_competitor_hands_on_evidence_command() {
   printf '%s\n' '  --reject "<behaviors deliberately kept out of public alpha scope>" \'
   printf '%s\n' '  --benchmark-output docs/product/competitor-benchmark.md \'
   printf '%s\n' '  --confirm-manual-hands-on'
+}
+
+write_competitor_hands_on_evidence_command() {
+  printf '%s\n' '```bash'
+  printf '%s\n' './script/create_competitor_hands_on_evidence.sh --pending'
+  printf '%s\n' '```'
+  printf '%s\n' ''
+  printf '%s\n' 'The pending command writes `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/create-evidence-command.sh`. Fill the worksheet during the hands-on pass, then edit that generated command, replace every placeholder with concrete observations, and run it. If you bypass the generated command file, validate first and write only after validation succeeds:'
+  printf '%s\n' ''
+  printf '%s\n' '```bash'
+  write_competitor_hands_on_evidence_invocation "--validate-only"
+  printf '%s\n' ''
+  write_competitor_hands_on_evidence_invocation "--passed"
   printf '%s\n' '```'
 }
 
