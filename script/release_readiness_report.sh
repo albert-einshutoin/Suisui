@@ -1289,6 +1289,7 @@ write_release_actions() {
     printf -- "- Follow \`docs/release/checklist.md\` on the release machine.\n"
     printf -- "- Run \`./script/prepare_release_machine_evidence.sh\` first to create \`.tmp/release-machine/release-machine-worksheet.md\` and \`.tmp/release-machine/create-release-evidence-command.sh\` before performing manual release checks.\n"
     printf -- "- The generated release-machine evidence command is pinned to a clean tracked source tree and the source commit it was created for. Rerun \`./script/prepare_release_manual_helpers.sh\` after source changes instead of reusing an older command.\n"
+    printf -- "- The generated release-machine evidence command also refuses to run until \`.tmp/release-machine/release-machine-worksheet.md\` is \`Status: completed\`, pinned to the same source commit, free of pending/unchecked/template markers, and filled.\n"
     printf -- "- Run the generated \`--validate-only\` release evidence command first; it performs the same validation without writing \`packaging/release-evidence.json\`.\n"
     printf -- "- Configure \`packaging/signing.env\`, \`packaging/notarization.env\`, production Sparkle feed/key, signed/notarized/stapled app, appcast metadata, and \`packaging/release-evidence.json\`.\n"
     printf -- "- Verify with \`./script/verify_release_environment.sh\` before expecting the readiness report to pass.\n"
