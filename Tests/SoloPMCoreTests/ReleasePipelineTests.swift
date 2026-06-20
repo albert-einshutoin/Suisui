@@ -5455,6 +5455,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("./script/prepare_release_machine_evidence.sh"))
         XCTAssertTrue(checklist.contains(".tmp/release-machine/release-machine-worksheet.md"))
         XCTAssertTrue(checklist.contains(".tmp/release-machine/create-release-evidence-command.sh"))
+        XCTAssertTrue(checklist.contains("That command block now edits and runs the generated `.tmp/release-machine/create-release-evidence-command.sh` before showing the direct `create_release_evidence.sh --force` fallback"))
         XCTAssertTrue(checklist.contains("The Manual Review Helper Freshness section uses `./script/prepare_release_manual_helpers.sh` to regenerate the VoiceOver, competitor, and release-machine helper files for the current source commit without writing passed evidence."))
         XCTAssertTrue(checklist.contains("the Ignored Stale Manual Helper Previews section lists them as ignored so operators do not copy stale release-candidate context into tracked evidence"))
         XCTAssertTrue(checklist.contains("`./script/prepare_release_manual_helpers.sh --prune-stale` removes only ignored old pending previews after the current helpers are regenerated"))
@@ -5488,6 +5489,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] action summary は Release Machine blocker が残る場合、署名、notarization、package、appcast、release evidence、final preflight の順序付きコマンドを出す。"))
         XCTAssertTrue(phase.contains("[x] `script/prepare_release_machine_evidence.sh` は `.tmp/release-machine/release-machine-worksheet.md` と `.tmp/release-machine/create-release-evidence-command.sh` を生成し"))
         XCTAssertTrue(phase.contains("[x] `script/create_release_evidence.sh --validate-only` validates the filled release-machine command without writing `packaging/release-evidence.json`."))
+        XCTAssertTrue(phase.contains("[x] action summary の Release Machine runbook は `.tmp/release-machine/create-release-evidence-command.sh` の編集・実行を direct `create_release_evidence.sh --force` fallback より先に表示し"))
     }
 
     func testReleaseReadinessReportWritesSpecificReleaseEnvironmentBlockersToActionSummary() throws {
@@ -5858,6 +5860,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("./script/prepare_release_machine_evidence.sh"))
         XCTAssertTrue(actionSummary.contains(".tmp/release-machine/release-machine-worksheet.md"))
         XCTAssertTrue(actionSummary.contains(".tmp/release-machine/create-release-evidence-command.sh"))
+        XCTAssertTrue(actionSummary.contains("$EDITOR .tmp/release-machine/release-machine-worksheet.md .tmp/release-machine/create-release-evidence-command.sh"))
+        XCTAssertTrue(actionSummary.contains("./.tmp/release-machine/create-release-evidence-command.sh"))
         XCTAssertTrue(actionSummary.contains("```bash\n./script/prepare_release_machine_evidence.sh"))
         XCTAssertTrue(actionSummary.contains("# 1. Configure local release secrets"))
         XCTAssertTrue(actionSummary.contains("./script/verify_signing_setup.sh"))
@@ -5866,6 +5870,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/generate_appcast.sh"))
         XCTAssertTrue(actionSummary.contains("SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml"))
         XCTAssertTrue(actionSummary.contains("SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh"))
+        let releaseMachineSection = String(actionSummary[releaseMachineSectionStart.lowerBound...])
+        let generatedReleaseEvidenceCommandRange = try XCTUnwrap(releaseMachineSection.range(of: "./.tmp/release-machine/create-release-evidence-command.sh"))
+        let directReleaseEvidenceForceRange = try XCTUnwrap(releaseMachineSection.range(of: "./script/create_release_evidence.sh --force"))
+        XCTAssertLessThan(generatedReleaseEvidenceCommandRange.lowerBound, directReleaseEvidenceForceRange.lowerBound)
     }
 
     func testReleaseReadinessReportIncludesPhase11AndIgnoresFuturePhasePlanning() throws {
