@@ -160,6 +160,7 @@ Confirm `docs/release/evidence/mcp-inspector.md` includes:
 - ``Stable baseline: `2025-11-25` ``
 - ``Official stable latest: `2025-11-25` ``
 - `Official latest source: https://modelcontextprotocol.io/specification`
+- `Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning`
 - `Official latest checked: 2026-06-20`
 - `Official stable source: https://modelcontextprotocol.io/specification/2025-11-25`
 - ``Draft watchlist: `2026-07-28` ``

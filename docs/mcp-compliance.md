@@ -9,6 +9,7 @@ SoloPM の外部MCP実装は、MCP specification `2025-11-25` を基準にする
 - Stable baseline: `2025-11-25`
 - Official stable latest: `2025-11-25`
 - Official latest source: https://modelcontextprotocol.io/specification
+- Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning
 - Official latest checked: 2026-06-20
 - Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
 - Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
@@ -24,6 +25,7 @@ Enterprise-Managed Authorization is stable as of 2026-06-18 and remains a watchl
 Primary references:
 
 - MCP specification 2025-11-25: https://modelcontextprotocol.io/specification/2025-11-25
+- MCP versioning: https://modelcontextprotocol.io/docs/learn/versioning
 - MCP latest specification entrypoint: https://modelcontextprotocol.io/specification
 - Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/
 - Lifecycle: https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle

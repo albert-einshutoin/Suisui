@@ -127,6 +127,7 @@ MCP_EVIDENCE_REQUIRED_MARKERS=(
   'Stable baseline: `2025-11-25`'
   'Official stable latest: `2025-11-25`'
   "Official latest source: https://modelcontextprotocol.io/specification"
+  "Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"
   "Official latest checked: 2026-06-20"
   "Official stable source: https://modelcontextprotocol.io/specification/2025-11-25"
   "Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18"
@@ -155,6 +156,7 @@ MCP_REVIEW_REQUIRED_MARKERS=(
   'Stable baseline: `2025-11-25`'
   'Official stable latest: `2025-11-25`'
   "Official latest source: https://modelcontextprotocol.io/specification"
+  "Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"
   "Official latest checked: 2026-06-20"
   "Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18"
   "Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/"
