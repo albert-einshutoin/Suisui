@@ -455,6 +455,30 @@ public enum CoreMigrations {
                     ON mcp_server_registrations(sort_order);
                     """
                 )
+            },
+            DatabaseMigration(id: "0009_create_external_task_links") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS external_task_links (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        provider_id TEXT NOT NULL,
+                        external_id TEXT NOT NULL,
+                        project_id INTEGER,
+                        task_id INTEGER NOT NULL,
+                        title TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(provider_id, external_id),
+                        FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_external_task_links_task
+                    ON external_task_links(provider_id, task_id);
+
+                    CREATE INDEX IF NOT EXISTS idx_external_task_links_project
+                    ON external_task_links(provider_id, project_id);
+                    """
+                )
             }
         ]
     }

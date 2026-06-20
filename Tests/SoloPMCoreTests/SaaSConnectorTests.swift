@@ -132,6 +132,65 @@ final class SaaSConnectorTests: XCTestCase {
         }
     }
 
+    func testGoogleCalendarHTTPClientCreatesEventsInsertRequestWithOAuthToken() throws {
+        let secretStore = InMemorySecretStore()
+        let metadataStore = InMemoryOAuthCredentialMetadataStore()
+        let credentialStore = KeychainOAuthCredentialStore(secretStore: secretStore, metadataStore: metadataStore)
+        try credentialStore.saveTokens(
+            connectorID: .googleCalendar,
+            accessToken: "calendar-access-token",
+            refreshToken: "calendar-refresh-token",
+            scopes: [.googleCalendarEvents, .offlineAccess],
+            expiresAt: Date(timeIntervalSince1970: 4_000_000_000)
+        )
+        let httpClient = RecordingSynchronousHTTPDataClient(
+            responseBody: #"{"id":"event-123"}"#.data(using: .utf8)!,
+            statusCode: 200
+        )
+        let client = GoogleCalendarHTTPClient(
+            tokenProvider: OAuthCredentialBearerTokenProvider(
+                connectorID: .googleCalendar,
+                requiredScopes: [.googleCalendarEvents],
+                lifecycle: OAuthTokenLifecycle(
+                    store: credentialStore,
+                    client: RecordingOAuthClient(refreshResponse: OAuthTokenResponse(
+                        accessToken: "unused",
+                        refreshToken: nil,
+                        expiresAt: Date(timeIntervalSince1970: 5_000),
+                        scopes: [.googleCalendarEvents]
+                    ))
+                ),
+                credentialStore: credentialStore
+            ),
+            httpClient: httpClient,
+            configuration: GoogleCalendarHTTPConfiguration(baseURL: URL(string: "https://www.googleapis.com/calendar/v3")!)
+        )
+
+        let record = try client.createEvent(
+            CalendarEventDraft(
+                title: "Planning",
+                startAt: "2026-07-07",
+                endAt: "2026-07-07",
+                isAllDay: true,
+                notes: "SoloPM"
+            ),
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo"
+        )
+        let request = try XCTUnwrap(httpClient.requests.first)
+        let body = try XCTUnwrap(request.httpBody.flatMap { try JSONSerialization.jsonObject(with: $0) as? [String: Any] })
+        let start = try XCTUnwrap(body["start"] as? [String: Any])
+
+        XCTAssertEqual(record.event.id, "event-123")
+        XCTAssertEqual(request.url?.absoluteString, "https://www.googleapis.com/calendar/v3/calendars/primary/events")
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer calendar-access-token")
+        XCTAssertEqual(body["summary"] as? String, "Planning")
+        XCTAssertEqual(start["date"] as? String, "2026-07-07")
+        XCTAssertNil(start["dateTime"])
+        XCTAssertFalse(request.url?.absoluteString.contains("calendar-access-token") ?? true)
+    }
+
     func testGmailDraftConnectorNeverExposesSendAndRequiresApproval() throws {
         let connector = GmailDraftConnector(client: InMemoryGmailDraftClient())
 
@@ -230,6 +289,48 @@ final class SaaSConnectorTests: XCTestCase {
         ) { error in
             XCTAssertEqual(error as? SaaSConnectorError, .apiFailure(.notion, "notion 500"))
         }
+    }
+
+    func testTaskManagementConnectorsSupportImportExportAndRequireApproval() throws {
+        let draft = ExternalTaskDraft(
+            title: "Ship import/export",
+            detail: "Round-trip with external task tools.",
+            status: "planned",
+            priority: "high",
+            dueAt: "2026-07-06"
+        )
+        let todoist = TodoistConnector(client: InMemoryExternalTaskClient(providerID: .todoist))
+        let linear = LinearConnector(teamID: "team-1", client: InMemoryExternalTaskClient(providerID: .linear))
+        let github = GitHubIssuesConnector(repository: "owner/repo", client: InMemoryExternalTaskClient(providerID: .githubIssues))
+
+        XCTAssertEqual(todoist.requiredScopes, [.todoistDataReadWrite])
+        XCTAssertEqual(linear.requiredScopes, [.linearIssuesCreate])
+        XCTAssertEqual(github.requiredScopes, [.githubIssuesWrite])
+        XCTAssertTrue(todoist.supportedOperations.isSuperset(of: [.create, .importItems, .exportItems]))
+        XCTAssertTrue(linear.supportedOperations.isSuperset(of: [.create, .importItems, .exportItems]))
+        XCTAssertTrue(github.supportedOperations.isSuperset(of: [.create, .importItems, .exportItems]))
+
+        XCTAssertThrowsError(try todoist.exportTask(draft, projectID: "project-1", context: ToolExecutionContext(source: .developerTool))) { error in
+            XCTAssertEqual(error as? SaaSConnectorError, .approvalRequired(.todoist))
+        }
+        XCTAssertThrowsError(try linear.importTasks(context: ToolExecutionContext(source: .developerTool))) { error in
+            XCTAssertEqual(error as? SaaSConnectorError, .approvalRequired(.linear))
+        }
+        XCTAssertThrowsError(try github.exportTask(draft, context: ToolExecutionContext(source: .developerTool))) { error in
+            XCTAssertEqual(error as? SaaSConnectorError, .approvalRequired(.githubIssues))
+        }
+
+        let todoistRecord = try todoist.exportTask(draft, projectID: "project-1", context: approvedContext())
+        let linearRecord = try linear.exportTask(draft, context: approvedContext())
+        let githubRecord = try github.exportTask(draft, context: approvedContext())
+
+        XCTAssertEqual(todoistRecord.providerID, .todoist)
+        XCTAssertEqual(todoistRecord.externalID, "todoist-task-1")
+        XCTAssertEqual(linearRecord.providerID, .linear)
+        XCTAssertEqual(linearRecord.externalID, "linear-task-1")
+        XCTAssertEqual(githubRecord.providerID, .githubIssues)
+        XCTAssertEqual(githubRecord.externalID, "github_issues-task-1")
+        XCTAssertEqual(try todoist.importTasks(projectID: "project-1", context: approvedContext()).map(\.title), ["Ship import/export"])
     }
 
     func testConnectorHealthDashboardShowsTokenExpiryReconnectAndAuditError() throws {
@@ -338,5 +439,37 @@ private final class ToggleFailingDeleteSecretStore: SecretStore, @unchecked Send
             throw SecretStoreError.unexpectedStatus(-25291)
         }
         values.removeValue(forKey: key)
+    }
+}
+
+private final class RecordingSynchronousHTTPDataClient: SynchronousHTTPDataClient, @unchecked Sendable {
+    private let lock = NSLock()
+    private let responseBody: Data
+    private let statusCode: Int
+    private var recordedRequests: [URLRequest] = []
+
+    init(responseBody: Data, statusCode: Int) {
+        self.responseBody = responseBody
+        self.statusCode = statusCode
+    }
+
+    var requests: [URLRequest] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedRequests
+    }
+
+    func data(for request: URLRequest) throws -> (Data, HTTPURLResponse) {
+        lock.lock()
+        recordedRequests.append(request)
+        lock.unlock()
+
+        let response = HTTPURLResponse(
+            url: request.url ?? URL(string: "https://example.com")!,
+            statusCode: statusCode,
+            httpVersion: "HTTP/1.1",
+            headerFields: nil
+        )!
+        return (responseBody, response)
     }
 }

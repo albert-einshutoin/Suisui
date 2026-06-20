@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-public enum ProjectTaskStatus: String, CaseIterable, Identifiable, Sendable {
+public enum ProjectTaskStatus: String, Codable, CaseIterable, Identifiable, Sendable {
     case backlog
     case planned
     case inProgress = "in_progress"
@@ -41,7 +41,7 @@ public enum ProjectTaskStatus: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-public enum ProjectTaskPriority: String, CaseIterable, Identifiable, Sendable {
+public enum ProjectTaskPriority: String, Codable, CaseIterable, Identifiable, Sendable {
     case low
     case medium
     case high

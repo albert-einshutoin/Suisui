@@ -136,6 +136,39 @@ final class InMemoryNotionClient: NotionClient, @unchecked Sendable {
     }
 }
 
+final class InMemoryExternalTaskClient: ExternalTaskClient, @unchecked Sendable {
+    private let lock = NSLock()
+    private let providerID: SaaSConnectorID
+    private var records: [ExternalTaskRecord] = []
+    private var nextID = 1
+
+    init(providerID: SaaSConnectorID) {
+        self.providerID = providerID
+    }
+
+    func createTask(_ draft: ExternalTaskDraft, destination: ExternalTaskDestination) throws -> ExternalTaskRecord {
+        lock.withLock {
+            let record = ExternalTaskRecord(
+                providerID: providerID,
+                externalID: "\(providerID.rawValue)-task-\(nextID)",
+                title: draft.title,
+                detail: draft.detail,
+                status: draft.status,
+                priority: draft.priority,
+                dueAt: draft.dueAt,
+                url: "https://example.com/\(providerID.rawValue)/\(nextID)"
+            )
+            nextID += 1
+            records.append(record)
+            return record
+        }
+    }
+
+    func listTasks(destination: ExternalTaskDestination?) throws -> [ExternalTaskRecord] {
+        lock.withLock { records }
+    }
+}
+
 struct StaticConnectorHealthClient: ConnectorHealthClient {
     private let results: [SaaSConnectorID: ConnectorHealthStatus]
 

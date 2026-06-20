@@ -159,6 +159,98 @@ public struct CalendarLinkRecord: Equatable, Sendable {
     public var title: String?
 }
 
+public final class SQLiteExternalTaskLinkStore: ExternalTaskLinkStore, @unchecked Sendable {
+    private let connection: SQLiteConnection
+    private let lock = NSLock()
+
+    public init(connection: SQLiteConnection) {
+        self.connection = connection
+    }
+
+    public func link(
+        providerID: String,
+        externalID: String,
+        taskID: Int64,
+        projectID: Int64? = nil,
+        title: String? = nil
+    ) throws -> ExternalTaskLinkRecord {
+        let normalizedProviderID = try StoreFieldValidation.requiredTrimmed(providerID, argument: "providerID", tool: .taskUpdate)
+        let normalizedExternalID = try StoreFieldValidation.requiredTrimmed(externalID, argument: "externalID", tool: .taskUpdate)
+
+        lock.lock()
+        defer { lock.unlock() }
+
+        try connection.execute(
+            """
+            INSERT INTO external_task_links (provider_id, external_id, task_id, project_id, title)
+            VALUES (
+              '\(SQL.escape(normalizedProviderID))',
+              '\(SQL.escape(normalizedExternalID))',
+              \(taskID),
+              \(projectID.map(String.init) ?? "NULL"),
+              \(SQL.optional(title))
+            )
+            ON CONFLICT(provider_id, external_id) DO UPDATE SET
+              task_id = excluded.task_id,
+              project_id = excluded.project_id,
+              title = excluded.title,
+              updated_at = CURRENT_TIMESTAMP;
+            """
+        )
+
+        return try getLocked(providerID: normalizedProviderID, externalID: normalizedExternalID)
+    }
+
+    public func link(providerID: String, externalID: String) throws -> ExternalTaskLinkRecord? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return try connection.queryRows(
+            """
+            SELECT * FROM external_task_links
+            WHERE provider_id = '\(SQL.escape(providerID))'
+              AND external_id = '\(SQL.escape(externalID))'
+            LIMIT 1;
+            """
+        ).first.map(ExternalTaskLinkRecord.init(row:))
+    }
+
+    public func link(providerID: String, taskID: Int64) throws -> ExternalTaskLinkRecord? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return try connection.queryRows(
+            """
+            SELECT * FROM external_task_links
+            WHERE provider_id = '\(SQL.escape(providerID))'
+              AND task_id = \(taskID)
+            LIMIT 1;
+            """
+        ).first.map(ExternalTaskLinkRecord.init(row:))
+    }
+
+    public func list() throws -> [ExternalTaskLinkRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return try connection.queryRows("SELECT * FROM external_task_links ORDER BY id ASC;").map(ExternalTaskLinkRecord.init(row:))
+    }
+
+    private func getLocked(providerID: String, externalID: String) throws -> ExternalTaskLinkRecord {
+        guard let row = try connection.queryRows(
+            """
+            SELECT * FROM external_task_links
+            WHERE provider_id = '\(SQL.escape(providerID))'
+              AND external_id = '\(SQL.escape(externalID))'
+            LIMIT 1;
+            """
+        ).first else {
+            throw DatabaseError.stepFailed("External task link \(providerID):\(externalID) was not found.")
+        }
+        return try ExternalTaskLinkRecord(row: row)
+    }
+}
+
 public struct ReminderLinkRecord: Equatable, Sendable {
     public var id: Int64
     public var reminderID: String
@@ -1168,6 +1260,19 @@ private extension CalendarLinkRecord {
             eventID: try SQL.requiredString(row["event_id"], column: "calendar_links.event_id"),
             projectID: try SQL.optionalInt64(row["project_id"], column: "calendar_links.project_id"),
             taskID: try SQL.optionalInt64(row["task_id"], column: "calendar_links.task_id"),
+            title: SQL.nilIfEmpty(row["title"])
+        )
+    }
+}
+
+private extension ExternalTaskLinkRecord {
+    init(row: [String: String]) throws {
+        self.init(
+            id: try SQL.requiredInt64(row["id"], column: "external_task_links.id"),
+            providerID: try SQL.requiredString(row["provider_id"], column: "external_task_links.provider_id"),
+            externalID: try SQL.requiredString(row["external_id"], column: "external_task_links.external_id"),
+            projectID: try SQL.optionalInt64(row["project_id"], column: "external_task_links.project_id"),
+            taskID: try SQL.requiredInt64(row["task_id"], column: "external_task_links.task_id"),
             title: SQL.nilIfEmpty(row["title"])
         )
     }

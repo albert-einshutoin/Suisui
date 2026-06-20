@@ -107,4 +107,37 @@ final class DatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(try database.tableExists("mcp_server_registrations"))
         XCTAssertTrue(try database.appliedMigrationIDs().contains("0008_create_mcp_server_registrations"))
     }
+
+    func testCurrentMigrationsCreateExternalTaskLinkTableForIdempotentImports() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+
+        XCTAssertTrue(try connection.tableExists("external_task_links"))
+        XCTAssertTrue(try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;").contains("0009_create_external_task_links"))
+
+        let columns = try connection.queryRows("PRAGMA table_info(external_task_links);").compactMap { $0["name"] }
+        XCTAssertTrue(columns.contains("provider_id"))
+        XCTAssertTrue(columns.contains("external_id"))
+        XCTAssertTrue(columns.contains("task_id"))
+
+        try connection.execute(
+            """
+            INSERT INTO projects (id, title, status) VALUES (1, 'Imported', 'active');
+            INSERT INTO tasks (id, project_id, title, status) VALUES (1, 1, 'Task', 'backlog');
+            INSERT INTO external_task_links (provider_id, external_id, task_id, project_id, title)
+            VALUES ('todoist', 'external-1', 1, 1, 'Task');
+            """
+        )
+
+        XCTAssertThrowsError(
+            try connection.execute(
+                """
+                INSERT INTO external_task_links (provider_id, external_id, task_id, project_id, title)
+                VALUES ('todoist', 'external-1', 1, 1, 'Task duplicate');
+                """
+            )
+        )
+    }
 }

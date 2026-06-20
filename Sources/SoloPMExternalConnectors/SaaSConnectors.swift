@@ -7,6 +7,9 @@ public enum SaaSConnectorID: String, Codable, CaseIterable, Hashable, Sendable {
     case slack
     case googleDrive = "google_drive"
     case notion
+    case todoist
+    case linear
+    case githubIssues = "github_issues"
     case weKnora = "weknora"
 }
 
@@ -29,6 +32,9 @@ public struct OAuthScope: RawRepresentable, Codable, Hashable, ExpressibleByStri
     public static let slackChatWrite: OAuthScope = "chat:write"
     public static let googleDriveFile: OAuthScope = "https://www.googleapis.com/auth/drive.file"
     public static let notionInsertContent: OAuthScope = "notion.insert_content"
+    public static let todoistDataReadWrite: OAuthScope = "data:read_write"
+    public static let linearIssuesCreate: OAuthScope = "issues:create"
+    public static let githubIssuesWrite: OAuthScope = "github:issues:write"
 }
 
 public struct OAuthCredential: Equatable, Sendable {
@@ -279,6 +285,139 @@ public enum SaaSConnectorOperation: String, Equatable, Sendable {
     case send
     case post
     case create
+    case importItems
+    case exportItems
+}
+
+public struct ExternalTaskDraft: Equatable, Sendable {
+    public var title: String
+    public var detail: String
+    public var status: String
+    public var priority: String?
+    public var dueAt: String?
+
+    public init(title: String, detail: String = "", status: String = "backlog", priority: String? = nil, dueAt: String? = nil) {
+        self.title = title
+        self.detail = detail
+        self.status = status
+        self.priority = priority
+        self.dueAt = dueAt
+    }
+}
+
+public struct ExternalTaskDestination: Equatable, Sendable {
+    public var projectID: String?
+    public var teamID: String?
+    public var repository: String?
+
+    public init(projectID: String? = nil, teamID: String? = nil, repository: String? = nil) {
+        self.projectID = projectID
+        self.teamID = teamID
+        self.repository = repository
+    }
+}
+
+public struct ExternalTaskRecord: Equatable, Sendable {
+    public var providerID: SaaSConnectorID
+    public var externalID: String
+    public var title: String
+    public var detail: String
+    public var status: String
+    public var priority: String?
+    public var dueAt: String?
+    public var url: String?
+
+    public init(
+        providerID: SaaSConnectorID,
+        externalID: String,
+        title: String,
+        detail: String,
+        status: String,
+        priority: String?,
+        dueAt: String?,
+        url: String? = nil
+    ) {
+        self.providerID = providerID
+        self.externalID = externalID
+        self.title = title
+        self.detail = detail
+        self.status = status
+        self.priority = priority
+        self.dueAt = dueAt
+        self.url = url
+    }
+}
+
+public protocol ExternalTaskClient: Sendable {
+    func createTask(_ draft: ExternalTaskDraft, destination: ExternalTaskDestination) throws -> ExternalTaskRecord
+    func listTasks(destination: ExternalTaskDestination?) throws -> [ExternalTaskRecord]
+}
+
+public struct TodoistConnector: Sendable {
+    public let connectorID: SaaSConnectorID = .todoist
+    public let requiredScopes: Set<OAuthScope> = [.todoistDataReadWrite]
+    public let supportedOperations: Set<SaaSConnectorOperation> = [.create, .importItems, .exportItems]
+    private let client: any ExternalTaskClient
+
+    public init(client: any ExternalTaskClient) {
+        self.client = client
+    }
+
+    public func exportTask(_ draft: ExternalTaskDraft, projectID: String? = nil, context: ToolExecutionContext) throws -> ExternalTaskRecord {
+        try requireApproval(context)
+        return try client.createTask(draft, destination: ExternalTaskDestination(projectID: projectID))
+    }
+
+    public func importTasks(projectID: String? = nil, context: ToolExecutionContext) throws -> [ExternalTaskRecord] {
+        try requireApproval(context)
+        return try client.listTasks(destination: ExternalTaskDestination(projectID: projectID))
+    }
+}
+
+public struct LinearConnector: Sendable {
+    public let connectorID: SaaSConnectorID = .linear
+    public let requiredScopes: Set<OAuthScope> = [.linearIssuesCreate]
+    public let supportedOperations: Set<SaaSConnectorOperation> = [.create, .importItems, .exportItems]
+    private let teamID: String
+    private let client: any ExternalTaskClient
+
+    public init(teamID: String, client: any ExternalTaskClient) {
+        self.teamID = teamID
+        self.client = client
+    }
+
+    public func exportTask(_ draft: ExternalTaskDraft, context: ToolExecutionContext) throws -> ExternalTaskRecord {
+        try requireApproval(context)
+        return try client.createTask(draft, destination: ExternalTaskDestination(teamID: teamID))
+    }
+
+    public func importTasks(context: ToolExecutionContext) throws -> [ExternalTaskRecord] {
+        try requireApproval(context)
+        return try client.listTasks(destination: ExternalTaskDestination(teamID: teamID))
+    }
+}
+
+public struct GitHubIssuesConnector: Sendable {
+    public let connectorID: SaaSConnectorID = .githubIssues
+    public let requiredScopes: Set<OAuthScope> = [.githubIssuesWrite]
+    public let supportedOperations: Set<SaaSConnectorOperation> = [.create, .importItems, .exportItems]
+    private let repository: String
+    private let client: any ExternalTaskClient
+
+    public init(repository: String, client: any ExternalTaskClient) {
+        self.repository = repository
+        self.client = client
+    }
+
+    public func exportTask(_ draft: ExternalTaskDraft, context: ToolExecutionContext) throws -> ExternalTaskRecord {
+        try requireApproval(context)
+        return try client.createTask(draft, destination: ExternalTaskDestination(repository: repository))
+    }
+
+    public func importTasks(context: ToolExecutionContext) throws -> [ExternalTaskRecord] {
+        try requireApproval(context)
+        return try client.listTasks(destination: ExternalTaskDestination(repository: repository))
+    }
 }
 
 public struct GoogleCalendarEventRecord: Equatable, Sendable {
@@ -289,6 +428,194 @@ public struct GoogleCalendarEventRecord: Equatable, Sendable {
 
 public protocol GoogleCalendarClient: Sendable {
     func createEvent(_ draft: CalendarEventDraft, calendarID: String, timeZoneIdentifier: String) throws -> GoogleCalendarEventRecord
+}
+
+public struct GoogleCalendarHTTPConfiguration: Equatable, Sendable {
+    public var baseURL: URL
+    public var timeoutInterval: TimeInterval
+
+    public init(
+        baseURL: URL = URL(string: "https://www.googleapis.com/calendar/v3")!,
+        timeoutInterval: TimeInterval = 30
+    ) {
+        self.baseURL = baseURL
+        self.timeoutInterval = timeoutInterval
+    }
+}
+
+public protocol BearerTokenProvider: Sendable {
+    func bearerToken() throws -> String
+}
+
+public struct OAuthCredentialBearerTokenProvider: BearerTokenProvider {
+    private let connectorID: SaaSConnectorID
+    private let requiredScopes: Set<OAuthScope>
+    private let lifecycle: OAuthTokenLifecycle
+    private let credentialStore: any OAuthCredentialStore
+
+    public init(
+        connectorID: SaaSConnectorID,
+        requiredScopes: Set<OAuthScope>,
+        lifecycle: OAuthTokenLifecycle,
+        credentialStore: any OAuthCredentialStore
+    ) {
+        self.connectorID = connectorID
+        self.requiredScopes = requiredScopes
+        self.lifecycle = lifecycle
+        self.credentialStore = credentialStore
+    }
+
+    public func bearerToken() throws -> String {
+        let credential = try lifecycle.validCredential(for: connectorID, requiredScopes: requiredScopes)
+        guard let accessToken = try credentialStore.accessToken(for: credential),
+              !accessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw OAuthTokenLifecycleError.disconnected(connectorID)
+        }
+        return accessToken
+    }
+}
+
+public protocol SynchronousHTTPDataClient: Sendable {
+    func data(for request: URLRequest) throws -> (Data, HTTPURLResponse)
+}
+
+public struct URLSessionSynchronousHTTPDataClient: SynchronousHTTPDataClient {
+    private let session: URLSession
+
+    public init(session: URLSession = .shared) {
+        self.session = session
+    }
+
+    public func data(for request: URLRequest) throws -> (Data, HTTPURLResponse) {
+        let semaphore = DispatchSemaphore(value: 0)
+        let box = LockedResultBox()
+
+        session.dataTask(with: request) { data, response, error in
+            defer { semaphore.signal() }
+            if let error {
+                box.store(.failure(error))
+                return
+            }
+            guard let data, let response = response as? HTTPURLResponse else {
+                box.store(.failure(SaaSConnectorError.apiFailure(.googleCalendar, "Response was not HTTP.")))
+                return
+            }
+            box.store(.success((data, response)))
+        }.resume()
+
+        semaphore.wait()
+        return try box.value()
+    }
+}
+
+public struct GoogleCalendarHTTPClient: GoogleCalendarClient {
+    private let tokenProvider: any BearerTokenProvider
+    private let httpClient: any SynchronousHTTPDataClient
+    private let configuration: GoogleCalendarHTTPConfiguration
+
+    public init(
+        tokenProvider: any BearerTokenProvider,
+        httpClient: any SynchronousHTTPDataClient = URLSessionSynchronousHTTPDataClient(),
+        configuration: GoogleCalendarHTTPConfiguration = GoogleCalendarHTTPConfiguration()
+    ) {
+        self.tokenProvider = tokenProvider
+        self.httpClient = httpClient
+        self.configuration = configuration
+    }
+
+    public func createEvent(_ draft: CalendarEventDraft, calendarID: String, timeZoneIdentifier: String) throws -> GoogleCalendarEventRecord {
+        let request = try makeCreateEventRequest(
+            draft,
+            calendarID: calendarID,
+            timeZoneIdentifier: timeZoneIdentifier,
+            accessToken: try tokenProvider.bearerToken()
+        )
+        let (data, response) = try httpClient.data(for: request)
+        guard (200..<300).contains(response.statusCode) else {
+            throw SaaSConnectorError.apiFailure(.googleCalendar, "Google Calendar events.insert failed with HTTP \(response.statusCode).")
+        }
+
+        let body: GoogleCalendarEventResponse
+        do {
+            body = try JSONDecoder().decode(GoogleCalendarEventResponse.self, from: data)
+        } catch {
+            throw SaaSConnectorError.apiFailure(.googleCalendar, "Google Calendar response could not be decoded.")
+        }
+        guard let id = body.id?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty else {
+            throw SaaSConnectorError.apiFailure(.googleCalendar, "Google Calendar response did not contain an event id.")
+        }
+        return GoogleCalendarEventRecord(
+            calendarID: calendarID,
+            timeZoneIdentifier: timeZoneIdentifier,
+            event: CalendarEventRecord(id: id, draft: draft)
+        )
+    }
+
+    public func makeCreateEventRequest(
+        _ draft: CalendarEventDraft,
+        calendarID: String,
+        timeZoneIdentifier: String,
+        accessToken: String
+    ) throws -> URLRequest {
+        let url = configuration.baseURL
+            .appendingPathComponent("calendars")
+            .appendingPathComponent(calendarID)
+            .appendingPathComponent("events")
+        var request = URLRequest(url: url, timeoutInterval: configuration.timeoutInterval)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONEncoder().encode(GoogleCalendarEventRequest(draft: draft, timeZoneIdentifier: timeZoneIdentifier))
+        return request
+    }
+}
+
+private struct GoogleCalendarEventRequest: Encodable {
+    var summary: String
+    var description: String?
+    var start: GoogleCalendarEventDate
+    var end: GoogleCalendarEventDate
+
+    init(draft: CalendarEventDraft, timeZoneIdentifier: String) {
+        summary = draft.title
+        description = draft.notes
+        if draft.isAllDay {
+            start = GoogleCalendarEventDate(date: draft.startAt, dateTime: nil, timeZone: nil)
+            end = GoogleCalendarEventDate(date: draft.endAt, dateTime: nil, timeZone: nil)
+        } else {
+            start = GoogleCalendarEventDate(date: nil, dateTime: draft.startAt, timeZone: timeZoneIdentifier)
+            end = GoogleCalendarEventDate(date: nil, dateTime: draft.endAt, timeZone: timeZoneIdentifier)
+        }
+    }
+}
+
+private struct GoogleCalendarEventDate: Encodable {
+    var date: String?
+    var dateTime: String?
+    var timeZone: String?
+}
+
+private struct GoogleCalendarEventResponse: Decodable {
+    var id: String?
+}
+
+private final class LockedResultBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var result: Result<(Data, HTTPURLResponse), Error>?
+
+    func store(_ result: Result<(Data, HTTPURLResponse), Error>) {
+        lock.lock()
+        defer { lock.unlock() }
+        self.result = result
+    }
+
+    func value() throws -> (Data, HTTPURLResponse) {
+        lock.lock()
+        defer { lock.unlock() }
+        return try result?.get() ?? {
+            throw SaaSConnectorError.apiFailure(.googleCalendar, "HTTP request did not complete.")
+        }()
+    }
 }
 
 public struct GoogleCalendarConnector: Sendable {
@@ -581,6 +908,30 @@ private extension GoogleDriveConnector {
 }
 
 private extension NotionConnector {
+    func requireApproval(_ context: ToolExecutionContext) throws {
+        guard context.approvalToken != nil else {
+            throw SaaSConnectorError.approvalRequired(connectorID)
+        }
+    }
+}
+
+private extension TodoistConnector {
+    func requireApproval(_ context: ToolExecutionContext) throws {
+        guard context.approvalToken != nil else {
+            throw SaaSConnectorError.approvalRequired(connectorID)
+        }
+    }
+}
+
+private extension LinearConnector {
+    func requireApproval(_ context: ToolExecutionContext) throws {
+        guard context.approvalToken != nil else {
+            throw SaaSConnectorError.approvalRequired(connectorID)
+        }
+    }
+}
+
+private extension GitHubIssuesConnector {
     func requireApproval(_ context: ToolExecutionContext) throws {
         guard context.approvalToken != nil else {
             throw SaaSConnectorError.approvalRequired(connectorID)
