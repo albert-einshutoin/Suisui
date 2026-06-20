@@ -172,6 +172,7 @@ CURRENT_PROJECT_VERSION="${CURRENT_PROJECT_VERSION:?CURRENT_PROJECT_VERSION is r
 APP_BUNDLE_PATH="dist/$APP_NAME.app"
 ARTIFACT_BASENAME="$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION"
 CHECKED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+RELEASE_EVIDENCE_GENERATOR="script/create_release_evidence.sh"
 SIGNING_IDENTITY="${SOLOPM_SIGNING_IDENTITY:-}"
 NOTARY_PROFILE="${SOLOPM_NOTARY_PROFILE:-}"
 SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
@@ -686,6 +687,9 @@ mkdir -p "$(dirname "$OUTPUT_FILE")"
   printf '  },\n'
   printf '  "source": {\n'
   printf '    "gitCommit": "%s"\n' "$(json_escape "$SOURCE_GIT_COMMIT")"
+  printf '  },\n'
+  printf '  "generator": {\n'
+  printf '    "name": "%s"\n' "$(json_escape "$RELEASE_EVIDENCE_GENERATOR")"
   printf '  },\n'
   printf '  "manualChecks": {\n'
   printf '    "releaseMachineLaunch": %s,\n' "$RELEASE_MACHINE_LAUNCH"

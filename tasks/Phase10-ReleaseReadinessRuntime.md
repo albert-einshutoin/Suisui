@@ -1163,6 +1163,14 @@
 - [x] `ReleasePipelineTests` で manual flags without note と missing review notes evidence を固定する。
 - [x] 完了条件: Gatekeeper / clean install / login item などの manual gate が、理由や判断根拠のない boilerplate review note だけで release ready にならない。
 
+### P10-145a: Release evidence must include generator provenance
+
+- [x] `create_release_evidence.sh` は `packaging/release-evidence.json` に `generator.name: script/create_release_evidence.sh` を書く。
+- [x] `verify_release_environment.sh` は `generator.name` 欠落または canonical generator 不一致を release blocker にする。
+- [x] `packaging/release-evidence.example.json` と `docs/release/checklist.md` は release-machine evidence が generator provenance 必須であることを明記する。
+- [x] `ReleasePipelineTests` で手書き release evidence の generator provenance 欠落を固定する。
+- [x] 完了条件: release-machine manual gate が、手書きJSONだけで release ready にならない。
+
 ### P10-146: Secret redaction pattern initialization fails closed
 
 - [x] `DeveloperSecretRedactor` は default pattern 初期化で `try! NSRegularExpression` を使わず、regex compile failure を runtime crash にしない。

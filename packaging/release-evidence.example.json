@@ -13,6 +13,9 @@
   "source": {
     "gitCommit": "replace-with-release-source-git-commit"
   },
+  "generator": {
+    "name": "script/create_release_evidence.sh"
+  },
   "manualChecks": {
     "releaseMachineLaunch": false,
     "checksumVerification": false,

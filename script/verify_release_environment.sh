@@ -11,6 +11,7 @@ RELEASE_EVIDENCE_FILE="${SOLOPM_RELEASE_EVIDENCE_FILE:-$ROOT_DIR/packaging/relea
 RELEASE_APPCAST_FILE="${SOLOPM_RELEASE_APPCAST_FILE:-$ROOT_DIR/dist/releases/appcast.xml}"
 PLIST_BUDDY="/usr/libexec/PlistBuddy"
 MULTIPLE_RELEASE_ARTIFACT_CHECKSUMS="__multiple_release_artifact_checksums__"
+RELEASE_EVIDENCE_GENERATOR="script/create_release_evidence.sh"
 
 BLOCKERS=()
 WARNINGS=()
@@ -610,6 +611,19 @@ require_evidence_current_git_commit() {
   fi
 }
 
+require_release_evidence_generator() {
+  local value
+
+  if ! value="$(plutil -extract "generator.name" raw -o - "$RELEASE_EVIDENCE_FILE" 2>/dev/null)"; then
+    add_blocker "release evidence missing generator provenance: generator.name"
+    return
+  fi
+
+  if [[ "$value" != "$RELEASE_EVIDENCE_GENERATOR" ]]; then
+    add_blocker "release evidence generator provenance is not canonical: expected '$RELEASE_EVIDENCE_GENERATOR', got '$value'"
+  fi
+}
+
 release_artifact_checksum_file() {
   local checksum_files
   local checksum_count
@@ -874,6 +888,7 @@ if [[ -f "$RELEASE_EVIDENCE_FILE" ]]; then
     require_evidence_equals "release.buildNumber" "build number" "${CURRENT_PROJECT_VERSION:-}"
     require_evidence_equals "release.appBundlePath" "app bundle path" "$EXPECTED_APP_BUNDLE_PATH"
     require_evidence_current_git_commit
+    require_release_evidence_generator
     require_evidence_non_empty "release.signingIdentity" "signing identity"
     require_evidence_non_empty "release.notaryProfile" "notary profile"
     require_evidence_non_empty "release.sparkleFeedURL" "Sparkle feed URL"

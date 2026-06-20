@@ -202,6 +202,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SOLOPM_RELEASE_ARTIFACT_SHA256_FILE"))
         XCTAssertTrue(script.contains("release.sparkleFeedURL"))
         XCTAssertTrue(script.contains("release.appcastPath"))
+        XCTAssertTrue(script.contains("generator.name"))
+        XCTAssertTrue(script.contains("release evidence missing generator provenance"))
+        XCTAssertTrue(script.contains("release evidence generator provenance is not canonical"))
         XCTAssertTrue(script.contains("create_release_evidence.sh"))
         XCTAssertTrue(script.contains("MARKETING_VERSION"))
         XCTAssertTrue(script.contains("CURRENT_PROJECT_VERSION"))
@@ -286,6 +289,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(example.contains("\"notaryProfile\""))
         XCTAssertTrue(example.contains("\"sparkleFeedURL\""))
         XCTAssertTrue(example.contains("\"appcastPath\": \"dist/releases/appcast.xml\""))
+        XCTAssertTrue(example.contains("\"generator\""))
+        XCTAssertTrue(example.contains("\"name\": \"script/create_release_evidence.sh\""))
         XCTAssertFalse(example.contains("PASSWORD"))
         XCTAssertFalse(example.contains("TOKEN"))
         XCTAssertFalse(example.contains("SECRET"))
@@ -555,6 +560,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(evidence.contains("\"notaryProfile\": \"SoloPMNotaryProfile\""))
         XCTAssertTrue(evidence.contains("\"sparkleFeedURL\": \"https://updates.solopm.app/releases/appcast.xml\""))
         XCTAssertTrue(evidence.contains("\"appcastPath\": \".build/test-release-appcast.xml\""))
+        XCTAssertTrue(evidence.contains("\"generator\""))
+        XCTAssertTrue(evidence.contains("\"name\": \"script/create_release_evidence.sh\""))
         XCTAssertTrue(evidence.contains("\"source\""))
         XCTAssertTrue(evidence.contains("\"gitCommit\": \"\(try currentGitCommit())\""))
         XCTAssertTrue(evidence.contains("\"releaseMachineLaunch\": true"))
@@ -1752,6 +1759,141 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("release evidence Sparkle feed URL does not match metadata"))
         XCTAssertTrue(result.output.contains("release evidence appcast path does not match metadata"))
+    }
+
+    func testReleasePreflightRejectsReleaseEvidenceWithoutGeneratorProvenance() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-missing-generator.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-missing-generator.dmg.sha256")
+        let artifactPath = ".build/test-release-artifact-missing-generator.dmg"
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let artifactURL = try writeArtifactChecksum(to: checksumURL, artifactPath: artifactPath)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: artifactPath)
+        let gitCommit = try currentGitCommit()
+        try """
+        {
+          "release": {
+            "version": "0.1.0",
+            "buildNumber": "1",
+            "appBundlePath": "dist/SoloPM.app",
+            "artifactPath": "\(artifactPath)",
+            "artifactSha256": "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98",
+            "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
+            "notaryProfile": "SoloPMNotaryProfile",
+            "sparkleFeedURL": "https://updates.solopm.app/releases/appcast.xml",
+            "appcastPath": "dist/releases/appcast.xml"
+          },
+          "source": {
+            "gitCommit": "\(gitCommit)"
+          },
+          "manualChecks": {
+            "releaseMachineLaunch": true,
+            "checksumVerification": true,
+            "cleanDmgInstall": true,
+            "applicationsFolderInstall": true,
+            "gatekeeperAccepted": true,
+            "cleanEnvironmentLaunch": true,
+            "loginItemToggle": true,
+            "sparkleAppcastMetadata": true,
+            "environment": "macOS 15.5 clean user on arm64"
+          },
+          "review": {
+            "checkedBy": "release-owner",
+            "checkedAt": "2026-06-18T00:00:00Z",
+            "notes": ["\(completeManualReleaseEvidenceNote)"]
+          }
+        }
+        """.write(to: evidenceURL, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: artifactURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+        }
+
+        let result = try runScript(
+            "script/verify_release_environment.sh",
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release evidence missing generator provenance: generator.name"))
+    }
+
+    func testReleasePreflightRejectsReleaseEvidenceWithNonCanonicalGeneratorProvenance() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-wrong-generator.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-wrong-generator.dmg.sha256")
+        let artifactPath = ".build/test-release-artifact-wrong-generator.dmg"
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let artifactURL = try writeArtifactChecksum(to: checksumURL, artifactPath: artifactPath)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: artifactPath)
+        let gitCommit = try currentGitCommit()
+        try """
+        {
+          "release": {
+            "version": "0.1.0",
+            "buildNumber": "1",
+            "appBundlePath": "dist/SoloPM.app",
+            "artifactPath": "\(artifactPath)",
+            "artifactSha256": "42bd420cc2f99e68e60005fa7c28fc2f60e4e04ee160d9dd3b98e72fc2954f98",
+            "signingIdentity": "Developer ID Application: SoloPM Test (TEAMID)",
+            "notaryProfile": "SoloPMNotaryProfile",
+            "sparkleFeedURL": "https://updates.solopm.app/releases/appcast.xml",
+            "appcastPath": "dist/releases/appcast.xml"
+          },
+          "source": {
+            "gitCommit": "\(gitCommit)"
+          },
+          "generator": {
+            "name": "manual-json-editor"
+          },
+          "manualChecks": {
+            "releaseMachineLaunch": true,
+            "checksumVerification": true,
+            "cleanDmgInstall": true,
+            "applicationsFolderInstall": true,
+            "gatekeeperAccepted": true,
+            "cleanEnvironmentLaunch": true,
+            "loginItemToggle": true,
+            "sparkleAppcastMetadata": true,
+            "environment": "macOS 15.5 clean user on arm64"
+          },
+          "review": {
+            "checkedBy": "release-owner",
+            "checkedAt": "2026-06-18T00:00:00Z",
+            "notes": ["\(completeManualReleaseEvidenceNote)"]
+          }
+        }
+        """.write(to: evidenceURL, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: artifactURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+        }
+
+        let result = try runScript(
+            "script/verify_release_environment.sh",
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release evidence generator provenance is not canonical"))
     }
 
     func testReleasePreflightRejectsEvidenceWithoutPackageEvidenceManifest() throws {
