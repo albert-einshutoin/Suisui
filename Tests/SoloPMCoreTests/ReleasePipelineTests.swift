@@ -2860,6 +2860,13 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertLessThan(launchPreflightRange.lowerBound, voiceOverCandidateRange.lowerBound)
         XCTAssertLessThan(voiceOverCandidateRange.lowerBound, runtimeAccessibilityRange.lowerBound)
         XCTAssertTrue(script.contains("./script/verify_mcp_compliance.sh"))
+        XCTAssertTrue(script.contains("section \"Refresh manual release helpers\""))
+        XCTAssertTrue(script.contains("./script/prepare_release_manual_helpers.sh"))
+        let mcpPreflightRange = try XCTUnwrap(script.range(of: "section \"MCP compliance preflight\""))
+        let manualHelperRefreshRange = try XCTUnwrap(script.range(of: "section \"Refresh manual release helpers\""))
+        let evidenceWriteRange = try XCTUnwrap(script.range(of: "\nwrite_automated_preflight_evidence\n"))
+        XCTAssertLessThan(mcpPreflightRange.lowerBound, manualHelperRefreshRange.lowerBound)
+        XCTAssertLessThan(manualHelperRefreshRange.lowerBound, evidenceWriteRange.lowerBound)
         XCTAssertTrue(script.contains("manual VoiceOver"))
         XCTAssertTrue(script.contains("competitor hands-on"))
         XCTAssertTrue(script.contains("signing/notarization/Sparkle/Gatekeeper"))
@@ -2894,7 +2901,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("confirm-manual-voiceover-pass"))
         XCTAssertFalse(script.contains("confirm-manual-hands-on"))
         XCTAssertTrue(checklist.contains("./script/check_automated_release_preflight.sh"))
+        XCTAssertTrue(checklist.contains("After automated preflight passes, it refreshes the current-commit manual helper files without writing passed evidence."))
         XCTAssertTrue(phase.contains("[x] 自動proof証跡は seeded runtime AX smoke の `OK: runtime AX smoke visible` 行を保存し、`unlabeledButtons=0`、`genericButtons=0`、`crudSignals=8/8`、`focusPathSignals=6/6` が欠ける証跡を release readiness で拒否する。"))
+        XCTAssertTrue(phase.contains("[x] `check_automated_release_preflight.sh` は通過後に current commit の manual helper を再生成し、VoiceOver / competitor / release-machine の helper freshness を片寄らせない。"))
     }
 
     func testReleaseActionSummaryReportsManualHelperFreshnessForCurrentCommit() throws {

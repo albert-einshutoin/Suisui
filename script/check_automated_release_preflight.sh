@@ -9,6 +9,7 @@ XCODE_SCHEME="${SOLOPM_XCODE_SCHEME:-SoloPM}"
 XCODE_DESTINATION="${SOLOPM_XCODE_DESTINATION:-platform=macOS}"
 XCODE_CONFIGURATION="${SOLOPM_XCODE_CONFIGURATION:-Debug}"
 AUTOMATED_PREFLIGHT_EVIDENCE_FILE="${SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE:-}"
+REFRESH_MANUAL_HELPERS="${SOLOPM_REFRESH_MANUAL_HELPERS:-1}"
 APP_NAME="SoloPM"
 RUNTIME_AX_SMOKE_OUTPUT=""
 
@@ -42,6 +43,26 @@ require_clean_source_tree_for_evidence() {
     echo "BLOCKER: automated preflight evidence requires a clean tracked source tree" >&2
     exit 2
   fi
+}
+
+tracked_source_tree_is_clean() {
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 &&
+    git diff --quiet -- . &&
+    git diff --cached --quiet -- .
+}
+
+refresh_manual_release_helpers() {
+  if [[ "$REFRESH_MANUAL_HELPERS" != "1" ]]; then
+    echo "INFO: manual release helper refresh skipped because SOLOPM_REFRESH_MANUAL_HELPERS is not 1"
+    return 0
+  fi
+
+  if ! tracked_source_tree_is_clean; then
+    echo "INFO: manual release helper refresh skipped because tracked source tree is not clean"
+    return 0
+  fi
+
+  ./script/prepare_release_manual_helpers.sh
 }
 
 write_automated_preflight_evidence() {
@@ -182,6 +203,9 @@ fi
 
 section "MCP compliance preflight"
 SOLOPM_MCP_EVIDENCE_FILE="$MCP_EVIDENCE_FILE" ./script/verify_mcp_compliance.sh
+
+section "Refresh manual release helpers"
+refresh_manual_release_helpers
 
 write_automated_preflight_evidence
 
