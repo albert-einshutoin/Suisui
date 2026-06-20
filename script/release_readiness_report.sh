@@ -1078,6 +1078,7 @@ write_release_actions() {
     printf "\n"
     printf -- "- The candidate writes \`.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md\` so you can inspect the release-candidate context without modifying tracked evidence.\n"
     printf -- "- For this action summary, the expected pending preview path is \`.tmp/voiceover-review/accessibility-voiceover-pending-%s.md\`.\n" "$(source_commit)"
+    printf -- "- The candidate writes \`.tmp/voiceover-review/launch.env\` with \`SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT\` and \`SOLOPM_VOICEOVER_REVIEW_PROJECT_ID\`; verify those values before launching the manual VoiceOver pass.\n"
     printf -- "- The candidate writes \`.tmp/voiceover-review/create-evidence-command.sh\` with the same database/project context. Replace every placeholder in that generated command with concrete VoiceOver observations before running it.\n"
     printf -- "- The generated VoiceOver evidence command is pinned to a clean tracked source tree and the source commit it was created for. Rerun \`./script/prepare_release_manual_helpers.sh\` after source changes instead of reusing an older command.\n"
     printf -- "- Run the generated \`--validate-only\` command first; it performs the same passed-evidence validation without writing \`docs/release/evidence/accessibility-voiceover.md\`.\n"

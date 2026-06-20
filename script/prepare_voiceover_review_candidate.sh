@@ -378,6 +378,8 @@ pending_evidence_source="dist/$APP_NAME.app manual VoiceOver pass using $databas
 {
   printf 'SOLOPM_DATABASE_PATH=%q\n' "$database_path"
   printf 'SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=%q\n' "project:$seed_project_id"
+  printf 'SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT=%q\n' "$SOURCE_COMMIT"
+  printf 'SOLOPM_VOICEOVER_REVIEW_PROJECT_ID=%q\n' "$seed_project_id"
 } >"$launch_env_file"
 write_voiceover_evidence_command "$evidence_command_file" "$database_path" "$seed_project_id"
 ./script/create_voiceover_evidence.sh --pending --output "$pending_evidence_file" --evidence-source "$pending_evidence_source" >/dev/null

@@ -4717,6 +4717,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("evidence_command_file=\"$ROOT_DIR/.tmp/voiceover-review/create-evidence-command.sh\""))
         XCTAssertTrue(script.contains("pending_evidence_file=\"$ROOT_DIR/.tmp/voiceover-review/accessibility-voiceover-pending-$SOURCE_COMMIT.md\""))
         XCTAssertTrue(script.contains("./script/create_voiceover_evidence.sh --pending --output \"$pending_evidence_file\""))
+        XCTAssertTrue(script.contains("printf 'SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT=%q\\n' \"$SOURCE_COMMIT\""))
+        XCTAssertTrue(script.contains("printf 'SOLOPM_VOICEOVER_REVIEW_PROJECT_ID=%q\\n' \"$seed_project_id\""))
         XCTAssertTrue(script.contains("write_voiceover_evidence_command()"))
         XCTAssertTrue(script.contains("# This command must fail if placeholders are not replaced."))
         XCTAssertTrue(script.contains("SOURCE_COMMIT=\"$(git -C \"$ROOT_DIR\" rev-parse --short HEAD 2>/dev/null || printf \"unknown\")\""))
@@ -4746,9 +4748,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(releaseChecklist.contains("The generated VoiceOver evidence command requires a clean tracked source tree, pins the source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit."))
         XCTAssertTrue(releaseChecklist.contains("Run the generated `--validate-only` command first; it performs the same passed-evidence validation without writing `docs/release/evidence/accessibility-voiceover.md`."))
         XCTAssertTrue(releaseChecklist.contains("The script also writes `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` so the reviewer can inspect the current release-candidate context without modifying tracked evidence."))
+        XCTAssertTrue(releaseChecklist.contains("The generated `.tmp/voiceover-review/launch.env` records `SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT` and `SOLOPM_VOICEOVER_REVIEW_PROJECT_ID` so manual reviewers can confirm the launched candidate matches the current source commit and seeded project."))
         let phase11 = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
         XCTAssertTrue(phase11.contains("[x] `script/prepare_voiceover_review_candidate.sh` pins `.tmp/voiceover-review/create-evidence-command.sh` to a clean tracked source tree and the source commit it was generated for"))
         XCTAssertTrue(phase11.contains("[x] `script/prepare_voiceover_review_candidate.sh` writes `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` with the current release-candidate `Source commit` without modifying tracked evidence."))
+        XCTAssertTrue(phase11.contains("[x] `script/prepare_voiceover_review_candidate.sh` writes `.tmp/voiceover-review/launch.env` with `SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT` and `SOLOPM_VOICEOVER_REVIEW_PROJECT_ID` so manual reviewers do not launch stale VoiceOver candidates."))
         XCTAssertTrue(phase11.contains("[x] `script/create_voiceover_evidence.sh --validate-only` validates the filled manual command without writing tracked evidence."))
     }
 
@@ -5855,6 +5859,9 @@ final class ReleasePipelineTests: XCTestCase {
         ```
         """))
         XCTAssertTrue(actionSummary.contains(".tmp/voiceover-review/create-evidence-command.sh"))
+        XCTAssertTrue(actionSummary.contains(".tmp/voiceover-review/launch.env"))
+        XCTAssertTrue(actionSummary.contains("SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT"))
+        XCTAssertTrue(actionSummary.contains("SOLOPM_VOICEOVER_REVIEW_PROJECT_ID"))
         XCTAssertTrue(actionSummary.contains(".tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md"))
         XCTAssertTrue(actionSummary.contains(".tmp/voiceover-review/accessibility-voiceover-pending-\(sourceCommit).md"))
         XCTAssertTrue(actionSummary.contains("```bash\n./script/create_voiceover_evidence.sh --validate-only \\"))
