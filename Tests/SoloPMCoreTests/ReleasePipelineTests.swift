@@ -4055,6 +4055,51 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[ ] 実機VoiceOverでProject board -> card -> Inline Task Composer -> inspectorのfocus orderを確認する。"))
     }
 
+    func testCompetitorPendingDefaultsUseIgnoredCurrentCommitHelpers() throws {
+        let trackedEvidenceURL = packageRoot()
+            .appendingPathComponent("docs/release/evidence/competitor-hands-on.md")
+        let trackedBenchmarkURL = packageRoot()
+            .appendingPathComponent("docs/product/competitor-benchmark.md")
+        let originalEvidence = try String(contentsOf: trackedEvidenceURL, encoding: .utf8)
+        let originalBenchmark = try String(contentsOf: trackedBenchmarkURL, encoding: .utf8)
+        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let pendingURL = packageRoot()
+            .appendingPathComponent(".tmp/competitor-hands-on/competitor-hands-on-pending-\(currentShortCommit).md")
+        let pendingBenchmarkURL = packageRoot()
+            .appendingPathComponent(".tmp/competitor-hands-on/competitor-benchmark-pending-\(currentShortCommit).md")
+        let commandURL = packageRoot()
+            .appendingPathComponent(".tmp/competitor-hands-on/create-evidence-command.sh")
+        let worksheetURL = packageRoot()
+            .appendingPathComponent(".tmp/competitor-hands-on/hands-on-worksheet.md")
+
+        for artifactURL in [pendingURL, pendingBenchmarkURL, commandURL, worksheetURL] {
+            try removeItemIfPresent(at: artifactURL)
+        }
+        defer {
+            try? originalEvidence.write(to: trackedEvidenceURL, atomically: true, encoding: .utf8)
+            try? originalBenchmark.write(to: trackedBenchmarkURL, atomically: true, encoding: .utf8)
+            for artifactURL in [pendingURL, pendingBenchmarkURL, commandURL, worksheetURL] {
+                try? removeItemIfPresent(at: artifactURL)
+            }
+        }
+
+        let result = try runScript("script/create_competitor_hands_on_evidence.sh", arguments: ["--pending"])
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence written: \(pendingURL.path)"))
+        XCTAssertTrue(result.output.contains("Competitor benchmark pending worksheet written: \(pendingBenchmarkURL.path)"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: pendingURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: pendingBenchmarkURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: commandURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: worksheetURL.path))
+        XCTAssertEqual(try String(contentsOf: trackedEvidenceURL, encoding: .utf8), originalEvidence)
+        XCTAssertEqual(try String(contentsOf: trackedBenchmarkURL, encoding: .utf8), originalBenchmark)
+
+        let generatedCommand = try String(contentsOf: commandURL, encoding: .utf8)
+        XCTAssertTrue(generatedCommand.contains("--output \(pendingURL.path) \\"))
+        XCTAssertTrue(generatedCommand.contains("--benchmark-output \(pendingBenchmarkURL.path) \\"))
+    }
+
     func testCompetitorHandsOnEvidenceGeneratorWritesPendingAndPassedEvidence() throws {
         let pendingURL = packageRoot()
             .appendingPathComponent(".build/test-competitor-hands-on-pending.md")
@@ -4196,14 +4241,14 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(generatedCommand.contains("--benchmark-output \(pendingBenchmarkURL.path) \\"))
         XCTAssertTrue(generatedCommand.contains("--confirm-manual-hands-on"))
         let releaseChecklist = try readPackageFile("docs/release/checklist.md")
-        XCTAssertTrue(releaseChecklist.contains("Running the pending generator also writes `.tmp/competitor-hands-on/hands-on-worksheet.md`, `.tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md`, and `.tmp/competitor-hands-on/create-evidence-command.sh`."))
+        XCTAssertTrue(releaseChecklist.contains("Running the pending generator also writes `.tmp/competitor-hands-on/competitor-hands-on-pending-<commit>.md`, `.tmp/competitor-hands-on/hands-on-worksheet.md`, `.tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md`, and `.tmp/competitor-hands-on/create-evidence-command.sh` by default, so pending review prep does not modify tracked release evidence or the tracked benchmark document."))
         XCTAssertTrue(releaseChecklist.contains("The generated competitor hands-on command requires a clean tracked source tree, pins the source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit."))
         XCTAssertTrue(releaseChecklist.contains("The generated competitor hands-on command also verifies `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md` are marked completed, pinned to the same source commit, free of unchecked/pending/template markers, and filled before validate-only or passed evidence can run."))
         XCTAssertTrue(releaseChecklist.contains("Run the generated competitor `--validate-only` command first; it performs the same passed-evidence validation without writing `docs/release/evidence/competitor-hands-on.md` or `docs/product/competitor-benchmark.md`."))
         XCTAssertTrue(releaseChecklist.contains("The competitor passed command requires `--hands-on-duration` with a real 2-4 hour total and per-competitor timing."))
         let phase11 = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
         XCTAssertTrue(phase11.contains("[x] `script/create_competitor_hands_on_evidence.sh --pending` pins `.tmp/competitor-hands-on/create-evidence-command.sh` to a clean tracked source tree and the source commit it was generated for"))
-        XCTAssertTrue(phase11.contains("[x] `script/create_competitor_hands_on_evidence.sh --pending --benchmark-output .tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md` は競合別hands-on findingsとShip/Defer/Rejectのpending benchmark worksheetも生成し、final benchmark更新漏れを防ぐ。"))
+        XCTAssertTrue(phase11.contains("[x] `script/create_competitor_hands_on_evidence.sh --pending` はデフォルトで `.tmp/competitor-hands-on/competitor-hands-on-pending-<commit>.md` と `.tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md` を生成し、tracked evidence / benchmarkをpending worksheetで汚さずfinal benchmark更新漏れを防ぐ。"))
         XCTAssertTrue(phase11.contains("[x] `script/create_competitor_hands_on_evidence.sh --validate-only` validates the filled manual command without writing tracked evidence or benchmark findings."))
         XCTAssertTrue(phase11.contains("[x] competitor hands-on passed evidence requires elapsed 2-4 hour timing with Notion/Todoist/Linear/Motion coverage."))
         XCTAssertTrue(phase11.contains("[x] Generated competitor hands-on evidence command verifies `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md` are current, marked completed, filled, and free of pending/unchecked markers before validation or passed evidence."))

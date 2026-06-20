@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUTPUT_FILE="$ROOT_DIR/docs/release/evidence/competitor-hands-on.md"
-BENCHMARK_FILE="$ROOT_DIR/docs/product/competitor-benchmark.md"
+OUTPUT_FILE=""
+BENCHMARK_FILE=""
 COMMAND_FILE="$ROOT_DIR/.tmp/competitor-hands-on/create-evidence-command.sh"
 WORKSHEET_FILE="$ROOT_DIR/.tmp/competitor-hands-on/hands-on-worksheet.md"
 EVIDENCE_STATUS="pending"
@@ -15,6 +15,8 @@ HANDS_ON_DURATION=""
 CONFIRM_MANUAL_HANDS_ON=0
 VALIDATE_ONLY=0
 SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
+OUTPUT_FILE_WAS_SET=0
+BENCHMARK_FILE_WAS_SET=0
 NOTION_NOTE=""
 TODOIST_NOTE=""
 LINEAR_NOTE=""
@@ -247,10 +249,12 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --output)
       OUTPUT_FILE="${2:-}"
+      OUTPUT_FILE_WAS_SET=1
       shift 2
       ;;
     --benchmark-output)
       BENCHMARK_FILE="${2:-}"
+      BENCHMARK_FILE_WAS_SET=1
       shift 2
       ;;
     --command-output)
@@ -327,6 +331,27 @@ done
 
 if [[ "$EVIDENCE_STATUS" != "pending" && "$EVIDENCE_STATUS" != "passed" ]]; then
   usage >&2
+  exit 2
+fi
+
+if [[ "$OUTPUT_FILE_WAS_SET" -eq 0 ]]; then
+  if [[ "$EVIDENCE_STATUS" == "pending" ]]; then
+    OUTPUT_FILE="$ROOT_DIR/.tmp/competitor-hands-on/competitor-hands-on-pending-$SOURCE_COMMIT.md"
+  else
+    OUTPUT_FILE="$ROOT_DIR/docs/release/evidence/competitor-hands-on.md"
+  fi
+fi
+
+if [[ "$BENCHMARK_FILE_WAS_SET" -eq 0 ]]; then
+  if [[ "$EVIDENCE_STATUS" == "pending" ]]; then
+    BENCHMARK_FILE="$ROOT_DIR/.tmp/competitor-hands-on/competitor-benchmark-pending-$SOURCE_COMMIT.md"
+  else
+    BENCHMARK_FILE="$ROOT_DIR/docs/product/competitor-benchmark.md"
+  fi
+fi
+
+if [[ -z "$OUTPUT_FILE" || -z "$BENCHMARK_FILE" || -z "$COMMAND_FILE" || -z "$WORKSHEET_FILE" ]]; then
+  echo "output, benchmark, command, and worksheet paths must not be blank" >&2
   exit 2
 fi
 
