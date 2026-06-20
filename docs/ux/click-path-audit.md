@@ -128,6 +128,6 @@ Risk: Artifact追加は絶対パスに限定してworkspace推測を避け、削
 
 ## 次の実装候補
 
-1. P11-033: 実機VoiceOverでProject board -> card -> inspectorのfocus orderを確認する。
+1. P11-033: 実機VoiceOverでProject board -> card -> Inline Task Composer -> inspectorのfocus orderを確認する。
 2. P11-040: Notion / Todoist / Linear / Motion の実操作メモを追加し、desk researchとの差分だけ更新する。
 3. P5/P10: Developer ID signing / notarization / Sparkle appcast のrelease-machine gateを埋める。
