@@ -2,6 +2,15 @@ import Foundation
 
 public enum MCPProtocolVersion: String, Equatable, Sendable {
     case v2025_11_25 = "2025-11-25"
+
+    public static let publicAlphaBaselineDescription = "stable MCP 2025-11-25 stdio Tools only"
+
+    public static func unsupportedInitializeReason(for protocolVersion: String) -> String {
+        if protocolVersion == "2026-07-28" {
+            return "Unsupported result.protocolVersion: \(protocolVersion). SoloPM public alpha supports \(publicAlphaBaselineDescription); draft 2026-07-28 protocol metadata and server/discover are not implemented."
+        }
+        return "Unsupported result.protocolVersion: \(protocolVersion)."
+    }
 }
 
 public struct MCPJSONRPCRequest: Codable, Equatable, Sendable {

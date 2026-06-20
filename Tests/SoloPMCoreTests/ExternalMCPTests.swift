@@ -320,6 +320,38 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(transport.recordedMethods, ["initialize"])
     }
 
+    func testClientRejectsDraft20260728ProtocolWithStableBaselineGuidance() async throws {
+        let transport = RecordingMCPTransport { request in
+            MCPJSONRPCResponse(
+                id: request.id,
+                result: .object([
+                    "protocolVersion": .string("2026-07-28"),
+                    "capabilities": .object([:]),
+                    "serverInfo": .object([
+                        "name": .string("draft-mcp"),
+                        "version": .string("0.1.0")
+                    ])
+                ])
+            )
+        }
+        let client = MCPClient(serverID: "draft", transport: transport)
+
+        do {
+            _ = try await client.initialize()
+            XCTFail("draft initialize protocolVersion should fail for this release")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(
+                    serverID: "draft",
+                    method: "initialize",
+                    reason: "Unsupported result.protocolVersion: 2026-07-28. SoloPM public alpha supports stable MCP 2025-11-25 stdio Tools only; draft 2026-07-28 protocol metadata and server/discover are not implemented."
+                )
+            )
+        }
+        XCTAssertEqual(transport.recordedMethods, ["initialize"])
+    }
+
     func testServerRegistrationValidatesCommandBinaryDisabledAndKeychainEnvReferences() async throws {
         let validator = MCPServerRegistrationValidator(binaryLocator: StaticBinaryLocator(availableCommands: ["node"]))
         let workingDirectory = try temporaryDirectory()

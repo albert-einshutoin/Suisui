@@ -52,7 +52,7 @@ public final class MCPClient: @unchecked Sendable {
             throw MCPClientError.invalidResponse(
                 serverID: serverID,
                 method: "initialize",
-                reason: "Unsupported result.protocolVersion: \(protocolVersion)."
+                reason: MCPProtocolVersion.unsupportedInitializeReason(for: protocolVersion)
             )
         }
         guard let capabilitiesValue = object["capabilities"] else {
