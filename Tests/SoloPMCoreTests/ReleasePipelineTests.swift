@@ -397,6 +397,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(worksheet.contains("- [ ] Sparkle appcast metadata"))
         XCTAssertTrue(worksheet.contains("## Evidence Command"))
         XCTAssertTrue(worksheet.contains("Run `.build/test-release-machine-create-evidence-command.sh` only after every checked item above is true."))
+        XCTAssertTrue(worksheet.contains("The generated command validates the filled evidence, writes `packaging/release-evidence.json`, then reruns the online release environment preflight."))
         XCTAssertFalse(worksheet.contains("Status: passed"))
 
         let command = try String(contentsOf: commandURL, encoding: .utf8)
@@ -415,6 +416,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(command.contains("Validate the filled release-machine evidence command before writing tracked evidence."))
         XCTAssertTrue(command.contains("./script/create_release_evidence.sh --validate-only \\"))
         XCTAssertTrue(command.contains("./script/create_release_evidence.sh --force \\"))
+        XCTAssertTrue(command.contains("Run final release-machine preflight after evidence is written."))
+        XCTAssertTrue(command.contains("SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh"))
         XCTAssertTrue(command.contains("--release-machine-launch \\"))
         XCTAssertTrue(command.contains("--checksum-verification \\"))
         XCTAssertTrue(command.contains("--clean-dmg-install \\"))
@@ -429,15 +432,19 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(command.contains("Sparkle appcast metadata"))
         let validateRange = try XCTUnwrap(command.range(of: "./script/create_release_evidence.sh --validate-only \\"))
         let writeRange = try XCTUnwrap(command.range(of: "./script/create_release_evidence.sh --force \\"))
+        let preflightRange = try XCTUnwrap(command.range(of: "SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh"))
         XCTAssertLessThan(validateRange.lowerBound, writeRange.lowerBound)
+        XCTAssertLessThan(writeRange.lowerBound, preflightRange.lowerBound)
 
         let checklist = try readPackageFile("docs/release/checklist.md")
         XCTAssertTrue(checklist.contains("The generated release evidence command requires a clean tracked source tree, pins the source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit."))
         XCTAssertTrue(checklist.contains("Run the generated release-machine `--validate-only` command first; it performs the same release evidence validation without writing `packaging/release-evidence.json`."))
+        XCTAssertTrue(checklist.contains("The generated release-machine command reruns `SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh` after writing release evidence, so the operator sees the final release-machine gate result before returning to `release_readiness_report.sh`."))
 
         let phase = try readPackageFile("tasks/Phase10-ReleaseReadinessRuntime.md")
         XCTAssertTrue(phase.contains("[x] `script/prepare_release_machine_evidence.sh` pins `.tmp/release-machine/create-release-evidence-command.sh` to a clean tracked source tree and the source commit it was generated for"))
         XCTAssertTrue(phase.contains("[x] `script/create_release_evidence.sh --validate-only` validates the filled release-machine command without writing `packaging/release-evidence.json`."))
+        XCTAssertTrue(phase.contains("[x] `.tmp/release-machine/create-release-evidence-command.sh` runs `SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh` after writing release evidence so release-machine operators see the final gate before rerunning the readiness report."))
     }
 
     func testLocalVisualQAArtifactsAndMacMetadataAreIgnored() throws {

@@ -126,6 +126,7 @@ write_worksheet() {
     printf '\n'
     printf -- 'Run `%s` only after every checked item above is true.\n' "$(display_path "$COMMAND_FILE")"
     printf '%s\n' 'Replace every placeholder in that command with concrete observations from this worksheet.'
+    printf '%s\n' 'The generated command validates the filled evidence, writes `packaging/release-evidence.json`, then reruns the online release environment preflight.'
   } >"$WORKSHEET_FILE"
 }
 
@@ -164,6 +165,9 @@ write_command() {
     printf '\n'
     printf '%s\n' '# If validation passes and every release-machine manual check is complete, write tracked evidence.'
     write_release_evidence_invocation "--force"
+    printf '\n'
+    printf '%s\n' '# Run final release-machine preflight after evidence is written.'
+    printf '%s\n' 'SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh'
   } >"$COMMAND_FILE"
 
   chmod +x "$COMMAND_FILE"
