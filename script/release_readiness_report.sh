@@ -1438,6 +1438,28 @@ is_placeholder_checked_by() {
   esac
 }
 
+is_placeholder_macos_version() {
+  local normalized
+  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[[:punct:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
+  case "$normalized" in
+    macos|\
+    "macos version"|\
+    "macos unknown"|\
+    unknown|\
+    tbd|\
+    todo|\
+    placeholder|\
+    sample|\
+    example|\
+    "replace me")
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 is_boilerplate_voiceover_note() {
   local normalized
   normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[[:punct:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
@@ -2311,6 +2333,7 @@ else
 
     has_template_context=0
     grep -Eiq '(pending|todo|tbd|placeholder|sample|example|replace me|signed or release-candidate|VoiceOver/keyboard/device details|VoiceOver / keyboard / device details|macOS version.*hardware.*VoiceOver input method.*clean user|manual pass environment|accessibility environment)' <<<"$context_value" && has_template_context=1
+    [[ "$context_label" == "macOS version" ]] && is_placeholder_macos_version "$context_value" && has_template_context=1
     [[ "$context_label" == "Checked by" ]] && is_placeholder_checked_by "$context_value" && has_template_context=1
     if [[ "$has_template_context" -eq 1 ]]; then
       voiceover_blocker "VoiceOver accessibility evidence has template release context: $context_label"

@@ -3483,6 +3483,33 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(placeholderReviewerResult.output.contains("--checked-by must name the actual reviewer"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
 
+        let unknownMacOSVersionResult = try runScript(
+            "script/create_voiceover_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "SoloPM Release Owner",
+                "--macos-version", "macOS unknown",
+                "--check-date", "2026-06-19",
+                "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
+                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6",
+                "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
+                "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
+                "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
+                "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
+                "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
+                "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
+                "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
+                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--output", passedURL.path,
+                "--confirm-manual-voiceover-pass"
+            ]
+        )
+        XCTAssertNotEqual(unknownMacOSVersionResult.exitCode, 0)
+        XCTAssertTrue(unknownMacOSVersionResult.output.contains("--macos-version must identify the actual macOS version"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
         let angleBracketPlaceholderReviewerResult = try runScript(
             "script/create_voiceover_evidence.sh",
             arguments: [
@@ -5875,6 +5902,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("The action summary also expands those pending paths for the current `Source commit`"))
         XCTAssertTrue(checklist.contains("The action summary includes a Manual Evidence Source Hygiene section explaining that direct passed evidence scripts also require a clean tracked source tree."))
         XCTAssertTrue(checklist.contains("It also reminds operators that release-machine evidence must include `generator.name: script/create_release_evidence.sh` and that hand-written `packaging/release-evidence.json` remains blocked."))
+        XCTAssertTrue(checklist.contains("Passed VoiceOver evidence must also identify the actual macOS version used for the manual pass."))
         XCTAssertTrue(checklist.contains("Generated manual/release command files must fail validate-only until every placeholder is replaced, so template commands cannot be treated as evidence-ready."))
         XCTAssertTrue(phase.contains("[x] `release_readiness_report.sh` は `SOLOPM_RELEASE_ACTIONS_FILE` 指定時に残blockerのoperator action summaryを書き出す。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Source commit` と tracked source tree の clean / dirty / unavailable 状態を併記する。"))
@@ -5889,6 +5917,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] action summary は VoiceOver の `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` preview と `.tmp/voiceover-review/create-evidence-command.sh` を案内し、operatorがtracked evidenceを汚さずrelease候補contextを確認できるようにする。"))
         XCTAssertTrue(phase.contains("[x] action summary は VoiceOver / competitor hands-on の current `Source commit` に対応する pending evidence path も併記する。"))
         XCTAssertTrue(phase.contains("[x] action summary は competitor hands-on の pending generator と `.tmp/competitor-hands-on/create-evidence-command.sh` を案内し、operatorがplaceholderを置換してからpassed証跡を作れるようにする。"))
+        XCTAssertTrue(phase.contains("[x] VoiceOver passed evidence は実際の `macOS version` を必須にし、`macOS unknown` / placeholder / sample / example / replacement text をgeneratorとreadiness reportの両方でrelease blockerにする。"))
         XCTAssertTrue(phase.contains("[x] action summary は VoiceOver / competitor hands-on / release-machine の生成済み証跡コマンドが clean tracked source tree と生成時 source commit にpinされ、source変更後は再生成が必要なことを表示する。"))
         XCTAssertTrue(phase.contains("[x] action summary の VoiceOver / competitor hands-on の直接実行例は `--validate-only` を `--passed` より先に表示し、manual evidence を即書き込みしない導線にする。"))
         XCTAssertTrue(phase.contains("[x] `script/prepare_release_manual_helpers.sh` は current source commit の VoiceOver pending preview / launch env / command、competitor pending evidence、competitor benchmark pending worksheet、competitor worksheet / command、release-machine worksheet / command を一括再生成し、passed evidence を書かない。"))
@@ -7296,7 +7325,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         ## Release Candidate Context
 
-        - macOS version: macOS 15.5
+        - macOS version: macOS unknown
         - App build: `0.1.0 (1)`
         - Bundle identifier: `dev.solopm.app`
         - Source commit: `deadbee`
@@ -7330,6 +7359,7 @@ final class ReleasePipelineTests: XCTestCase {
         let result = try runTool(["bash", reportURL.path])
 
         XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence has template release context: macOS version"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence has invalid release context date: Check date"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence has boilerplate focus note: Project navigation"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence has boilerplate focus note: Project board detail"))

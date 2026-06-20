@@ -180,6 +180,28 @@ is_placeholder_accessibility_environment() {
   esac
 }
 
+is_placeholder_macos_version() {
+  local normalized
+  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[[:punct:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
+  case "$normalized" in
+    macos|\
+    "macos version"|\
+    "macos unknown"|\
+    unknown|\
+    tbd|\
+    todo|\
+    placeholder|\
+    sample|\
+    example|\
+    "replace me")
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 is_placeholder_checked_by() {
   local normalized
   normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[[:punct:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
@@ -344,6 +366,10 @@ if [[ "$VOICEOVER_STATUS" == "passed" ]]; then
   fi
   if [[ -z "${MACOS_VERSION//[[:space:]]/}" || -z "${CHECK_DATE//[[:space:]]/}" ]]; then
     echo "--macos-version and --check-date are required with --passed" >&2
+    exit 2
+  fi
+  if is_placeholder_macos_version "$MACOS_VERSION"; then
+    echo "--macos-version must identify the actual macOS version" >&2
     exit 2
   fi
   if ! is_iso_date "$CHECK_DATE"; then
