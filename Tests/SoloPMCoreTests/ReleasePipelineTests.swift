@@ -6232,6 +6232,54 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
+    func testReleaseReadinessReportScansExternalConnectorSourceWhenPresent() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-external-connector-scan", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI", "SoloPMExternalConnectors"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)ProductSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("ProductSource.swift"), atomically: true, encoding: .utf8)
+        }
+        let connectorDirectory = sourcesDirectory.appendingPathComponent("SoloPMExternalConnectors", isDirectory: true)
+        try "public struct ConnectorFixture {}\n"
+            .write(to: connectorDirectory.appendingPathComponent("ConnectorSource.swift"), atomically: true, encoding: .utf8)
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: preflightURL, atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: preflightURL.path)
+
+        let result = try runTool(["bash", reportURL.path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("SoloPMExternalConnectors/ConnectorSource.swift"))
+        XCTAssertTrue(result.output.contains("ConnectorFixture"))
+        XCTAssertTrue(result.output.contains("runtime source contains mock/fake/fixture/demo/test-only markers"))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
+    }
+
     func testReleaseReadinessReportShowsReleaseMachineNextActionsWhenPreflightFails() throws {
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-release-readiness-preflight-next-actions", isDirectory: true)

@@ -46,6 +46,9 @@ RUNTIME_SOURCE_DIRS=(
   "$ROOT_DIR/Sources/SoloPMApp"
   "$ROOT_DIR/Sources/SoloPMCLI"
 )
+OPTIONAL_PRODUCT_SOURCE_DIRS=(
+  "$ROOT_DIR/Sources/SoloPMExternalConnectors"
+)
 UI_SCREENSHOTS=(
   "Light:project-board-light.png"
   "Dark:project-board-dark.png"
@@ -453,7 +456,7 @@ write_local_product_gate_status() {
     ! has_local_product_gate_blocker &&
     ! has_runtime_product_source_blocker; then
     printf -- "- [x] Local product gates are green for this source commit.\n"
-    printf -- "- [x] Runtime source scan has no mock/fake/fixture/demo markers in SoloPM app targets.\n"
+    printf -- "- [x] Runtime/product source scan has no mock/fake/fixture/demo markers in SoloPM app, CLI, core, or connector targets.\n"
     printf -- "- [x] MCP compliance, SQLite data CRUD, visible-app accessible CRUD, Xcode build, launch, and runtime AX proof are covered by accepted automated preflight evidence.\n"
     printf -- "- [ ] Remaining gates are manual VoiceOver, competitor hands-on, and release-machine signing/notarization/Sparkle/Gatekeeper evidence.\n"
   else
@@ -1581,16 +1584,22 @@ if ! command -v rg >/dev/null 2>&1; then
   blocker "rg is required for source scanning"
 else
   missing_runtime_source=0
+  source_scan_dirs=("${RUNTIME_SOURCE_DIRS[@]}")
   for source_dir in "${RUNTIME_SOURCE_DIRS[@]}"; do
     if [[ ! -d "$source_dir" ]]; then
       blocker "missing runtime source directory: ${source_dir#"$ROOT_DIR/"}"
       missing_runtime_source=1
     fi
   done
+  for source_dir in "${OPTIONAL_PRODUCT_SOURCE_DIRS[@]}"; do
+    if [[ -d "$source_dir" ]]; then
+      source_scan_dirs+=("$source_dir")
+    fi
+  done
 
   if [[ "$missing_runtime_source" -eq 0 ]]; then
     set +e
-    scan_output="$(rg -n "$MOCK_PATTERN" "${RUNTIME_SOURCE_DIRS[@]}" 2>&1)"
+    scan_output="$(rg -n "$MOCK_PATTERN" "${source_scan_dirs[@]}" 2>&1)"
     scan_status=$?
     set -e
 
@@ -1600,7 +1609,11 @@ else
         blocker "runtime source contains mock/fake/fixture/demo/test-only markers"
         ;;
       1)
-        printf "OK: no runtime mock/fake/fixture/demo markers in Sources/SoloPMCore Sources/SoloPMApp Sources/SoloPMCLI\n"
+        relative_scan_dirs=()
+        for source_dir in "${source_scan_dirs[@]}"; do
+          relative_scan_dirs+=("${source_dir#"$ROOT_DIR/"}")
+        done
+        printf "OK: no runtime mock/fake/fixture/demo markers in %s\n" "${relative_scan_dirs[*]}"
         ;;
       *)
         if [[ -n "$scan_output" ]]; then

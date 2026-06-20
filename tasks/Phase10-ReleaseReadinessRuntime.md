@@ -1105,6 +1105,7 @@
 
 - [x] `release_readiness_report.sh` は runtime source directory が欠けている場合、`rg` の error を「検出なし」と扱わず blocker にする。
 - [x] `Sources/SoloPMCore` / `Sources/SoloPMApp` / `Sources/SoloPMCLI` の固定 scan path が壊れたら `READY` を出さない。
+- [x] `Sources/SoloPMExternalConnectors` は app / CLI runtime 依存から外したまま、存在する場合は release source scan に含め、OSS提供target内の mock / fixture marker も release blocker にする。
 - [x] `ReleasePipelineTests` で一時 release root に runtime source 欠落 fixture を作り、missing source で non-zero exit になることを固定する。
 - [x] 完了条件: runtime mock/fake scan の対象ディレクトリが typo / move / delete で欠けた状態を release ready と誤判定しない。
 
