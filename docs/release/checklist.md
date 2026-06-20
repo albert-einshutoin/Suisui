@@ -157,6 +157,7 @@ Regenerate the MCP stdio Tools evidence for this release candidate:
 
 Confirm `docs/release/evidence/mcp-inspector.md` includes:
 
+- `- Source commit: \`<latest MCP runtime/fixture source commit>\``
 - ``Stable baseline: `2025-11-25` ``
 - ``Official stable latest: `2025-11-25` ``
 - `Official latest source: https://modelcontextprotocol.io/specification`
@@ -171,6 +172,8 @@ Confirm `docs/release/evidence/mcp-inspector.md` includes:
 - ``Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline. ``
 - `tools/list` and `tools/call`
 - malformed-json / mismatched-id / invalid-schema / timeout failure taxonomy
+
+If `Sources/SoloPMCore/ExternalMCP`, `Sources/SoloPMApp/SoloPMApp.swift`, `fixtures/mcp`, or `Package.swift` changes after this evidence is generated, rerun `./script/verify_mcp_compliance.sh`; `release_readiness_report.sh` rejects MCP Inspector evidence whose `Source commit` no longer matches the current MCP runtime/fixture source commit.
 
 SoloPM must not be described as a full MCP host for this release.
 

@@ -12,6 +12,7 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertTrue(script.contains("--method tools/call"))
         XCTAssertTrue(script.contains("fixtures/mcp/stdio-fixture-server.mjs"))
         XCTAssertTrue(script.contains("docs/release/evidence/mcp-inspector.md"))
+        XCTAssertTrue(script.contains("mcp_evidence_source_commit()"))
         XCTAssertFalse(script.contains("Sources/SoloPMCore/ExternalMCP/ExternalMCPTestKit"))
     }
 
@@ -42,6 +43,7 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertTrue(evidence.contains("initialize -> tools/list -> tools/call"))
         XCTAssertTrue(evidence.contains("tools/list"))
         XCTAssertTrue(evidence.contains("tools/call"))
+        XCTAssertTrue(evidence.contains("- Source commit: `"))
         XCTAssertTrue(evidence.contains("malformed-json"))
         XCTAssertTrue(evidence.contains("mismatched-id"))
         XCTAssertTrue(evidence.contains("invalid-schema"))
@@ -170,6 +172,7 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertEqual(result.exitCode, 0, result.output)
         let generatedEvidence = try String(contentsOf: evidence, encoding: .utf8)
         XCTAssertTrue(generatedEvidence.contains("fakeInspector"))
+        XCTAssertTrue(generatedEvidence.contains("- Source commit: `"))
         XCTAssertTrue(generatedEvidence.contains("success"))
         XCTAssertTrue(generatedEvidence.contains("malformed-json"))
         XCTAssertTrue(generatedEvidence.contains("mismatched-id"))

@@ -244,6 +244,22 @@ ui_evidence_source_commit() {
   fi
 }
 
+mcp_evidence_source_commit() {
+  local commit
+  commit="$(
+    git -C "$ROOT_DIR" log -1 --format=%h -- \
+      Sources/SoloPMCore/ExternalMCP \
+      Sources/SoloPMApp/SoloPMApp.swift \
+      fixtures/mcp \
+      Package.swift 2>/dev/null || true
+  )"
+  if [[ -n "$commit" ]]; then
+    printf "%s" "$commit"
+  else
+    source_commit
+  fi
+}
+
 markdown_context_value() {
   local file_path="$1"
   local context_label="$2"
@@ -251,6 +267,13 @@ markdown_context_value() {
     index($0, "- " label ":") == 1 {
       value = $0
       sub("^- " label ":[[:space:]]*", "", value)
+      print value
+      found = 1
+      exit
+    }
+    index($0, label ":") == 1 {
+      value = $0
+      sub("^" label ":[[:space:]]*", "", value)
       print value
       found = 1
       exit
@@ -2589,6 +2612,15 @@ else
         mcp_runtime_missing_marker_count=$((mcp_runtime_missing_marker_count + 1))
       fi
     done
+    mcp_runtime_source_commit="$(normalize_markdown_context_value "$(markdown_context_value "$mcp_runtime_evidence_file" "Source commit")")"
+    expected_mcp_source_commit="$(mcp_evidence_source_commit)"
+    if [[ -z "$mcp_runtime_source_commit" ]]; then
+      blocker "MCP compliance verifier output is missing source commit"
+      mcp_runtime_missing_marker_count=$((mcp_runtime_missing_marker_count + 1))
+    elif [[ "$expected_mcp_source_commit" != "unknown" && "$mcp_runtime_source_commit" != "$expected_mcp_source_commit" ]]; then
+      blocker "MCP compliance verifier output source commit does not match current MCP source commit: expected $expected_mcp_source_commit"
+      mcp_runtime_missing_marker_count=$((mcp_runtime_missing_marker_count + 1))
+    fi
 
     if [[ "$mcp_runtime_missing_marker_count" -eq 0 ]]; then
       printf "OK: MCP compliance verifier passed\n"
@@ -2608,6 +2640,15 @@ else
       mcp_missing_marker_count=$((mcp_missing_marker_count + 1))
     fi
   done
+  mcp_evidence_source_commit_value="$(normalize_markdown_context_value "$(markdown_context_value "$mcp_evidence_file" "Source commit")")"
+  expected_mcp_source_commit="$(mcp_evidence_source_commit)"
+  if [[ -z "$mcp_evidence_source_commit_value" ]]; then
+    blocker "MCP Inspector evidence is missing source commit"
+    mcp_missing_marker_count=$((mcp_missing_marker_count + 1))
+  elif [[ "$expected_mcp_source_commit" != "unknown" && "$mcp_evidence_source_commit_value" != "$expected_mcp_source_commit" ]]; then
+    blocker "MCP Inspector evidence source commit does not match current MCP source commit: expected $expected_mcp_source_commit"
+    mcp_missing_marker_count=$((mcp_missing_marker_count + 1))
+  fi
   if [[ "$mcp_missing_marker_count" -eq 0 ]]; then
     printf "OK: MCP Inspector evidence covers stable baseline, draft boundary, tools/list, tools/call, and failure taxonomy\n"
   fi

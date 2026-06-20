@@ -67,7 +67,7 @@ Primary references:
 | Draft modern protocol metadata | Not implemented | The draft `2026-07-28` path removes initialize/notifications/initialized and protocol-level sessions, and uses per-request `_meta` protocolVersion/clientInfo/clientCapabilities. SoloPM remains on the stable `2025-11-25` initialize lifecycle for this release. |
 | Draft server discovery | Not implemented | Draft `server/discover` is required in `2026-07-28`, but it is outside SoloPM's current release boundary and must not be advertised as supported. |
 | Draft list caching | Not implemented | Draft tools/list cache hints `ttlMs` / `cacheScope` are not implemented; SoloPM must not claim draft list-cache behavior until it supports and tests the draft semantics. |
-| Official Inspector evidence | Recorded | `script/verify_mcp_compliance.sh` runs the official MCP Inspector CLI against `fixtures/mcp/stdio-fixture-server.mjs`; `docs/release/evidence/mcp-inspector.md` records `tools/list`, `tools/call`, and failure taxonomy smoke output. |
+| Official Inspector evidence | Recorded | `script/verify_mcp_compliance.sh` runs the official MCP Inspector CLI against `fixtures/mcp/stdio-fixture-server.mjs`; `docs/release/evidence/mcp-inspector.md` records `tools/list`, `tools/call`, failure taxonomy smoke output, and the current MCP runtime/fixture `Source commit` so stale evidence is rejected. |
 | Settings failure taxonomy | Implemented | Settings `Check Connection` exposes `malformed-json`, `mismatched-id`, `invalid-schema`, and `timeout` through `connectionCheckResultLabel` and prefixes matching user-facing errors with the same taxonomy. |
 
 ## Tests That Currently Guard Compliance

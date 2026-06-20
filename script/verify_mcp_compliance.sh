@@ -8,6 +8,22 @@ FIXTURE_SERVER="fixtures/mcp/stdio-fixture-server.mjs"
 SMOKE_CLIENT="fixtures/mcp/stdio-smoke-client.mjs"
 EVIDENCE_FILE="${SOLOPM_MCP_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/mcp-inspector.md}"
 
+mcp_evidence_source_commit() {
+  local commit
+  commit="$(
+    git -C "$ROOT_DIR" log -1 --format=%h -- \
+      Sources/SoloPMCore/ExternalMCP \
+      Sources/SoloPMApp/SoloPMApp.swift \
+      fixtures/mcp \
+      Package.swift 2>/dev/null || true
+  )"
+  if [[ -n "$commit" ]]; then
+    printf "%s" "$commit"
+  else
+    git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown"
+  fi
+}
+
 # Inspector calls include --method tools/list and --method tools/call.
 if [[ -n "${SOLOPM_MCP_INSPECTOR_BIN:-}" ]]; then
   INSPECTOR_COMMAND=("$SOLOPM_MCP_INSPECTOR_BIN")
@@ -64,6 +80,8 @@ cat >"$EVIDENCE_FILE" <<EOF
 # MCP Inspector Evidence
 
 Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+- Source commit: \`$(mcp_evidence_source_commit)\`
 
 Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and SoloPM's local JSON-RPC smoke checks.
 
