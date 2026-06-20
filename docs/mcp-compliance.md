@@ -10,10 +10,13 @@ SoloPM の外部MCP実装は、MCP specification `2025-11-25` を基準にする
 - Official stable latest: `2025-11-25`
 - Official latest source: https://modelcontextprotocol.io/specification
 - Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning
+- Official versioning assertion: current protocol version is `2025-11-25`
 - Official latest checked: 2026-06-20
 - Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
 - Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
 - Draft watchlist: `2026-07-28`
+- Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog
+- Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline.
 - Release positioning: SoloPM is not a full MCP host; it supports the stable stdio Tools subset described in this document.
 
 `2026-07-28` は draft / release-candidate として監視するが、今回の release target には含めない。The final specification is scheduled for 2026-07-28. Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions, moves protocolVersion/clientInfo/clientCapabilities to per-request `_meta`, and requires `server/discover` for version/capability discovery. SoloPM does not send per-request protocol metadata; specifically, it does not send per-request `_meta` protocolVersion/clientInfo/clientCapabilities, does not implement draft `server/discover`, and will not claim draft or full-host compatibility until those paths are implemented, tested, and inspector-backed.

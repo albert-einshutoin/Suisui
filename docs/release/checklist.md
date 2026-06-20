@@ -161,9 +161,12 @@ Confirm `docs/release/evidence/mcp-inspector.md` includes:
 - ``Official stable latest: `2025-11-25` ``
 - `Official latest source: https://modelcontextprotocol.io/specification`
 - `Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning`
+- ``Official versioning assertion: current protocol version is `2025-11-25` ``
 - `Official latest checked: 2026-06-20`
 - `Official stable source: https://modelcontextprotocol.io/specification/2025-11-25`
 - ``Draft watchlist: `2026-07-28` ``
+- `Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog`
+- ``Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline. ``
 - `tools/list` and `tools/call`
 - malformed-json / mismatched-id / invalid-schema / timeout failure taxonomy
 

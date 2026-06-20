@@ -2591,8 +2591,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("Official latest source: https://modelcontextprotocol.io/specification"))
         XCTAssertTrue(checklist.contains("Official latest checked: 2026-06-20"))
         XCTAssertTrue(checklist.contains("Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"))
+        XCTAssertTrue(checklist.contains("Official versioning assertion: current protocol version is `2025-11-25`"))
         XCTAssertTrue(checklist.contains("Official stable source: https://modelcontextprotocol.io/specification/2025-11-25"))
         XCTAssertTrue(checklist.contains("Draft watchlist: `2026-07-28`"))
+        XCTAssertTrue(checklist.contains("Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog"))
+        XCTAssertTrue(checklist.contains("Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline."))
         XCTAssertTrue(checklist.contains("script/capture_ui_evidence.sh"))
         XCTAssertTrue(checklist.contains("docs/release/evidence/accessibility-voiceover.md"))
         XCTAssertTrue(checklist.contains("./script/check_accessibility_preflight.sh --source-only"))
@@ -4888,6 +4891,7 @@ final class ReleasePipelineTests: XCTestCase {
         Official stable latest: `2025-11-25`
         Official latest source: https://modelcontextprotocol.io/specification
         Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning
+        Official versioning assertion: current protocol version is `2025-11-25`
         Official latest checked: 2026-06-20
         Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
         Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/
@@ -4895,6 +4899,8 @@ final class ReleasePipelineTests: XCTestCase {
         Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
         Draft watchlist: `2026-07-28`
         Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+        Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog
+        Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline.
         2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28.
         Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions
         per-request `_meta` protocolVersion/clientInfo/clientCapabilities
@@ -5428,11 +5434,14 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Official latest source: https://modelcontextprotocol.io/specification"))
         XCTAssertTrue(script.contains("Official latest checked: 2026-06-20"))
         XCTAssertTrue(script.contains("Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"))
+        XCTAssertTrue(script.contains("Official versioning assertion: current protocol version is `2025-11-25`"))
         XCTAssertTrue(script.contains("Official stable source: https://modelcontextprotocol.io/specification/2025-11-25"))
         XCTAssertTrue(script.contains("Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18"))
         XCTAssertTrue(script.contains("Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/"))
         XCTAssertTrue(script.contains("EMA remote authorization is not a SoloPM public-alpha release target"))
         XCTAssertTrue(script.contains("Draft watchlist: `2026-07-28`"))
+        XCTAssertTrue(script.contains("Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog"))
+        XCTAssertTrue(script.contains("Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline."))
         XCTAssertTrue(script.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
         XCTAssertTrue(script.contains("Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/"))
         XCTAssertTrue(script.contains("MCP Inspector CLI tools/list"))
@@ -5763,6 +5772,7 @@ final class ReleasePipelineTests: XCTestCase {
         Official stable latest: `2025-11-25`
         Official latest source: https://modelcontextprotocol.io/specification
         Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning
+        Official versioning assertion: current protocol version is `2025-11-25`
         Official latest checked: 2026-06-20
         Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
         Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/
@@ -5770,6 +5780,8 @@ final class ReleasePipelineTests: XCTestCase {
         Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
         Draft watchlist: `2026-07-28`
         Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+        Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog
+        Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline.
         2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28.
         Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions
         per-request `_meta` protocolVersion/clientInfo/clientCapabilities
@@ -7617,6 +7629,8 @@ final class ReleasePipelineTests: XCTestCase {
 
         Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning
 
+        Official versioning assertion: current protocol version is `2025-11-25`
+
         Official latest checked: 2026-06-20
 
         Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
@@ -7630,6 +7644,10 @@ final class ReleasePipelineTests: XCTestCase {
         Draft watchlist: `2026-07-28`
 
         Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+
+        Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog
+
+        Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline.
 
         2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28.
 
@@ -7699,8 +7717,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official stable latest: `2025-11-25`"))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official latest source: https://modelcontextprotocol.io/specification"))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official versioning assertion: current protocol version is `2025-11-25`"))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official latest checked: 2026-06-20"))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Draft watchlist: `2026-07-28`"))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog"))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline."))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: will not claim draft or full-host compatibility"))
         XCTAssertTrue(result.output.contains("OK: MCP Inspector evidence covers stable baseline, draft boundary, tools/list, tools/call, and failure taxonomy"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))

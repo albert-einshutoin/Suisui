@@ -75,6 +75,8 @@ Official latest source: https://modelcontextprotocol.io/specification
 
 Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning
 
+Official versioning assertion: current protocol version is \`2025-11-25\`
+
 Official latest checked: 2026-06-20
 
 Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
@@ -88,6 +90,10 @@ EMA remote authorization is not a SoloPM public-alpha release target
 Draft watchlist: \`2026-07-28\`
 
 Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+
+Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog
+
+Draft changelog assertion: changes are listed since \`2025-11-25\`; it is not the current release baseline.
 
 2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28.
 

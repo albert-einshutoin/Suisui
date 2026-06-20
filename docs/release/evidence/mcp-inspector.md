@@ -1,6 +1,6 @@
 # MCP Inspector Evidence
 
-Generated: 2026-06-20T04:06:20Z
+Generated: 2026-06-20T04:37:24Z
 
 Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and SoloPM's local JSON-RPC smoke checks.
 
@@ -11,6 +11,8 @@ Official stable latest: `2025-11-25`
 Official latest source: https://modelcontextprotocol.io/specification
 
 Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning
+
+Official versioning assertion: current protocol version is `2025-11-25`
 
 Official latest checked: 2026-06-20
 
@@ -25,6 +27,10 @@ EMA remote authorization is not a SoloPM public-alpha release target
 Draft watchlist: `2026-07-28`
 
 Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+
+Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog
+
+Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline.
 
 2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28.
 

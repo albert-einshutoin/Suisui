@@ -128,6 +128,7 @@ MCP_EVIDENCE_REQUIRED_MARKERS=(
   'Official stable latest: `2025-11-25`'
   "Official latest source: https://modelcontextprotocol.io/specification"
   "Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"
+  'Official versioning assertion: current protocol version is `2025-11-25`'
   "Official latest checked: 2026-06-20"
   "Official stable source: https://modelcontextprotocol.io/specification/2025-11-25"
   "Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18"
@@ -135,6 +136,8 @@ MCP_EVIDENCE_REQUIRED_MARKERS=(
   "EMA remote authorization is not a SoloPM public-alpha release target"
   'Draft watchlist: `2026-07-28`'
   "Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/"
+  "Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog"
+  'Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline.'
   "2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28."
   "Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions"
   'per-request `_meta` protocolVersion/clientInfo/clientCapabilities'
@@ -157,12 +160,15 @@ MCP_REVIEW_REQUIRED_MARKERS=(
   'Official stable latest: `2025-11-25`'
   "Official latest source: https://modelcontextprotocol.io/specification"
   "Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"
+  'Official versioning assertion: current protocol version is `2025-11-25`'
   "Official latest checked: 2026-06-20"
   "Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18"
   "Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/"
   "EMA remote authorization is not a SoloPM public-alpha release target"
   "MCP specification 2025-11-25: https://modelcontextprotocol.io/specification/2025-11-25"
   'Draft watchlist: `2026-07-28`'
+  "Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog"
+  'Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline.'
   "Draft versioning watchlist: https://modelcontextprotocol.io/specification/draft/basic/versioning"
   "Draft discovery watchlist: https://modelcontextprotocol.io/specification/draft/server/discover"
   "Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions"
