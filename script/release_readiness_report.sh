@@ -366,7 +366,16 @@ write_operator_priority_queue() {
     "covers ${release_environment_item_count} release environment blocker item(s)"
 
   if [[ "$phase_count" -gt 0 ]]; then
-    printf -- "- [ ] Phase checklist routing tracks %d unchecked manual/release phase item(s) and clears the remaining manual checklist blocker after the linked evidence is accepted.\n" "$phase_manual_item_count"
+    if [[ "$phase_manual_item_count" -gt 0 ]]; then
+      printf -- "- [ ] Phase checklist routing tracks %d unchecked manual/release phase item(s); linked evidence blockers control release readiness while implementation or unmapped checklist items stay in Phase Checklist.\n" "$phase_manual_item_count"
+      if phase_manual_unchecked_has_login_item_gate; then
+        printf -- "- [ ] Login Item manual check is part of Phase checklist routing. Next: use the signed release app, complete \`--login-item-toggle\` in \`.tmp/release-machine/create-release-evidence-command.sh\`, then rerun readiness.\n"
+      fi
+    else
+      printf -- "- [ ] Phase checklist has active implementation or unmapped manual review blocker group(s). Next: complete the listed Phase Checklist items, then rerun readiness.\n"
+    fi
+  elif [[ "$phase_manual_item_count" -gt 0 ]]; then
+    printf -- "- [x] Phase checklist manual gates are routed to evidence lanes; linked evidence blockers control release readiness.\n"
     if phase_manual_unchecked_has_login_item_gate; then
       printf -- "- [ ] Login Item manual check is part of Phase checklist routing. Next: use the signed release app, complete \`--login-item-toggle\` in \`.tmp/release-machine/create-release-evidence-command.sh\`, then rerun readiness.\n"
     fi
@@ -1194,6 +1203,26 @@ phase_manual_gate_route_for_item() {
   esac
 }
 
+phase_manual_unchecked_manual_review_items() {
+  local item
+  local route
+  local manual_review_items=""
+
+  if [[ -z "$phase_manual_unchecked" ]]; then
+    return 0
+  fi
+
+  while IFS= read -r item; do
+    [[ -z "$item" ]] && continue
+    route="$(phase_manual_gate_route_for_item "$item")"
+    if [[ "$route" == "Manual Review" ]]; then
+      manual_review_items="$(append_line "$manual_review_items" "$item")"
+    fi
+  done <<<"$phase_manual_unchecked"
+
+  printf "%s" "$manual_review_items"
+}
+
 write_phase_manual_route_group() {
   local label="$1"
   local items="$2"
@@ -1857,6 +1886,7 @@ fi
 section "Phase checklist blockers"
 phase_implementation_unchecked=""
 phase_manual_unchecked=""
+phase_manual_review_unchecked=""
 if [[ -d "$ROOT_DIR/tasks" ]]; then
   while IFS= read -r phase_file; do
     phase_name="$(basename "$phase_file")"
@@ -1889,7 +1919,14 @@ fi
 if [[ -n "$phase_manual_unchecked" ]]; then
   printf "Unchecked manual/release phase gates:\n"
   printf "%s\n" "$phase_manual_unchecked"
-  blocker "phase checklist still has unchecked manual/release gates"
+  phase_manual_review_unchecked="$(phase_manual_unchecked_manual_review_items)"
+  if [[ -n "$phase_manual_review_unchecked" ]]; then
+    printf "Unchecked manual review phase gates:\n"
+    printf "%s\n" "$phase_manual_review_unchecked"
+    blocker "phase checklist still has unchecked manual review gates"
+  else
+    printf "OK: unchecked manual/release phase gates are routed to evidence lanes\n"
+  fi
 fi
 
 if [[ -z "$phase_implementation_unchecked" && -z "$phase_manual_unchecked" ]]; then

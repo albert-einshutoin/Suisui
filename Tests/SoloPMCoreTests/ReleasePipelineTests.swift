@@ -5585,6 +5585,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("release environment blocker item(s)"))
         XCTAssertTrue(script.contains("unchecked manual/release phase item(s)"))
         XCTAssertTrue(script.contains("Phase checklist routing tracks"))
+        XCTAssertTrue(script.contains("linked evidence blockers control release readiness"))
         XCTAssertTrue(script.contains("## Blocker Buckets"))
         XCTAssertTrue(script.contains("write_blocker_bucket_line \"Automated Proof Gates\""))
         XCTAssertTrue(script.contains("write_blocker_bucket_line \"Manual VoiceOver\""))
@@ -6059,7 +6060,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("phase checklist still has unchecked implementation tasks"))
         XCTAssertTrue(result.output.contains("Unchecked manual/release phase gates:"))
         XCTAssertTrue(result.output.contains("login item 設定をオン / オフできる。"))
-        XCTAssertTrue(result.output.contains("phase checklist still has unchecked manual/release gates"))
+        XCTAssertTrue(result.output.contains("OK: unchecked manual/release phase gates are routed to evidence lanes"))
+        XCTAssertFalse(result.output.contains("phase checklist still has unchecked manual/release gates"))
         XCTAssertTrue(actionSummary.contains("## Phase Checklist Items"))
         XCTAssertTrue(actionSummary.contains("## Blocker Buckets"))
         XCTAssertTrue(actionSummary.contains("Phase Checklist:"))
@@ -6073,7 +6075,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("Notion、Todoist、Linear、Motion を2-4時間で触り"))
         XCTAssertTrue(actionSummary.contains("Developer ID signing、notarization、Gatekeeper、clean environment evidence が揃う。"))
         XCTAssertTrue(actionSummary.contains("## Phase Manual Gate Routes"))
-        XCTAssertTrue(actionSummary.contains("Phase checklist routing tracks 4 unchecked manual/release phase item(s) and clears the remaining manual checklist blocker after the linked evidence is accepted."))
+        XCTAssertTrue(actionSummary.contains("Phase checklist routing tracks 4 unchecked manual/release phase item(s); linked evidence blockers control release readiness while implementation or unmapped checklist items stay in Phase Checklist."))
         XCTAssertTrue(actionSummary.contains("- [ ] Login Item manual check is part of Phase checklist routing. Next: use the signed release app, complete `--login-item-toggle` in `.tmp/release-machine/create-release-evidence-command.sh`, then rerun readiness."))
         XCTAssertTrue(actionSummary.contains("Manual VoiceOver phase gates:"))
         XCTAssertTrue(actionSummary.contains("Competitor Hands-On phase gates:"))
@@ -6109,6 +6111,106 @@ final class ReleasePipelineTests: XCTestCase {
         let generatedReleaseEvidenceCommandRange = try XCTUnwrap(releaseMachineSection.range(of: "./.tmp/release-machine/create-release-evidence-command.sh"))
         let directReleaseEvidenceForceRange = try XCTUnwrap(releaseMachineSection.range(of: "./script/create_release_evidence.sh --force"))
         XCTAssertLessThan(generatedReleaseEvidenceCommandRange.lowerBound, directReleaseEvidenceForceRange.lowerBound)
+    }
+
+    func testReleaseReadinessReportRoutesManualPhaseGatesWithoutDuplicatePhaseBlocker() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-phase-manual-routing", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let actionSummaryURL = fixtureRoot.appendingPathComponent("release-actions.md")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        - [ ] 手動確認: login item 設定をオン / オフできる。
+        - [ ] VoiceOver label、focus order、button help、destructive confirmationを確認する。
+        - [ ] Notion、Todoist、Linear、Motion を2-4時間で触り、SoloPMに関係する機能だけを記録する。
+        - [ ] Developer ID signing、notarization、Gatekeeper、clean environment evidence が揃う。
+        """.write(to: tasksDirectory.appendingPathComponent("Phase11.md"), atomically: true, encoding: .utf8)
+        try "- [x] README template is ignored here\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+
+        let result = try runTool(
+            ["bash", reportURL.path],
+            environment: ["SOLOPM_RELEASE_ACTIONS_FILE": actionSummaryURL.path]
+        )
+        let actionSummary = try String(contentsOf: actionSummaryURL, encoding: .utf8)
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("Unchecked manual/release phase gates:"))
+        XCTAssertTrue(result.output.contains("VoiceOver label、focus order、button help、destructive confirmationを確認する。"))
+        XCTAssertFalse(result.output.contains("phase checklist still has unchecked manual/release gates"))
+        XCTAssertTrue(actionSummary.contains("## Phase Checklist Items"))
+        XCTAssertTrue(actionSummary.contains("Unchecked manual/release phase gates:"))
+        XCTAssertTrue(actionSummary.contains("## Phase Manual Gate Routes"))
+        XCTAssertTrue(actionSummary.contains("Manual VoiceOver phase gates:"))
+        XCTAssertTrue(actionSummary.contains("Competitor Hands-On phase gates:"))
+        XCTAssertTrue(actionSummary.contains("Release Machine phase gates:"))
+        XCTAssertTrue(actionSummary.contains("Login Item Manual Check phase gates:"))
+        XCTAssertTrue(actionSummary.contains("Phase checklist manual gates are routed to evidence lanes; linked evidence blockers control release readiness."))
+        XCTAssertFalse(actionSummary.contains("- [ ] phase checklist still has unchecked manual/release gates"))
+    }
+
+    func testReleaseReadinessReportKeepsUnmappedManualPhaseGatesAsPhaseBlockers() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-phase-manual-review", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let actionSummaryURL = fixtureRoot.appendingPathComponent("release-actions.md")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        - [ ] manual evidence: PM must approve release copy before launch.
+        """.write(to: tasksDirectory.appendingPathComponent("Phase11.md"), atomically: true, encoding: .utf8)
+        try "- [x] README template is ignored here\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+
+        let result = try runTool(
+            ["bash", reportURL.path],
+            environment: ["SOLOPM_RELEASE_ACTIONS_FILE": actionSummaryURL.path]
+        )
+        let actionSummary = try String(contentsOf: actionSummaryURL, encoding: .utf8)
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("Unchecked manual/release phase gates:"))
+        XCTAssertTrue(result.output.contains("manual evidence: PM must approve release copy before launch."))
+        XCTAssertTrue(result.output.contains("Unchecked manual review phase gates:"))
+        XCTAssertTrue(result.output.contains("phase checklist still has unchecked manual review gates"))
+        XCTAssertTrue(actionSummary.contains("Phase Checklist:"))
+        XCTAssertTrue(actionSummary.contains("Manual Review phase gates:\n- [ ] tasks/Phase11.md:1:- [ ] manual evidence: PM must approve release copy before launch."))
+        XCTAssertFalse(actionSummary.contains("Phase checklist manual gates are routed to evidence lanes; linked evidence blockers control release readiness."))
     }
 
     func testReleaseReadinessReportIncludesPhase11AndIgnoresFuturePhasePlanning() throws {
