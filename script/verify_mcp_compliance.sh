@@ -89,6 +89,14 @@ Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-
 
 2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28.
 
+Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions.
+
+Draft 2026-07-28 uses per-request \`_meta\` protocolVersion/clientInfo/clientCapabilities.
+
+Draft \`server/discover\` is required for draft 2026-07-28 version and capability discovery.
+
+Draft tools/list cache hints \`ttlMs\` / \`cacheScope\` are not implemented in SoloPM public alpha.
+
 Release positioning: SoloPM is not a full MCP host; this evidence covers stable client-side stdio Tools only. Resources, Prompts, Streamable HTTP, OAuth/remote MCP, Enterprise-Managed Authorization, draft per-request protocol metadata, and draft server/discover are not release targets.
 
 Fixture: \`fixtures/mcp/stdio-fixture-server.mjs\`

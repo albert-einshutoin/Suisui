@@ -135,6 +135,10 @@ MCP_EVIDENCE_REQUIRED_MARKERS=(
   'Draft watchlist: `2026-07-28`'
   "Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/"
   "2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28."
+  "Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions"
+  'per-request `_meta` protocolVersion/clientInfo/clientCapabilities'
+  'Draft `server/discover` is required'
+  'Draft tools/list cache hints `ttlMs` / `cacheScope` are not implemented'
   "not a full MCP host"
   "initialize -> tools/list -> tools/call"
   "MCP Inspector CLI tools/list"
@@ -159,6 +163,10 @@ MCP_REVIEW_REQUIRED_MARKERS=(
   'Draft watchlist: `2026-07-28`'
   "Draft versioning watchlist: https://modelcontextprotocol.io/specification/draft/basic/versioning"
   "Draft discovery watchlist: https://modelcontextprotocol.io/specification/draft/server/discover"
+  "Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions"
+  'per-request `_meta` protocolVersion/clientInfo/clientCapabilities'
+  'Draft `server/discover` is required'
+  'Draft tools/list cache hints `ttlMs` / `cacheScope` are not implemented'
   "SoloPM does not send per-request protocol metadata"
   "server/discover"
   "will not claim draft or full-host compatibility"

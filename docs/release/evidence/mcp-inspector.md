@@ -1,6 +1,6 @@
 # MCP Inspector Evidence
 
-Generated: 2026-06-19T19:33:54Z
+Generated: 2026-06-20T03:21:05Z
 
 Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and SoloPM's local JSON-RPC smoke checks.
 
@@ -25,6 +25,14 @@ Draft watchlist: `2026-07-28`
 Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
 
 2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28.
+
+Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions.
+
+Draft 2026-07-28 uses per-request `_meta` protocolVersion/clientInfo/clientCapabilities.
+
+Draft `server/discover` is required for draft 2026-07-28 version and capability discovery.
+
+Draft tools/list cache hints `ttlMs` / `cacheScope` are not implemented in SoloPM public alpha.
 
 Release positioning: SoloPM is not a full MCP host; this evidence covers stable client-side stdio Tools only. Resources, Prompts, Streamable HTTP, OAuth/remote MCP, Enterprise-Managed Authorization, draft per-request protocol metadata, and draft server/discover are not release targets.
 

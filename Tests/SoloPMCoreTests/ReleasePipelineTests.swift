@@ -4769,6 +4769,10 @@ final class ReleasePipelineTests: XCTestCase {
         Draft watchlist: `2026-07-28`
         Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
         2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28.
+        Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions
+        per-request `_meta` protocolVersion/clientInfo/clientCapabilities
+        Draft `server/discover` is required
+        Draft tools/list cache hints `ttlMs` / `cacheScope` are not implemented
         not a full MCP host
         initialize -> tools/list -> tools/call
         MCP Inspector CLI tools/list
@@ -5632,6 +5636,10 @@ final class ReleasePipelineTests: XCTestCase {
         Draft watchlist: `2026-07-28`
         Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
         2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28.
+        Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions
+        per-request `_meta` protocolVersion/clientInfo/clientCapabilities
+        Draft `server/discover` is required
+        Draft tools/list cache hints `ttlMs` / `cacheScope` are not implemented
         not a full MCP host
         initialize -> tools/list -> tools/call
         MCP Inspector CLI tools/list
@@ -7483,6 +7491,14 @@ final class ReleasePipelineTests: XCTestCase {
         Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
 
         2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28.
+
+        Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions.
+
+        Draft 2026-07-28 uses per-request `_meta` protocolVersion/clientInfo/clientCapabilities.
+
+        Draft `server/discover` is required for draft 2026-07-28 version and capability discovery.
+
+        Draft tools/list cache hints `ttlMs` / `cacheScope` are not implemented in SoloPM public alpha.
 
         Release positioning: SoloPM is not a full MCP host; this evidence covers stable client-side stdio Tools only.
 
