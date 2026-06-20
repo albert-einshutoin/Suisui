@@ -3848,6 +3848,7 @@ final class ReleasePipelineTests: XCTestCase {
             }
         }
         let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let handsOnDuration = "2h 15m total: Notion 35m, Todoist 30m, Linear 35m, Motion 35m"
 
         let pendingResult = try runScript(
             "script/create_competitor_hands_on_evidence.sh",
@@ -3869,6 +3870,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(pendingEvidence.contains("- [ ] Linear"))
         XCTAssertTrue(pendingEvidence.contains("- [ ] Motion"))
         XCTAssertTrue(pendingEvidence.contains("- Environment:"))
+        XCTAssertTrue(pendingEvidence.contains("- Elapsed hands-on time:"))
         XCTAssertTrue(pendingEvidence.contains("- Source commit: `\(currentShortCommit)`"))
         XCTAssertTrue(pendingEvidence.contains("Do not set `Status: passed` until every competitor path below is verified"))
         let pendingBenchmark = try String(contentsOf: pendingBenchmarkURL, encoding: .utf8)
@@ -3895,6 +3897,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(worksheet.contains("- Benchmark output: `\(pendingBenchmarkURL.path)`"))
         XCTAssertTrue(worksheet.contains("- Passed command: `\(commandURL.path)`"))
         XCTAssertTrue(worksheet.contains("## Review Context To Fill"))
+        XCTAssertTrue(worksheet.contains("- Elapsed hands-on time with per-competitor timing:"))
         XCTAssertTrue(worksheet.contains("## Competitor Paths"))
         XCTAssertTrue(worksheet.contains("- [ ] Notion: create a project database"))
         XCTAssertTrue(worksheet.contains("- [ ] Todoist: capture with Quick Add"))
@@ -3918,6 +3921,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(generatedCommand.contains("./script/create_competitor_hands_on_evidence.sh --passed \\"))
         XCTAssertTrue(generatedCommand.contains("--checked-by \"<reviewer name>\" \\"))
         XCTAssertTrue(generatedCommand.contains("--environment \"<macOS/browser versions, competitor app/account tiers, and paid trial details>\" \\"))
+        XCTAssertTrue(generatedCommand.contains("--hands-on-duration \"<2-4h total, including Notion/Todoist/Linear/Motion timing>\" \\"))
         XCTAssertTrue(generatedCommand.contains("--notion-note \"<hands-on Notion project database, board, task, and artifact observation>\" \\"))
         XCTAssertTrue(generatedCommand.contains("--todoist-note \"<hands-on Todoist quick add, board/list, drag movement, Today/Upcoming observation>\" \\"))
         XCTAssertTrue(generatedCommand.contains("--linear-note \"<hands-on Linear project, issue detail, keyboard command, and triage observation>\" \\"))
@@ -3929,10 +3933,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(releaseChecklist.contains("Running the pending generator also writes `.tmp/competitor-hands-on/hands-on-worksheet.md`, `.tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md`, and `.tmp/competitor-hands-on/create-evidence-command.sh`."))
         XCTAssertTrue(releaseChecklist.contains("The generated competitor hands-on command requires a clean tracked source tree, pins the source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit."))
         XCTAssertTrue(releaseChecklist.contains("Run the generated competitor `--validate-only` command first; it performs the same passed-evidence validation without writing `docs/release/evidence/competitor-hands-on.md` or `docs/product/competitor-benchmark.md`."))
+        XCTAssertTrue(releaseChecklist.contains("The competitor passed command requires `--hands-on-duration` with a real 2-4 hour total and per-competitor timing."))
         let phase11 = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
         XCTAssertTrue(phase11.contains("[x] `script/create_competitor_hands_on_evidence.sh --pending` pins `.tmp/competitor-hands-on/create-evidence-command.sh` to a clean tracked source tree and the source commit it was generated for"))
         XCTAssertTrue(phase11.contains("[x] `script/create_competitor_hands_on_evidence.sh --pending --benchmark-output .tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md` は競合別hands-on findingsとShip/Defer/Rejectのpending benchmark worksheetも生成し、final benchmark更新漏れを防ぐ。"))
         XCTAssertTrue(phase11.contains("[x] `script/create_competitor_hands_on_evidence.sh --validate-only` validates the filled manual command without writing tracked evidence or benchmark findings."))
+        XCTAssertTrue(phase11.contains("[x] competitor hands-on passed evidence requires elapsed 2-4 hour timing with Notion/Todoist/Linear/Motion coverage."))
         let generatedCommandResult = try runTool(["bash", commandURL.path])
         XCTAssertNotEqual(generatedCommandResult.exitCode, 0)
         XCTAssertTrue(
@@ -3967,6 +3973,55 @@ final class ReleasePipelineTests: XCTestCase {
         )
         XCTAssertNotEqual(missingNotesResult.exitCode, 0)
         XCTAssertTrue(missingNotesResult.output.contains("--notion-note is required with --passed"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: benchmarkURL.path))
+
+        let missingDurationResult = try runScript(
+            "script/create_competitor_hands_on_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "SoloPM Product Reviewer",
+                "--check-date", "2026-06-19",
+                "--environment", "macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used",
+                "--notion-note", "Board setup was flexible but required manual schema decisions before task entry felt fast.",
+                "--todoist-note", "Quick Add made capture fast, but project context still needed review after entry.",
+                "--linear-note", "Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.",
+                "--motion-note", "Scheduling suggestions were useful only when the reason and deadline impact were visible.",
+                "--ship", "Keep fast local capture, board status movement, and right inspector as the public alpha loop.",
+                "--defer", "Natural-language dates and autonomous scheduling stay out until reliability evidence exists.",
+                "--reject", "Team cycles, initiatives, and external SaaS sync stay outside public alpha scope.",
+                "--output", passedURL.path,
+                "--benchmark-output", benchmarkURL.path,
+                "--confirm-manual-hands-on"
+            ]
+        )
+        XCTAssertNotEqual(missingDurationResult.exitCode, 0)
+        XCTAssertTrue(missingDurationResult.output.contains("--hands-on-duration is required with --passed"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: benchmarkURL.path))
+
+        let shortDurationResult = try runScript(
+            "script/create_competitor_hands_on_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "SoloPM Product Reviewer",
+                "--check-date", "2026-06-19",
+                "--environment", "macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used",
+                "--hands-on-duration", "45m total: Notion 10m, Todoist 10m, Linear 15m, Motion 10m",
+                "--notion-note", "Board setup was flexible but required manual schema decisions before task entry felt fast.",
+                "--todoist-note", "Quick Add made capture fast, but project context still needed review after entry.",
+                "--linear-note", "Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.",
+                "--motion-note", "Scheduling suggestions were useful only when the reason and deadline impact were visible.",
+                "--ship", "Keep fast local capture, board status movement, and right inspector as the public alpha loop.",
+                "--defer", "Natural-language dates and autonomous scheduling stay out until reliability evidence exists.",
+                "--reject", "Team cycles, initiatives, and external SaaS sync stay outside public alpha scope.",
+                "--output", passedURL.path,
+                "--benchmark-output", benchmarkURL.path,
+                "--confirm-manual-hands-on"
+            ]
+        )
+        XCTAssertNotEqual(shortDurationResult.exitCode, 0)
+        XCTAssertTrue(shortDurationResult.output.contains("--hands-on-duration must describe a real 2-4 hour hands-on pass"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: benchmarkURL.path))
 
@@ -4021,6 +4076,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--checked-by", "<reviewer name>",
                 "--check-date", "2026-06-19",
                 "--environment", "macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used",
+                "--hands-on-duration", handsOnDuration,
                 "--notion-note", "Board setup was flexible but required manual schema decisions before task entry felt fast.",
                 "--todoist-note", "Quick Add made capture fast, but project context still needed review after entry.",
                 "--linear-note", "Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.",
@@ -4131,6 +4187,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--checked-by", "SoloPM Product Reviewer",
                 "--check-date", "2026-06-19",
                 "--environment", "macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used",
+                "--hands-on-duration", handsOnDuration,
                 "--notion-note", "Board setup was flexible but required manual schema decisions before task entry felt fast.",
                 "--todoist-note", "Concrete Todoist observation from the hands-on pass.",
                 "--linear-note", "Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.",
@@ -4175,6 +4232,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--checked-by", "SoloPM Product Reviewer",
                 "--check-date", "2026-06-19",
                 "--environment", "macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used",
+                "--hands-on-duration", handsOnDuration,
                 "--notion-note", "Board setup was flexible but required manual schema decisions before task entry felt fast.",
                 "--todoist-note", "Quick Add made capture fast, but project context still needed review after entry.",
                 "--linear-note", "Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.",
@@ -4197,6 +4255,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--checked-by", "SoloPM Product Reviewer",
                 "--check-date", "2026-06-19",
                 "--environment", "macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used",
+                "--hands-on-duration", handsOnDuration,
                 "--notion-note", "Board setup was flexible but required manual schema decisions before task entry felt fast.",
                 "--todoist-note", "Quick Add made capture fast, but project context still needed review after entry.",
                 "--linear-note", "Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.",
@@ -4219,6 +4278,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--checked-by", "SoloPM Product Reviewer",
                 "--check-date", "2026-06-19",
                 "--environment", "macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used",
+                "--hands-on-duration", handsOnDuration,
                 "--notion-note", "Board setup was flexible but required manual schema decisions before task entry felt fast.",
                 "--todoist-note", "Quick Add made capture fast, but project context still needed review after entry.",
                 "--linear-note", "Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.",
@@ -4267,6 +4327,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--checked-by", "SoloPM Product Reviewer",
                 "--check-date", "2026-06-19",
                 "--environment", "macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used",
+                "--hands-on-duration", handsOnDuration,
                 "--notion-note", "Board setup was flexible but required manual schema decisions before task entry felt fast.",
                 "--todoist-note", "Quick Add made capture fast, but project context still needed review after entry.",
                 "--linear-note", "Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work.",
@@ -4287,6 +4348,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(passedEvidence.contains("- Source commit: `\(currentShortCommit)`"))
         XCTAssertTrue(passedEvidence.contains("- Check date: 2026-06-19"))
         XCTAssertTrue(passedEvidence.contains("- Environment: macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used"))
+        XCTAssertTrue(passedEvidence.contains("- Elapsed hands-on time: \(handsOnDuration)"))
         XCTAssertTrue(passedEvidence.contains("- Notion: passed - Board setup was flexible but required manual schema decisions before task entry felt fast."))
         XCTAssertTrue(passedEvidence.contains("- Todoist: passed - Quick Add made capture fast, but project context still needed review after entry."))
         XCTAssertTrue(passedEvidence.contains("- Linear: passed - Keyboard-driven issue triage was fast, but team concepts were heavier than solo project work."))
@@ -4302,6 +4364,7 @@ final class ReleasePipelineTests: XCTestCase {
         let benchmark = try String(contentsOf: benchmarkURL, encoding: .utf8)
         XCTAssertTrue(benchmark.contains("# Competitor Benchmark and Hands-On Findings"))
         XCTAssertTrue(benchmark.contains("Source commit: `\(currentShortCommit)`"))
+        XCTAssertTrue(benchmark.contains("Elapsed hands-on time: \(handsOnDuration)"))
         XCTAssertTrue(benchmark.contains("## Hands-On Findings"))
         XCTAssertTrue(benchmark.contains("Notion: Board setup was flexible but required manual schema decisions before task entry felt fast."))
         XCTAssertTrue(benchmark.contains("Todoist: Quick Add made capture fast, but project context still needed review after entry."))
@@ -4362,6 +4425,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Checked by: SoloPM Product Reviewer
         - Check date: 2026-02-31
         - Evidence source: `Real local hands-on pass`
+        - Elapsed hands-on time: 45m total: Notion 10m, Todoist 10m, Linear 15m, Motion 10m
         - Scope: Notion -> Todoist -> Linear -> Motion
 
         ## Verified Hands-On Path
@@ -4401,6 +4465,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence has invalid review context date: Check date"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence missing review context: Environment"))
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence has invalid elapsed hands-on time"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate concrete note: Notion"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate concrete note: Todoist"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence has boilerplate concrete note: Linear"))
@@ -4467,6 +4532,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Source commit: `\(currentShortCommit)`
         - Evidence source: `Hands-on local account notes plus official source links`
         - Environment: macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used
+        - Elapsed hands-on time: 2h 15m total: Notion 35m, Todoist 30m, Linear 35m, Motion 35m
         - Scope: Notion -> Todoist -> Linear -> Motion
 
         ## Verified Hands-On Path
@@ -4572,6 +4638,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Source commit: `\(currentShortCommit)`
         - Evidence source: `Hands-on local account notes plus official source links`
         - Environment: macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used
+        - Elapsed hands-on time: 2h 15m total: Notion 35m, Todoist 30m, Linear 35m, Motion 35m
         - Scope: Notion -> Todoist -> Linear -> Motion
 
         ## Verified Hands-On Path
@@ -6978,6 +7045,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Source commit: `deadbee`
         - Evidence source: `Real local hands-on pass`
         - Environment: macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used
+        - Elapsed hands-on time: 2h 15m total: Notion 35m, Todoist 30m, Linear 35m, Motion 35m
         - Scope: Notion -> Todoist -> Linear -> Motion
 
         ## Verified Hands-On Path
@@ -7102,6 +7170,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Check date: 2026-06-19
         - Evidence source: `Real local hands-on pass`
         - Environment: macOS 15.5, Safari 26, Notion Free, Todoist Free, Linear Free, Motion trial not used
+        - Elapsed hands-on time: 2h 15m total: Notion 35m, Todoist 30m, Linear 35m, Motion 35m
         - Scope: Notion -> Todoist -> Linear -> Motion
 
         ## Verified Hands-On Path

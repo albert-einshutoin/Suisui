@@ -266,7 +266,7 @@ Use the generator so pending evidence or a review worksheet cannot be mistaken f
 
 Running the pending generator also writes `.tmp/competitor-hands-on/hands-on-worksheet.md`, `.tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md`, and `.tmp/competitor-hands-on/create-evidence-command.sh`. Fill the worksheet during the hands-on pass, use the benchmark pending worksheet to keep Notion/Todoist/Linear/Motion findings and Ship/Defer/Reject decisions aligned, then use the generated command after the pass so the final evidence keeps the same output paths and required fields. Replace every placeholder in that generated command with concrete observations before running it; the script rejects the generated placeholders if they are not edited.
 The generated competitor hands-on command requires a clean tracked source tree, pins the source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit. Rerun `./script/prepare_release_manual_helpers.sh` after any source commit changes so the worksheet, evidence file, benchmark output, and release candidate stay aligned.
-Run the generated competitor `--validate-only` command first; it performs the same passed-evidence validation without writing `docs/release/evidence/competitor-hands-on.md` or `docs/product/competitor-benchmark.md`. Only run the generated `--passed` command after validation succeeds and the real 2-4 hour hands-on pass is complete.
+Run the generated competitor `--validate-only` command first; it performs the same passed-evidence validation without writing `docs/release/evidence/competitor-hands-on.md` or `docs/product/competitor-benchmark.md`. Only run the generated `--passed` command after validation succeeds and the real 2-4 hour hands-on pass is complete. The competitor passed command requires `--hands-on-duration` with a real 2-4 hour total and per-competitor timing.
 
 Each competitor note and Ship / Defer / Reject delta must identify what was actually observed or decided during the hands-on pass. Boilerplate notes such as `Verified.`, `Passed.`, `OK`, `No issues`, or unedited `Concrete ... observation from the hands-on pass.` examples are rejected by both the generator and `release_readiness_report.sh`.
 
@@ -275,6 +275,7 @@ Each competitor note and Ship / Defer / Reject delta must identify what was actu
 ./script/create_competitor_hands_on_evidence.sh --validate-only \
   --checked-by "Reviewer Name" \
   --environment "macOS/browser versions, competitor app/account tiers, and whether any paid trial was used" \
+  --hands-on-duration "2h 15m total: Notion 35m, Todoist 30m, Linear 35m, Motion 35m" \
   --notion-note "Concrete Notion observation from the hands-on pass." \
   --todoist-note "Concrete Todoist observation from the hands-on pass." \
   --linear-note "Concrete Linear observation from the hands-on pass." \
@@ -287,6 +288,7 @@ Each competitor note and Ship / Defer / Reject delta must identify what was actu
 ./script/create_competitor_hands_on_evidence.sh --passed \
   --checked-by "Reviewer Name" \
   --environment "macOS/browser versions, competitor app/account tiers, and whether any paid trial was used" \
+  --hands-on-duration "2h 15m total: Notion 35m, Todoist 30m, Linear 35m, Motion 35m" \
   --notion-note "Concrete Notion observation from the hands-on pass." \
   --todoist-note "Concrete Todoist observation from the hands-on pass." \
   --linear-note "Concrete Linear observation from the hands-on pass." \

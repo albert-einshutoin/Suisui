@@ -11,6 +11,7 @@ CHECKED_BY=""
 CHECK_DATE="$(date +%F)"
 EVIDENCE_SOURCE="Notion/Todoist/Linear/Motion 2-4 hour hands-on pass"
 ENVIRONMENT=""
+HANDS_ON_DURATION=""
 CONFIRM_MANUAL_HANDS_ON=0
 VALIDATE_ONLY=0
 SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
@@ -23,7 +24,7 @@ DEFER_DELTA=""
 REJECT_DELTA=""
 
 usage() {
-  printf '%s\n' "usage: $0 (--pending|--passed|--validate-only) [--output PATH] [--benchmark-output PATH] [--command-output PATH] [--worksheet-output PATH] [--checked-by NAME] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--environment TEXT] [--notion-note TEXT] [--todoist-note TEXT] [--linear-note TEXT] [--motion-note TEXT] [--ship TEXT] [--defer TEXT] [--reject TEXT] [--confirm-manual-hands-on]"
+  printf '%s\n' "usage: $0 (--pending|--passed|--validate-only) [--output PATH] [--benchmark-output PATH] [--command-output PATH] [--worksheet-output PATH] [--checked-by NAME] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--environment TEXT] [--hands-on-duration TEXT] [--notion-note TEXT] [--todoist-note TEXT] [--linear-note TEXT] [--motion-note TEXT] [--ship TEXT] [--defer TEXT] [--reject TEXT] [--confirm-manual-hands-on]"
   printf '%s\n' ""
   printf '%s\n' "Use --pending to write safe pending evidence that release readiness will reject."
   printf '%s\n' "Use --pending to also write a hands-on worksheet, benchmark worksheet, and fill-in command template for the later manual evidence pass."
@@ -111,6 +112,64 @@ require_concrete_competitor_value() {
     echo "$flag must include concrete competitor hands-on details" >&2
     exit 2
   fi
+}
+
+hands_on_total_minutes() {
+  local value="$1"
+  local normalized
+  local total_segment
+  normalized="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+  total_segment="${normalized%%total*}"
+  if [[ "$total_segment" == "$normalized" ]]; then
+    total_segment="$normalized"
+  fi
+
+  awk '
+    {
+      total = 0
+      for (i = 1; i <= NF; i++) {
+        token = $i
+        gsub(/[^0-9.a-z]/, "", token)
+        if (token ~ /^[0-9]+(\.[0-9]+)?h(r|rs|our|ours)?$/) {
+          number = token
+          sub(/h.*/, "", number)
+          total += number * 60
+        } else if (token ~ /^[0-9]+(\.[0-9]+)?m(in|ins|inute|inutes)?$/) {
+          number = token
+          sub(/m.*/, "", number)
+          total += number
+        }
+      }
+      printf "%d\n", total + 0.5
+    }
+  ' <<<"$total_segment"
+}
+
+require_concrete_hands_on_duration() {
+  local value="$1"
+  local normalized
+  local total_minutes
+  local competitor
+
+  require_passed_value "--hands-on-duration" "$value"
+  normalized="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+  if grep -Eiq '<|>|2-4h|including notion|(^|[^[:alnum:]_])(todo|tbd|placeholder|sample|example)([^[:alnum:]_]|$)|replace me' <<<"$normalized"; then
+    echo "--hands-on-duration must describe a real 2-4 hour hands-on pass" >&2
+    exit 2
+  fi
+
+  total_minutes="$(hands_on_total_minutes "$value")"
+  if [[ "$total_minutes" -lt 120 || "$total_minutes" -gt 240 ]]; then
+    echo "--hands-on-duration must describe a real 2-4 hour hands-on pass" >&2
+    exit 2
+  fi
+
+  for competitor in notion todoist linear motion; do
+    if ! grep -Eiq "$competitor[^0-9]*[0-9]+([.][0-9]+)?[[:space:]]*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes)" <<<"$normalized"; then
+      echo "--hands-on-duration must include per-competitor timing for Notion, Todoist, Linear, and Motion" >&2
+      exit 2
+    fi
+  done
 }
 
 is_placeholder_environment() {
@@ -218,6 +277,10 @@ while [[ "$#" -gt 0 ]]; do
       ENVIRONMENT="${2:-}"
       shift 2
       ;;
+    --hands-on-duration)
+      HANDS_ON_DURATION="${2:-}"
+      shift 2
+      ;;
     --notion-note)
       NOTION_NOTE="${2:-}"
       shift 2
@@ -304,6 +367,7 @@ if [[ "$EVIDENCE_STATUS" == "passed" ]]; then
   require_concrete_competitor_value "--ship" "$SHIP_DELTA"
   require_concrete_competitor_value "--defer" "$DEFER_DELTA"
   require_concrete_competitor_value "--reject" "$REJECT_DELTA"
+  require_concrete_hands_on_duration "$HANDS_ON_DURATION"
 fi
 
 if [[ "$VALIDATE_ONLY" -eq 1 ]]; then
@@ -329,6 +393,11 @@ write_context() {
     printf -- '- Environment: %s\n' "$ENVIRONMENT"
   else
     printf '%s\n' '- Environment:'
+  fi
+  if [[ -n "$HANDS_ON_DURATION" ]]; then
+    printf -- '- Elapsed hands-on time: %s\n' "$HANDS_ON_DURATION"
+  else
+    printf '%s\n' '- Elapsed hands-on time:'
   fi
   printf '%s\n' '- Scope: Notion -> Todoist -> Linear -> Motion'
 }
@@ -390,6 +459,7 @@ write_hands_on_worksheet() {
     printf '%s\n' '- macOS version:'
     printf '%s\n' '- Browser / desktop app versions:'
     printf '%s\n' '- Account tiers / paid trial details:'
+    printf '%s\n' '- Elapsed hands-on time with per-competitor timing:'
     printf '%s\n' '- Screenshot or note locations kept outside release evidence:'
     printf '\n'
     printf '%s\n' '## Competitor Paths'
@@ -467,6 +537,7 @@ write_competitor_evidence_invocation() {
   printf './script/create_competitor_hands_on_evidence.sh %s \\\n' "$mode"
   printf '%s\n' '  --checked-by "<reviewer name>" \'
   printf '%s\n' '  --environment "<macOS/browser versions, competitor app/account tiers, and paid trial details>" \'
+  printf '%s\n' '  --hands-on-duration "<2-4h total, including Notion/Todoist/Linear/Motion timing>" \'
   printf '  --evidence-source %q \\\n' "$EVIDENCE_SOURCE"
   printf '%s\n' '  --notion-note "<hands-on Notion project database, board, task, and artifact observation>" \'
   printf '%s\n' '  --todoist-note "<hands-on Todoist quick add, board/list, drag movement, Today/Upcoming observation>" \'
@@ -555,6 +626,8 @@ write_hands_on_benchmark() {
     printf -- 'Source commit: `%s`\n' "$SOURCE_COMMIT"
     printf '\n'
     printf -- 'Environment: %s\n' "$ENVIRONMENT"
+    printf '\n'
+    printf -- 'Elapsed hands-on time: %s\n' "$HANDS_ON_DURATION"
     printf '\n'
     printf -- 'Evidence source: `%s`\n' "$EVIDENCE_SOURCE"
     printf '\n'

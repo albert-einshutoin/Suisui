@@ -111,6 +111,7 @@ COMPETITOR_REQUIRED_CONTEXT_LABELS=(
   "Source commit"
   "Evidence source"
   "Environment"
+  "Elapsed hands-on time"
   "Scope"
 )
 COMPETITOR_REQUIRED_NOTE_LABELS=(
@@ -703,6 +704,7 @@ write_competitor_hands_on_evidence_invocation() {
   printf './script/create_competitor_hands_on_evidence.sh %s \\\n' "$mode"
   printf '%s\n' '  --checked-by "<reviewer name>" \'
   printf '%s\n' '  --environment "<macOS/browser versions, competitor account tiers, paid trial status>" \'
+  printf '%s\n' '  --hands-on-duration "<2-4h total, including Notion/Todoist/Linear/Motion timing>" \'
   printf '%s\n' '  --notion-note "<hands-on Notion project database, board, task, and artifact observation>" \'
   printf '%s\n' '  --todoist-note "<hands-on Todoist quick add, board/list, drag movement, Today/Upcoming observation>" \'
   printf '%s\n' '  --linear-note "<hands-on Linear project/issue/status/sidebar/keyboard command observation>" \'
@@ -1122,6 +1124,7 @@ write_release_actions() {
     printf -- "- For this action summary, the expected pending evidence path is \`.tmp/competitor-hands-on/competitor-hands-on-pending-%s.md\`.\n" "$(source_commit)"
     printf -- "- The generated competitor hands-on evidence command is pinned to a clean tracked source tree and the source commit it was created for. Rerun \`./script/prepare_release_manual_helpers.sh\` after source changes instead of reusing an older command.\n"
     printf -- "- Run the generated \`--validate-only\` command first; it performs the same passed-evidence validation without writing \`docs/release/evidence/competitor-hands-on.md\` or \`docs/product/competitor-benchmark.md\`.\n"
+    printf -- "- The passed command requires \`--hands-on-duration\` with a real 2-4 hour total and per-competitor timing for Notion, Todoist, Linear, and Motion.\n"
     printf -- "- Replace every placeholder below with concrete observations and Ship / Defer / Reject decisions before running it.\n\n"
     write_competitor_hands_on_evidence_command
     printf "\n"
@@ -1341,6 +1344,60 @@ is_boilerplate_competitor_value() {
       return 1
       ;;
   esac
+}
+
+competitor_hands_on_total_minutes() {
+  local value="$1"
+  local normalized
+  local total_segment
+  normalized="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+  total_segment="${normalized%%total*}"
+  if [[ "$total_segment" == "$normalized" ]]; then
+    total_segment="$normalized"
+  fi
+
+  awk '
+    {
+      total = 0
+      for (i = 1; i <= NF; i++) {
+        token = $i
+        gsub(/[^0-9.a-z]/, "", token)
+        if (token ~ /^[0-9]+(\.[0-9]+)?h(r|rs|our|ours)?$/) {
+          number = token
+          sub(/h.*/, "", number)
+          total += number * 60
+        } else if (token ~ /^[0-9]+(\.[0-9]+)?m(in|ins|inute|inutes)?$/) {
+          number = token
+          sub(/m.*/, "", number)
+          total += number
+        }
+      }
+      printf "%d\n", total + 0.5
+    }
+  ' <<<"$total_segment"
+}
+
+competitor_hands_on_duration_is_valid() {
+  local value="$1"
+  local normalized
+  local total_minutes
+  local competitor
+
+  normalized="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+  if grep -Eiq '<|>|2-4h|including notion|(^|[^[:alnum:]_])(todo|tbd|placeholder|sample|example)([^[:alnum:]_]|$)|replace me' <<<"$normalized"; then
+    return 1
+  fi
+
+  total_minutes="$(competitor_hands_on_total_minutes "$value")"
+  if [[ "$total_minutes" -lt 120 || "$total_minutes" -gt 240 ]]; then
+    return 1
+  fi
+
+  for competitor in notion todoist linear motion; do
+    if ! grep -Eiq "$competitor[^0-9]*[0-9]+([.][0-9]+)?[[:space:]]*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes)" <<<"$normalized"; then
+      return 1
+    fi
+  done
 }
 
 is_manual_phase_gate() {
@@ -2267,6 +2324,8 @@ else
       competitor_blocker "Competitor hands-on evidence has invalid review context date: $context_label"
     elif [[ "$context_label" == "Check date" ]] && is_future_date "$context_value"; then
       competitor_blocker "Competitor hands-on evidence has future review context date: $context_label"
+    elif [[ "$context_label" == "Elapsed hands-on time" ]] && ! competitor_hands_on_duration_is_valid "$context_value"; then
+      competitor_blocker "Competitor hands-on evidence has invalid elapsed hands-on time"
     fi
   done
 
