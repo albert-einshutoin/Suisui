@@ -289,49 +289,52 @@ on run argv
   tell application "System Events"
     if not (exists process appName) then error appName & " process is not visible to System Events"
     tell process appName
-      if (count of windows) < 1 then error appName & " has no visible windows"
+      set windowCount to count of windows
+      if windowCount < 1 then error appName & " has no visible windows"
       try
         set frontmost to true
       end try
-      set currentWindow to window 1
-      try
-        perform action "AXRaise" of currentWindow
-      end try
-      set axItems to entire contents of currentWindow
-      repeat with axItem in axItems
-        set itemRole to ""
+      repeat with windowIndex from 1 to windowCount
+        set currentWindow to window windowIndex
         try
-          set itemRole to role of axItem as text
+          perform action "AXRaise" of currentWindow
         end try
-        if itemRole is "AXButton" then
-          set buttonName to ""
-          set buttonTitle to ""
-          set buttonDescription to ""
-          set buttonHelp to ""
+        set axItems to entire contents of currentWindow
+        repeat with axItem in axItems
+          set itemRole to ""
           try
-            set buttonName to name of axItem as text
+            set itemRole to role of axItem as text
           end try
-          try
-            set buttonTitle to value of attribute "AXTitle" of axItem as text
-          end try
-          try
-            set buttonDescription to description of axItem as text
-          end try
-          try
-            set buttonHelp to value of attribute "AXHelp" of axItem as text
-          end try
-          set signalText to buttonName & " " & buttonTitle & " " & buttonDescription & " " & buttonHelp
-          set isEnabled to true
-          try
-            set isEnabled to enabled of axItem as boolean
-          end try
-          if isEnabled and signalText contains fragment then
+          if itemRole is "AXButton" then
+            set buttonName to ""
+            set buttonTitle to ""
+            set buttonDescription to ""
+            set buttonHelp to ""
             try
-              perform action "AXPress" of axItem
-              return "pressed " & fragment
+              set buttonName to name of axItem as text
             end try
+            try
+              set buttonTitle to value of attribute "AXTitle" of axItem as text
+            end try
+            try
+              set buttonDescription to description of axItem as text
+            end try
+            try
+              set buttonHelp to value of attribute "AXHelp" of axItem as text
+            end try
+            set signalText to buttonName & " " & buttonTitle & " " & buttonDescription & " " & buttonHelp
+            set isEnabled to true
+            try
+              set isEnabled to enabled of axItem as boolean
+            end try
+            if isEnabled and signalText contains fragment then
+              try
+                perform action "AXPress" of axItem
+                return "pressed " & fragment
+              end try
+            end if
           end if
-        end if
+        end repeat
       end repeat
     end tell
   end tell
@@ -362,43 +365,52 @@ on run argv
   tell application "System Events"
     if not (exists process appName) then error appName & " process is not visible to System Events"
     tell process appName
-      if (count of windows) < 1 then error appName & " has no visible windows"
-      set currentWindow to window 1
-      set axItems to entire contents of currentWindow
-      repeat with axItem in axItems
-        set itemRole to ""
+      set windowCount to count of windows
+      if windowCount < 1 then error appName & " has no visible windows"
+      try
+        set frontmost to true
+      end try
+      repeat with windowIndex from 1 to windowCount
+        set currentWindow to window windowIndex
         try
-          set itemRole to role of axItem as text
+          perform action "AXRaise" of currentWindow
         end try
-        if itemRole is "AXButton" then
-          set buttonName to ""
-          set buttonTitle to ""
-          set buttonDescription to ""
-          set buttonHelp to ""
+        set axItems to entire contents of currentWindow
+        repeat with axItem in axItems
+          set itemRole to ""
           try
-            set buttonName to name of axItem as text
+            set itemRole to role of axItem as text
           end try
-          try
-            set buttonTitle to value of attribute "AXTitle" of axItem as text
-          end try
-          try
-            set buttonDescription to description of axItem as text
-          end try
-          try
-            set buttonHelp to value of attribute "AXHelp" of axItem as text
-          end try
-          set signalText to buttonName & " " & buttonTitle & " " & buttonDescription & " " & buttonHelp
-          set isEnabled to true
-          try
-            set isEnabled to enabled of axItem as boolean
-          end try
-          if isEnabled and (signalText contains fragment) and not (signalText contains excludedHelp) then
+          if itemRole is "AXButton" then
+            set buttonName to ""
+            set buttonTitle to ""
+            set buttonDescription to ""
+            set buttonHelp to ""
             try
-              perform action "AXPress" of axItem
-              return "pressed confirmation " & fragment
+              set buttonName to name of axItem as text
             end try
+            try
+              set buttonTitle to value of attribute "AXTitle" of axItem as text
+            end try
+            try
+              set buttonDescription to description of axItem as text
+            end try
+            try
+              set buttonHelp to value of attribute "AXHelp" of axItem as text
+            end try
+            set signalText to buttonName & " " & buttonTitle & " " & buttonDescription & " " & buttonHelp
+            set isEnabled to true
+            try
+              set isEnabled to enabled of axItem as boolean
+            end try
+            if isEnabled and (signalText contains fragment) and not (signalText contains excludedHelp) then
+              try
+                perform action "AXPress" of axItem
+                return "pressed confirmation " & fragment
+              end try
+            end if
           end if
-        end if
+        end repeat
       end repeat
     end tell
   end tell
@@ -429,64 +441,73 @@ on run argv
   tell application "System Events"
     if not (exists process appName) then error appName & " process is not visible to System Events"
     tell process appName
-      if (count of windows) < 1 then error appName & " has no visible windows"
-      set currentWindow to window 1
-      set axItems to entire contents of currentWindow
-      repeat with axItem in axItems
-        set itemRole to ""
+      set windowCount to count of windows
+      if windowCount < 1 then error appName & " has no visible windows"
+      try
+        set frontmost to true
+      end try
+      repeat with windowIndex from 1 to windowCount
+        set currentWindow to window windowIndex
         try
-          set itemRole to role of axItem as text
+          perform action "AXRaise" of currentWindow
         end try
-        if itemRole is "AXTextField" or itemRole is "AXTextArea" then
-          set fieldIdentifier to ""
-          set fieldName to ""
-          set fieldTitle to ""
-          set fieldDescription to ""
-          set fieldHelp to ""
-          set fieldValue to ""
+        set axItems to entire contents of currentWindow
+        repeat with axItem in axItems
+          set itemRole to ""
           try
-            set fieldIdentifier to value of attribute "AXIdentifier" of axItem as text
+            set itemRole to role of axItem as text
           end try
-          try
-            set fieldName to name of axItem as text
-          end try
-          try
-            set fieldTitle to value of attribute "AXTitle" of axItem as text
-          end try
-          try
-            set fieldDescription to description of axItem as text
-          end try
-          try
-            set fieldHelp to value of attribute "AXHelp" of axItem as text
-          end try
-          try
-            set fieldValue to value of axItem as text
-          end try
-          set signalText to fieldIdentifier & " " & fieldName & " " & fieldTitle & " " & fieldDescription & " " & fieldHelp & " " & fieldValue
-          if signalText contains fragment then
-            set previousClipboard to ""
+          if itemRole is "AXTextField" or itemRole is "AXTextArea" then
+            set fieldIdentifier to ""
+            set fieldName to ""
+            set fieldTitle to ""
+            set fieldDescription to ""
+            set fieldHelp to ""
+            set fieldValue to ""
             try
-              set previousClipboard to the clipboard as text
+              set fieldIdentifier to value of attribute "AXIdentifier" of axItem as text
             end try
-            perform action "AXPress" of axItem
-            set focused of axItem to true
-            delay 0.2
-            set the clipboard to replacement
-            keystroke "a" using command down
-            delay 0.1
-            key code 51
-            delay 0.1
-            keystroke "v" using command down
-            delay 0.3
-            key code 48
-            delay 0.2
             try
-              set the clipboard to previousClipboard
+              set fieldName to name of axItem as text
             end try
-            delay 0.2
-            return "set text field " & fragment
+            try
+              set fieldTitle to value of attribute "AXTitle" of axItem as text
+            end try
+            try
+              set fieldDescription to description of axItem as text
+            end try
+            try
+              set fieldHelp to value of attribute "AXHelp" of axItem as text
+            end try
+            try
+              set fieldValue to value of axItem as text
+            end try
+            set signalText to fieldIdentifier & " " & fieldName & " " & fieldTitle & " " & fieldDescription & " " & fieldHelp & " " & fieldValue
+            if signalText contains fragment then
+              set previousClipboard to ""
+              try
+                set previousClipboard to the clipboard as text
+              end try
+              perform action "AXPress" of axItem
+              set focused of axItem to true
+              delay 0.2
+              set the clipboard to replacement
+              keystroke "a" using command down
+              delay 0.1
+              key code 51
+              delay 0.1
+              keystroke "v" using command down
+              delay 0.3
+              key code 48
+              delay 0.2
+              try
+                set the clipboard to previousClipboard
+              end try
+              delay 0.2
+              return "set text field " & fragment
+            end if
           end if
-        end if
+        end repeat
       end repeat
     end tell
   end tell
@@ -515,42 +536,51 @@ on run argv
   tell application "System Events"
     if not (exists process appName) then error appName & " process is not visible to System Events"
     tell process appName
-      if (count of windows) < 1 then error appName & " has no visible windows"
-      set currentWindow to window 1
-      set axItems to entire contents of currentWindow
-      repeat with axItem in axItems
-        set itemRole to ""
+      set windowCount to count of windows
+      if windowCount < 1 then error appName & " has no visible windows"
+      try
+        set frontmost to true
+      end try
+      repeat with windowIndex from 1 to windowCount
+        set currentWindow to window windowIndex
         try
-          set itemRole to role of axItem as text
+          perform action "AXRaise" of currentWindow
         end try
-        if itemRole is "AXTextField" or itemRole is "AXTextArea" then
-          set fieldIdentifier to ""
-          set fieldName to ""
-          set fieldTitle to ""
-          set fieldDescription to ""
-          set fieldHelp to ""
-          set fieldValue to ""
+        set axItems to entire contents of currentWindow
+        repeat with axItem in axItems
+          set itemRole to ""
           try
-            set fieldIdentifier to value of attribute "AXIdentifier" of axItem as text
+            set itemRole to role of axItem as text
           end try
-          try
-            set fieldName to name of axItem as text
-          end try
-          try
-            set fieldTitle to value of attribute "AXTitle" of axItem as text
-          end try
-          try
-            set fieldDescription to description of axItem as text
-          end try
-          try
-            set fieldHelp to value of attribute "AXHelp" of axItem as text
-          end try
-          try
-            set fieldValue to value of axItem as text
-          end try
-          set signalText to fieldIdentifier & " " & fieldName & " " & fieldTitle & " " & fieldDescription & " " & fieldHelp & " " & fieldValue
-          if signalText contains fragment then return "found text field " & fragment
-        end if
+          if itemRole is "AXTextField" or itemRole is "AXTextArea" then
+            set fieldIdentifier to ""
+            set fieldName to ""
+            set fieldTitle to ""
+            set fieldDescription to ""
+            set fieldHelp to ""
+            set fieldValue to ""
+            try
+              set fieldIdentifier to value of attribute "AXIdentifier" of axItem as text
+            end try
+            try
+              set fieldName to name of axItem as text
+            end try
+            try
+              set fieldTitle to value of attribute "AXTitle" of axItem as text
+            end try
+            try
+              set fieldDescription to description of axItem as text
+            end try
+            try
+              set fieldHelp to value of attribute "AXHelp" of axItem as text
+            end try
+            try
+              set fieldValue to value of axItem as text
+            end try
+            set signalText to fieldIdentifier & " " & fieldName & " " & fieldTitle & " " & fieldDescription & " " & fieldHelp & " " & fieldValue
+            if signalText contains fragment then return "found text field " & fragment
+          end if
+        end repeat
       end repeat
     end tell
   end tell

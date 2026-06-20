@@ -1346,6 +1346,13 @@
 - [x] `ReleasePipelineTests` で `TMPDIR` export が `swift test` より前に実行され、CI tmpdir cleanup が定義されていることを固定する。
 - [x] 完了条件: automated release preflight を繰り返しても検証用 `.tmp` に不要な Swift temporary directory が蓄積せず、manual evidence / action summary の確認ノイズを増やさない。
 
+### P10-163: Runtime accessible CRUD smoke tolerates macOS window ordering
+
+- [x] `script/check_runtime_accessible_crud_smoke.sh` の AX button / confirmation / text field 操作は `window 1` 固定ではなく、System Events が返す全 visible window を走査する。
+- [x] 各 AX 操作は window ごとに `AXRaise` を試み、起動直後や補助 window の順序揺れで Project Board の inspector / inline composer を見失わない。
+- [x] `ReleasePipelineTests` は `window 1` 固定が戻った場合に失敗する source-level guard を持つ。
+- [x] 完了条件: runtime accessible CRUD smoke が Project / Task の作成、rename、status move、delete、cascade delete を visible app 経由で完走する。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
