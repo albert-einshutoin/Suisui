@@ -1,6 +1,6 @@
 # SoloPM MCP Compliance Review
 
-Last reviewed: 2026-06-19
+Last reviewed: 2026-06-20
 
 ## Baseline
 

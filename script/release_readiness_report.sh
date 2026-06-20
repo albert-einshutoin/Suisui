@@ -147,6 +147,7 @@ MCP_EVIDENCE_REQUIRED_MARKERS=(
   "exit: 0"
 )
 MCP_REVIEW_REQUIRED_MARKERS=(
+  "Last reviewed: 2026-06-20"
   'Stable baseline: `2025-11-25`'
   'Official stable latest: `2025-11-25`'
   "Official latest source: https://modelcontextprotocol.io/specification"

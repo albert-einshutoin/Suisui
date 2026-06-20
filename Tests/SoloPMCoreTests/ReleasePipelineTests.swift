@@ -5292,6 +5292,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("MCP compliance review is missing marker"))
         XCTAssertTrue(script.contains("OK: MCP compliance review covers stable baseline, draft boundary, release subset, and non-host positioning"))
         XCTAssertTrue(script.contains("docs/release/evidence/mcp-inspector.md"))
+        XCTAssertTrue(script.contains("Last reviewed: 2026-06-20"))
         XCTAssertTrue(script.contains("Stable baseline: `2025-11-25`"))
         XCTAssertTrue(script.contains("Official latest source: https://modelcontextprotocol.io/specification"))
         XCTAssertTrue(script.contains("Official latest checked: 2026-06-20"))
@@ -7529,6 +7530,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("== MCP Inspector evidence =="))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Last reviewed: 2026-06-20"))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official stable latest: `2025-11-25`"))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official latest source: https://modelcontextprotocol.io/specification"))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official latest checked: 2026-06-20"))

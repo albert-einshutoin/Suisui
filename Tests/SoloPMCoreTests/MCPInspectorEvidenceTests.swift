@@ -108,6 +108,15 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertTrue(evidence.contains("ExternalMCPTests.testToolsListParsesStructuredOutputSchema"))
     }
 
+    func testComplianceReviewDateMatchesOfficialLatestCheckDate() throws {
+        let complianceReview = try readPackageFile("docs/mcp-compliance.md")
+        let releaseReport = try readPackageFile("script/release_readiness_report.sh")
+
+        XCTAssertTrue(complianceReview.contains("Last reviewed: 2026-06-20"))
+        XCTAssertTrue(complianceReview.contains("Official latest checked: 2026-06-20"))
+        XCTAssertTrue(releaseReport.contains("Last reviewed: 2026-06-20"))
+    }
+
     func testInspectorVerificationScriptRunsWithFakeInspectorWithoutNetwork() throws {
         let temporaryDirectory = packageRoot()
             .appendingPathComponent(".build/test-mcp-inspector-\(UUID().uuidString)", isDirectory: true)
