@@ -15,6 +15,7 @@ struct SoloPM: App {
     @StateObject private var menuBarController: MenuBarSummaryController
     @StateObject private var menuBarQuickCaptureViewModel: ProjectBoardViewModel
     @AppStorage(SoloPMAppearancePreference.storageKey) private var appearancePreference: SoloPMAppearancePreference = .system
+    @AppStorage(AppLanguagePreference.storageKey) private var languagePreference: AppLanguagePreference = .system
 
     @MainActor
     init() {
@@ -26,6 +27,7 @@ struct SoloPM: App {
         WindowGroup("SoloPM", id: "project-board") {
             ProjectBoardView(viewModel: AppRuntimeFactory.makeProjectBoardViewModel())
                 .preferredColorScheme(effectiveAppearancePreference.colorScheme)
+                .environment(\.locale, effectiveLanguagePreference.locale)
         }
         .defaultSize(width: 1180, height: 760)
         .commands {
@@ -40,12 +42,14 @@ struct SoloPM: App {
         Window("Voice Command", id: "voice-capture") {
             VoiceCaptureView(viewModel: AppRuntimeFactory.makeVoiceCaptureViewModel())
                 .preferredColorScheme(effectiveAppearancePreference.colorScheme)
+                .environment(\.locale, effectiveLanguagePreference.locale)
         }
         .defaultSize(width: 560, height: 420)
 
         MenuBarExtra("SoloPM", systemImage: "checklist") {
             MenuBarPanel(controller: menuBarController, quickCaptureViewModel: menuBarQuickCaptureViewModel)
                 .preferredColorScheme(effectiveAppearancePreference.colorScheme)
+                .environment(\.locale, effectiveLanguagePreference.locale)
         }
         .menuBarExtraStyle(.window)
 
@@ -56,14 +60,20 @@ struct SoloPM: App {
                 watcherDiagnosticsSnapshot: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot(),
                 externalMCPViewModel: AppRuntimeFactory.makeExternalMCPSettingsViewModel(),
                 syncViewModel: AppRuntimeFactory.makeSyncSettingsViewModel(),
-                appearancePreference: $appearancePreference
+                appearancePreference: $appearancePreference,
+                languagePreference: $languagePreference
             )
             .preferredColorScheme(effectiveAppearancePreference.colorScheme)
+            .environment(\.locale, effectiveLanguagePreference.locale)
         }
     }
 
     private var effectiveAppearancePreference: SoloPMAppearancePreference {
         SoloPMAppearancePreference.environmentOverride ?? appearancePreference
+    }
+
+    private var effectiveLanguagePreference: AppLanguagePreference {
+        AppLanguagePreference.environmentOverride ?? languagePreference
     }
 }
 
@@ -830,6 +840,7 @@ private struct SettingsView: View {
     @StateObject private var externalMCPViewModel: ExternalMCPSettingsViewModel
     @StateObject private var syncViewModel: SyncSettingsViewModel
     @Binding private var appearancePreference: SoloPMAppearancePreference
+    @Binding private var languagePreference: AppLanguagePreference
     @State private var isConfirmingMCPRegistrationDeletion = false
 
     init(
@@ -838,7 +849,8 @@ private struct SettingsView: View {
         watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot,
         externalMCPViewModel: ExternalMCPSettingsViewModel,
         syncViewModel: SyncSettingsViewModel,
-        appearancePreference: Binding<SoloPMAppearancePreference>
+        appearancePreference: Binding<SoloPMAppearancePreference>,
+        languagePreference: Binding<AppLanguagePreference>
     ) {
         self.watcherDiagnosticsSnapshot = watcherDiagnosticsSnapshot
         _settingsViewModel = StateObject(wrappedValue: settingsViewModel)
@@ -846,6 +858,7 @@ private struct SettingsView: View {
         _externalMCPViewModel = StateObject(wrappedValue: externalMCPViewModel)
         _syncViewModel = StateObject(wrappedValue: syncViewModel)
         _appearancePreference = appearancePreference
+        _languagePreference = languagePreference
     }
 
     var body: some View {
@@ -924,7 +937,7 @@ private struct SettingsView: View {
 
     private var appearanceSettingsTab: some View {
         Form {
-            SettingsAppearanceSection(appearancePreference: $appearancePreference)
+            SettingsAppearanceSection(appearancePreference: $appearancePreference, languagePreference: $languagePreference)
         }
         .formStyle(.grouped)
     }

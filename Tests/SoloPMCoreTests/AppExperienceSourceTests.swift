@@ -104,8 +104,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let appearanceSectionSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsAppearanceSection.swift")
 
-        XCTAssertTrue(appSource.contains("SettingsAppearanceSection(appearancePreference: $appearancePreference)"))
-        XCTAssertEqual(appSource.components(separatedBy: "SettingsAppearanceSection(appearancePreference: $appearancePreference)").count - 1, 1)
+        XCTAssertTrue(appSource.contains("SettingsAppearanceSection(appearancePreference: $appearancePreference, languagePreference: $languagePreference)"))
+        XCTAssertEqual(appSource.components(separatedBy: "SettingsAppearanceSection(appearancePreference: $appearancePreference, languagePreference: $languagePreference)").count - 1, 1)
         XCTAssertTrue(appearanceSectionSource.contains("Section(\"Appearance\")"))
         XCTAssertTrue(appearanceSectionSource.contains("Picker(\"Theme\", selection: $appearancePreference)"))
         XCTAssertTrue(appearanceSectionSource.contains(".accessibilityIdentifier(\"settings-theme-picker\")"))
@@ -114,7 +114,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertEqual(appearanceSectionSource.components(separatedBy: "Picker(\"Theme\"").count - 1, 1)
         let settingsRange = try XCTUnwrap(appSource.range(of: "Settings {"))
         let appearanceTabRange = try XCTUnwrap(appSource.range(of: "private var appearanceSettingsTab: some View"))
-        let appearanceRange = try XCTUnwrap(appSource.range(of: "SettingsAppearanceSection(appearancePreference: $appearancePreference)"))
+        let appearanceRange = try XCTUnwrap(appSource.range(of: "SettingsAppearanceSection(appearancePreference: $appearancePreference, languagePreference: $languagePreference)"))
         XCTAssertLessThan(settingsRange.lowerBound, appearanceRange.lowerBound)
         XCTAssertLessThan(appearanceTabRange.lowerBound, appearanceRange.lowerBound)
         XCTAssertTrue(appSource.contains("Label(\"Appearance\", systemImage: \"circle.lefthalf.filled\")"))
@@ -134,6 +134,58 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(boardSource.contains("SoloPMAppearancePreference"))
         XCTAssertFalse(boardSource.contains("Theme"))
         XCTAssertFalse(boardSource.contains("appearancePreference: $appearancePreference"))
+    }
+
+    func testLanguageSelectionSupportsJapaneseAndEnglishFromSettings() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let appearanceSectionSource = try readPackageFile("Sources/SoloPMApp/Views/SettingsAppearanceSection.swift")
+        let languagePreferenceSource = try readPackageFile("Sources/SoloPMApp/Views/AppLanguagePreference.swift")
+        let buildScript = try readPackageFile("script/build_and_run.sh")
+        let englishStrings = try readPackageFile("Sources/SoloPMApp/Resources/en.lproj/Localizable.strings")
+        let japaneseStrings = try readPackageFile("Sources/SoloPMApp/Resources/ja.lproj/Localizable.strings")
+
+        XCTAssertTrue(languagePreferenceSource.contains("enum AppLanguagePreference"))
+        XCTAssertTrue(languagePreferenceSource.contains("case system"))
+        XCTAssertTrue(languagePreferenceSource.contains("case english"))
+        XCTAssertTrue(languagePreferenceSource.contains("case japanese"))
+        XCTAssertTrue(languagePreferenceSource.contains("static let storageKey = \"solopm.languagePreference\""))
+        XCTAssertTrue(languagePreferenceSource.contains("static let environmentOverrideKey = \"SOLOPM_LANGUAGE_PREFERENCE\""))
+        XCTAssertTrue(languagePreferenceSource.contains("Locale(identifier: localeIdentifier)"))
+
+        XCTAssertTrue(appSource.contains("@AppStorage(AppLanguagePreference.storageKey) private var languagePreference: AppLanguagePreference = .system"))
+        XCTAssertTrue(appSource.contains("private var effectiveLanguagePreference: AppLanguagePreference"))
+        XCTAssertTrue(appSource.contains("AppLanguagePreference.environmentOverride ?? languagePreference"))
+        XCTAssertTrue(appSource.contains(".environment(\\.locale, effectiveLanguagePreference.locale)"))
+        XCTAssertGreaterThanOrEqual(appSource.components(separatedBy: ".environment(\\.locale, effectiveLanguagePreference.locale)").count - 1, 4)
+
+        XCTAssertTrue(appSource.contains("languagePreference: $languagePreference"))
+        XCTAssertTrue(appSource.contains("@Binding private var languagePreference: AppLanguagePreference"))
+        XCTAssertTrue(appearanceSectionSource.contains("@Binding var languagePreference: AppLanguagePreference"))
+        XCTAssertTrue(appearanceSectionSource.contains("Section(\"Language\")"))
+        XCTAssertTrue(appearanceSectionSource.contains("Picker(\"Language\", selection: $languagePreference)"))
+        XCTAssertTrue(appearanceSectionSource.contains("ForEach(AppLanguagePreference.allCases)"))
+        XCTAssertTrue(appearanceSectionSource.contains(".accessibilityIdentifier(\"settings-language-picker\")"))
+        XCTAssertEqual(appearanceSectionSource.components(separatedBy: "settings-language-picker").count - 1, 1)
+
+        XCTAssertFalse(boardSource.contains("settings-language-picker"))
+        XCTAssertFalse(boardSource.contains("Picker(\"Language\""))
+        XCTAssertFalse(boardSource.contains("AppLanguagePreference"))
+        XCTAssertFalse(boardSource.contains("@AppStorage(AppLanguagePreference.storageKey)"))
+
+        XCTAssertTrue(buildScript.contains("copy_app_localizations"))
+        XCTAssertTrue(buildScript.contains("Sources/SoloPMApp/Resources"))
+        XCTAssertTrue(buildScript.contains("CFBundleDevelopmentRegion"))
+        XCTAssertTrue(buildScript.contains("CFBundleLocalizations"))
+        XCTAssertTrue(buildScript.contains("ja"))
+        XCTAssertTrue(buildScript.contains("en"))
+
+        XCTAssertTrue(englishStrings.contains("\"Language\" = \"Language\";"))
+        XCTAssertTrue(englishStrings.contains("\"Japanese\" = \"Japanese\";"))
+        XCTAssertTrue(englishStrings.contains("\"Project Board\" = \"Project Board\";"))
+        XCTAssertTrue(japaneseStrings.contains("\"Language\" = \"言語\";"))
+        XCTAssertTrue(japaneseStrings.contains("\"Japanese\" = \"日本語\";"))
+        XCTAssertTrue(japaneseStrings.contains("\"Project Board\" = \"プロジェクトボード\";"))
     }
 
     func testThemePickerIsOwnedOnlyBySettingsAppearanceSectionAcrossAppSources() throws {
@@ -259,9 +311,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("SoloPMAppearancePreference.environmentOverride ?? appearancePreference"))
         XCTAssertTrue(appSource.contains(".preferredColorScheme(effectiveAppearancePreference.colorScheme)"))
         XCTAssertTrue(appSource.contains("SettingsView("))
-        XCTAssertTrue(appSource.contains("appearancePreference: $appearancePreference"))
+        XCTAssertTrue(appSource.contains("appearancePreference: $appearancePreference, languagePreference: $languagePreference"))
         XCTAssertTrue(appSource.contains("@Binding private var appearancePreference: SoloPMAppearancePreference"))
-        XCTAssertTrue(appSource.contains("SettingsAppearanceSection(appearancePreference: $appearancePreference)"))
+        XCTAssertTrue(appSource.contains("SettingsAppearanceSection(appearancePreference: $appearancePreference, languagePreference: $languagePreference)"))
         XCTAssertFalse(boardSource.contains("@AppStorage(SoloPMAppearancePreference.storageKey)"))
         XCTAssertFalse(boardSource.contains(".preferredColorScheme(appearancePreference.colorScheme)"))
     }
@@ -1418,9 +1470,10 @@ final class AppExperienceSourceTests: XCTestCase {
         let mcpSource = String(appSource[mcpStart.lowerBound..<appSource.endIndex])
 
         XCTAssertTrue(overviewSource.contains("Section(\"Status Overview\")"))
-        XCTAssertFalse(overviewSource.contains("SettingsAppearanceSection(appearancePreference: $appearancePreference)"))
-        XCTAssertTrue(appearanceSource.contains("SettingsAppearanceSection(appearancePreference: $appearancePreference)"))
+        XCTAssertFalse(overviewSource.contains("SettingsAppearanceSection(appearancePreference: $appearancePreference, languagePreference: $languagePreference)"))
+        XCTAssertTrue(appearanceSource.contains("SettingsAppearanceSection(appearancePreference: $appearancePreference, languagePreference: $languagePreference)"))
         XCTAssertTrue(appearanceSectionSource.contains("Section(\"Appearance\")"))
+        XCTAssertTrue(appearanceSectionSource.contains("Section(\"Language\")"))
         XCTAssertTrue(aiSource.contains("Section(\"AI\")"))
         XCTAssertTrue(aiSource.contains("Section(\"Voice\")"))
         XCTAssertTrue(mcpSource.contains("Section(\"External MCP\")"))

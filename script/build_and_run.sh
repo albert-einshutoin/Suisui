@@ -64,6 +64,7 @@ APP_FRAMEWORKS="$APP_CONTENTS/Frameworks"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
+APP_LOCALIZATION_SOURCE="$ROOT_DIR/Sources/SoloPMApp/Resources"
 
 cd "$ROOT_DIR"
 
@@ -94,6 +95,17 @@ cleanup_build_and_run_tmpdir() {
 cleanup_build_and_run() {
   release_build_and_run_lock
   cleanup_build_and_run_tmpdir
+}
+
+copy_app_localizations() {
+  if [[ ! -d "$APP_LOCALIZATION_SOURCE" ]]; then
+    return
+  fi
+
+  mkdir -p "$APP_RESOURCES"
+  while IFS= read -r -d '' localization_dir; do
+    /usr/bin/ditto "$localization_dir" "$APP_RESOURCES/$(basename "$localization_dir")"
+  done < <(find "$APP_LOCALIZATION_SOURCE" -maxdepth 1 -type d -name "*.lproj" -print0)
 }
 
 acquire_build_and_run_lock() {
@@ -148,6 +160,8 @@ if [[ -d "$RESOURCE_BUNDLE" ]]; then
   /usr/bin/ditto "$RESOURCE_BUNDLE" "$APP_RESOURCES"
 fi
 
+copy_app_localizations
+
 while IFS= read -r -d '' framework_path; do
   mkdir -p "$APP_FRAMEWORKS"
   /usr/bin/ditto "$framework_path" "$APP_FRAMEWORKS/$(basename "$framework_path")"
@@ -179,6 +193,13 @@ done < <(find "$BUILD_DIR" -maxdepth 1 -type f -name "*.dylib" -print0)
   printf '  <string>%s</string>\n' "$CURRENT_PROJECT_VERSION"
   printf '%s\n' '  <key>LSApplicationCategoryType</key>'
   printf '  <string>%s</string>\n' "$APP_CATEGORY"
+  printf '%s\n' '  <key>CFBundleDevelopmentRegion</key>'
+  printf '%s\n' '  <string>en</string>'
+  printf '%s\n' '  <key>CFBundleLocalizations</key>'
+  printf '%s\n' '  <array>'
+  printf '%s\n' '    <string>en</string>'
+  printf '%s\n' '    <string>ja</string>'
+  printf '%s\n' '  </array>'
   printf '%s\n' '  <key>LSMinimumSystemVersion</key>'
   printf '  <string>%s</string>\n' "$MIN_SYSTEM_VERSION"
   printf '%s\n' '  <key>NSPrincipalClass</key>'

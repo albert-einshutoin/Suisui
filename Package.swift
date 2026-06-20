@@ -4,6 +4,7 @@ import PackageDescription
 
 let package = Package(
     name: "SoloPM",
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v14)
     ],
@@ -44,7 +45,10 @@ let package = Package(
                 "SoloPMCore",
                 .product(name: "Sparkle", package: "Sparkle")
             ],
-            path: "Sources/SoloPMApp"
+            path: "Sources/SoloPMApp",
+            resources: [
+                .process("Resources")
+            ]
         ),
         .executableTarget(
             name: "SoloPMCLI",
