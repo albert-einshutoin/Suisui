@@ -999,6 +999,11 @@ collect_stale_manual_helper_previews() {
     [[ "$basename" == "competitor-benchmark-pending-$expected_commit.md" ]] && continue
     printf '%s\n' "${file#"$ROOT_DIR/"}"
   done
+
+  file="$ROOT_DIR/.tmp/competitor-hands-on/evidence.md"
+  if [[ -e "$file" ]]; then
+    printf '%s\n' "${file#"$ROOT_DIR/"}"
+  fi
 }
 
 write_ignored_stale_manual_helper_preview_actions() {
