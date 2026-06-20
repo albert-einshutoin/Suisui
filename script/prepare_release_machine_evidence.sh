@@ -168,6 +168,11 @@ write_command() {
     printf '%s\n' 'done'
     printf '%s\n' 'export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"'
     printf '\n'
+    printf '%s\n' '# Verify release-machine signing, notarization, and Sparkle setup before validating manual evidence.'
+    printf '%s\n' './script/verify_signing_setup.sh'
+    printf '%s\n' 'SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh'
+    printf '%s\n' 'SOLOPM_BUILD_CONFIGURATION=release SOLOPM_SPARKLE_CONFIG_QUIET=1 ./script/validate_sparkle_release_config.sh'
+    printf '\n'
     printf '%s\n' '# Validate the filled release-machine evidence command before writing tracked evidence.'
     write_release_evidence_invocation "--validate-only"
     printf '\n'

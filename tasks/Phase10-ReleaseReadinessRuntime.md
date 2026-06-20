@@ -1360,6 +1360,13 @@
 - [x] `docs/release/checklist.md` explains that the generated release-machine command sources those local config files before validating or writing `packaging/release-evidence.json`.
 - [x] 完了条件: release-machine operator は署名/公証/Sparkleのlocal config不足を、manual evidenceを書き込む前に生成コマンドから確認できる。
 
+### P10-165: Release-machine evidence command runs setup verifiers before manual evidence validation
+
+- [x] `.tmp/release-machine/create-release-evidence-command.sh` runs signing, online notarization, and release Sparkle setup verifiers before `create_release_evidence.sh --validate-only`.
+- [x] Setup verifier failures stop before `create_release_evidence.sh --force` and before final release environment preflight, so missing identity/profile/feed/key issues are not mixed with manual observation placeholders.
+- [x] `ReleasePipelineTests` locks the order: clean tree / source commit / local config guard -> setup verifiers -> release evidence validate-only -> release evidence write -> online final preflight.
+- [x] 完了条件: release-machine operator は manual evidence の文面を埋める前に、署名ID、notary profile、Sparkle release config の前提が通るか確認できる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
