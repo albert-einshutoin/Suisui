@@ -352,6 +352,31 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(transport.recordedMethods, ["initialize"])
     }
 
+    func testClientRejectsModernProtocolOnlyInitializeErrorWithStableBaselineGuidance() async throws {
+        let transport = RecordingMCPTransport { request in
+            MCPJSONRPCResponse(
+                id: request.id,
+                error: MCPJSONRPCError(code: -32022, message: "Unsupported protocol version")
+            )
+        }
+        let client = MCPClient(serverID: "modern-only", transport: transport)
+
+        do {
+            _ = try await client.initialize()
+            XCTFail("modern-only initialize error should fail with stable guidance")
+        } catch let error as MCPClientError {
+            XCTAssertEqual(
+                error,
+                .invalidResponse(
+                    serverID: "modern-only",
+                    method: "initialize",
+                    reason: "Unsupported protocol version during initialize. SoloPM public alpha supports stable MCP 2025-11-25 stdio Tools only; draft/modern protocol metadata and server/discover are out of scope for this release."
+                )
+            )
+        }
+        XCTAssertEqual(transport.recordedMethods, ["initialize"])
+    }
+
     func testServerRegistrationValidatesCommandBinaryDisabledAndKeychainEnvReferences() async throws {
         let validator = MCPServerRegistrationValidator(binaryLocator: StaticBinaryLocator(availableCommands: ["node"]))
         let workingDirectory = try temporaryDirectory()
@@ -1436,6 +1461,41 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(viewModel.toolRows.map(\.toolName), ["danger_delete", "invalid_response", "read_status", "slow_tool", "write_issue"])
         XCTAssertEqual(viewModel.toolRows.first { $0.toolName == "read_status" }?.serverName, "Fake MCP")
         XCTAssertEqual(transport.recordedMethods, ["initialize", "notifications/initialized", "tools/list"])
+    }
+
+    @MainActor
+    func testExternalMCPSettingsViewModelShowsStableGuidanceForModernProtocolOnlyServer() async throws {
+        let registration = MCPServerRegistration(
+            id: "modern-only",
+            displayName: "Modern MCP",
+            command: "node",
+            arguments: ["server.js"],
+            environment: [:],
+            workingDirectory: nil,
+            isEnabled: true
+        )
+        let store = InMemoryMCPServerRegistrationStore(registrations: [registration])
+        let transport = RecordingMCPTransport { request in
+            MCPJSONRPCResponse(
+                id: request.id,
+                error: MCPJSONRPCError(code: -32022, message: "Unsupported protocol version")
+            )
+        }
+        let launcher = MCPStdioServerLauncher(
+            validator: MCPServerRegistrationValidator(binaryLocator: StaticBinaryLocator(availableCommands: ["node"])),
+            transportFactory: { _ in transport }
+        )
+        let viewModel = ExternalMCPSettingsViewModel(store: store, launcher: launcher)
+
+        await viewModel.checkConnection()
+
+        XCTAssertEqual(viewModel.protocolVersionLabel, "Not checked")
+        XCTAssertEqual(viewModel.connectionCheckResultLabel, "Failed")
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "MCP initialize response was invalid: Unsupported protocol version during initialize. SoloPM public alpha supports stable MCP 2025-11-25 stdio Tools only; draft/modern protocol metadata and server/discover are out of scope for this release."
+        )
+        XCTAssertEqual(transport.recordedMethods, ["initialize"])
     }
 
     @MainActor

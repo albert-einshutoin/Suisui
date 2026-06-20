@@ -212,6 +212,14 @@ public final class MCPClient: @unchecked Sendable {
                 throw MCPClientError.invalidResponse(serverID: serverID, method: request.method, reason: "Mismatched response id.")
             }
             if let error = response.error {
+                if request.method == "initialize",
+                   MCPProtocolVersion.isUnsupportedProtocolError(code: error.code, message: error.message) {
+                    throw MCPClientError.invalidResponse(
+                        serverID: serverID,
+                        method: request.method,
+                        reason: MCPProtocolVersion.unsupportedInitializeErrorReason()
+                    )
+                }
                 throw MCPClientError.protocolError(
                     serverID: serverID,
                     method: request.method,

@@ -11,6 +11,17 @@ public enum MCPProtocolVersion: String, Equatable, Sendable {
         }
         return "Unsupported result.protocolVersion: \(protocolVersion)."
     }
+
+    public static func unsupportedInitializeErrorReason() -> String {
+        "Unsupported protocol version during initialize. SoloPM public alpha supports \(publicAlphaBaselineDescription); draft/modern protocol metadata and server/discover are out of scope for this release."
+    }
+
+    public static func isUnsupportedProtocolError(code: Int, message: String) -> Bool {
+        if code == -32022 {
+            return true
+        }
+        return message.range(of: "unsupported protocol version", options: [.caseInsensitive, .diacriticInsensitive]) != nil
+    }
 }
 
 public struct MCPJSONRPCRequest: Codable, Equatable, Sendable {

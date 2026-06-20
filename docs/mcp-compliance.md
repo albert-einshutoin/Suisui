@@ -49,7 +49,7 @@ Primary references:
 | Request id matching | Implemented | `MCPClient.send` rejects mismatched response id. |
 | Lifecycle initialize | Implemented | `MCPClient.initialize` sends `initialize` with `protocolVersion = 2025-11-25`, empty client capabilities, and client info before any normal operation request. It requires result `capabilities` to be an object and `serverInfo.name` / `serverInfo.version` to be strings before accepting the server. |
 | Initialized notification | Implemented | `MCPClient.initialize` sends `notifications/initialized` only after a successful initialize result, and regression tests verify invalid initialize responses do not emit it. Missing or malformed `capabilities` / `serverInfo` responses fail before the initialized notification. |
-| Protocol version negotiation | Implemented for current release | SoloPM offers `2025-11-25`, rejects unsupported server response versions, and shows the accepted server version in Settings after Check Connection. Servers that return draft `2026-07-28` are rejected with stable-baseline guidance instead of being treated as compatible. |
+| Protocol version negotiation | Implemented for current release | SoloPM offers `2025-11-25`, rejects unsupported server response versions, and shows the accepted server version in Settings after Check Connection. Servers that return draft `2026-07-28` or an `Unsupported protocol version` initialize error are rejected with stable-baseline guidance instead of being treated as compatible. |
 | Tools list | Implemented | `MCPClient.listTools` calls `tools/list` and parses `tools` as an array of tool definitions. |
 | Tools list pagination | Implemented | `MCPClient.listTools` follows `result.nextCursor` with `params.cursor`, rejects malformed cursor metadata, and guards against repeated cursors so paginated servers are not silently truncated. |
 | Tool name policy | Implemented for release subset | MCP marks 1-128 character ASCII tool names with letters, digits, underscore, hyphen, and dot as the interoperable shape, and expects names to be unique within a server. SoloPM treats names outside that shape or duplicate names across paginated responses as invalid to keep Settings, audit rows, and approval policies deterministic. |
@@ -82,11 +82,13 @@ Primary references:
 - `ExternalMCPTests.testToolsListRejectsDuplicateToolNamesAcrossPages`
 - `ExternalMCPTests.testClientRejectsUnsupportedInitializeProtocolVersionBeforeInitializedNotification`
 - `ExternalMCPTests.testClientRejectsDraft20260728ProtocolWithStableBaselineGuidance`
+- `ExternalMCPTests.testClientRejectsModernProtocolOnlyInitializeErrorWithStableBaselineGuidance`
 - `ExternalMCPTests.testClientRejectsNonObjectInitializeServerInfo`
 - `ExternalMCPTests.testClientRequiresInitializeCapabilitiesObject`
 - `ExternalMCPTests.testClientRequiresInitializeServerInfoNameAndVersion`
 - `ExternalMCPTests.testClientRejectsNonStringInitializeServerName`
 - `ExternalMCPTests.testExternalMCPSettingsViewModelChecksConnectionAndRefreshesToolCatalog`
+- `ExternalMCPTests.testExternalMCPSettingsViewModelShowsStableGuidanceForModernProtocolOnlyServer`
 - `ExternalMCPTests.testMCPStdioTransportRunsRealProcessAndParsesLineDelimitedResponses`
 - `ExternalMCPTests.testMCPStdioTransportReportsMalformedJSONAsInvalidResponse`
 - `ExternalMCPTests.testClientRejectsNonBooleanToolCallIsError`
