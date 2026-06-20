@@ -1023,8 +1023,10 @@ private struct SettingsView: View {
     @ViewBuilder
     private var selectedProviderConfigurationFields: some View {
         switch settingsViewModel.settings.aiProvider {
-        case .openaiResponses, .geminiOpenAICompatible:
+        case .openaiResponses:
             openAIProviderSettingsFields
+        case .geminiOpenAICompatible:
+            unavailableProviderSettingsFields
         case .claudeMessages:
             claudeProviderSettingsFields
         case .geminiDirect:
@@ -1038,6 +1040,23 @@ private struct SettingsView: View {
         case .ollamaCompatible:
             ollamaProviderSettingsFields
         }
+    }
+
+    private var unavailableProviderSettingsFields: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            LabeledContent(
+                "Provider",
+                value: LLMProviderCatalog.entry(for: settingsViewModel.settings.aiProvider).displayName
+            )
+            Label(
+                LLMProviderCatalog.entry(for: settingsViewModel.settings.aiProvider).unavailableReason
+                    ?? LLMProviderCatalog.unavailableReason,
+                systemImage: "exclamationmark.triangle"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .accessibilityIdentifier("ai-provider-unavailable-fields")
     }
 
     @ViewBuilder
@@ -2379,8 +2398,7 @@ private enum AppRuntimeFactory {
 
     private static func makeLLMProvider(settings: AppSettings, secretStore: any SecretStore) -> any LLMProvider {
         switch settings.normalizedForRuntime.aiProvider {
-        case .openaiResponses,
-             .geminiOpenAICompatible:
+        case .openaiResponses:
             let entry = LLMProviderCatalog.entry(for: .openaiResponses)
             let configuration = OpenAIResponsesConfiguration(model: entry.defaultModelID)
             return OpenAIResponsesProvider(secretStore: secretStore, configuration: configuration)
@@ -2425,6 +2443,12 @@ private enum AppRuntimeFactory {
                 isExecutionApproved: normalizedSettings.isOpenCodeLocalExecutionApproved
             )
             return OpenCodeLocalProvider(configuration: configuration)
+        case .geminiOpenAICompatible:
+            let entry = LLMProviderCatalog.entry(for: .geminiOpenAICompatible)
+            return UnavailableLLMProvider(
+                providerID: .geminiOpenAICompatible,
+                reason: entry.unavailableReason ?? LLMProviderCatalog.unavailableReason
+            )
         }
     }
 

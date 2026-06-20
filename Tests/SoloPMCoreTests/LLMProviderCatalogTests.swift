@@ -98,4 +98,23 @@ final class LLMProviderCatalogTests: XCTestCase {
         XCTAssertNil(LLMProviderCatalog.entry(for: .opencodeLocal).apiKeySecretKey)
         XCTAssertNil(LLMProviderCatalog.entry(for: .ollamaCompatible).apiKeySecretKey)
     }
+
+    func testUnavailableLLMProviderFailsClosedWithoutDelegatingToDefaultProvider() async {
+        let provider = UnavailableLLMProvider(
+            providerID: .geminiOpenAICompatible,
+            reason: LLMProviderCatalog.entry(for: .geminiOpenAICompatible).unavailableReason ?? "Not available in this build."
+        )
+
+        XCTAssertEqual(provider.providerID, LLMProviderID.geminiOpenAICompatible.rawValue)
+
+        do {
+            _ = try await provider.generatePlan(for: PlanningRequest(userInput: "Create a task"))
+            XCTFail("Unavailable providers must not generate a plan through a fallback provider.")
+        } catch {
+            XCTAssertEqual(
+                error as? LLMProviderError,
+                .executionNotApproved("Gemini OpenAI-compatible is not available in this build.")
+            )
+        }
+    }
 }
