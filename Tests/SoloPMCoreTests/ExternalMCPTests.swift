@@ -345,7 +345,7 @@ final class ExternalMCPTests: XCTestCase {
                 .invalidResponse(
                     serverID: "draft",
                     method: "initialize",
-                    reason: "Unsupported result.protocolVersion: 2026-07-28. SoloPM public alpha supports stable MCP 2025-11-25 stdio Tools only; draft 2026-07-28 protocol metadata and server/discover are not implemented."
+                    reason: "Unsupported result.protocolVersion: 2026-07-28. SoloPM public alpha supports stable MCP 2025-11-25 stdio Tools only; draft 2026-07-28 protocol metadata and server/discover are out of scope for this release."
                 )
             )
         }
