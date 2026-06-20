@@ -63,6 +63,81 @@ final class ExternalTaskInteropTests: XCTestCase {
         XCTAssertEqual(try linkStore.link(providerID: ExternalTaskSource.todoist.rawValue, externalID: "todoist-task-1")?.title, "Imported task")
     }
 
+    func testPortableTaskDocumentImportCreatesEmptyProjectsAndSkipsRepeatedTasks() throws {
+        let store = InMemoryProjectBoardStore()
+        let linkStore = InMemoryExternalTaskLinkStore()
+        let service = TaskInteropDocumentImportService(store: store, linkStore: linkStore)
+        let document = TaskInteropDocument(
+            exportedAt: Date(timeIntervalSince1970: 1_800_000_001),
+            projects: [
+                TaskInteropProject(localID: 12, title: "Imported Empty Project", status: "active")
+            ],
+            tasks: [
+                TaskInteropTask(
+                    localID: 22,
+                    localProjectID: 12,
+                    projectTitle: "Imported Empty Project",
+                    title: "Round-trip task",
+                    detail: "From exported JSON",
+                    status: .planned,
+                    priority: .high,
+                    dueAt: "2026-07-08"
+                )
+            ]
+        )
+
+        let firstResult = try service.importDocument(document)
+        let secondResult = try service.importDocument(document)
+        let importedProject = try XCTUnwrap(try store.loadSnapshot(includeArchived: true).projects.first { $0.title == "Imported Empty Project" })
+
+        XCTAssertEqual(firstResult.createdProjectCount, 1)
+        XCTAssertEqual(firstResult.createdTaskCount, 1)
+        XCTAssertEqual(firstResult.skippedDuplicateCount, 0)
+        XCTAssertEqual(secondResult.createdProjectCount, 0)
+        XCTAssertEqual(secondResult.createdTaskCount, 0)
+        XCTAssertEqual(secondResult.skippedDuplicateCount, 1)
+        XCTAssertEqual(importedProject.tasks.map(\.title), ["Round-trip task"])
+    }
+
+    @MainActor
+    func testProjectBoardViewModelExportsAndImportsPortableTaskJSONForAppFileActions() throws {
+        var changeCount = 0
+        let sourceStore = InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
+            makeProject(
+                id: 10,
+                title: "Exported Project",
+                tasks: [
+                    ProjectBoardTask(
+                        id: 100,
+                        projectID: 10,
+                        title: "Task from file",
+                        detail: "Portable JSON",
+                        status: .planned,
+                        priority: .high,
+                        dueAt: "2026-07-09"
+                    )
+                ]
+            )
+        ]))
+        let sourceViewModel = ProjectBoardViewModel(store: sourceStore)
+        sourceViewModel.load()
+        let exportedJSON = try XCTUnwrap(sourceViewModel.exportTaskInteropJSON(exportedAt: Date(timeIntervalSince1970: 1_800_000_002)))
+
+        let targetStore = InMemoryProjectBoardStore()
+        let targetViewModel = ProjectBoardViewModel(
+            store: targetStore,
+            externalTaskLinkStore: InMemoryExternalTaskLinkStore(),
+            onChange: { changeCount += 1 }
+        )
+
+        let result = try XCTUnwrap(targetViewModel.importTaskInteropJSON(exportedJSON))
+
+        XCTAssertEqual(result.createdTaskCount, 1)
+        XCTAssertEqual(changeCount, 1)
+        XCTAssertEqual(targetViewModel.snapshot.projects.first { $0.title == "Exported Project" }?.tasks.map(\.title), ["Task from file"])
+        XCTAssertEqual(targetViewModel.integrationStatusMessage, "Imported 1 task from JSON.")
+    }
+
     func testGoogleCalendarTaskSyncRequiresProBeforeCreatingEventsAndLinksDueTasks() throws {
         let store = InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
             makeProject(

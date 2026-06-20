@@ -1,6 +1,7 @@
 import Foundation
 
 public enum ExternalTaskSource: String, Codable, CaseIterable, Sendable {
+    case soloPMJSON = "solopm_json"
     case googleCalendar = "google_calendar"
     case todoist
     case notion
@@ -210,6 +211,56 @@ public final class ExternalTaskImportService {
         let project = try store.createProject(title: importTitle)
         createdProjectCount += 1
         return project
+    }
+}
+
+public final class TaskInteropDocumentImportService {
+    private let store: any ProjectBoardStore
+    private let linkStore: any ExternalTaskLinkStore
+
+    public init(store: any ProjectBoardStore, linkStore: any ExternalTaskLinkStore) {
+        self.store = store
+        self.linkStore = linkStore
+    }
+
+    public func importDocument(_ document: TaskInteropDocument) throws -> ExternalTaskImportResult {
+        var result = ExternalTaskImportResult()
+
+        for project in document.projects {
+            let title = project.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !title.isEmpty else {
+                continue
+            }
+            let snapshot = try store.loadSnapshot(includeArchived: true)
+            guard snapshot.projects.contains(where: { $0.title == title && !$0.isArchived }) == false else {
+                continue
+            }
+            _ = try store.createProject(title: title)
+            result.createdProjectCount += 1
+        }
+
+        let namespace = Self.externalNamespace(for: document)
+        let taskItems = document.tasks.map { task in
+            ExternalTaskImportItem(
+                source: .soloPMJSON,
+                externalID: "\(namespace):task:\(task.localID)",
+                projectTitle: task.projectTitle,
+                title: task.title,
+                detail: task.detail,
+                status: task.status,
+                priority: task.priority,
+                dueAt: task.dueAt
+            )
+        }
+        let taskResult = try ExternalTaskImportService(store: store, linkStore: linkStore).importItems(taskItems)
+        result.createdProjectCount += taskResult.createdProjectCount
+        result.createdTaskCount += taskResult.createdTaskCount
+        result.skippedDuplicateCount += taskResult.skippedDuplicateCount
+        return result
+    }
+
+    private static func externalNamespace(for document: TaskInteropDocument) -> String {
+        "exported_at:\(document.exportedAt.timeIntervalSince1970)"
     }
 }
 

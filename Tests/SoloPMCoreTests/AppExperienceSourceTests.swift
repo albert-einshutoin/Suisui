@@ -86,6 +86,23 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("createTask("))
     }
 
+    func testProjectBoardExposesPortableTaskImportExportFileActions() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(appSource.contains("SQLiteExternalTaskLinkStore(connection: connection)"))
+        XCTAssertTrue(boardSource.contains("TaskInteropFileDocument"))
+        XCTAssertTrue(boardSource.contains(".fileExporter("))
+        XCTAssertTrue(boardSource.contains(".fileImporter("))
+        XCTAssertTrue(boardSource.contains("Label(\"Integrations\", systemImage: \"arrow.left.arrow.right\")"))
+        XCTAssertTrue(boardSource.contains("Label(\"Export Tasks\", systemImage: \"square.and.arrow.up\")"))
+        XCTAssertTrue(boardSource.contains("Label(\"Import Tasks\", systemImage: \"square.and.arrow.down\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-export-tasks\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-import-tasks\")"))
+        XCTAssertTrue(boardSource.contains("viewModel.importTaskInteropJSON(data)"))
+        XCTAssertTrue(boardSource.contains("viewModel.exportTaskInteropJSON()"))
+    }
+
     func testProjectAddTaskFromOverviewOpensVisibleBoardComposer() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let detailStart = try XCTUnwrap(source.range(of: "private struct ProjectBoardDetail"))
@@ -1664,6 +1681,22 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(audit.contains("Sync paid value row"))
         XCTAssertTrue(investorReview.contains("Settings/Sync now surfaces the Pro value and local-only safety boundary before the toggle"))
         XCTAssertTrue(phase.contains("[x] Sync tabはtoggle前にPro価値、Freeのlocal-only境界、backend未構成時の次状態を表示し、課金価値がdisabled toggleだけに埋もれない。"))
+    }
+
+    func testSyncSettingsTabNamesExternalConnectorScopeWithoutLinkingConnectorTarget() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let syncStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
+        let providerStart = try XCTUnwrap(appSource.range(of: "@ViewBuilder\n    private var selectedProviderConfigurationFields"))
+        let syncSource = String(appSource[syncStart.lowerBound..<providerStart.lowerBound])
+
+        XCTAssertTrue(syncSource.contains("Section(\"External Task Tools\")"))
+        XCTAssertTrue(syncSource.contains("name: \"Google Calendar\""))
+        XCTAssertTrue(syncSource.contains("name: \"Todoist\""))
+        XCTAssertTrue(syncSource.contains("name: \"Notion\""))
+        XCTAssertTrue(syncSource.contains("name: \"Linear\""))
+        XCTAssertTrue(syncSource.contains("name: \"GitHub Issues\""))
+        XCTAssertTrue(syncSource.contains("Pro unlocks external sync; import/export JSON stays local."))
+        XCTAssertFalse(appSource.contains("import SoloPMExternalConnectors"))
     }
 
     func testSettingsSurfaceShowsInlineMCPServerRowsWithCheckActions() throws {

@@ -1029,6 +1029,47 @@ private struct SettingsView: View {
                 }
             }
 
+            Section("External Task Tools") {
+                Text("Pro unlocks external sync; import/export JSON stays local.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ExternalConnectorScopeRow(
+                    name: "Google Calendar",
+                    status: "OAuth required",
+                    detail: "Due tasks can be pushed as calendar events after Pro and Google authorization.",
+                    systemImage: "calendar.badge.plus",
+                    tone: .warning
+                )
+                ExternalConnectorScopeRow(
+                    name: "Todoist",
+                    status: "Connector planned",
+                    detail: "Task import/export uses the external connector boundary and explicit approval.",
+                    systemImage: "checklist",
+                    tone: .neutral
+                )
+                ExternalConnectorScopeRow(
+                    name: "Notion",
+                    status: "Connector planned",
+                    detail: "Database mappings stay explicit before tasks are exported.",
+                    systemImage: "doc.richtext",
+                    tone: .neutral
+                )
+                ExternalConnectorScopeRow(
+                    name: "Linear",
+                    status: "Connector planned",
+                    detail: "Issue sync is scoped to the selected team.",
+                    systemImage: "line.3.horizontal.decrease.circle",
+                    tone: .neutral
+                )
+                ExternalConnectorScopeRow(
+                    name: "GitHub Issues",
+                    status: "Connector planned",
+                    detail: "Issue sync is scoped to the selected repository.",
+                    systemImage: "number",
+                    tone: .neutral
+                )
+            }
+
         }
         .formStyle(.grouped)
     }
@@ -1976,6 +2017,50 @@ private struct SyncValueStatusRow: View {
     }
 }
 
+private struct ExternalConnectorScopeRow: View {
+    let name: String
+    let status: String
+    let detail: String
+    let systemImage: String
+    let tone: SettingsStatusTone
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: systemImage)
+                .foregroundStyle(tone.color)
+                .frame(width: 20)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(name)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .help(name)
+
+                    Text(status)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(tone.color)
+                        .lineLimit(1)
+                }
+
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(name) external connector")
+        .accessibilityValue("\(status), \(detail)")
+    }
+}
+
 private struct MCPPaidExecutionBoundaryRow: View {
     let planLabel: String
     let statusLabel: String
@@ -2285,8 +2370,10 @@ private enum AppRuntimeFactory {
     @MainActor
     static func makeProjectBoardViewModel() -> ProjectBoardViewModel {
         do {
+            let connection = try migratedConnection()
             return ProjectBoardViewModel(
-                store: try SQLiteProjectBoardStore(path: applicationDatabaseURL().path),
+                store: SQLiteProjectBoardStore(connection: connection),
+                externalTaskLinkStore: SQLiteExternalTaskLinkStore(connection: connection),
                 onChange: postProjectBoardDidChange
             )
         } catch {

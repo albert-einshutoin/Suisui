@@ -591,18 +591,22 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public var selectedTaskID: Int64?
     @Published public private(set) var showsArchivedProjects: Bool
     @Published public private(set) var errorMessage: String?
+    @Published public private(set) var integrationStatusMessage: String?
     @Published public private(set) var inboxClassificationFeedback: InboxClassificationFeedback?
 
     private let store: any ProjectBoardStore
+    private let externalTaskLinkStore: (any ExternalTaskLinkStore)?
     private let onChange: () -> Void
     private var lastInboxClassificationUndo: InboxClassificationUndo?
 
     public init(
         store: any ProjectBoardStore,
+        externalTaskLinkStore: (any ExternalTaskLinkStore)? = nil,
         snapshot: ProjectBoardSnapshot = .empty,
         onChange: @escaping () -> Void = {}
     ) {
         self.store = store
+        self.externalTaskLinkStore = externalTaskLinkStore
         self.snapshot = snapshot
         self.onChange = onChange
         self.selectedProjectID = snapshot.projects.first?.id
@@ -715,10 +719,14 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     private static func userFacingMessage(for error: Error) -> String {
+        userFacingMessage(for: error, fallback: "Project board unavailable")
+    }
+
+    private static func userFacingMessage(for error: Error, fallback: String) -> String {
         guard let decodingError = error as? LocalStoreDecodingError else {
             return UserFacingErrorMessageSanitizer.message(
                 from: error,
-                fallback: "Project board unavailable"
+                fallback: fallback
             )
         }
 
@@ -762,6 +770,66 @@ public final class ProjectBoardViewModel: ObservableObject {
     public func setShowsArchivedProjects(_ isShown: Bool) {
         showsArchivedProjects = isShown
         load()
+    }
+
+    public func exportTaskInteropJSON(exportedAt: Date = Date()) -> Data? {
+        do {
+            let data = try TaskInteropExportService(store: store).exportJSON(exportedAt: exportedAt)
+            integrationStatusMessage = "Prepared task export JSON."
+            errorMessage = nil
+            return data
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+            return nil
+        }
+    }
+
+    @discardableResult
+    public func importTaskInteropJSON(_ data: Data) -> ExternalTaskImportResult? {
+        guard let externalTaskLinkStore else {
+            errorMessage = "Task import is unavailable in this build."
+            return nil
+        }
+
+        do {
+            let document = try TaskInteropDocument.decode(data)
+            let result = try TaskInteropDocumentImportService(
+                store: store,
+                linkStore: externalTaskLinkStore
+            ).importDocument(document)
+            load()
+            integrationStatusMessage = Self.importStatusMessage(for: result)
+            errorMessage = nil
+            onChange()
+            return result
+        } catch {
+            errorMessage = Self.userFacingMessage(
+                for: error,
+                fallback: "Task import failed. Choose a SoloPM task JSON export."
+            )
+            return nil
+        }
+    }
+
+    public func recordTaskInteropFileFailure(_ error: Error) {
+        errorMessage = Self.userFacingMessage(
+            for: error,
+            fallback: "Task import/export failed."
+        )
+    }
+
+    public func recordTaskInteropExportCompleted() {
+        integrationStatusMessage = "Exported task JSON."
+        errorMessage = nil
+    }
+
+    private static func importStatusMessage(for result: ExternalTaskImportResult) -> String {
+        let taskLabel = result.createdTaskCount == 1 ? "1 task" : "\(result.createdTaskCount) tasks"
+        if result.skippedDuplicateCount > 0 {
+            let skippedLabel = result.skippedDuplicateCount == 1 ? "1 duplicate" : "\(result.skippedDuplicateCount) duplicates"
+            return "Imported \(taskLabel) from JSON. Skipped \(skippedLabel)."
+        }
+        return "Imported \(taskLabel) from JSON."
     }
 
     @discardableResult

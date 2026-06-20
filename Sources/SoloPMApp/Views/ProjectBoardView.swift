@@ -10,6 +10,9 @@ struct ProjectBoardView: View {
     @State private var displayMode: ProjectBoardDisplayMode = .board
     @State private var selectedDestination: ProjectBoardSidebarDestination? = .today
     @State private var isInspectorPresented = true
+    @State private var isExportingTaskInterop = false
+    @State private var isImportingTaskInterop = false
+    @State private var taskInteropExportDocument = TaskInteropFileDocument(data: Data())
 
     init(viewModel: ProjectBoardViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -103,6 +106,35 @@ struct ProjectBoardView: View {
             }
             .toolbar {
                 ToolbarItemGroup {
+                    Menu {
+                        Button {
+                            beginTaskInteropExport()
+                        } label: {
+                            Label("Export Tasks", systemImage: "square.and.arrow.up")
+                        }
+                        .accessibilityIdentifier("project-board-export-tasks")
+
+                        Button {
+                            isImportingTaskInterop = true
+                        } label: {
+                            Label("Import Tasks", systemImage: "square.and.arrow.down")
+                        }
+                        .accessibilityIdentifier("project-board-import-tasks")
+
+                        Divider()
+
+                        Button {
+                            viewModel.recordTaskInteropFileFailure(ProjectBoardIntegrationUnavailableError.googleCalendarOAuthNotConfigured)
+                        } label: {
+                            Label("Google Calendar Sync", systemImage: "calendar.badge.plus")
+                        }
+                        .disabled(true)
+                        .help("Google Calendar sync requires Pro and OAuth authorization.")
+                    } label: {
+                        Label("Integrations", systemImage: "arrow.left.arrow.right")
+                    }
+                    .help("Import, export, and sync task data")
+
                     Button {
                         openWindow(id: "voice-capture")
                     } label: {
@@ -140,6 +172,26 @@ struct ProjectBoardView: View {
             if selectedTaskID != nil {
                 isInspectorPresented = true
             }
+        }
+        .fileExporter(
+            isPresented: $isExportingTaskInterop,
+            document: taskInteropExportDocument,
+            contentType: .json,
+            defaultFilename: taskInteropDefaultExportFilename
+        ) { result in
+            switch result {
+            case .success:
+                viewModel.recordTaskInteropExportCompleted()
+            case .failure(let error):
+                viewModel.recordTaskInteropFileFailure(error)
+            }
+        }
+        .fileImporter(
+            isPresented: $isImportingTaskInterop,
+            allowedContentTypes: [.json],
+            allowsMultipleSelection: false
+        ) { result in
+            handleTaskInteropImport(result)
         }
     }
 
@@ -195,10 +247,73 @@ struct ProjectBoardView: View {
             isInspectorPresented = false
         }
     }
+
+    private var taskInteropDefaultExportFilename: String {
+        "solopm-tasks-\(Self.exportDateFormatter.string(from: Date())).json"
+    }
+
+    private func beginTaskInteropExport() {
+        guard let data = viewModel.exportTaskInteropJSON() else {
+            return
+        }
+        taskInteropExportDocument = TaskInteropFileDocument(data: data)
+        isExportingTaskInterop = true
+    }
+
+    private func handleTaskInteropImport(_ result: Result<[URL], Error>) {
+        do {
+            let urls = try result.get()
+            guard let url = urls.first else {
+                return
+            }
+            let isSecurityScoped = url.startAccessingSecurityScopedResource()
+            defer {
+                if isSecurityScoped {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+            let data = try Data(contentsOf: url)
+            _ = viewModel.importTaskInteropJSON(data)
+        } catch {
+            viewModel.recordTaskInteropFileFailure(error)
+        }
+    }
+
+    private static let exportDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter
+    }()
 }
 
 extension Notification.Name {
     static let soloPMProjectBoardDidChange = Notification.Name("dev.solopm.projectBoardDidChange")
+}
+
+private enum ProjectBoardIntegrationUnavailableError: Error {
+    case googleCalendarOAuthNotConfigured
+}
+
+private struct TaskInteropFileDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+    static var writableContentTypes: [UTType] { [.json] }
+
+    var data: Data
+
+    init(data: Data = Data()) {
+        self.data = data
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        data = configuration.file.regularFileContents ?? Data()
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
 }
 
 private enum ProjectBoardDisplayMode: String, CaseIterable, Identifiable {
@@ -313,6 +428,13 @@ private struct ProjectBoardDetail: View {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(.red)
+            }
+
+            if let integrationStatusMessage = viewModel.integrationStatusMessage {
+                Label(integrationStatusMessage, systemImage: "arrow.left.arrow.right.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("project-board-integration-status")
             }
 
             if project.isArchived {
