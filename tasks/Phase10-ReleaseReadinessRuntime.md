@@ -1317,7 +1317,7 @@
 - [x] action summary は release evidence ではなく、VoiceOver / competitor hands-on / signing / notarization / Sparkle / Gatekeeper を完了扱いにしないことを明記する。
 - [x] action summary の VoiceOver / competitor hands-on の直接実行例は `--validate-only` を `--passed` より先に表示し、manual evidence を即書き込みしない導線にする。
 - [x] action summary は generated VoiceOver / competitor / release-machine command が placeholder 未置換のままでは `--validate-only` でも失敗することを表示し、template command を evidence-ready に見せない。
-- [x] `script/prepare_release_manual_helpers.sh` は current source commit の VoiceOver pending preview / command、competitor pending evidence、competitor benchmark pending worksheet、competitor worksheet / command、release-machine worksheet / command を一括再生成し、passed evidence を書かない。
+- [x] `script/prepare_release_manual_helpers.sh` は current source commit の VoiceOver pending preview / launch env / command、competitor pending evidence、competitor benchmark pending worksheet、competitor worksheet / command、release-machine worksheet / command を一括再生成し、passed evidence を書かない。
 - [x] `script/prepare_release_manual_helpers.sh` は tracked source tree がdirtyな場合、pending preview / command生成前に停止し、未コミット差分をcurrent commitのrelease candidateとして扱わない。
 - [x] action summary の Manual Review Helper Freshness は stale/missing helper を見つけた場合、個別コマンドの羅列ではなく `./script/prepare_release_manual_helpers.sh` を次アクションとして提示する。
 - [x] Manual Review Helper Freshness は command helper の `EXPECTED_SOURCE_COMMIT` 実代入だけを current commit pin として扱い、コメントや説明文に current commit が出るだけでは stale 扱いにする。

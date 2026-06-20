@@ -844,6 +844,16 @@ manual_markdown_helper_contains_current_source_commit() {
     grep -Fxq -- "- Release candidate source commit: \`$expected_commit\`" "$helper_path"
 }
 
+voiceover_launch_env_contains_current_source_commit() {
+  local helper_path="$1"
+  local expected_commit="$2"
+
+  [[ -f "$helper_path" ]] || return 1
+
+  grep -Eq "^SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT=(\"$expected_commit\"|'$expected_commit'|$expected_commit)[[:space:]]*$" "$helper_path" &&
+    grep -Eq "^SOLOPM_VOICEOVER_REVIEW_PROJECT_ID=(\"[1-9][0-9]*\"|'[1-9][0-9]*'|[1-9][0-9]*)[[:space:]]*$" "$helper_path"
+}
+
 manual_helper_contains_current_source_commit() {
   local helper_path="$1"
   local expected_commit="$2"
@@ -851,6 +861,9 @@ manual_helper_contains_current_source_commit() {
   case "$helper_path" in
     *.sh)
       manual_command_helper_is_pinned_to_current_source_commit "$helper_path" "$expected_commit"
+      ;;
+    .tmp/voiceover-review/launch.env|*/.tmp/voiceover-review/launch.env)
+      voiceover_launch_env_contains_current_source_commit "$helper_path" "$expected_commit"
       ;;
     *)
       manual_markdown_helper_contains_current_source_commit "$helper_path" "$expected_commit"
@@ -932,6 +945,11 @@ write_manual_helper_freshness_actions() {
     "VoiceOver pending preview" \
     "is generated for" \
     ".tmp/voiceover-review/accessibility-voiceover-pending-$expected_commit.md" \
+    "$expected_commit" || stale_or_missing=1
+  write_manual_helper_freshness_item \
+    "VoiceOver launch env" \
+    "is pinned to" \
+    ".tmp/voiceover-review/launch.env" \
     "$expected_commit" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "VoiceOver evidence command" \
