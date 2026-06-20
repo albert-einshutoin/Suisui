@@ -14,6 +14,8 @@
 "Check" = "Check";
 "Check Connection" = "Check Connection";
 "Clear" = "Clear";
+"Close Project Details" = "Close Project Details";
+"Close Task Details" = "Close Task Details";
 "Command not set" = "Command not set";
 "Delete" = "Delete";
 "Delete Claude Key" = "Delete Claude Key";
@@ -59,6 +61,7 @@
 "Pro Value" = "Pro Value";
 "Project Board" = "Project Board";
 "Project Board Unavailable" = "Project Board Unavailable";
+"Project Details" = "Project Details";
 "Project Not Found" = "Project Not Found";
 "Projects" = "Projects";
 "Provider" = "Provider";
@@ -82,6 +85,7 @@
 "Stop" = "Stop";
 "Sync" = "Sync";
 "System" = "System";
+"Task Details" = "Task Details";
 "Theme" = "Theme";
 "This removes the saved registration from SoloPM." = "This removes the saved registration from SoloPM.";
 "Today" = "Today";

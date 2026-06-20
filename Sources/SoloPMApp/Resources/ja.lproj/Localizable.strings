@@ -14,6 +14,8 @@
 "Check" = "確認";
 "Check Connection" = "接続確認";
 "Clear" = "クリア";
+"Close Project Details" = "プロジェクト詳細を閉じる";
+"Close Task Details" = "タスク詳細を閉じる";
 "Command not set" = "コマンド未設定";
 "Delete" = "削除";
 "Delete Claude Key" = "Claudeキーを削除";
@@ -59,6 +61,7 @@
 "Pro Value" = "Proの価値";
 "Project Board" = "プロジェクトボード";
 "Project Board Unavailable" = "プロジェクトボードを利用できません";
+"Project Details" = "プロジェクト詳細";
 "Project Not Found" = "プロジェクトが見つかりません";
 "Projects" = "プロジェクト";
 "Provider" = "プロバイダー";
@@ -82,6 +85,7 @@
 "Stop" = "停止";
 "Sync" = "同期";
 "System" = "システム";
+"Task Details" = "タスク詳細";
 "Theme" = "テーマ";
 "This removes the saved registration from SoloPM." = "保存済みの登録をSoloPMから削除します。";
 "Today" = "今日";

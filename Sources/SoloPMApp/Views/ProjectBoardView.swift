@@ -145,9 +145,17 @@ struct ProjectBoardView: View {
             .inspector(isPresented: inspectorBinding) {
                 Group {
                     if let task = viewModel.selectedTask {
-                        TaskInspectorView(task: task, viewModel: viewModel)
+                        TaskInspectorView(
+                            task: task,
+                            viewModel: viewModel,
+                            onClose: { inspectorBinding.wrappedValue = false }
+                        )
                     } else if let project = selectedProjectForInspector {
-                        ProjectInspectorView(project: project, viewModel: viewModel)
+                        ProjectInspectorView(
+                            project: project,
+                            viewModel: viewModel,
+                            onClose: { inspectorBinding.wrappedValue = false }
+                        )
                     } else {
                         EmptyView()
                     }
@@ -1568,22 +1576,81 @@ private struct ProjectTaskList: View {
     }
 }
 
+private struct InspectorCloseHeader: View {
+    let title: LocalizedStringKey
+    let systemImage: String
+    let closeTitle: LocalizedStringKey
+    let closeHelp: String
+    let closeAccessibilityIdentifier: String
+    let onClose: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+                .lineLimit(1)
+
+            Spacer(minLength: 12)
+
+            InspectorCloseButton(
+                closeTitle: closeTitle,
+                closeHelp: closeHelp,
+                accessibilityIdentifier: closeAccessibilityIdentifier,
+                onClose: onClose
+            )
+        }
+    }
+}
+
+private struct InspectorCloseButton: View {
+    let closeTitle: LocalizedStringKey
+    let closeHelp: String
+    let accessibilityIdentifier: String
+    let onClose: () -> Void
+
+    var body: some View {
+        Button(action: onClose) {
+            Label(closeTitle, systemImage: "xmark")
+                .labelStyle(.iconOnly)
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .keyboardShortcut(.escape, modifiers: [])
+        .help(closeHelp)
+        .accessibilityLabel(closeTitle)
+        .accessibilityIdentifier(accessibilityIdentifier)
+    }
+}
+
 private struct ProjectInspectorView: View {
     let project: ProjectBoardProject
     @ObservedObject var viewModel: ProjectBoardViewModel
+    let onClose: () -> Void
 
     @State private var title: String
     @State private var isConfirmingArchive = false
     @State private var isConfirmingDelete = false
 
-    init(project: ProjectBoardProject, viewModel: ProjectBoardViewModel) {
+    init(project: ProjectBoardProject, viewModel: ProjectBoardViewModel, onClose: @escaping () -> Void) {
         self.project = project
         self.viewModel = viewModel
+        self.onClose = onClose
         _title = State(initialValue: project.title)
     }
 
     var body: some View {
         Form {
+            Section {
+                InspectorCloseHeader(
+                    title: "Project Details",
+                    systemImage: "folder",
+                    closeTitle: "Close Project Details",
+                    closeHelp: String(localized: "Close Project Details"),
+                    closeAccessibilityIdentifier: "project-inspector-close",
+                    onClose: onClose
+                )
+            }
+
             Section("Summary") {
                 ProjectInspectorMetadataSummary(project: project)
             }
@@ -1891,6 +1958,7 @@ private enum ProjectInspectorSuggestionAction: Equatable {
 private struct TaskInspectorView: View {
     let task: ProjectBoardTask
     @ObservedObject var viewModel: ProjectBoardViewModel
+    let onClose: () -> Void
 
     @State private var title: String
     @State private var detail: String
@@ -1899,9 +1967,10 @@ private struct TaskInspectorView: View {
     @State private var dueAt: String
     @State private var isConfirmingDelete = false
 
-    init(task: ProjectBoardTask, viewModel: ProjectBoardViewModel) {
+    init(task: ProjectBoardTask, viewModel: ProjectBoardViewModel, onClose: @escaping () -> Void) {
         self.task = task
         self.viewModel = viewModel
+        self.onClose = onClose
         _title = State(initialValue: task.title)
         _detail = State(initialValue: task.detail)
         _status = State(initialValue: task.status)
@@ -1911,6 +1980,17 @@ private struct TaskInspectorView: View {
 
     var body: some View {
         Form {
+            Section {
+                InspectorCloseHeader(
+                    title: "Task Details",
+                    systemImage: "checklist",
+                    closeTitle: "Close Task Details",
+                    closeHelp: String(localized: "Close Task Details"),
+                    closeAccessibilityIdentifier: "task-inspector-close",
+                    onClose: onClose
+                )
+            }
+
             Section("Summary") {
                 TaskInspectorMetadataSummary(task: task, projectTitle: viewModel.projectTitle(for: task))
             }

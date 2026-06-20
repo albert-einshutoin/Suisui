@@ -488,6 +488,28 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(suggestionSource.components(separatedBy: ".keyboardShortcut(.return, modifiers: [.command])").count - 1, 2)
     }
 
+    func testInspectorsExposeVisibleCloseButtonsThatDismissTheSidebar() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(source.contains("TaskInspectorView("))
+        XCTAssertTrue(source.contains("onClose: { inspectorBinding.wrappedValue = false }"))
+        XCTAssertTrue(source.contains("ProjectInspectorView("))
+        XCTAssertTrue(source.contains("private struct InspectorCloseHeader"))
+        XCTAssertTrue(source.contains("private struct InspectorCloseButton"))
+        XCTAssertTrue(source.contains("InspectorCloseHeader("))
+        XCTAssertTrue(source.contains("title: \"Task Details\""))
+        XCTAssertTrue(source.contains("title: \"Project Details\""))
+        XCTAssertTrue(source.contains("closeTitle: \"Close Task Details\""))
+        XCTAssertTrue(source.contains("closeTitle: \"Close Project Details\""))
+        XCTAssertTrue(source.contains("Label(title, systemImage: systemImage)"))
+        XCTAssertTrue(source.contains("Label(closeTitle, systemImage: \"xmark\")"))
+        XCTAssertTrue(source.contains(".labelStyle(.iconOnly)"))
+        XCTAssertTrue(source.contains(".keyboardShortcut(.escape, modifiers: [])"))
+        XCTAssertTrue(source.contains("closeAccessibilityIdentifier: \"task-inspector-close\""))
+        XCTAssertTrue(source.contains("closeAccessibilityIdentifier: \"project-inspector-close\""))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(accessibilityIdentifier)"))
+    }
+
     func testInspectorDestructiveConfirmationActionsDeferSelectionMutations() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let projectInspectorStart = try XCTUnwrap(source.range(of: "private struct ProjectInspectorView"))
@@ -656,7 +678,10 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardStart = try XCTUnwrap(source.range(of: "private struct ProjectKanbanBoard"))
         let headerSource = String(source[headerStart.lowerBound..<boardStart.lowerBound])
 
-        XCTAssertTrue(source.contains("ProjectInspectorView(project: project, viewModel: viewModel)"))
+        XCTAssertTrue(source.contains("ProjectInspectorView("))
+        XCTAssertTrue(source.contains("project: project,"))
+        XCTAssertTrue(source.contains("viewModel: viewModel,"))
+        XCTAssertTrue(source.contains("onClose: { inspectorBinding.wrappedValue = false }"))
         XCTAssertTrue(source.contains("ProjectInspectorSuggestionSection"))
         XCTAssertTrue(source.contains("@State private var isInspectorPresented = true"))
         XCTAssertTrue(source.contains("selectedProjectForInspector"))
