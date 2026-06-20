@@ -88,6 +88,28 @@ query_single_value() {
   "$SQLITE3" -batch -noheader "$database_path" "$sql" | tail -n 1
 }
 
+write_voiceover_evidence_invocation() {
+  local mode="$1"
+  local evidence_source="$2"
+
+  printf './script/create_voiceover_evidence.sh %s \\\n' "$mode"
+  printf '%s\n' '  --checked-by "<reviewer name>" \'
+  printf '%s\n' '  --accessibility-environment "<macOS version, hardware, VoiceOver input method, clean user/install context>" \'
+  printf '  --evidence-source %q \\\n' "$evidence_source"
+  printf '%s\n' '  --capture-runtime-ax-smoke \'
+  printf '%s\n' '  --project-navigation-note "<VoiceOver observation for sidebar Inbox, Today, Projects, and selected review project navigation>" \'
+  printf '%s\n' '  --project-board-detail-note "<VoiceOver observation for the seeded review project board context>" \'
+  printf '%s\n' '  --open-task-note "<VoiceOver observation for focusing a seeded task card and opening details>" \'
+  printf '%s\n' '  --inline-task-composer-note "<VoiceOver observation for title/detail/priority/due create flow, Command+Return, and Escape>" \'
+  printf '%s\n' '  --status-controls-note "<VoiceOver observation for previous/next status controls and target status labels>" \'
+  printf '%s\n' '  --task-inspector-note "<VoiceOver observation for inspector fields, summary, suggestion, save, and danger actions>" \'
+  printf '%s\n' '  --save-changes-note "<VoiceOver observation proving keyboard activation saves local task changes>" \'
+  printf '%s\n' '  --delete-confirmation-note "<VoiceOver observation proving Delete Task opens an inline inspector confirmation panel before deletion>" \'
+  printf '%s\n' '  --no-keyboard-trap-note "<VoiceOver observation proving focus leaves sidebar, board, inspector, and inline confirmation panels>" \'
+  printf '%s\n' '  --no-unlabeled-crud-note "<VoiceOver observation proving primary CRUD controls have labels or help>" \'
+  printf '%s\n' '  --confirm-manual-voiceover-pass'
+}
+
 write_voiceover_evidence_command() {
   local output_path="$1"
   local candidate_database_path="$2"
@@ -121,22 +143,11 @@ write_voiceover_evidence_command() {
     printf '%s\n' '  exit 2'
     printf '%s\n' 'fi'
     printf '\n'
-    printf '%s\n' './script/create_voiceover_evidence.sh --passed \'
-    printf '%s\n' '  --checked-by "<reviewer name>" \'
-    printf '%s\n' '  --accessibility-environment "<macOS version, hardware, VoiceOver input method, clean user/install context>" \'
-    printf '  --evidence-source %q \\\n' "$evidence_source"
-    printf '%s\n' '  --capture-runtime-ax-smoke \'
-    printf '%s\n' '  --project-navigation-note "<VoiceOver observation for sidebar Inbox, Today, Projects, and selected review project navigation>" \'
-    printf '%s\n' '  --project-board-detail-note "<VoiceOver observation for the seeded review project board context>" \'
-    printf '%s\n' '  --open-task-note "<VoiceOver observation for focusing a seeded task card and opening details>" \'
-    printf '%s\n' '  --inline-task-composer-note "<VoiceOver observation for title/detail/priority/due create flow, Command+Return, and Escape>" \'
-    printf '%s\n' '  --status-controls-note "<VoiceOver observation for previous/next status controls and target status labels>" \'
-    printf '%s\n' '  --task-inspector-note "<VoiceOver observation for inspector fields, summary, suggestion, save, and danger actions>" \'
-    printf '%s\n' '  --save-changes-note "<VoiceOver observation proving keyboard activation saves local task changes>" \'
-    printf '%s\n' '  --delete-confirmation-note "<VoiceOver observation proving Delete Task opens an inline inspector confirmation panel before deletion>" \'
-    printf '%s\n' '  --no-keyboard-trap-note "<VoiceOver observation proving focus leaves sidebar, board, inspector, and inline confirmation panels>" \'
-    printf '%s\n' '  --no-unlabeled-crud-note "<VoiceOver observation proving primary CRUD controls have labels or help>" \'
-    printf '%s\n' '  --confirm-manual-voiceover-pass'
+    printf '%s\n' '# Validate the filled VoiceOver evidence command before writing tracked evidence.'
+    write_voiceover_evidence_invocation "--validate-only" "$evidence_source"
+    printf '\n'
+    printf '%s\n' '# If validation passes and the manual VoiceOver pass is complete, write tracked evidence.'
+    write_voiceover_evidence_invocation "--passed" "$evidence_source"
   } >"$output_path"
 
   chmod +x "$output_path"

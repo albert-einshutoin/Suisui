@@ -28,6 +28,7 @@ ACCESSIBILITY_ENVIRONMENT=""
 RUNTIME_AX_SMOKE_NOTE=""
 CAPTURE_RUNTIME_AX_SMOKE=0
 CONFIRM_MANUAL_PASS=0
+VALIDATE_ONLY=0
 SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
 PROJECT_NAVIGATION_NOTE=""
 PROJECT_BOARD_DETAIL_NOTE=""
@@ -41,10 +42,11 @@ NO_KEYBOARD_TRAP_NOTE=""
 NO_UNLABELED_CRUD_NOTE=""
 
 usage() {
-  printf '%s\n' "usage: $0 (--pending|--passed) [--output PATH] [--checked-by NAME] [--macos-version VERSION] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--accessibility-environment TEXT] [--runtime-ax-smoke-note TEXT|--capture-runtime-ax-smoke] [--project-navigation-note TEXT] [--project-board-detail-note TEXT] [--open-task-note TEXT] [--inline-task-composer-note TEXT] [--status-controls-note TEXT] [--task-inspector-note TEXT] [--save-changes-note TEXT] [--delete-confirmation-note TEXT] [--no-keyboard-trap-note TEXT] [--no-unlabeled-crud-note TEXT] [--confirm-manual-voiceover-pass]"
+  printf '%s\n' "usage: $0 (--pending|--passed|--validate-only) [--output PATH] [--checked-by NAME] [--macos-version VERSION] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--accessibility-environment TEXT] [--runtime-ax-smoke-note TEXT|--capture-runtime-ax-smoke] [--project-navigation-note TEXT] [--project-board-detail-note TEXT] [--open-task-note TEXT] [--inline-task-composer-note TEXT] [--status-controls-note TEXT] [--task-inspector-note TEXT] [--save-changes-note TEXT] [--delete-confirmation-note TEXT] [--no-keyboard-trap-note TEXT] [--no-unlabeled-crud-note TEXT] [--confirm-manual-voiceover-pass]"
   printf '%s\n' ""
   printf '%s\n' "Use --pending to write a safe worksheet that release readiness will reject."
   printf '%s\n' "Use --passed only after a real VoiceOver pass on the release-candidate app."
+  printf '%s\n' "Use --validate-only to run the passed-evidence validation without writing evidence."
 }
 
 require_passed_value() {
@@ -221,10 +223,17 @@ while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --pending)
       VOICEOVER_STATUS="pending"
+      VALIDATE_ONLY=0
       shift
       ;;
     --passed)
       VOICEOVER_STATUS="passed"
+      VALIDATE_ONLY=0
+      shift
+      ;;
+    --validate-only)
+      VOICEOVER_STATUS="passed"
+      VALIDATE_ONLY=1
       shift
       ;;
     --output)
@@ -364,6 +373,12 @@ if [[ "$VOICEOVER_STATUS" == "passed" ]]; then
     capture_runtime_ax_smoke_note
   fi
   require_runtime_ax_smoke_note "$RUNTIME_AX_SMOKE_NOTE"
+fi
+
+if [[ "$VALIDATE_ONLY" -eq 1 ]]; then
+  require_clean_tracked_source_tree_for_passed_evidence
+  printf 'OK: VoiceOver evidence command is valid for current source commit: %s\n' "$SOURCE_COMMIT"
+  exit 0
 fi
 
 mkdir -p "$(dirname "$OUTPUT_FILE")"

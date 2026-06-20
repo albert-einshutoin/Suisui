@@ -938,6 +938,7 @@ write_release_actions() {
     printf -- "- For this action summary, the expected pending preview path is \`.tmp/voiceover-review/accessibility-voiceover-pending-%s.md\`.\n" "$(source_commit)"
     printf -- "- The candidate writes \`.tmp/voiceover-review/create-evidence-command.sh\` with the same database/project context. Replace every placeholder in that generated command with concrete VoiceOver observations before running it.\n"
     printf -- "- The generated VoiceOver evidence command is pinned to a clean tracked source tree and the source commit it was created for. Rerun \`./script/prepare_voiceover_review_candidate.sh\` after source changes instead of reusing an older command.\n"
+    printf -- "- Run the generated \`--validate-only\` command first; it performs the same passed-evidence validation without writing \`docs/release/evidence/accessibility-voiceover.md\`.\n"
     printf -- "- Run the source/runtime accessibility preflight first, then perform a real VoiceOver pass.\n"
     printf -- "- If you do not use the generated command file, replace every placeholder below with concrete observations from the real release-candidate app before running it.\n\n"
     write_voiceover_manual_evidence_command

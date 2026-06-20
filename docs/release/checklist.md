@@ -190,6 +190,7 @@ Prepare the manual VoiceOver candidate with deterministic local data before star
 
 Replace every placeholder in that generated command with concrete observations from the manual pass before running it.
 The generated VoiceOver evidence command requires a clean tracked source tree, pins the source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit. The script also writes `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` so the reviewer can inspect the current release-candidate context without modifying tracked evidence. Rerun `./script/prepare_voiceover_review_candidate.sh` after any source commit changes so the candidate database, release app, runtime AX smoke, and manual VoiceOver observations stay bound to the same release candidate.
+Run the generated `--validate-only` command first; it performs the same passed-evidence validation without writing `docs/release/evidence/accessibility-voiceover.md`. Only run the generated `--passed` command after validation succeeds and the real manual VoiceOver pass is complete.
 
 Then replace `docs/release/evidence/accessibility-voiceover.md` with the real VoiceOver pass for the same release-candidate app. The final file must use `Status: passed`, complete the release-candidate context fields, include the runtime AX smoke OK line with `unlabeledButtons=0`, `genericButtons=0`, `crudSignals=8/8`, and `focusPathSignals=6/6`, include the Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector path, and remove all pending/template language.
 
@@ -199,6 +200,21 @@ Each focus-path note must name the concrete VoiceOver observation, control, or f
 
 ```bash
 ./script/create_voiceover_evidence.sh --pending
+./script/create_voiceover_evidence.sh --validate-only \
+  --checked-by "Reviewer Name" \
+  --accessibility-environment "VoiceOver/keyboard/device details used for the manual pass" \
+  --capture-runtime-ax-smoke \
+  --project-navigation-note "Concrete VoiceOver observation for sidebar Inbox, Today, and Project navigation." \
+  --project-board-detail-note "Concrete VoiceOver observation for selected project board context." \
+  --open-task-note "Concrete VoiceOver observation for opening task details without pointer drag." \
+  --inline-task-composer-note "Concrete VoiceOver observation for title/detail/priority/due/create/cancel paths." \
+  --status-controls-note "Concrete VoiceOver observation for previous/next status move controls." \
+  --task-inspector-note "Concrete VoiceOver observation for task inspector fields and actions." \
+  --save-changes-note "Concrete VoiceOver observation for local task save activation." \
+  --delete-confirmation-note "Concrete VoiceOver observation for destructive confirmation and cancel." \
+  --no-keyboard-trap-note "Concrete VoiceOver observation that focus can leave every primary region." \
+  --no-unlabeled-crud-note "Concrete VoiceOver observation that primary CRUD controls have labels or help." \
+  --confirm-manual-voiceover-pass
 ./script/create_voiceover_evidence.sh --passed \
   --checked-by "Reviewer Name" \
   --accessibility-environment "VoiceOver/keyboard/device details used for the manual pass" \
