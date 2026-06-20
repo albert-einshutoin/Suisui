@@ -5441,6 +5441,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("assert_screenshot_has_visible_content"))
         XCTAssertTrue(script.contains("ui_evidence_content_check.swift"))
         XCTAssertTrue(contentCheckScript.contains("CGImageSourceCreateWithURL"))
+        XCTAssertTrue(script.contains("ui_evidence_source_commit()"))
+        XCTAssertTrue(script.contains("UI screenshot evidence is missing source commit"))
+        XCTAssertTrue(script.contains("UI screenshot evidence source commit does not match current UI source commit"))
         XCTAssertTrue(script.contains("UI screenshot appears blank or too low contrast"))
         XCTAssertTrue(script.contains("missing UI screenshot file"))
         XCTAssertTrue(script.contains("UI screenshot is unexpectedly small"))
@@ -5582,6 +5585,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("release environment blocker contained a sensitive field"))
         XCTAssertTrue(phase.contains("[x] VoiceOver / competitor hands-on の手動証跡は `Source commit` を記録し、`Status: passed` の場合は現在の git commit と一致しない証跡をrelease blockerにする。"))
         XCTAssertTrue(phase.contains("[x] competitor benchmark の `Source commit` も `Status: passed` の competitor hands-on 証跡と同じrelease候補commitであることをrelease blockerにする。"))
+        XCTAssertTrue(phase.contains("[x] UI screenshot証跡は `Sources/SoloPMApp` / `Sources/SoloPMCore` / `Package.swift` の最新UI source commitを記録し"))
         XCTAssertTrue(script.contains("Blocker groups:"))
         XCTAssertTrue(script.contains("BLOCKER_MESSAGES=()"))
         XCTAssertTrue(script.contains("BLOCKER_MESSAGES+=(\"$1\")"))
@@ -6604,6 +6608,91 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("missing UI screenshot file: docs/release/evidence/ui-screenshots/project-board-light.png"))
         XCTAssertTrue(result.output.contains("NEXT: run script/capture_ui_evidence.sh --doctor"))
         XCTAssertTrue(result.output.contains("then run script/capture_ui_evidence.sh on a visible macOS session with Screen Recording permission"))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
+    }
+
+    func testReleaseReadinessReportBlocksUIScreenshotEvidenceFromDifferentUISourceCommit() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-stale-ui-evidence", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let evidenceDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("release", isDirectory: true)
+            .appendingPathComponent("evidence", isDirectory: true)
+        let screenshotDirectory = evidenceDirectory.appendingPathComponent("ui-screenshots", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+        let currentUISourceCommit = String(try currentGitCommit().prefix(7))
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: screenshotDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try readPackageFile("script/ui_evidence_content_check.swift")
+            .write(
+                to: scriptDirectory.appendingPathComponent("ui_evidence_content_check.swift"),
+                atomically: true,
+                encoding: .utf8
+            )
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: preflightURL, atomically: true, encoding: .utf8)
+        try """
+        # UI Screenshot Evidence
+
+        Generated with `script/capture_ui_evidence.sh`.
+
+        - Generated at: `2026-06-19T00:00:00Z`
+        - Source commit: `deadbee`
+
+        ## Screenshots
+
+        - Light: `docs/release/evidence/ui-screenshots/project-board-light.png`
+        - Dark: `docs/release/evidence/ui-screenshots/project-board-dark.png`
+        - System: `docs/release/evidence/ui-screenshots/project-board-system.png`
+        - Settings Overview Light: `docs/release/evidence/ui-screenshots/settings-overview-light.png`
+        - Settings Overview Dark: `docs/release/evidence/ui-screenshots/settings-overview-dark.png`
+        - Settings Appearance Light: `docs/release/evidence/ui-screenshots/settings-appearance-light.png`
+        - Settings Appearance Dark: `docs/release/evidence/ui-screenshots/settings-appearance-dark.png`
+        - MCP Settings Light: `docs/release/evidence/ui-screenshots/settings-mcp-light.png`
+        - MCP Settings Dark: `docs/release/evidence/ui-screenshots/settings-mcp-dark.png`
+        """.write(to: evidenceDirectory.appendingPathComponent("ui-screenshots.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        for screenshotFilename in ["project-board-light.png", "project-board-dark.png", "project-board-system.png", "settings-overview-light.png", "settings-overview-dark.png", "settings-appearance-light.png", "settings-appearance-dark.png", "settings-mcp-light.png", "settings-mcp-dark.png"] {
+            try writeVisiblePNG(
+                to: screenshotDirectory.appendingPathComponent(screenshotFilename),
+                width: 800,
+                height: 600,
+                trailingBytes: 60_000
+            )
+        }
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: preflightURL.path)
+
+        let result = try runTool(["bash", reportURL.path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("UI screenshot evidence source commit does not match current UI source commit: expected \(currentUISourceCommit)"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 
@@ -8314,6 +8403,53 @@ final class ReleasePipelineTests: XCTestCase {
             pixels[offset + 1] = green
             pixels[offset + 2] = blue
             pixels[offset + 3] = 255
+        }
+
+        guard let context = CGContext(
+            data: &pixels,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ), let image = context.makeImage() else {
+            XCTFail("Could not create PNG fixture context.")
+            return
+        }
+
+        guard let destination = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else {
+            XCTFail("Could not create PNG fixture destination.")
+            return
+        }
+
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+
+        if trailingBytes > 0 {
+            let handle = try FileHandle(forWritingTo: url)
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data(repeating: 0, count: trailingBytes))
+            try handle.close()
+        }
+    }
+
+    private func writeVisiblePNG(
+        to url: URL,
+        width: Int,
+        height: Int,
+        trailingBytes: Int = 0
+    ) throws {
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        for y in 0..<height {
+            for x in 0..<width {
+                let offset = ((y * width) + x) * 4
+                let lightStripe = ((x / 24) + (y / 24)).isMultiple(of: 2)
+                pixels[offset] = lightStripe ? 245 : 32
+                pixels[offset + 1] = lightStripe ? 245 : 74
+                pixels[offset + 2] = lightStripe ? 245 : 128
+                pixels[offset + 3] = 255
+            }
         }
 
         guard let context = CGContext(

@@ -1723,6 +1723,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("screencapture -x -R"))
         XCTAssertTrue(script.contains("assert_screenshot_has_visible_content"))
         XCTAssertTrue(script.contains("ui_evidence_content_check.swift"))
+        XCTAssertTrue(script.contains("ui_evidence_source_commit()"))
+        XCTAssertTrue(script.contains("- Source commit: `%s`"))
         XCTAssertTrue(contentCheckScript.contains("CGImageSourceCreateWithURL"))
         XCTAssertTrue(contentCheckScript.contains("Screenshot appears blank or too low contrast"))
         XCTAssertTrue(script.contains("sqlite3"))
@@ -1772,6 +1774,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("case \"project\""))
 
         XCTAssertTrue(evidence.contains("script/capture_ui_evidence.sh"))
+        XCTAssertTrue(evidence.contains("- Source commit: `"))
         XCTAssertTrue(evidence.contains("isolated temporary HOME"))
         XCTAssertTrue(evidence.contains("project-board-light.png"))
         XCTAssertTrue(evidence.contains("project-board-dark.png"))

@@ -74,6 +74,21 @@ relative_path() {
   esac
 }
 
+ui_evidence_source_commit() {
+  local commit
+  commit="$(
+    git -C "$ROOT_DIR" log -1 --format=%h -- \
+      Sources/SoloPMApp \
+      Sources/SoloPMCore \
+      Package.swift 2>/dev/null || true
+  )"
+  if [[ -n "$commit" ]]; then
+    printf "%s" "$commit"
+  else
+    git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown"
+  fi
+}
+
 app_env_args() {
   local args=(
     "HOME=$EVIDENCE_HOME"
@@ -586,6 +601,7 @@ write_evidence_file() {
     printf '%s\n' 'Generated with `script/capture_ui_evidence.sh`.'
     printf '\n'
     printf -- '- Generated at: `%s`\n' "$generated_at"
+    printf -- '- Source commit: `%s`\n' "$(ui_evidence_source_commit)"
     printf -- '- App bundle: `dist/%s.app`\n' "$APP_NAME"
     printf '%s\n' '- Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`'
     printf '%s\n' '- Seed data: local `Launch Readiness` project with planned, in-progress, and blocked task cards plus deterministic MCP registration rows'

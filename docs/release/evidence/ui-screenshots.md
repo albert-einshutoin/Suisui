@@ -3,6 +3,7 @@
 Generated with `script/capture_ui_evidence.sh`.
 
 - Generated at: `2026-06-19T23:06:34Z`
+- Source commit: `cbd2ee0`
 - App bundle: `dist/SoloPM.app`
 - Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`
 - Seed data: local `Launch Readiness` project with planned, in-progress, and blocked task cards plus deterministic MCP registration rows

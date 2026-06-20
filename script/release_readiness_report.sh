@@ -229,6 +229,46 @@ source_commit() {
   git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown"
 }
 
+ui_evidence_source_commit() {
+  local commit
+  commit="$(
+    git -C "$ROOT_DIR" log -1 --format=%h -- \
+      Sources/SoloPMApp \
+      Sources/SoloPMCore \
+      Package.swift 2>/dev/null || true
+  )"
+  if [[ -n "$commit" ]]; then
+    printf "%s" "$commit"
+  else
+    source_commit
+  fi
+}
+
+markdown_context_value() {
+  local file_path="$1"
+  local context_label="$2"
+  awk -v label="$context_label" '
+    index($0, "- " label ":") == 1 {
+      value = $0
+      sub("^- " label ":[[:space:]]*", "", value)
+      print value
+      found = 1
+      exit
+    }
+    END {
+      if (found != 1) {
+        exit 1
+      }
+    }
+  ' "$file_path" || true
+}
+
+normalize_markdown_context_value() {
+  local context_value="$1"
+  context_value="${context_value//\`/}"
+  printf '%s' "$context_value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
 tracked_source_tree_status() {
   local tracked_changes
 
@@ -2017,6 +2057,13 @@ else
   fi
   if ! grep -F -- "- Generated at:" "$ui_evidence_file" >/dev/null; then
     ui_blocker "UI screenshot evidence is missing generated timestamp"
+  fi
+  ui_evidence_source_commit_value="$(normalize_markdown_context_value "$(markdown_context_value "$ui_evidence_file" "Source commit")")"
+  expected_ui_evidence_source_commit="$(ui_evidence_source_commit)"
+  if [[ -z "$ui_evidence_source_commit_value" ]]; then
+    ui_blocker "UI screenshot evidence is missing source commit"
+  elif [[ "$expected_ui_evidence_source_commit" != "unknown" && "$ui_evidence_source_commit_value" != "$expected_ui_evidence_source_commit" ]]; then
+    ui_blocker "UI screenshot evidence source commit does not match current UI source commit: expected $expected_ui_evidence_source_commit"
   fi
 fi
 

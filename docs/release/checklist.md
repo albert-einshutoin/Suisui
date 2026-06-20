@@ -183,6 +183,8 @@ script/capture_ui_evidence.sh --doctor
 script/capture_ui_evidence.sh
 ```
 
+`docs/release/evidence/ui-screenshots.md` records the latest UI runtime source commit from `Sources/SoloPMApp`, `Sources/SoloPMCore`, and `Package.swift`; rerun `script/capture_ui_evidence.sh` after UI/runtime source changes so the release report cannot reuse stale screenshots.
+
 Run the accessibility preflight before the manual VoiceOver pass. The source-only check is safe for CI/local review and verifies both accessibility anchors and primary CRUD keyboard shortcuts; the runtime check launches `dist/SoloPM.app` and requires macOS Accessibility permission for Terminal/Codex:
 
 ```bash
