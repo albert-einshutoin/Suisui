@@ -1314,7 +1314,7 @@
 - [x] Direct manual evidence scripts reject dirty tracked source trees before writing passed VoiceOver, competitor, or release-machine evidence.
 - [x] action summary は release evidence ではなく、VoiceOver / competitor hands-on / signing / notarization / Sparkle / Gatekeeper を完了扱いにしないことを明記する。
 - [x] action summary の VoiceOver / competitor hands-on の直接実行例は `--validate-only` を `--passed` より先に表示し、manual evidence を即書き込みしない導線にする。
-- [x] `script/prepare_release_manual_helpers.sh` は current source commit の VoiceOver pending preview / command、competitor worksheet / command、release-machine worksheet / command を一括再生成し、passed evidence を書かない。
+- [x] `script/prepare_release_manual_helpers.sh` は current source commit の VoiceOver pending preview / command、competitor pending evidence、competitor benchmark pending worksheet、competitor worksheet / command、release-machine worksheet / command を一括再生成し、passed evidence を書かない。
 - [x] action summary の Manual Review Helper Freshness は stale/missing helper を見つけた場合、個別コマンドの羅列ではなく `./script/prepare_release_manual_helpers.sh` を次アクションとして提示する。
 - [x] action summary は古い `.tmp/voiceover-review/*-pending-<old-commit>.md` / `.tmp/competitor-hands-on/*-pending-<old-commit>.md` を ignored stale preview として表示し、operatorが別release候補のcontextをtracked evidenceへ転記しないようにする。
 - [x] `script/prepare_release_manual_helpers.sh --prune-stale` は current source commit のhelper再生成後、古いpending previewだけを削除し、passed evidenceを書かない。

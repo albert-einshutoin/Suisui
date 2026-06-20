@@ -2268,7 +2268,7 @@ else
   done
 fi
 if [[ "$competitor_evidence_blocker_count" -gt 0 ]]; then
-  printf "NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass by running ./script/create_competitor_hands_on_evidence.sh --pending, filling .tmp/competitor-hands-on/hands-on-worksheet.md, editing/running .tmp/competitor-hands-on/create-evidence-command.sh after replacing placeholders, or running ./script/create_competitor_hands_on_evidence.sh --passed with complete reviewer/date/source/environment context, complete Notion/Todoist/Linear/Motion notes, Ship/Defer/Reject deltas, --benchmark-output docs/product/competitor-benchmark.md, and no pending/template/unchecked markers; the generator also updates docs/product/competitor-benchmark.md from worksheet/desk research to hands-on findings.\n"
+  printf "NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass by running ./script/prepare_release_manual_helpers.sh, filling .tmp/competitor-hands-on/hands-on-worksheet.md and .tmp/competitor-hands-on/competitor-benchmark-pending-%s.md, editing/running .tmp/competitor-hands-on/create-evidence-command.sh after replacing placeholders, or running ./script/create_competitor_hands_on_evidence.sh --passed with complete reviewer/date/source/environment context, complete Notion/Todoist/Linear/Motion notes, Ship/Defer/Reject deltas, --benchmark-output docs/product/competitor-benchmark.md, and no pending/template/unchecked markers; the generator also updates docs/product/competitor-benchmark.md from worksheet/desk research to hands-on findings.\n" "$(source_commit)"
 else
   printf "OK: competitor hands-on evidence covers Notion, Todoist, Linear, Motion, and public alpha scope boundaries\n"
 fi
