@@ -1353,6 +1353,13 @@
 - [x] `ReleasePipelineTests` は `window 1` 固定が戻った場合に失敗する source-level guard を持つ。
 - [x] 完了条件: runtime accessible CRUD smoke が Project / Task の作成、rename、status move、delete、cascade delete を visible app 経由で完走する。
 
+### P10-164: Release-machine evidence command fails fast on missing local config
+
+- [x] `.tmp/release-machine/create-release-evidence-command.sh` requires `packaging/signing.env`, `packaging/notarization.env`, and `packaging/sparkle.env` before running release evidence validation.
+- [x] Missing release config stops before `create_release_evidence.sh --validate-only`, `--force`, or final online preflight, so operators do not spend time filling manual observations against an incomplete release machine.
+- [x] `docs/release/checklist.md` explains that the generated release-machine command sources those local config files before validating or writing `packaging/release-evidence.json`.
+- [x] 完了条件: release-machine operator は署名/公証/Sparkleのlocal config不足を、manual evidenceを書き込む前に生成コマンドから確認できる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。

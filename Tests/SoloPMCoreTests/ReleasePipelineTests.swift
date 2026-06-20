@@ -418,6 +418,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(command.contains("release evidence command was generated for source commit"))
         XCTAssertTrue(command.contains("Rerun ./script/prepare_release_machine_evidence.sh for this release candidate."))
         XCTAssertTrue(command.contains("source packaging/app_metadata.env"))
+        XCTAssertTrue(command.contains("for release_config_file in packaging/signing.env packaging/notarization.env packaging/sparkle.env; do"))
+        XCTAssertTrue(command.contains("release evidence command requires $release_config_file on the release machine"))
+        XCTAssertTrue(command.contains("source \"$release_config_file\""))
+        let metadataSourceRange = try XCTUnwrap(command.range(of: "source packaging/app_metadata.env"))
+        let configGuardRange = try XCTUnwrap(command.range(of: "for release_config_file in packaging/signing.env packaging/notarization.env packaging/sparkle.env; do"))
+        XCTAssertLessThan(metadataSourceRange.lowerBound, configGuardRange.lowerBound)
         XCTAssertTrue(command.contains("SOLOPM_RELEASE_ARTIFACT_SHA256_FILE=\"dist/releases/$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256\""))
         XCTAssertFalse(command.contains("SOLOPM_RELEASE_ARTIFACT_SHA256_FILE=\"dist/releases/SoloPM-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256\""))
         XCTAssertTrue(command.contains("Validate the filled release-machine evidence command before writing tracked evidence."))
@@ -445,11 +451,13 @@ final class ReleasePipelineTests: XCTestCase {
 
         let checklist = try readPackageFile("docs/release/checklist.md")
         XCTAssertTrue(checklist.contains("The generated release evidence command requires a clean tracked source tree, pins the source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit."))
+        XCTAssertTrue(checklist.contains("The generated release-machine command requires `packaging/signing.env`, `packaging/notarization.env`, and `packaging/sparkle.env` to exist on the release machine and sources them before validating or writing release evidence."))
         XCTAssertTrue(checklist.contains("Run the generated release-machine `--validate-only` command first; it performs the same release evidence validation without writing `packaging/release-evidence.json`."))
         XCTAssertTrue(checklist.contains("The generated release-machine command reruns `SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh` after writing release evidence, so the operator sees the final release-machine gate result before returning to `release_readiness_report.sh`."))
 
         let phase = try readPackageFile("tasks/Phase10-ReleaseReadinessRuntime.md")
         XCTAssertTrue(phase.contains("[x] `script/prepare_release_machine_evidence.sh` pins `.tmp/release-machine/create-release-evidence-command.sh` to a clean tracked source tree and the source commit it was generated for"))
+        XCTAssertTrue(phase.contains("[x] `.tmp/release-machine/create-release-evidence-command.sh` requires `packaging/signing.env`, `packaging/notarization.env`, and `packaging/sparkle.env` before running release evidence validation."))
         XCTAssertTrue(phase.contains("[x] `script/create_release_evidence.sh --validate-only` validates the filled release-machine command without writing `packaging/release-evidence.json`."))
         XCTAssertTrue(phase.contains("[x] `.tmp/release-machine/create-release-evidence-command.sh` runs `SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_release_environment.sh` after writing release evidence so release-machine operators see the final gate before rerunning the readiness report."))
     }
