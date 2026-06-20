@@ -785,6 +785,7 @@ write_automated_proof_gate_actions() {
     printf -- "- [x] Automated preflight evidence accepted: \`%s\`\n" "${AUTOMATED_PREFLIGHT_EVIDENCE_PATH#"$ROOT_DIR/"}"
     printf -- "- Source commit: \`%s\`\n" "$(automated_preflight_context_value "Source commit")"
     printf -- "- Generated at: \`%s\`\n" "$(automated_preflight_context_value "Generated at")"
+    printf -- "- Runtime AX smoke: \`%s\`\n" "$(automated_preflight_context_value "Runtime AX smoke")"
     printf -- "- This proves local automated gates only; it does not mark manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper checks as passed.\n"
     for required_gate in "${AUTOMATED_PREFLIGHT_REQUIRED_GATES[@]}"; do
       printf -- "- [x] %s: passed\n" "$required_gate"
@@ -1799,6 +1800,27 @@ validate_automated_preflight_evidence() {
   for required_gate in "${AUTOMATED_PREFLIGHT_REQUIRED_GATES[@]}"; do
     if ! grep -Fx -- "- $required_gate: passed" "$AUTOMATED_PREFLIGHT_EVIDENCE_PATH" >/dev/null; then
       set_automated_preflight_evidence_reason "missing passed gate: $required_gate"
+      return 1
+    fi
+  done
+
+  local runtime_ax_smoke runtime_ax_marker
+  runtime_ax_smoke="$(automated_preflight_context_value "Runtime AX smoke")"
+  if [[ -z "$(tr -d '[:space:]' <<<"$runtime_ax_smoke")" ]]; then
+    set_automated_preflight_evidence_reason "missing runtime AX smoke proof"
+    return 1
+  fi
+  for runtime_ax_marker in \
+    "OK: runtime AX smoke visible" \
+    "buttons=" \
+    "textFields=" \
+    "staticTexts=" \
+    "unlabeledButtons=0" \
+    "genericButtons=0" \
+    "crudSignals=8/8" \
+    "focusPathSignals=6/6"; do
+    if [[ "$runtime_ax_smoke" != *"$runtime_ax_marker"* ]]; then
+      set_automated_preflight_evidence_reason "automated preflight runtime AX smoke missing marker: $runtime_ax_marker"
       return 1
     fi
   done

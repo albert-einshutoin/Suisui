@@ -10,6 +10,7 @@ XCODE_DESTINATION="${SOLOPM_XCODE_DESTINATION:-platform=macOS}"
 XCODE_CONFIGURATION="${SOLOPM_XCODE_CONFIGURATION:-Debug}"
 AUTOMATED_PREFLIGHT_EVIDENCE_FILE="${SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE:-}"
 APP_NAME="SoloPM"
+RUNTIME_AX_SMOKE_OUTPUT=""
 
 if [[ -f "$METADATA_FILE" ]]; then
   # shellcheck source=/dev/null
@@ -82,6 +83,10 @@ Xcode destination: $XCODE_DESTINATION
 - Launch preflight: passed
 - Runtime accessibility preflight: passed
 - MCP compliance preflight: passed
+
+## Runtime AX Smoke
+
+Runtime AX smoke: $RUNTIME_AX_SMOKE_OUTPUT
 
 ## Boundaries
 
@@ -156,7 +161,24 @@ section "Runtime accessibility candidate"
 ./script/prepare_voiceover_review_candidate.sh --skip-build
 
 section "Runtime accessibility preflight"
-./script/check_accessibility_preflight.sh --runtime --skip-launch
+set +e
+runtime_accessibility_output="$(./script/check_accessibility_preflight.sh --runtime --skip-launch 2>&1)"
+runtime_accessibility_status=$?
+set -e
+if [[ -n "$runtime_accessibility_output" ]]; then
+  printf "%s\n" "$runtime_accessibility_output"
+fi
+if [[ "$runtime_accessibility_status" -ne 0 ]]; then
+  exit "$runtime_accessibility_status"
+fi
+if ! RUNTIME_AX_SMOKE_OUTPUT="$(printf "%s\n" "$runtime_accessibility_output" | awk '/^OK: runtime AX smoke visible/ { print; found = 1; exit } END { if (found != 1) { exit 1 } }')"; then
+  echo "BLOCKER: runtime accessibility preflight did not emit a runtime AX smoke OK line" >&2
+  exit 1
+fi
+if [[ -z "${RUNTIME_AX_SMOKE_OUTPUT//[[:space:]]/}" ]]; then
+  echo "BLOCKER: runtime accessibility preflight did not emit a runtime AX smoke OK line" >&2
+  exit 1
+fi
 
 section "MCP compliance preflight"
 SOLOPM_MCP_EVIDENCE_FILE="$MCP_EVIDENCE_FILE" ./script/verify_mcp_compliance.sh

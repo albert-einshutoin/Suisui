@@ -2818,12 +2818,13 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("export SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=\".tmp/automated-release-preflight-$(git rev-parse --short HEAD).md\""))
         XCTAssertTrue(checklist.contains("The release readiness report auto-discovers `.tmp/automated-release-preflight-<commit>.md` for the current source commit when the environment variable is omitted."))
         XCTAssertTrue(checklist.contains("Evidence-file mode requires a clean tracked source tree"))
-        XCTAssertTrue(checklist.contains("When the final report reuses this evidence, it verifies the generator identity, UTC timestamp, source commit, clean-tree marker, app name, Xcode workspace/scheme/configuration/destination, every automated proof gate, and the manual-evidence boundary text."))
+        XCTAssertTrue(checklist.contains("When the final report reuses this evidence, it verifies the generator identity, UTC timestamp, source commit, clean-tree marker, app name, Xcode workspace/scheme/configuration/destination, every automated proof gate, the runtime AX smoke OK line with `unlabeledButtons=0`, `genericButtons=0`, `crudSignals=8/8`, and `focusPathSignals=6/6`, and the manual-evidence boundary text."))
         XCTAssertTrue(checklist.contains("Manual VoiceOver and competitor hands-on evidence record the current `Source commit`"))
         XCTAssertTrue(checklist.contains("rerun `./script/prepare_release_manual_helpers.sh` and then repeat the affected manual passes after code changes instead of reusing evidence from an older release candidate"))
         XCTAssertTrue(checklist.contains("This automated sweep does not replace manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper evidence."))
         XCTAssertTrue(checklist.contains("The final readiness report treats skipped automated proof gates as blockers by default."))
         XCTAssertTrue(checklist.contains("Do not claim release readiness from the default report output if CI, SQLite CRUD, runtime accessible CRUD, Xcode build, visible launch, or runtime AX were skipped."))
+        XCTAssertTrue(checklist.contains("then writes the captured `Runtime AX smoke: OK: runtime AX smoke visible...` line into the automated preflight evidence"))
         XCTAssertTrue(checklist.contains("./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("./script/release_readiness_report.sh # auto-discovers .tmp/automated-release-preflight-<commit>.md"))
         XCTAssertTrue(checklist.contains("SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=\".tmp/automated-release-preflight-$(git rev-parse --short HEAD).md\" ./script/release_readiness_report.sh"))
@@ -2838,6 +2839,7 @@ final class ReleasePipelineTests: XCTestCase {
     func testAutomatedReleasePreflightScriptRunsRealLocalGatesWithoutFakingManualEvidence() throws {
         let script = try readPackageFile("script/check_automated_release_preflight.sh")
         let checklist = try readPackageFile("docs/release/checklist.md")
+        let phase = try readPackageFile("tasks/Phase10-ReleaseReadinessRuntime.md")
 
         XCTAssertTrue(script.contains("./scripts/ci.sh"))
         XCTAssertTrue(script.contains("./script/check_local_crud_smoke.sh"))
@@ -2876,6 +2878,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Xcode build preflight: passed"))
         XCTAssertTrue(script.contains("Launch preflight: passed"))
         XCTAssertTrue(script.contains("Runtime accessibility preflight: passed"))
+        XCTAssertTrue(script.contains("RUNTIME_AX_SMOKE_OUTPUT"))
+        XCTAssertTrue(script.contains("Runtime AX smoke: $RUNTIME_AX_SMOKE_OUTPUT"))
+        XCTAssertTrue(script.contains("runtime accessibility preflight did not emit a runtime AX smoke OK line"))
         XCTAssertTrue(script.contains("MCP compliance preflight: passed"))
         XCTAssertTrue(script.contains("This does not mark the release ready."))
         XCTAssertTrue(script.contains("Automated release preflight evidence written to"))
@@ -2885,6 +2890,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("confirm-manual-voiceover-pass"))
         XCTAssertFalse(script.contains("confirm-manual-hands-on"))
         XCTAssertTrue(checklist.contains("./script/check_automated_release_preflight.sh"))
+        XCTAssertTrue(phase.contains("[x] 自動proof証跡は seeded runtime AX smoke の `OK: runtime AX smoke visible` 行を保存し、`unlabeledButtons=0`、`genericButtons=0`、`crudSignals=8/8`、`focusPathSignals=6/6` が欠ける証跡を release readiness で拒否する。"))
     }
 
     func testReleaseActionSummaryReportsManualHelperFreshnessForCurrentCommit() throws {
@@ -5195,6 +5201,10 @@ final class ReleasePipelineTests: XCTestCase {
         - Runtime accessibility preflight: passed
         - MCP compliance preflight: passed
 
+        ## Runtime AX Smoke
+
+        Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6
+
         ## Boundaries
 
         - This does not mark the release ready.
@@ -5335,6 +5345,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("- [x] Automated preflight evidence accepted: `.tmp/automated-release-preflight.md`"))
         XCTAssertTrue(actionSummary.contains("- Source commit: `\(currentShortCommit)`"))
         XCTAssertTrue(actionSummary.contains("- Generated at: `2026-06-19T12:30:44Z`"))
+        XCTAssertTrue(actionSummary.contains("- Runtime AX smoke: `OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6`"))
         XCTAssertTrue(actionSummary.contains("- [x] Release CI: passed"))
         XCTAssertTrue(actionSummary.contains("- [x] Local CRUD smoke: passed"))
         XCTAssertTrue(actionSummary.contains("- [x] Runtime accessible CRUD smoke: passed"))
@@ -5408,6 +5419,10 @@ final class ReleasePipelineTests: XCTestCase {
         - Runtime accessibility preflight: passed
         - MCP compliance preflight: passed
 
+        ## Runtime AX Smoke
+
+        Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6
+
         ## Boundaries
 
         - This does not mark the release ready.
@@ -5453,7 +5468,82 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(result.output.contains("release launch preflight was not run"))
         XCTAssertFalse(result.output.contains("accessibility runtime preflight was not run"))
         XCTAssertTrue(actionSummary.contains("- [x] Automated preflight evidence accepted: `.tmp/automated-release-preflight-\(currentShortCommit).md`"))
+        XCTAssertTrue(actionSummary.contains("- Runtime AX smoke: `OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6`"))
         XCTAssertFalse(actionSummary.contains("- Run: `SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh`"))
+    }
+
+    func testReleaseReadinessReportRejectsAutomatedPreflightEvidenceWithoutRuntimeAXSmokeProof() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-automated-preflight-evidence-missing-runtime-ax", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let tmpDirectory = fixtureRoot.appendingPathComponent(".tmp", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let evidenceURL = tmpDirectory.appendingPathComponent("missing-runtime-ax-preflight.md")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tmpDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        try """
+        # Automated Release Preflight Evidence
+
+        Status: passed
+        Generated by: script/check_automated_release_preflight.sh
+        Generated at: 2026-06-19T12:30:44Z
+        Source commit: \(currentShortCommit)
+        Tracked source tree: clean
+        App: SoloPM
+        Xcode workspace: .swiftpm/xcode/package.xcworkspace
+        Xcode scheme: SoloPM
+        Xcode configuration: Debug
+        Xcode destination: platform=macOS
+
+        ## Passed Gates
+
+        - Release CI: passed
+        - Local CRUD smoke: passed
+        - Runtime accessible CRUD smoke: passed
+        - Xcode build preflight: passed
+        - Launch preflight: passed
+        - Runtime accessibility preflight: passed
+        - MCP compliance preflight: passed
+
+        ## Boundaries
+
+        - This does not mark the release ready.
+        - Manual VoiceOver evidence remains separate.
+        - Competitor hands-on evidence remains separate.
+        - Developer ID signing, notarization, Sparkle, Gatekeeper, and clean-environment evidence remain separate.
+        """.write(to: evidenceURL, atomically: true, encoding: .utf8)
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+
+        let result = try runTool(
+            ["bash", reportURL.path],
+            environment: ["SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE": evidenceURL.path]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("automated preflight evidence is invalid: missing runtime AX smoke proof"))
+        XCTAssertFalse(result.output.contains("OK: automated preflight evidence covers current commit and all local proof gates"))
+        XCTAssertTrue(result.output.contains("release CI preflight was not run"))
     }
 
     func testReleaseReadinessReportRejectsAutomatedPreflightEvidenceForDifferentAppContext() throws {
@@ -5503,6 +5593,10 @@ final class ReleasePipelineTests: XCTestCase {
         - Launch preflight: passed
         - Runtime accessibility preflight: passed
         - MCP compliance preflight: passed
+
+        ## Runtime AX Smoke
+
+        Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6
 
         ## Boundaries
 
@@ -5670,6 +5764,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Xcode configuration"))
         XCTAssertTrue(script.contains("XCODE_CONFIGURATION=\"${SOLOPM_XCODE_CONFIGURATION:-Debug}\""))
         XCTAssertTrue(script.contains("EXPECTED_AUTOMATED_PREFLIGHT_XCODE_CONFIGURATION=\"$XCODE_CONFIGURATION\""))
+        XCTAssertTrue(script.contains("automated_preflight_context_value \"Runtime AX smoke\""))
+        XCTAssertTrue(script.contains("automated preflight runtime AX smoke missing marker"))
         XCTAssertTrue(script.contains("-configuration \"$XCODE_CONFIGURATION\""))
         XCTAssertTrue(script.contains("SOLOPM_RELEASE_CI_PREFLIGHT"))
         XCTAssertTrue(script.contains("scripts/ci.sh"))
@@ -6021,7 +6117,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] action summary は `Blocker Buckets` で Automated Proof Gates / Manual VoiceOver / Competitor Hands-On / Release Machine / Phase Checklist / Other の残件数を分類する。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Release Environment Blockers` に `verify_release_environment.sh` の `BLOCKER:` 明細を相対パス化して列挙し、機密っぽい値を転記しない。"))
         XCTAssertTrue(phase.contains("[x] action summary は release environment blocker を Signing Configuration / Notarization / Sparkle / Appcast / Gatekeeper / Release Evidence / Source Hygiene / Local Inspection に分類し"))
-        XCTAssertTrue(phase.contains("[x] action summary は clean-tree automated preflight evidence が有効な場合、accepted evidence、source commit、generated at、passed gatesを表示し、再実行指示だけを出さない。"))
+        XCTAssertTrue(phase.contains("[x] action summary は clean-tree automated preflight evidence が有効な場合、accepted evidence、source commit、generated at、runtime AX smoke OK行、passed gatesを表示し、再実行指示だけを出さない。"))
         XCTAssertTrue(phase.contains("[x] action summary は Local Product Gate Status でcurrent commitのMCP/data/CRUD/local proofがgreenか、残りがmanual/release-machineかを明示する。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Manual VoiceOver Blockers` と `Competitor Hands-On Blockers` に手動証跡の不足項目を分離表示し、手動作業を完了扱いにしない。"))
         XCTAssertTrue(phase.contains("[x] action summary は VoiceOver の `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` preview、`.tmp/voiceover-review/voiceover-worksheet.md`、`.tmp/voiceover-review/create-evidence-command.sh` を案内し、operatorがtracked evidenceを汚さずrelease候補contextを確認できるようにする。"))
