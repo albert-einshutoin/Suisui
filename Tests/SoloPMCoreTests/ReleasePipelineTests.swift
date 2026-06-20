@@ -2749,11 +2749,29 @@ final class ReleasePipelineTests: XCTestCase {
                 atomically: true,
                 encoding: .utf8
             )
+        try "- Source commit: `oldcafe`\n"
+            .write(
+                to: voiceOverDirectory.appendingPathComponent("accessibility-voiceover-pending-oldcafe.md"),
+                atomically: true,
+                encoding: .utf8
+            )
         try "EXPECTED_SOURCE_COMMIT=\(commit)\n"
             .write(to: voiceOverDirectory.appendingPathComponent("create-evidence-command.sh"), atomically: true, encoding: .utf8)
         try "- Source commit: `\(commit)`\n"
             .write(
                 to: competitorDirectory.appendingPathComponent("competitor-hands-on-pending-\(commit).md"),
+                atomically: true,
+                encoding: .utf8
+            )
+        try "- Source commit: `oldcafe`\n"
+            .write(
+                to: competitorDirectory.appendingPathComponent("competitor-hands-on-pending-oldcafe.md"),
+                atomically: true,
+                encoding: .utf8
+            )
+        try "- Source commit: `oldcafe`\n"
+            .write(
+                to: competitorDirectory.appendingPathComponent("competitor-benchmark-pending-oldcafe.md"),
                 atomically: true,
                 encoding: .utf8
             )
@@ -2783,6 +2801,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actions.contains("- [x] Competitor evidence command is pinned to current source commit: `.tmp/competitor-hands-on/create-evidence-command.sh`"))
         XCTAssertTrue(actions.contains("- [x] Release machine worksheet is generated for current source commit: `.tmp/release-machine/release-machine-worksheet.md`"))
         XCTAssertTrue(actions.contains("- [x] Release evidence command is pinned to current source commit: `.tmp/release-machine/create-release-evidence-command.sh`"))
+        XCTAssertTrue(actions.contains("## Ignored Stale Manual Helper Previews"))
+        XCTAssertTrue(actions.contains("- [!] `.tmp/voiceover-review/accessibility-voiceover-pending-oldcafe.md` is ignored because the current source commit is `\(commit)`."))
+        XCTAssertTrue(actions.contains("- [!] `.tmp/competitor-hands-on/competitor-hands-on-pending-oldcafe.md` is ignored because the current source commit is `\(commit)`."))
+        XCTAssertTrue(actions.contains("- [!] `.tmp/competitor-hands-on/competitor-benchmark-pending-oldcafe.md` is ignored because the current source commit is `\(commit)`."))
+        XCTAssertTrue(actions.contains("These stale previews do not unblock readiness; use the current helper paths above or rerun `./script/prepare_release_manual_helpers.sh`."))
     }
 
     func testReleaseActionSummaryTellsOperatorsToRegenerateStaleManualHelpers() throws {
@@ -5288,6 +5311,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains(".tmp/release-machine/release-machine-worksheet.md"))
         XCTAssertTrue(checklist.contains(".tmp/release-machine/create-release-evidence-command.sh"))
         XCTAssertTrue(checklist.contains("The Manual Review Helper Freshness section uses `./script/prepare_release_manual_helpers.sh` to regenerate the VoiceOver, competitor, and release-machine helper files for the current source commit without writing passed evidence."))
+        XCTAssertTrue(checklist.contains("the Ignored Stale Manual Helper Previews section lists them as ignored so operators do not copy stale release-candidate context into tracked evidence"))
         XCTAssertTrue(checklist.contains("The Competitor Hands-On section includes the pending generator and `.tmp/competitor-hands-on/create-evidence-command.sh` path before the final passed command"))
         XCTAssertTrue(checklist.contains("The Manual VoiceOver section includes `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` and `.tmp/voiceover-review/create-evidence-command.sh` before the final passed command"))
         XCTAssertTrue(checklist.contains("The action summary also expands those pending paths for the current `Source commit`"))
@@ -5309,6 +5333,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] action summary の VoiceOver / competitor hands-on の直接実行例は `--validate-only` を `--passed` より先に表示し、manual evidence を即書き込みしない導線にする。"))
         XCTAssertTrue(phase.contains("[x] `script/prepare_release_manual_helpers.sh` は current source commit の VoiceOver pending preview / command、competitor worksheet / command、release-machine worksheet / command を一括再生成し、passed evidence を書かない。"))
         XCTAssertTrue(phase.contains("[x] action summary の Manual Review Helper Freshness は stale/missing helper を見つけた場合、個別コマンドの羅列ではなく `./script/prepare_release_manual_helpers.sh` を次アクションとして提示する。"))
+        XCTAssertTrue(phase.contains("[x] action summary は古い `.tmp/voiceover-review/*-pending-<old-commit>.md` / `.tmp/competitor-hands-on/*-pending-<old-commit>.md` を ignored stale preview として表示し、operatorが別release候補のcontextをtracked evidenceへ転記しないようにする。"))
         XCTAssertTrue(phase.contains("[x] action summary は direct manual evidence scripts も clean tracked source tree を要求し、dirty tree 回避目的で生成済みコマンドを迂回しないよう表示する。"))
         XCTAssertTrue(phase.contains("[x] action summary は未チェックの手動Phase項目を Manual VoiceOver / Competitor Hands-On / Release Machine / Login Item Manual Check / Manual Review に分類し"))
         XCTAssertTrue(phase.contains("[x] action summary は Login Item manual gate が残る場合、Operator Priority Queue に `--login-item-toggle` 付き release evidence command への導線を独立表示する。"))

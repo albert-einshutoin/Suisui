@@ -853,6 +853,50 @@ write_manual_helper_freshness_item() {
   fi
 }
 
+collect_stale_manual_helper_previews() {
+  local expected_commit="$1"
+  local file
+  local basename
+
+  for file in "$ROOT_DIR"/.tmp/voiceover-review/accessibility-voiceover-pending-*.md; do
+    [[ -e "$file" ]] || continue
+    basename="${file##*/}"
+    [[ "$basename" == "accessibility-voiceover-pending-$expected_commit.md" ]] && continue
+    printf '%s\n' "${file#"$ROOT_DIR/"}"
+  done
+
+  for file in "$ROOT_DIR"/.tmp/competitor-hands-on/competitor-hands-on-pending-*.md; do
+    [[ -e "$file" ]] || continue
+    basename="${file##*/}"
+    [[ "$basename" == "competitor-hands-on-pending-$expected_commit.md" ]] && continue
+    printf '%s\n' "${file#"$ROOT_DIR/"}"
+  done
+
+  for file in "$ROOT_DIR"/.tmp/competitor-hands-on/competitor-benchmark-pending-*.md; do
+    [[ -e "$file" ]] || continue
+    basename="${file##*/}"
+    [[ "$basename" == "competitor-benchmark-pending-$expected_commit.md" ]] && continue
+    printf '%s\n' "${file#"$ROOT_DIR/"}"
+  done
+}
+
+write_ignored_stale_manual_helper_preview_actions() {
+  local expected_commit="$1"
+  local stale_previews
+  stale_previews="$(collect_stale_manual_helper_previews "$expected_commit")"
+
+  if [[ -z "$stale_previews" ]]; then
+    return 0
+  fi
+
+  printf "## Ignored Stale Manual Helper Previews\n"
+  while IFS= read -r stale_preview; do
+    [[ -n "$stale_preview" ]] || continue
+    printf -- "- [!] \`%s\` is ignored because the current source commit is \`%s\`.\n" "$stale_preview" "$expected_commit"
+  done <<<"$stale_previews"
+  printf -- "- These stale previews do not unblock readiness; use the current helper paths above or rerun \`./script/prepare_release_manual_helpers.sh\`.\n\n"
+}
+
 write_manual_helper_freshness_actions() {
   local expected_commit
   local stale_or_missing=0
@@ -903,6 +947,8 @@ write_manual_helper_freshness_actions() {
     printf '%s\n' '```'
   fi
   printf "\n"
+
+  write_ignored_stale_manual_helper_preview_actions "$expected_commit"
 }
 
 write_release_actions() {
