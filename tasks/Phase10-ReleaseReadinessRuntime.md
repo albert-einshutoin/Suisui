@@ -1308,7 +1308,8 @@
 - [x] action summary は clean-tree automated preflight evidence が有効な場合、accepted evidence、source commit、generated at、passed gatesを表示し、再実行指示だけを出さない。
 - [x] action summary は Local Product Gate Status でcurrent commitのMCP/data/CRUD/local proofがgreenか、残りがmanual/release-machineかを明示する。
 - [x] action summary は `Manual VoiceOver Blockers` と `Competitor Hands-On Blockers` に手動証跡の不足項目を分離表示し、手動作業を完了扱いにしない。
-- [x] action summary は VoiceOver の `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` preview と `.tmp/voiceover-review/create-evidence-command.sh` を案内し、operatorがtracked evidenceを汚さずrelease候補contextを確認できるようにする。
+- [x] action summary は VoiceOver の `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` preview、`.tmp/voiceover-review/voiceover-worksheet.md`、`.tmp/voiceover-review/create-evidence-command.sh` を案内し、operatorがtracked evidenceを汚さずrelease候補contextを確認できるようにする。
+- [x] Generated VoiceOver evidence command verifies `.tmp/voiceover-review/voiceover-worksheet.md` is current, marked completed, filled, and free of pending/unchecked markers before validate-only or passed evidence.
 - [x] action summary は VoiceOver / competitor hands-on の current `Source commit` に対応する pending evidence path も併記する。
 - [x] action summary は VoiceOver / competitor hands-on の証跡生成コマンドを必須フラグ込みで表示し、placeholderを実測値に置き換える必要を明記する。
 - [x] action summary は competitor hands-on の pending generator と `.tmp/competitor-hands-on/create-evidence-command.sh` を案内し、operatorがplaceholderを置換してからpassed証跡を作れるようにする。
@@ -1330,7 +1331,7 @@
 - [x] action summary は release-machine evidence の `generator.name: script/create_release_evidence.sh` 要件をManual Evidence Source Hygieneに表示し、手書き `packaging/release-evidence.json` がrelease readyにならないことを示す。
 - [x] VoiceOver passed evidence は実際の `macOS version` を必須にし、`macOS unknown` / placeholder / sample / example / replacement text をgeneratorとreadiness reportの両方でrelease blockerにする。
 - [x] action summary は generated VoiceOver / competitor / release-machine command が placeholder 未置換のままでは `--validate-only` でも失敗することを表示し、template command を evidence-ready に見せない。
-- [x] `script/prepare_release_manual_helpers.sh` は current source commit の VoiceOver pending preview / launch env / command、competitor pending evidence、competitor benchmark pending worksheet、competitor worksheet / command、release-machine worksheet / command を一括再生成し、passed evidence を書かない。
+- [x] `script/prepare_release_manual_helpers.sh` は current source commit の VoiceOver pending preview / launch env / worksheet / command、competitor pending evidence、competitor benchmark pending worksheet、competitor worksheet / command、release-machine worksheet / command を一括再生成し、passed evidence を書かない。
 - [x] `script/prepare_release_manual_helpers.sh` は tracked source tree がdirtyな場合、pending preview / command生成前に停止し、未コミット差分をcurrent commitのrelease candidateとして扱わない。
 - [x] action summary の Manual Review Helper Freshness は stale/missing helper を見つけた場合、個別コマンドの羅列ではなく `./script/prepare_release_manual_helpers.sh` を次アクションとして提示する。
 - [x] Manual Review Helper Freshness は command helper の `EXPECTED_SOURCE_COMMIT` 実代入だけを current commit pin として扱い、コメントや説明文に current commit が出るだけでは stale 扱いにする。

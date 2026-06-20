@@ -415,6 +415,7 @@ voiceover_review_helpers_are_current() {
 
   manual_helper_relative_is_current ".tmp/voiceover-review/accessibility-voiceover-pending-$expected_commit.md" "$expected_commit" &&
     manual_helper_relative_is_current ".tmp/voiceover-review/launch.env" "$expected_commit" &&
+    manual_helper_relative_is_current ".tmp/voiceover-review/voiceover-worksheet.md" "$expected_commit" &&
     manual_helper_relative_is_current ".tmp/voiceover-review/create-evidence-command.sh" "$expected_commit"
 }
 
@@ -1106,6 +1107,11 @@ write_manual_helper_freshness_actions() {
     ".tmp/voiceover-review/launch.env" \
     "$expected_commit" || stale_or_missing=1
   write_manual_helper_freshness_item \
+    "VoiceOver worksheet" \
+    "is generated for" \
+    ".tmp/voiceover-review/voiceover-worksheet.md" \
+    "$expected_commit" || stale_or_missing=1
+  write_manual_helper_freshness_item \
     "VoiceOver evidence command" \
     "is pinned to" \
     ".tmp/voiceover-review/create-evidence-command.sh" \
@@ -1252,8 +1258,10 @@ write_release_actions() {
     printf -- "- The candidate writes \`.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md\` so you can inspect the release-candidate context without modifying tracked evidence.\n"
     printf -- "- For this action summary, the expected pending preview path is \`.tmp/voiceover-review/accessibility-voiceover-pending-%s.md\`.\n" "$(source_commit)"
     printf -- "- The candidate writes \`.tmp/voiceover-review/launch.env\` with \`SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT\` and \`SOLOPM_VOICEOVER_REVIEW_PROJECT_ID\`; verify those values before launching the manual VoiceOver pass.\n"
+    printf -- "- The candidate writes \`.tmp/voiceover-review/voiceover-worksheet.md\`; fill it during the real VoiceOver pass and mark it \`Status: completed\` before running the generated command.\n"
     printf -- "- The candidate writes \`.tmp/voiceover-review/create-evidence-command.sh\` with the same database/project context. Replace every placeholder in that generated command with concrete VoiceOver observations before running it.\n"
     printf -- "- The generated VoiceOver evidence command is pinned to a clean tracked source tree and the source commit it was created for. Rerun \`./script/prepare_release_manual_helpers.sh\` after source changes instead of reusing an older command.\n"
+    printf -- "- The generated VoiceOver evidence command also refuses to run until \`.tmp/voiceover-review/voiceover-worksheet.md\` is \`Status: completed\`, pinned to the same source commit and candidate database, free of pending/unchecked/template markers, and filled.\n"
     printf -- "- Run the generated \`--validate-only\` command first; it performs the same passed-evidence validation without writing \`docs/release/evidence/accessibility-voiceover.md\`.\n"
     printf -- "- Run the source/runtime accessibility preflight first, then perform a real VoiceOver pass.\n"
     printf -- "- If you do not use the generated command file, replace every placeholder below with concrete observations from the real release-candidate app before running it.\n\n"

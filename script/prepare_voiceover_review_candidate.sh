@@ -110,6 +110,60 @@ write_voiceover_evidence_invocation() {
   printf '%s\n' '  --confirm-manual-voiceover-pass'
 }
 
+write_voiceover_review_worksheet() {
+  local output_path="$1"
+  local candidate_database_path="$2"
+  local candidate_project_id="$3"
+  local evidence_source="$4"
+
+  {
+    printf '%s\n' '# SoloPM VoiceOver Manual Review Worksheet'
+    printf '\n'
+    printf '%s\n' 'Status: pending'
+    printf -- '- Source commit: `%s`\n' "$SOURCE_COMMIT"
+    printf -- '- Candidate database: `%s`\n' "$candidate_database_path"
+    printf -- '- Selected destination: `project:%s`\n' "$candidate_project_id"
+    printf -- '- Evidence source: `%s`\n' "$evidence_source"
+    printf '\n'
+    printf '%s\n' 'This worksheet is not release evidence. Fill it during the real manual VoiceOver pass, then run the generated evidence command.'
+    printf '\n'
+    printf '%s\n' '## Manual VoiceOver Checks'
+    printf '\n'
+    printf '%s\n' '- [ ] Project navigation: sidebar Inbox, Today, Projects, and selected review project navigation are announced in order.'
+    printf '%s\n' '- [ ] Project board detail: selected project context is announced before card navigation.'
+    printf '%s\n' '- [ ] Open task: a seeded task card can receive focus and open details without pointer-only drag.'
+    printf '%s\n' '- [ ] Inline Task Composer: title, detail, priority, due, create, cancel, Command+Return, and Escape are reachable.'
+    printf '%s\n' '- [ ] Status controls: previous/next status controls announce target status labels.'
+    printf '%s\n' '- [ ] Task inspector: fields, summary, suggestion, save, and danger actions are reachable.'
+    printf '%s\n' '- [ ] Save Changes: keyboard activation saves local task edits.'
+    printf '%s\n' '- [ ] Delete Task confirmation: destructive action opens an inline inspector confirmation panel before deletion.'
+    printf '%s\n' '- [ ] No keyboard trap: focus leaves sidebar, board, inspector, and inline confirmation panels.'
+    printf '%s\n' '- [ ] No unlabeled primary CRUD controls: primary CRUD controls have labels or help.'
+    printf '\n'
+    printf '%s\n' '## VoiceOver Observations To Fill'
+    printf '\n'
+    printf '%s\n' '- Reviewer:'
+    printf '%s\n' '- Accessibility environment:'
+    printf '%s\n' '- Runtime AX smoke:'
+    printf '%s\n' '- Project navigation:'
+    printf '%s\n' '- Project board detail:'
+    printf '%s\n' '- Open task:'
+    printf '%s\n' '- Inline Task Composer:'
+    printf '%s\n' '- Status controls:'
+    printf '%s\n' '- Task inspector:'
+    printf '%s\n' '- Save Changes:'
+    printf '%s\n' '- Delete Task confirmation:'
+    printf '%s\n' '- No keyboard trap:'
+    printf '%s\n' '- No unlabeled primary CRUD controls:'
+    printf '\n'
+    printf '%s\n' '## Closeout'
+    printf '\n'
+    printf '%s\n' '1. Change `Status: pending` to `Status: completed` after the real VoiceOver pass is complete.'
+    printf '%s\n' '2. Fill every VoiceOver observation with concrete behavior from this candidate app.'
+    printf '%s\n' '3. Remove unchecked `[ ]`, pending, and template/instructional text before running the generated command.'
+  } >"$output_path"
+}
+
 write_voiceover_evidence_command() {
   local output_path="$1"
   local candidate_database_path="$2"
@@ -147,6 +201,7 @@ write_voiceover_evidence_command() {
     printf 'APP_NAME=%q\n' "$APP_NAME"
     printf '%s\n' 'APP_BINARY="$REPO_ROOT/dist/$APP_NAME.app/Contents/MacOS/$APP_NAME"'
     printf '%s\n' 'VOICEOVER_LAUNCH_ENV_FILE="$REPO_ROOT/.tmp/voiceover-review/launch.env"'
+    printf '%s\n' 'VOICEOVER_WORKSHEET_FILE="$REPO_ROOT/.tmp/voiceover-review/voiceover-worksheet.md"'
     printf 'EXPECTED_DATABASE_PATH=%q\n' "$candidate_database_path"
     printf 'EXPECTED_PROJECT_ID=%q\n' "$candidate_project_id"
     printf 'EXPECTED_SELECTED_DESTINATION=%q\n' "project:$candidate_project_id"
@@ -180,6 +235,58 @@ write_voiceover_evidence_command() {
     printf '%s\n' '  printf "BLOCKER: VoiceOver evidence command database is missing the seeded review tasks for project %s: got %s\n" "$EXPECTED_PROJECT_ID" "${SEEDED_TASK_COUNT:-<empty>}" >&2'
     printf '%s\n' '  exit 2'
     printf '%s\n' 'fi'
+    printf '\n'
+    printf '%s\n' 'verify_voiceover_worksheet_for_evidence() {'
+    printf '%s\n' '  local expected_commit_marker'
+    printf '%s\n' '  local expected_database_marker'
+    printf '%s\n' '  local expected_destination_marker'
+    printf '%s\n' '  local required_label'
+    printf '%s\n' '  expected_commit_marker="Source commit: \`$EXPECTED_SOURCE_COMMIT\`"'
+    printf '%s\n' '  expected_database_marker="Candidate database: \`$EXPECTED_DATABASE_PATH\`"'
+    printf '%s\n' '  expected_destination_marker="Selected destination: \`$EXPECTED_SELECTED_DESTINATION\`"'
+    printf '%s\n' ''
+    printf '%s\n' '  if [[ ! -f "$VOICEOVER_WORKSHEET_FILE" ]]; then'
+    printf '%s\n' '    printf "BLOCKER: VoiceOver worksheet is missing, stale, or incomplete: %s does not exist.\n" "$VOICEOVER_WORKSHEET_FILE" >&2'
+    printf '%s\n' '    exit 2'
+    printf '%s\n' '  fi'
+    printf '%s\n' ''
+    printf '%s\n' '  if ! grep -F -- "$expected_commit_marker" "$VOICEOVER_WORKSHEET_FILE" >/dev/null; then'
+    printf '%s\n' '    printf "BLOCKER: VoiceOver worksheet is missing, stale, or incomplete: expected source commit %s.\n" "$EXPECTED_SOURCE_COMMIT" >&2'
+    printf '%s\n' '    exit 2'
+    printf '%s\n' '  fi'
+    printf '%s\n' '  if ! grep -F -- "$expected_database_marker" "$VOICEOVER_WORKSHEET_FILE" >/dev/null; then'
+    printf '%s\n' '    printf "BLOCKER: VoiceOver worksheet is missing, stale, or incomplete: expected candidate database %s.\n" "$EXPECTED_DATABASE_PATH" >&2'
+    printf '%s\n' '    exit 2'
+    printf '%s\n' '  fi'
+    printf '%s\n' '  if ! grep -F -- "$expected_destination_marker" "$VOICEOVER_WORKSHEET_FILE" >/dev/null; then'
+    printf '%s\n' '    printf "BLOCKER: VoiceOver worksheet is missing, stale, or incomplete: expected selected destination %s.\n" "$EXPECTED_SELECTED_DESTINATION" >&2'
+    printf '%s\n' '    exit 2'
+    printf '%s\n' '  fi'
+    printf '%s\n' ''
+    printf '%s\n' '  if ! grep -Fx -- "Status: completed" "$VOICEOVER_WORKSHEET_FILE" >/dev/null; then'
+    printf '%s\n' '    printf "BLOCKER: VoiceOver worksheet is missing, stale, or incomplete: set Status: completed after the manual VoiceOver pass.\n" >&2'
+    printf '%s\n' '    exit 2'
+    printf '%s\n' '  fi'
+    printf '%s\n' ''
+    printf '%s\n' '  if grep -Eq "(Status:[[:space:]]*pending|To Fill|^## Closeout$|This worksheet is not release evidence|Replace every placeholder|not release evidence|<VoiceOver observation|placeholder)" "$VOICEOVER_WORKSHEET_FILE"; then'
+    printf '%s\n' '    printf "BLOCKER: VoiceOver worksheet is missing, stale, or incomplete: remove pending/template instructions before writing evidence.\n" >&2'
+    printf '%s\n' '    exit 2'
+    printf '%s\n' '  fi'
+    printf '%s\n' ''
+    printf '%s\n' '  if grep -F -- "- [ ]" "$VOICEOVER_WORKSHEET_FILE" >/dev/null; then'
+    printf '%s\n' '    printf "BLOCKER: VoiceOver worksheet is missing, stale, or incomplete: unchecked VoiceOver items remain.\n" >&2'
+    printf '%s\n' '    exit 2'
+    printf '%s\n' '  fi'
+    printf '%s\n' ''
+    printf '%s\n' '  for required_label in "Reviewer" "Accessibility environment" "Runtime AX smoke" "Project navigation" "Project board detail" "Open task" "Inline Task Composer" "Status controls" "Task inspector" "Save Changes" "Delete Task confirmation" "No keyboard trap" "No unlabeled primary CRUD controls"; do'
+    printf '%s\n' '    if ! grep -Eq "^- ${required_label}:[[:space:]]*[^[:space:]]" "$VOICEOVER_WORKSHEET_FILE"; then'
+    printf '%s\n' '      printf "BLOCKER: VoiceOver worksheet is missing, stale, or incomplete: fill %s.\n" "$required_label" >&2'
+    printf '%s\n' '      exit 2'
+    printf '%s\n' '    fi'
+    printf '%s\n' '  done'
+    printf '%s\n' '}'
+    printf '\n'
+    printf '%s\n' 'verify_voiceover_worksheet_for_evidence'
     printf '\n'
     printf '%s\n' 'terminate_voiceover_candidate() {'
     printf '%s\n' '  /usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true'
@@ -445,6 +552,7 @@ verify_seed "1" "VoiceOver release project selection" "SELECT CASE WHEN count(*)
 
 launch_env_file="$ROOT_DIR/.tmp/voiceover-review/launch.env"
 evidence_command_file="$ROOT_DIR/.tmp/voiceover-review/create-evidence-command.sh"
+worksheet_file="$ROOT_DIR/.tmp/voiceover-review/voiceover-worksheet.md"
 pending_evidence_file="$ROOT_DIR/.tmp/voiceover-review/accessibility-voiceover-pending-$SOURCE_COMMIT.md"
 pending_evidence_source="dist/$APP_NAME.app manual VoiceOver pass using $database_path project:$seed_project_id"
 {
@@ -453,6 +561,7 @@ pending_evidence_source="dist/$APP_NAME.app manual VoiceOver pass using $databas
   printf 'SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT=%q\n' "$SOURCE_COMMIT"
   printf 'SOLOPM_VOICEOVER_REVIEW_PROJECT_ID=%q\n' "$seed_project_id"
 } >"$launch_env_file"
+write_voiceover_review_worksheet "$worksheet_file" "$database_path" "$seed_project_id" "$pending_evidence_source"
 write_voiceover_evidence_command "$evidence_command_file" "$database_path" "$seed_project_id"
 ./script/create_voiceover_evidence.sh --pending --output "$pending_evidence_file" --evidence-source "$pending_evidence_source" >/dev/null
 
@@ -462,6 +571,7 @@ printf 'Project ID: %s\n' "$seed_project_id"
 printf 'Artifact: VoiceOver review artifact -> %s\n' "$VOICEOVER_REVIEW_ARTIFACT_PATH"
 printf 'Launch env: %s\n' "$launch_env_file"
 printf 'Pending evidence: %s\n' "$pending_evidence_file"
+printf 'Worksheet: %s\n' "$worksheet_file"
 printf 'Evidence command: %s\n' "$evidence_command_file"
 
 if [[ "$launch_app" -eq 1 ]]; then
