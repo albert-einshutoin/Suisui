@@ -23,7 +23,7 @@ usage() {
   printf '%s\n' "Regenerates current-source-commit manual review helpers without writing passed evidence."
   printf '%s\n' "This does not mark VoiceOver, competitor hands-on, signing, notarization, Sparkle, Gatekeeper, or release evidence as passed."
   printf '%s\n' ""
-  printf '%s\n' "--prune-stale removes ignored pending preview files for older source commits after the current helpers are regenerated."
+  printf '%s\n' "--prune-stale removes ignored pending preview files for older source commits and legacy default preview files after the current helpers are regenerated."
 }
 
 while [[ "$#" -gt 0 ]]; do
@@ -71,6 +71,12 @@ prune_stale_manual_helper_previews() {
   prune_stale_preview_files \
     "$ROOT_DIR/.tmp/competitor-hands-on/competitor-benchmark-pending-*.md" \
     "competitor-benchmark-pending-$SOURCE_COMMIT.md"
+
+  local legacy_competitor_evidence="$ROOT_DIR/.tmp/competitor-hands-on/evidence.md"
+  if [[ -e "$legacy_competitor_evidence" ]]; then
+    rm -f "$legacy_competitor_evidence"
+    printf 'Removed legacy manual helper preview: %s\n' "${legacy_competitor_evidence#"$ROOT_DIR/"}"
+  fi
 }
 
 require_clean_tracked_source_tree_for_manual_helpers() {
