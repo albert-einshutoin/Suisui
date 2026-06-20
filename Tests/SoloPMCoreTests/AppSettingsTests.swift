@@ -662,6 +662,15 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(whitespaceModel.validate().first?.message, "OpenCode model id cannot contain whitespace.")
     }
 
+    func testRuntimeNormalizationPreservesUnavailableProviderForFailClosedRuntime() {
+        let settings = AppSettings(aiProvider: .geminiOpenAICompatible)
+
+        let normalized = settings.normalizedForRuntime
+
+        XCTAssertEqual(normalized.aiProvider, .geminiOpenAICompatible)
+        XCTAssertEqual(normalized.validate().map(\.field), ["aiProvider"])
+    }
+
     @MainActor
     func testAppSettingsViewModelPersistsProviderSelection() throws {
         let suiteName = "SoloPM.AppSettingsViewModelProviders.\(UUID().uuidString)"
@@ -767,6 +776,25 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(viewModel.settings.aiProvider, .openaiResponses)
         XCTAssertEqual(viewModel.errorMessage, "Gemini OpenAI-compatible is not available in this build.")
         XCTAssertNil(defaults.data(forKey: "app.settings"))
+    }
+
+    @MainActor
+    func testAppSettingsViewModelPreservesStoredUnavailableProviderForRepair() throws {
+        let suiteName = "SoloPM.AppSettingsStoredUnavailableAIProvider.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        try store.save(AppSettings(aiProvider: .geminiOpenAICompatible))
+
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        XCTAssertEqual(viewModel.settings.aiProvider, .geminiOpenAICompatible)
+        XCTAssertFalse(viewModel.selectableAIProviders.contains(.geminiOpenAICompatible))
+
+        viewModel.saveSettings()
+
+        XCTAssertEqual(viewModel.settings.aiProvider, .geminiOpenAICompatible)
+        XCTAssertEqual(viewModel.errorMessage, "Gemini OpenAI-compatible is not available in this build.")
     }
 
     func testLegacyAIProviderRawValuesAreMigratedWhenSettingsLoad() throws {

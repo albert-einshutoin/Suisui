@@ -88,9 +88,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public var normalizedForRuntime: AppSettings {
         var copy = self
-        if !LLMProviderCatalog.isAvailableInCurrentBuild(copy.aiProvider) {
-            copy.aiProvider = LLMProviderCatalog.defaultProviderID
-        }
         if !copy.sttProvider.isReleaseReady {
             copy.sttProvider = .openAITranscribe
         }

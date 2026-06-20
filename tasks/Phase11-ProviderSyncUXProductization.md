@@ -73,7 +73,7 @@
 
 - [x] `LLMProviderID` / Settings provider listを更新し、`openaiResponses`、`claudeMessages`、`geminiDirect`、`geminiOpenAICompatible`、`groqOpenAICompatible`、`opencodeLocal`、`openRouterCompatible`、`ollamaCompatible` を区別する。
 - [x] 未実装providerはSettingsに選択肢として出さない。表示する場合は `Not available in this build` として保存不可にする。
-- [x] 未実装/非公開providerがruntimeへ到達しても、OpenAIなどのdefault providerへ黙ってfallbackせず `UnavailableLLMProvider` でfail closedにする。
+- [x] 未実装/非公開providerはsettings normalizationでもdefault providerへ黙って置き換えず、runtimeへ到達しても `UnavailableLLMProvider` でfail closedにする。
 - [x] providerごとに Keychain secret key、base URL、model id、request family、streaming support、structured output supportを定義する。
 - [x] API keyはproviderごとにKeychainへ分離保存し、UserDefaults / SQLite / logs / screenshotsに出さない。
 - [x] 完了条件: provider追加時に「OpenAI互換だから同じ」で隠れた差分がUIや実行時エラーに漏れない。
