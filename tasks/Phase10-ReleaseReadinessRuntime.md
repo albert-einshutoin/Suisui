@@ -251,9 +251,9 @@
 - [x] `tasks/README.md` のテンプレート用 unchecked 項目は release blocker から除外する。
 - [x] report は残 gate がある間は `NOT READY` と exit 2 を返す。
 - [x] `script/check_automated_release_preflight.sh` で CI、SQLite CRUD、runtime accessible CRUD、Xcode build、visible-window launch、runtime AX、MCP compliance を一括検証できる。
-- [x] `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/check_automated_release_preflight.sh` で、自動proof gateのpass結果をレビュー可能なMarkdown証跡として保存できる。
+- [x] `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-$(git rev-parse --short HEAD).md ./script/check_automated_release_preflight.sh` で、自動proof gateのpass結果をレビュー可能なMarkdown証跡として保存できる。
 - [x] 自動proof証跡は clean tracked source tree でのみ生成し、未コミット差分を含む曖昧な証跡を拒否する。
-- [x] `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/release_readiness_report.sh` は、同一commitのclean-tree自動proof証跡を検証してCI / SQLite CRUD / runtime accessible CRUD / Xcode / launch / runtime AXのskip blockerを解除できる。
+- [x] `./script/release_readiness_report.sh` は、`.tmp/automated-release-preflight-<commit>.md` が存在する場合に同一commitのclean-tree自動proof証跡を自動検出し、CI / SQLite CRUD / runtime accessible CRUD / Xcode / launch / runtime AXのskip blockerを解除できる。
 - [x] 自動proof証跡の再利用時は generator、UTC timestamp、source commit、App名、Xcode workspace / scheme / configuration / destination、manual evidence境界文言を検証し、別appや別build文脈の証跡流用を拒否する。
 - [x] VoiceOver / competitor hands-on の手動証跡は `Source commit` を記録し、`Status: passed` の場合は現在の git commit と一致しない証跡をrelease blockerにする。
 - [x] competitor benchmark の `Source commit` も `Status: passed` の competitor hands-on 証跡と同じrelease候補commitであることをrelease blockerにする。

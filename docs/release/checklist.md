@@ -300,10 +300,11 @@ Manual VoiceOver and competitor hands-on evidence record the current `Source com
 
 ```bash
 ./script/check_automated_release_preflight.sh
-SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/check_automated_release_preflight.sh
+export SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=".tmp/automated-release-preflight-$(git rev-parse --short HEAD).md"
+./script/check_automated_release_preflight.sh
 ```
 
-Evidence-file mode requires a clean tracked source tree, so commit or discard tracked changes before producing release proof.
+Evidence-file mode requires a clean tracked source tree, so commit or discard tracked changes before producing release proof. The release readiness report auto-discovers `.tmp/automated-release-preflight-<commit>.md` for the current source commit when the environment variable is omitted.
 When the final report reuses this evidence, it verifies the generator identity, UTC timestamp, source commit, clean-tree marker, app name, Xcode workspace/scheme/configuration/destination, every automated proof gate, and the manual-evidence boundary text.
 
 ```bash
@@ -311,7 +312,8 @@ source packaging/app_metadata.env
 export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"
 ./script/release_readiness_report.sh
 SOLOPM_RELEASE_ACTIONS_FILE=.tmp/release-actions.md ./script/release_readiness_report.sh
-SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/release_readiness_report.sh
+./script/release_readiness_report.sh # auto-discovers .tmp/automated-release-preflight-<commit>.md
+SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=".tmp/automated-release-preflight-$(git rev-parse --short HEAD).md" ./script/release_readiness_report.sh
 SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh
 SOLOPM_RELEASE_CI_PREFLIGHT=1 ./script/release_readiness_report.sh
 SOLOPM_LOCAL_CRUD_SMOKE=1 ./script/release_readiness_report.sh

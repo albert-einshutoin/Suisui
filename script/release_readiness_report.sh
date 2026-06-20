@@ -220,6 +220,20 @@ tracked_source_tree_status() {
   fi
 }
 
+automated_preflight_default_relative_path() {
+  local commit
+  commit="$(source_commit)"
+  if [[ -z "$commit" || "$commit" == "unknown" ]]; then
+    printf ".tmp/automated-release-preflight.md"
+  else
+    printf ".tmp/automated-release-preflight-%s.md" "$commit"
+  fi
+}
+
+automated_preflight_default_evidence_path() {
+  printf "%s/%s" "$ROOT_DIR" "$(automated_preflight_default_relative_path)"
+}
+
 blocker_bucket_for_message() {
   local message="$1"
 
@@ -615,9 +629,12 @@ write_automated_proof_gate_actions() {
   elif [[ "$AUTOMATED_PROOF_GATES" == "1" ]]; then
     printf -- "- Automated proof gates were requested in this report. Inspect the report output for pass/fail details before treating any automated gate as proven.\n"
   else
+    local default_evidence_relative
+    default_evidence_relative="$(automated_preflight_default_relative_path)"
     printf -- "- Run: \`SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh\`\n"
-    printf -- "- Or reuse clean-tree evidence in the report: \`SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/release_readiness_report.sh\`\n"
-    printf -- "- Or produce clean-tree evidence: \`SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/check_automated_release_preflight.sh\`\n"
+    printf -- "- Or produce clean-tree evidence: \`SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=%s ./script/check_automated_release_preflight.sh\`\n" "$default_evidence_relative"
+    printf -- "- Then rerun: \`./script/release_readiness_report.sh\` to auto-discover \`%s\` for the current source commit.\n" "$default_evidence_relative"
+    printf -- "- Explicit reuse also works: \`SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=%s ./script/release_readiness_report.sh\`\n" "$default_evidence_relative"
   fi
   printf "\n"
 }
@@ -1258,6 +1275,12 @@ resolve_automated_preflight_evidence_path() {
   local evidence_file="$AUTOMATED_PREFLIGHT_EVIDENCE_FILE"
 
   if [[ -z "$evidence_file" ]]; then
+    local default_evidence_path
+    default_evidence_path="$(automated_preflight_default_evidence_path)"
+    if [[ -f "$default_evidence_path" ]]; then
+      printf "%s" "$default_evidence_path"
+      return 0
+    fi
     printf ""
     return 0
   fi
@@ -1469,14 +1492,12 @@ else
 fi
 
 section "Automated preflight evidence"
-if [[ -z "$AUTOMATED_PREFLIGHT_EVIDENCE_FILE" ]]; then
-  printf "INFO: no automated preflight evidence file provided; local proof gates must run in this report or remain blockers.\n"
+if validate_automated_preflight_evidence; then
+  printf "OK: automated preflight evidence covers current commit and all local proof gates (%s)\n" "${AUTOMATED_PREFLIGHT_EVIDENCE_PATH#"$ROOT_DIR/"}"
+elif [[ -z "$AUTOMATED_PREFLIGHT_EVIDENCE_FILE" && "$AUTOMATED_PREFLIGHT_EVIDENCE_REASON" == "not provided" ]]; then
+  printf "INFO: no automated preflight evidence file provided or discovered at %s; local proof gates must run in this report or remain blockers.\n" "$(automated_preflight_default_relative_path)"
 else
-  if validate_automated_preflight_evidence; then
-    printf "OK: automated preflight evidence covers current commit and all local proof gates (%s)\n" "${AUTOMATED_PREFLIGHT_EVIDENCE_PATH#"$ROOT_DIR/"}"
-  else
-    blocker "automated preflight evidence is invalid: $AUTOMATED_PREFLIGHT_EVIDENCE_REASON"
-  fi
+  blocker "automated preflight evidence is invalid: $AUTOMATED_PREFLIGHT_EVIDENCE_REASON"
 fi
 
 section "Release CI preflight"

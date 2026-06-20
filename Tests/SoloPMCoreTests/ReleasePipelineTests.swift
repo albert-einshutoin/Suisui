@@ -2616,7 +2616,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("--confirm-manual-hands-on"))
         XCTAssertTrue(checklist.contains("Notion -> Todoist -> Linear -> Motion"))
         XCTAssertTrue(checklist.contains("./script/check_automated_release_preflight.sh"))
-        XCTAssertTrue(checklist.contains("SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/check_automated_release_preflight.sh"))
+        XCTAssertTrue(checklist.contains("export SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=\".tmp/automated-release-preflight-$(git rev-parse --short HEAD).md\""))
+        XCTAssertTrue(checklist.contains("The release readiness report auto-discovers `.tmp/automated-release-preflight-<commit>.md` for the current source commit when the environment variable is omitted."))
         XCTAssertTrue(checklist.contains("Evidence-file mode requires a clean tracked source tree"))
         XCTAssertTrue(checklist.contains("When the final report reuses this evidence, it verifies the generator identity, UTC timestamp, source commit, clean-tree marker, app name, Xcode workspace/scheme/configuration/destination, every automated proof gate, and the manual-evidence boundary text."))
         XCTAssertTrue(checklist.contains("Manual VoiceOver and competitor hands-on evidence record the current `Source commit`"))
@@ -2625,7 +2626,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("The final readiness report treats skipped automated proof gates as blockers by default."))
         XCTAssertTrue(checklist.contains("Do not claim release readiness from the default report output if CI, SQLite CRUD, runtime accessible CRUD, Xcode build, visible launch, or runtime AX were skipped."))
         XCTAssertTrue(checklist.contains("./script/release_readiness_report.sh"))
-        XCTAssertTrue(checklist.contains("SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/release_readiness_report.sh"))
+        XCTAssertTrue(checklist.contains("./script/release_readiness_report.sh # auto-discovers .tmp/automated-release-preflight-<commit>.md"))
+        XCTAssertTrue(checklist.contains("SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=\".tmp/automated-release-preflight-$(git rev-parse --short HEAD).md\" ./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("SOLOPM_RELEASE_CI_PREFLIGHT=1 ./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("SOLOPM_LOCAL_CRUD_SMOKE=1 ./script/release_readiness_report.sh"))
@@ -4613,6 +4615,106 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(actionSummary.contains("- Run: `SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh`"))
     }
 
+    func testReleaseReadinessReportAutoDiscoversCurrentCommitAutomatedPreflightEvidence() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-automated-preflight-auto-discovery", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let scriptsDirectory = fixtureRoot.appendingPathComponent("scripts", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let tmpDirectory = fixtureRoot.appendingPathComponent(".tmp", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let accessibilityURL = scriptDirectory.appendingPathComponent("check_accessibility_preflight.sh")
+        let actionSummaryURL = fixtureRoot.appendingPathComponent("release-actions.md")
+        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let evidenceURL = tmpDirectory.appendingPathComponent("automated-release-preflight-\(currentShortCommit).md")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: scriptsDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tmpDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try """
+        # Automated Release Preflight Evidence
+
+        Status: passed
+        Generated by: script/check_automated_release_preflight.sh
+        Generated at: 2026-06-19T12:30:44Z
+        Source commit: \(currentShortCommit)
+        Tracked source tree: clean
+        App: SoloPM
+        Xcode workspace: .swiftpm/xcode/package.xcworkspace
+        Xcode scheme: SoloPM
+        Xcode configuration: Release
+        Xcode destination: platform=macOS
+
+        ## Passed Gates
+
+        - Release CI: passed
+        - Local CRUD smoke: passed
+        - Runtime accessible CRUD smoke: passed
+        - Xcode build preflight: passed
+        - Launch preflight: passed
+        - Runtime accessibility preflight: passed
+        - MCP compliance preflight: passed
+
+        ## Boundaries
+
+        - This does not mark the release ready.
+        - Manual VoiceOver evidence remains separate.
+        - Competitor hands-on evidence remains separate.
+        - Developer ID signing, notarization, Sparkle, Gatekeeper, and clean-environment evidence remain separate.
+        """.write(to: evidenceURL, atomically: true, encoding: .utf8)
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "OK: accessibility source anchors are present (fixture)\\n"
+        """.write(to: accessibilityURL, atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: accessibilityURL.path)
+
+        let result = try runTool(
+            ["bash", reportURL.path],
+            environment: [
+                "SOLOPM_RELEASE_ACTIONS_FILE": actionSummaryURL.path,
+                "SOLOPM_XCODE_CONFIGURATION": "Release"
+            ]
+        )
+        let actionSummary = try String(contentsOf: actionSummaryURL, encoding: .utf8)
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("OK: automated preflight evidence covers current commit and all local proof gates (.tmp/automated-release-preflight-\(currentShortCommit).md)"))
+        XCTAssertTrue(result.output.contains("OK: release CI preflight covered by automated preflight evidence"))
+        XCTAssertTrue(result.output.contains("OK: local CRUD smoke covered by automated preflight evidence"))
+        XCTAssertTrue(result.output.contains("OK: runtime accessible CRUD smoke covered by automated preflight evidence"))
+        XCTAssertTrue(result.output.contains("OK: release Xcode preflight covered by automated preflight evidence"))
+        XCTAssertTrue(result.output.contains("OK: release launch preflight covered by automated preflight evidence"))
+        XCTAssertTrue(result.output.contains("OK: accessibility runtime preflight covered by automated preflight evidence"))
+        XCTAssertFalse(result.output.contains("release CI preflight was not run"))
+        XCTAssertFalse(result.output.contains("local CRUD smoke was not run"))
+        XCTAssertFalse(result.output.contains("runtime accessible CRUD smoke was not run"))
+        XCTAssertFalse(result.output.contains("release Xcode preflight was not run"))
+        XCTAssertFalse(result.output.contains("release launch preflight was not run"))
+        XCTAssertFalse(result.output.contains("accessibility runtime preflight was not run"))
+        XCTAssertTrue(actionSummary.contains("- [x] Automated preflight evidence accepted: `.tmp/automated-release-preflight-\(currentShortCommit).md`"))
+        XCTAssertFalse(actionSummary.contains("- Run: `SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh`"))
+    }
+
     func testReleaseReadinessReportRejectsAutomatedPreflightEvidenceForDifferentAppContext() throws {
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-release-readiness-automated-preflight-evidence-context", isDirectory: true)
@@ -5037,8 +5139,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Local product gates are green for this source commit"))
         XCTAssertTrue(script.contains("Remaining gates are manual VoiceOver, competitor hands-on, and release-machine signing/notarization/Sparkle/Gatekeeper evidence."))
         XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh"))
-        XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/release_readiness_report.sh"))
-        XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight.md ./script/check_automated_release_preflight.sh"))
+        XCTAssertTrue(script.contains("automated_preflight_default_relative_path()"))
+        XCTAssertTrue(script.contains("automated_preflight_default_evidence_path()"))
+        XCTAssertTrue(script.contains("Then rerun: \\`./script/release_readiness_report.sh\\` to auto-discover"))
+        XCTAssertTrue(script.contains("Explicit reuse also works: \\`SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=%s ./script/release_readiness_report.sh\\`"))
+        XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=%s ./script/check_automated_release_preflight.sh"))
         XCTAssertTrue(script.contains("## Manual VoiceOver"))
         XCTAssertTrue(script.contains("write_voiceover_review_candidate_command()"))
         XCTAssertTrue(script.contains("./script/prepare_voiceover_review_candidate.sh --no-launch"))
