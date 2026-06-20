@@ -996,8 +996,8 @@ private struct ProjectKanbanBoard: View {
                         onMoveTask: { taskID, status in
                             viewModel.moveTask(id: taskID, to: status)
                         },
-                        onMoveDroppedTasks: { taskIDs, status in
-                            viewModel.moveDroppedTasks(ids: taskIDs, to: status)
+                        onMoveDroppedTasks: { rawIDs, status in
+                            viewModel.moveDroppedTasks(ids: rawIDs, to: status)
                         }
                     )
                 }
@@ -1023,7 +1023,7 @@ private struct BoardColumnView: View {
     let onCreateTask: (String, String, ProjectTaskPriority, String?) -> Void
     let onSelectTask: (Int64) -> Void
     let onMoveTask: (Int64, ProjectTaskStatus) -> Void
-    let onMoveDroppedTasks: ([Int64], ProjectTaskStatus) -> Bool
+    let onMoveDroppedTasks: ([String], ProjectTaskStatus) -> Bool
 
     @State private var isDropTargeted = false
 
@@ -1085,34 +1085,7 @@ private struct BoardColumnView: View {
                 .accessibilityLabel("Add task to empty \(column.title) column")
             } else {
                 ForEach(column.tasks) { task in
-                    BoardTaskCard(
-                        task: task,
-                        isSelected: selectedTaskID == task.id,
-                        onSelect: { onSelectTask(task.id) },
-                        onMoveStatus: { status in onMoveTask(task.id, status) }
-                    )
-                    .draggable(ProjectTaskDragPayload(taskID: task.id)) {
-                        BoardTaskDragPreview(task: task)
-                    }
-                    .contextMenu {
-                        Button {
-                            onSelectTask(task.id)
-                        } label: {
-                            Label("Open Details", systemImage: "sidebar.right")
-                        }
-
-                        Menu {
-                            ForEach(ProjectTaskStatus.allCases.filter { $0 != task.status }) { status in
-                                Button {
-                                    onMoveTask(task.id, status)
-                                } label: {
-                                    Label(status.title, systemImage: status.systemImage)
-                                }
-                            }
-                        } label: {
-                            Label("Move To", systemImage: "arrow.right.arrow.left")
-                        }
-                    }
+                    taskRow(task)
                 }
             }
         }
@@ -1124,24 +1097,52 @@ private struct BoardColumnView: View {
                 .stroke(isDropTargeted ? column.status.tint.opacity(0.72) : Color.secondary.opacity(0.14), lineWidth: isDropTargeted ? 1.5 : 1)
         }
         .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
-        .dropDestination(for: ProjectTaskDragPayload.self) { payloads, _ in
-            onMoveDroppedTasks(payloads.map(\.taskID), column.status)
+        .contentShape(Rectangle())
+        .dropDestination(for: String.self) { rawIDs, _ in
+            onMoveDroppedTasks(rawIDs, column.status)
         } isTargeted: { isTargeted in
             isDropTargeted = isTargeted
         }
     }
-}
 
-private struct ProjectTaskDragPayload: Codable, Transferable {
-    let taskID: Int64
-
-    static var transferRepresentation: some TransferRepresentation {
-        CodableRepresentation(contentType: .soloPMProjectTask)
+    private func taskRow(_ task: ProjectBoardTask) -> some View {
+        BoardTaskCard(
+            task: task,
+            isSelected: selectedTaskID == task.id,
+            onSelect: { onSelectTask(task.id) },
+            onMoveStatus: { status in onMoveTask(task.id, status) }
+        )
+        .draggable(String(task.id)) {
+            BoardTaskDragPreview(task: task)
+        }
+        .dropDestination(for: String.self) { rawIDs, _ in
+            onMoveDroppedTasks(rawIDs, column.status)
+        }
+        .contextMenu {
+            taskContextMenu(for: task)
+        }
     }
-}
 
-private extension UTType {
-    static let soloPMProjectTask = UTType(exportedAs: "dev.solopm.project-task")
+    @ViewBuilder
+    private func taskContextMenu(for task: ProjectBoardTask) -> some View {
+        Button {
+            onSelectTask(task.id)
+        } label: {
+            Label("Open Details", systemImage: "sidebar.right")
+        }
+
+        Menu {
+            ForEach(ProjectTaskStatus.allCases.filter { $0 != task.status }) { status in
+                Button {
+                    onMoveTask(task.id, status)
+                } label: {
+                    Label(status.title, systemImage: status.systemImage)
+                }
+            }
+        } label: {
+            Label("Move To", systemImage: "arrow.right.arrow.left")
+        }
+    }
 }
 
 private struct StatusCountBadge: View {

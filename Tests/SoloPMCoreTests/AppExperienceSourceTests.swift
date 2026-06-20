@@ -299,9 +299,11 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
 
-        XCTAssertTrue(boardSource.contains("onMoveDroppedTasks(payloads.map(\\.taskID), column.status)"))
-        XCTAssertFalse(boardSource.contains("compactMap(Int64.init)"))
-        XCTAssertTrue(boardSource.contains("ProjectTaskDragPayload"))
+        XCTAssertTrue(boardSource.contains(".draggable(String(task.id))"))
+        XCTAssertTrue(boardSource.contains(".dropDestination(for: String.self)"))
+        XCTAssertTrue(boardSource.contains("onMoveDroppedTasks(rawIDs, column.status)"))
+        XCTAssertTrue(boardSource.contains(".contentShape(Rectangle())"))
+        XCTAssertFalse(boardSource.contains("ProjectTaskDragPayload"))
         XCTAssertTrue(coreSource.contains("moveDroppedTasks(ids taskIDs: [Int64], to status: ProjectTaskStatus)"))
         XCTAssertTrue(coreSource.contains("moveDroppedTasks(ids rawIDs: [String], to status: ProjectTaskStatus)"))
         XCTAssertTrue(coreSource.contains("func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask]"))
@@ -344,8 +346,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("task.status.previousStatus"))
         XCTAssertTrue(source.contains("task.status.nextStatus"))
         XCTAssertTrue(source.contains("onMoveTask(task.id, status)"))
-        XCTAssertTrue(source.contains(".draggable(ProjectTaskDragPayload(taskID: task.id))"))
-        XCTAssertFalse(source.contains(".draggable(String(task.id))"))
+        XCTAssertTrue(source.contains(".draggable(String(task.id))"))
         XCTAssertFalse(source.contains("Button {\n                        onSelectTask(task.id)\n                    } label: {\n                        BoardTaskCard"))
     }
 
@@ -378,14 +379,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("arrow.up.and.down.and.arrow.left.and.right"))
         XCTAssertTrue(source.contains("Drop to move to"))
         XCTAssertTrue(source.contains("isDropTargeted"))
-        XCTAssertTrue(source.contains(".dropDestination(for: ProjectTaskDragPayload.self)"))
+        XCTAssertTrue(source.contains(".dropDestination(for: String.self)"))
+        XCTAssertTrue(source.contains(".contentShape(Rectangle())"))
     }
 
     func testKanbanCardsUseTaskComponentDragPreview() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
         XCTAssertTrue(source.contains("BoardTaskDragPreview"))
-        XCTAssertTrue(source.contains(".draggable(ProjectTaskDragPayload(taskID: task.id)) {"))
+        XCTAssertTrue(source.contains(".draggable(String(task.id)) {"))
         XCTAssertTrue(source.contains("BoardTaskDragPreview(task: task)"))
     }
 
