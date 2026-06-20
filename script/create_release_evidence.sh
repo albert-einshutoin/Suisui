@@ -10,6 +10,7 @@ OUTPUT_FILE="${SOLOPM_RELEASE_EVIDENCE_FILE:-$ROOT_DIR/packaging/release-evidenc
 CHECKSUM_FILE="${SOLOPM_RELEASE_ARTIFACT_SHA256_FILE:-}"
 RELEASE_APPCAST_FILE="${SOLOPM_RELEASE_APPCAST_FILE:-$ROOT_DIR/dist/releases/appcast.xml}"
 FORCE=0
+VALIDATE_ONLY=0
 RELEASE_MACHINE_LAUNCH=false
 CHECKSUM_VERIFICATION=false
 CLEAN_DMG_INSTALL=false
@@ -29,6 +30,7 @@ Usage:
 
 Options:
   --force                         overwrite existing evidence file
+  --validate-only                 run validation without writing release evidence
   --release-machine-launch        mark signed/notarized app launch on release machine as checked
   --checksum-verification         mark release artifact checksum verification as checked
   --clean-dmg-install             mark clean environment DMG download/open as checked
@@ -61,6 +63,10 @@ while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --force)
       FORCE=1
+      shift
+      ;;
+    --validate-only)
+      VALIDATE_ONLY=1
       shift
       ;;
     --release-machine-launch)
@@ -136,7 +142,7 @@ if [[ ! -f "$METADATA_FILE" ]]; then
   exit 2
 fi
 
-if [[ -f "$OUTPUT_FILE" && "$FORCE" != "1" ]]; then
+if [[ "$VALIDATE_ONLY" != "1" && -f "$OUTPUT_FILE" && "$FORCE" != "1" ]]; then
   echo "release evidence already exists: $OUTPUT_FILE" >&2
   echo "rerun with --force to overwrite it" >&2
   exit 2
@@ -247,6 +253,8 @@ is_placeholder_manual_environment() {
   normalized="$(trim_text "$1" | tr '[:upper:]' '[:lower:]')"
   case "$normalized" in
     ""|\
+    \<*|\
+    *\>|\
     "macos version, hardware, clean user/install notes"|\
     *placeholder*|\
     *replace*|\
@@ -266,6 +274,8 @@ is_placeholder_checked_by() {
   normalized="$(trim_text "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[[:space:]]+/ /g')"
   case "$normalized" in
     name|\
+    \<*|\
+    *\>|\
     reviewer|\
     "reviewer name"|\
     "release reviewer"|\
@@ -298,6 +308,8 @@ is_boilerplate_review_note() {
     "manual checks completed on the signed build"|\
     "set booleans true only after the signed and notarized build is tested"|\
     "generated from packaging/app_metadataenv set manual check flags only after testing the signed and notarized build"|\
+    \<*|\
+    *\>|\
     *placeholder*|\
     *replace*|\
     *sample*|\
@@ -614,7 +626,6 @@ for index in "${!NOTES[@]}"; do
   fi
 done
 
-mkdir -p "$(dirname "$OUTPUT_FILE")"
 tmp_file="$OUTPUT_FILE.tmp"
 artifact_sha="$(read_artifact_sha256)"
 artifact_path="$(read_artifact_path)"
@@ -652,6 +663,13 @@ fi
 require_release_signing_context
 require_release_sparkle_context
 require_release_appcast
+
+if [[ "$VALIDATE_ONLY" == "1" ]]; then
+  printf 'OK: release evidence command is valid for current source commit: %s\n' "$SOURCE_GIT_COMMIT"
+  exit 0
+fi
+
+mkdir -p "$(dirname "$OUTPUT_FILE")"
 
 {
   printf '{\n'

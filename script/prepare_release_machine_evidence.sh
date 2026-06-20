@@ -64,6 +64,23 @@ display_path() {
   fi
 }
 
+write_release_evidence_invocation() {
+  local first_argument="$1"
+
+  printf './script/create_release_evidence.sh %s \\\n' "$first_argument"
+  printf '%s\n' '  --release-machine-launch \'
+  printf '%s\n' '  --checksum-verification \'
+  printf '%s\n' '  --clean-dmg-install \'
+  printf '%s\n' '  --applications-folder-install \'
+  printf '%s\n' '  --gatekeeper-accepted \'
+  printf '%s\n' '  --clean-environment-launch \'
+  printf '%s\n' '  --login-item-toggle \'
+  printf '%s\n' '  --sparkle-appcast-metadata \'
+  printf '%s\n' '  --manual-environment "<macOS version, hardware, clean user or VM/install context>" \'
+  printf '%s\n' '  --checked-by "<reviewer name>" \'
+  printf '%s\n' '  --note "<concrete note covering release-machine launch, checksum SHA-256, clean DMG install, /Applications launch, Gatekeeper/spctl acceptance, clean environment first launch, Launch at Login toggle on/off, and Sparkle appcast metadata>"'
+}
+
 write_worksheet() {
   mkdir -p "$(dirname "$WORKSHEET_FILE")"
 
@@ -142,18 +159,11 @@ write_command() {
     printf '%s\n' 'source packaging/app_metadata.env'
     printf '%s\n' 'export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"'
     printf '\n'
-    printf '%s\n' './script/create_release_evidence.sh --force \'
-    printf '%s\n' '  --release-machine-launch \'
-    printf '%s\n' '  --checksum-verification \'
-    printf '%s\n' '  --clean-dmg-install \'
-    printf '%s\n' '  --applications-folder-install \'
-    printf '%s\n' '  --gatekeeper-accepted \'
-    printf '%s\n' '  --clean-environment-launch \'
-    printf '%s\n' '  --login-item-toggle \'
-    printf '%s\n' '  --sparkle-appcast-metadata \'
-    printf '%s\n' '  --manual-environment "<macOS version, hardware, clean user or VM/install context>" \'
-    printf '%s\n' '  --checked-by "<reviewer name>" \'
-    printf '%s\n' '  --note "<concrete note covering release-machine launch, checksum SHA-256, clean DMG install, /Applications launch, Gatekeeper/spctl acceptance, clean environment first launch, Launch at Login toggle on/off, and Sparkle appcast metadata>"'
+    printf '%s\n' '# Validate the filled release-machine evidence command before writing tracked evidence.'
+    write_release_evidence_invocation "--validate-only"
+    printf '\n'
+    printf '%s\n' '# If validation passes and every release-machine manual check is complete, write tracked evidence.'
+    write_release_evidence_invocation "--force"
   } >"$COMMAND_FILE"
 
   chmod +x "$COMMAND_FILE"

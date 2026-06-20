@@ -725,6 +725,21 @@ write_release_machine_runbook_command() {
   printf '%s\n' '# 5. Bind manual release evidence to the generated DMG checksum.'
   printf '%s\n' 'source packaging/app_metadata.env'
   printf '%s\n' 'export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"'
+  printf '%s\n' '# Validate first; this must not write packaging/release-evidence.json.'
+  printf '%s\n' './script/create_release_evidence.sh --validate-only \'
+  printf '%s\n' '  --release-machine-launch \'
+  printf '%s\n' '  --checksum-verification \'
+  printf '%s\n' '  --clean-dmg-install \'
+  printf '%s\n' '  --applications-folder-install \'
+  printf '%s\n' '  --gatekeeper-accepted \'
+  printf '%s\n' '  --clean-environment-launch \'
+  printf '%s\n' '  --login-item-toggle \'
+  printf '%s\n' '  --sparkle-appcast-metadata \'
+  printf '%s\n' '  --manual-environment "<macOS version, hardware, clean user or VM/install context>" \'
+  printf '%s\n' '  --checked-by "<reviewer name>" \'
+  printf '%s\n' '  --note "<concrete note covering every enabled manual release flag>"'
+  printf '%s\n' ''
+  printf '%s\n' '# Write evidence only after validation and every manual check pass.'
   printf '%s\n' './script/create_release_evidence.sh --force \'
   printf '%s\n' '  --release-machine-launch \'
   printf '%s\n' '  --checksum-verification \'
@@ -970,6 +985,7 @@ write_release_actions() {
     printf -- "- Follow \`docs/release/checklist.md\` on the release machine.\n"
     printf -- "- Run \`./script/prepare_release_machine_evidence.sh\` first to create \`.tmp/release-machine/release-machine-worksheet.md\` and \`.tmp/release-machine/create-release-evidence-command.sh\` before performing manual release checks.\n"
     printf -- "- The generated release-machine evidence command is pinned to a clean tracked source tree and the source commit it was created for. Rerun \`./script/prepare_release_machine_evidence.sh\` after source changes instead of reusing an older command.\n"
+    printf -- "- Run the generated \`--validate-only\` release evidence command first; it performs the same validation without writing \`packaging/release-evidence.json\`.\n"
     printf -- "- Configure \`packaging/signing.env\`, \`packaging/notarization.env\`, production Sparkle feed/key, signed/notarized/stapled app, appcast metadata, and \`packaging/release-evidence.json\`.\n"
     printf -- "- Verify with \`./script/verify_release_environment.sh\` before expecting the readiness report to pass.\n"
     printf -- "- Replace placeholders below with production values and real manual observations before running the commands.\n\n"

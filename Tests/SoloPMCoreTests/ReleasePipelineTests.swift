@@ -412,6 +412,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(command.contains("Rerun ./script/prepare_release_machine_evidence.sh for this release candidate."))
         XCTAssertTrue(command.contains("source packaging/app_metadata.env"))
         XCTAssertTrue(command.contains("SOLOPM_RELEASE_ARTIFACT_SHA256_FILE=\"dist/releases/SoloPM-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256\""))
+        XCTAssertTrue(command.contains("Validate the filled release-machine evidence command before writing tracked evidence."))
+        XCTAssertTrue(command.contains("./script/create_release_evidence.sh --validate-only \\"))
         XCTAssertTrue(command.contains("./script/create_release_evidence.sh --force \\"))
         XCTAssertTrue(command.contains("--release-machine-launch \\"))
         XCTAssertTrue(command.contains("--checksum-verification \\"))
@@ -425,12 +427,17 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(command.contains("--checked-by \"<reviewer name>\" \\"))
         XCTAssertTrue(command.contains("Launch at Login toggle on/off"))
         XCTAssertTrue(command.contains("Sparkle appcast metadata"))
+        let validateRange = try XCTUnwrap(command.range(of: "./script/create_release_evidence.sh --validate-only \\"))
+        let writeRange = try XCTUnwrap(command.range(of: "./script/create_release_evidence.sh --force \\"))
+        XCTAssertLessThan(validateRange.lowerBound, writeRange.lowerBound)
 
         let checklist = try readPackageFile("docs/release/checklist.md")
         XCTAssertTrue(checklist.contains("The generated release evidence command requires a clean tracked source tree, pins the source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit."))
+        XCTAssertTrue(checklist.contains("Run the generated release-machine `--validate-only` command first; it performs the same release evidence validation without writing `packaging/release-evidence.json`."))
 
         let phase = try readPackageFile("tasks/Phase10-ReleaseReadinessRuntime.md")
         XCTAssertTrue(phase.contains("[x] `script/prepare_release_machine_evidence.sh` pins `.tmp/release-machine/create-release-evidence-command.sh` to a clean tracked source tree and the source commit it was generated for"))
+        XCTAssertTrue(phase.contains("[x] `script/create_release_evidence.sh --validate-only` validates the filled release-machine command without writing `packaging/release-evidence.json`."))
     }
 
     func testLocalVisualQAArtifactsAndMacMetadataAreIgnored() throws {
@@ -555,6 +562,95 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(evidence.contains("PASSWORD"))
         XCTAssertFalse(evidence.contains("TOKEN"))
         XCTAssertFalse(evidence.contains("SECRET"))
+    }
+
+    func testReleaseEvidenceValidateOnlyRunsFullValidationWithoutWritingEvidence() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-validate-only.json")
+        let checksumURL = packageRoot()
+            .appendingPathComponent(".build/test-release-artifact-validate-only.dmg.sha256")
+        let artifactPath = ".build/test-release-artifact-validate-only.dmg"
+        try FileManager.default.createDirectory(
+            at: evidenceURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let artifactURL = try writeArtifactChecksum(to: checksumURL, artifactPath: artifactPath)
+        let packageEvidenceURL = try writePackageEvidence(for: checksumURL, artifactPath: artifactPath)
+        let appcastURL = try writeReleaseAppcastFixture(
+            at: packageRoot().appendingPathComponent(".build/test-release-appcast-validate-only.xml")
+        )
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+            try? FileManager.default.removeItem(at: checksumURL)
+            try? FileManager.default.removeItem(at: artifactURL)
+            try? FileManager.default.removeItem(at: packageEvidenceURL)
+            try? FileManager.default.removeItem(at: appcastURL)
+        }
+
+        try "existing release evidence must not be overwritten\n"
+            .write(to: evidenceURL, atomically: true, encoding: .utf8)
+
+        let result = try runScript(
+            "script/create_release_evidence.sh",
+            arguments: [
+                "--validate-only",
+                "--release-machine-launch",
+                "--checksum-verification",
+                "--clean-dmg-install",
+                "--applications-folder-install",
+                "--gatekeeper-accepted",
+                "--clean-environment-launch",
+                "--login-item-toggle",
+                "--sparkle-appcast-metadata",
+                "--manual-environment", "macOS 15.5 clean user on arm64",
+                "--checked-by", "release-owner",
+                "--note", completeManualReleaseEvidenceNote
+            ],
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path,
+                "SOLOPM_RELEASE_ARTIFACT_SHA256_FILE": checksumURL.path,
+                "SOLOPM_RELEASE_APPCAST_FILE": appcastURL.path,
+                "SOLOPM_SIGNING_IDENTITY": "Developer ID Application: SoloPM Test (TEAMID)",
+                "SOLOPM_NOTARY_PROFILE": "SoloPMNotaryProfile",
+                "SOLOPM_SPARKLE_FEED_URL": "https://updates.solopm.app/releases/appcast.xml",
+                "SOLOPM_SPARKLE_DOWNLOAD_URL_PREFIX": "https://updates.solopm.app/releases/",
+                "SOLOPM_SPARKLE_PUBLIC_ED_KEY": "MCowBQYDK2VwAyEATestPublicKeyForSoloPMReleaseOnly"
+            ]
+        )
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("OK: release evidence command is valid for current source commit: \(try currentGitCommit())"))
+        XCTAssertEqual(
+            try String(contentsOf: evidenceURL, encoding: .utf8),
+            "existing release evidence must not be overwritten\n"
+        )
+    }
+
+    func testReleaseEvidenceValidateOnlyRejectsPlaceholdersWithoutWritingEvidence() throws {
+        let evidenceURL = packageRoot()
+            .appendingPathComponent(".build/test-release-evidence-validate-only-placeholder.json")
+        try? FileManager.default.removeItem(at: evidenceURL)
+        defer {
+            try? FileManager.default.removeItem(at: evidenceURL)
+        }
+
+        let result = try runScript(
+            "script/create_release_evidence.sh",
+            arguments: [
+                "--validate-only",
+                "--release-machine-launch",
+                "--manual-environment", "<macOS version, hardware, clean user or VM/install context>",
+                "--checked-by", "<reviewer name>",
+                "--note", "<concrete note covering release-machine launch, checksum SHA-256, clean DMG install, /Applications launch, Gatekeeper/spctl acceptance, clean environment first launch, Launch at Login toggle on/off, and Sparkle appcast metadata>"
+            ],
+            environment: [
+                "SOLOPM_RELEASE_EVIDENCE_FILE": evidenceURL.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("release evidence requires --checked-by to name the actual reviewer"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: evidenceURL.path))
     }
 
     func testReleaseEvidenceScriptAcceptsRelativePackageEvidencePathForAbsoluteChecksum() throws {
@@ -4975,6 +5071,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("The generated VoiceOver evidence command is pinned to a clean tracked source tree and the source commit it was created for."))
         XCTAssertTrue(script.contains("The generated competitor hands-on evidence command is pinned to a clean tracked source tree and the source commit it was created for."))
         XCTAssertTrue(script.contains("The generated release-machine evidence command is pinned to a clean tracked source tree and the source commit it was created for."))
+        XCTAssertTrue(script.contains("Run the generated \\`--validate-only\\` release evidence command first; it performs the same validation without writing \\`packaging/release-evidence.json\\`."))
         XCTAssertTrue(script.contains("## Manual Evidence Source Hygiene"))
         XCTAssertTrue(script.contains("Direct manual evidence scripts enforce the same clean tracked source tree guard before writing passed evidence."))
         XCTAssertTrue(script.contains("Do not bypass the generated command files to work around a dirty tree."))
@@ -4985,6 +5082,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh"))
         XCTAssertTrue(script.contains("SOLOPM_PACKAGE_FORMAT=all ./script/package_release.sh"))
         XCTAssertTrue(script.contains("SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/generate_appcast.sh"))
+        XCTAssertTrue(script.contains("./script/create_release_evidence.sh --validate-only"))
         XCTAssertTrue(script.contains("./script/verify_release_environment.sh"))
         XCTAssertTrue(script.contains("This file is an action summary, not release evidence."))
         XCTAssertTrue(script.contains("does not mark manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper checks as passed"))
@@ -5021,6 +5119,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] action summary は未チェックの手動Phase項目を Manual VoiceOver / Competitor Hands-On / Release Machine / Login Item Manual Check / Manual Review に分類し"))
         XCTAssertTrue(phase.contains("[x] action summary は Release Machine blocker が残る場合、署名、notarization、package、appcast、release evidence、final preflight の順序付きコマンドを出す。"))
         XCTAssertTrue(phase.contains("[x] `script/prepare_release_machine_evidence.sh` は `.tmp/release-machine/release-machine-worksheet.md` と `.tmp/release-machine/create-release-evidence-command.sh` を生成し"))
+        XCTAssertTrue(phase.contains("[x] `script/create_release_evidence.sh --validate-only` validates the filled release-machine command without writing `packaging/release-evidence.json`."))
     }
 
     func testReleaseReadinessReportWritesSpecificReleaseEnvironmentBlockersToActionSummary() throws {
