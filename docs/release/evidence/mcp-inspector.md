@@ -1,6 +1,6 @@
 # MCP Inspector Evidence
 
-Generated: 2026-06-20T04:37:24Z
+Generated: 2026-06-20T06:41:33Z
 
 Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and SoloPM's local JSON-RPC smoke checks.
 
@@ -9,6 +9,10 @@ Stable baseline: `2025-11-25`
 Official stable latest: `2025-11-25`
 
 Official latest source: https://modelcontextprotocol.io/specification
+
+Official GitHub releases source: https://github.com/modelcontextprotocol/modelcontextprotocol/releases
+
+Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release.
 
 Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning
 
