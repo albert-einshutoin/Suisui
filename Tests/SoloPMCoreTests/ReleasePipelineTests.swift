@@ -2578,6 +2578,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("manual release flags require an explicit review note"))
         XCTAssertTrue(checklist.contains("./script/prepare_release_manual_helpers.sh"))
         XCTAssertTrue(checklist.contains("It regenerates the VoiceOver pending preview/command, competitor hands-on pending evidence, competitor benchmark pending worksheet, competitor hands-on worksheet/command, and release-machine worksheet/command for the current source commit without writing passed evidence."))
+        XCTAssertTrue(checklist.contains("The manual helper wrapper itself requires a clean tracked source tree before regenerating pending previews or command files"))
         XCTAssertTrue(checklist.contains("source git commit is recorded in release evidence"))
         XCTAssertTrue(checklist.contains("SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml"))
         XCTAssertFalse(checklist.contains("./script/verify_appcast.sh packaging/appcast.sample.xml"))
@@ -3026,6 +3027,56 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: currentVoiceOverPreview.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: currentCompetitorPreview.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: currentBenchmarkPreview.path))
+    }
+
+    func testManualReleaseHelperPreparationRejectsDirtyTrackedSourceTreeBeforeCallingHelpers() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-prepare-release-manual-helpers-dirty-tree", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let callsDirectory = fixtureRoot
+            .appendingPathComponent(".tmp", isDirectory: true)
+            .appendingPathComponent("calls", isDirectory: true)
+        let helperURL = scriptDirectory.appendingPathComponent("prepare_release_manual_helpers.sh")
+        let voiceOverURL = scriptDirectory.appendingPathComponent("prepare_voiceover_review_candidate.sh")
+        let competitorURL = scriptDirectory.appendingPathComponent("create_competitor_hands_on_evidence.sh")
+        let releaseMachineURL = scriptDirectory.appendingPathComponent("prepare_release_machine_evidence.sh")
+        let trackedURL = fixtureRoot.appendingPathComponent("tracked-release-source.txt")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        try readPackageFile("script/prepare_release_manual_helpers.sh")
+            .write(to: helperURL, atomically: true, encoding: .utf8)
+        for helperScriptURL in [voiceOverURL, competitorURL, releaseMachineURL] {
+            try """
+            #!/usr/bin/env bash
+            set -euo pipefail
+            ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+            mkdir -p "$ROOT_DIR/.tmp/calls"
+            printf "%s\\n" "$*" > "$ROOT_DIR/.tmp/calls/\(helperScriptURL.deletingPathExtension().lastPathComponent).args"
+            """.write(to: helperScriptURL, atomically: true, encoding: .utf8)
+        }
+        try "clean release candidate\n".write(to: trackedURL, atomically: true, encoding: .utf8)
+
+        for url in [helperURL, voiceOverURL, competitorURL, releaseMachineURL] {
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        }
+
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "init"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "config", "user.email", "release-tests@example.invalid"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "config", "user.name", "Release Tests"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "."]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "initial release helper fixture"]).exitCode, 0)
+
+        try "dirty release candidate\n".write(to: trackedURL, atomically: true, encoding: .utf8)
+
+        let result = try runTool(["bash", helperURL.path])
+
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.output.contains("BLOCKER: manual release helper preparation requires a clean tracked source tree"))
+        XCTAssertTrue(result.output.contains("Commit or revert tracked source changes, then rerun ./script/prepare_release_manual_helpers.sh for this release candidate."))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: callsDirectory.path))
     }
 
     func testVoiceOverEvidenceGeneratorWritesPendingAndPassedEvidence() throws {
@@ -5426,6 +5477,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] action summary は VoiceOver / competitor hands-on / release-machine の生成済み証跡コマンドが clean tracked source tree と生成時 source commit にpinされ、source変更後は再生成が必要なことを表示する。"))
         XCTAssertTrue(phase.contains("[x] action summary の VoiceOver / competitor hands-on の直接実行例は `--validate-only` を `--passed` より先に表示し、manual evidence を即書き込みしない導線にする。"))
         XCTAssertTrue(phase.contains("[x] `script/prepare_release_manual_helpers.sh` は current source commit の VoiceOver pending preview / command、competitor pending evidence、competitor benchmark pending worksheet、competitor worksheet / command、release-machine worksheet / command を一括再生成し、passed evidence を書かない。"))
+        XCTAssertTrue(phase.contains("[x] `script/prepare_release_manual_helpers.sh` は tracked source tree がdirtyな場合、pending preview / command生成前に停止し"))
         XCTAssertTrue(phase.contains("[x] action summary の Manual Review Helper Freshness は stale/missing helper を見つけた場合、個別コマンドの羅列ではなく `./script/prepare_release_manual_helpers.sh` を次アクションとして提示する。"))
         XCTAssertTrue(phase.contains("[x] action summary は古い `.tmp/voiceover-review/*-pending-<old-commit>.md` / `.tmp/competitor-hands-on/*-pending-<old-commit>.md` を ignored stale preview として表示し、operatorが別release候補のcontextをtracked evidenceへ転記しないようにする。"))
         XCTAssertTrue(phase.contains("[x] `script/prepare_release_manual_helpers.sh --prune-stale` は current source commit のhelper再生成後、古いpending previewだけを削除し、passed evidenceを書かない。"))

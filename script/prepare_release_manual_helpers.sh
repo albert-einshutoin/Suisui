@@ -73,6 +73,25 @@ prune_stale_manual_helper_previews() {
     "competitor-benchmark-pending-$SOURCE_COMMIT.md"
 }
 
+require_clean_tracked_source_tree_for_manual_helpers() {
+  local tracked_source_status
+
+  if ! git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "BLOCKER: manual release helper preparation requires git to verify the release source tree" >&2
+    exit 2
+  fi
+
+  if ! tracked_source_status="$(git -C "$ROOT_DIR" status --porcelain --untracked-files=no 2>/dev/null)"; then
+    echo "BLOCKER: manual release helper preparation could not inspect tracked source tree status" >&2
+    exit 2
+  fi
+
+  if [[ -n "$tracked_source_status" ]]; then
+    echo "BLOCKER: manual release helper preparation requires a clean tracked source tree. Commit or revert tracked source changes, then rerun ./script/prepare_release_manual_helpers.sh for this release candidate." >&2
+    exit 2
+  fi
+}
+
 for helper_script in "$VOICEOVER_SCRIPT" "$COMPETITOR_SCRIPT" "$RELEASE_MACHINE_SCRIPT"; do
   if [[ ! -x "$helper_script" ]]; then
     echo "missing executable helper script: ${helper_script#"$ROOT_DIR/"}" >&2
@@ -81,6 +100,7 @@ for helper_script in "$VOICEOVER_SCRIPT" "$COMPETITOR_SCRIPT" "$RELEASE_MACHINE_
 done
 
 cd "$ROOT_DIR"
+require_clean_tracked_source_tree_for_manual_helpers
 
 printf 'Preparing manual release helpers for current source commit: %s\n' "$SOURCE_COMMIT"
 printf '%s\n' 'This does not write passed manual evidence.'
