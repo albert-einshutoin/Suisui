@@ -4164,17 +4164,24 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(generatedCommand.contains("competitor hands-on evidence command requires a clean tracked source tree"))
         XCTAssertTrue(generatedCommand.contains("competitor hands-on evidence command was generated for source commit"))
         XCTAssertTrue(generatedCommand.contains("COMPETITOR_WORKSHEET_FILE=\(worksheetURL.path)"))
+        XCTAssertTrue(generatedCommand.contains("COMPETITOR_BENCHMARK_WORKSHEET_FILE=\(pendingBenchmarkURL.path)"))
         XCTAssertTrue(generatedCommand.contains("verify_competitor_worksheet_for_evidence()"))
+        XCTAssertTrue(generatedCommand.contains("verify_competitor_benchmark_worksheet_for_evidence()"))
         XCTAssertTrue(generatedCommand.contains("Status: completed"))
         XCTAssertTrue(generatedCommand.contains("Release candidate source commit: \\`$EXPECTED_SOURCE_COMMIT\\`"))
+        XCTAssertTrue(generatedCommand.contains("Source commit: \\`$EXPECTED_SOURCE_COMMIT\\`"))
         XCTAssertTrue(generatedCommand.contains("grep -F -- \"- [ ]\" \"$COMPETITOR_WORKSHEET_FILE\""))
+        XCTAssertTrue(generatedCommand.contains("grep -F -- \"- [ ]\" \"$COMPETITOR_BENCHMARK_WORKSHEET_FILE\""))
         XCTAssertTrue(generatedCommand.contains("competitor hands-on worksheet is missing, stale, or incomplete"))
+        XCTAssertTrue(generatedCommand.contains("competitor benchmark worksheet is missing, stale, or incomplete"))
         XCTAssertTrue(generatedCommand.contains("Reviewer"))
         XCTAssertTrue(generatedCommand.contains("Elapsed hands-on time with per-competitor timing"))
         XCTAssertTrue(generatedCommand.contains("Ship"))
         let worksheetCheckRange = try XCTUnwrap(generatedCommand.range(of: "verify_competitor_worksheet_for_evidence"))
+        let benchmarkWorksheetCheckRange = try XCTUnwrap(generatedCommand.range(of: "verify_competitor_benchmark_worksheet_for_evidence"))
         let validateCommandRange = try XCTUnwrap(generatedCommand.range(of: "# Validate the filled competitor hands-on command before writing tracked evidence."))
         XCTAssertLessThan(worksheetCheckRange.lowerBound, validateCommandRange.lowerBound)
+        XCTAssertLessThan(benchmarkWorksheetCheckRange.lowerBound, validateCommandRange.lowerBound)
         XCTAssertTrue(generatedCommand.contains("# Validate the filled competitor hands-on command before writing tracked evidence."))
         XCTAssertTrue(generatedCommand.contains("./script/create_competitor_hands_on_evidence.sh --validate-only \\"))
         XCTAssertTrue(generatedCommand.contains("./script/create_competitor_hands_on_evidence.sh --passed \\"))
@@ -4191,7 +4198,7 @@ final class ReleasePipelineTests: XCTestCase {
         let releaseChecklist = try readPackageFile("docs/release/checklist.md")
         XCTAssertTrue(releaseChecklist.contains("Running the pending generator also writes `.tmp/competitor-hands-on/hands-on-worksheet.md`, `.tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md`, and `.tmp/competitor-hands-on/create-evidence-command.sh`."))
         XCTAssertTrue(releaseChecklist.contains("The generated competitor hands-on command requires a clean tracked source tree, pins the source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit."))
-        XCTAssertTrue(releaseChecklist.contains("The generated competitor hands-on command also verifies `.tmp/competitor-hands-on/hands-on-worksheet.md` is marked completed, pinned to the same source commit, free of unchecked/pending/template markers, and filled before validate-only or passed evidence can run."))
+        XCTAssertTrue(releaseChecklist.contains("The generated competitor hands-on command also verifies `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md` are marked completed, pinned to the same source commit, free of unchecked/pending/template markers, and filled before validate-only or passed evidence can run."))
         XCTAssertTrue(releaseChecklist.contains("Run the generated competitor `--validate-only` command first; it performs the same passed-evidence validation without writing `docs/release/evidence/competitor-hands-on.md` or `docs/product/competitor-benchmark.md`."))
         XCTAssertTrue(releaseChecklist.contains("The competitor passed command requires `--hands-on-duration` with a real 2-4 hour total and per-competitor timing."))
         let phase11 = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
@@ -4199,14 +4206,56 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase11.contains("[x] `script/create_competitor_hands_on_evidence.sh --pending --benchmark-output .tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md` は競合別hands-on findingsとShip/Defer/Rejectのpending benchmark worksheetも生成し、final benchmark更新漏れを防ぐ。"))
         XCTAssertTrue(phase11.contains("[x] `script/create_competitor_hands_on_evidence.sh --validate-only` validates the filled manual command without writing tracked evidence or benchmark findings."))
         XCTAssertTrue(phase11.contains("[x] competitor hands-on passed evidence requires elapsed 2-4 hour timing with Notion/Todoist/Linear/Motion coverage."))
-        XCTAssertTrue(phase11.contains("[x] Generated competitor hands-on evidence command verifies `.tmp/competitor-hands-on/hands-on-worksheet.md` is current, marked completed, filled, and free of pending/unchecked markers before validation or passed evidence."))
+        XCTAssertTrue(phase11.contains("[x] Generated competitor hands-on evidence command verifies `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md` are current, marked completed, filled, and free of pending/unchecked markers before validation or passed evidence."))
         let generatedCommandResult = try runTool(["bash", commandURL.path])
         XCTAssertNotEqual(generatedCommandResult.exitCode, 0)
         XCTAssertTrue(
             generatedCommandResult.output.contains("competitor hands-on evidence command requires a clean tracked source tree")
                 || generatedCommandResult.output.contains("--checked-by must name the actual reviewer")
                 || generatedCommandResult.output.contains("competitor hands-on worksheet is missing, stale, or incomplete")
+                || generatedCommandResult.output.contains("competitor benchmark worksheet is missing, stale, or incomplete")
         )
+
+        try """
+        # Competitor Hands-On Worksheet
+
+        Status: completed
+
+        ## Candidate Metadata
+
+        - Release candidate source commit: `\(currentShortCommit)`
+        - Output evidence: `\(pendingURL.path)`
+        - Benchmark output: `\(pendingBenchmarkURL.path)`
+        - Passed command: `\(commandURL.path)`
+
+        ## Review Context
+
+        - Reviewer: SoloPM Product Reviewer
+        - Review date: 2026-06-19
+        - macOS version: macOS 15.5
+        - Browser / desktop app versions: Safari 26, Notion web, Todoist web, Linear web, Motion web
+        - Account tiers / paid trial details: Notion Free, Todoist Free, Linear Free, Motion trial not used
+        - Elapsed hands-on time with per-competitor timing: 2h 15m total: Notion 35m, Todoist 30m, Linear 35m, Motion 35m
+        - Screenshot or note locations kept outside release evidence: local reviewer notes only
+
+        ## Measurements
+
+        - Setup steps before first useful task: Notion required schema setup; Todoist was fastest for capture.
+        - Clicks / keystrokes for capture and status movement: Todoist quick add was fastest; Linear keyboard flow was strong but team-oriented.
+        - Inspector/detail clarity for repeated solo PM work: SoloPM inspector remained more focused on solo task edits.
+        - Automation or recommendation trust issues: Motion recommendations required visible reasoning before adoption.
+
+        ## Ship / Defer / Reject Capture
+
+        - Ship: Keep fast local capture, board status movement, and the right inspector as the alpha loop.
+        - Defer: Natural-language scheduling until reliability evidence is stronger.
+        - Reject: Team cycles, initiatives, and external SaaS sync for public alpha.
+        """.write(to: worksheetURL, atomically: true, encoding: .utf8)
+
+        let missingBenchmarkWorksheetResult = try runTool(["bash", commandURL.path])
+        XCTAssertNotEqual(missingBenchmarkWorksheetResult.exitCode, 0)
+        XCTAssertTrue(missingBenchmarkWorksheetResult.output.contains("competitor benchmark worksheet is missing, stale, or incomplete"))
+        XCTAssertFalse(missingBenchmarkWorksheetResult.output.contains("--checked-by must name the actual reviewer"))
 
         let unsafePassedResult = try runScript(
             "script/create_competitor_hands_on_evidence.sh",
