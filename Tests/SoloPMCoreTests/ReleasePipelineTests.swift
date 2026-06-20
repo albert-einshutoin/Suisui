@@ -2569,6 +2569,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("blank reviewer names, placeholder names such as \"Reviewer Name\""))
         XCTAssertTrue(checklist.contains("placeholder role names such as \"Release reviewer\" or \"Product reviewer\""))
         XCTAssertTrue(checklist.contains("manual release flags require an explicit review note"))
+        XCTAssertTrue(checklist.contains("./script/prepare_release_manual_helpers.sh"))
+        XCTAssertTrue(checklist.contains("It regenerates the VoiceOver pending preview/command, competitor hands-on worksheet/command, and release-machine worksheet/command for the current source commit without writing passed evidence."))
         XCTAssertTrue(checklist.contains("source git commit is recorded in release evidence"))
         XCTAssertTrue(checklist.contains("SOLOPM_REQUIRE_RELEASE_APPCAST=1 ./script/verify_appcast.sh dist/releases/appcast.xml"))
         XCTAssertFalse(checklist.contains("./script/verify_appcast.sh packaging/appcast.sample.xml"))
@@ -2621,7 +2623,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("Evidence-file mode requires a clean tracked source tree"))
         XCTAssertTrue(checklist.contains("When the final report reuses this evidence, it verifies the generator identity, UTC timestamp, source commit, clean-tree marker, app name, Xcode workspace/scheme/configuration/destination, every automated proof gate, and the manual-evidence boundary text."))
         XCTAssertTrue(checklist.contains("Manual VoiceOver and competitor hands-on evidence record the current `Source commit`"))
-        XCTAssertTrue(checklist.contains("rerun those manual passes after code changes instead of reusing evidence from an older release candidate"))
+        XCTAssertTrue(checklist.contains("rerun `./script/prepare_release_manual_helpers.sh` and then repeat the affected manual passes after code changes instead of reusing evidence from an older release candidate"))
         XCTAssertTrue(checklist.contains("This automated sweep does not replace manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper evidence."))
         XCTAssertTrue(checklist.contains("The final readiness report treats skipped automated proof gates as blockers by default."))
         XCTAssertTrue(checklist.contains("Do not claim release readiness from the default report output if CI, SQLite CRUD, runtime accessible CRUD, Xcode build, visible launch, or runtime AX were skipped."))
@@ -2869,9 +2871,79 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actions.contains("- [ ] Competitor pending evidence is stale or not pinned to current source commit `\(commit)`: `.tmp/competitor-hands-on/competitor-hands-on-pending-\(commit).md`"))
         XCTAssertTrue(actions.contains("- [ ] Release evidence command missing for current source commit: `.tmp/release-machine/create-release-evidence-command.sh`"))
         XCTAssertTrue(actions.contains("NEXT: regenerate manual review helpers for current source commit before running any passed-evidence command."))
-        XCTAssertTrue(actions.contains("./script/prepare_voiceover_review_candidate.sh --no-launch --skip-build"))
-        XCTAssertTrue(actions.contains("./script/create_competitor_hands_on_evidence.sh --pending --output \".tmp/competitor-hands-on/competitor-hands-on-pending-\(commit).md\" --benchmark-output \".tmp/competitor-hands-on/competitor-benchmark-pending-\(commit).md\""))
-        XCTAssertTrue(actions.contains("./script/prepare_release_machine_evidence.sh"))
+        XCTAssertTrue(actions.contains("./script/prepare_release_manual_helpers.sh"))
+        XCTAssertFalse(actions.contains("./script/prepare_voiceover_review_candidate.sh --no-launch --skip-build"))
+        XCTAssertFalse(actions.contains("./script/create_competitor_hands_on_evidence.sh --pending --output \".tmp/competitor-hands-on/competitor-hands-on-pending-\(commit).md\" --benchmark-output \".tmp/competitor-hands-on/competitor-benchmark-pending-\(commit).md\""))
+    }
+
+    func testManualReleaseHelperPreparationScriptRegeneratesCurrentCommitHelpers() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-prepare-release-manual-helpers", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let callsDirectory = fixtureRoot
+            .appendingPathComponent(".tmp", isDirectory: true)
+            .appendingPathComponent("calls", isDirectory: true)
+        let helperURL = scriptDirectory.appendingPathComponent("prepare_release_manual_helpers.sh")
+        let voiceOverURL = scriptDirectory.appendingPathComponent("prepare_voiceover_review_candidate.sh")
+        let competitorURL = scriptDirectory.appendingPathComponent("create_competitor_hands_on_evidence.sh")
+        let releaseMachineURL = scriptDirectory.appendingPathComponent("prepare_release_machine_evidence.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: callsDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        try readPackageFile("script/prepare_release_manual_helpers.sh")
+            .write(to: helperURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+        mkdir -p "$ROOT_DIR/.tmp/calls"
+        printf "%s\\n" "$*" > "$ROOT_DIR/.tmp/calls/voiceover.args"
+        """.write(to: voiceOverURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+        mkdir -p "$ROOT_DIR/.tmp/calls"
+        printf "%s\\n" "$*" > "$ROOT_DIR/.tmp/calls/competitor.args"
+        """.write(to: competitorURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+        mkdir -p "$ROOT_DIR/.tmp/calls"
+        printf "%s\\n" "$*" > "$ROOT_DIR/.tmp/calls/release-machine.args"
+        """.write(to: releaseMachineURL, atomically: true, encoding: .utf8)
+
+        for url in [helperURL, voiceOverURL, competitorURL, releaseMachineURL] {
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        }
+
+        let result = try runTool(["bash", helperURL.path])
+        let voiceOverArgs = try String(
+            contentsOf: callsDirectory.appendingPathComponent("voiceover.args"),
+            encoding: .utf8
+        )
+        let competitorArgs = try String(
+            contentsOf: callsDirectory.appendingPathComponent("competitor.args"),
+            encoding: .utf8
+        )
+        let releaseMachineArgs = try String(
+            contentsOf: callsDirectory.appendingPathComponent("release-machine.args"),
+            encoding: .utf8
+        )
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("Manual release helpers prepared for current source commit: \(currentShortCommit)"))
+        XCTAssertTrue(result.output.contains(".tmp/voiceover-review/accessibility-voiceover-pending-\(currentShortCommit).md"))
+        XCTAssertTrue(result.output.contains(".tmp/competitor-hands-on/competitor-hands-on-pending-\(currentShortCommit).md"))
+        XCTAssertTrue(result.output.contains(".tmp/release-machine/create-release-evidence-command.sh"))
+        XCTAssertTrue(voiceOverArgs.contains("--no-launch --skip-build"))
+        XCTAssertTrue(competitorArgs.contains("--pending --output .tmp/competitor-hands-on/competitor-hands-on-pending-\(currentShortCommit).md --benchmark-output .tmp/competitor-hands-on/competitor-benchmark-pending-\(currentShortCommit).md"))
+        XCTAssertEqual(releaseMachineArgs.trimmingCharacters(in: .whitespacesAndNewlines), "")
     }
 
     func testVoiceOverEvidenceGeneratorWritesPendingAndPassedEvidence() throws {
@@ -5117,6 +5189,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("\"VoiceOver manual pass\""))
         XCTAssertTrue(script.contains("\"Competitor hands-on pass\""))
         XCTAssertTrue(script.contains("\"Release-machine runbook\""))
+        XCTAssertTrue(script.contains("run \\`./script/prepare_release_manual_helpers.sh\\`, complete \\`.tmp/voiceover-review/create-evidence-command.sh\\`, then rerun readiness."))
+        XCTAssertTrue(script.contains("run \\`./script/prepare_release_manual_helpers.sh\\`, fill \\`.tmp/competitor-hands-on/create-evidence-command.sh\\`, then rerun readiness."))
         XCTAssertTrue(script.contains("release environment blocker item(s)"))
         XCTAssertTrue(script.contains("unchecked manual/release phase item(s)"))
         XCTAssertTrue(script.contains("Phase checklist routing tracks"))
@@ -5174,6 +5248,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains(".tmp/release-machine/release-machine-worksheet.md"))
         XCTAssertTrue(script.contains(".tmp/release-machine/create-release-evidence-command.sh"))
         XCTAssertTrue(script.contains("The generated VoiceOver evidence command is pinned to a clean tracked source tree and the source commit it was created for."))
+        XCTAssertTrue(script.contains("Rerun \\`./script/prepare_release_manual_helpers.sh\\` after source changes instead of reusing an older command."))
         XCTAssertTrue(script.contains("The generated competitor hands-on evidence command is pinned to a clean tracked source tree and the source commit it was created for."))
         XCTAssertTrue(script.contains("The generated release-machine evidence command is pinned to a clean tracked source tree and the source commit it was created for."))
         XCTAssertTrue(script.contains("Run the generated \\`--validate-only\\` release evidence command first; it performs the same validation without writing \\`packaging/release-evidence.json\\`."))
@@ -5202,6 +5277,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("./script/prepare_release_machine_evidence.sh"))
         XCTAssertTrue(checklist.contains(".tmp/release-machine/release-machine-worksheet.md"))
         XCTAssertTrue(checklist.contains(".tmp/release-machine/create-release-evidence-command.sh"))
+        XCTAssertTrue(checklist.contains("The Manual Review Helper Freshness section uses `./script/prepare_release_manual_helpers.sh` to regenerate the VoiceOver, competitor, and release-machine helper files for the current source commit without writing passed evidence."))
         XCTAssertTrue(checklist.contains("The Competitor Hands-On section includes the pending generator and `.tmp/competitor-hands-on/create-evidence-command.sh` path before the final passed command"))
         XCTAssertTrue(checklist.contains("The Manual VoiceOver section includes `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` and `.tmp/voiceover-review/create-evidence-command.sh` before the final passed command"))
         XCTAssertTrue(checklist.contains("The action summary also expands those pending paths for the current `Source commit`"))
@@ -5220,6 +5296,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] action summary は VoiceOver / competitor hands-on の current `Source commit` に対応する pending evidence path も併記する。"))
         XCTAssertTrue(phase.contains("[x] action summary は competitor hands-on の pending generator と `.tmp/competitor-hands-on/create-evidence-command.sh` を案内し、operatorがplaceholderを置換してからpassed証跡を作れるようにする。"))
         XCTAssertTrue(phase.contains("[x] action summary は VoiceOver / competitor hands-on / release-machine の生成済み証跡コマンドが clean tracked source tree と生成時 source commit にpinされ、source変更後は再生成が必要なことを表示する。"))
+        XCTAssertTrue(phase.contains("[x] `script/prepare_release_manual_helpers.sh` は current source commit の VoiceOver pending preview / command、competitor worksheet / command、release-machine worksheet / command を一括再生成し、passed evidence を書かない。"))
+        XCTAssertTrue(phase.contains("[x] action summary の Manual Review Helper Freshness は stale/missing helper を見つけた場合、個別コマンドの羅列ではなく `./script/prepare_release_manual_helpers.sh` を次アクションとして提示する。"))
         XCTAssertTrue(phase.contains("[x] action summary は direct manual evidence scripts も clean tracked source tree を要求し、dirty tree 回避目的で生成済みコマンドを迂回しないよう表示する。"))
         XCTAssertTrue(phase.contains("[x] action summary は未チェックの手動Phase項目を Manual VoiceOver / Competitor Hands-On / Release Machine / Login Item Manual Check / Manual Review に分類し"))
         XCTAssertTrue(phase.contains("[x] action summary は Release Machine blocker が残る場合、署名、notarization、package、appcast、release evidence、final preflight の順序付きコマンドを出す。"))

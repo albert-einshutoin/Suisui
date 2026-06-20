@@ -329,11 +329,11 @@ write_operator_priority_queue() {
   write_operator_priority_queue_line \
     "VoiceOver manual pass" \
     "$voiceover_count" \
-    "run \`./script/prepare_voiceover_review_candidate.sh\`, complete \`.tmp/voiceover-review/create-evidence-command.sh\`, then rerun readiness."
+    "run \`./script/prepare_release_manual_helpers.sh\`, complete \`.tmp/voiceover-review/create-evidence-command.sh\`, then rerun readiness."
   write_operator_priority_queue_line \
     "Competitor hands-on pass" \
     "$competitor_count" \
-    "run \`./script/create_competitor_hands_on_evidence.sh --pending\`, fill \`.tmp/competitor-hands-on/create-evidence-command.sh\`, then rerun readiness."
+    "run \`./script/prepare_release_manual_helpers.sh\`, fill \`.tmp/competitor-hands-on/create-evidence-command.sh\`, then rerun readiness."
   write_operator_priority_queue_line \
     "Release-machine runbook" \
     "$release_machine_count" \
@@ -880,9 +880,7 @@ write_manual_helper_freshness_actions() {
     printf "\n"
     printf "NEXT: regenerate manual review helpers for current source commit before running any passed-evidence command.\n"
     printf '%s\n' '```bash'
-    printf '%s\n' './script/prepare_voiceover_review_candidate.sh --no-launch --skip-build'
-    printf './script/create_competitor_hands_on_evidence.sh --pending --output ".tmp/competitor-hands-on/competitor-hands-on-pending-%s.md" --benchmark-output ".tmp/competitor-hands-on/competitor-benchmark-pending-%s.md"\n' "$expected_commit" "$expected_commit"
-    printf '%s\n' './script/prepare_release_machine_evidence.sh'
+    printf '%s\n' './script/prepare_release_manual_helpers.sh'
     printf '%s\n' '```'
   fi
   printf "\n"
@@ -984,7 +982,7 @@ write_release_actions() {
     printf -- "- The candidate writes \`.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md\` so you can inspect the release-candidate context without modifying tracked evidence.\n"
     printf -- "- For this action summary, the expected pending preview path is \`.tmp/voiceover-review/accessibility-voiceover-pending-%s.md\`.\n" "$(source_commit)"
     printf -- "- The candidate writes \`.tmp/voiceover-review/create-evidence-command.sh\` with the same database/project context. Replace every placeholder in that generated command with concrete VoiceOver observations before running it.\n"
-    printf -- "- The generated VoiceOver evidence command is pinned to a clean tracked source tree and the source commit it was created for. Rerun \`./script/prepare_voiceover_review_candidate.sh\` after source changes instead of reusing an older command.\n"
+    printf -- "- The generated VoiceOver evidence command is pinned to a clean tracked source tree and the source commit it was created for. Rerun \`./script/prepare_release_manual_helpers.sh\` after source changes instead of reusing an older command.\n"
     printf -- "- Run the generated \`--validate-only\` command first; it performs the same passed-evidence validation without writing \`docs/release/evidence/accessibility-voiceover.md\`.\n"
     printf -- "- Run the source/runtime accessibility preflight first, then perform a real VoiceOver pass.\n"
     printf -- "- If you do not use the generated command file, replace every placeholder below with concrete observations from the real release-candidate app before running it.\n\n"
@@ -996,7 +994,7 @@ write_release_actions() {
     printf -- "- Complete the 2-4 hour Notion, Todoist, Linear, and Motion hands-on pass before release.\n"
     printf -- "- Run the pending generator first if you want a review worksheet at \`.tmp/competitor-hands-on/hands-on-worksheet.md\` and a fill-in command at \`.tmp/competitor-hands-on/create-evidence-command.sh\`.\n"
     printf -- "- For this action summary, the expected pending evidence path is \`.tmp/competitor-hands-on/competitor-hands-on-pending-%s.md\`.\n" "$(source_commit)"
-    printf -- "- The generated competitor hands-on evidence command is pinned to a clean tracked source tree and the source commit it was created for. Rerun \`./script/create_competitor_hands_on_evidence.sh --pending\` after source changes instead of reusing an older command.\n"
+    printf -- "- The generated competitor hands-on evidence command is pinned to a clean tracked source tree and the source commit it was created for. Rerun \`./script/prepare_release_manual_helpers.sh\` after source changes instead of reusing an older command.\n"
     printf -- "- Run the generated \`--validate-only\` command first; it performs the same passed-evidence validation without writing \`docs/release/evidence/competitor-hands-on.md\` or \`docs/product/competitor-benchmark.md\`.\n"
     printf -- "- Replace every placeholder below with concrete observations and Ship / Defer / Reject decisions before running it.\n\n"
     write_competitor_hands_on_evidence_command
@@ -1016,7 +1014,7 @@ write_release_actions() {
     printf "## Release Machine\n"
     printf -- "- Follow \`docs/release/checklist.md\` on the release machine.\n"
     printf -- "- Run \`./script/prepare_release_machine_evidence.sh\` first to create \`.tmp/release-machine/release-machine-worksheet.md\` and \`.tmp/release-machine/create-release-evidence-command.sh\` before performing manual release checks.\n"
-    printf -- "- The generated release-machine evidence command is pinned to a clean tracked source tree and the source commit it was created for. Rerun \`./script/prepare_release_machine_evidence.sh\` after source changes instead of reusing an older command.\n"
+    printf -- "- The generated release-machine evidence command is pinned to a clean tracked source tree and the source commit it was created for. Rerun \`./script/prepare_release_manual_helpers.sh\` after source changes instead of reusing an older command.\n"
     printf -- "- Run the generated \`--validate-only\` release evidence command first; it performs the same validation without writing \`packaging/release-evidence.json\`.\n"
     printf -- "- Configure \`packaging/signing.env\`, \`packaging/notarization.env\`, production Sparkle feed/key, signed/notarized/stapled app, appcast metadata, and \`packaging/release-evidence.json\`.\n"
     printf -- "- Verify with \`./script/verify_release_environment.sh\` before expecting the readiness report to pass.\n"
