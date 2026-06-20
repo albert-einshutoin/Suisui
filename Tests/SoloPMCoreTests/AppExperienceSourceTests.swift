@@ -446,6 +446,30 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
     }
 
+    func testProjectBoardHostsEmbeddedTerminalAsApprovalGatedBottomPanel() throws {
+        let packageSource = try readPackageFile("Package.swift")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let terminalSource = try readPackageFile("Sources/SoloPMApp/Views/TerminalPanelView.swift")
+
+        XCTAssertTrue(packageSource.contains(#".package(url: "https://github.com/migueldeicaza/SwiftTerm", from: "1.13.0")"#))
+        XCTAssertTrue(packageSource.contains(#".product(name: "SwiftTerm", package: "SwiftTerm")"#))
+        XCTAssertTrue(boardSource.contains("@State private var isTerminalPanelPresented = false"))
+        XCTAssertTrue(boardSource.contains("EmbeddedTerminalPanel("))
+        XCTAssertTrue(boardSource.contains("workingDirectory: terminalWorkingDirectory"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-terminal-toggle\")"))
+        XCTAssertTrue(boardSource.contains(".keyboardShortcut(\"`\", modifiers: [.control])"))
+        XCTAssertTrue(terminalSource.contains("struct EmbeddedTerminalPanel"))
+        XCTAssertTrue(terminalSource.contains("@State private var isExecutionApproved = false"))
+        XCTAssertTrue(terminalSource.contains("if isExecutionApproved {"))
+        XCTAssertTrue(terminalSource.contains("LocalShellTerminalRepresentable("))
+        XCTAssertTrue(terminalSource.contains("Button { isExecutionApproved = true }"))
+        XCTAssertTrue(terminalSource.contains(".accessibilityIdentifier(\"embedded-terminal-approve\")"))
+        XCTAssertTrue(terminalSource.contains(".accessibilityIdentifier(\"embedded-terminal-view\")"))
+        XCTAssertTrue(terminalSource.contains("static func dismantleNSView"))
+        XCTAssertTrue(terminalSource.contains("nsView.terminate()"))
+        XCTAssertFalse(terminalSource.contains("setHostLogging"))
+    }
+
     func testInlineTaskComposerExposesKeyboardAndVoiceOverCreateAnchors() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")

@@ -23,7 +23,8 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.3")
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.3"),
+        .package(url: "https://github.com/migueldeicaza/SwiftTerm", from: "1.13.0")
     ],
     targets: [
         .target(
@@ -43,7 +44,8 @@ let package = Package(
             name: "SoloPM",
             dependencies: [
                 "SoloPMCore",
-                .product(name: "Sparkle", package: "Sparkle")
+                .product(name: "Sparkle", package: "Sparkle"),
+                .product(name: "SwiftTerm", package: "SwiftTerm")
             ],
             path: "Sources/SoloPMApp",
             resources: [

@@ -10,6 +10,7 @@ struct ProjectBoardView: View {
     @State private var displayMode: ProjectBoardDisplayMode = .board
     @State private var selectedDestination: ProjectBoardSidebarDestination? = .today
     @State private var isInspectorPresented = true
+    @State private var isTerminalPanelPresented = false
     @State private var isExportingTaskInterop = false
     @State private var isImportingTaskInterop = false
     @State private var taskInteropExportDocument = TaskInteropFileDocument(data: Data())
@@ -76,32 +77,44 @@ struct ProjectBoardView: View {
             }
             .navigationTitle("SoloPM")
         } detail: {
-            Group {
-                if let errorMessage = viewModel.errorMessage {
-                    ContentUnavailableView(
-                        "Project Board Unavailable",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text(errorMessage)
-                    )
-                } else {
-                    switch selectedDestination ?? .today {
-                    case .inbox:
-                        InboxWorkflowView(viewModel: viewModel)
-                    case .today:
-                        TodayWorkflowView(viewModel: viewModel)
-                    case .project(let projectID):
-                        if let project = viewModel.snapshot.projects.first(where: { $0.id == projectID }) {
-                            ProjectBoardDetail(
-                                project: project,
-                                displayMode: $displayMode,
-                                viewModel: viewModel
-                            )
-                        } else if viewModel.isEmptyProjectStateVisible {
-                            ContentUnavailableView("No Projects", systemImage: "folder")
-                        } else {
-                            ContentUnavailableView("Project Not Found", systemImage: "folder.badge.questionmark")
+            VStack(spacing: 0) {
+                Group {
+                    if let errorMessage = viewModel.errorMessage {
+                        ContentUnavailableView(
+                            "Project Board Unavailable",
+                            systemImage: "exclamationmark.triangle",
+                            description: Text(errorMessage)
+                        )
+                    } else {
+                        switch selectedDestination ?? .today {
+                        case .inbox:
+                            InboxWorkflowView(viewModel: viewModel)
+                        case .today:
+                            TodayWorkflowView(viewModel: viewModel)
+                        case .project(let projectID):
+                            if let project = viewModel.snapshot.projects.first(where: { $0.id == projectID }) {
+                                ProjectBoardDetail(
+                                    project: project,
+                                    displayMode: $displayMode,
+                                    viewModel: viewModel
+                                )
+                            } else if viewModel.isEmptyProjectStateVisible {
+                                ContentUnavailableView("No Projects", systemImage: "folder")
+                            } else {
+                                ContentUnavailableView("Project Not Found", systemImage: "folder.badge.questionmark")
+                            }
                         }
                     }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if isTerminalPanelPresented {
+                    Divider()
+                    EmbeddedTerminalPanel(
+                        workingDirectory: terminalWorkingDirectory,
+                        isPresented: $isTerminalPanelPresented
+                    )
+                    .frame(minHeight: 220, idealHeight: 280, maxHeight: 360)
                 }
             }
             .toolbar {
@@ -140,6 +153,15 @@ struct ProjectBoardView: View {
                     } label: {
                         Label("Voice Command", systemImage: "mic")
                     }
+
+                    Button {
+                        isTerminalPanelPresented.toggle()
+                    } label: {
+                        Label("Terminal", systemImage: "terminal")
+                    }
+                    .keyboardShortcut("`", modifiers: [.control])
+                    .help("Terminal")
+                    .accessibilityIdentifier("project-board-terminal-toggle")
                 }
             }
             .inspector(isPresented: inspectorBinding) {
@@ -220,6 +242,10 @@ struct ProjectBoardView: View {
             return nil
         }
         return viewModel.snapshot.projects.first { $0.id == projectID }
+    }
+
+    private var terminalWorkingDirectory: URL {
+        FileManager.default.homeDirectoryForCurrentUser
     }
 
     private func restoreSelectedDestinationIfNeeded() {

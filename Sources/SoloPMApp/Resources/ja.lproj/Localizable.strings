@@ -6,6 +6,7 @@
 "Appearance" = "表示";
 "Apply Suggestion" = "提案を適用";
 "Approve" = "承認";
+"Approve Local Shell Execution" = "ローカルシェル実行を承認";
 "Approve OpenCode Local Execution" = "OpenCodeローカル実行を承認";
 "Backlog" = "バックログ";
 "Blocked" = "ブロック中";
@@ -16,6 +17,7 @@
 "Clear" = "クリア";
 "Close Project Details" = "プロジェクト詳細を閉じる";
 "Close Task Details" = "タスク詳細を閉じる";
+"Close Terminal" = "ターミナルを閉じる";
 "Command not set" = "コマンド未設定";
 "Delete" = "削除";
 "Delete Claude Key" = "Claudeキーを削除";
@@ -28,6 +30,7 @@
 "Delete Task" = "タスクを削除";
 "Done" = "完了";
 "English" = "英語";
+"Embedded terminal requires macOS AppKit support." = "埋め込みターミナルにはmacOS AppKit対応が必要です。";
 "Execute" = "実行";
 "External MCP" = "外部MCP";
 "External Sync" = "外部同期";
@@ -48,6 +51,8 @@
 "Launch at Login" = "ログイン時に起動";
 "Light" = "ライト";
 "List" = "リスト";
+"Local Shell" = "ローカルシェル";
+"Local shell execution requires explicit approval." = "ローカルシェル実行には明示的な承認が必要です。";
 "MCP" = "MCP";
 "MCP Audit" = "MCP監査";
 "MCP Tool Permissions" = "MCPツール権限";
@@ -69,6 +74,7 @@
 "Quick Add" = "クイック追加";
 "Recent Projects" = "最近のプロジェクト";
 "Record" = "録音";
+"Restart Shell" = "シェルを再起動";
 "Save" = "保存";
 "Save Claude Key" = "Claudeキーを保存";
 "Save Gemini Key" = "Geminiキーを保存";
@@ -81,11 +87,18 @@
 "Servers" = "サーバー";
 "Settings..." = "設定...";
 "Show Archived" = "アーカイブを表示";
+"Shell Ended" = "シェルは終了しました";
+"Shell Exit %@" = "シェル終了 %@";
 "Status Overview" = "ステータス概要";
 "Stop" = "停止";
+"Stop Shell" = "シェルを停止";
+"Stopped" = "停止しました";
 "Sync" = "同期";
 "System" = "システム";
 "Task Details" = "タスク詳細";
+"Terminal" = "ターミナル";
+"Terminal Locked" = "ターミナルはロック中";
+"Terminal Unavailable" = "ターミナルを利用できません";
 "Theme" = "テーマ";
 "This removes the saved registration from SoloPM." = "保存済みの登録をSoloPMから削除します。";
 "Today" = "今日";

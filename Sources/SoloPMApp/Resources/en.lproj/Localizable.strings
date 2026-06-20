@@ -6,6 +6,7 @@
 "Appearance" = "Appearance";
 "Apply Suggestion" = "Apply Suggestion";
 "Approve" = "Approve";
+"Approve Local Shell Execution" = "Approve Local Shell Execution";
 "Approve OpenCode Local Execution" = "Approve OpenCode Local Execution";
 "Backlog" = "Backlog";
 "Blocked" = "Blocked";
@@ -16,6 +17,7 @@
 "Clear" = "Clear";
 "Close Project Details" = "Close Project Details";
 "Close Task Details" = "Close Task Details";
+"Close Terminal" = "Close Terminal";
 "Command not set" = "Command not set";
 "Delete" = "Delete";
 "Delete Claude Key" = "Delete Claude Key";
@@ -28,6 +30,7 @@
 "Delete Task" = "Delete Task";
 "Done" = "Done";
 "English" = "English";
+"Embedded terminal requires macOS AppKit support." = "Embedded terminal requires macOS AppKit support.";
 "Execute" = "Execute";
 "External MCP" = "External MCP";
 "External Sync" = "External Sync";
@@ -48,6 +51,8 @@
 "Launch at Login" = "Launch at Login";
 "Light" = "Light";
 "List" = "List";
+"Local Shell" = "Local Shell";
+"Local shell execution requires explicit approval." = "Local shell execution requires explicit approval.";
 "MCP" = "MCP";
 "MCP Audit" = "MCP Audit";
 "MCP Tool Permissions" = "MCP Tool Permissions";
@@ -69,6 +74,7 @@
 "Quick Add" = "Quick Add";
 "Recent Projects" = "Recent Projects";
 "Record" = "Record";
+"Restart Shell" = "Restart Shell";
 "Save" = "Save";
 "Save Claude Key" = "Save Claude Key";
 "Save Gemini Key" = "Save Gemini Key";
@@ -81,11 +87,18 @@
 "Servers" = "Servers";
 "Settings..." = "Settings...";
 "Show Archived" = "Show Archived";
+"Shell Ended" = "Shell Ended";
+"Shell Exit %@" = "Shell Exit %@";
 "Status Overview" = "Status Overview";
 "Stop" = "Stop";
+"Stop Shell" = "Stop Shell";
+"Stopped" = "Stopped";
 "Sync" = "Sync";
 "System" = "System";
 "Task Details" = "Task Details";
+"Terminal" = "Terminal";
+"Terminal Locked" = "Terminal Locked";
+"Terminal Unavailable" = "Terminal Unavailable";
 "Theme" = "Theme";
 "This removes the saved registration from SoloPM." = "This removes the saved registration from SoloPM.";
 "Today" = "Today";
