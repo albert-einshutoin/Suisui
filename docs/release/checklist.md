@@ -316,7 +316,7 @@ Each competitor note and Ship / Defer / Reject delta must identify what was actu
 
 13. final readiness report
 
-Run the automated local gate sweep first. It verifies CI, SQLite CRUD, runtime accessible CRUD, Xcode build, visible-window launch, runtime AX, and MCP compliance gates in one command. This automated sweep does not replace manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper evidence.
+Run the automated local gate sweep first. It verifies CI, SQLite CRUD, runtime accessible CRUD, Xcode build, visible-window launch, seeded-candidate runtime AX, and MCP compliance gates in one command. The runtime AX step opens the same deterministic VoiceOver review candidate with `./script/prepare_voiceover_review_candidate.sh --skip-build` before checking `crudSignals=8/8` and `focusPathSignals=6/6`, so it does not accidentally inspect an empty default launch state. This automated sweep does not replace manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper evidence.
 
 The final readiness report treats skipped automated proof gates as blockers by default. Run the sweep command for a full local proof, point the report at a clean-tree automated preflight evidence file, or run the individual `SOLOPM_*_PREFLIGHT=1` / smoke flags below when narrowing failures. Do not claim release readiness from the default report output if CI, SQLite CRUD, runtime accessible CRUD, Xcode build, visible launch, or runtime AX were skipped.
 

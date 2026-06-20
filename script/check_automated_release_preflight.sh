@@ -152,6 +152,9 @@ xcodebuild \
 section "Launch preflight"
 ./script/build_and_run.sh --verify
 
+section "Runtime accessibility candidate"
+./script/prepare_voiceover_review_candidate.sh --skip-build
+
 section "Runtime accessibility preflight"
 ./script/check_accessibility_preflight.sh --runtime --skip-launch
 
