@@ -110,6 +110,8 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertTrue(complianceReview.contains("Tool name policy"))
         XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testToolsListRejectsInvalidToolNames"))
         XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testToolsListRejectsDuplicateToolNamesAcrossPages"))
+        XCTAssertTrue(complianceReview.contains("every enabled external MCP `tools/call` requires an explicit approval token"))
+        XCTAssertTrue(complianceReview.contains("`dangerous` tools are blocked even after paid entitlement approval"))
         XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testToolsListRejectsUnsupportedInputSchemaDialect"))
         XCTAssertTrue(complianceReview.contains("ExternalMCPTests.testToolsListRejectsNonObjectPropertySchemas"))
         XCTAssertTrue(complianceReview.contains("outputSchema"))

@@ -65,14 +65,14 @@
 
 - [x] 外部 MCP call は実行前に server、tool、args、risk を表示する。
 - [x] args の secret redaction を行う。
-- [x] Write 系は Review UI の承認 flow を必ず通す。
-- [x] テスト: approval なし write MCP call が拒否されることを確認する。
+- [x] 外部MCPの `read` / `draft` / `writeWithApproval` はすべて Review UI または同等の明示承認 flow を必ず通す。
+- [x] テスト: approval なし external MCP call が risk label に関わらず拒否されることを確認する。
 - [x] 完了条件: 内蔵 Tool と同じ確認体験になる。
 
 実装メモ:
 - `ExternalMCPExecutionPreview` は server、tool、permission、schema、redacted args summary を保持する。
 - `ExternalMCPToolExecutor.preview` と `call` の両方で `DeveloperSecretRedactor` を通す。
-- `writeWithApproval` は `ToolExecutionContext.approvalToken` がない限り `approvalRequired` で拒否する。
+- `read` / `draft` / `writeWithApproval` は `ToolExecutionContext.approvalToken` がない限り `approvalRequired` で拒否する。
 
 ### P7-005: Process lifecycle and timeout
 

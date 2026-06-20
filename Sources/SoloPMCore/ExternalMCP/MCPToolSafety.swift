@@ -70,8 +70,8 @@ public struct ExternalMCPToolCatalogRow: Equatable, Sendable {
         self.permissionLevel = descriptor.permissionLevel
         self.permissionLabel = descriptor.permissionLevel.displayLabel
         self.inputSchemaSummary = Self.schemaSummary(descriptor.definition.inputSchema)
-        self.requiresApproval = descriptor.permissionLevel == .writeWithApproval
-        self.isExecutableWithoutApproval = descriptor.permissionLevel == .read || descriptor.permissionLevel == .draft
+        self.requiresApproval = descriptor.permissionLevel.requiresUserApproval
+        self.isExecutableWithoutApproval = false
     }
 
     private static func schemaSummary(_ inputSchema: [String: JSONValue]) -> String {
@@ -204,9 +204,7 @@ public struct ExternalMCPToolRegistry: Sendable {
     public func assertExecutable(toolName: String, context: ToolExecutionContext) throws {
         let descriptor = try descriptor(named: toolName)
         switch descriptor.permissionLevel {
-        case .read, .draft:
-            return
-        case .writeWithApproval:
+        case .read, .draft, .writeWithApproval:
             guard context.approvalToken != nil else {
                 throw ExternalMCPExecutionError.approvalRequired(serverID: server.id, toolName: toolName)
             }
@@ -214,6 +212,17 @@ public struct ExternalMCPToolRegistry: Sendable {
             throw ExternalMCPExecutionError.dangerousToolBlocked(serverID: server.id, toolName: toolName)
         case .disabled:
             throw ExternalMCPExecutionError.toolDisabled(serverID: server.id, toolName: toolName)
+        }
+    }
+}
+
+extension ExternalMCPToolPermission {
+    var requiresUserApproval: Bool {
+        switch self {
+        case .read, .draft, .writeWithApproval:
+            return true
+        case .dangerous, .disabled:
+            return false
         }
     }
 }

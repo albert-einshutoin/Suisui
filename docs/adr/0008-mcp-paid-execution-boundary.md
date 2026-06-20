@@ -7,7 +7,7 @@ Status: Accepted
 
 External MCP support expands SoloPM beyond local built-in tools. Phase 11 defines `advancedMCPExecution` as a paid feature, but MCP registrations and connection diagnostics are still useful for setup, OSS contribution, and troubleshooting before a user upgrades.
 
-The paid boundary must not weaken the existing safety model. A paid plan should unlock the ability to execute eligible external MCP tools, not bypass disabled, dangerous, or write-without-approval checks.
+The paid boundary must not weaken the existing safety model. A paid plan should unlock the ability to execute eligible external MCP tools, not bypass disabled, dangerous, or missing-approval checks. Because external MCP servers can execute arbitrary server-side code, `read` and `draft` risk labels still require explicit user approval before `tools/call`.
 
 ## Decision
 
@@ -17,7 +17,7 @@ After the paid gate passes, keep the normal permission checks:
 
 - Unknown tools remain `disabled`.
 - `dangerous` tools remain blocked.
-- `writeWithApproval` tools still require an explicit approval token.
+- `read`, `draft`, and `writeWithApproval` tools still require an explicit approval token before `tools/call`.
 - Audit metadata must record server id, server name, tool name, permission, approval state, duration/result/error, and redacted arguments.
 
 ## Options Considered
@@ -35,7 +35,7 @@ After the paid gate passes, keep the normal permission checks:
 ## Consequences
 
 - Positive: Free users can prepare MCP setup without sending tool calls.
-- Positive: Paid entitlement cannot turn dangerous or unapproved write tools into executable tools.
+- Positive: Paid entitlement cannot turn dangerous or unapproved external MCP tools into executable tools.
 - Negative: Settings must clearly distinguish connection diagnostics from paid execution.
 - Follow-up: When MCP execution UI is exposed beyond developer paths, show the Pro gate before the approval prompt for external MCP tools.
 

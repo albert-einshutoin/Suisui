@@ -9,7 +9,7 @@ public struct ExternalMCPExecutionPreview: Equatable, Sendable {
     public var redactedArgumentSummary: String
 
     public var requiresApproval: Bool {
-        permissionLevel == .writeWithApproval
+        permissionLevel.requiresUserApproval
     }
 }
 

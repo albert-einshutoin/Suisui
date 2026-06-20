@@ -1739,8 +1739,20 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(catalogRows.first { $0.toolName == "write_issue" }?.permissionLabel, "Write with approval")
         XCTAssertEqual(catalogRows.first { $0.toolName == "slow_tool" }?.permissionLabel, "Disabled")
         XCTAssertTrue(catalogRows.first { $0.toolName == "write_issue" }?.requiresApproval ?? false)
+        XCTAssertTrue(catalogRows.first { $0.toolName == "read_status" }?.requiresApproval ?? false)
+        XCTAssertFalse(catalogRows.first { $0.toolName == "read_status" }?.isExecutableWithoutApproval ?? true)
         XCTAssertTrue(catalogRows.first { $0.toolName == "read_status" }?.inputSchemaSummary.contains("project") ?? false)
 
+        XCTAssertThrowsError(try registry.assertExecutable(toolName: "read_status", context: ToolExecutionContext(source: .developerTool))) { error in
+            XCTAssertEqual(error as? ExternalMCPExecutionError, .approvalRequired(serverID: "fake", toolName: "read_status"))
+        }
+        XCTAssertNoThrow(try registry.assertExecutable(
+            toolName: "read_status",
+            context: ToolExecutionContext(
+                approvalToken: ApprovalToken(id: "approved", sessionID: "session"),
+                source: .developerTool
+            )
+        ))
         XCTAssertThrowsError(try registry.assertExecutable(toolName: "danger_delete", context: ToolExecutionContext(source: .developerTool))) { error in
             XCTAssertEqual(error as? ExternalMCPExecutionError, .dangerousToolBlocked(serverID: "fake", toolName: "danger_delete"))
         }
@@ -1770,7 +1782,7 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(row.inputSchemaSummary, "Invalid schema: required must be an array of strings")
     }
 
-    func testExecutionPreviewRedactsSecretsAndWriteRequiresApproval() async throws {
+    func testExecutionPreviewRedactsSecretsAndExternalMCPRequiresApproval() async throws {
         let transport = ExternalMCPTestKit.makeFakeServerTransport()
         let executor = makeExecutor(transport: transport, policies: ["write_issue": .writeWithApproval])
         let arguments: [String: JSONValue] = [
@@ -1789,7 +1801,7 @@ final class ExternalMCPTests: XCTestCase {
 
         do {
             _ = try await executor.call(toolName: "write_issue", arguments: arguments, context: ToolExecutionContext(source: .developerTool))
-            XCTFail("write MCP calls must require approval")
+            XCTFail("external MCP calls must require approval")
         } catch let error as ExternalMCPExecutionError {
             XCTAssertEqual(error, .approvalRequired(serverID: "fake", toolName: "write_issue"))
         }
@@ -1804,7 +1816,10 @@ final class ExternalMCPTests: XCTestCase {
         _ = try await executor.call(
             toolName: "read_status",
             arguments: ["project": .string("soloPM")],
-            context: ToolExecutionContext(source: .developerTool)
+            context: ToolExecutionContext(
+                approvalToken: ApprovalToken(id: "approved", sessionID: "session"),
+                source: .developerTool
+            )
         )
 
         XCTAssertEqual(
@@ -1816,16 +1831,20 @@ final class ExternalMCPTests: XCTestCase {
     func testExternalMCPExecutionReusesInitializedSessionAcrossCalls() async throws {
         let transport = ExternalMCPTestKit.makeFakeServerTransport()
         let executor = makeExecutor(transport: transport, policies: ["read_status": .read])
+        let approvedContext = ToolExecutionContext(
+            approvalToken: ApprovalToken(id: "approved", sessionID: "session"),
+            source: .developerTool
+        )
 
         _ = try await executor.call(
             toolName: "read_status",
             arguments: ["project": .string("soloPM")],
-            context: ToolExecutionContext(source: .developerTool)
+            context: approvedContext
         )
         _ = try await executor.call(
             toolName: "read_status",
             arguments: ["project": .string("soloPM")],
-            context: ToolExecutionContext(source: .developerTool)
+            context: approvedContext
         )
 
         XCTAssertEqual(
@@ -1928,7 +1947,7 @@ final class ExternalMCPTests: XCTestCase {
         let result = try await executor.call(
             toolName: "read_status",
             arguments: ["api_key": .string("redacted-test-secret")],
-            context: ToolExecutionContext(source: .developerTool)
+            context: approvedMCPContext()
         )
 
         XCTAssertEqual(result.content.first?.text, "status: ok")
@@ -1939,7 +1958,7 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(logger.recordedEvents.first?.metadata["tool_name"], "read_status")
         XCTAssertEqual(logger.recordedEvents.first?.metadata["risk"], "read")
         XCTAssertEqual(logger.recordedEvents.first?.metadata["permission"], "read")
-        XCTAssertEqual(logger.recordedEvents.first?.metadata["approval"], "missing")
+        XCTAssertEqual(logger.recordedEvents.first?.metadata["approval"], "present")
         XCTAssertEqual(logger.recordedEvents.first?.metadata["arguments"], "[REDACTED]")
         XCTAssertNotNil(logger.recordedEvents.last?.metadata["duration_ms"])
         XCTAssertEqual(logger.recordedEvents.last?.metadata["result"], "succeeded")
@@ -1974,7 +1993,7 @@ final class ExternalMCPTests: XCTestCase {
         let result = try await executor.call(
             toolName: "read_status",
             arguments: [:],
-            context: ToolExecutionContext(source: .developerTool)
+            context: approvedMCPContext()
         )
 
         XCTAssertEqual(result.structuredContent?.objectValue?["status"], .string("ok"))
@@ -2006,7 +2025,7 @@ final class ExternalMCPTests: XCTestCase {
             _ = try await executor.call(
                 toolName: "read_status",
                 arguments: [:],
-                context: ToolExecutionContext(source: .developerTool)
+                context: approvedMCPContext()
             )
             XCTFail("tools/call without structuredContent should fail when outputSchema exists")
         } catch let error as MCPClientError {
@@ -2053,7 +2072,7 @@ final class ExternalMCPTests: XCTestCase {
             _ = try await executor.call(
                 toolName: "read_status",
                 arguments: [:],
-                context: ToolExecutionContext(source: .developerTool)
+                context: approvedMCPContext()
             )
             XCTFail("structuredContent missing required output should fail")
         } catch let error as MCPClientError {
@@ -2101,7 +2120,7 @@ final class ExternalMCPTests: XCTestCase {
             _ = try await executor.call(
                 toolName: "read_status",
                 arguments: [:],
-                context: ToolExecutionContext(source: .developerTool)
+                context: approvedMCPContext()
             )
             XCTFail("structuredContent type mismatch should fail")
         } catch let error as MCPClientError {
@@ -2142,7 +2161,7 @@ final class ExternalMCPTests: XCTestCase {
         let result = try await executor.call(
             toolName: "read_status",
             arguments: [:],
-            context: ToolExecutionContext(source: .developerTool)
+            context: approvedMCPContext()
         )
 
         XCTAssertTrue(result.isError)
@@ -2168,7 +2187,7 @@ final class ExternalMCPTests: XCTestCase {
                 "apiKey": .string(malformedSecret),
                 "title": .string("Safe title")
             ],
-            context: ToolExecutionContext(source: .developerTool)
+            context: approvedMCPContext()
         )
 
         let arguments = try XCTUnwrap(logger.recordedEvents.first?.metadata["arguments"])
@@ -2191,7 +2210,7 @@ final class ExternalMCPTests: XCTestCase {
         _ = try await executor.call(
             toolName: "read_status",
             arguments: [:],
-            context: ToolExecutionContext(source: .developerTool)
+            context: approvedMCPContext()
         )
 
         XCTAssertEqual(logger.recordedEvents.first?.metadata["arguments"], "No arguments")
@@ -2217,7 +2236,7 @@ final class ExternalMCPTests: XCTestCase {
             _ = try await executor.call(
                 toolName: "read_status",
                 arguments: [:],
-                context: ToolExecutionContext(source: .developerTool)
+                context: approvedMCPContext()
             )
             XCTFail("timeout should fail")
         } catch let error as MCPClientError {
@@ -2909,6 +2928,13 @@ final class ExternalMCPTests: XCTestCase {
             auditLogger: auditLogger,
             processController: processController,
             entitlementChecker: EntitlementChecker(store: entitlementStore)
+        )
+    }
+
+    private func approvedMCPContext() -> ToolExecutionContext {
+        ToolExecutionContext(
+            approvalToken: ApprovalToken(id: "approved", sessionID: "session"),
+            source: .developerTool
         )
     }
 
