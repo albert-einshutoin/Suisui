@@ -894,7 +894,8 @@ write_ignored_stale_manual_helper_preview_actions() {
     [[ -n "$stale_preview" ]] || continue
     printf -- "- [!] \`%s\` is ignored because the current source commit is \`%s\`.\n" "$stale_preview" "$expected_commit"
   done <<<"$stale_previews"
-  printf -- "- These stale previews do not unblock readiness; use the current helper paths above or rerun \`./script/prepare_release_manual_helpers.sh\`.\n\n"
+  printf -- "- These stale previews do not unblock readiness; use the current helper paths above or rerun \`./script/prepare_release_manual_helpers.sh\`.\n"
+  printf -- "- Optional cleanup: run \`./script/prepare_release_manual_helpers.sh --prune-stale\` after committing source changes to remove ignored old pending previews without writing passed evidence.\n\n"
 }
 
 write_manual_helper_freshness_actions() {
