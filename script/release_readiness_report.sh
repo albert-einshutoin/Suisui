@@ -342,6 +342,9 @@ write_operator_priority_queue() {
 
   if [[ "$phase_count" -gt 0 ]]; then
     printf -- "- [ ] Phase checklist routing tracks %d unchecked manual/release phase item(s) and clears the remaining manual checklist blocker after the linked evidence is accepted.\n" "$phase_manual_item_count"
+    if phase_manual_unchecked_has_login_item_gate; then
+      printf -- "- [ ] Login Item manual check is part of Phase checklist routing. Next: use the signed release app, complete \`--login-item-toggle\` in \`.tmp/release-machine/create-release-evidence-command.sh\`, then rerun readiness.\n"
+    fi
   else
     printf -- "- [x] Phase checklist has no active blocker groups in this report run.\n"
   fi
