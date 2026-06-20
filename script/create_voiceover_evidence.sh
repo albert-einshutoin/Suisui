@@ -17,7 +17,8 @@ BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:?BUNDLE_IDENTIFIER is required}"
 MARKETING_VERSION="${MARKETING_VERSION:?MARKETING_VERSION is required}"
 CURRENT_PROJECT_VERSION="${CURRENT_PROJECT_VERSION:?CURRENT_PROJECT_VERSION is required}"
 
-OUTPUT_FILE="$ROOT_DIR/docs/release/evidence/accessibility-voiceover.md"
+OUTPUT_FILE=""
+OUTPUT_FILE_WAS_SET=0
 ACCESSIBILITY_PREFLIGHT_SCRIPT="${SOLOPM_ACCESSIBILITY_PREFLIGHT_SCRIPT:-$ROOT_DIR/script/check_accessibility_preflight.sh}"
 VOICEOVER_STATUS="pending"
 CHECKED_BY=""
@@ -45,6 +46,7 @@ usage() {
   printf '%s\n' "usage: $0 (--pending|--passed|--validate-only) [--output PATH] [--checked-by NAME] [--macos-version VERSION] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--accessibility-environment TEXT] [--runtime-ax-smoke-note TEXT|--capture-runtime-ax-smoke] [--project-navigation-note TEXT] [--project-board-detail-note TEXT] [--open-task-note TEXT] [--inline-task-composer-note TEXT] [--status-controls-note TEXT] [--task-inspector-note TEXT] [--save-changes-note TEXT] [--delete-confirmation-note TEXT] [--no-keyboard-trap-note TEXT] [--no-unlabeled-crud-note TEXT] [--confirm-manual-voiceover-pass]"
   printf '%s\n' ""
   printf '%s\n' "Use --pending to write a safe worksheet that release readiness will reject."
+  printf '%s\n' "Without --output, --pending writes .tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md."
   printf '%s\n' "Use --passed only after a real VoiceOver pass on the release-candidate app."
   printf '%s\n' "Use --validate-only to run the passed-evidence validation without writing evidence."
 }
@@ -260,6 +262,7 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --output)
       OUTPUT_FILE="${2:-}"
+      OUTPUT_FILE_WAS_SET=1
       shift 2
       ;;
     --checked-by)
@@ -348,6 +351,19 @@ done
 
 if [[ "$VOICEOVER_STATUS" != "pending" && "$VOICEOVER_STATUS" != "passed" ]]; then
   usage >&2
+  exit 2
+fi
+
+if [[ "$OUTPUT_FILE_WAS_SET" -eq 0 ]]; then
+  if [[ "$VOICEOVER_STATUS" == "pending" ]]; then
+    OUTPUT_FILE="$ROOT_DIR/.tmp/voiceover-review/accessibility-voiceover-pending-$SOURCE_COMMIT.md"
+  else
+    OUTPUT_FILE="$ROOT_DIR/docs/release/evidence/accessibility-voiceover.md"
+  fi
+fi
+
+if [[ -z "${OUTPUT_FILE//[[:space:]]/}" ]]; then
+  echo "--output must not be blank" >&2
   exit 2
 fi
 
