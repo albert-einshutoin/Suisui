@@ -1365,6 +1365,7 @@
 ### P10-164a: Release-machine worksheet completion is required before evidence validation
 
 - [x] `.tmp/release-machine/create-release-evidence-command.sh` verifies `.tmp/release-machine/release-machine-worksheet.md` is current, marked completed, filled, and free of pending/unchecked markers before release evidence validation or writing.
+- [x] `.tmp/release-machine/create-release-evidence-command.sh` rejects boilerplate worksheet values such as `TBD`, `Verified`, `OK`, or `manual checks completed`; each required worksheet field must contain concrete release-machine observations.
 - [x] `script/prepare_release_machine_evidence.sh` の worksheet は reviewer、manual environment、artifact path、notarization log、appcast edSignature、各manual check observationを記録する欄を持つ。
 - [x] 未完了 worksheet は signing/notarization/Sparkle config 読み込みや `create_release_evidence.sh --validate-only` より前に止まる。
 - [x] 完了条件: release-machine operator はチェックボックスだけでなく、署名済みartifactに対する具体観測を worksheet に残さないと release evidence を検証できない。
