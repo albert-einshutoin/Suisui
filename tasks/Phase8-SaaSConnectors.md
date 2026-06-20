@@ -35,7 +35,7 @@
 - [x] Apple Calendar と同じ `calendar.create_event` abstraction に接続する。
 - [x] Google Calendar 固有の calendar id、timezone、all-day event を扱う。
 - [x] write は Review UI approval 必須にする。
-- [x] テスト: fake Google client で create、permission denied、invalid calendar を確認する。
+- [x] テスト: Google client test double で create、permission denied、invalid calendar を確認する。
 - [x] 完了条件: Apple / Google の差分が UI に漏れすぎない。
 
 ### P8-003: Gmail Draft connector
@@ -83,15 +83,16 @@
 - [x] OAuth token は Keychain 管理。
 - [x] write / post / draft create は approval 必須。
 - [x] Gmail send と Slack auto-post は実装していない。
-- [x] connector ごとに fake client test がある。
+- [x] connector ごとに `Tests/` 配下の test double coverage がある。
 - [x] disconnect と token revocation を扱える。
 
 ## Implementation Notes
 
-- 実装: `Sources/SoloPMExternalConnectors/SaaSConnectors.swift`
+- Production connector protocols live in `Sources/SoloPMExternalConnectors/SaaSConnectors.swift`.
 - テスト: `Tests/SoloPMCoreTests/SaaSConnectorTests.swift`
+- Test doubles live under `Tests/SoloPMCoreTests/SaaSConnectorTests.swift` and are only linked through the test target.
 - OAuth token の secret material は `SecretStore` 経由で保存し、metadata には `SecretKey` reference、scope、expiry のみを保持する。
-- Google Calendar / Gmail / Slack / Google Drive / Notion は `SoloPMExternalConnectors` target の protocol + test-only fake client として実装し、本番 API adapter は Phase8 foundation の外側で差し替える。
+- Google Calendar / Gmail / Slack / Google Drive / Notion は `SoloPMExternalConnectors` target の production protocol / connector boundary として実装し、本番 API adapter は Phase8 foundation の外側で差し替える。
 - Public alpha の `SoloPM` app / `solopm-cli` は `SoloPMExternalConnectors` に依存せず、外部 SaaS 連携を runtime から除外する。
 - Gmail は draft create のみを公開し、send scope / send operation は持たない。
 - Slack は draft と post を分け、post は explicit approval 必須にする。自動投稿は実装していない。

@@ -1195,6 +1195,24 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(cliTargetBlock.contains("SoloPMExternalConnectors"))
     }
 
+    func testExternalConnectorPlanningDocsKeepTestDoublesOutOfProductionTarget() throws {
+        let phase = try readPackageFile("tasks/Phase8-SaaSConnectors.md")
+        let adr = try readPackageFile("docs/adr/0006-optional-connectors-and-knowledge-boundaries.md")
+
+        XCTAssertTrue(phase.contains("Production connector protocols live in `Sources/SoloPMExternalConnectors/SaaSConnectors.swift`."))
+        XCTAssertTrue(phase.contains("Test doubles live under `Tests/SoloPMCoreTests/SaaSConnectorTests.swift`"))
+        XCTAssertTrue(phase.contains("Public alpha の `SoloPM` app / `solopm-cli` は `SoloPMExternalConnectors` に依存せず"))
+        XCTAssertFalse(phase.contains("`SoloPMExternalConnectors` target の protocol + test-only fake client"))
+        XCTAssertFalse(phase.contains("fake Google client"))
+        XCTAssertFalse(phase.contains("connector ごとに fake client test がある"))
+
+        XCTAssertTrue(adr.contains("production connector protocols, metadata stores, and approval gates"))
+        XCTAssertTrue(adr.contains("test doubles isolated under `Tests/`"))
+        XCTAssertTrue(adr.contains("`SoloPM` app and `solopm-cli` do not link the optional connector target"))
+        XCTAssertFalse(adr.contains("Core protocols, fake clients, local stores"))
+        XCTAssertFalse(adr.contains("as Core protocols, fake clients, local stores"))
+    }
+
     func testSoloPMCoreDoesNotShipExternalSaaSConnectorImplementations() throws {
         let coreSourceFiles = try allSwiftFiles(under: "Sources/SoloPMCore")
         let forbiddenRuntimeSymbols = [

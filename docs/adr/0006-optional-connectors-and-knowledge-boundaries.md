@@ -9,7 +9,7 @@ Phase8 and Phase9 add external SaaS connectors and advanced knowledge retrieval.
 
 ## Decision
 
-Implement SaaS connectors and advanced knowledge retrieval as Core protocols, fake clients, local stores, and approval gates first. Production network adapters can be added later behind the same protocols, but the core app must continue to work without Google, Slack, Notion, WeKnora, sqlite-vec, or cloud embedding services.
+Implement SaaS connectors and advanced knowledge retrieval as production connector protocols, metadata stores, and approval gates, with test doubles isolated under `Tests/`. Production network adapters can be added later behind the same protocols, but the core app must continue to work without Google, Slack, Notion, WeKnora, sqlite-vec, or cloud embedding services. Public alpha keeps `SoloPM` app and `solopm-cli` decoupled from optional connectors: `SoloPM` app and `solopm-cli` do not link the optional connector target.
 
 ## Options Considered
 
