@@ -26,7 +26,8 @@ SoloPM-0.1.0+1.zip.package-evidence.json
 ユーザー向け配布は DMG、Sparkle appcast は ZIP を参照する。release evidence は DMG checksum に明示的に紐づける。
 
 ```bash
-export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-0.1.0+1.dmg.sha256"
+source packaging/app_metadata.env
+export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"
 ```
 
 署名環境がない開発機で packaging smoke だけ確認する場合は、明示的に署名要求を外す。

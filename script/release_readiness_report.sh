@@ -797,7 +797,7 @@ write_release_machine_runbook_command() {
   printf '%s\n' ''
   printf '%s\n' '# 6. Fallback only: manually bind release evidence to the generated DMG checksum if you cannot use the generated command.'
   printf '%s\n' 'source packaging/app_metadata.env'
-  printf '%s\n' 'export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/SoloPM-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"'
+  printf '%s\n' 'export SOLOPM_RELEASE_ARTIFACT_SHA256_FILE="dist/releases/$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"'
   printf '%s\n' '# Validate first; this must not write packaging/release-evidence.json.'
   printf '%s\n' './script/create_release_evidence.sh --validate-only \'
   printf '%s\n' '  --release-machine-launch \'
