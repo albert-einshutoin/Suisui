@@ -1773,7 +1773,9 @@ final class AppExperienceSourceTests: XCTestCase {
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
 
-        XCTAssertTrue(appSource.contains("TabView {"))
+        XCTAssertTrue(appSource.contains("TabView(selection: $selectedTab) {"))
+        XCTAssertTrue(appSource.contains("private enum SettingsTab: String"))
+        XCTAssertTrue(appSource.contains("@State private var selectedTab: SettingsTab"))
         XCTAssertTrue(appSource.contains("private var overviewSettingsTab: some View"))
         XCTAssertTrue(appSource.contains("private var appearanceSettingsTab: some View"))
         XCTAssertTrue(appSource.contains("private var aiSettingsTab: some View"))
@@ -2158,14 +2160,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("settings-mcp-light.png"))
         XCTAssertTrue(script.contains("settings-mcp-dark.png"))
         XCTAssertTrue(script.contains("open_settings_overview_tab"))
-        XCTAssertTrue(script.contains("click button \"Overview\" of toolbar 1"))
         XCTAssertTrue(script.contains("capture_settings_overview"))
         XCTAssertTrue(script.contains("open_settings_appearance_tab"))
-        XCTAssertTrue(script.contains("click button \"Appearance\" of toolbar 1"))
         XCTAssertTrue(script.contains("capture_settings_appearance"))
         XCTAssertTrue(script.contains("open_mcp_settings_tab"))
-        XCTAssertTrue(script.contains("click button \"MCP\" of toolbar 1"))
         XCTAssertTrue(script.contains("capture_mcp_settings_appearance"))
+        XCTAssertTrue(script.contains("SOLOPM_SETTINGS_EVIDENCE_TAB=$SETTINGS_TAB_OVERRIDE"))
         XCTAssertTrue(script.contains("docs/release/evidence/ui-screenshots"))
         XCTAssertTrue(script.contains("Screen Recording permission"))
         XCTAssertFalse(script.contains("OpenAI API Key"))
@@ -2192,7 +2192,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(evidence.contains("settings-overview-dark.png"))
         XCTAssertTrue(evidence.contains("settings-mcp-light.png"))
         XCTAssertTrue(evidence.contains("settings-mcp-dark.png"))
-        XCTAssertTrue(evidence.contains("Manual review: passed for Project Board sidebar/cards/inspector, Settings Overview Pro Value row, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast"))
+        XCTAssertTrue(evidence.contains("Manual review: passed for Project Board sidebar/cards/inspector, Inbox voice detail, Projects overview, Schedule cockpit, Done analytics, Settings integrations, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast"))
         XCTAssertTrue(audit.contains("Task card screenshot証跡は生成・目視確認済み"))
         XCTAssertTrue(audit.contains("Settings Overview Pro Value rowのスクリーンショット証跡は生成・目視確認済み"))
         XCTAssertTrue(audit.contains("MCP server別の接続状態証跡は生成・目視確認済み"))
@@ -2206,6 +2206,78 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] `release_readiness_report.sh` は `ui-screenshots.md` だけでなく Project Board Light/Dark/System、Settings Overview Light/Dark、Settings Appearance Light/Dark、MCP Settings Light/Dark PNG の存在、サイズ、寸法を検証し、欠落や小さすぎる画像をblockerにする。"))
         XCTAssertTrue(phase.contains("[x] Light/Dark/System切替後にカード、サイドバー、インスペクタのコントラストが破綻しないことをスクリーンショットで確認する。"))
         XCTAssertTrue(phase.contains("[x] `ui-samples/` を参考にした画面密度・インスペクタ・Settingsの改善がスクリーンショットで検証されている。"))
+    }
+
+    func testPhase12UIScreenshotEvidenceCoversNewCockpitScreens() throws {
+        let script = try readPackageFile("script/capture_ui_evidence.sh")
+        let releaseReport = try readPackageFile("script/release_readiness_report.sh")
+        let evidence = try readPackageFile("docs/release/evidence/ui-screenshots.md")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        let requiredScreenshots = [
+            "inbox-voice-light.png",
+            "inbox-voice-dark.png",
+            "projects-overview-light.png",
+            "projects-overview-dark.png",
+            "schedule-light.png",
+            "schedule-dark.png",
+            "done-light.png",
+            "done-dark.png",
+            "settings-integrations-light.png",
+            "settings-integrations-dark.png"
+        ]
+
+        for screenshot in requiredScreenshots {
+            XCTAssertTrue(script.contains(screenshot), "script missing \(screenshot)")
+            XCTAssertTrue(releaseReport.contains(screenshot), "release report missing \(screenshot)")
+            XCTAssertTrue(evidence.contains(screenshot), "evidence missing \(screenshot)")
+        }
+
+        XCTAssertTrue(script.contains("capture_project_board_destination"))
+        XCTAssertTrue(script.contains("SOLOPM_OPEN_SETTINGS_ON_LAUNCH=1"))
+        XCTAssertTrue(script.contains("SETTINGS_TAB_OVERRIDE=\"Overview\""))
+        XCTAssertTrue(script.contains("SETTINGS_TAB_OVERRIDE=\"Appearance\""))
+        XCTAssertTrue(script.contains("SETTINGS_TAB_OVERRIDE=\"MCP\""))
+        XCTAssertTrue(appSource.contains("SOLOPM_OPEN_SETTINGS_ON_LAUNCH"))
+        XCTAssertTrue(appSource.contains("SOLOPM_SETTINGS_EVIDENCE_TAB"))
+        XCTAssertTrue(appSource.contains("settingsEvidenceWindow"))
+        XCTAssertTrue(appSource.contains("openSettingsWindowForEvidenceIfRequested"))
+        XCTAssertTrue(appSource.contains("SettingsView("))
+        XCTAssertTrue(script.contains("assert_phase12_seed_data"))
+        XCTAssertTrue(script.contains("Scheduled manual capture"))
+        XCTAssertTrue(script.contains("Done analytics sample"))
+        XCTAssertTrue(evidence.contains("Inbox voice detail"))
+        XCTAssertTrue(evidence.contains("Projects overview"))
+        XCTAssertTrue(evidence.contains("Schedule cockpit"))
+        XCTAssertTrue(evidence.contains("Done analytics"))
+        XCTAssertTrue(evidence.contains("Settings integrations"))
+    }
+
+    func testPhase12ClickPathAuditTracksNewWorkflowScreens() throws {
+        let audit = try readPackageFile("docs/ux/click-path-audit.md")
+
+        XCTAssertTrue(audit.contains("| Inbox voice detail | sidebar `Inbox` -> item row | 2 | Pass |"))
+        XCTAssertTrue(audit.contains("| Projects overview確認 | sidebar `Projects` | 1 | Pass |"))
+        XCTAssertTrue(audit.contains("| Schedule確認 | sidebar `Schedule` | 1 | Pass |"))
+        XCTAssertTrue(audit.contains("| Done確認 | sidebar `Done` | 1 | Pass |"))
+        XCTAssertTrue(audit.contains("| Settings integrations確認 | Settings -> Status Overview | 1 | Pass |"))
+        XCTAssertTrue(audit.contains("Phase 12 screenshot evidence"))
+        XCTAssertTrue(audit.contains("inbox-voice-light.png"))
+        XCTAssertTrue(audit.contains("projects-overview-light.png"))
+        XCTAssertTrue(audit.contains("schedule-light.png"))
+        XCTAssertTrue(audit.contains("done-light.png"))
+        XCTAssertTrue(audit.contains("settings-integrations-light.png"))
+    }
+
+    func testPhase12UICaptureScriptFailsWhenSeedDataIsMissing() throws {
+        let script = try readPackageFile("script/capture_ui_evidence.sh")
+
+        XCTAssertTrue(script.contains("assert_phase12_seed_data"))
+        XCTAssertTrue(script.contains("missing Phase 12 UI evidence seed"))
+        XCTAssertTrue(script.contains("SELECT COUNT(*) FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Scheduled manual capture'"))
+        XCTAssertTrue(script.contains("SELECT COUNT(*) FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Done analytics sample'"))
+        XCTAssertTrue(script.contains("SELECT COUNT(*) FROM projects WHERE source_command = 'ui-evidence' AND title = 'Completed Evidence Project'"))
+        XCTAssertTrue(script.contains("assert_phase12_seed_data \"$DATABASE_PATH\""))
     }
 
     func testUIScreenshotCaptureFailureExplainsScreenRecordingAndWindowDiagnostics() throws {

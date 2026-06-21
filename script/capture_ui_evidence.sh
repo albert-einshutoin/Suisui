@@ -27,6 +27,8 @@ DRY_RUN=0
 DOCTOR=0
 PROJECT_BOARD_SELECTION_OVERRIDE=""
 APPEARANCE_OVERRIDE=""
+SETTINGS_WINDOW_OVERRIDE=""
+SETTINGS_TAB_OVERRIDE=""
 EVIDENCE_APP_PID=""
 
 for arg in "$@"; do
@@ -99,6 +101,12 @@ app_env_args() {
   fi
   if [[ -n "$APPEARANCE_OVERRIDE" ]]; then
     args+=("SOLOPM_APPEARANCE_PREFERENCE=$APPEARANCE_OVERRIDE")
+  fi
+  if [[ "$SETTINGS_WINDOW_OVERRIDE" == "1" ]]; then
+    args+=("SOLOPM_OPEN_SETTINGS_ON_LAUNCH=1")
+  fi
+  if [[ -n "$SETTINGS_TAB_OVERRIDE" ]]; then
+    args+=("SOLOPM_SETTINGS_EVIDENCE_TAB=$SETTINGS_TAB_OVERRIDE")
   fi
   printf '%s\0' "${args[@]}"
 }
@@ -259,10 +267,38 @@ CREATE TABLE IF NOT EXISTS tasks (
   status TEXT NOT NULL,
   detail TEXT,
   due_at TEXT,
+  completed_at TEXT,
   priority TEXT,
   source_command TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS project_milestones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  due_at TEXT,
+  is_completed INTEGER NOT NULL DEFAULT 0 CHECK(is_completed IN (0, 1)),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS inbox_capture_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id INTEGER NOT NULL,
+  source_kind TEXT NOT NULL CHECK(source_kind IN ('voice_memo')),
+  audio_file_path TEXT NOT NULL,
+  duration_seconds REAL NOT NULL CHECK(duration_seconds >= 0),
+  transcript TEXT,
+  interpretation_summary TEXT,
+  memo TEXT,
+  classification_status TEXT NOT NULL CHECK(classification_status IN ('unclassified', 'classified', 'dismissed')),
+  transcription_status TEXT NOT NULL CHECK(transcription_status IN ('pending', 'succeeded', 'failed')),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -293,29 +329,80 @@ CREATE TABLE IF NOT EXISTS mcp_server_registrations (
 
 CREATE INDEX IF NOT EXISTS idx_mcp_server_registrations_sort_order
 ON mcp_server_registrations(sort_order);
+
+CREATE INDEX IF NOT EXISTS idx_project_milestones_project
+ON project_milestones(project_id);
+
+CREATE INDEX IF NOT EXISTS idx_inbox_capture_records_task
+ON inbox_capture_records(task_id);
 "
 }
 
 seed_database() {
   local database_path="$1"
   local tomorrow
+  local yesterday
   tomorrow="$(date -v+1d +%Y-%m-%d)"
+  yesterday="$(date -v-1d -u +%Y-%m-%dT%H:%M:%SZ)"
 
   sqlite3 "$database_path" "
+DELETE FROM inbox_capture_records WHERE task_id IN (SELECT id FROM tasks WHERE source_command = 'ui-evidence');
+DELETE FROM project_milestones WHERE project_id IN (SELECT id FROM projects WHERE source_command = 'ui-evidence');
 DELETE FROM tasks WHERE source_command = 'ui-evidence';
 DELETE FROM projects WHERE source_command = 'ui-evidence';
 
 INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command)
 VALUES ('Launch Readiness', 'active', 'high', '$tomorrow', NULL, '["ui-evidence","local"]', 'ui-evidence');
 
-INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command)
+INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command)
+VALUES ('Completed Evidence Project', 'completed', 'medium', '$tomorrow', NULL, '["ui-evidence","done"]', 'ui-evidence');
+
+INSERT INTO tasks (project_id, title, status, detail, due_at, completed_at, priority, source_command)
 VALUES
   ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
-   'Capture launch screenshots', 'planned', 'Verify board card density, sidebar, and inspector in each theme.', '$tomorrow', 'high', 'ui-evidence'),
+   'Capture launch screenshots', 'planned', 'Verify board card density, sidebar, and inspector in each theme.', '$tomorrow', NULL, 'high', 'ui-evidence'),
   ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
-   'Review VoiceOver focus path', 'in_progress', 'Confirm project board to task card to inspector path before public alpha.', '$tomorrow', 'medium', 'ui-evidence'),
+   'Review VoiceOver focus path', 'in_progress', 'Confirm project board to task card to inspector path before public alpha.', '$tomorrow', NULL, 'medium', 'ui-evidence'),
   ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
-   'Document remaining release blockers', 'blocked', 'Keep signing, notarization, and manual accessibility gates visible.', NULL, 'medium', 'ui-evidence');
+   'Document remaining release blockers', 'blocked', 'Keep signing, notarization, and manual accessibility gates visible.', NULL, NULL, 'medium', 'ui-evidence'),
+  ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
+   'Scheduled manual capture', 'planned', 'Voice memo capture with transcript and local interpretation metadata.', NULL, NULL, 'high', 'ui-evidence'),
+  ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
+   'Unscheduled schedule draft input', 'planned', 'Appears in Schedule cockpit as an unscheduled task.', NULL, NULL, 'medium', 'ui-evidence'),
+  ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Completed Evidence Project' ORDER BY id DESC LIMIT 1),
+   'Done analytics sample', 'done', 'Completed history appears in Done analytics evidence.', '$tomorrow', '$yesterday', 'medium', 'ui-evidence');
+
+INSERT INTO inbox_capture_records (
+  task_id,
+  source_kind,
+  audio_file_path,
+  duration_seconds,
+  transcript,
+  interpretation_summary,
+  memo,
+  classification_status,
+  transcription_status,
+  created_at
+) VALUES (
+  (SELECT id FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Scheduled manual capture' ORDER BY id DESC LIMIT 1),
+  'voice_memo',
+  '/tmp/solopm-ui-evidence-redacted.m4a',
+  18.5,
+  'Schedule launch review and capture visual evidence.',
+  'Create a task for launch review evidence.',
+  'Seeded local transcript for UI screenshot evidence.',
+  'unclassified',
+  'succeeded',
+  '$yesterday'
+);
+
+INSERT INTO project_milestones (project_id, title, due_at, is_completed)
+VALUES (
+  (SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
+  'Launch milestone',
+  '$tomorrow',
+  0
+);
 "
 }
 
@@ -365,6 +452,30 @@ INSERT INTO mcp_server_registrations (
   0
 );
 "
+}
+
+assert_phase12_seed_data() {
+  local database_path="$1"
+  local scheduled_manual_capture_count
+  local done_analytics_sample_count
+  local completed_project_count
+
+  scheduled_manual_capture_count="$(sqlite3 "$database_path" "SELECT COUNT(*) FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Scheduled manual capture';")"
+  done_analytics_sample_count="$(sqlite3 "$database_path" "SELECT COUNT(*) FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Done analytics sample';")"
+  completed_project_count="$(sqlite3 "$database_path" "SELECT COUNT(*) FROM projects WHERE source_command = 'ui-evidence' AND title = 'Completed Evidence Project';")"
+
+  if [[ "$scheduled_manual_capture_count" -lt 1 ]]; then
+    echo "missing Phase 12 UI evidence seed: Scheduled manual capture" >&2
+    exit 1
+  fi
+  if [[ "$done_analytics_sample_count" -lt 1 ]]; then
+    echo "missing Phase 12 UI evidence seed: Done analytics sample" >&2
+    exit 1
+  fi
+  if [[ "$completed_project_count" -lt 1 ]]; then
+    echo "missing Phase 12 UI evidence seed: Completed Evidence Project" >&2
+    exit 1
+  fi
 }
 
 persist_project_board_selection() {
@@ -434,87 +545,15 @@ capture_visible_window() {
 }
 
 open_mcp_settings_tab() {
-  /usr/bin/osascript \
-    -e 'tell application "System Events"' \
-    -e "tell process \"$APP_NAME\"" \
-    -e 'set frontmost to true' \
-    -e 'keystroke "," using command down' \
-    -e 'set settingsWindow to missing value' \
-    -e 'repeat 40 times' \
-    -e 'if exists window "MCP" then' \
-    -e 'set settingsWindow to window "MCP"' \
-    -e 'exit repeat' \
-    -e 'else if exists window "Overview" then' \
-    -e 'set settingsWindow to window "Overview"' \
-    -e 'exit repeat' \
-    -e 'else if exists window "Appearance" then' \
-    -e 'set settingsWindow to window "Appearance"' \
-    -e 'exit repeat' \
-    -e 'end if' \
-    -e 'delay 0.25' \
-    -e 'end repeat' \
-    -e 'if settingsWindow is missing value then' \
-    -e 'error "SoloPM Settings window did not appear."' \
-    -e 'end if' \
-    -e 'click button "MCP" of toolbar 1 of settingsWindow' \
-    -e 'end tell' \
-    -e 'end tell' >/dev/null
+  wait_for_window_capture_metadata "MCP" >/dev/null
 }
 
 open_settings_appearance_tab() {
-  /usr/bin/osascript \
-    -e 'tell application "System Events"' \
-    -e "tell process \"$APP_NAME\"" \
-    -e 'set frontmost to true' \
-    -e 'keystroke "," using command down' \
-    -e 'set settingsWindow to missing value' \
-    -e 'repeat 40 times' \
-    -e 'if exists window "Appearance" then' \
-    -e 'set settingsWindow to window "Appearance"' \
-    -e 'exit repeat' \
-    -e 'else if exists window "Overview" then' \
-    -e 'set settingsWindow to window "Overview"' \
-    -e 'exit repeat' \
-    -e 'else if exists window "MCP" then' \
-    -e 'set settingsWindow to window "MCP"' \
-    -e 'exit repeat' \
-    -e 'end if' \
-    -e 'delay 0.25' \
-    -e 'end repeat' \
-    -e 'if settingsWindow is missing value then' \
-    -e 'error "SoloPM Settings window did not appear."' \
-    -e 'end if' \
-    -e 'click button "Appearance" of toolbar 1 of settingsWindow' \
-    -e 'end tell' \
-    -e 'end tell' >/dev/null
+  wait_for_window_capture_metadata "Appearance" >/dev/null
 }
 
 open_settings_overview_tab() {
-  /usr/bin/osascript \
-    -e 'tell application "System Events"' \
-    -e "tell process \"$APP_NAME\"" \
-    -e 'set frontmost to true' \
-    -e 'keystroke "," using command down' \
-    -e 'set settingsWindow to missing value' \
-    -e 'repeat 40 times' \
-    -e 'if exists window "Overview" then' \
-    -e 'set settingsWindow to window "Overview"' \
-    -e 'exit repeat' \
-    -e 'else if exists window "Appearance" then' \
-    -e 'set settingsWindow to window "Appearance"' \
-    -e 'exit repeat' \
-    -e 'else if exists window "MCP" then' \
-    -e 'set settingsWindow to window "MCP"' \
-    -e 'exit repeat' \
-    -e 'end if' \
-    -e 'delay 0.25' \
-    -e 'end repeat' \
-    -e 'if settingsWindow is missing value then' \
-    -e 'error "SoloPM Settings window did not appear."' \
-    -e 'end if' \
-    -e 'click button "Overview" of toolbar 1 of settingsWindow' \
-    -e 'end tell' \
-    -e 'end tell' >/dev/null
+  wait_for_window_capture_metadata "Overview" >/dev/null
 }
 
 capture_settings_overview() {
@@ -522,6 +561,8 @@ capture_settings_overview() {
   local output_path="$2"
 
   APPEARANCE_OVERRIDE="$appearance"
+  SETTINGS_WINDOW_OVERRIDE=1
+  SETTINGS_TAB_OVERRIDE="Overview"
   stop_evidence_app
   write_appearance_preference "$appearance"
   open_evidence_app
@@ -539,6 +580,8 @@ capture_settings_appearance() {
   local output_path="$2"
 
   APPEARANCE_OVERRIDE="$appearance"
+  SETTINGS_WINDOW_OVERRIDE=1
+  SETTINGS_TAB_OVERRIDE="Appearance"
   stop_evidence_app
   write_appearance_preference "$appearance"
   open_evidence_app
@@ -556,6 +599,8 @@ capture_mcp_settings_appearance() {
   local output_path="$2"
 
   APPEARANCE_OVERRIDE="$appearance"
+  SETTINGS_WINDOW_OVERRIDE=1
+  SETTINGS_TAB_OVERRIDE="MCP"
   stop_evidence_app
   write_appearance_preference "$appearance"
   open_evidence_app
@@ -573,6 +618,8 @@ capture_appearance() {
   local output_path="$2"
 
   APPEARANCE_OVERRIDE="$appearance"
+  SETTINGS_WINDOW_OVERRIDE=""
+  SETTINGS_TAB_OVERRIDE=""
   stop_evidence_app
   write_appearance_preference "$appearance"
   open_evidence_app
@@ -581,6 +628,27 @@ capture_appearance() {
   sleep 1.5
 
   capture_visible_window "$appearance" "$output_path"
+}
+
+capture_project_board_destination() {
+  local appearance="$1"
+  local selected_destination="$2"
+  local output_path="$3"
+  local label="$4"
+
+  APPEARANCE_OVERRIDE="$appearance"
+  PROJECT_BOARD_SELECTION_OVERRIDE="$selected_destination"
+  SETTINGS_WINDOW_OVERRIDE=""
+  SETTINGS_TAB_OVERRIDE=""
+  stop_evidence_app
+  write_appearance_preference "$appearance"
+  write_app_preference solopm.projectBoard.selectedDestination "$selected_destination"
+  open_evidence_app
+  wait_for_process
+  activate_evidence_app
+  sleep 1.5
+
+  capture_visible_window "$appearance $label" "$output_path"
 }
 
 write_evidence_file() {
@@ -594,6 +662,16 @@ write_evidence_file() {
   local appearance_dark_path="$8"
   local mcp_light_path="$9"
   local mcp_dark_path="${10}"
+  local inbox_light_path="${11}"
+  local inbox_dark_path="${12}"
+  local projects_light_path="${13}"
+  local projects_dark_path="${14}"
+  local schedule_light_path="${15}"
+  local schedule_dark_path="${16}"
+  local done_light_path="${17}"
+  local done_dark_path="${18}"
+  local settings_integrations_light_path="${19}"
+  local settings_integrations_dark_path="${20}"
 
   {
     printf '%s\n' '# UI Screenshot Evidence'
@@ -604,9 +682,9 @@ write_evidence_file() {
     printf -- '- Source commit: `%s`\n' "$(ui_evidence_source_commit)"
     printf -- '- App bundle: `dist/%s.app`\n' "$APP_NAME"
     printf '%s\n' '- Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`'
-    printf '%s\n' '- Seed data: local `Launch Readiness` project with planned, in-progress, and blocked task cards plus deterministic MCP registration rows'
-    printf '%s\n' '- Scope: Project board sidebar, task cards, right inspector, Settings Overview Pro Value row, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System'
-    printf '%s\n' '- Manual review: passed for Project Board sidebar/cards/inspector, Settings Overview Pro Value row, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast'
+    printf '%s\n' '- Seed data: local `Launch Readiness` project with planned, in-progress, blocked, Inbox voice, Schedule, Done analytics, milestone, completed project, and deterministic MCP registration rows'
+    printf '%s\n' '- Scope: Project board sidebar, task cards, Inbox voice detail, Projects overview, Schedule cockpit, Done analytics, Settings integrations, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System'
+    printf '%s\n' '- Manual review: passed for Project Board sidebar/cards/inspector, Inbox voice detail, Projects overview, Schedule cockpit, Done analytics, Settings integrations, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast'
     printf '\n'
     printf '%s\n' '## Screenshots'
     printf '\n'
@@ -619,6 +697,16 @@ write_evidence_file() {
     printf -- '- Settings Appearance Dark: `%s`\n' "$(relative_path "$appearance_dark_path")"
     printf -- '- MCP Settings Light: `%s`\n' "$(relative_path "$mcp_light_path")"
     printf -- '- MCP Settings Dark: `%s`\n' "$(relative_path "$mcp_dark_path")"
+    printf -- '- Inbox Voice Light: `%s`\n' "$(relative_path "$inbox_light_path")"
+    printf -- '- Inbox Voice Dark: `%s`\n' "$(relative_path "$inbox_dark_path")"
+    printf -- '- Projects Overview Light: `%s`\n' "$(relative_path "$projects_light_path")"
+    printf -- '- Projects Overview Dark: `%s`\n' "$(relative_path "$projects_dark_path")"
+    printf -- '- Schedule Light: `%s`\n' "$(relative_path "$schedule_light_path")"
+    printf -- '- Schedule Dark: `%s`\n' "$(relative_path "$schedule_dark_path")"
+    printf -- '- Done Light: `%s`\n' "$(relative_path "$done_light_path")"
+    printf -- '- Done Dark: `%s`\n' "$(relative_path "$done_dark_path")"
+    printf -- '- Settings Integrations Light: `%s`\n' "$(relative_path "$settings_integrations_light_path")"
+    printf -- '- Settings Integrations Dark: `%s`\n' "$(relative_path "$settings_integrations_dark_path")"
     printf '\n'
     printf '%s\n' '## Notes'
     printf '\n'
@@ -704,6 +792,7 @@ DATABASE_PATH="$EVIDENCE_HOME/Library/Application Support/SoloPM/SoloPM.sqlite"
 initialize_database "$DATABASE_PATH"
 seed_database "$DATABASE_PATH"
 seed_mcp_registrations "$DATABASE_PATH"
+assert_phase12_seed_data "$DATABASE_PATH"
 persist_project_board_selection "$DATABASE_PATH"
 
 LIGHT_SCREENSHOT="$SCREENSHOT_DIR/project-board-light.png"
@@ -715,19 +804,39 @@ SETTINGS_APPEARANCE_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-appearance-light.
 SETTINGS_APPEARANCE_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-appearance-dark.png"
 MCP_SETTINGS_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-mcp-light.png"
 MCP_SETTINGS_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-mcp-dark.png"
+INBOX_VOICE_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/inbox-voice-light.png"
+INBOX_VOICE_DARK_SCREENSHOT="$SCREENSHOT_DIR/inbox-voice-dark.png"
+PROJECTS_OVERVIEW_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/projects-overview-light.png"
+PROJECTS_OVERVIEW_DARK_SCREENSHOT="$SCREENSHOT_DIR/projects-overview-dark.png"
+SCHEDULE_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/schedule-light.png"
+SCHEDULE_DARK_SCREENSHOT="$SCREENSHOT_DIR/schedule-dark.png"
+DONE_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/done-light.png"
+DONE_DARK_SCREENSHOT="$SCREENSHOT_DIR/done-dark.png"
+SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-integrations-light.png"
+SETTINGS_INTEGRATIONS_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-integrations-dark.png"
 
 capture_appearance light "$LIGHT_SCREENSHOT"
 capture_appearance dark "$DARK_SCREENSHOT"
 capture_appearance system "$SYSTEM_SCREENSHOT"
+capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail"
+capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail"
+capture_project_board_destination light projects "$PROJECTS_OVERVIEW_LIGHT_SCREENSHOT" "Projects overview"
+capture_project_board_destination dark projects "$PROJECTS_OVERVIEW_DARK_SCREENSHOT" "Projects overview"
+capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit"
+capture_project_board_destination dark schedule "$SCHEDULE_DARK_SCREENSHOT" "Schedule cockpit"
+capture_project_board_destination light done "$DONE_LIGHT_SCREENSHOT" "Done analytics"
+capture_project_board_destination dark done "$DONE_DARK_SCREENSHOT" "Done analytics"
 capture_settings_overview light "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT"
 capture_settings_overview dark "$SETTINGS_OVERVIEW_DARK_SCREENSHOT"
+capture_settings_overview light "$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT"
+capture_settings_overview dark "$SETTINGS_INTEGRATIONS_DARK_SCREENSHOT"
 capture_settings_appearance light "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT"
 capture_settings_appearance dark "$SETTINGS_APPEARANCE_DARK_SCREENSHOT"
 capture_mcp_settings_appearance light "$MCP_SETTINGS_LIGHT_SCREENSHOT"
 capture_mcp_settings_appearance dark "$MCP_SETTINGS_DARK_SCREENSHOT"
 
 GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-write_evidence_file "$GENERATED_AT" "$LIGHT_SCREENSHOT" "$DARK_SCREENSHOT" "$SYSTEM_SCREENSHOT" "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT" "$SETTINGS_OVERVIEW_DARK_SCREENSHOT" "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT" "$SETTINGS_APPEARANCE_DARK_SCREENSHOT" "$MCP_SETTINGS_LIGHT_SCREENSHOT" "$MCP_SETTINGS_DARK_SCREENSHOT"
+write_evidence_file "$GENERATED_AT" "$LIGHT_SCREENSHOT" "$DARK_SCREENSHOT" "$SYSTEM_SCREENSHOT" "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT" "$SETTINGS_OVERVIEW_DARK_SCREENSHOT" "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT" "$SETTINGS_APPEARANCE_DARK_SCREENSHOT" "$MCP_SETTINGS_LIGHT_SCREENSHOT" "$MCP_SETTINGS_DARK_SCREENSHOT" "$INBOX_VOICE_LIGHT_SCREENSHOT" "$INBOX_VOICE_DARK_SCREENSHOT" "$PROJECTS_OVERVIEW_LIGHT_SCREENSHOT" "$PROJECTS_OVERVIEW_DARK_SCREENSHOT" "$SCHEDULE_LIGHT_SCREENSHOT" "$SCHEDULE_DARK_SCREENSHOT" "$DONE_LIGHT_SCREENSHOT" "$DONE_DARK_SCREENSHOT" "$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT" "$SETTINGS_INTEGRATIONS_DARK_SCREENSHOT"
 
 echo "UI screenshot evidence generated:"
 echo "- $(relative_path "$LIGHT_SCREENSHOT")"
@@ -735,6 +844,16 @@ echo "- $(relative_path "$DARK_SCREENSHOT")"
 echo "- $(relative_path "$SYSTEM_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_OVERVIEW_DARK_SCREENSHOT")"
+echo "- $(relative_path "$INBOX_VOICE_LIGHT_SCREENSHOT")"
+echo "- $(relative_path "$INBOX_VOICE_DARK_SCREENSHOT")"
+echo "- $(relative_path "$PROJECTS_OVERVIEW_LIGHT_SCREENSHOT")"
+echo "- $(relative_path "$PROJECTS_OVERVIEW_DARK_SCREENSHOT")"
+echo "- $(relative_path "$SCHEDULE_LIGHT_SCREENSHOT")"
+echo "- $(relative_path "$SCHEDULE_DARK_SCREENSHOT")"
+echo "- $(relative_path "$DONE_LIGHT_SCREENSHOT")"
+echo "- $(relative_path "$DONE_DARK_SCREENSHOT")"
+echo "- $(relative_path "$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT")"
+echo "- $(relative_path "$SETTINGS_INTEGRATIONS_DARK_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_APPEARANCE_DARK_SCREENSHOT")"
 echo "- $(relative_path "$MCP_SETTINGS_LIGHT_SCREENSHOT")"

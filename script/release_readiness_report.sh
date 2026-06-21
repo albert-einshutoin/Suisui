@@ -55,6 +55,16 @@ UI_SCREENSHOTS=(
   "Light:project-board-light.png"
   "Dark:project-board-dark.png"
   "System:project-board-system.png"
+  "Inbox Voice Light:inbox-voice-light.png"
+  "Inbox Voice Dark:inbox-voice-dark.png"
+  "Projects Overview Light:projects-overview-light.png"
+  "Projects Overview Dark:projects-overview-dark.png"
+  "Schedule Light:schedule-light.png"
+  "Schedule Dark:schedule-dark.png"
+  "Done Light:done-light.png"
+  "Done Dark:done-dark.png"
+  "Settings Integrations Light:settings-integrations-light.png"
+  "Settings Integrations Dark:settings-integrations-dark.png"
   "Settings Overview Light:settings-overview-light.png"
   "Settings Overview Dark:settings-overview-dark.png"
   "Settings Appearance Light:settings-appearance-light.png"
@@ -2260,7 +2270,7 @@ for screenshot_entry in "${UI_SCREENSHOTS[@]}"; do
     "$screenshot_bytes"
 done
 if [[ "$ui_evidence_blocker_count" -gt 0 ]]; then
-  printf "NEXT: run script/capture_ui_evidence.sh --doctor, then run script/capture_ui_evidence.sh on a visible macOS session with Screen Recording permission; verify generated Project Board, Settings Overview, Appearance, and MCP Settings PNGs before release.\n"
+  printf "NEXT: run script/capture_ui_evidence.sh --doctor, then run script/capture_ui_evidence.sh on a visible macOS session with Screen Recording permission; verify generated Project Board, Inbox voice detail, Projects overview, Schedule, Done, Settings integrations, Appearance, and MCP Settings PNGs before release.\n"
 fi
 
 section "VoiceOver accessibility evidence"

@@ -132,11 +132,13 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
 #endif
     private var projectBoardWindowRestoreAttempts = 0
     private var fallbackProjectBoardWindow: NSWindow?
+    private var settingsEvidenceWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
         createFallbackProjectBoardWindow()
+        openSettingsWindowForEvidenceIfRequested()
 
 #if canImport(Sparkle)
         guard Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String != nil,
@@ -202,6 +204,48 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
 
         SoloPMProjectBoardWindowFallback.shared.showIfNeeded()
         fallbackProjectBoardWindow = SoloPMProjectBoardWindowFallback.shared.windowForDelegateRetention
+    }
+
+    private func openSettingsWindowForEvidenceIfRequested() {
+        guard ProcessInfo.processInfo.environment["SOLOPM_OPEN_SETTINGS_ON_LAUNCH"] == "1" else {
+            return
+        }
+        let selectedTab = SettingsTab(
+            rawValue: ProcessInfo.processInfo.environment["SOLOPM_SETTINGS_EVIDENCE_TAB"] ?? ""
+        ) ?? .overview
+
+        // The release evidence harness opens Settings directly so captures do not depend on keyboard focus, AppleScript toolbar access, or localized menu state.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            let hostingController = NSHostingController(
+                rootView: SettingsView(
+                    settingsViewModel: AppRuntimeFactory.makeAppSettingsViewModel(),
+                    launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
+                    watcherDiagnosticsSnapshot: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot(),
+                    integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot(),
+                    externalMCPViewModel: AppRuntimeFactory.makeExternalMCPSettingsViewModel(),
+                    syncViewModel: AppRuntimeFactory.makeSyncSettingsViewModel(),
+                    appearancePreference: .constant(SoloPMAppearancePreference.environmentOverride ?? .system),
+                    languagePreference: .constant(AppLanguagePreference.environmentOverride ?? .system),
+                    initialTab: selectedTab
+                )
+                .preferredColorScheme(SoloPMAppearancePreference.environmentOverride?.colorScheme)
+                .environment(\.locale, (AppLanguagePreference.environmentOverride ?? .system).locale)
+            )
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 680, height: 620),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = selectedTab.rawValue
+            window.contentViewController = hostingController
+            window.isReleasedWhenClosed = false
+            window.setFrame(NSRect(x: 120, y: 160, width: 680, height: 620), display: true)
+            self.settingsEvidenceWindow = window
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+        }
     }
 
     private var visibleProjectBoardWindows: [NSWindow] {
@@ -899,6 +943,15 @@ private struct SummaryRow: View {
     }
 }
 
+private enum SettingsTab: String {
+    case overview = "Overview"
+    case appearance = "Appearance"
+    case ai = "AI"
+    case mcp = "MCP"
+    case sync = "Sync"
+    case privacy = "Privacy"
+}
+
 private struct SettingsView: View {
     let watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot
     let integrationPermissionSnapshot: PermissionSnapshot
@@ -910,6 +963,7 @@ private struct SettingsView: View {
     @Binding private var languagePreference: AppLanguagePreference
     @State private var isConfirmingMCPRegistrationDeletion = false
     @State private var isChoosingDataLocation = false
+    @State private var selectedTab: SettingsTab
 
     init(
         settingsViewModel: AppSettingsViewModel,
@@ -919,7 +973,8 @@ private struct SettingsView: View {
         externalMCPViewModel: ExternalMCPSettingsViewModel,
         syncViewModel: SyncSettingsViewModel,
         appearancePreference: Binding<SoloPMAppearancePreference>,
-        languagePreference: Binding<AppLanguagePreference>
+        languagePreference: Binding<AppLanguagePreference>,
+        initialTab: SettingsTab = .overview
     ) {
         self.watcherDiagnosticsSnapshot = watcherDiagnosticsSnapshot
         self.integrationPermissionSnapshot = integrationPermissionSnapshot
@@ -929,27 +984,34 @@ private struct SettingsView: View {
         _syncViewModel = StateObject(wrappedValue: syncViewModel)
         _appearancePreference = appearancePreference
         _languagePreference = languagePreference
+        _selectedTab = State(initialValue: initialTab)
     }
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             overviewSettingsTab
                 .tabItem { Label("Overview", systemImage: "gauge.with.dots.needle.bottom.50percent") }
+                .tag(SettingsTab.overview)
 
             appearanceSettingsTab
                 .tabItem { Label("Appearance", systemImage: "circle.lefthalf.filled") }
+                .tag(SettingsTab.appearance)
 
             aiSettingsTab
                 .tabItem { Label("AI", systemImage: "brain.head.profile") }
+                .tag(SettingsTab.ai)
 
             mcpSettingsTab
                 .tabItem { Label("MCP", systemImage: "externaldrive.connected.to.line.below") }
+                .tag(SettingsTab.mcp)
 
             syncSettingsTab
                 .tabItem { Label("Sync", systemImage: "arrow.triangle.2.circlepath") }
+                .tag(SettingsTab.sync)
 
             privacySettingsTab
                 .tabItem { Label("Privacy", systemImage: "lock.shield") }
+                .tag(SettingsTab.privacy)
         }
         .frame(width: 680, height: 620)
         .scenePadding()
