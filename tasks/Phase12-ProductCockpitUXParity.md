@@ -694,15 +694,15 @@ Phase 12は画面役割を増やすため、実装後にスクリーンショッ
 
 ### Tests First
 
-- [ ] screenshot listのsource/evidence test。
-- [ ] click-path auditが新規画面名とクリック数を含むtest。
-- [ ] capture scriptがseed DB不足時に失敗するtest。
+- [x] screenshot listのsource/evidence test。
+- [x] click-path auditが新規画面名とクリック数を含むtest。
+- [x] capture scriptがseed DB不足時に失敗するtest。
 
 ### Acceptance Criteria
 
-- [ ] 新規主要画面のLight/Dark screenshotが残る。
-- [ ] `docs/ux/click-path-audit.md` にPhase 12画面のクリック数が反映される。
-- [ ] Release evidence gateが古い画面だけでgreenにならない。
+- [x] 新規主要画面のLight/Dark screenshotが残る。
+- [x] `docs/ux/click-path-audit.md` にPhase 12画面のクリック数が反映される。
+- [x] Release evidence gateが古い画面だけでgreenにならない。
 
 ### Non-goals
 
@@ -724,11 +724,11 @@ Phase 12は画面役割を増やすため、実装後にスクリーンショッ
 - [ ] 現行Project Board / Inbox / Today / Voice Command / Settings / Menu Barの既存機能が退行していない。
 - [ ] `ui-samples/01.png` から `07.png` の不足が、実装済み、後続、非対象のいずれかで説明できる。
 - [ ] Inbox、Today、Projects、Project Detail、Schedule、Done、Settingsの画面役割がdocsとUIで一致している。
-- [ ] 主要機能のクリック数が `docs/ux/click-path-audit.md` に反映されている。
-- [ ] 新規UIはLight/Dark/System screenshotで重なり、空白、黒画面、低情報量を確認している。
+- [x] 主要機能のクリック数が `docs/ux/click-path-audit.md` に反映されている。
+- [x] 新規UIはLight/Dark/System screenshotで重なり、空白、黒画面、低情報量を確認している。
 - [ ] API key、token、音声file path、transcript、Calendar/Reminder dataがログや不要なSQLite/UserDefaultsへ漏れていない。
 - [ ] 外部Calendar/Reminder/MCP/Sync writeはapproval/gateなしに実行されない。
-- [ ] `swift test --skip ReleasePipelineTests` と該当source/evidence testsがgreen。
+- [x] `swift test --skip ReleasePipelineTests` と該当source/evidence testsがgreen。
 
 ## Self Review Checklist
 

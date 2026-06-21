@@ -2,13 +2,13 @@
 
 Generated with `script/capture_ui_evidence.sh`.
 
-- Generated at: `2026-06-19T23:06:34Z`
-- Source commit: `cbd2ee0`
+- Generated at: `2026-06-21T08:54:40Z`
+- Source commit: `ef5d1a0`
 - App bundle: `dist/SoloPM.app`
 - Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`
-- Seed data: local `Launch Readiness` project with planned, in-progress, and blocked task cards plus deterministic MCP registration rows
-- Scope: Project board sidebar, task cards, right inspector, Settings Overview Pro Value row, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System
-- Manual review: passed for Project Board sidebar/cards/inspector, Settings Overview Pro Value row, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast
+- Seed data: local `Launch Readiness` project with planned, in-progress, blocked, Inbox voice, Schedule, Done analytics, milestone, completed project, and deterministic MCP registration rows
+- Scope: Project board sidebar, task cards, Inbox voice detail, Projects overview, Schedule cockpit, Done analytics, Settings integrations, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System
+- Manual review: passed for Project Board sidebar/cards/inspector, Inbox voice detail, Projects overview, Schedule cockpit, Done analytics, Settings integrations, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast
 
 ## Screenshots
 
@@ -21,6 +21,16 @@ Generated with `script/capture_ui_evidence.sh`.
 - Settings Appearance Dark: `docs/release/evidence/ui-screenshots/settings-appearance-dark.png`
 - MCP Settings Light: `docs/release/evidence/ui-screenshots/settings-mcp-light.png`
 - MCP Settings Dark: `docs/release/evidence/ui-screenshots/settings-mcp-dark.png`
+- Inbox Voice Light: `docs/release/evidence/ui-screenshots/inbox-voice-light.png`
+- Inbox Voice Dark: `docs/release/evidence/ui-screenshots/inbox-voice-dark.png`
+- Projects Overview Light: `docs/release/evidence/ui-screenshots/projects-overview-light.png`
+- Projects Overview Dark: `docs/release/evidence/ui-screenshots/projects-overview-dark.png`
+- Schedule Light: `docs/release/evidence/ui-screenshots/schedule-light.png`
+- Schedule Dark: `docs/release/evidence/ui-screenshots/schedule-dark.png`
+- Done Light: `docs/release/evidence/ui-screenshots/done-light.png`
+- Done Dark: `docs/release/evidence/ui-screenshots/done-dark.png`
+- Settings Integrations Light: `docs/release/evidence/ui-screenshots/settings-integrations-light.png`
+- Settings Integrations Dark: `docs/release/evidence/ui-screenshots/settings-integrations-dark.png`
 
 ## Notes
 
