@@ -422,6 +422,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(runbook.contains("Manual Release Unblockers"))
         XCTAssertTrue(runbook.contains("current_commit=\"$(git rev-parse --short HEAD)\""))
         XCTAssertTrue(runbook.contains("automated_evidence=\".tmp/automated-release-preflight-${current_commit}.md\""))
+        XCTAssertTrue(runbook.contains("SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=\"$automated_evidence\" ./script/check_automated_release_preflight.sh"))
         XCTAssertTrue(runbook.contains("Use the latest action summary for the current release-candidate source commit and generated helper paths."))
         XCTAssertTrue(runbook.contains("Use `Release candidate product source commit`, not the action summary `Source commit`, when filling manual VoiceOver or competitor evidence."))
         XCTAssertFalse(runbook.contains("automated-release-preflight-5875b4e.md"))
