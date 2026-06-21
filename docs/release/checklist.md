@@ -2,6 +2,8 @@
 
 This checklist is the single runbook for reproducing a SoloPM public alpha release.
 
+When automated gates are green but readiness still reports manual/release-machine blockers, use `docs/release/manual-unblockers.md` as the focused lane checklist for VoiceOver, competitor hands-on, and release-machine evidence. It maps the remaining blockers to the generated `.tmp` worksheet and command files and keeps `--validate-only` before evidence writes.
+
 ## Preconditions
 
 - Release branch is cut from `develop`.
