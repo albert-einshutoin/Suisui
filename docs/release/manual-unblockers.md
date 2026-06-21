@@ -127,6 +127,7 @@ Required environment/config values:
 Required release-machine flow:
 
 ```bash
+./script/check_release_machine_local_doctor.sh
 ./script/verify_signing_setup.sh
 ./script/sign_app.sh
 SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh

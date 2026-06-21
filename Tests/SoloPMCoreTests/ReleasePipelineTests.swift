@@ -123,6 +123,96 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("security find-identity -p codesigning -v"))
     }
 
+    func testReleaseMachineLocalDoctorRunsNonSecretDiagnostics() throws {
+        let script = try readPackageFile("script/check_release_machine_local_doctor.sh")
+
+        XCTAssertTrue(script.contains("security find-identity -p codesigning -v"))
+        XCTAssertTrue(script.contains("packaging/signing.env"))
+        XCTAssertTrue(script.contains("packaging/notarization.env"))
+        XCTAssertTrue(script.contains("packaging/sparkle.env"))
+        XCTAssertTrue(script.contains("./script/verify_signing_setup.sh"))
+        XCTAssertTrue(script.contains("SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh"))
+        XCTAssertTrue(script.contains("SOLOPM_BUILD_CONFIGURATION=release SOLOPM_SPARKLE_CONFIG_QUIET=1 ./script/validate_sparkle_release_config.sh"))
+        XCTAssertTrue(script.contains("./script/verify_release_environment.sh"))
+        XCTAssertTrue(script.contains("redact_sensitive_line"))
+        XCTAssertTrue(script.contains("Developer ID certificate material, notary credentials, Sparkle private keys, tokens, or passwords"))
+        XCTAssertFalse(script.contains("APPLE_ID_PASSWORD"))
+        XCTAssertFalse(script.contains("AC_PASSWORD"))
+    }
+
+    func testReleaseMachineLocalDoctorRedactsVerifierSecretsAndAggregatesBlockers() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-machine-local-doctor", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let packagingDirectory = fixtureRoot.appendingPathComponent("packaging", isDirectory: true)
+        let binDirectory = fixtureRoot.appendingPathComponent("bin", isDirectory: true)
+        let doctorURL = scriptDirectory.appendingPathComponent("check_release_machine_local_doctor.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: packagingDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: binDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        try readPackageFile("script/check_release_machine_local_doctor.sh")
+            .write(to: doctorURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        printf "     0 valid identities found\\n"
+        """.write(to: binDirectory.appendingPathComponent("security"), atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        printf "signing verifier token failed: super-secret-token\\n"
+        exit 2
+        """.write(to: scriptDirectory.appendingPathComponent("verify_signing_setup.sh"), atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        printf "notary credential failed: hidden-token\\n"
+        exit 2
+        """.write(to: scriptDirectory.appendingPathComponent("verify_notarization_setup.sh"), atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        printf "Sparkle private key failed: hidden-private-key\\n"
+        exit 2
+        """.write(to: scriptDirectory.appendingPathComponent("validate_sparkle_release_config.sh"), atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        printf "BLOCKER: missing local release evidence: run ./script/create_release_evidence.sh after packaging and manual checks\\n"
+        exit 2
+        """.write(to: scriptDirectory.appendingPathComponent("verify_release_environment.sh"), atomically: true, encoding: .utf8)
+
+        for executable in [
+            doctorURL,
+            binDirectory.appendingPathComponent("security"),
+            scriptDirectory.appendingPathComponent("verify_signing_setup.sh"),
+            scriptDirectory.appendingPathComponent("verify_notarization_setup.sh"),
+            scriptDirectory.appendingPathComponent("validate_sparkle_release_config.sh"),
+            scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+        ] {
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+        }
+
+        let result = try runTool(
+            ["bash", doctorURL.path],
+            environment: ["PATH": "\(binDirectory.path):/usr/bin:/bin:/usr/sbin:/sbin"]
+        )
+
+        XCTAssertEqual(result.exitCode, 2)
+        XCTAssertTrue(result.output.contains("BLOCKER: no Developer ID Application identities found"))
+        XCTAssertTrue(result.output.contains("BLOCKER: missing local release config: packaging/signing.env"))
+        XCTAssertTrue(result.output.contains("BLOCKER: missing local release config: packaging/notarization.env"))
+        XCTAssertTrue(result.output.contains("BLOCKER: missing local release config: packaging/sparkle.env"))
+        XCTAssertTrue(result.output.contains("BLOCKER: release machine diagnostic failed: ./script/verify_signing_setup.sh"))
+        XCTAssertTrue(result.output.contains("BLOCKER: release machine diagnostic failed: SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh"))
+        XCTAssertTrue(result.output.contains("BLOCKER: release machine diagnostic failed: SOLOPM_BUILD_CONFIGURATION=release SOLOPM_SPARKLE_CONFIG_QUIET=1 ./script/validate_sparkle_release_config.sh"))
+        XCTAssertTrue(result.output.contains("BLOCKER: release machine diagnostic failed: ./script/verify_release_environment.sh"))
+        XCTAssertTrue(result.output.contains("[redacted sensitive diagnostic line]"))
+        XCTAssertFalse(result.output.contains("super-secret-token"))
+        XCTAssertFalse(result.output.contains("hidden-token"))
+        XCTAssertFalse(result.output.contains("hidden-private-key"))
+        XCTAssertTrue(result.output.contains("Do not paste Developer ID certificate material, notary credentials, Sparkle private keys, tokens, or passwords"))
+    }
+
     func testReleasePreflightRequiresHardenedRuntimeSignatureFlag() throws {
         let script = try readPackageFile("script/verify_release_environment.sh")
 
@@ -6399,6 +6489,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Do not bypass the generated command files to work around a dirty tree."))
         XCTAssertTrue(script.contains("packaging/signing.env"))
         XCTAssertTrue(script.contains("packaging/notarization.env"))
+        XCTAssertTrue(script.contains("./script/check_release_machine_local_doctor.sh"))
         XCTAssertTrue(script.contains("write_release_machine_runbook_command()"))
         XCTAssertTrue(script.contains("./script/verify_signing_setup.sh"))
         XCTAssertTrue(script.contains("SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh"))
@@ -6442,7 +6533,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("It also reminds operators that release-machine evidence must include `generator.name: script/create_release_evidence.sh` and that hand-written `packaging/release-evidence.json` remains blocked."))
         XCTAssertTrue(checklist.contains("Passed VoiceOver evidence must also identify the actual macOS version used for the manual pass."))
         XCTAssertTrue(checklist.contains("Generated manual/release command files must fail validate-only until every placeholder is replaced, so template commands cannot be treated as evidence-ready."))
-        XCTAssertTrue(checklist.contains("When release environment preflight fails, the action summary also prints a `Release Machine Local Doctor` section with non-secret diagnostics"))
+        XCTAssertTrue(checklist.contains("When release environment preflight fails, the action summary also prints a `Release Machine Local Doctor` section with `./script/check_release_machine_local_doctor.sh` plus non-secret diagnostics"))
         XCTAssertTrue(phase.contains("[x] `release_readiness_report.sh` は `SOLOPM_RELEASE_ACTIONS_FILE` 指定時に残blockerのoperator action summaryを書き出す。"))
         XCTAssertTrue(phase.contains("[x] action summary は `Source commit` と tracked source tree の clean / dirty / unavailable 状態を併記する。"))
         XCTAssertTrue(phase.contains("[x] action summary は今回の実行で発生した具体blockerを `Current Blocker Groups` のチェックリストとして列挙する。"))
@@ -6544,6 +6635,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("- [ ] release environment blocker contained a sensitive field; inspect verify_release_environment.sh output locally"))
         XCTAssertTrue(actionSummary.contains("## Release Machine Local Doctor"))
         XCTAssertTrue(actionSummary.contains("Run these non-secret diagnostics on the release machine before filling release evidence:"))
+        XCTAssertTrue(actionSummary.contains("./script/check_release_machine_local_doctor.sh"))
         XCTAssertTrue(actionSummary.contains("security find-identity -p codesigning -v"))
         XCTAssertTrue(actionSummary.contains("ls -l packaging/signing.env packaging/notarization.env packaging/sparkle.env"))
         XCTAssertTrue(actionSummary.contains("./script/verify_signing_setup.sh"))

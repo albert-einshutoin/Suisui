@@ -1384,7 +1384,8 @@
 ### P10-166: Release action summary surfaces non-secret release-machine diagnostics
 
 - [x] action summary は release-machine blocker が残る場合、秘密値を出さずに Developer ID identity、local env、signing/notary/Sparkle verifier、final preflight を確認する `Release Machine Local Doctor` を表示する。
-- [x] Doctor は `security find-identity -p codesigning -v`、local env file presence、`verify_signing_setup.sh`、online notary setup、Sparkle release config、`verify_release_environment.sh` だけを案内し、証明書、notary credential、Sparkle private key、token、passwordを転記しない。
+- [x] Doctor は `./script/check_release_machine_local_doctor.sh` と、同scriptが実行する `security find-identity -p codesigning -v`、local env file presence、`verify_signing_setup.sh`、online notary setup、Sparkle release config、`verify_release_environment.sh` だけを案内し、証明書、notary credential、Sparkle private key、token、passwordを転記しない。
+- [x] `script/check_release_machine_local_doctor.sh` は verifier 出力に秘密っぽい行が混じっても redaction し、診断blockerだけを集約する。
 - [x] 完了条件: release-machine operator は evidence command を編集する前に、現在のマシンが署名/公証/Sparkle前提を満たすかをaction summaryから確認できる。
 
 ## PDCA Loop

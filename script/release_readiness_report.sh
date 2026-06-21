@@ -811,6 +811,7 @@ write_release_machine_local_doctor() {
   printf "## Release Machine Local Doctor\n"
   printf -- "- Run these non-secret diagnostics on the release machine before filling release evidence:\n\n"
   printf '%s\n' '```bash'
+  printf '%s\n' './script/check_release_machine_local_doctor.sh'
   printf '%s\n' 'security find-identity -p codesigning -v'
   printf '%s\n' 'ls -l packaging/signing.env packaging/notarization.env packaging/sparkle.env'
   printf '%s\n' './script/verify_signing_setup.sh'
