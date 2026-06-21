@@ -816,7 +816,7 @@ write_release_machine_local_doctor() {
   printf '%s\n' 'ls -l packaging/signing.env packaging/notarization.env packaging/sparkle.env'
   printf '%s\n' './script/verify_signing_setup.sh'
   printf '%s\n' 'SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh'
-  printf '%s\n' './script/validate_sparkle_release_config.sh'
+  printf '%s\n' 'SOLOPM_BUILD_CONFIGURATION=release SOLOPM_SPARKLE_CONFIG_QUIET=1 ./script/validate_sparkle_release_config.sh'
   printf '%s\n' './script/verify_release_environment.sh'
   printf '%s\n' '```'
   printf "\n"
