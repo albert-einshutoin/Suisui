@@ -14,10 +14,12 @@ source "$METADATA_FILE"
 
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
+APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 SOURCE_ONLY=1
 RUN_RUNTIME=0
 LAUNCH_APP=1
 SKIP_SOURCE_ANCHORS=0
+LAUNCH_ENV_FILE=""
 TIMEOUT_SECONDS=12
 MIN_AX_BUTTONS=5
 MIN_AX_TEXT_FIELDS=1
@@ -114,7 +116,7 @@ REQUIRED_SOURCE_ANCHORS=(
 )
 
 usage() {
-  printf '%s\n' "usage: $0 [--source-only|--runtime] [--skip-source-anchors] [--app-bundle PATH] [--skip-launch] [--timeout SECONDS]"
+  printf '%s\n' "usage: $0 [--source-only|--runtime] [--skip-source-anchors] [--app-bundle PATH] [--launch-env PATH] [--skip-launch] [--timeout SECONDS]"
   printf '%s\n' ""
   printf '%s\n' "Checks accessibility anchors before the manual VoiceOver release pass."
   printf '%s\n' "This is not a substitute for the manual VoiceOver pass."
@@ -144,6 +146,10 @@ while [[ "$#" -gt 0 ]]; do
     --skip-launch)
       LAUNCH_APP=0
       shift
+      ;;
+    --launch-env)
+      LAUNCH_ENV_FILE="${2:-}"
+      shift 2
       ;;
     --timeout)
       TIMEOUT_SECONDS="${2:-}"
@@ -213,9 +219,33 @@ if [[ ! -d "$APP_BUNDLE" ]]; then
   exit 2
 fi
 
+if [[ -n "$LAUNCH_ENV_FILE" ]]; then
+  case "$LAUNCH_ENV_FILE" in
+    /*) ;;
+    *) LAUNCH_ENV_FILE="$ROOT_DIR/$LAUNCH_ENV_FILE" ;;
+  esac
+  if [[ ! -f "$LAUNCH_ENV_FILE" ]]; then
+    echo "BLOCKER: launch env not found for runtime accessibility preflight: $LAUNCH_ENV_FILE" >&2
+    exit 2
+  fi
+  if [[ ! -x "$APP_BINARY" ]]; then
+    echo "BLOCKER: app binary not found or not executable: $APP_BINARY" >&2
+    exit 2
+  fi
+fi
+
 if [[ "$LAUNCH_APP" -eq 1 ]]; then
   pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-  /usr/bin/open -n -F "$APP_BUNDLE"
+  if [[ -n "$LAUNCH_ENV_FILE" ]]; then
+    # Launching the binary directly preserves the generated review database and selected project env.
+    set -a
+    # shellcheck source=/dev/null
+    source "$LAUNCH_ENV_FILE"
+    set +a
+    "$APP_BINARY" &
+  else
+    /usr/bin/open -n -F "$APP_BUNDLE"
+  fi
   /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 || true
 fi
 
