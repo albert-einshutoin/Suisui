@@ -452,3 +452,11 @@
 "High-priority work is the best first task." = "高優先度の作業から始めるのが最適です。";
 "Earliest due task keeps today on track." = "最も期限が近いタスクで今日の計画を維持します。";
 "Smoke: %@" = "スモーク: %@";
+"All" = "すべて";
+"Voice" = "音声";
+"AI Suggested" = "AI提案";
+"Manual" = "手動追加";
+"Unprocessed" = "未整理";
+"Inbox Filter" = "Inboxフィルタ";
+"Inbox filter" = "Inboxフィルタ";
+"Filters Inbox items by source and interpretation status." = "Inbox項目をソースと解釈状態で絞り込みます。";

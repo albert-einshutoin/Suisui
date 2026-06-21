@@ -452,3 +452,11 @@
 "High-priority work is the best first task." = "High-priority work is the best first task.";
 "Earliest due task keeps today on track." = "Earliest due task keeps today on track.";
 "Smoke: %@" = "Smoke: %@";
+"All" = "All";
+"Voice" = "Voice";
+"AI Suggested" = "AI Suggested";
+"Manual" = "Manual";
+"Unprocessed" = "Unprocessed";
+"Inbox Filter" = "Inbox Filter";
+"Inbox filter" = "Inbox filter";
+"Filters Inbox items by source and interpretation status." = "Filters Inbox items by source and interpretation status.";

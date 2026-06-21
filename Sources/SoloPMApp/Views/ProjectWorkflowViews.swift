@@ -156,7 +156,7 @@ struct InboxWorkflowView: View {
     @State private var quickTitle = ""
 
     private var tasks: [ProjectBoardTask] {
-        viewModel.inboxTasks
+        viewModel.filteredInboxTasks
     }
 
     private var subtitle: String {
@@ -180,23 +180,7 @@ struct InboxWorkflowView: View {
             emptyDescription: "Voice notes, manual captures, and unassigned tasks land here before classification.",
             viewModel: viewModel,
             headerAccessory: {
-                HStack(spacing: 8) {
-                    WorkflowDoneToggle(viewModel: viewModel)
-                    TextField("Capture an inbox item", text: $quickTitle)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit(addInboxTask)
-                        .accessibilityIdentifier("inbox-quick-add-title")
-                        .accessibilityLabel("Inbox quick add title")
-                        .accessibilityHint("Creates a local Inbox item when submitted.")
-                    Button(action: addInboxTask) {
-                        Label("Quick Add", systemImage: "plus")
-                    }
-                    .disabled(quickTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .keyboardShortcut(.return, modifiers: [.command])
-                    .help("Add this item to Inbox")
-                    .accessibilityIdentifier("inbox-quick-add-button")
-                    .accessibilityHint("Adds the typed item to the local Inbox.")
-                }
+                InboxHeaderControls(quickTitle: $quickTitle, viewModel: viewModel, addInboxTask: addInboxTask)
             },
             footer: {
                 InboxActionPanel(task: viewModel.selectedTask, viewModel: viewModel)
@@ -211,6 +195,58 @@ struct InboxWorkflowView: View {
         }
         _ = viewModel.createTask(title: title, projectID: inboxID, status: .backlog)
         quickTitle = ""
+    }
+}
+
+private struct InboxHeaderControls: View {
+    @Binding var quickTitle: String
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    let addInboxTask: () -> Void
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            HStack(spacing: 8) {
+                WorkflowDoneToggle(viewModel: viewModel)
+                TextField("Capture an inbox item", text: $quickTitle)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(addInboxTask)
+                    .accessibilityIdentifier("inbox-quick-add-title")
+                    .accessibilityLabel("Inbox quick add title")
+                    .accessibilityHint("Creates a local Inbox item when submitted.")
+                Button(action: addInboxTask) {
+                    Label("Quick Add", systemImage: "plus")
+                }
+                .disabled(quickTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .keyboardShortcut(.return, modifiers: [.command])
+                .help("Add this item to Inbox")
+                .accessibilityIdentifier("inbox-quick-add-button")
+                .accessibilityHint("Adds the typed item to the local Inbox.")
+            }
+
+            Picker("Inbox Filter", selection: Binding(
+                get: { viewModel.inboxTriageFilter },
+                set: { viewModel.setInboxTriageFilter($0) }
+            )) {
+                ForEach(InboxTriageFilter.allCases) { filter in
+                    Text(filterTitle(filter))
+                        .tag(filter)
+                        .accessibilityLabel(filterAccessibilityLabel(filter))
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 560)
+            .accessibilityIdentifier("inbox-triage-filter")
+            .accessibilityLabel("Inbox filter")
+            .accessibilityHint("Filters Inbox items by source and interpretation status.")
+        }
+    }
+
+    private func filterTitle(_ filter: InboxTriageFilter) -> String {
+        "\(String(localized: String.LocalizationValue(filter.title))) (\(viewModel.inboxTriageCount(for: filter)))"
+    }
+
+    private func filterAccessibilityLabel(_ filter: InboxTriageFilter) -> String {
+        "\(String(localized: String.LocalizationValue(filter.title))), \(viewModel.inboxTriageCount(for: filter))"
     }
 }
 

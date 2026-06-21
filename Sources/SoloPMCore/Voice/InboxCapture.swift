@@ -188,7 +188,7 @@ public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendab
                   \(Self.optional(draft.memo)),
                   '\(draft.classificationStatus.rawValue)',
                   '\(draft.transcriptionStatus.rawValue)',
-                  \(Self.optional(draft.createdAt))
+                  \(Self.optional(draft.createdAt, defaultSQL: "CURRENT_TIMESTAMP"))
                 );
                 """
             )
@@ -349,6 +349,13 @@ public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendab
     private static func optional(_ value: String?) -> String {
         guard let value else {
             return "NULL"
+        }
+        return "'\(escape(value))'"
+    }
+
+    private static func optional(_ value: String?, defaultSQL: String) -> String {
+        guard let value else {
+            return defaultSQL
         }
         return "'\(escape(value))'"
     }

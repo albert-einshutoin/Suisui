@@ -909,6 +909,109 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelFiltersInboxTasksByTriageSourceAndInterpretation() throws {
+        let bundle = try makeStoreBundle()
+        let captures = SQLiteInboxCaptureStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(store: bundle.board, inboxCaptureStore: captures)
+        viewModel.load()
+
+        let manual = try XCTUnwrap(viewModel.createInboxTask(title: "Manual capture"))
+        let voice = try XCTUnwrap(viewModel.createInboxTask(title: "Voice without suggestion"))
+        _ = try captures.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: voice.id,
+            audioFilePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/voice-filter.m4a",
+            durationSeconds: 5,
+            transcript: "Call supplier",
+            interpretationSummary: nil,
+            memo: nil,
+            transcriptionStatus: .succeeded
+        ))
+        let suggested = try XCTUnwrap(viewModel.createInboxTask(title: "AI suggested capture"))
+        _ = try captures.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: suggested.id,
+            audioFilePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/ai-filter.m4a",
+            durationSeconds: 8,
+            transcript: "Prepare launch brief",
+            interpretationSummary: "Likely task: prepare launch brief",
+            memo: "Confidence: medium",
+            transcriptionStatus: .succeeded
+        ))
+        let scheduled = try XCTUnwrap(viewModel.createInboxTask(
+            title: "Scheduled manual capture",
+            dueAt: "2026-06-22T09:00:00Z"
+        ))
+
+        XCTAssertEqual(viewModel.inboxTriageCount(for: .all), 4)
+        XCTAssertEqual(viewModel.inboxTriageCount(for: .voice), 2)
+        XCTAssertEqual(viewModel.inboxTriageCount(for: .aiSuggested), 1)
+        XCTAssertEqual(viewModel.inboxTriageCount(for: .manual), 2)
+        XCTAssertEqual(viewModel.inboxTriageCount(for: .unprocessed), 3)
+
+        viewModel.setInboxTriageFilter(.voice)
+        XCTAssertEqual(viewModel.filteredInboxTasks.map(\.id), [suggested.id, voice.id])
+
+        viewModel.setInboxTriageFilter(.aiSuggested)
+        XCTAssertEqual(viewModel.filteredInboxTasks.map(\.id), [suggested.id])
+
+        viewModel.setInboxTriageFilter(.manual)
+        XCTAssertEqual(viewModel.filteredInboxTasks.map(\.id), [scheduled.id, manual.id])
+    }
+
+    @MainActor
+    func testProjectBoardViewModelFallsBackSelectionWhenInboxFilterHidesCurrentTask() throws {
+        let bundle = try makeStoreBundle()
+        let captures = SQLiteInboxCaptureStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(store: bundle.board, inboxCaptureStore: captures)
+        viewModel.load()
+
+        let manual = try XCTUnwrap(viewModel.createInboxTask(title: "Manual capture"))
+        let suggested = try XCTUnwrap(viewModel.createInboxTask(title: "AI suggested capture"))
+        _ = try captures.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: suggested.id,
+            audioFilePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/selection-filter.m4a",
+            durationSeconds: 6,
+            transcript: "Draft rollout checklist",
+            interpretationSummary: "Likely task: draft rollout checklist",
+            memo: nil,
+            transcriptionStatus: .succeeded
+        ))
+
+        viewModel.selectedTaskID = manual.id
+        viewModel.setInboxTriageFilter(.aiSuggested)
+
+        XCTAssertEqual(viewModel.selectedTaskID, suggested.id)
+        XCTAssertEqual(viewModel.filteredInboxTasks.map(\.id), [suggested.id])
+    }
+
+    @MainActor
+    func testProjectBoardViewModelClassifiesVoiceInboxItemWithoutAISuggestion() throws {
+        let bundle = try makeStoreBundle()
+        let captures = SQLiteInboxCaptureStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(store: bundle.board, inboxCaptureStore: captures)
+        viewModel.load()
+
+        let voice = try XCTUnwrap(viewModel.createInboxTask(title: "Voice without interpretation"))
+        _ = try captures.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: voice.id,
+            audioFilePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/no-ai-suggestion.m4a",
+            durationSeconds: 7,
+            transcript: "Follow up on launch QA",
+            interpretationSummary: nil,
+            memo: nil,
+            transcriptionStatus: .succeeded
+        ))
+
+        viewModel.setInboxTriageFilter(.voice)
+        viewModel.selectedTaskID = voice.id
+        XCTAssertNil(viewModel.selectedInboxCaptureRecords.first?.interpretationSummary)
+
+        viewModel.markSelectedTaskAsTask()
+
+        XCTAssertEqual(viewModel.inboxClassificationFeedback?.message, "Kept \"Voice without interpretation\" as a task.")
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
     func testProjectBoardViewModelQuickCaptureRejectsBlankInboxTitleWithoutNotifying() {
         var changeCount = 0
         let viewModel = ProjectBoardViewModel(

@@ -234,6 +234,31 @@ public struct InboxClassificationFeedback: Equatable, Sendable {
     }
 }
 
+public enum InboxTriageFilter: String, CaseIterable, Identifiable, Sendable {
+    case all
+    case voice
+    case aiSuggested
+    case manual
+    case unprocessed
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .all:
+            "All"
+        case .voice:
+            "Voice"
+        case .aiSuggested:
+            "AI Suggested"
+        case .manual:
+            "Manual"
+        case .unprocessed:
+            "Unprocessed"
+        }
+    }
+}
+
 public struct ProjectBoardTaskDraft: Equatable, Sendable {
     public var projectID: Int64
     public var title: String
@@ -625,6 +650,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var integrationStatusMessage: String?
     @Published public private(set) var inboxClassificationFeedback: InboxClassificationFeedback?
+    @Published public private(set) var inboxTriageFilter: InboxTriageFilter
 
     private let store: any ProjectBoardStore
     private let inboxCaptureStore: (any InboxCaptureStore)?
@@ -647,6 +673,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.selectedProjectID = snapshot.projects.first?.id
         self.showsArchivedProjects = false
         self.showsCompletedWorkflowTasks = false
+        self.inboxTriageFilter = .all
     }
 
     public var selectedProject: ProjectBoardProject? {
@@ -676,6 +703,12 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    public var filteredInboxTasks: [ProjectBoardTask] {
+        inboxTasks.filter { task in
+            matchesInboxTriageFilter(task, filter: inboxTriageFilter)
+        }
+    }
+
     public var inboxTasks: [ProjectBoardTask] {
         inboxProject?
             .tasks
@@ -690,6 +723,17 @@ public final class ProjectBoardViewModel: ObservableObject {
     public var inboxProject: ProjectBoardProject? {
         snapshot.projects
             .first { $0.title.caseInsensitiveCompare("Inbox") == .orderedSame && !$0.isArchived }
+    }
+
+    public func inboxTriageCount(for filter: InboxTriageFilter) -> Int {
+        inboxTasks.filter { task in
+            matchesInboxTriageFilter(task, filter: filter)
+        }.count
+    }
+
+    public func setInboxTriageFilter(_ filter: InboxTriageFilter) {
+        inboxTriageFilter = filter
+        ensureSelectedTaskIsVisibleInInboxFilter()
     }
 
     public func todayTasks(on referenceDate: Date = Date(), calendar: Calendar = .current) -> [ProjectBoardTask] {
@@ -1543,7 +1587,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         selectedProjectID = fallbackTask.projectID
         selectedTaskID = fallbackTask.id
 
-        if shouldAdvanceInboxSelection, let nextInboxTask = inboxTasks.first(where: { $0.id != originalTask.id }) {
+        if shouldAdvanceInboxSelection, let nextInboxTask = filteredInboxTasks.first(where: { $0.id != originalTask.id }) {
             selectedProjectID = nextInboxTask.projectID
             selectedTaskID = nextInboxTask.id
         }
@@ -1551,6 +1595,60 @@ public final class ProjectBoardViewModel: ObservableObject {
         inboxClassificationFeedback = feedback
         lastInboxClassificationUndo = undo
         errorMessage = nil
+    }
+
+    private func ensureSelectedTaskIsVisibleInInboxFilter() {
+        let visibleTasks = filteredInboxTasks
+        guard let selectedTaskID else {
+            if let first = visibleTasks.first {
+                selectedProjectID = first.projectID
+                self.selectedTaskID = first.id
+            }
+            return
+        }
+
+        guard !visibleTasks.contains(where: { $0.id == selectedTaskID }) else {
+            return
+        }
+
+        selectedProjectID = visibleTasks.first?.projectID ?? inboxProject?.id
+        self.selectedTaskID = visibleTasks.first?.id
+    }
+
+    private func matchesInboxTriageFilter(_ task: ProjectBoardTask, filter: InboxTriageFilter) -> Bool {
+        guard filter != .all else {
+            return true
+        }
+
+        let captures = captureRecords(for: task.id)
+        switch filter {
+        case .all:
+            return true
+        case .voice:
+            return captures.contains { $0.sourceKind == .voiceMemo }
+        case .aiSuggested:
+            return captures.contains { $0.interpretationSummary?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+        case .manual:
+            return captures.isEmpty
+        case .unprocessed:
+            return task.status == .backlog && task.dueAt == nil
+        }
+    }
+
+    private func captureRecords(for taskID: Int64) -> [InboxCaptureRecord] {
+        guard let inboxCaptureStore else {
+            // Older test/runtime surfaces can instantiate the board without
+            // capture metadata. Treat those items as manual captures so the
+            // Inbox remains usable instead of hiding work behind a missing store.
+            return []
+        }
+
+        do {
+            return try inboxCaptureStore.list(taskID: taskID)
+        } catch {
+            errorMessage = InboxCaptureStoreError.userMessage(for: error)
+            return []
+        }
     }
 
     private func dueDate(for rawDueAt: String?) -> Date? {

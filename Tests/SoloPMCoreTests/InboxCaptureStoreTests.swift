@@ -118,6 +118,24 @@ final class InboxCaptureStoreTests: XCTestCase {
         XCTAssertEqual(try stores.captures.list(taskID: task.id).map(\.id), [record.id])
     }
 
+    func testSQLiteInboxCaptureStoreUsesCurrentTimestampWhenCreatedAtIsOmitted() throws {
+        let stores = try makeStores()
+        let task = try stores.board.createInboxTask(title: "Timestamp default")
+
+        let record = try stores.captures.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: task.id,
+            audioFilePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/default-created-at.m4a",
+            durationSeconds: 4,
+            transcript: "Default timestamp",
+            interpretationSummary: nil,
+            memo: nil,
+            transcriptionStatus: .succeeded
+        ))
+
+        XCTAssertFalse(record.createdAt.isEmpty)
+        XCTAssertNotEqual(record.createdAt, "NULL")
+    }
+
     @MainActor
     func testInboxClassificationUndoAndNextSelectionWorksForVoiceCaptureBackedTasks() throws {
         let stores = try makeStores()

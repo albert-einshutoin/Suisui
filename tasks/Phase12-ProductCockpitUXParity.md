@@ -186,15 +186,15 @@
 
 ### Tests First
 
-- [ ] filter別に件数と表示対象が変わるViewModel test。
-- [ ] filter後のselection fallback test。
-- [ ] AI解釈が未生成でも分類actionがdisabledにならないtest。
+- [x] filter別に件数と表示対象が変わるViewModel test。
+- [x] filter後のselection fallback test。
+- [x] AI解釈が未生成でも分類actionがdisabledにならないtest。
 
 ### Acceptance Criteria
 
-- [ ] 5種類のfilterでInbox itemを絞れる。
-- [ ] detail panelでtranscript / interpretation / memoを確認できる。
-- [ ] 既存Inbox quick addと分類actionが同じクリック数で使える。
+- [x] 5種類のfilterでInbox itemを絞れる。
+- [x] detail panelでtranscript / interpretation / memoを確認できる。
+- [x] 既存Inbox quick addと分類actionが同じクリック数で使える。
 
 ### Non-goals
 

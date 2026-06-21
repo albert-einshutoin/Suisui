@@ -686,6 +686,13 @@ final class AppExperienceSourceTests: XCTestCase {
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
 
         XCTAssertTrue(coreSource.contains("public var selectedInboxCaptureRecords"))
+        XCTAssertTrue(coreSource.contains("public enum InboxTriageFilter"))
+        XCTAssertTrue(coreSource.contains("public var filteredInboxTasks"))
+        XCTAssertTrue(coreSource.contains("public func setInboxTriageFilter"))
+        XCTAssertTrue(workflowSource.contains("viewModel.filteredInboxTasks"))
+        XCTAssertTrue(workflowSource.contains("InboxHeaderControls("))
+        XCTAssertTrue(workflowSource.contains("Picker(\"Inbox Filter\""))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-triage-filter\")"))
         XCTAssertTrue(workflowSource.contains("InboxCaptureMetadataPanel("))
         XCTAssertTrue(workflowSource.contains("viewModel.selectedInboxCaptureRecords"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-capture-metadata\")"))
