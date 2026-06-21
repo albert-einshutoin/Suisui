@@ -37,11 +37,11 @@
 
 ## P13-003: Cloud Sync foundation
 
-- [ ] E2EE前提のsync ledger設計を作る。
-- [ ] Project / Task / safe Settings / Conversation metadata の同期対象と除外対象を明文化する。
-- [ ] Provider API key、MCP secret、OAuth token がplaintext sync対象に入らないテストを追加する。
-- [ ] offline create / update / conflict / deleted recovery のmerge policyを決める。
-- [ ] 完了条件: iOS/Web/macOSが共有する最小タスクデータを安全に同期できる設計になる。
+- [x] E2EE前提のsync ledger設計を作る。
+- [x] Project / Task / safe Settings / Conversation metadata の同期対象と除外対象を明文化する。
+- [x] Provider API key、MCP secret、OAuth token がplaintext sync対象に入らないテストを追加する。
+- [x] offline create / update / conflict / deleted recovery のmerge policyを決める。
+- [x] 完了条件: iOS/Web/macOSが共有する最小タスクデータを安全に同期できる設計になる。
 
 ## P13-004: iOS companion MVP
 
