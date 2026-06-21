@@ -104,6 +104,7 @@
 "Today" = "今日";
 "Voice" = "音声";
 "Voice Command" = "音声コマンド";
+"Voice Capture" = "音声キャプチャ";
 "Watcher" = "監視";
 "Changes the appearance for all SoloPM windows." = "すべてのSoloPMウィンドウの表示を変更します。";
 "Changes the language for all SoloPM windows." = "すべてのSoloPMウィンドウの言語を変更します。";
@@ -152,6 +153,7 @@
 "Cancels task creation and returns focus to the board column." = "タスク作成をキャンセルし、ボード列へフォーカスを戻します。";
 "Capture an inbox item" = "インボックス項目を入力";
 "Captured work remains in Inbox until it is scheduled or moved to a project." = "取り込んだ作業は、予定化またはプロジェクトへ移動されるまでインボックスに残ります。";
+"Classification" = "分類";
 "Check Result" = "確認結果";
 "Checking" = "確認中";
 "Choose how to classify the selected Inbox item." = "選択中のインボックス項目の分類方法を選びます。";
@@ -170,6 +172,7 @@
 "Creates a local Inbox item when submitted." = "送信時にローカルのインボックス項目を作成します。";
 "Creates a local Inbox task without opening the Project Board." = "プロジェクトボードを開かずにローカルのインボックスタスクを作成します。";
 "Creates a local project from the selected Inbox item." = "選択中のインボックス項目からローカルプロジェクトを作成します。";
+"Duration" = "長さ";
 "Creates a new local project and selects it." = "新しいローカルプロジェクトを作成して選択します。";
 "Creates the task in the local SoloPM database" = "ローカルSoloPMデータベースにタスクを作成します";
 "Creates the task in the local SoloPM database." = "ローカルSoloPMデータベースにタスクを作成します。";
@@ -219,6 +222,7 @@
 "Inbox classification actions" = "インボックス分類操作";
 "Inbox is clear" = "インボックスは空です";
 "Inbox quick add title" = "インボックスクイック追加タイトル";
+"Interpretation" = "解釈";
 "Invalid" = "無効";
 "Last Attempt" = "前回の試行";
 "Last Check" = "前回の確認";
@@ -237,6 +241,7 @@
 "Make Task" = "タスク化";
 "Make selected Inbox item a project" = "選択中のインボックス項目をプロジェクト化";
 "Make selected Inbox item a task" = "選択中のインボックス項目をタスク化";
+"Memo" = "メモ";
 "Microphone permission denied." = "マイク権限が拒否されています。";
 "Missing" = "未設定";
 "Move To" = "移動先";
@@ -260,6 +265,7 @@
 "No scheduled blocks" = "予定ブロックなし";
 "No tasks" = "タスクなし";
 "No tasks due today" = "今日が期限のタスクはありません";
+"No transcript yet" = "文字起こしはまだありません";
 "No tracked artifacts linked to this project" = "このプロジェクトに紐づく追跡成果物はありません";
 "No upload starts while the backend is missing." = "バックエンド未設定の間はアップロードを開始しません。";
 "Not Determined" = "未決定";
@@ -360,6 +366,9 @@
 "SoloPM" = "SoloPM";
 "Speech to Text" = "音声文字起こし";
 "Status" = "ステータス";
+"Source" = "入力元";
+"Transcription" = "文字起こし";
+"Transcript" = "文字起こし本文";
 "Suggestion" = "提案";
 "Summary" = "サマリー";
 "Sync backend is not configured" = "同期バックエンドが未設定です";

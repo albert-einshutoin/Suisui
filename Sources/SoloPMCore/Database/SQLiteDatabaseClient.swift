@@ -479,6 +479,33 @@ public enum CoreMigrations {
                     ON external_task_links(provider_id, project_id);
                     """
                 )
+            },
+            DatabaseMigration(id: "0010_create_inbox_capture_records") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS inbox_capture_records (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        task_id INTEGER NOT NULL,
+                        source_kind TEXT NOT NULL CHECK(source_kind IN ('voice_memo')),
+                        audio_file_path TEXT NOT NULL,
+                        duration_seconds REAL NOT NULL CHECK(duration_seconds >= 0),
+                        transcript TEXT,
+                        interpretation_summary TEXT,
+                        memo TEXT,
+                        classification_status TEXT NOT NULL CHECK(classification_status IN ('unclassified', 'classified', 'dismissed')),
+                        transcription_status TEXT NOT NULL CHECK(transcription_status IN ('pending', 'succeeded', 'failed')),
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_inbox_capture_records_task
+                    ON inbox_capture_records(task_id);
+
+                    CREATE INDEX IF NOT EXISTS idx_inbox_capture_records_created_at
+                    ON inbox_capture_records(created_at);
+                    """
+                )
             }
         ]
     }

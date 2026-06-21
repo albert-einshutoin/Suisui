@@ -121,17 +121,17 @@
 
 ### Tests First
 
-- [ ] `ProjectBoardStoreTests` または新規 `InboxCaptureStoreTests` に音声capture保存/読込/削除を追加する。
-- [ ] STT失敗時も録音itemが残ることをfakeで固定する。
-- [ ] Inbox分類後のUndo/next selectionが音声itemでも維持されることをテストする。
-- [ ] transcriptやfile pathがplanning audit / error logへ漏れないことをsecurity testで確認する。
+- [x] `ProjectBoardStoreTests` または新規 `InboxCaptureStoreTests` に音声capture保存/読込/削除を追加する。
+- [x] STT失敗時も録音itemが残ることをfakeで固定する。
+- [x] Inbox分類後のUndo/next selectionが音声itemでも維持されることをテストする。
+- [x] transcriptやfile pathがplanning audit / error logへ漏れないことをsecurity testで確認する。
 
 ### Acceptance Criteria
 
-- [ ] 録音itemがInboxに永続化される。
-- [ ] transcript、duration、source kind、classification statusがUIに出る。
-- [ ] 既存の手入力Inbox分類機能が退行しない。
-- [ ] `Voice Command` のAction Plan生成導線が残る。
+- [x] 録音itemがInboxに永続化される。
+- [x] transcript、duration、source kind、classification statusがUIに出る。
+- [x] 既存の手入力Inbox分類機能が退行しない。
+- [x] `Voice Command` のAction Plan生成導線が残る。
 
 ### Non-goals
 

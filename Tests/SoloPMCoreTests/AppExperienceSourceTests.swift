@@ -680,6 +680,22 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-classification-feedback\")"))
     }
 
+    func testInboxWorkflowSurfacesVoiceCaptureMetadataWithoutReplacingVoiceCommand() throws {
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+
+        XCTAssertTrue(coreSource.contains("public var selectedInboxCaptureRecords"))
+        XCTAssertTrue(workflowSource.contains("InboxCaptureMetadataPanel("))
+        XCTAssertTrue(workflowSource.contains("viewModel.selectedInboxCaptureRecords"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-capture-metadata\")"))
+        XCTAssertTrue(workflowSource.contains("capture.durationLabel"))
+        XCTAssertTrue(workflowSource.contains("capture.transcript"))
+        XCTAssertTrue(workflowSource.contains("capture.classificationStatus.rawValue"))
+        XCTAssertTrue(appSource.contains("inboxCaptureStore: SQLiteInboxCaptureStore(connection: connection)"))
+        XCTAssertTrue(appSource.contains("Window(\"Voice Command\", id: \"voice-capture\")"))
+    }
+
     func testInboxAndTodayWorkflowsExposeKeyboardAndVoiceOverAnchors() throws {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
         let audit = try readPackageFile("docs/ux/click-path-audit.md")

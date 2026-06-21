@@ -448,6 +448,7 @@ private struct InboxActionPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Classify Selected Item")
                 .font(.headline)
+            InboxCaptureMetadataPanel(captures: viewModel.selectedInboxCaptureRecords)
             if let feedback = viewModel.inboxClassificationFeedback {
                 HStack(spacing: 8) {
                     Label(feedback.message, systemImage: feedback.systemImage)
@@ -531,6 +532,48 @@ private struct InboxActionPanel: View {
         .help("Review selected Inbox item later")
         .accessibilityIdentifier("inbox-action-review-later")
         .accessibilityHint("Leaves the selected Inbox item for later review.")
+    }
+}
+
+private struct InboxCaptureMetadataPanel: View {
+    let captures: [InboxCaptureRecord]
+
+    var body: some View {
+        if let capture = captures.first {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Voice Capture", systemImage: "waveform")
+                    .font(.caption.weight(.semibold))
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 8)], alignment: .leading, spacing: 6) {
+                    metadataRow(title: "Source", value: capture.sourceKind.rawValue)
+                    metadataRow(title: "Duration", value: capture.durationLabel)
+                    metadataRow(title: "Classification", value: capture.classificationStatus.rawValue)
+                    metadataRow(title: "Transcription", value: capture.transcriptionStatus.rawValue)
+                }
+                metadataRow(title: "Transcript", value: capture.transcript ?? "No transcript yet")
+                if let interpretationSummary = capture.interpretationSummary {
+                    metadataRow(title: "Interpretation", value: interpretationSummary)
+                }
+                if let memo = capture.memo {
+                    metadataRow(title: "Memo", value: memo)
+                }
+            }
+            .padding(8)
+            .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("inbox-capture-metadata")
+        }
+    }
+
+    private func metadataRow(title: LocalizedStringKey, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

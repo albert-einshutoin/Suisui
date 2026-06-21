@@ -104,6 +104,7 @@
 "Today" = "Today";
 "Voice" = "Voice";
 "Voice Command" = "Voice Command";
+"Voice Capture" = "Voice Capture";
 "Watcher" = "Watcher";
 "Changes the appearance for all SoloPM windows." = "Changes the appearance for all SoloPM windows.";
 "Changes the language for all SoloPM windows." = "Changes the language for all SoloPM windows.";
@@ -152,6 +153,7 @@
 "Cancels task creation and returns focus to the board column." = "Cancels task creation and returns focus to the board column.";
 "Capture an inbox item" = "Capture an inbox item";
 "Captured work remains in Inbox until it is scheduled or moved to a project." = "Captured work remains in Inbox until it is scheduled or moved to a project.";
+"Classification" = "Classification";
 "Check Result" = "Check Result";
 "Checking" = "Checking";
 "Choose how to classify the selected Inbox item." = "Choose how to classify the selected Inbox item.";
@@ -170,6 +172,7 @@
 "Creates a local Inbox item when submitted." = "Creates a local Inbox item when submitted.";
 "Creates a local Inbox task without opening the Project Board." = "Creates a local Inbox task without opening the Project Board.";
 "Creates a local project from the selected Inbox item." = "Creates a local project from the selected Inbox item.";
+"Duration" = "Duration";
 "Creates a new local project and selects it." = "Creates a new local project and selects it.";
 "Creates the task in the local SoloPM database" = "Creates the task in the local SoloPM database";
 "Creates the task in the local SoloPM database." = "Creates the task in the local SoloPM database.";
@@ -219,6 +222,7 @@
 "Inbox classification actions" = "Inbox classification actions";
 "Inbox is clear" = "Inbox is clear";
 "Inbox quick add title" = "Inbox quick add title";
+"Interpretation" = "Interpretation";
 "Invalid" = "Invalid";
 "Last Attempt" = "Last Attempt";
 "Last Check" = "Last Check";
@@ -237,6 +241,7 @@
 "Make Task" = "Make Task";
 "Make selected Inbox item a project" = "Make selected Inbox item a project";
 "Make selected Inbox item a task" = "Make selected Inbox item a task";
+"Memo" = "Memo";
 "Microphone permission denied." = "Microphone permission denied.";
 "Missing" = "Missing";
 "Move To" = "Move To";
@@ -260,6 +265,7 @@
 "No scheduled blocks" = "No scheduled blocks";
 "No tasks" = "No tasks";
 "No tasks due today" = "No tasks due today";
+"No transcript yet" = "No transcript yet";
 "No tracked artifacts linked to this project" = "No tracked artifacts linked to this project";
 "No upload starts while the backend is missing." = "No upload starts while the backend is missing.";
 "Not Determined" = "Not Determined";
@@ -360,6 +366,9 @@
 "SoloPM" = "SoloPM";
 "Speech to Text" = "Speech to Text";
 "Status" = "Status";
+"Source" = "Source";
+"Transcription" = "Transcription";
+"Transcript" = "Transcript";
 "Suggestion" = "Suggestion";
 "Summary" = "Summary";
 "Sync backend is not configured" = "Sync backend is not configured";

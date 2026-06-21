@@ -287,6 +287,23 @@ public protocol ProjectBoardStore {
     func deleteProjectArtifact(id: Int64) throws
 }
 
+public extension ProjectBoardStore {
+    @discardableResult
+    func createInboxTask(title: String) throws -> ProjectBoardTask {
+        let snapshot = try loadSnapshot()
+        let inboxProject = snapshot.projects.first { $0.title == "Inbox" } ?? snapshot.projects.first
+        guard let inboxProject else {
+            throw ProjectBoardStoreError.emptyProjectTitle
+        }
+
+        return try createTask(ProjectBoardTaskDraft(
+            projectID: inboxProject.id,
+            title: title,
+            status: .backlog
+        ))
+    }
+}
+
 public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
     private let connection: SQLiteConnection
     private let projectStore: SQLiteProjectStore
@@ -610,17 +627,20 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var inboxClassificationFeedback: InboxClassificationFeedback?
 
     private let store: any ProjectBoardStore
+    private let inboxCaptureStore: (any InboxCaptureStore)?
     private let externalTaskLinkStore: (any ExternalTaskLinkStore)?
     private let onChange: () -> Void
     private var lastInboxClassificationUndo: InboxClassificationUndo?
 
     public init(
         store: any ProjectBoardStore,
+        inboxCaptureStore: (any InboxCaptureStore)? = nil,
         externalTaskLinkStore: (any ExternalTaskLinkStore)? = nil,
         snapshot: ProjectBoardSnapshot = .empty,
         onChange: @escaping () -> Void = {}
     ) {
         self.store = store
+        self.inboxCaptureStore = inboxCaptureStore
         self.externalTaskLinkStore = externalTaskLinkStore
         self.snapshot = snapshot
         self.onChange = onChange
@@ -641,6 +661,19 @@ public final class ProjectBoardViewModel: ObservableObject {
         return snapshot.projects
             .flatMap(\.tasks)
             .first { $0.id == selectedTaskID }
+    }
+
+    public var selectedInboxCaptureRecords: [InboxCaptureRecord] {
+        guard let selectedTaskID, let inboxCaptureStore else {
+            return []
+        }
+
+        do {
+            return try inboxCaptureStore.list(taskID: selectedTaskID)
+        } catch {
+            errorMessage = InboxCaptureStoreError.userMessage(for: error)
+            return []
+        }
     }
 
     public var inboxTasks: [ProjectBoardTask] {
@@ -1222,6 +1255,10 @@ public final class ProjectBoardViewModel: ObservableObject {
                 restoredTask = try store.updateTask(id: originalTask.id, originalTask.classificationDraft)
             case .restoreTaskAndDeleteProject(let originalTask, let createdProjectID):
                 let recreatedTask = try store.createTask(originalTask.classificationDraft)
+                // Project conversion deletes the original Inbox task with its
+                // project. Move capture metadata first so voice memos keep their
+                // transcript and retry state across Undo.
+                _ = try inboxCaptureStore?.relinkCaptures(fromTaskID: originalTask.id, toTaskID: recreatedTask.id)
                 do {
                     try store.deleteProject(id: createdProjectID)
                 } catch {

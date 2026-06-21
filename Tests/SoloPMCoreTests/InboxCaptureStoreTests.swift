@@ -1,0 +1,241 @@
+import XCTest
+@testable import SoloPMCore
+
+final class InboxCaptureStoreTests: XCTestCase {
+    @MainActor
+    func testInboxVoiceCaptureServiceCreatesInboxTaskAndCaptureAfterSuccessfulTranscription() async throws {
+        let stores = try makeStores()
+        let service = InboxVoiceCaptureService(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "Create launch checklist", duration: 3.5)),
+            projectBoardStore: stores.board,
+            inboxCaptureStore: stores.captures
+        )
+
+        try await service.startRecording(at: Date(timeIntervalSince1970: 100))
+        let result = try await service.stopAndSave(
+            outputURL: URL(filePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/success.m4a"),
+            at: Date(timeIntervalSince1970: 103),
+            createdAt: "2026-06-21T10:25:00Z"
+        )
+
+        XCTAssertEqual(result.task.title, "Create launch checklist")
+        XCTAssertEqual(result.capture.transcript, "Create launch checklist")
+        XCTAssertEqual(result.capture.durationSeconds, 3)
+        XCTAssertEqual(result.capture.transcriptionStatus, .succeeded)
+        XCTAssertNil(result.transcriptionErrorMessage)
+        XCTAssertEqual(try stores.captures.list(taskID: result.task.id), [result.capture])
+    }
+
+    @MainActor
+    func testInboxVoiceCaptureServiceKeepsInboxItemWhenTranscriptionFails() async throws {
+        let stores = try makeStores()
+        let service = InboxVoiceCaptureService(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(
+                availability: STTProviderAvailability(providerID: .whisperKit, isAvailable: false, reason: "Model missing for /secret/audio.m4a"),
+                transcript: STTTranscript(text: "")
+            ),
+            projectBoardStore: stores.board,
+            inboxCaptureStore: stores.captures
+        )
+
+        try await service.startRecording(at: Date(timeIntervalSince1970: 200))
+        let result = try await service.stopAndSave(
+            outputURL: URL(filePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/failure.m4a"),
+            at: Date(timeIntervalSince1970: 209),
+            createdAt: "2026-06-21T10:30:00Z"
+        )
+
+        XCTAssertEqual(result.task.title, "Voice memo")
+        XCTAssertNil(result.capture.transcript)
+        XCTAssertEqual(result.capture.transcriptionStatus, .failed)
+        XCTAssertEqual(result.capture.retryTranscriptionActionTitle, "Retry Transcription")
+        XCTAssertTrue(result.transcriptionErrorMessage?.contains("Model missing") == true)
+        XCTAssertFalse(result.transcriptionErrorMessage?.contains("/secret/audio.m4a") ?? true)
+        XCTAssertEqual(try stores.captures.list(taskID: result.task.id), [result.capture])
+    }
+
+    func testSQLiteInboxCaptureStorePersistsLoadsAndDeletesVoiceCaptureRecords() throws {
+        let stores = try makeStores()
+        let inboxID = try XCTUnwrap(stores.board.loadSnapshot().projects.first?.id)
+        let task = try stores.board.createTask(ProjectBoardTaskDraft(
+            projectID: inboxID,
+            title: "Follow up from voice memo",
+            status: .backlog
+        ))
+
+        let record = try stores.captures.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: task.id,
+            audioFilePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/voice-1.m4a",
+            durationSeconds: 42.25,
+            transcript: "Call supplier about launch date",
+            interpretationSummary: "Likely task: call supplier",
+            memo: "Captured after standup.",
+            classificationStatus: .unclassified,
+            transcriptionStatus: .succeeded,
+            createdAt: "2026-06-21T10:00:00Z"
+        ))
+
+        let loaded = try stores.captures.get(id: record.id)
+        XCTAssertEqual(loaded.taskID, task.id)
+        XCTAssertEqual(loaded.sourceKind, .voiceMemo)
+        XCTAssertEqual(loaded.audioFilePath, "/Users/example/Library/Application Support/SoloPM/InboxAudio/voice-1.m4a")
+        XCTAssertEqual(loaded.durationSeconds, 42.25)
+        XCTAssertEqual(loaded.transcript, "Call supplier about launch date")
+        XCTAssertEqual(loaded.interpretationSummary, "Likely task: call supplier")
+        XCTAssertEqual(loaded.memo, "Captured after standup.")
+        XCTAssertEqual(loaded.classificationStatus, .unclassified)
+        XCTAssertEqual(loaded.transcriptionStatus, .succeeded)
+        XCTAssertEqual(try stores.captures.list(taskID: task.id), [loaded])
+
+        try stores.captures.delete(id: record.id)
+
+        XCTAssertThrowsError(try stores.captures.get(id: record.id)) { error in
+            XCTAssertEqual(error as? InboxCaptureStoreError, .notFound(record.id))
+        }
+    }
+
+    func testFailedTranscriptionStillPersistsVoiceCaptureWithoutTranscript() throws {
+        let stores = try makeStores()
+        let task = try stores.board.createInboxTask(title: "Retry transcription later")
+
+        let record = try stores.captures.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: task.id,
+            audioFilePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/failed.m4a",
+            durationSeconds: 9,
+            transcript: nil,
+            interpretationSummary: nil,
+            memo: nil,
+            classificationStatus: .unclassified,
+            transcriptionStatus: .failed,
+            createdAt: "2026-06-21T10:05:00Z"
+        ))
+
+        XCTAssertEqual(record.transcriptionStatus, .failed)
+        XCTAssertNil(record.transcript)
+        XCTAssertEqual(record.retryTranscriptionActionTitle, "Retry Transcription")
+        XCTAssertEqual(try stores.captures.list(taskID: task.id).map(\.id), [record.id])
+    }
+
+    @MainActor
+    func testInboxClassificationUndoAndNextSelectionWorksForVoiceCaptureBackedTasks() throws {
+        let stores = try makeStores()
+        let viewModel = ProjectBoardViewModel(store: stores.board, inboxCaptureStore: stores.captures)
+        viewModel.load()
+        let inboxID = try XCTUnwrap(viewModel.inboxProject?.id)
+        let plain = try XCTUnwrap(viewModel.createTask(title: "Plain capture", projectID: inboxID))
+        let voiceTask = try XCTUnwrap(viewModel.createTask(title: "Voice capture", projectID: inboxID))
+        _ = try stores.captures.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: voiceTask.id,
+            audioFilePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/voice-2.m4a",
+            durationSeconds: 12,
+            transcript: "Make launch checklist",
+            interpretationSummary: nil,
+            memo: nil,
+            classificationStatus: .unclassified,
+            transcriptionStatus: .succeeded,
+            createdAt: "2026-06-21T10:10:00Z"
+        ))
+
+        viewModel.selectedTaskID = voiceTask.id
+        viewModel.convertSelectedTaskToProject()
+
+        XCTAssertEqual(viewModel.selectedTaskID, plain.id)
+        XCTAssertEqual(viewModel.inboxClassificationFeedback?.canUndo, true)
+
+        viewModel.undoLastInboxClassification()
+
+        let restoredTask = try XCTUnwrap(viewModel.selectedTask)
+        XCTAssertEqual(restoredTask.title, "Voice capture")
+        XCTAssertEqual(restoredTask.projectID, inboxID)
+        XCTAssertEqual(try stores.captures.list(taskID: restoredTask.id).first?.transcript, "Make launch checklist")
+        XCTAssertTrue(try stores.captures.list(taskID: voiceTask.id).isEmpty)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelExposesSelectedVoiceCaptureMetadata() throws {
+        let stores = try makeStores()
+        let viewModel = ProjectBoardViewModel(store: stores.board, inboxCaptureStore: stores.captures)
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createInboxTask(title: "Voice-backed inbox item"))
+        _ = try stores.captures.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: task.id,
+            audioFilePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/voice-detail.m4a",
+            durationSeconds: 18.5,
+            transcript: "Draft launch checklist",
+            interpretationSummary: "Create checklist task",
+            memo: "Needs review",
+            classificationStatus: .unclassified,
+            transcriptionStatus: .succeeded,
+            createdAt: "2026-06-21T10:20:00Z"
+        ))
+
+        let metadata = try XCTUnwrap(viewModel.selectedInboxCaptureRecords.first)
+
+        XCTAssertEqual(metadata.taskID, task.id)
+        XCTAssertEqual(metadata.durationSeconds, 18.5)
+        XCTAssertEqual(metadata.transcript, "Draft launch checklist")
+        XCTAssertEqual(metadata.sourceKind, .voiceMemo)
+        XCTAssertEqual(metadata.classificationStatus, .unclassified)
+    }
+
+    func testCaptureValidationRedactsTranscriptAndAudioPathFromUserFacingErrors() throws {
+        let stores = try makeStores()
+        let secretPath = "/Users/example/Library/Application Support/SoloPM/InboxAudio/secret-client-call.m4a"
+        let transcript = "Call Alice about confidential launch terms"
+
+        XCTAssertThrowsError(
+            try stores.captures.createVoiceCapture(InboxVoiceCaptureDraft(
+                taskID: 999_999,
+                audioFilePath: secretPath,
+                durationSeconds: 10,
+                transcript: transcript,
+                interpretationSummary: "Potential task",
+                memo: nil,
+                classificationStatus: .unclassified,
+                transcriptionStatus: .succeeded,
+                createdAt: "2026-06-21T10:15:00Z"
+            ))
+        ) { error in
+            let message = InboxCaptureStoreError.userMessage(for: error)
+            XCTAssertFalse(message.contains(secretPath))
+            XCTAssertFalse(message.contains(transcript))
+            XCTAssertEqual(message, "Inbox capture could not be saved. Confirm the linked Inbox task still exists.")
+        }
+    }
+
+    @MainActor
+    func testInboxVoiceCaptureServiceDefaultsCaptureCreatedAtToStopDate() async throws {
+        let stores = try makeStores()
+        let stopDate = Date(timeIntervalSince1970: 300)
+        let service = InboxVoiceCaptureService(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "Schedule launch review", duration: 4)),
+            projectBoardStore: stores.board,
+            inboxCaptureStore: stores.captures
+        )
+
+        try await service.startRecording(at: Date(timeIntervalSince1970: 296))
+        let result = try await service.stopAndSave(
+            outputURL: URL(filePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/default-date.m4a"),
+            at: stopDate
+        )
+
+        XCTAssertEqual(result.capture.createdAt, ISO8601DateFormatter().string(from: stopDate))
+    }
+
+    private func makeStores() throws -> (
+        connection: SQLiteConnection,
+        board: SQLiteProjectBoardStore,
+        captures: SQLiteInboxCaptureStore
+    ) {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        return (
+            connection,
+            SQLiteProjectBoardStore(connection: connection),
+            SQLiteInboxCaptureStore(connection: connection)
+        )
+    }
+}
