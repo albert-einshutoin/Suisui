@@ -1,0 +1,449 @@
+import Foundation
+
+public enum SoloPMHarnessScenarioKind: String, Codable, CaseIterable, Equatable, Hashable, Sendable {
+    case providerPromptRegression
+    case taskMutationFlow
+    case documentScopedAutomation
+    case mcpCompatibility
+}
+
+public enum SoloPMHarnessCapability: String, Codable, CaseIterable, Equatable, Hashable, Sendable {
+    case providerPrompt
+    case taskMutation
+    case documentAutomation
+    case mcpToolCall
+}
+
+public enum SoloPMHarnessAssertion: String, Codable, CaseIterable, Equatable, Hashable, Sendable {
+    case outputMatchesFixture
+    case approvalBoundary
+    case auditLogRecorded
+    case redactedLogs
+    case resultDiffRecorded
+}
+
+public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
+    public var id: String
+    public var name: String
+    public var kind: SoloPMHarnessScenarioKind
+    public var requiredCapabilities: [SoloPMHarnessCapability]
+    public var expectedMutations: [SyncTaskMutationPayload]
+    public var assertions: [SoloPMHarnessAssertion]
+
+    public init(
+        id: String,
+        name: String,
+        kind: SoloPMHarnessScenarioKind,
+        requiredCapabilities: [SoloPMHarnessCapability],
+        expectedMutations: [SyncTaskMutationPayload],
+        assertions: [SoloPMHarnessAssertion]
+    ) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.requiredCapabilities = requiredCapabilities
+        self.expectedMutations = expectedMutations
+        self.assertions = assertions
+    }
+
+    public static func templateCatalog() -> [SoloPMHarnessScenario] {
+        [
+            SoloPMHarnessScenario(
+                id: "provider-prompt-regression",
+                name: "Provider prompt regression",
+                kind: .providerPromptRegression,
+                requiredCapabilities: [.providerPrompt],
+                expectedMutations: [
+                    SyncTaskMutationPayload(
+                        operation: .create,
+                        title: "Draft launch checklist",
+                        source: .conversation,
+                        approvalState: .pendingApproval
+                    )
+                ],
+                assertions: [.outputMatchesFixture, .approvalBoundary, .auditLogRecorded]
+            ),
+            SoloPMHarnessScenario(
+                id: "task-mutation-flow",
+                name: "Task mutation flow",
+                kind: .taskMutationFlow,
+                requiredCapabilities: [.taskMutation],
+                expectedMutations: [
+                    SyncTaskMutationPayload(
+                        operation: .create,
+                        title: "Capture inbox task",
+                        source: .conversation,
+                        approvalState: .pendingApproval
+                    ),
+                    SyncTaskMutationPayload(
+                        taskID: 1,
+                        operation: .update,
+                        status: "in_progress",
+                        source: .conversation,
+                        approvalState: .pendingApproval
+                    ),
+                    SyncTaskMutationPayload(
+                        taskID: 1,
+                        operation: .complete,
+                        status: "completed",
+                        source: .conversation,
+                        approvalState: .pendingApproval
+                    ),
+                    SyncTaskMutationPayload(
+                        taskID: 1,
+                        operation: .updateDueDate,
+                        dueAt: "2026-06-22T09:00:00Z",
+                        source: .conversation,
+                        approvalState: .pendingApproval
+                    ),
+                    SyncTaskMutationPayload(
+                        taskID: 1,
+                        operation: .moveProject,
+                        projectID: 10,
+                        source: .conversation,
+                        approvalState: .pendingApproval
+                    )
+                ],
+                assertions: [.approvalBoundary, .auditLogRecorded, .resultDiffRecorded]
+            ),
+            SoloPMHarnessScenario(
+                id: "document-scoped-automation",
+                name: "Document-scoped automation",
+                kind: .documentScopedAutomation,
+                requiredCapabilities: [.documentAutomation],
+                expectedMutations: [],
+                assertions: [.approvalBoundary, .auditLogRecorded, .redactedLogs]
+            ),
+            SoloPMHarnessScenario(
+                id: "mcp-compatibility",
+                name: "MCP compatibility",
+                kind: .mcpCompatibility,
+                requiredCapabilities: [.mcpToolCall],
+                expectedMutations: [],
+                assertions: [.approvalBoundary, .auditLogRecorded, .redactedLogs, .resultDiffRecorded]
+            )
+        ]
+    }
+}
+
+public enum SoloPMHarnessRunTrigger: String, Codable, Equatable, Sendable {
+    case local
+    case cloudTriggered
+}
+
+public enum SoloPMHarnessRunStatus: String, Codable, Equatable, Sendable {
+    case passed
+    case failed
+}
+
+public struct SoloPMHarnessStepResult: Codable, Equatable, Sendable {
+    public var id: String
+    public var status: SoloPMHarnessRunStatus
+    public var expected: String
+    public var actual: String
+    public var failureReason: String?
+    public var durationMilliseconds: Int
+
+    public init(
+        id: String,
+        status: SoloPMHarnessRunStatus,
+        expected: String,
+        actual: String,
+        failureReason: String?,
+        durationMilliseconds: Int
+    ) {
+        self.id = id
+        self.status = status
+        self.expected = expected
+        self.actual = actual
+        self.failureReason = failureReason
+        self.durationMilliseconds = durationMilliseconds
+    }
+}
+
+public enum SoloPMHarnessLogLevel: String, Codable, Equatable, Sendable {
+    case info
+    case warning
+    case error
+}
+
+public struct SoloPMHarnessLogEntry: Codable, Equatable, Sendable {
+    public var level: SoloPMHarnessLogLevel
+    public var message: String
+
+    public init(level: SoloPMHarnessLogLevel, message: String) {
+        self.level = level
+        self.message = message
+    }
+}
+
+public struct SoloPMHarnessDiff: Codable, Equatable, Sendable {
+    public var stepID: String
+    public var expected: String
+    public var actual: String
+
+    public init(stepID: String, expected: String, actual: String) {
+        self.stepID = stepID
+        self.expected = expected
+        self.actual = actual
+    }
+}
+
+public struct SoloPMHarnessResultShape: Codable, Equatable, Sendable {
+    public var schemaVersion: Int
+    public var fields: [String]
+
+    public init(schemaVersion: Int, fields: [String]) {
+        self.schemaVersion = schemaVersion
+        self.fields = fields
+    }
+}
+
+public struct SoloPMHarnessResultEnvelope: Codable, Equatable, Sendable {
+    public var schemaVersion: Int
+    public var trigger: SoloPMHarnessRunTrigger
+    public var scenarioKind: SoloPMHarnessScenarioKind
+    public var status: SoloPMHarnessRunStatus
+    public var stepCount: Int
+    public var hasDiff: Bool
+    public var hasRedactedLogs: Bool
+
+    public init(
+        schemaVersion: Int = 1,
+        trigger: SoloPMHarnessRunTrigger,
+        scenarioKind: SoloPMHarnessScenarioKind,
+        status: SoloPMHarnessRunStatus,
+        stepCount: Int,
+        hasDiff: Bool,
+        hasRedactedLogs: Bool
+    ) {
+        self.schemaVersion = schemaVersion
+        self.trigger = trigger
+        self.scenarioKind = scenarioKind
+        self.status = status
+        self.stepCount = stepCount
+        self.hasDiff = hasDiff
+        self.hasRedactedLogs = hasRedactedLogs
+    }
+
+    public var shape: SoloPMHarnessResultShape {
+        SoloPMHarnessResultShape(
+            schemaVersion: schemaVersion,
+            fields: [
+                "schemaVersion",
+                "trigger",
+                "scenarioKind",
+                "status",
+                "stepCount",
+                "hasDiff",
+                "hasRedactedLogs"
+            ]
+        )
+    }
+}
+
+public struct SoloPMHarnessRun: Codable, Equatable, Sendable {
+    public var id: String
+    public var scenario: SoloPMHarnessScenario
+    public var trigger: SoloPMHarnessRunTrigger
+    public var status: SoloPMHarnessRunStatus
+    public var startedAt: String
+    public var finishedAt: String
+    public var steps: [SoloPMHarnessStepResult]
+    public var diff: SoloPMHarnessDiff?
+    public var failureReason: String?
+    public var redactedLogs: [SoloPMHarnessLogEntry]
+    public var resultEnvelope: SoloPMHarnessResultEnvelope
+
+    public init(
+        id: String,
+        scenario: SoloPMHarnessScenario,
+        trigger: SoloPMHarnessRunTrigger,
+        status: SoloPMHarnessRunStatus,
+        startedAt: String,
+        finishedAt: String,
+        steps: [SoloPMHarnessStepResult],
+        diff: SoloPMHarnessDiff?,
+        failureReason: String?,
+        redactedLogs: [SoloPMHarnessLogEntry],
+        resultEnvelope: SoloPMHarnessResultEnvelope
+    ) {
+        self.id = id
+        self.scenario = scenario
+        self.trigger = trigger
+        self.status = status
+        self.startedAt = startedAt
+        self.finishedAt = finishedAt
+        self.steps = steps
+        self.diff = diff
+        self.failureReason = failureReason
+        self.redactedLogs = redactedLogs
+        self.resultEnvelope = resultEnvelope
+    }
+
+    public static func completed(
+        id: String,
+        scenario: SoloPMHarnessScenario,
+        trigger: SoloPMHarnessRunTrigger,
+        startedAt: String,
+        finishedAt: String,
+        steps: [SoloPMHarnessStepResult],
+        logs: [SoloPMHarnessLogEntry]
+    ) -> SoloPMHarnessRun {
+        let status: SoloPMHarnessRunStatus = steps.contains { $0.status == .failed } ? .failed : .passed
+        let diff = steps.first { $0.status == .failed || $0.expected != $0.actual }.map {
+            SoloPMHarnessDiff(stepID: $0.id, expected: $0.expected, actual: $0.actual)
+        }
+        let failureReason = steps.first(where: { $0.status == .failed })?.failureReason
+        let resultEnvelope = SoloPMHarnessResultEnvelope(
+            trigger: trigger,
+            scenarioKind: scenario.kind,
+            status: status,
+            stepCount: steps.count,
+            hasDiff: diff != nil,
+            hasRedactedLogs: !logs.isEmpty
+        )
+
+        return SoloPMHarnessRun(
+            id: id,
+            scenario: scenario,
+            trigger: trigger,
+            status: status,
+            startedAt: startedAt,
+            finishedAt: finishedAt,
+            steps: steps,
+            diff: diff,
+            failureReason: failureReason,
+            redactedLogs: logs,
+            resultEnvelope: resultEnvelope
+        )
+    }
+
+    public func redacted() -> SoloPMHarnessRun {
+        let redactor = DeveloperSecretRedactor()
+        let redactedSteps = steps.map {
+            SoloPMHarnessStepResult(
+                id: $0.id,
+                status: $0.status,
+                expected: redactor.redact($0.expected).text,
+                actual: redactor.redact($0.actual).text,
+                failureReason: $0.failureReason.map { redactor.redact($0).text },
+                durationMilliseconds: $0.durationMilliseconds
+            )
+        }
+        let redactedDiff = diff.map {
+            SoloPMHarnessDiff(
+                stepID: $0.stepID,
+                expected: redactor.redact($0.expected).text,
+                actual: redactor.redact($0.actual).text
+            )
+        }
+        let redactedLogs = redactedLogs.map {
+            SoloPMHarnessLogEntry(level: $0.level, message: redactor.redact($0.message).text)
+        }
+
+        return SoloPMHarnessRun(
+            id: id,
+            scenario: scenario,
+            trigger: trigger,
+            status: status,
+            startedAt: startedAt,
+            finishedAt: finishedAt,
+            steps: redactedSteps,
+            diff: redactedDiff,
+            failureReason: failureReason.map { redactor.redact($0).text },
+            redactedLogs: redactedLogs,
+            resultEnvelope: resultEnvelope
+        )
+    }
+
+    public var syncPayload: SyncHarnessRunPayload {
+        SyncHarnessRunPayload(
+            id: id,
+            scenario: scenario.id,
+            status: status.rawValue,
+            scenarioKind: scenario.kind.rawValue,
+            trigger: trigger.rawValue,
+            failureReason: failureReason,
+            diffSummary: diff.map { "\($0.stepID): \($0.expected) -> \($0.actual)" },
+            redactedLogCount: redactedLogs.count
+        )
+    }
+}
+
+public enum SoloPMHarnessHistoryStorage: String, Codable, Equatable, Sendable {
+    case disabled
+    case cloudBacked
+    case extendedCloudBacked
+}
+
+public struct SoloPMHarnessRetentionPolicy: Codable, Equatable, Sendable {
+    public var requiredFeature: FeatureGate
+    public var historyStorage: SoloPMHarnessHistoryStorage
+    public var maxRuns: Int
+    public var retentionDays: Int
+
+    public init(
+        requiredFeature: FeatureGate,
+        historyStorage: SoloPMHarnessHistoryStorage,
+        maxRuns: Int,
+        retentionDays: Int
+    ) {
+        self.requiredFeature = requiredFeature
+        self.historyStorage = historyStorage
+        self.maxRuns = maxRuns
+        self.retentionDays = retentionDays
+    }
+
+    public static func policy(for plan: SubscriptionPlan) -> SoloPMHarnessRetentionPolicy {
+        switch plan {
+        case .free, .sync:
+            SoloPMHarnessRetentionPolicy(
+                requiredFeature: .harnessHistory,
+                historyStorage: .disabled,
+                maxRuns: 0,
+                retentionDays: 0
+            )
+        case .pro:
+            SoloPMHarnessRetentionPolicy(
+                requiredFeature: .harnessHistory,
+                historyStorage: .cloudBacked,
+                maxRuns: 250,
+                retentionDays: 30
+            )
+        case .founder:
+            SoloPMHarnessRetentionPolicy(
+                requiredFeature: .harnessHistory,
+                historyStorage: .extendedCloudBacked,
+                maxRuns: 1_000,
+                retentionDays: 365
+            )
+        }
+    }
+}
+
+public enum SoloPMHarnessRunStoreError: Error, Equatable, Sendable {
+    case historyDisabled(requiredPlan: SubscriptionPlan)
+}
+
+public struct InMemorySoloPMHarnessRunStore: Sendable {
+    public private(set) var runs: [SoloPMHarnessRun]
+
+    public init(runs: [SoloPMHarnessRun] = []) {
+        self.runs = runs
+    }
+
+    public mutating func save(_ run: SoloPMHarnessRun, plan: SubscriptionPlan) throws {
+        let policy = SoloPMHarnessRetentionPolicy.policy(for: plan)
+        guard policy.historyStorage != .disabled, policy.maxRuns > 0 else {
+            throw SoloPMHarnessRunStoreError.historyDisabled(requiredPlan: policy.requiredFeature.requiredPlan)
+        }
+
+        // Harness output is designed for repeatable debugging, but provider and
+        // MCP failures often echo credentials; storage always receives redacted runs.
+        runs.append(run.redacted())
+        if runs.count > policy.maxRuns {
+            runs.removeFirst(runs.count - policy.maxRuns)
+        }
+    }
+}

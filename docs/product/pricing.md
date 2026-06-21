@@ -140,6 +140,17 @@ Initial Pro scope:
 - Provider smoke checks for BYOK configurations without storing raw API keys in logs.
 - MCP tool compatibility checks with redacted arguments.
 
+History boundary:
+
+| Plan | Harness history storage | Max runs | Retention |
+| --- | --- | ---: | ---: |
+| Free | Disabled | 0 | 0 days |
+| Sync | Disabled | 0 | 0 days |
+| Pro | Cloud-backed | 250 | 30 days |
+| Founder | Extended cloud-backed | 1,000 | 365 days |
+
+Sync remains cross-device task sync only. Harness history is Pro because provider/MCP diagnostics create ongoing cloud storage, execution, and support cost.
+
 Out of scope until Team:
 
 - Shared team harness libraries.
@@ -215,4 +226,3 @@ Avoid:
 - Whether Sync and Pro should launch together or Sync should launch first.
 - Whether Founder should be a one-time supporter plan or an annual early-access plan.
 - Whether PC-off capture auto-creates only plain tasks or can create projects and due dates under a policy.
-- Whether Harness history counts against Sync storage or has a separate retention limit.

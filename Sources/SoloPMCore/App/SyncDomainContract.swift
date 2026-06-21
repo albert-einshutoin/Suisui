@@ -232,11 +232,30 @@ public struct SyncHarnessRunPayload: Codable, Equatable, Sendable {
     public var id: String
     public var scenario: String
     public var status: String
+    public var scenarioKind: String?
+    public var trigger: String?
+    public var failureReason: String?
+    public var diffSummary: String?
+    public var redactedLogCount: Int
 
-    public init(id: String, scenario: String, status: String) {
+    public init(
+        id: String,
+        scenario: String,
+        status: String,
+        scenarioKind: String? = nil,
+        trigger: String? = nil,
+        failureReason: String? = nil,
+        diffSummary: String? = nil,
+        redactedLogCount: Int = 0
+    ) {
         self.id = id
         self.scenario = scenario
         self.status = status
+        self.scenarioKind = scenarioKind
+        self.trigger = trigger
+        self.failureReason = failureReason
+        self.diffSummary = diffSummary
+        self.redactedLogCount = redactedLogCount
     }
 }
 

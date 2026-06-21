@@ -79,11 +79,11 @@
 
 ## P13-008: SoloPM Harness
 
-- [ ] Provider prompt regression、task mutation flow、document-scoped automation、MCP compatibilityのscenario schemaを作る。
-- [ ] Local harnessとCloud-triggered harnessを同じ結果形式にする。
-- [ ] 実行履歴、diff、失敗理由、redacted logsを保存する。
-- [ ] Sync / Pro planで履歴保持期間とstorage扱いを分ける。
-- [ ] 完了条件: 複数platform・複数providerでも自動化が壊れていないことを再現可能に検証できる。
+- [x] Provider prompt regression、task mutation flow、document-scoped automation、MCP compatibilityのscenario schemaを作る。
+- [x] Local harnessとCloud-triggered harnessを同じ結果形式にする。
+- [x] 実行履歴、diff、失敗理由、redacted logsを保存する。
+- [x] Sync / Pro planで履歴保持期間とstorage扱いを分ける。
+- [x] 完了条件: 複数platform・複数providerでも自動化が壊れていないことを再現可能に検証できる。
 
 ## P13-009: Pricing and packaging update
 
@@ -100,4 +100,4 @@
 - [x] Hosted MCP / Cloud Relay schema tests
 - [ ] iOS target build
 - [ ] Web app unit/e2e tests
-- [ ] Harness scenario smoke
+- [x] Harness scenario smoke
