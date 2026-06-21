@@ -42,7 +42,7 @@ PRUNE_STALE=0
 usage() {
   printf '%s\n' "usage: $0 [--prune-stale]"
   printf '%s\n' ""
-  printf '%s\n' "Regenerates current-source-commit manual review helpers without writing passed evidence."
+  printf '%s\n' "Regenerates release-candidate manual review helpers without writing passed evidence."
   printf '%s\n' "This does not mark VoiceOver, competitor hands-on, signing, notarization, Sparkle, Gatekeeper, or release evidence as passed."
   printf '%s\n' ""
   printf '%s\n' "--prune-stale removes ignored pending preview files for older source commits and legacy default preview files after the current helpers are regenerated."
@@ -130,7 +130,7 @@ done
 cd "$ROOT_DIR"
 require_clean_tracked_source_tree_for_manual_helpers
 
-printf 'Preparing manual release helpers for current source commit: %s\n' "$SOURCE_COMMIT"
+printf 'Preparing manual release helpers for release-candidate source commit: %s\n' "$SOURCE_COMMIT"
 printf '%s\n' 'This does not write passed manual evidence.'
 
 "$VOICEOVER_SCRIPT" --no-launch --skip-build
@@ -141,7 +141,7 @@ printf '%s\n' 'This does not write passed manual evidence.'
 "$RELEASE_MACHINE_SCRIPT"
 
 printf '\n'
-printf 'Manual release helpers prepared for current source commit: %s\n' "$SOURCE_COMMIT"
+printf 'Manual release helpers prepared for release-candidate source commit: %s\n' "$SOURCE_COMMIT"
 printf -- '- VoiceOver pending preview: `%s`\n' "$VOICEOVER_PENDING_RELATIVE"
 printf -- '- VoiceOver worksheet: `%s`\n' "$VOICEOVER_WORKSHEET_RELATIVE"
 printf -- '- VoiceOver evidence command: `%s`\n' "$VOICEOVER_COMMAND_RELATIVE"

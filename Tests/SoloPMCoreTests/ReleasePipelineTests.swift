@@ -3504,7 +3504,8 @@ final class ReleasePipelineTests: XCTestCase {
         )
 
         XCTAssertEqual(result.exitCode, 0, result.output)
-        XCTAssertTrue(result.output.contains("Manual release helpers prepared for current source commit: \(currentShortCommit)"))
+        XCTAssertTrue(result.output.contains("Preparing manual release helpers for release-candidate source commit: \(currentShortCommit)"))
+        XCTAssertTrue(result.output.contains("Manual release helpers prepared for release-candidate source commit: \(currentShortCommit)"))
         XCTAssertTrue(result.output.contains(".tmp/voiceover-review/accessibility-voiceover-pending-\(currentShortCommit).md"))
         XCTAssertTrue(result.output.contains(".tmp/voiceover-review/voiceover-worksheet.md"))
         XCTAssertTrue(result.output.contains(".tmp/competitor-hands-on/competitor-hands-on-pending-\(currentShortCommit).md"))
