@@ -4,6 +4,7 @@ import SwiftUI
 enum ProjectBoardSidebarDestination: Hashable {
     case inbox
     case today
+    case projects
     case project(Int64)
 
     var title: String {
@@ -12,6 +13,8 @@ enum ProjectBoardSidebarDestination: Hashable {
             "Inbox"
         case .today:
             "Today"
+        case .projects:
+            "Projects"
         case .project:
             "Project"
         }
@@ -23,6 +26,8 @@ enum ProjectBoardSidebarDestination: Hashable {
             "tray"
         case .today:
             "sun.max"
+        case .projects:
+            "folder.circle"
         case .project:
             "folder"
         }
@@ -34,6 +39,8 @@ enum ProjectBoardSidebarDestination: Hashable {
             "inbox"
         case .today:
             "today"
+        case .projects:
+            "projects"
         case .project(let projectID):
             "project-\(projectID)"
         }
@@ -61,6 +68,8 @@ enum ProjectBoardSelectionPersistence {
             return "inbox"
         case .today:
             return "today"
+        case .projects:
+            return "projects"
         case .project(let projectID):
             return "project:\(projectID)"
         }
@@ -75,6 +84,8 @@ enum ProjectBoardSelectionPersistence {
             return .inbox
         case "today":
             return .today
+        case "projects":
+            return .projects
         default:
             let parts = rawValue.split(separator: ":", maxSplits: 1).map(String.init)
             guard parts.count == 2 else {

@@ -1176,6 +1176,53 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelBuildsProjectPortfolioSummariesWithProgressRiskAndNextDue() throws {
+        let referenceDate = try isoDate("2026-06-21T09:00:00Z")
+        let calendar = Calendar(identifier: .gregorian)
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Ship blocker", projectID: launch.id, status: .blocked, priority: .high, dueAt: "2026-06-20"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Draft notes", projectID: launch.id, status: .done, priority: .medium, dueAt: "2026-06-19"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "QA pass", projectID: launch.id, status: .planned, priority: .medium, dueAt: "2026-06-24"))
+        let tidy = try XCTUnwrap(viewModel.createProject(title: "Tidy"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Close loop", projectID: tidy.id, status: .done, priority: .low, dueAt: "2026-06-18"))
+
+        let summaries = viewModel.projectPortfolioSummaries(on: referenceDate, calendar: calendar)
+        let launchSummary = try XCTUnwrap(summaries.first { $0.projectID == launch.id })
+        let tidySummary = try XCTUnwrap(summaries.first { $0.projectID == tidy.id })
+
+        XCTAssertEqual(launchSummary.progress, 1.0 / 3.0, accuracy: 0.001)
+        XCTAssertEqual(launchSummary.openTaskCount, 2)
+        XCTAssertEqual(launchSummary.doneTaskCount, 1)
+        XCTAssertEqual(launchSummary.blockedTaskCount, 1)
+        XCTAssertEqual(launchSummary.overdueTaskCount, 1)
+        XCTAssertEqual(launchSummary.nextDueAt, "2026-06-20")
+        XCTAssertEqual(launchSummary.health, .atRisk)
+        XCTAssertEqual(launchSummary.riskReason, "1 blocked, 1 overdue")
+        XCTAssertEqual(launchSummary.nextActionTitle, "Ship blocker")
+        XCTAssertEqual(launchSummary.localHealthRuleDescription, "Local Health prioritizes blocked tasks, then overdue work, then open task progress.")
+        XCTAssertEqual(tidySummary.health, .completed)
+        XCTAssertEqual(tidySummary.progress, 1.0, accuracy: 0.001)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelSelectsProjectFromPortfolioCardWithoutChangingTaskSelection() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let first = try XCTUnwrap(viewModel.createProject(title: "First"))
+        let second = try XCTUnwrap(viewModel.createProject(title: "Second"))
+        let task = try XCTUnwrap(viewModel.createTask(title: "Selected task", projectID: first.id))
+        viewModel.selectedTaskID = task.id
+
+        XCTAssertTrue(viewModel.openProjectFromPortfolioCard(projectID: second.id))
+
+        XCTAssertEqual(viewModel.selectedProjectID, second.id)
+        XCTAssertNil(viewModel.selectedTaskID)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
     func testProjectBoardViewModelClassifiesInboxTasksWithRealMutations() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()

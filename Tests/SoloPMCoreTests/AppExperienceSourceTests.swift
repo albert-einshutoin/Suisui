@@ -127,6 +127,24 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(detailSource.contains("onAddTask: { composingStatus = .backlog }"))
     }
 
+    func testProjectsOverviewKeepsSidebarProjectSelectionAndDetailModesSeparate() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+
+        XCTAssertTrue(workflowSource.contains("case projects"))
+        XCTAssertTrue(workflowSource.contains("case .projects:"))
+        XCTAssertTrue(workflowSource.contains("return \"projects\""))
+        XCTAssertTrue(boardSource.contains("destination: .projects"))
+        XCTAssertTrue(boardSource.contains(".tag(ProjectBoardSidebarDestination.projects)"))
+        XCTAssertTrue(boardSource.contains("ProjectsPortfolioOverview("))
+        XCTAssertTrue(boardSource.contains(".tag(ProjectBoardSidebarDestination.project(project.id))"))
+        XCTAssertTrue(boardSource.contains("case .project(let projectID):"))
+        XCTAssertTrue(boardSource.contains("ProjectBoardDetail("))
+        XCTAssertTrue(boardSource.contains("case .overview:"))
+        XCTAssertTrue(boardSource.contains("case .board:"))
+        XCTAssertTrue(boardSource.contains("case .list:"))
+    }
+
     func testAppearanceSelectionIsConfiguredOnlyFromSettings() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")

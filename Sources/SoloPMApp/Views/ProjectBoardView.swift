@@ -31,6 +31,12 @@ struct ProjectBoardView: View {
                     }
 
                     Section("Projects") {
+                        ProjectBoardSidebarDestinationRow(
+                            destination: .projects,
+                            count: viewModel.projectPortfolioSummaries().count
+                        )
+                        .tag(ProjectBoardSidebarDestination.projects)
+
                         ForEach(activeSidebarProjects) { project in
                             ProjectSidebarRow(project: project) { rawIDs in
                                 viewModel.moveDroppedTasks(ids: rawIDs, toProjectID: project.id)
@@ -115,6 +121,12 @@ struct ProjectBoardView: View {
                             InboxWorkflowView(viewModel: viewModel)
                         case .today:
                             TodayWorkflowView(viewModel: viewModel)
+                        case .projects:
+                            ProjectsPortfolioOverview(viewModel: viewModel) { projectID in
+                                if viewModel.openProjectFromPortfolioCard(projectID: projectID) {
+                                    selectedDestination = .project(projectID)
+                                }
+                            }
                         case .project(let projectID):
                             if let project = viewModel.snapshot.projects.first(where: { $0.id == projectID }) {
                                 ProjectBoardDetail(
@@ -322,7 +334,7 @@ struct ProjectBoardView: View {
             viewModel.selectedProjectID = projectID
             viewModel.selectedTaskID = nil
             isInspectorPresented = true
-        case .inbox, .today, .none:
+        case .inbox, .today, .projects, .none:
             viewModel.selectedTaskID = nil
             isInspectorPresented = false
         }
@@ -491,6 +503,309 @@ private extension ProjectBoardProject {
             return .secondary
         }
         return isCompleted ? .green : .blue
+    }
+}
+
+private enum ProjectPortfolioFilter: String, CaseIterable, Identifiable {
+    case all
+    case active
+    case overdue
+    case completed
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all:
+            "All"
+        case .active:
+            "Active"
+        case .overdue:
+            "Overdue"
+        case .completed:
+            "Completed"
+        }
+    }
+}
+
+private enum ProjectPortfolioSort: String, CaseIterable, Identifiable {
+    case risk
+    case progress
+    case due
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .risk:
+            "Risk"
+        case .progress:
+            "Progress"
+        case .due:
+            "Next Due"
+        }
+    }
+}
+
+private struct ProjectsPortfolioOverview: View {
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    let onOpenProject: (Int64) -> Void
+    @State private var filter: ProjectPortfolioFilter = .all
+    @State private var sort: ProjectPortfolioSort = .risk
+
+    private var summaries: [ProjectPortfolioSummary] {
+        sorted(filtered(viewModel.projectPortfolioSummaries()))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 12) {
+                    ProjectPortfolioHeader(
+                        title: "Projects",
+                        subtitle: String(format: String(localized: "%d projects compared"), summaries.count),
+                        systemImage: "folder.circle"
+                    )
+                    Spacer(minLength: 12)
+                    controls
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    ProjectPortfolioHeader(
+                        title: "Projects",
+                        subtitle: String(format: String(localized: "%d projects compared"), summaries.count),
+                        systemImage: "folder.circle"
+                    )
+                    controls
+                }
+            }
+
+            if summaries.isEmpty {
+                ContentUnavailableView(
+                    "No Projects",
+                    systemImage: "folder",
+                    description: Text("Create a project to compare progress, risk, and next due work.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 260, maximum: 360), spacing: 12)],
+                        alignment: .leading,
+                        spacing: 12
+                    ) {
+                        ForEach(summaries) { summary in
+                            ProjectPortfolioCard(summary: summary) {
+                                onOpenProject(summary.projectID)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("projects-portfolio-overview")
+        .accessibilityLabel("Projects portfolio overview")
+        .accessibilityHint("Compares local project progress, risk, due dates, and next actions.")
+    }
+
+    private var controls: some View {
+        HStack(spacing: 8) {
+            Picker("Project Filter", selection: $filter) {
+                ForEach(ProjectPortfolioFilter.allCases) { filter in
+                    Text(LocalizedStringKey(filter.title)).tag(filter)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 420)
+            .accessibilityIdentifier("projects-portfolio-filter")
+
+            Menu {
+                Picker("Sort Projects", selection: $sort) {
+                    ForEach(ProjectPortfolioSort.allCases) { sort in
+                        Text(LocalizedStringKey(sort.title)).tag(sort)
+                    }
+                }
+            } label: {
+                Label("Sort", systemImage: "arrow.up.arrow.down")
+            }
+            .help("Sort projects")
+            .accessibilityIdentifier("projects-portfolio-sort")
+        }
+    }
+
+    private func filtered(_ summaries: [ProjectPortfolioSummary]) -> [ProjectPortfolioSummary] {
+        summaries.filter { summary in
+            switch filter {
+            case .all:
+                return true
+            case .active:
+                return summary.health != .completed
+            case .overdue:
+                return summary.overdueTaskCount > 0
+            case .completed:
+                return summary.health == .completed
+            }
+        }
+    }
+
+    private func sorted(_ summaries: [ProjectPortfolioSummary]) -> [ProjectPortfolioSummary] {
+        switch sort {
+        case .risk:
+            return summaries
+        case .progress:
+            return summaries.sorted {
+                if $0.progress == $1.progress {
+                    return $0.projectID > $1.projectID
+                }
+                return $0.progress < $1.progress
+            }
+        case .due:
+            return summaries.sorted {
+                ($0.nextDueAt ?? "9999-12-31") < ($1.nextDueAt ?? "9999-12-31")
+            }
+        }
+    }
+}
+
+private struct ProjectPortfolioHeader: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+
+    var body: some View {
+        Label {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(LocalizedStringKey(title))
+                    .font(.title2.weight(.semibold))
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        } icon: {
+            Image(systemName: systemImage)
+                .foregroundStyle(.blue)
+                .font(.title2)
+        }
+    }
+}
+
+private struct ProjectPortfolioCard: View {
+    let summary: ProjectPortfolioSummary
+    let onOpen: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(summary.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .help(summary.title)
+                    Label(localizedHealthTitle, systemImage: summary.health.systemImage)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(summary.health.tint)
+                }
+                Spacer(minLength: 8)
+                Text(percentLabel)
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+            }
+
+            ProgressView(value: summary.progress)
+                .tint(summary.health.tint)
+                .accessibilityLabel("Project progress")
+                .accessibilityValue(percentLabel)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], alignment: .leading, spacing: 6) {
+                metric("Open", value: summary.openTaskCount, systemImage: "tray")
+                metric("Done", value: summary.doneTaskCount, systemImage: "checkmark.circle")
+                metric("Blocked", value: summary.blockedTaskCount, systemImage: "exclamationmark.octagon")
+                metric("Overdue", value: summary.overdueTaskCount, systemImage: "clock.badge.exclamationmark")
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Label(summary.nextDueAt ?? String(localized: "No due date"), systemImage: "calendar")
+                Label(localizedRiskReason, systemImage: "heart.text.square")
+                Label(summary.nextActionTitle, systemImage: "arrow.right.circle")
+                Label(localizedHealthRuleDescription, systemImage: "checklist")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+
+            Button(action: onOpen) {
+                Label("Open Project", systemImage: "arrow.right")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Open project detail")
+            .accessibilityIdentifier("projects-portfolio-open-\(summary.projectID)")
+            .accessibilityHint("Opens the selected project detail without changing task status.")
+        }
+        .padding(12)
+        .frame(minHeight: 230, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(summary.health.tint.opacity(0.32), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("projects-portfolio-card-\(summary.projectID)")
+        .accessibilityLabel(String(format: String(localized: "Project %@"), summary.title))
+        .accessibilityValue("\(localizedHealthTitle), \(percentLabel), \(localizedRiskReason)")
+    }
+
+    private var percentLabel: String {
+        "\(Int((summary.progress * 100).rounded()))%"
+    }
+
+    private var localizedHealthTitle: String {
+        String(localized: String.LocalizationValue(summary.health.title))
+    }
+
+    private var localizedHealthRuleDescription: String {
+        String(localized: String.LocalizationValue(summary.localHealthRuleDescription))
+    }
+
+    private var localizedRiskReason: String {
+        var reasons: [String] = []
+        if summary.blockedTaskCount > 0 {
+            reasons.append(String(format: String(localized: "%d blocked"), summary.blockedTaskCount))
+        }
+        if summary.overdueTaskCount > 0 {
+            reasons.append(String(format: String(localized: "%d overdue"), summary.overdueTaskCount))
+        }
+        if !reasons.isEmpty {
+            return reasons.joined(separator: ", ")
+        }
+        switch summary.health {
+        case .completed:
+            return String(localized: "All tracked tasks are done.")
+        case .attention:
+            return String(localized: "Progress is below 25% with open work.")
+        case .onTrack:
+            return String(localized: "No blocked or overdue open tasks.")
+        case .atRisk:
+            return String(localized: "Local risk rule detected schedule pressure.")
+        }
+    }
+
+    private func metric(_ title: String, value: Int, systemImage: String) -> some View {
+        Label {
+            Text("\(value) \(String(localized: String.LocalizationValue(title)))")
+                .monospacedDigit()
+        } icon: {
+            Image(systemName: systemImage)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
 }
 
@@ -2472,6 +2787,34 @@ extension ProjectTaskStatus {
             return nil
         }
         return Self.allCases[nextIndex]
+    }
+}
+
+private extension ProjectPortfolioHealth {
+    var tint: Color {
+        switch self {
+        case .onTrack:
+            .green
+        case .attention:
+            .orange
+        case .atRisk:
+            .red
+        case .completed:
+            .blue
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .onTrack:
+            "checkmark.seal"
+        case .attention:
+            "exclamationmark.circle"
+        case .atRisk:
+            "exclamationmark.triangle"
+        case .completed:
+            "checkmark.circle"
+        }
     }
 }
 

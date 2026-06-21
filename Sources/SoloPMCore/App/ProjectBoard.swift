@@ -262,6 +262,78 @@ public struct TodayScheduleDraft: Equatable, Sendable {
     }
 }
 
+public enum ProjectPortfolioHealth: String, CaseIterable, Identifiable, Sendable {
+    case onTrack
+    case attention
+    case atRisk
+    case completed
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .onTrack:
+            "On Track"
+        case .attention:
+            "Needs Attention"
+        case .atRisk:
+            "At Risk"
+        case .completed:
+            "Completed"
+        }
+    }
+}
+
+public struct ProjectPortfolioSummary: Identifiable, Equatable, Sendable {
+    public var id: Int64 { projectID }
+    public var projectID: Int64
+    public var title: String
+    public var status: String
+    public var progress: Double
+    public var openTaskCount: Int
+    public var doneTaskCount: Int
+    public var blockedTaskCount: Int
+    public var overdueTaskCount: Int
+    public var nextDueAt: String?
+    public var recentTaskID: Int64?
+    public var nextActionTitle: String
+    public var health: ProjectPortfolioHealth
+    public var riskReason: String
+    public var localHealthRuleDescription: String
+
+    public init(
+        projectID: Int64,
+        title: String,
+        status: String,
+        progress: Double,
+        openTaskCount: Int,
+        doneTaskCount: Int,
+        blockedTaskCount: Int,
+        overdueTaskCount: Int,
+        nextDueAt: String?,
+        recentTaskID: Int64?,
+        nextActionTitle: String,
+        health: ProjectPortfolioHealth,
+        riskReason: String,
+        localHealthRuleDescription: String
+    ) {
+        self.projectID = projectID
+        self.title = title
+        self.status = status
+        self.progress = progress
+        self.openTaskCount = openTaskCount
+        self.doneTaskCount = doneTaskCount
+        self.blockedTaskCount = blockedTaskCount
+        self.overdueTaskCount = overdueTaskCount
+        self.nextDueAt = nextDueAt
+        self.recentTaskID = recentTaskID
+        self.nextActionTitle = nextActionTitle
+        self.health = health
+        self.riskReason = riskReason
+        self.localHealthRuleDescription = localHealthRuleDescription
+    }
+}
+
 public struct InboxClassificationFeedback: Equatable, Sendable {
     public var message: String
     public var systemImage: String
@@ -942,6 +1014,37 @@ public final class ProjectBoardViewModel: ObservableObject {
         todayScheduleDraft = draft
         todayCommandFeedback = String(format: String(localized: "Prepared %d time blocks for schedule review."), draft.timeBlocks.count)
         return draft
+    }
+
+    public func projectPortfolioSummaries(
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> [ProjectPortfolioSummary] {
+        snapshot.projects
+            .filter { !$0.isArchived && !isInboxProject($0) }
+            .map { projectPortfolioSummary(for: $0, on: referenceDate, calendar: calendar) }
+            .sorted { lhs, rhs in
+                if lhs.health.sortRank != rhs.health.sortRank {
+                    return lhs.health.sortRank < rhs.health.sortRank
+                }
+                if lhs.overdueTaskCount != rhs.overdueTaskCount {
+                    return lhs.overdueTaskCount > rhs.overdueTaskCount
+                }
+                return lhs.projectID > rhs.projectID
+            }
+    }
+
+    @discardableResult
+    public func openProjectFromPortfolioCard(projectID: Int64) -> Bool {
+        guard snapshot.projects.contains(where: { $0.id == projectID && !$0.isArchived }) else {
+            errorMessage = "Project is no longer available."
+            return false
+        }
+
+        selectedProjectID = projectID
+        selectedTaskID = nil
+        errorMessage = nil
+        return true
     }
 
     public func projectTitle(for task: ProjectBoardTask) -> String {
@@ -1819,6 +1922,131 @@ public final class ProjectBoardViewModel: ObservableObject {
         return formatter.date(from: rawDueAt)
     }
 
+    private func projectPortfolioSummary(
+        for project: ProjectBoardProject,
+        on referenceDate: Date,
+        calendar: Calendar
+    ) -> ProjectPortfolioSummary {
+        let tasks = project.tasks
+        let openTasks = tasks.filter { $0.status != .done }
+        let doneTaskCount = tasks.count - openTasks.count
+        let blockedTaskCount = openTasks.filter { $0.status == .blocked }.count
+        let dayStart = calendar.dateInterval(of: .day, for: referenceDate)?.start ?? referenceDate
+        let overdueTasks = openTasks.filter { task in
+            dueDate(for: task.dueAt).map { $0 < dayStart } == true
+        }
+        let nextDueTask = openTasks
+            .filter { dueDate(for: $0.dueAt) != nil }
+            .sorted { lhs, rhs in
+                let lhsDate = dueDate(for: lhs.dueAt) ?? .distantFuture
+                let rhsDate = dueDate(for: rhs.dueAt) ?? .distantFuture
+                if lhsDate == rhsDate {
+                    return lhs.id > rhs.id
+                }
+                return lhsDate < rhsDate
+            }
+            .first
+        let nextActionTask = openTasks
+            .sorted { lhs, rhs in
+                if lhs.status == .blocked && rhs.status != .blocked {
+                    return true
+                }
+                if lhs.status != .blocked && rhs.status == .blocked {
+                    return false
+                }
+                let lhsDate = dueDate(for: lhs.dueAt) ?? .distantFuture
+                let rhsDate = dueDate(for: rhs.dueAt) ?? .distantFuture
+                if lhsDate == rhsDate {
+                    return lhs.id > rhs.id
+                }
+                return lhsDate < rhsDate
+            }
+            .first
+        let progress = tasks.isEmpty ? 0 : Double(doneTaskCount) / Double(tasks.count)
+        let health = projectPortfolioHealth(
+            project: project,
+            openTaskCount: openTasks.count,
+            blockedTaskCount: blockedTaskCount,
+            overdueTaskCount: overdueTasks.count,
+            progress: progress
+        )
+
+        return ProjectPortfolioSummary(
+            projectID: project.id,
+            title: project.title,
+            status: project.status,
+            progress: progress,
+            openTaskCount: openTasks.count,
+            doneTaskCount: doneTaskCount,
+            blockedTaskCount: blockedTaskCount,
+            overdueTaskCount: overdueTasks.count,
+            nextDueAt: nextDueTask?.dueAt,
+            recentTaskID: tasks.map(\.id).max(),
+            nextActionTitle: nextActionTask?.title ?? "No open tasks",
+            health: health,
+            riskReason: projectPortfolioRiskReason(
+                health: health,
+                blockedTaskCount: blockedTaskCount,
+                overdueTaskCount: overdueTasks.count,
+                progress: progress
+            ),
+            // The portfolio view must be explainable and work offline; keep this
+            // deterministic instead of routing health through an LLM.
+            localHealthRuleDescription: "Local Health prioritizes blocked tasks, then overdue work, then open task progress."
+        )
+    }
+
+    private func projectPortfolioHealth(
+        project: ProjectBoardProject,
+        openTaskCount: Int,
+        blockedTaskCount: Int,
+        overdueTaskCount: Int,
+        progress: Double
+    ) -> ProjectPortfolioHealth {
+        if project.isCompleted || (openTaskCount == 0 && progress > 0) {
+            return .completed
+        }
+        if blockedTaskCount > 0 || overdueTaskCount > 0 {
+            return .atRisk
+        }
+        if progress < 0.25 && openTaskCount > 0 {
+            return .attention
+        }
+        return .onTrack
+    }
+
+    private func projectPortfolioRiskReason(
+        health: ProjectPortfolioHealth,
+        blockedTaskCount: Int,
+        overdueTaskCount: Int,
+        progress: Double
+    ) -> String {
+        var reasons: [String] = []
+        if blockedTaskCount > 0 {
+            reasons.append("\(blockedTaskCount) blocked")
+        }
+        if overdueTaskCount > 0 {
+            reasons.append("\(overdueTaskCount) overdue")
+        }
+        if !reasons.isEmpty {
+            return reasons.joined(separator: ", ")
+        }
+        switch health {
+        case .completed:
+            return "All tracked tasks are done."
+        case .attention:
+            return "Progress is below 25% with open work."
+        case .onTrack:
+            return "No blocked or overdue open tasks."
+        case .atRisk:
+            return "Local risk rule detected schedule pressure."
+        }
+    }
+
+    private func isInboxProject(_ project: ProjectBoardProject) -> Bool {
+        project.title.caseInsensitiveCompare("Inbox") == .orderedSame
+    }
+
     private func recommendedTodayTask(
         from tasks: [ProjectBoardTask],
         on referenceDate: Date,
@@ -1911,6 +2139,21 @@ public final class ProjectBoardViewModel: ObservableObject {
 private enum InboxClassificationUndo {
     case restoreTask(originalTask: ProjectBoardTask)
     case restoreTaskAndDeleteProject(originalTask: ProjectBoardTask, createdProjectID: Int64)
+}
+
+private extension ProjectPortfolioHealth {
+    var sortRank: Int {
+        switch self {
+        case .atRisk:
+            0
+        case .attention:
+            1
+        case .onTrack:
+            2
+        case .completed:
+            3
+        }
+    }
 }
 
 private extension ProjectBoardTask {

@@ -315,15 +315,15 @@
 
 ### Tests First
 
-- [ ] Project summaryのprogress / risk / next due算出test。
-- [ ] Sidebarの既存project selectionが退行しないsource test。
-- [ ] Projects overview cardからProject detailへselectionが移るViewModel test。
+- [x] Project summaryのprogress / risk / next due算出test。
+- [x] Sidebarの既存project selectionが退行しないsource test。
+- [x] Projects overview cardからProject detailへselectionが移るViewModel test。
 
 ### Acceptance Criteria
 
-- [ ] Projects overviewで複数Projectを比較できる。
-- [ ] 個別Project detail、Board/List/Overviewは残る。
-- [ ] risk/health表示はlocal ruleで説明可能。
+- [x] Projects overviewで複数Projectを比較できる。
+- [x] 個別Project detail、Board/List/Overviewは残る。
+- [x] risk/health表示はlocal ruleで説明可能。
 
 ### Non-goals
 
