@@ -1301,6 +1301,7 @@ write_release_actions() {
     esac
     printf "Generated at: %s\n" "$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
     printf "Source commit: %s\n" "$(source_commit)"
+    printf "Release-candidate product source commit: %s\n" "$(manual_release_evidence_source_commit)"
     printf "Tracked source tree: %s\n" "$(tracked_source_tree_status)"
     printf "Blocker groups: %d\n\n" "$BLOCKER_COUNT"
     printf "This file is an action summary, not release evidence.\n"
