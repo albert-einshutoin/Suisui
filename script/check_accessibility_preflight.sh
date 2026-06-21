@@ -242,7 +242,7 @@ if [[ "$LAUNCH_APP" -eq 1 ]]; then
     # shellcheck source=/dev/null
     source "$LAUNCH_ENV_FILE"
     set +a
-    "$APP_BINARY" &
+    "$APP_BINARY" >/dev/null 2>&1 &
   else
     /usr/bin/open -n -F "$APP_BUNDLE"
   fi
