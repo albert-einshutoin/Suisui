@@ -5,8 +5,13 @@ final class LaunchExperienceTests: XCTestCase {
     func testRunScriptActivatesAppAfterOpeningBundle() throws {
         let script = try readPackageFile("script/build_and_run.sh")
 
-        XCTAssertTrue(script.contains("/usr/bin/open -n -F \"$APP_BUNDLE\""))
+        XCTAssertTrue(script.contains("local open_args=(-n -F \"$APP_BUNDLE\")"))
+        XCTAssertTrue(script.contains("activate_app()"))
+        XCTAssertTrue(script.contains("local osascript_pid=$!"))
+        XCTAssertTrue(script.contains("kill \"$osascript_pid\""))
         XCTAssertTrue(script.contains("tell application \\\"$APP_NAME\\\" to activate"))
+        XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"))
+        XCTAssertFalse(script.contains("/usr/bin/osascript -e \"tell application \\\"$APP_NAME\\\" to activate\" >/dev/null 2>&1 || true"))
     }
 
     func testVerifyModeRequiresVisibleProjectBoardWindow() throws {
@@ -32,8 +37,27 @@ final class LaunchExperienceTests: XCTestCase {
     func testAppDelegateActivatesRegularAppOnLaunch() throws {
         let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
-        XCTAssertTrue(source.contains("NSApp.setActivationPolicy(.regular)"))
-        XCTAssertTrue(source.contains("NSApp.activate(ignoringOtherApps: true)"))
+        XCTAssertTrue(source.contains("NSApplication.shared.setActivationPolicy(.regular)"))
+        XCTAssertTrue(source.contains("NSApplication.shared.activate(ignoringOtherApps: true)"))
+    }
+
+    func testAppInitUsesSharedApplicationWhenPresentingLaunchWindow() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        let initStart = try XCTUnwrap(source.range(of: "@MainActor\n    init() {"))
+        let bodyStart = try XCTUnwrap(source.range(of: "\n    var body: some Scene {"))
+        let initBlock = source[initStart.lowerBound..<bodyStart.lowerBound]
+        XCTAssertTrue(initBlock.contains("NSApplication.shared.setActivationPolicy(.regular)"))
+        XCTAssertTrue(initBlock.contains("SoloPMProjectBoardWindowFallback.shared.showIfNeeded()"))
+        XCTAssertFalse(initBlock.contains("NSApp.windows"))
+    }
+
+    func testVerifyModeCanLaunchWithoutPromptingForKeychainSecrets() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(source.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE"))
+        XCTAssertTrue(source.contains("LaunchVerificationSecretStore"))
+        XCTAssertTrue(source.contains("return nil"))
     }
 
     func testAppDelegateReopensProjectBoardWhenNoWindowIsVisible() throws {
@@ -49,6 +73,9 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("New SoloPM Window"))
         XCTAssertTrue(source.contains("performActionForItem(at: itemIndex)"))
         XCTAssertTrue(source.contains("visibleProjectBoardWindows"))
+        XCTAssertTrue(source.contains("fallbackProjectBoardWindow"))
+        XCTAssertTrue(source.contains("NSHostingController(rootView: ProjectBoardView"))
+        XCTAssertTrue(source.contains("makeKeyAndOrderFront(nil)"))
         XCTAssertTrue(source.contains("#selector(NSWindow.newWindowForTab(_:))"))
         XCTAssertTrue(source.contains("return false"))
     }

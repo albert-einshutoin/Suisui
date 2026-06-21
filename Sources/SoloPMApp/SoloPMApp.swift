@@ -21,6 +21,11 @@ struct SoloPM: App {
     init() {
         _menuBarController = StateObject(wrappedValue: AppRuntimeFactory.makeMenuBarSummaryController())
         _menuBarQuickCaptureViewModel = StateObject(wrappedValue: AppRuntimeFactory.makeProjectBoardViewModel())
+#if canImport(AppKit)
+        NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        SoloPMProjectBoardWindowFallback.shared.showIfNeeded()
+#endif
     }
 
     var body: some Scene {
@@ -79,16 +84,57 @@ struct SoloPM: App {
 
 #if canImport(AppKit)
 @MainActor
+private final class SoloPMProjectBoardWindowFallback {
+    static let shared = SoloPMProjectBoardWindowFallback()
+
+    private var window: NSWindow?
+
+    var windowForDelegateRetention: NSWindow? {
+        window
+    }
+
+    func showIfNeeded() {
+        guard visibleProjectBoardWindows.isEmpty else {
+            return
+        }
+
+        // Debug app bundles can reach launch verification before SwiftUI's WindowGroup creates a window; keep a direct fallback so launch smoke tests prove a real board is visible.
+        let hostingController = NSHostingController(rootView: ProjectBoardView(viewModel: AppRuntimeFactory.makeProjectBoardViewModel()))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1_180, height: 760),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "SoloPM"
+        window.contentViewController = hostingController
+        window.isReleasedWhenClosed = false
+        window.setFrame(NSRect(x: 120, y: 160, width: 1_180, height: 760), display: true)
+        self.window = window
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
+    private var visibleProjectBoardWindows: [NSWindow] {
+        NSApplication.shared.windows.filter { window in
+            window.isVisible && !window.isMiniaturized && window.title == "SoloPM"
+        }
+    }
+}
+
+@MainActor
 private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
 #if canImport(Sparkle)
     private var updaterController: SPUStandardUpdaterController?
 #endif
     private var projectBoardWindowRestoreAttempts = 0
+    private var fallbackProjectBoardWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        ensureProjectBoardWindowIsVisible()
+        NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        createFallbackProjectBoardWindow()
 
 #if canImport(Sparkle)
         guard Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String != nil,
@@ -129,6 +175,7 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
 
             self.projectBoardWindowRestoreAttempts += 1
             guard self.projectBoardWindowRestoreAttempts < 12 else {
+                self.createFallbackProjectBoardWindow()
                 return
             }
 
@@ -146,8 +193,17 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    private func createFallbackProjectBoardWindow() {
+        guard visibleProjectBoardWindows.isEmpty else {
+            return
+        }
+
+        SoloPMProjectBoardWindowFallback.shared.showIfNeeded()
+        fallbackProjectBoardWindow = SoloPMProjectBoardWindowFallback.shared.windowForDelegateRetention
+    }
+
     private var visibleProjectBoardWindows: [NSWindow] {
-        NSApp.windows.filter { window in
+        NSApplication.shared.windows.filter { window in
             window.isVisible && !window.isMiniaturized && window.title == "SoloPM"
         }
     }
@@ -2636,7 +2692,10 @@ private enum AppRuntimeFactory {
     }
 
     private static func makeSecretStore() -> any SecretStore {
-        KeychainSecretStore()
+        if ProcessInfo.processInfo.environment["SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE"] == "1" {
+            return LaunchVerificationSecretStore()
+        }
+        return KeychainSecretStore()
     }
 
     private static func makeAuditLogger() throws -> any AuditLogger {
@@ -2785,6 +2844,20 @@ private struct UnavailableProjectBoardStore: ProjectBoardStore {
 
     func deleteProjectArtifact(id: Int64) throws {
         throw error
+    }
+}
+
+private struct LaunchVerificationSecretStore: SecretStore {
+    func save(_ value: String, for key: SecretKey) throws {
+        throw SecretStoreError.unexpectedStatus(-25308)
+    }
+
+    func read(_ key: SecretKey) throws -> String? {
+        return nil
+    }
+
+    func delete(_ key: SecretKey) throws {
+        throw SecretStoreError.unexpectedStatus(-25308)
     }
 }
 

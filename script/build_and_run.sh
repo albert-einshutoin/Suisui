@@ -223,9 +223,27 @@ if [[ "$BUILD_CONFIGURATION" == "debug" ]]; then
   codesign --force --deep --sign - "$APP_BUNDLE" >/dev/null
 fi
 
+activate_app() {
+  /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 &
+  local osascript_pid=$!
+  for _ in {1..20}; do
+    if ! kill -0 "$osascript_pid" >/dev/null 2>&1; then
+      wait "$osascript_pid" >/dev/null 2>&1 || true
+      return 0
+    fi
+    sleep 0.1
+  done
+  kill "$osascript_pid" >/dev/null 2>&1 || true
+  wait "$osascript_pid" >/dev/null 2>&1 || true
+}
+
 open_app() {
-  /usr/bin/open -n -F "$APP_BUNDLE"
-  /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 || true
+  local open_args=(-n -F "$APP_BUNDLE")
+  if [[ "$MODE" == "--verify" || "$MODE" == "verify" ]]; then
+    open_args+=(--env SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1)
+  fi
+  /usr/bin/open "${open_args[@]}"
+  activate_app
 }
 
 wait_for_app_process() {
