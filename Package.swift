@@ -6,12 +6,17 @@ let package = Package(
     name: "SoloPM",
     defaultLocalization: "en",
     platforms: [
-        .macOS(.v14)
+        .macOS(.v14),
+        .iOS(.v17)
     ],
     products: [
         .library(
             name: "SoloPMCore",
             targets: ["SoloPMCore"]
+        ),
+        .library(
+            name: "SoloPMiOS",
+            targets: ["SoloPMiOS"]
         ),
         .executable(
             name: "SoloPM",
@@ -39,6 +44,11 @@ let package = Package(
         .target(
             name: "SoloPMExternalConnectors",
             dependencies: ["SoloPMCore"]
+        ),
+        .target(
+            name: "SoloPMiOS",
+            dependencies: ["SoloPMCore"],
+            path: "Sources/SoloPMiOS"
         ),
         .executableTarget(
             name: "SoloPM",

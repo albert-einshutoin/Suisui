@@ -216,6 +216,11 @@ public struct ProcessOpenCodeLocalCommandRunner: OpenCodeLocalCommandRunner {
     }
 
     public func run(_ invocation: OpenCodeLocalInvocation) async throws -> OpenCodeLocalCommandOutput {
+        #if os(iOS) || targetEnvironment(macCatalyst)
+        // OpenCode launches a local process, which is a macOS-only automation
+        // boundary; mobile surfaces must use reviewable sync mutations instead.
+        throw LLMProviderError.executionNotApproved("OpenCode local execution is available only on macOS.")
+        #else
         let process = Process()
         let standardOutput = Pipe()
         let standardError = Pipe()
@@ -259,5 +264,6 @@ public struct ProcessOpenCodeLocalCommandRunner: OpenCodeLocalCommandRunner {
             exitCode: process.terminationStatus,
             timedOut: didTimeOut
         )
+        #endif
     }
 }

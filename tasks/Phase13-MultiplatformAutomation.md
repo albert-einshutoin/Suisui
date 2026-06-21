@@ -45,12 +45,12 @@
 
 ## P13-004: iOS companion MVP
 
-- [ ] SwiftUI iOS targetのpackage/app構成を決める。
-- [ ] Sign in / entitlement restore / device registration flowを設計する。
-- [ ] Inbox / Today / Project task list / board-lite status controls を実装する。
-- [ ] 会話入力、音声入力、Shortcuts、Share Sheetの初期範囲を決める。
-- [ ] Pending action approval inboxを作る。
-- [ ] 完了条件: iOSからタスク作成、完了、ステータス変更、期日変更、承認ができる。
+- [x] SwiftUI iOS targetのpackage/app構成を決める。
+- [x] Sign in / entitlement restore / device registration flowを設計する。
+- [x] Inbox / Today / Project task list / board-lite status controls を実装する。
+- [x] 会話入力、音声入力、Shortcuts、Share Sheetの初期範囲を決める。
+- [x] Pending action approval inboxを作る。
+- [x] 完了条件: iOSからタスク作成、完了、ステータス変更、期日変更、承認ができる。
 
 ## P13-005: Web app MVP
 
@@ -98,6 +98,6 @@
 - [x] `swift test --filter ProjectBoardStoreTests`
 - [x] `swift test --filter GeminiDirectProviderTests`
 - [x] Hosted MCP / Cloud Relay schema tests
-- [ ] iOS target build
+- [x] iOS target build
 - [ ] Web app unit/e2e tests
 - [x] Harness scenario smoke

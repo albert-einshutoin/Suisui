@@ -30,6 +30,11 @@ public struct ProcessGitCommandRunner: GitCommandRunner {
     public init() {}
 
     public func runGit(arguments: [String], workingDirectory: URL) throws -> GitCommandOutput {
+        #if os(iOS) || targetEnvironment(macCatalyst)
+        // Mobile builds expose synced task workflows, not local developer tooling;
+        // keep git subprocess execution out of iOS/Catalyst binaries.
+        throw GitReadOnlyError.workspaceUnavailable("Git command execution is available only on macOS.")
+        #else
         let process = Process()
         let standardOutput = Pipe()
         let standardError = Pipe()
@@ -51,6 +56,7 @@ public struct ProcessGitCommandRunner: GitCommandRunner {
             standardError: String(data: errorData, encoding: .utf8) ?? "",
             exitCode: process.terminationStatus
         )
+        #endif
     }
 }
 
