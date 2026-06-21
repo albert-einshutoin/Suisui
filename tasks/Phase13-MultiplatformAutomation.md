@@ -21,11 +21,11 @@
 
 ## P13-001: Shared domain contract
 
-- [ ] Project / Task / Conversation / Document / ActionPlan / AutomationRequest / HarnessRun の同期対象モデルを定義する。
-- [ ] 既存SQLite schemaからSync API向けDTOへ変換するadapterを作る。
-- [ ] task status、due date、project assignment、priority、source command、audit metadataの互換性テストを追加する。
-- [ ] `ActionTool.taskUpdate` / `taskComplete` / task project move / due date update が platform-neutral に表現できることを確認する。
-- [ ] 完了条件: macOS local DBと将来のSync payloadで同じタスク変更を表現できる。
+- [x] Project / Task / Conversation / Document / ActionPlan / AutomationRequest / HarnessRun の同期対象モデルを定義する。
+- [x] 既存SQLite schemaからSync API向けDTOへ変換するadapterを作る。
+- [x] task status、due date、project assignment、priority、source command、audit metadataの互換性テストを追加する。
+- [x] `ActionTool.taskUpdate` / `taskComplete` / task project move / due date update が platform-neutral に表現できることを確認する。
+- [x] 完了条件: macOS local DBと将来のSync payloadで同じタスク変更を表現できる。
 
 ## P13-002: Conversation task operations
 

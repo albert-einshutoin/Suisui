@@ -5,6 +5,11 @@ public enum SyncDataClass: String, Codable, CaseIterable, Equatable, Sendable {
     case projects
     case tasks
     case settings
+    case conversations
+    case documents
+    case actionPlans
+    case automationRequests
+    case harnessRuns
 
     public var displayName: String {
         switch self {
@@ -14,6 +19,16 @@ public enum SyncDataClass: String, Codable, CaseIterable, Equatable, Sendable {
             "Tasks"
         case .settings:
             "Settings"
+        case .conversations:
+            "Conversations"
+        case .documents:
+            "Documents"
+        case .actionPlans:
+            "Action Plans"
+        case .automationRequests:
+            "Automation Requests"
+        case .harnessRuns:
+            "Harness Runs"
         }
     }
 }
