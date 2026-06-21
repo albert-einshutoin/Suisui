@@ -429,6 +429,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(runbook.contains("Current release-candidate source commit: `17880b5`"))
         XCTAssertTrue(runbook.contains("Do not hand-edit passed evidence"))
         XCTAssertTrue(runbook.contains("Run `--validate-only` before writing tracked evidence"))
+        XCTAssertTrue(runbook.contains("Do not ask an LLM, automation, or a generated action summary to create passed evidence for manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, Gatekeeper, clean install, or Launch at Login checks without the real pass."))
+        XCTAssertTrue(runbook.contains("Generated helpers can route the work, but only concrete observations from the real release-candidate app or signed release artifact can unblock these lanes."))
 
         for lane in ["VoiceOver", "Competitor hands-on", "Release machine"] {
             XCTAssertTrue(runbook.contains("## \(lane)"), "Missing lane: \(lane)")
@@ -462,6 +464,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(checklist.contains("manual-unblockers.md"))
         XCTAssertTrue(phase.contains("[x] release readiness は `docs/release/manual-unblockers.md` が hardcoded automated preflight evidence や release-candidate source commit を含む場合 blocker にする。"))
+        XCTAssertTrue(phase.contains("[x] action summary と manual unblocker runbook は LLM / automation / generated summary が実測なしに manual passed evidence を作ってはいけないことを明示する。"))
     }
 
     func testManualEvidenceScriptsRequireCleanTrackedSourceTreeBeforeWritingPassedEvidence() throws {
@@ -6893,6 +6896,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("- [ ] Competitor hands-on evidence missing review context: Checked by"))
         XCTAssertTrue(actionSummary.contains("- [ ] Competitor hands-on evidence missing concrete note: Todoist"))
         XCTAssertTrue(actionSummary.contains("This file is an action summary, not release evidence."))
+        XCTAssertTrue(actionSummary.contains("Manual-only evidence boundary"))
+        XCTAssertTrue(actionSummary.contains("Do not ask an LLM, automation, or this action summary to create passed evidence for manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, Gatekeeper, clean install, or Launch at Login checks without the real pass."))
         XCTAssertFalse(actionSummary.contains("Status: ready"))
     }
 

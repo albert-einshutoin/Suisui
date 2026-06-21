@@ -19,6 +19,8 @@ Use the latest action summary for the current release-candidate source commit an
 
 Use this runbook after `release_readiness_report.sh` is green for automated gates and still reports manual/release-machine blockers. Do not hand-edit passed evidence. The release report rejects hand-written pass files and stale source commits. Run `--validate-only` before writing tracked evidence, then rerun readiness with the current automated preflight evidence.
 
+Do not ask an LLM, automation, or a generated action summary to create passed evidence for manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, Gatekeeper, clean install, or Launch at Login checks without the real pass. Generated helpers can route the work, but only concrete observations from the real release-candidate app or signed release artifact can unblock these lanes.
+
 ```bash
 SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/release_readiness_report.sh
 ```

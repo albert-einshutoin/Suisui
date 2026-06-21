@@ -1330,6 +1330,7 @@
 - [x] action summary の Release Machine runbook は `.tmp/release-machine/create-release-evidence-command.sh` の編集・実行を direct `create_release_evidence.sh --force` fallback より先に表示し、generated validate-only stepを主導線にする。
 - [x] Direct manual evidence scripts reject dirty tracked source trees before writing passed VoiceOver, competitor, or release-machine evidence.
 - [x] action summary は release evidence ではなく、VoiceOver / competitor hands-on / signing / notarization / Sparkle / Gatekeeper を完了扱いにしないことを明記する。
+- [x] action summary と manual unblocker runbook は LLM / automation / generated summary が実測なしに manual passed evidence を作ってはいけないことを明示する。
 - [x] action summary の VoiceOver / competitor hands-on の直接実行例は `--validate-only` を `--passed` より先に表示し、manual evidence を即書き込みしない導線にする。
 - [x] action summary は release-machine evidence の `generator.name: script/create_release_evidence.sh` 要件をManual Evidence Source Hygieneに表示し、手書き `packaging/release-evidence.json` がrelease readyにならないことを示す。
 - [x] VoiceOver passed evidence は実際の `macOS version` を必須にし、`macOS unknown` / placeholder / sample / example / replacement text をgeneratorとreadiness reportの両方でrelease blockerにする。

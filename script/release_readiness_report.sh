@@ -1300,6 +1300,11 @@ write_release_actions() {
     printf "This file is an action summary, not release evidence.\n"
     printf "It does not mark manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper checks as passed.\n\n"
 
+    printf "## Manual-only evidence boundary\n"
+    # Manual evidence is a release trust boundary: generated summaries can route work, but must not create proof for observations that did not happen.
+    printf -- "- Do not ask an LLM, automation, or this action summary to create passed evidence for manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, Gatekeeper, clean install, or Launch at Login checks without the real pass.\n"
+    printf -- "- Use generated commands only after the corresponding worksheet is filled with concrete observations from the real release-candidate app or release artifact.\n\n"
+
     printf "## Persistent Manual Unblocker Runbook\n"
     printf -- "- Use \`docs/release/manual-unblockers.md\` as the tracked checklist for Manual VoiceOver, Competitor Hands-On, and Release Machine lanes.\n"
     printf -- "- Use the persistent runbook above as the stable checklist when this generated action summary is replaced or regenerated.\n\n"
