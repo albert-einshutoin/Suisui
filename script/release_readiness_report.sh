@@ -241,6 +241,7 @@ check_manual_unblocker_runbook_freshness() {
   local runbook="$ROOT_DIR/docs/release/manual-unblockers.md"
   local freshness_blockers=0
   local required_automated_evidence_bootstrap='SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/check_automated_release_preflight.sh'
+  local required_manual_only_boundary='Do not ask an LLM, automation, or a generated action summary to create passed evidence for manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, Gatekeeper, clean install, or Launch at Login checks without the real pass.'
 
   if [[ ! -f "$runbook" ]]; then
     blocker "missing manual unblocker runbook: docs/release/manual-unblockers.md"
@@ -265,6 +266,11 @@ check_manual_unblocker_runbook_freshness() {
   if ! grep -Fq "$required_automated_evidence_bootstrap" "$runbook"; then
     freshness_blockers=$((freshness_blockers + 1))
     blocker "manual unblocker runbook missing automated preflight evidence bootstrap"
+  fi
+
+  if ! grep -Fq "$required_manual_only_boundary" "$runbook"; then
+    freshness_blockers=$((freshness_blockers + 1))
+    blocker "manual unblocker runbook missing manual-only evidence boundary"
   fi
 
   if [[ "$freshness_blockers" -eq 0 ]]; then
