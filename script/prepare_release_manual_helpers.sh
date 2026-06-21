@@ -45,7 +45,7 @@ usage() {
   printf '%s\n' "Regenerates release-candidate manual review helpers without writing passed evidence."
   printf '%s\n' "This does not mark VoiceOver, competitor hands-on, signing, notarization, Sparkle, Gatekeeper, or release evidence as passed."
   printf '%s\n' ""
-  printf '%s\n' "--prune-stale removes ignored pending preview files for older source commits and legacy default preview files after the current helpers are regenerated."
+  printf '%s\n' "--prune-stale removes ignored pending preview files for older source commits and legacy default preview files after the release-candidate helpers are regenerated."
 }
 
 while [[ "$#" -gt 0 ]]; do
