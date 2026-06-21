@@ -1071,6 +1071,111 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelTodayCommandCreatesInboxItemAndNotifies() throws {
+        var changeCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+
+        let task = try XCTUnwrap(viewModel.submitTodayCommand("Capture handoff checklist"))
+
+        XCTAssertEqual(task.title, "Capture handoff checklist")
+        XCTAssertEqual(task.status, .backlog)
+        XCTAssertEqual(viewModel.inboxTasks.first?.id, task.id)
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Added \"Capture handoff checklist\" to Inbox.")
+        XCTAssertEqual(changeCount, 1)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelTodayRecommendationChipsUseStableBlockerDuePriorityOrder() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        _ = viewModel.createTask(
+            title: "Resolve release blocker",
+            projectID: launch.id,
+            status: .blocked,
+            priority: .medium,
+            dueAt: "2026-06-19T11:00:00Z"
+        )
+        _ = viewModel.createTask(
+            title: "Clear overdue review",
+            projectID: launch.id,
+            status: .planned,
+            priority: .low,
+            dueAt: "2026-06-18T09:00:00Z"
+        )
+        _ = viewModel.createTask(
+            title: "Ship high priority update",
+            projectID: launch.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-19T12:00:00Z"
+        )
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+
+        let chips = viewModel.todayRecommendationChips(
+            on: try isoDate("2026-06-19T08:00:00Z"),
+            calendar: calendar
+        )
+
+        XCTAssertEqual(chips.map(\.kind), [.blocker, .overdue, .highPriority])
+        XCTAssertEqual(chips.map(\.taskTitle), ["Resolve release blocker", "Clear overdue review", "Ship high priority update"])
+    }
+
+    @MainActor
+    func testProjectBoardViewModelStartFocusDoesNotMutateTaskStatus() throws {
+        let store = try makeStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Draft launch note",
+            projectID: project.id,
+            status: .planned,
+            dueAt: "2026-06-19T12:00:00Z"
+        ))
+
+        viewModel.startFocus(taskID: task.id)
+
+        let reloaded = ProjectBoardViewModel(store: store)
+        reloaded.load()
+        XCTAssertEqual(reloaded.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id }?.status, .planned)
+        XCTAssertEqual(viewModel.todayFocusTaskID, task.id)
+        XCTAssertEqual(viewModel.selectedTaskID, task.id)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelPreparesScheduleDraftWithoutMutatingTasks() throws {
+        let store = try makeStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Prepare schedule review",
+            projectID: project.id,
+            status: .planned,
+            dueAt: "2026-06-19T12:00:00Z"
+        ))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+
+        let draft = viewModel.prepareTodayScheduleDraft(
+            on: try isoDate("2026-06-19T08:37:00Z"),
+            calendar: calendar
+        )
+
+        let reloaded = ProjectBoardViewModel(store: store)
+        reloaded.load()
+        XCTAssertEqual(draft.timeBlocks.map(\.task.id), [task.id])
+        XCTAssertEqual(viewModel.todayScheduleDraft, draft)
+        XCTAssertEqual(reloaded.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id }?.status, .planned)
+    }
+
+    @MainActor
     func testProjectBoardViewModelClassifiesInboxTasksWithRealMutations() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()

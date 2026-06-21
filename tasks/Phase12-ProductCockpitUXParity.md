@@ -250,16 +250,16 @@
 
 ### Tests First
 
-- [ ] Today commandからInbox itemを作るViewModel test。
-- [ ] recommendation chipがdue/priority/blockerに応じて安定順序になるtest。
-- [ ] Start FocusがDB task statusを勝手に変更しないtest。
+- [x] Today commandからInbox itemを作るViewModel test。
+- [x] recommendation chipがdue/priority/blockerに応じて安定順序になるtest。
+- [x] Start FocusがDB task statusを勝手に変更しないtest。
 
 ### Acceptance Criteria
 
-- [ ] Today上部にcommand barとsuggestion chipsがある。
-- [ ] 現行Today list、counts、time blocks、row completionが残る。
-- [ ] Schedule draftへ渡すactionがある。
-- [ ] 外部Calendar通信は発生しない。
+- [x] Today上部にcommand barとsuggestion chipsがある。
+- [x] 現行Today list、counts、time blocks、row completionが残る。
+- [x] Schedule draftへ渡すactionがある。
+- [x] 外部Calendar通信は発生しない。
 
 ### Non-goals
 

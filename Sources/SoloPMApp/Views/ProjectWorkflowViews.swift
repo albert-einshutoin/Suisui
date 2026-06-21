@@ -120,6 +120,7 @@ struct ProjectBoardSidebarDestinationRow: View {
 
 struct TodayWorkflowView: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
+    @State private var commandTitle = ""
 
     private var plan: TodayWorkflowPlan {
         viewModel.todayPlan()
@@ -142,12 +143,76 @@ struct TodayWorkflowView: View {
             emptyDescription: "Captured work remains in Inbox until it is scheduled or moved to a project.",
             viewModel: viewModel,
             headerAccessory: {
-                WorkflowDoneToggle(viewModel: viewModel)
+                TodayCommandPanel(commandTitle: $commandTitle, plan: plan, viewModel: viewModel)
             },
             footer: {
                 TodaySuggestionPanel(plan: plan, viewModel: viewModel)
             }
         )
+    }
+}
+
+private struct TodayCommandPanel: View {
+    @Binding var commandTitle: String
+    let plan: TodayWorkflowPlan
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            HStack(spacing: 8) {
+                WorkflowDoneToggle(viewModel: viewModel)
+                TextField("Add work to Inbox", text: $commandTitle)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(addInboxItem)
+                    .accessibilityIdentifier("today-command-title")
+                    .accessibilityLabel("Today command title")
+                    .accessibilityHint("Adds a local Inbox item without changing today's existing task statuses.")
+                Button(action: addInboxItem) {
+                    Label("Add to Inbox", systemImage: "plus")
+                }
+                .disabled(commandTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .help("Add this command to Inbox")
+                .accessibilityIdentifier("today-command-add")
+                .accessibilityHint("Creates a local Inbox item from the command text.")
+            }
+
+            HStack(spacing: 8) {
+                ForEach(viewModel.todayRecommendationChips()) { chip in
+                    Button {
+                        viewModel.selectedTaskID = chip.taskID
+                    } label: {
+                        Label(chip.title, systemImage: chip.systemImage)
+                    }
+                    .controlSize(.small)
+                    .help(chip.reason)
+                    .accessibilityIdentifier("today-suggestion-chip-\(chip.kind.rawValue)")
+                    .accessibilityLabel(chip.title)
+                    .accessibilityHint(chip.reason)
+                }
+
+                Button {
+                    if let task = plan.recommendedTask {
+                        viewModel.startFocus(taskID: task.id)
+                    }
+                } label: {
+                    Label("Start Focus", systemImage: "play.circle")
+                }
+                .controlSize(.small)
+                .disabled(plan.recommendedTask == nil)
+                .help("Start focusing without changing task status")
+                .accessibilityIdentifier("today-start-focus")
+                .accessibilityHint("Marks the recommended task as the current local focus without writing Calendar or task status changes.")
+            }
+        }
+    }
+
+    private func addInboxItem() {
+        let title = commandTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else {
+            return
+        }
+        _ = viewModel.submitTodayCommand(title)
+        commandTitle = ""
     }
 }
 
@@ -621,6 +686,32 @@ private struct TodaySuggestionPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             TodayPlanSummary(plan: plan, viewModel: viewModel)
             TodayTimeBlockList(plan: plan)
+            HStack(spacing: 8) {
+                Button {
+                    _ = viewModel.prepareTodayScheduleDraft()
+                } label: {
+                    Label("Schedule Draft", systemImage: "calendar.badge.clock")
+                }
+                .disabled(plan.timeBlocks.isEmpty)
+                .help("Prepare local time blocks for schedule review")
+                .accessibilityIdentifier("today-schedule-draft-button")
+                .accessibilityHint("Creates a local schedule draft without writing to an external calendar.")
+
+                if let draft = viewModel.todayScheduleDraft {
+                    Text(String(format: String(localized: "%d blocks ready"), draft.timeBlocks.count))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("today-schedule-draft-status")
+                }
+            }
+            if let feedback = viewModel.todayCommandFeedback {
+                Label(feedback, systemImage: "checkmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("today-command-feedback")
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

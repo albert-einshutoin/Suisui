@@ -222,6 +222,46 @@ public struct TodayWorkflowPlan: Equatable, Sendable {
     }
 }
 
+public enum TodayRecommendationKind: String, Codable, Equatable, Sendable {
+    case blocker
+    case overdue
+    case highPriority
+}
+
+public struct TodayRecommendationChip: Identifiable, Equatable, Sendable {
+    public var id: String { "\(kind.rawValue)-\(taskID)" }
+    public var kind: TodayRecommendationKind
+    public var taskID: Int64
+    public var taskTitle: String
+    public var title: String
+    public var systemImage: String
+    public var reason: String
+
+    public init(
+        kind: TodayRecommendationKind,
+        taskID: Int64,
+        taskTitle: String,
+        title: String,
+        systemImage: String,
+        reason: String
+    ) {
+        self.kind = kind
+        self.taskID = taskID
+        self.taskTitle = taskTitle
+        self.title = title
+        self.systemImage = systemImage
+        self.reason = reason
+    }
+}
+
+public struct TodayScheduleDraft: Equatable, Sendable {
+    public var timeBlocks: [TodayTimeBlock]
+
+    public init(timeBlocks: [TodayTimeBlock]) {
+        self.timeBlocks = timeBlocks
+    }
+}
+
 public struct InboxClassificationFeedback: Equatable, Sendable {
     public var message: String
     public var systemImage: String
@@ -651,6 +691,9 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var integrationStatusMessage: String?
     @Published public private(set) var inboxClassificationFeedback: InboxClassificationFeedback?
     @Published public private(set) var inboxTriageFilter: InboxTriageFilter
+    @Published public private(set) var todayCommandFeedback: String?
+    @Published public private(set) var todayFocusTaskID: Int64?
+    @Published public private(set) var todayScheduleDraft: TodayScheduleDraft?
 
     private let store: any ProjectBoardStore
     private let inboxCaptureStore: (any InboxCaptureStore)?
@@ -674,6 +717,9 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.showsArchivedProjects = false
         self.showsCompletedWorkflowTasks = false
         self.inboxTriageFilter = .all
+        self.todayCommandFeedback = nil
+        self.todayFocusTaskID = nil
+        self.todayScheduleDraft = nil
     }
 
     public var selectedProject: ProjectBoardProject? {
@@ -791,6 +837,111 @@ public final class ProjectBoardViewModel: ObservableObject {
             recommendationReason: recommendationReason(for: recommendedTask, on: referenceDate, calendar: calendar),
             timeBlocks: timeBlocks(for: orderedTimeBlockTasks(tasks, recommendedTask: recommendedTask), startingAt: referenceDate, calendar: calendar)
         )
+    }
+
+    @discardableResult
+    public func submitTodayCommand(_ rawTitle: String) -> ProjectBoardTask? {
+        let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else {
+            todayCommandFeedback = String(localized: "Today command needs a title.")
+            return nil
+        }
+
+        let task = createInboxTask(title: title)
+        if task != nil {
+            todayCommandFeedback = String(format: String(localized: "Added \"%@\" to Inbox."), title)
+        }
+        return task
+    }
+
+    public func todayRecommendationChips(
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> [TodayRecommendationChip] {
+        let tasks = todayTasks(on: referenceDate, calendar: calendar)
+        let dayStart = calendar.dateInterval(of: .day, for: referenceDate)?.start ?? referenceDate
+        var usedTaskIDs = Set<Int64>()
+
+        func firstTask(
+            matching predicate: (ProjectBoardTask) -> Bool
+        ) -> ProjectBoardTask? {
+            tasks.first { task in
+                !usedTaskIDs.contains(task.id) && predicate(task)
+            }
+        }
+
+        var chips: [TodayRecommendationChip] = []
+        if let task = firstTask(matching: { $0.status == .blocked }) {
+            usedTaskIDs.insert(task.id)
+            chips.append(TodayRecommendationChip(
+                kind: .blocker,
+                taskID: task.id,
+                taskTitle: task.title,
+                title: String(localized: "Resolve blocker"),
+                systemImage: "exclamationmark.triangle",
+                reason: String(format: String(localized: "%@ is blocking today's plan."), task.title)
+            ))
+        }
+        if let task = firstTask(matching: { dueDate(for: $0.dueAt).map { $0 < dayStart } == true }) {
+            usedTaskIDs.insert(task.id)
+            chips.append(TodayRecommendationChip(
+                kind: .overdue,
+                taskID: task.id,
+                taskTitle: task.title,
+                title: String(localized: "Clear overdue"),
+                systemImage: "clock.badge.exclamationmark",
+                reason: String(format: String(localized: "%@ is overdue."), task.title)
+            ))
+        }
+        if let task = firstTask(matching: { $0.priority == .high }) {
+            chips.append(TodayRecommendationChip(
+                kind: .highPriority,
+                taskID: task.id,
+                taskTitle: task.title,
+                title: String(localized: "High priority"),
+                systemImage: "flag.fill",
+                reason: String(format: String(localized: "%@ is high priority."), task.title)
+            ))
+        }
+
+        return chips
+    }
+
+    public func startFocus(taskID: Int64) {
+        guard let task = snapshot.projects.flatMap(\.tasks).first(where: { $0.id == taskID }) else {
+            errorMessage = "Task is no longer available."
+            return
+        }
+
+        // Focus is intentionally local UI state. It must not move task status or
+        // write Calendar/Reminder records before the user reviews a schedule.
+        todayFocusTaskID = task.id
+        selectedProjectID = task.projectID
+        selectedTaskID = task.id
+        todayCommandFeedback = String(format: String(localized: "Focused on \"%@\"."), task.title)
+        errorMessage = nil
+    }
+
+    public func startFocusOnRecommendedTask(
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) {
+        guard let task = todayPlan(on: referenceDate, calendar: calendar).recommendedTask else {
+            todayCommandFeedback = String(localized: "No focus task is available.")
+            return
+        }
+        startFocus(taskID: task.id)
+    }
+
+    @discardableResult
+    public func prepareTodayScheduleDraft(
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> TodayScheduleDraft {
+        let draft = TodayScheduleDraft(timeBlocks: todayPlan(on: referenceDate, calendar: calendar).timeBlocks)
+        todayScheduleDraft = draft
+        todayCommandFeedback = String(format: String(localized: "Prepared %d time blocks for schedule review."), draft.timeBlocks.count)
+        return draft
     }
 
     public func projectTitle(for task: ProjectBoardTask) -> String {

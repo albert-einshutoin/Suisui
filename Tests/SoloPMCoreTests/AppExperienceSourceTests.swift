@@ -973,6 +973,12 @@ final class AppExperienceSourceTests: XCTestCase {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
 
+        XCTAssertTrue(workflowSource.contains("TodayCommandPanel"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-command-title\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-command-add\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-suggestion-chip-"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-start-focus\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-schedule-draft-button\")"))
         XCTAssertTrue(workflowSource.contains("TodayPlanSummary"))
         XCTAssertTrue(workflowSource.contains("TodayTimeBlockList"))
         XCTAssertTrue(workflowSource.contains("plan.overdueCount"))
@@ -981,6 +987,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("ForEach(plan.timeBlocks)"))
         XCTAssertTrue(coreSource.contains("public struct TodayWorkflowPlan"))
         XCTAssertTrue(coreSource.contains("public struct TodayTimeBlock"))
+        XCTAssertTrue(coreSource.contains("public struct TodayRecommendationChip"))
+        XCTAssertTrue(coreSource.contains("public struct TodayScheduleDraft"))
+        XCTAssertTrue(coreSource.contains("public func submitTodayCommand"))
+        XCTAssertTrue(coreSource.contains("public func todayRecommendationChips"))
+        XCTAssertTrue(coreSource.contains("public func startFocus"))
+        XCTAssertTrue(coreSource.contains("public func prepareTodayScheduleDraft"))
         XCTAssertTrue(coreSource.contains("public func todayPlan("))
     }
 
