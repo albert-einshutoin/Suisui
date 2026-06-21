@@ -1018,8 +1018,14 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertNil(viewModel.selectedTaskID)
         XCTAssertEqual(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == captured.id }?.status, .done)
         XCTAssertFalse(viewModel.inboxTasks.contains { $0.id == captured.id })
+        XCTAssertEqual(viewModel.completedInboxTaskCount, 1)
         XCTAssertTrue(viewModel.todayTasks(on: try isoDate("2026-06-19T10:00:00Z")).isEmpty)
         XCTAssertEqual(changeCount, 2)
+
+        viewModel.setShowsCompletedWorkflowTasks(true)
+
+        XCTAssertTrue(viewModel.inboxTasks.contains { $0.id == captured.id })
+        XCTAssertTrue(viewModel.todayTasks(on: try isoDate("2026-06-19T10:00:00Z")).contains { $0.id == captured.id })
 
         viewModel.toggleTaskCompletion(id: captured.id)
 
@@ -1027,6 +1033,42 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == captured.id }?.status, .planned)
         XCTAssertTrue(viewModel.todayTasks(on: try isoDate("2026-06-19T10:00:00Z")).contains { $0.id == captured.id })
         XCTAssertEqual(changeCount, 3)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelMovesDroppedInboxTaskIntoTargetProject() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let inboxID = try XCTUnwrap(viewModel.inboxProject?.id)
+        let targetProject = try XCTUnwrap(viewModel.createProject(title: "Launch Plan"))
+        let captured = try XCTUnwrap(viewModel.createTask(
+            title: "Classify via drag",
+            projectID: inboxID,
+            status: .backlog
+        ))
+
+        XCTAssertTrue(viewModel.moveDroppedTasks(ids: [String(captured.id)], toProjectID: targetProject.id))
+
+        let movedTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == captured.id })
+        XCTAssertEqual(movedTask.projectID, targetProject.id)
+        XCTAssertEqual(movedTask.status, .backlog)
+        XCTAssertEqual(viewModel.selectedProjectID, targetProject.id)
+        XCTAssertEqual(viewModel.selectedTaskID, captured.id)
+        XCTAssertFalse(viewModel.inboxTasks.contains { $0.id == captured.id })
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Moved task to project.")
+    }
+
+    @MainActor
+    func testCompletedProjectsRemainVisibleWhenArchivedProjectsAreHidden() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Completed Initiative"))
+        viewModel.selectedProjectID = project.id
+
+        viewModel.completeSelectedProject()
+
+        XCTAssertTrue(viewModel.snapshot.projects.contains { $0.id == project.id && $0.isCompleted })
+        XCTAssertFalse(viewModel.showsArchivedProjects)
     }
 
     @MainActor
@@ -1297,6 +1339,10 @@ private struct AlwaysFailingProjectBoardStore: ProjectBoardStore {
         throw error
     }
 
+    func moveTasks(ids: [Int64], toProjectID projectID: Int64) throws -> [ProjectBoardTask] {
+        throw error
+    }
+
     func deleteTask(id: Int64) throws {
         throw error
     }
@@ -1434,6 +1480,10 @@ private final class PartiallyFailingBulkMoveProjectBoardStore: ProjectBoardStore
             currentSnapshot = originalSnapshot
             throw error
         }
+    }
+
+    func moveTasks(ids: [Int64], toProjectID projectID: Int64) throws -> [ProjectBoardTask] {
+        throw ProjectBoardStoreTestError.unavailable
     }
 
     func deleteTask(id: Int64) throws {

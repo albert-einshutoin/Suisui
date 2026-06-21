@@ -101,7 +101,7 @@ struct ProjectBoardSidebarDestinationRow: View {
     var body: some View {
         Label {
             HStack(spacing: 8) {
-                Text(destination.title)
+                Text(LocalizedStringKey(destination.title))
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 Text("\(count)")
@@ -125,15 +125,25 @@ struct TodayWorkflowView: View {
         viewModel.todayPlan()
     }
 
+    private var subtitle: String {
+        if viewModel.showsCompletedWorkflowTasks {
+            return String(format: String(localized: "%d due or completed tasks"), plan.tasks.count)
+        }
+        return String(format: String(localized: "%d open due or overdue tasks"), plan.tasks.count)
+    }
+
     var body: some View {
         WorkflowTaskSurface(
             title: "Today",
-            subtitle: "\(plan.tasks.count) open due or overdue tasks",
+            subtitle: subtitle,
             systemImage: "sun.max",
             tasks: plan.tasks,
             emptyTitle: "No tasks due today",
             emptyDescription: "Captured work remains in Inbox until it is scheduled or moved to a project.",
             viewModel: viewModel,
+            headerAccessory: {
+                WorkflowDoneToggle(viewModel: viewModel)
+            },
             footer: {
                 TodaySuggestionPanel(plan: plan, viewModel: viewModel)
             }
@@ -149,10 +159,21 @@ struct InboxWorkflowView: View {
         viewModel.inboxTasks
     }
 
+    private var subtitle: String {
+        if viewModel.showsCompletedWorkflowTasks {
+            return String(
+                format: String(localized: "%d inbox items, including %d done"),
+                tasks.count,
+                viewModel.completedInboxTaskCount
+            )
+        }
+        return String(format: String(localized: "%d unprocessed captured items"), tasks.count)
+    }
+
     var body: some View {
         WorkflowTaskSurface(
             title: "Inbox",
-            subtitle: "\(tasks.count) unprocessed captured items",
+            subtitle: subtitle,
             systemImage: "tray",
             tasks: tasks,
             emptyTitle: "Inbox is clear",
@@ -160,6 +181,7 @@ struct InboxWorkflowView: View {
             viewModel: viewModel,
             headerAccessory: {
                 HStack(spacing: 8) {
+                    WorkflowDoneToggle(viewModel: viewModel)
                     TextField("Capture an inbox item", text: $quickTitle)
                         .textFieldStyle(.roundedBorder)
                         .onSubmit(addInboxTask)
@@ -242,9 +264,9 @@ private struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
 
             if tasks.isEmpty {
                 ContentUnavailableView(
-                    emptyTitle,
+                    LocalizedStringKey(emptyTitle),
                     systemImage: systemImage,
-                    description: Text(emptyDescription)
+                    description: Text(LocalizedStringKey(emptyDescription))
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -258,6 +280,7 @@ private struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
                                 onSelect: { viewModel.selectedTaskID = task.id },
                                 onToggleCompletion: { viewModel.toggleTaskCompletion(id: task.id) }
                             )
+                            .draggable(String(task.id))
                         }
                     }
                     .padding(.vertical, 2)
@@ -271,6 +294,25 @@ private struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
     }
 }
 
+private struct WorkflowDoneToggle: View {
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    var body: some View {
+        Toggle(isOn: Binding(
+            get: { viewModel.showsCompletedWorkflowTasks },
+            set: { viewModel.setShowsCompletedWorkflowTasks($0) }
+        )) {
+            Label("Show Done", systemImage: viewModel.showsCompletedWorkflowTasks ? "checkmark.square" : "square")
+        }
+        .toggleStyle(.button)
+        .controlSize(.small)
+        .help("Show completed tasks in Inbox and Today")
+        .accessibilityIdentifier("workflow-show-completed-toggle")
+        .accessibilityLabel("Show completed tasks")
+        .accessibilityValue(viewModel.showsCompletedWorkflowTasks ? "On" : "Off")
+    }
+}
+
 private struct WorkflowHeader: View {
     let title: String
     let subtitle: String
@@ -279,7 +321,7 @@ private struct WorkflowHeader: View {
     var body: some View {
         Label {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title)
+                Text(LocalizedStringKey(title))
                     .font(.title2.weight(.semibold))
                 Text(subtitle)
                     .font(.subheadline)
@@ -303,14 +345,18 @@ private struct WorkflowTaskRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
             Button(action: onToggleCompletion) {
-                Label(task.status == .done ? "Reopen task" : "Complete task", systemImage: task.status == .done ? "checkmark.square.fill" : "square")
+                Label {
+                    Text(LocalizedStringKey(toggleCompletionTitle))
+                } icon: {
+                    Image(systemName: task.status == .done ? "checkmark.square.fill" : "square")
+                }
                     .labelStyle(.iconOnly)
                     .frame(width: 28, height: 28)
             }
             .buttonStyle(.borderless)
             .foregroundStyle(task.status.tint)
-            .help(task.status == .done ? "Reopen task" : "Complete task")
-            .accessibilityLabel(task.status == .done ? "Reopen task \(task.title)" : "Complete task \(task.title)")
+            .help(LocalizedStringKey(toggleCompletionTitle))
+            .accessibilityLabel(toggleCompletionAccessibilityLabel)
             .accessibilityHint("Updates the task status in the local SoloPM database without opening the inspector.")
             .accessibilityIdentifier("workflow-task-completion-\(task.id)")
 
@@ -324,7 +370,11 @@ private struct WorkflowTaskRow: View {
                             .help(task.title)
                         HStack(spacing: 8) {
                             Label(projectTitle, systemImage: "folder")
-                            Label(task.status.title, systemImage: task.status.systemImage)
+                            Label {
+                                Text(LocalizedStringKey(task.status.title))
+                            } icon: {
+                                Image(systemName: task.status.systemImage)
+                            }
                             if let dueLabel = task.dueLabel {
                                 Label(dueLabel, systemImage: "calendar")
                             }
@@ -336,11 +386,15 @@ private struct WorkflowTaskRow: View {
 
                     Spacer(minLength: 8)
 
-                    Label(task.priority.label, systemImage: "flag")
+                    Label {
+                        Text(LocalizedStringKey(task.priority.label))
+                    } icon: {
+                        Image(systemName: "flag")
+                    }
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(task.priority.color)
                         .labelStyle(.iconOnly)
-                        .help(task.priority.label)
+                        .help(LocalizedStringKey(task.priority.label))
                 }
                 .contentShape(Rectangle())
             }
@@ -365,13 +419,24 @@ private struct WorkflowTaskRow: View {
     private var workflowAccessibilityValue: String {
         var values = [
             "Project: \(projectTitle)",
-            "Status: \(task.status.title)",
-            "Priority: \(task.priority.label)"
+            "\(String(localized: "Status")): \(String(localized: String.LocalizationValue(task.status.title)))",
+            "\(String(localized: "Priority")): \(String(localized: String.LocalizationValue(task.priority.label)))"
         ]
         if let dueLabel = task.dueLabel {
-            values.append("Due: \(dueLabel)")
+            values.append("\(String(localized: "Due")): \(dueLabel)")
         }
         return values.joined(separator: ", ")
+    }
+
+    private var toggleCompletionTitle: String {
+        task.status == .done ? "Reopen task" : "Complete task"
+    }
+
+    private var toggleCompletionAccessibilityLabel: String {
+        if task.status == .done {
+            return localizedDisplay("Reopen task %@", task.title)
+        }
+        return localizedDisplay("Complete task %@", task.title)
     }
 }
 
@@ -517,7 +582,7 @@ private struct TodayPlanSummary: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .help(recommendationTitle)
-                Text(plan.recommendationReason)
+                Text(LocalizedStringKey(plan.recommendationReason))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -529,7 +594,7 @@ private struct TodayPlanSummary: View {
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("today-focus-recommendation")
         .accessibilityLabel(recommendationTitle)
-        .accessibilityHint(plan.recommendationReason)
+        .accessibilityHint(LocalizedStringKey(plan.recommendationReason))
     }
 
     private var dueCounts: some View {
@@ -543,7 +608,11 @@ private struct TodayPlanSummary: View {
         guard let task = plan.recommendedTask else {
             return "No focus task"
         }
-        return "Start with \(task.title) in \(viewModel.projectTitle(for: task))"
+        return String(
+            format: String(localized: "Start with %@ in %@"),
+            task.title,
+            viewModel.projectTitle(for: task)
+        )
     }
 }
 
@@ -557,7 +626,7 @@ private struct TodayCountBadge: View {
             Text("\(value)")
                 .font(.headline.monospacedDigit())
                 .foregroundStyle(tint)
-            Text(label)
+            Text(LocalizedStringKey(label))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

@@ -77,9 +77,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
         phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
     }
 
-    public func startRecording(at date: Date = Date()) {
+    public func startRecording(at date: Date = Date()) async {
         do {
-            try audioRecorder.start(at: date)
+            try await audioRecorder.start(at: date)
             recordingState = audioRecorder.state
             phase = .recording
         } catch {

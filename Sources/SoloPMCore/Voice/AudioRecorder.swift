@@ -9,10 +9,11 @@ public enum AudioRecordingState: Equatable, Sendable {
     case failed(String)
 }
 
+@MainActor
 public protocol AudioRecorder {
     var state: AudioRecordingState { get }
 
-    mutating func start(at date: Date) throws
+    mutating func start(at date: Date) async throws
     mutating func stop(outputURL: URL, at date: Date) throws -> RecordedAudio
     mutating func reset()
 }

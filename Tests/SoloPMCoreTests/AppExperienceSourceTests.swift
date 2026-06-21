@@ -26,6 +26,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains("throw AudioRecorderError.failed(error.localizedDescription)"))
     }
 
+    func testAVFoundationAudioRecorderRequestsFirstRunMicrophoneAccess() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Adapters/AVFoundationAudioRecorder.swift")
+        let notDeterminedRange = try XCTUnwrap(source.range(of: "case .notDetermined:"))
+        let unknownRange = try XCTUnwrap(source.range(of: "@unknown default:", range: notDeterminedRange.upperBound..<source.endIndex))
+        let notDeterminedBlock = source[notDeterminedRange.lowerBound..<unknownRange.lowerBound]
+
+        XCTAssertTrue(notDeterminedBlock.contains("state = .requestingPermission"))
+        XCTAssertTrue(notDeterminedBlock.contains("await requestMicrophoneAccess()"))
+        XCTAssertTrue(source.contains("AVCaptureDevice.requestAccess(for: .audio)"))
+    }
+
     func testProjectBoardSurfaceUsesKanbanLayout() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
@@ -205,6 +216,53 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(japaneseStrings.contains("\"Project Board\" = \"プロジェクトボード\";"))
     }
 
+    func testAppLocalizationsCoverStaticSwiftUILiterals() throws {
+        let englishKeys = try localizableKeys(in: "Sources/SoloPMApp/Resources/en.lproj/Localizable.strings")
+        let japaneseKeys = try localizableKeys(in: "Sources/SoloPMApp/Resources/ja.lproj/Localizable.strings")
+
+        XCTAssertEqual(englishKeys, japaneseKeys)
+
+        var missingKeys: [String] = []
+        for key in try staticSwiftUILiteralKeys() where !englishKeys.contains(key) || !japaneseKeys.contains(key) {
+            missingKeys.append(key)
+        }
+
+        XCTAssertTrue(
+            missingKeys.isEmpty,
+            "Missing Localizable.strings keys: \(missingKeys.sorted().joined(separator: ", "))"
+        )
+        XCTAssertEqual(englishKeys.count, japaneseKeys.count)
+        XCTAssertTrue(japaneseKeys.contains("Settings"))
+        XCTAssertTrue(japaneseKeys.contains("Open Settings"))
+        XCTAssertTrue(japaneseKeys.contains("Classify Selected Item"))
+        XCTAssertTrue(japaneseKeys.contains("Track Artifact"))
+        XCTAssertTrue(japaneseKeys.contains("MCP paid execution boundary"))
+    }
+
+    func testDynamicAppStatusStringsUseLocalizationRouting() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let coreBoardSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let japaneseKeys = try localizableKeys(in: "Sources/SoloPMApp/Resources/ja.lproj/Localizable.strings")
+
+        XCTAssertTrue(boardSource.contains("localizedTaskCount(project.taskCount)"))
+        XCTAssertTrue(boardSource.contains("localizedDisplay(\"%@ is blocked. Resolve it before adding more work.\", task.title)"))
+        XCTAssertTrue(workflowSource.contains("Text(LocalizedStringKey(plan.recommendationReason))"))
+        XCTAssertTrue(appSource.contains("localizedSettingsDisplay(statusLabel)"))
+        XCTAssertTrue(coreBoardSource.contains("String(localized: \"Kept \\\"%@\\\" as a task.\")"))
+
+        XCTAssertFalse(boardSource.contains("Text(project.isArchived ? \"Archived\" : \"\\(project.taskCount) tasks\")"))
+        XCTAssertFalse(boardSource.contains("return \"\\(task.title) is blocked. Resolve it before adding more work.\""))
+        XCTAssertFalse(workflowSource.contains("Text(plan.recommendationReason)"))
+        XCTAssertFalse(appSource.contains("Label(syncUnavailableLabel, systemImage: \"lock\")"))
+
+        XCTAssertTrue(japaneseKeys.contains("%@ is blocked. Resolve it before adding more work."))
+        XCTAssertTrue(japaneseKeys.contains(#"Kept \"%@\" as a task."#))
+        XCTAssertTrue(japaneseKeys.contains("Plan: %@"))
+        XCTAssertTrue(japaneseKeys.contains("Smoke: %@"))
+    }
+
     func testThemePickerIsOwnedOnlyBySettingsAppearanceSectionAcrossAppSources() throws {
         let expectedOwner = "Sources/SoloPMApp/Views/SettingsAppearanceSection.swift"
         let markers = [
@@ -228,7 +286,7 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
-    func testProjectBoardSidebarAndToolbarDoNotHostThemeControls() throws {
+    func testProjectBoardToolbarHostsSettingsLinkWithoutThemeControls() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let sidebarStart = try XCTUnwrap(boardSource.range(of: "NavigationSplitView {"))
         let detailStart = try XCTUnwrap(boardSource.range(of: "} detail: {"))
@@ -257,10 +315,11 @@ final class AppExperienceSourceTests: XCTestCase {
         let inspectorStart = try XCTUnwrap(boardSource.range(of: ".inspector(isPresented: inspectorBinding)"))
         let toolbarSource = String(boardSource[toolbarStart.lowerBound..<inspectorStart.lowerBound])
 
-        XCTAssertFalse(toolbarSource.contains("SettingsLink"))
-        XCTAssertFalse(toolbarSource.contains("gearshape"))
+        XCTAssertTrue(toolbarSource.contains("SettingsLink"))
+        XCTAssertTrue(toolbarSource.contains("Label(\"Settings\", systemImage: \"gearshape\")"))
+        XCTAssertTrue(toolbarSource.contains(".help(\"Open Settings\")"))
+        XCTAssertTrue(toolbarSource.contains(".accessibilityIdentifier(\"project-board-settings-link\")"))
         XCTAssertFalse(toolbarSource.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
-        XCTAssertFalse(toolbarSource.contains("Open Settings"))
         XCTAssertFalse(toolbarSource.contains("Theme"))
         XCTAssertFalse(toolbarSource.contains("Appearance"))
         XCTAssertFalse(toolbarSource.contains("SoloPMAppearancePreference"))
@@ -277,14 +336,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(toolbarSource.contains(".pickerStyle(.segmented)"))
     }
 
-    func testMenuBarPanelDoesNotHostSettingsOrThemeControls() throws {
+    func testMenuBarPanelHostsSettingsLinkWithoutThemeControls() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let panelStart = try XCTUnwrap(appSource.range(of: "private struct MenuBarPanel"))
         let panelEnd = try XCTUnwrap(appSource.range(of: "private struct SummaryRow"))
         let panelSource = String(appSource[panelStart.lowerBound..<panelEnd.lowerBound])
 
-        XCTAssertFalse(panelSource.contains("SettingsLink"))
-        XCTAssertFalse(panelSource.contains("gearshape"))
+        XCTAssertTrue(panelSource.contains("SettingsLink"))
+        XCTAssertTrue(panelSource.contains("Label(\"Settings\", systemImage: \"gearshape\")"))
+        XCTAssertTrue(panelSource.contains(".help(\"Open Settings\")"))
+        XCTAssertTrue(panelSource.contains(".accessibilityIdentifier(\"menu-bar-settings-link\")"))
         XCTAssertFalse(panelSource.contains("Theme"))
         XCTAssertFalse(panelSource.contains("Appearance"))
         XCTAssertFalse(panelSource.contains("SoloPMAppearancePreference"))
@@ -441,7 +502,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".keyboardShortcut(\"n\", modifiers: [.command, .shift])"))
         XCTAssertTrue(source.contains(".help(\"Add a project\")"))
         XCTAssertFalse(source.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
-        XCTAssertFalse(source.contains(".help(\"Open Settings\")"))
+        XCTAssertTrue(source.contains(".help(\"Open Settings\")"))
         XCTAssertTrue(appSource.contains("CommandGroup(replacing: .appSettings)"))
         XCTAssertTrue(appSource.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
     }
@@ -626,7 +687,9 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(workflowSource.contains("viewModel.toggleTaskCompletion(id: task.id)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"workflow-task-completion-\\(task.id)\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityLabel(task.status == .done ? \"Reopen task \\(task.title)\" : \"Complete task \\(task.title)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityLabel(toggleCompletionAccessibilityLabel)"))
+        XCTAssertTrue(workflowSource.contains("localizedDisplay(\"Reopen task %@\", task.title)"))
+        XCTAssertTrue(workflowSource.contains("localizedDisplay(\"Complete task %@\", task.title)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityHint(\"Updates the task status in the local SoloPM database without opening the inspector.\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-quick-add-title\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-quick-add-button\")"))
@@ -715,7 +778,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("viewModel.archiveSelectedProject()"))
         XCTAssertTrue(source.contains("viewModel.restoreSelectedProject()"))
         XCTAssertTrue(source.contains("viewModel.completeSelectedProject()"))
-        XCTAssertTrue(source.contains("viewModel.createTask(title: \"Define next action\""))
+        XCTAssertTrue(source.contains("viewModel.createTask(title: localizedDisplay(\"Define next action\")"))
         XCTAssertTrue(source.contains("viewModel.selectedTaskID = taskID"))
         XCTAssertTrue(source.contains("Section(\"Edit\")"))
         XCTAssertTrue(source.contains("Section(\"Suggestion\")"))
@@ -1704,7 +1767,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("syncViewModel.startSync()"))
         XCTAssertTrue(appSource.contains("KeychainEntitlementStore(secretStore: makeSecretStore())"))
         XCTAssertTrue(appSource.contains("if let syncUnavailableLabel = syncViewModel.syncUnavailableLabel"))
-        XCTAssertTrue(appSource.contains("Label(syncUnavailableLabel, systemImage: \"lock\")"))
+        XCTAssertTrue(appSource.contains("Label(localizedSettingsDisplay(syncUnavailableLabel), systemImage: \"lock\")"))
         XCTAssertTrue(syncSource.contains("public var syncUnavailableLabel: String?"))
         XCTAssertTrue(syncSource.contains("status.state == .idle"))
         XCTAssertTrue(syncSource.contains("throw SyncServiceError.syncBackendNotConfigured"))
@@ -2075,6 +2138,78 @@ final class AppExperienceSourceTests: XCTestCase {
             let values = try url.resourceValues(forKeys: [.isRegularFileKey])
             return values.isRegularFile == true ? url : nil
         }
+    }
+
+    private func localizableKeys(in relativePath: String) throws -> Set<String> {
+        let source = try readPackageFile(relativePath)
+        let pattern = #""((?:[^"\\]|\\.)*)"\s*="#
+        let regex = try NSRegularExpression(pattern: pattern)
+        let range = NSRange(source.startIndex..<source.endIndex, in: source)
+
+        return Set(regex.matches(in: source, range: range).compactMap { match in
+            guard let keyRange = Range(match.range(at: 1), in: source) else {
+                return nil
+            }
+            return String(source[keyRange])
+        })
+    }
+
+    private func staticSwiftUILiteralKeys() throws -> Set<String> {
+        let patterns = [
+            #"\bText\("((?:[^"\\]|\\.)*)"\)"#,
+            #"\bLabel\("((?:[^"\\]|\\.)*)""#,
+            #"\bButton\("((?:[^"\\]|\\.)*)""#,
+            #"\bPicker\("((?:[^"\\]|\\.)*)""#,
+            #"\bToggle\("((?:[^"\\]|\\.)*)""#,
+            #"\bMenu\("((?:[^"\\]|\\.)*)""#,
+            #"\bSection\("((?:[^"\\]|\\.)*)""#,
+            #"\bGroupBox\("((?:[^"\\]|\\.)*)""#,
+            #"\.navigationTitle\("((?:[^"\\]|\\.)*)"\)"#,
+            #"\.help\("((?:[^"\\]|\\.)*)"\)"#,
+            #"\.accessibilityLabel\("((?:[^"\\]|\\.)*)"\)"#,
+            #"\.accessibilityHint\("((?:[^"\\]|\\.)*)"\)"#,
+            #"\bTextField\("((?:[^"\\]|\\.)*)""#,
+            #"\bSecureField\("((?:[^"\\]|\\.)*)""#
+        ]
+        let regexes = try patterns.map { pattern in
+            try NSRegularExpression(pattern: pattern)
+        }
+        var keys: Set<String> = []
+
+        for fileURL in try allSwiftFiles(under: "Sources/SoloPMApp") {
+            let source = try String(contentsOf: fileURL, encoding: .utf8)
+            let range = NSRange(source.startIndex..<source.endIndex, in: source)
+
+            for regex in regexes {
+                for match in regex.matches(in: source, range: range) {
+                    guard let keyRange = Range(match.range(at: 1), in: source) else {
+                        continue
+                    }
+                    let key = String(source[keyRange])
+                    guard isLocalizableStaticUILiteral(key) else {
+                        continue
+                    }
+                    keys.insert(key)
+                }
+            }
+        }
+
+        return keys
+    }
+
+    private func isLocalizableStaticUILiteral(_ key: String) -> Bool {
+        guard !key.isEmpty, !key.contains(#"\("#) else {
+            return false
+        }
+
+        let nonLocalizedPrefixes = [
+            "settings-",
+            "project-",
+            "inline-",
+            "embedded-",
+            "task-"
+        ]
+        return !nonLocalizedPrefixes.contains { key.hasPrefix($0) }
     }
 
     private func packageRoot() -> URL {

@@ -4,16 +4,28 @@ import Foundation
 struct FakeAudioRecorder: AudioRecorder {
     private(set) var state: AudioRecordingState
     private var permissionGranted: Bool
+    private var permissionGrantDecisions: [Bool]
 
-    init(state: AudioRecordingState = .idle, permissionGranted: Bool = true) {
+    init(
+        state: AudioRecordingState = .idle,
+        permissionGranted: Bool = true,
+        permissionGrantDecisions: [Bool] = []
+    ) {
         self.state = state
         self.permissionGranted = permissionGranted
+        self.permissionGrantDecisions = permissionGrantDecisions
     }
 
-    mutating func start(at date: Date = Date()) throws {
-        guard permissionGranted else {
-            state = .failed("Microphone permission denied.")
-            throw AudioRecorderError.microphonePermissionDenied
+    mutating func start(at date: Date = Date()) async throws {
+        if !permissionGranted {
+            state = .requestingPermission
+            let isGranted = permissionGrantDecisions.isEmpty ? false : permissionGrantDecisions.removeFirst()
+            guard isGranted else {
+                state = .failed("Microphone permission denied.")
+                throw AudioRecorderError.microphonePermissionDenied
+            }
+            permissionGranted = true
+            state = .idle
         }
 
         guard state.canStartRecording else {

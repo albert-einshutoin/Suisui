@@ -156,7 +156,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             ))
         )
 
-        viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
+        await viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
         XCTAssertEqual(viewModel.phase, .recording)
 
         await viewModel.stopRecording(
@@ -181,19 +181,19 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             ))
         )
 
-        viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
+        await viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
         await viewModel.stopRecording(
             outputURL: URL(filePath: "/tmp/solopm-test-first.m4a"),
             at: Date(timeIntervalSince1970: 12)
         )
 
-        viewModel.startRecording(at: Date(timeIntervalSince1970: 20))
+        await viewModel.startRecording(at: Date(timeIntervalSince1970: 20))
 
         XCTAssertEqual(viewModel.phase, .recording)
         XCTAssertEqual(viewModel.recordingState, .recording(startedAt: Date(timeIntervalSince1970: 20)))
     }
 
-    func testClearResetsActiveRecordingState() {
+    func testClearResetsActiveRecordingState() async {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
@@ -205,9 +205,9 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             ))
         )
 
-        viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
+        await viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
         viewModel.clear()
-        viewModel.startRecording(at: Date(timeIntervalSince1970: 20))
+        await viewModel.startRecording(at: Date(timeIntervalSince1970: 20))
 
         XCTAssertEqual(viewModel.phase, .recording)
         XCTAssertEqual(viewModel.recordingState, .recording(startedAt: Date(timeIntervalSince1970: 20)))

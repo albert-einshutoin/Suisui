@@ -281,6 +281,7 @@ public protocol ProjectBoardStore {
     func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask
     func moveTask(id: Int64, to status: ProjectTaskStatus) throws -> ProjectBoardTask
     func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask]
+    func moveTasks(ids: [Int64], toProjectID projectID: Int64) throws -> [ProjectBoardTask]
     func deleteTask(id: Int64) throws
     func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact
     func deleteProjectArtifact(id: Int64) throws
@@ -404,6 +405,19 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     public func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask] {
         try connection.transaction {
             try ids.map { try moveTask(id: $0, to: status) }
+        }
+    }
+
+    @discardableResult
+    public func moveTasks(ids: [Int64], toProjectID projectID: Int64) throws -> [ProjectBoardTask] {
+        try connection.transaction {
+            try ids.map { taskID in
+                let current = try taskStore.get(id: taskID)
+                let status = ProjectTaskStatus.normalized(current.status)
+                try prepareProjectForTaskMutation(projectID: projectID, taskStatus: status)
+                let record = try taskStore.updateFields(id: taskID, projectID: .set(projectID))
+                return try makeBoardTask(record).requiredTask()
+            }
         }
     }
 
@@ -590,6 +604,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public var selectedProjectID: Int64?
     @Published public var selectedTaskID: Int64?
     @Published public private(set) var showsArchivedProjects: Bool
+    @Published public private(set) var showsCompletedWorkflowTasks: Bool
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var integrationStatusMessage: String?
     @Published public private(set) var inboxClassificationFeedback: InboxClassificationFeedback?
@@ -611,6 +626,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.onChange = onChange
         self.selectedProjectID = snapshot.projects.first?.id
         self.showsArchivedProjects = false
+        self.showsCompletedWorkflowTasks = false
     }
 
     public var selectedProject: ProjectBoardProject? {
@@ -630,8 +646,12 @@ public final class ProjectBoardViewModel: ObservableObject {
     public var inboxTasks: [ProjectBoardTask] {
         inboxProject?
             .tasks
-            .filter { $0.status != .done }
+            .filter { showsCompletedWorkflowTasks || $0.status != .done }
             .sorted { $0.id > $1.id } ?? []
+    }
+
+    public var completedInboxTaskCount: Int {
+        inboxProject?.tasks.filter { $0.status == .done }.count ?? 0
     }
 
     public var inboxProject: ProjectBoardProject? {
@@ -648,7 +668,8 @@ public final class ProjectBoardViewModel: ObservableObject {
             .filter { !$0.isArchived }
             .flatMap(\.tasks)
             .filter { task in
-                task.status != .done && dueDate(for: task.dueAt).map { $0 < endOfToday } == true
+                (showsCompletedWorkflowTasks || task.status != .done)
+                    && dueDate(for: task.dueAt).map { $0 < endOfToday } == true
             }
             .sorted { lhs, rhs in
                 switch (dueDate(for: lhs.dueAt), dueDate(for: rhs.dueAt)) {
@@ -772,6 +793,11 @@ public final class ProjectBoardViewModel: ObservableObject {
         load()
     }
 
+    public func setShowsCompletedWorkflowTasks(_ isShown: Bool) {
+        showsCompletedWorkflowTasks = isShown
+        load()
+    }
+
     public func exportTaskInteropJSON(exportedAt: Date = Date()) -> Data? {
         do {
             let data = try TaskInteropExportService(store: store).exportJSON(exportedAt: exportedAt)
@@ -819,17 +845,27 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     public func recordTaskInteropExportCompleted() {
-        integrationStatusMessage = "Exported task JSON."
+        integrationStatusMessage = String(localized: "Exported task JSON.")
         errorMessage = nil
     }
 
     private static func importStatusMessage(for result: ExternalTaskImportResult) -> String {
-        let taskLabel = result.createdTaskCount == 1 ? "1 task" : "\(result.createdTaskCount) tasks"
+        let taskLabel = String(
+            format: String(localized: result.createdTaskCount == 1 ? "%d task" : "%d tasks"),
+            result.createdTaskCount
+        )
         if result.skippedDuplicateCount > 0 {
-            let skippedLabel = result.skippedDuplicateCount == 1 ? "1 duplicate" : "\(result.skippedDuplicateCount) duplicates"
-            return "Imported \(taskLabel) from JSON. Skipped \(skippedLabel)."
+            let skippedLabel = String(
+                format: String(localized: result.skippedDuplicateCount == 1 ? "%d duplicate" : "%d duplicates"),
+                result.skippedDuplicateCount
+            )
+            return String(
+                format: String(localized: "Imported %@ from JSON. Skipped %@."),
+                taskLabel,
+                skippedLabel
+            )
         }
-        return "Imported \(taskLabel) from JSON."
+        return String(format: String(localized: "Imported %@ from JSON."), taskLabel)
     }
 
     @discardableResult
@@ -1070,7 +1106,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                 dueAt: selectedTask.dueAt
             ),
             feedback: InboxClassificationFeedback(
-                message: "Kept \"\(selectedTask.title)\" as a task.",
+                message: String(format: String(localized: "Kept \"%@\" as a task."), selectedTask.title),
                 systemImage: "checkmark.circle",
                 canUndo: true
             )
@@ -1101,7 +1137,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                 originalTask: selectedTask,
                 fallbackTask: movedTask,
                 feedback: InboxClassificationFeedback(
-                    message: "Created project \"\(selectedTask.title)\".",
+                    message: String(format: String(localized: "Created project \"%@\"."), selectedTask.title),
                     systemImage: "folder.badge.plus",
                     canUndo: true
                 ),
@@ -1144,7 +1180,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                 dueAt: ISO8601DateFormatter().string(from: referenceDate)
             ),
             feedback: InboxClassificationFeedback(
-                message: "Scheduled \"\(selectedTask.title)\" for today.",
+                message: String(format: String(localized: "Scheduled \"%@\" for today."), selectedTask.title),
                 systemImage: "calendar.badge.plus",
                 canUndo: true
             )
@@ -1167,7 +1203,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                 dueAt: nil
             ),
             feedback: InboxClassificationFeedback(
-                message: "Deferred \"\(selectedTask.title)\" for later review.",
+                message: String(format: String(localized: "Deferred \"%@\" for later review."), selectedTask.title),
                 systemImage: "clock",
                 canUndo: true
             )
@@ -1293,6 +1329,59 @@ public final class ProjectBoardViewModel: ObservableObject {
                 selectedProjectID = lastMovedTask.projectID
                 selectedTaskID = lastMovedTask.id
             }
+            onChange()
+            return true
+        } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
+            errorMessage = "Restore the project before moving tasks."
+            return false
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+            return false
+        }
+    }
+
+    @discardableResult
+    public func moveDroppedTasks(ids rawIDs: [String], toProjectID projectID: Int64) -> Bool {
+        guard !rawIDs.isEmpty else {
+            return false
+        }
+
+        var taskIDs: [Int64] = []
+        for rawID in rawIDs {
+            guard let taskID = Int64(rawID) else {
+                errorMessage = "Could not move task: invalid drag payload."
+                return false
+            }
+            taskIDs.append(taskID)
+        }
+
+        return moveDroppedTasks(ids: taskIDs, toProjectID: projectID)
+    }
+
+    @discardableResult
+    public func moveDroppedTasks(ids taskIDs: [Int64], toProjectID projectID: Int64) -> Bool {
+        guard !taskIDs.isEmpty else {
+            return false
+        }
+        guard snapshot.projects.contains(where: { $0.id == projectID }) else {
+            errorMessage = "Could not move task: project is no longer available."
+            return false
+        }
+        let visibleTaskIDs = Set(snapshot.projects.flatMap(\.tasks).map(\.id))
+        guard taskIDs.allSatisfy({ visibleTaskIDs.contains($0) }) else {
+            errorMessage = "Could not move task: task is no longer available."
+            return false
+        }
+
+        do {
+            let movedTasks = try store.moveTasks(ids: taskIDs, toProjectID: projectID)
+            load()
+            selectedProjectID = projectID
+            selectedTaskID = movedTasks.last?.id
+            integrationStatusMessage = movedTasks.count == 1
+                ? String(localized: "Moved task to project.")
+                : String(format: String(localized: "Moved %d tasks to project."), movedTasks.count)
+            errorMessage = nil
             onChange()
             return true
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {

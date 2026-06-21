@@ -31,9 +31,33 @@ struct ProjectBoardView: View {
                     }
 
                     Section("Projects") {
-                        ForEach(viewModel.snapshot.projects.filter { $0.id != viewModel.inboxProject?.id }) { project in
-                            ProjectSidebarRow(project: project)
+                        ForEach(activeSidebarProjects) { project in
+                            ProjectSidebarRow(project: project) { rawIDs in
+                                viewModel.moveDroppedTasks(ids: rawIDs, toProjectID: project.id)
+                            }
+                            .tag(ProjectBoardSidebarDestination.project(project.id))
+                        }
+                    }
+
+                    if !completedSidebarProjects.isEmpty {
+                        Section("Completed") {
+                            ForEach(completedSidebarProjects) { project in
+                                ProjectSidebarRow(project: project) { rawIDs in
+                                    viewModel.moveDroppedTasks(ids: rawIDs, toProjectID: project.id)
+                                }
                                 .tag(ProjectBoardSidebarDestination.project(project.id))
+                            }
+                        }
+                    }
+
+                    if viewModel.showsArchivedProjects {
+                        Section("Archived") {
+                            ForEach(archivedSidebarProjects) { project in
+                                ProjectSidebarRow(project: project) { rawIDs in
+                                    viewModel.moveDroppedTasks(ids: rawIDs, toProjectID: project.id)
+                                }
+                                .tag(ProjectBoardSidebarDestination.project(project.id))
+                            }
                         }
                     }
                 }
@@ -154,6 +178,12 @@ struct ProjectBoardView: View {
                         Label("Voice Command", systemImage: "mic")
                     }
 
+                    SettingsLink {
+                        Label("Settings", systemImage: "gearshape")
+                    }
+                    .help("Open Settings")
+                    .accessibilityIdentifier("project-board-settings-link")
+
                     Button {
                         isTerminalPanelPresented.toggle()
                     } label: {
@@ -242,6 +272,22 @@ struct ProjectBoardView: View {
             return nil
         }
         return viewModel.snapshot.projects.first { $0.id == projectID }
+    }
+
+    private var sidebarProjects: [ProjectBoardProject] {
+        viewModel.snapshot.projects.filter { $0.id != viewModel.inboxProject?.id }
+    }
+
+    private var activeSidebarProjects: [ProjectBoardProject] {
+        sidebarProjects.filter { !$0.isCompleted && !$0.isArchived }
+    }
+
+    private var completedSidebarProjects: [ProjectBoardProject] {
+        sidebarProjects.filter { $0.isCompleted && !$0.isArchived }
+    }
+
+    private var archivedSidebarProjects: [ProjectBoardProject] {
+        sidebarProjects.filter(\.isArchived)
     }
 
     private var terminalWorkingDirectory: URL {
@@ -382,6 +428,8 @@ private enum ProjectBoardDisplayMode: String, CaseIterable, Identifiable {
 
 private struct ProjectSidebarRow: View {
     let project: ProjectBoardProject
+    let onMoveDroppedTasks: ([String]) -> Bool
+    @State private var isDropTargeted = false
 
     var body: some View {
         Label {
@@ -390,7 +438,7 @@ private struct ProjectSidebarRow: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .help(project.title)
-                Text(project.isArchived ? "Archived" : "\(project.taskCount) tasks")
+                Text(project.isArchived ? localizedDisplay("Archived") : localizedTaskCount(project.taskCount))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -400,7 +448,20 @@ private struct ProjectSidebarRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(project.accessibilitySidebarLabel)
+        .accessibilityHint("Drop task cards here to move them into this project.")
         .accessibilityIdentifier("project-sidebar-row-\(project.id)")
+        .padding(.vertical, 2)
+        .padding(.horizontal, 4)
+        .background(isDropTargeted ? project.sidebarDropTint.opacity(0.14) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+        .overlay {
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(isDropTargeted ? project.sidebarDropTint.opacity(0.6) : Color.clear, lineWidth: 1)
+        }
+        .dropDestination(for: String.self) { rawIDs, _ in
+            onMoveDroppedTasks(rawIDs)
+        } isTargeted: { targeted in
+            isDropTargeted = targeted
+        }
     }
 
     private var systemImage: String {
@@ -420,9 +481,16 @@ private struct ProjectSidebarRow: View {
 
 private extension ProjectBoardProject {
     var accessibilitySidebarLabel: String {
-        let state = isArchived ? "Archived" : isCompleted ? "Completed" : "Active"
-        let taskLabel = taskCount == 1 ? "1 task" : "\(taskCount) tasks"
+        let state = localizedDisplay(isArchived ? "Archived" : isCompleted ? "Completed" : "Active")
+        let taskLabel = localizedTaskCount(taskCount)
         return "\(title), \(state), \(taskLabel)"
+    }
+
+    var sidebarDropTint: Color {
+        if isArchived {
+            return .secondary
+        }
+        return isCompleted ? .green : .blue
     }
 }
 
@@ -618,7 +686,7 @@ private struct ProjectMetricBadge: View {
             Text("\(value)")
                 .font(.headline.monospacedDigit())
                 .foregroundStyle(tint)
-            Text(label)
+            Text(LocalizedStringKey(label))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -671,13 +739,17 @@ private struct ProjectTaskSnapshotSection: View {
                                     .font(.caption.weight(.medium))
                                     .lineLimit(1)
                                     .truncationMode(.tail)
-                                Text(task.dueLabel ?? task.status.title)
+                                Text(task.dueLabel ?? localizedDisplay(task.status.title))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
                             Spacer(minLength: 8)
-                            Label(task.priority.label, systemImage: "flag")
+                            Label {
+                                Text(LocalizedStringKey(task.priority.label))
+                            } icon: {
+                                Image(systemName: "flag")
+                            }
                                 .labelStyle(.iconOnly)
                                 .foregroundStyle(task.priority.color)
                         }
@@ -737,7 +809,7 @@ private struct ProjectArtifactSection: View {
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                                 .help(artifact.expectedPath)
-                            Text(artifact.createdState.label)
+                            Text(LocalizedStringKey(artifact.createdState.label))
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -887,15 +959,15 @@ private struct ProjectLocalSuggestionPanel: View {
 
     private func suggestionText(for task: ProjectBoardTask) -> String {
         if task.status == .blocked {
-            return "\(task.title) is blocked. Resolve it before adding more work."
+            return localizedDisplay("%@ is blocked. Resolve it before adding more work.", task.title)
         }
         if task.priority == .high {
-            return "\(task.title) is high priority. Make it the next focused task."
+            return localizedDisplay("%@ is high priority. Make it the next focused task.", task.title)
         }
         if let dueAt = task.dueAt {
-            return "\(task.title) is the next due task at \(dueAt)."
+            return localizedDisplay("%@ is the next due task at %@.", task.title, dueAt)
         }
-        return "Continue with \(task.title)."
+        return localizedDisplay("Continue with %@.", task.title)
     }
 }
 
@@ -906,7 +978,11 @@ private struct ProjectOverviewPanel<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(title, systemImage: systemImage)
+            Label {
+                Text(LocalizedStringKey(title))
+            } icon: {
+                Image(systemName: systemImage)
+            }
                 .font(.headline)
             content()
         }
@@ -979,7 +1055,11 @@ private struct ProjectHeaderActions: View {
     private var viewPicker: some View {
         Picker("View", selection: $displayMode) {
             ForEach(ProjectBoardDisplayMode.allCases) { mode in
-                Label(mode.label, systemImage: mode.systemImage)
+                Label {
+                    Text(LocalizedStringKey(mode.label))
+                } icon: {
+                    Image(systemName: mode.systemImage)
+                }
                     .tag(mode)
             }
         }
@@ -1064,7 +1144,11 @@ private struct BoardColumnView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Label(column.title, systemImage: column.status.systemImage)
+                Label {
+                    Text(LocalizedStringKey(column.title))
+                } icon: {
+                    Image(systemName: column.status.systemImage)
+                }
                     .font(.headline)
                     .foregroundStyle(column.status.tint)
                 Spacer()
@@ -1170,7 +1254,11 @@ private struct BoardColumnView: View {
                 Button {
                     onMoveTask(task.id, status)
                 } label: {
-                    Label(status.title, systemImage: status.systemImage)
+                    Label {
+                        Text(LocalizedStringKey(status.title))
+                    } icon: {
+                        Image(systemName: status.systemImage)
+                    }
                 }
             }
         } label: {
@@ -1224,7 +1312,7 @@ private struct InlineTaskComposer: View {
             HStack {
                 Picker("Priority", selection: $priority) {
                     ForEach(ProjectTaskPriority.allCases) { priority in
-                        Text(priority.label).tag(priority)
+                        Text(LocalizedStringKey(priority.label)).tag(priority)
                     }
                 }
                 .labelsHidden()
@@ -1415,9 +1503,17 @@ private struct BoardTaskDragPreview: View {
             }
 
             HStack(spacing: 8) {
-                Label(task.status.title, systemImage: "arrow.right.arrow.left")
+                Label {
+                    Text(LocalizedStringKey(task.status.title))
+                } icon: {
+                    Image(systemName: "arrow.right.arrow.left")
+                }
                     .foregroundStyle(task.status.tint)
-                Label(task.priority.label, systemImage: "flag")
+                Label {
+                    Text(LocalizedStringKey(task.priority.label))
+                } icon: {
+                    Image(systemName: "flag")
+                }
                     .foregroundStyle(task.priority.color)
             }
             .font(.caption)
@@ -1446,7 +1542,7 @@ private struct TaskStatusMoveControls: View {
                 targetStatus: task.status.previousStatus
             )
 
-            Text(task.status.title)
+            Text(LocalizedStringKey(task.status.title))
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -1455,7 +1551,7 @@ private struct TaskStatusMoveControls: View {
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
                 .background(.quaternary, in: Capsule())
-                .help(task.status.title)
+                .help(LocalizedStringKey(task.status.title))
                 .accessibilityLabel("Current status: \(task.status.title)")
 
             statusMoveButton(
@@ -1586,11 +1682,19 @@ private struct ProjectTaskList: View {
             }
 
             TableColumn("Status") { task in
-                Label(task.status.title, systemImage: task.status.systemImage)
+                Label {
+                    Text(LocalizedStringKey(task.status.title))
+                } icon: {
+                    Image(systemName: task.status.systemImage)
+                }
             }
 
             TableColumn("Priority") { task in
-                Label(task.priority.label, systemImage: "flag")
+                Label {
+                    Text(LocalizedStringKey(task.priority.label))
+                } icon: {
+                    Image(systemName: "flag")
+                }
                     .foregroundStyle(task.priority.color)
             }
 
@@ -1945,15 +2049,15 @@ private struct ProjectInspectorSuggestionSection: View {
     private var suggestionText: String {
         switch suggestionAction {
         case .restoreProject:
-            return "Restore this project before editing tasks or including it in active summaries."
+            return localizedDisplay("Restore this project before editing tasks or including it in active summaries.")
         case .createFirstTask:
-            return "Create a first concrete task so the project has a next action."
+            return localizedDisplay("Create a first concrete task so the project has a next action.")
         case .completeProject:
-            return "All tasks are done. Complete the project to keep active views focused."
+            return localizedDisplay("All tasks are done. Complete the project to keep active views focused.")
         case .openTask:
-            return "Open the highest-signal task and decide its next move in the inspector."
+            return localizedDisplay("Open the highest-signal task and decide its next move in the inspector.")
         case .none:
-            return "No project-level suggestion is needed right now."
+            return localizedDisplay("No project-level suggestion is needed right now.")
         }
     }
 
@@ -1962,7 +2066,7 @@ private struct ProjectInspectorSuggestionSection: View {
         case .restoreProject:
             viewModel.restoreSelectedProject()
         case .createFirstTask:
-            _ = viewModel.createTask(title: "Define next action", projectID: project.id, status: .backlog)
+            _ = viewModel.createTask(title: localizedDisplay("Define next action"), projectID: project.id, status: .backlog)
         case .completeProject:
             viewModel.completeSelectedProject()
         case .openTask(let taskID):
@@ -2032,7 +2136,11 @@ private struct TaskInspectorView: View {
             Section("Fields") {
                 Picker("Status", selection: $status) {
                     ForEach(ProjectTaskStatus.allCases) { status in
-                        Label(status.title, systemImage: status.systemImage)
+                        Label {
+                            Text(LocalizedStringKey(status.title))
+                        } icon: {
+                            Image(systemName: status.systemImage)
+                        }
                             .tag(status)
                     }
                 }
@@ -2040,7 +2148,7 @@ private struct TaskInspectorView: View {
 
                 Picker("Priority", selection: $priority) {
                     ForEach(ProjectTaskPriority.allCases) { priority in
-                        Text(priority.label)
+                        Text(LocalizedStringKey(priority.label))
                             .tag(priority)
                     }
                 }
@@ -2229,12 +2337,12 @@ private struct InspectorMetadataPill: View {
                 .frame(width: 14)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(label)
+                Text(LocalizedStringKey(label))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
-                Text(value)
+                Text(LocalizedStringKey(value))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -2292,15 +2400,15 @@ private struct TaskInspectorSuggestionSection: View {
 
     private var suggestionText: String {
         if task.status == .done {
-            return "This task is already complete."
+            return localizedDisplay("This task is already complete.")
         }
         if task.status == .blocked {
-            return "If the blocker is resolved, move this task back into active work."
+            return localizedDisplay("If the blocker is resolved, move this task back into active work.")
         }
         if task.priority == .high {
-            return "High-priority task: move it forward when the next step is clear."
+            return localizedDisplay("High-priority task: move it forward when the next step is clear.")
         }
-        return "Move this task to the next status when you are ready."
+        return localizedDisplay("Move this task to the next status when you are ready.")
     }
 }
 

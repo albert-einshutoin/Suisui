@@ -184,6 +184,12 @@ private struct MenuBarPanel: View {
             }
             .keyboardShortcut(.space, modifiers: [.option])
 
+            SettingsLink {
+                Label("Settings", systemImage: "gearshape")
+            }
+            .help("Open Settings")
+            .accessibilityIdentifier("menu-bar-settings-link")
+
             Divider()
 
             quickCaptureSection
@@ -330,7 +336,9 @@ private struct VoiceCaptureView: View {
                                 )
                             }
                         } else {
-                            viewModel.startRecording()
+                            Task {
+                                await viewModel.startRecording()
+                            }
                         }
                     } label: {
                         Label(viewModel.isRecording ? "Stop" : "Record", systemImage: viewModel.isRecording ? "stop.circle" : "record.circle")
@@ -376,7 +384,7 @@ private struct StatusRow: View {
     let phase: VoiceCapturePhase
 
     var body: some View {
-        Label(label, systemImage: systemImage)
+        Label(localizedSettingsDisplay(label), systemImage: systemImage)
             .font(.caption)
             .foregroundStyle(isError ? .red : .secondary)
     }
@@ -536,12 +544,12 @@ private struct ActionReviewHeader: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
                 .help(summary)
-            Text(approvalLabel)
+            Text(localizedSettingsDisplay(approvalLabel))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
-                .help(approvalLabel)
+                .help(localizedSettingsDisplay(approvalLabel))
         }
     }
 
@@ -610,7 +618,7 @@ private struct ReviewActionRow: View {
                     .lineLimit(2)
             }
             if let failureRecovery = item.failureRecovery {
-                Label(failureRecoveryLabel(failureRecovery), systemImage: failureRecovery == .retryable ? "arrow.clockwise" : "lock")
+                Label(localizedSettingsDisplay(failureRecoveryLabel(failureRecovery)), systemImage: failureRecovery == .retryable ? "arrow.clockwise" : "lock")
                     .font(.caption)
                     .foregroundStyle(failureRecoveryColor(failureRecovery))
             }
@@ -714,7 +722,7 @@ private struct ReviewActionTitleRow: View {
     }
 
     private var statusBadge: some View {
-        Text(statusLabel)
+        Text(localizedSettingsDisplay(statusLabel))
             .font(.caption)
             .foregroundStyle(statusColor)
             .lineLimit(1)
@@ -910,10 +918,10 @@ private struct SettingsView: View {
                     mcpDetailLabel: externalMCPViewModel.display.statusLabel,
                     mcpTone: mcpOverviewTone,
                     syncStatusLabel: syncViewModel.statusLabel,
-                    syncDetailLabel: "Plan: \(syncViewModel.planLabel)",
+                    syncDetailLabel: localizedDisplay("Plan: %@", syncViewModel.planLabel),
                     syncTone: syncOverviewTone,
                     privacyStatusLabel: privacyOverviewStatusLabel,
-                    privacyDetailLabel: "Login Item: \(launchAtLoginViewModel.statusLabel)",
+                    privacyDetailLabel: localizedDisplay("Login Item: %@", localizedSettingsDisplay(launchAtLoginViewModel.statusLabel)),
                     privacyTone: privacyOverviewTone
                 )
             }
@@ -992,9 +1000,9 @@ private struct SettingsView: View {
         Form {
             Section("Sync") {
                 LabeledContent("Plan", value: syncViewModel.planLabel)
-                LabeledContent("Status", value: syncViewModel.statusLabel)
-                LabeledContent("Last Attempt", value: syncViewModel.lastAttemptLabel)
-                LabeledContent("Data Included", value: syncViewModel.dataIncludedLabel)
+                LocalizedValueLabeledContent("Status", value: syncViewModel.statusLabel)
+                LocalizedValueLabeledContent("Last Attempt", value: syncViewModel.lastAttemptLabel)
+                LocalizedValueLabeledContent("Data Included", value: syncViewModel.dataIncludedLabel)
                 SyncValueStatusRow(
                     planLabel: syncViewModel.planLabel,
                     statusLabel: syncViewModel.statusLabel,
@@ -1018,7 +1026,7 @@ private struct SettingsView: View {
                 }
                 .disabled(!syncViewModel.canEnableSync)
                 if let syncUnavailableLabel = syncViewModel.syncUnavailableLabel {
-                    Label(syncUnavailableLabel, systemImage: "lock")
+                    Label(localizedSettingsDisplay(syncUnavailableLabel), systemImage: "lock")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -1115,8 +1123,8 @@ private struct SettingsView: View {
 
     @ViewBuilder
     private var openAIProviderSettingsFields: some View {
-        LabeledContent("OpenAI API Key", value: settingsViewModel.openAIAPIKeyStatusLabel)
-        LabeledContent("OpenAI Provider Smoke", value: settingsViewModel.openAIProviderSmokeStatusLabel)
+        LocalizedValueLabeledContent("OpenAI API Key", value: settingsViewModel.openAIAPIKeyStatusLabel)
+        LocalizedValueLabeledContent("OpenAI Provider Smoke", value: settingsViewModel.openAIProviderSmokeStatusLabel)
         SecureField(
             "OpenAI API Key",
             text: Binding(
@@ -1142,7 +1150,7 @@ private struct SettingsView: View {
 
     @ViewBuilder
     private var claudeProviderSettingsFields: some View {
-        LabeledContent("Anthropic API Key", value: settingsViewModel.anthropicAPIKeyStatusLabel)
+        LocalizedValueLabeledContent("Anthropic API Key", value: settingsViewModel.anthropicAPIKeyStatusLabel)
         SecureField(
             "Anthropic API Key",
             text: Binding(
@@ -1168,8 +1176,8 @@ private struct SettingsView: View {
 
     @ViewBuilder
     private var geminiProviderSettingsFields: some View {
-        LabeledContent("Gemini API Key", value: settingsViewModel.geminiAPIKeyStatusLabel)
-        LabeledContent("Gemini Provider Smoke", value: settingsViewModel.geminiProviderSmokeStatusLabel)
+        LocalizedValueLabeledContent("Gemini API Key", value: settingsViewModel.geminiAPIKeyStatusLabel)
+        LocalizedValueLabeledContent("Gemini Provider Smoke", value: settingsViewModel.geminiProviderSmokeStatusLabel)
         TextField(
             "Gemini Model ID",
             text: Binding(
@@ -1205,8 +1213,8 @@ private struct SettingsView: View {
 
     @ViewBuilder
     private var groqProviderSettingsFields: some View {
-        LabeledContent("Groq API Key", value: settingsViewModel.groqAPIKeyStatusLabel)
-        LabeledContent("Groq Provider Smoke", value: settingsViewModel.groqProviderSmokeStatusLabel)
+        LocalizedValueLabeledContent("Groq API Key", value: settingsViewModel.groqAPIKeyStatusLabel)
+        LocalizedValueLabeledContent("Groq Provider Smoke", value: settingsViewModel.groqProviderSmokeStatusLabel)
         TextField(
             "Groq Base URL",
             text: Binding(
@@ -1279,7 +1287,7 @@ private struct SettingsView: View {
 
     @ViewBuilder
     private var openRouterProviderSettingsFields: some View {
-        LabeledContent("OpenRouter API Key", value: settingsViewModel.openRouterAPIKeyStatusLabel)
+        LocalizedValueLabeledContent("OpenRouter API Key", value: settingsViewModel.openRouterAPIKeyStatusLabel)
         SecureField(
             "OpenRouter API Key",
             text: Binding(
@@ -1305,8 +1313,8 @@ private struct SettingsView: View {
 
     @ViewBuilder
     private var ollamaProviderSettingsFields: some View {
-        LabeledContent("Provider Status", value: "Local")
-        LabeledContent("API Key", value: "Not required")
+        LocalizedValueLabeledContent("Provider Status", value: "Local")
+        LocalizedValueLabeledContent("API Key", value: "Not required")
     }
 
     private var privacySettingsTab: some View {
@@ -1328,7 +1336,7 @@ private struct SettingsView: View {
                     Label("Launch at Login", systemImage: "power")
                 }
                 .disabled(!launchAtLoginViewModel.canToggle)
-                LabeledContent("Login Item", value: launchAtLoginViewModel.statusLabel)
+                LocalizedValueLabeledContent("Login Item", value: launchAtLoginViewModel.statusLabel)
                 if let statusDetail = launchAtLoginViewModel.statusDetail {
                     Label(statusDetail, systemImage: "info.circle")
                         .font(.caption)
@@ -1366,7 +1374,7 @@ private struct SettingsView: View {
             Section("Watcher") {
                 LabeledContent("Last Check", value: diagnosticDateLabel(watcherDiagnosticsSnapshot.lastCheckAt))
                 LabeledContent("Next Check", value: diagnosticDateLabel(watcherDiagnosticsSnapshot.nextCheckAt))
-                LabeledContent("Notifications", value: permissionLabel(watcherDiagnosticsSnapshot.notificationPermissionStatus))
+                LocalizedValueLabeledContent("Notifications", value: permissionLabel(watcherDiagnosticsSnapshot.notificationPermissionStatus))
                 if let errorMessage = watcherDiagnosticsSnapshot.errorMessage {
                     Label(errorMessage, systemImage: "exclamationmark.triangle")
                         .font(.caption)
@@ -1449,7 +1457,7 @@ private struct SettingsView: View {
                 .help("Use NAME=keychain:secret_key per line. Raw secret values are rejected.")
 
                 Group {
-                    LabeledContent("MCP Keychain Secret", value: settingsViewModel.keychainSecretStatusLabel)
+                    LocalizedValueLabeledContent("MCP Keychain Secret", value: settingsViewModel.keychainSecretStatusLabel)
                     TextField("Secret Key", text: Binding(
                         get: { settingsViewModel.keychainSecretKeyInput },
                         set: { settingsViewModel.updateKeychainSecretKeyInput($0) }
@@ -1480,11 +1488,11 @@ private struct SettingsView: View {
                 }
 
                 LabeledContent("Transport", value: externalMCPViewModel.display.transportLabel)
-                LabeledContent("Status", value: externalMCPViewModel.display.statusLabel)
+                LocalizedValueLabeledContent("Status", value: externalMCPViewModel.display.statusLabel)
                 LabeledContent("Protocol Version", value: externalMCPViewModel.protocolVersionLabel)
-                LabeledContent("Check Result", value: externalMCPViewModel.connectionCheckResultLabel)
-                LabeledContent("Resources", value: "Not supported in this release")
-                LabeledContent("Prompts", value: "Not supported in this release")
+                LocalizedValueLabeledContent("Check Result", value: externalMCPViewModel.connectionCheckResultLabel)
+                LocalizedValueLabeledContent("Resources", value: "Not supported in this release")
+                LocalizedValueLabeledContent("Prompts", value: "Not supported in this release")
                 ForEach(externalMCPViewModel.display.environmentRows, id: \.name) { row in
                     LabeledContent(row.name, value: row.sourceLabel)
                 }
@@ -1560,7 +1568,7 @@ private struct SettingsView: View {
                         HStack {
                             Label(row.toolName, systemImage: row.status == .failed ? "xmark.octagon" : "checkmark.circle")
                             Spacer()
-                            Text(row.statusLabel)
+                            Text(localizedSettingsDisplay(row.statusLabel))
                                 .font(.caption)
                                 .foregroundStyle(row.status == .failed ? .red : .secondary)
                         }
@@ -1623,9 +1631,9 @@ private struct SettingsView: View {
     private var mcpExecutionValueLabel: String {
         let requiredPlan = FeatureGate.advancedMCPExecution.requiredPlan.displayName
         if syncViewModel.status.plan.allows(.advancedMCPExecution) {
-            return "Advanced MCP tools can execute on \(syncViewModel.planLabel)."
+            return localizedDisplay("Advanced MCP tools can execute on %@.", syncViewModel.planLabel)
         }
-        return "\(requiredPlan) is required before external MCP tools can execute."
+        return localizedDisplay("%@ is required before external MCP tools can execute.", requiredPlan)
     }
 
     private var mcpExecutionSafetyBoundaryLabel: String {
@@ -1803,7 +1811,7 @@ private struct MCPServerStatusBadge: View {
     let label: String
 
     var body: some View {
-        Label(label, systemImage: label == "Enabled" ? "checkmark.circle" : "pause.circle")
+        Label(localizedSettingsDisplay(label), systemImage: label == "Enabled" ? "checkmark.circle" : "pause.circle")
             .foregroundStyle(label == "Enabled" ? .green : .secondary)
             .lineLimit(1)
     }
@@ -1813,7 +1821,7 @@ private struct MCPServerConnectionBadge: View {
     let label: String
 
     var body: some View {
-        Label(label, systemImage: systemImage)
+        Label(localizedSettingsDisplay(label), systemImage: systemImage)
             .foregroundStyle(foregroundStyle)
             .lineLimit(1)
     }
@@ -1863,18 +1871,18 @@ private struct SelectedAIProviderStatusRow: View {
                     .truncationMode(.tail)
                     .help(providerName)
 
-                Text(statusLabel)
+                Text(localizedSettingsDisplay(statusLabel))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(tone.color)
                     .lineLimit(1)
 
-                Text(detailLabel)
+                Text(localizedSettingsDisplay(detailLabel))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Label(nextActionLabel, systemImage: "arrow.right.circle")
+                Label(localizedSettingsDisplay(nextActionLabel), systemImage: "arrow.right.circle")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -1887,7 +1895,7 @@ private struct SelectedAIProviderStatusRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("ai-provider-readiness-row")
         .accessibilityLabel("AI provider readiness")
-        .accessibilityValue("\(providerName), \(statusLabel), \(nextActionLabel)")
+        .accessibilityValue("\(providerName), \(localizedSettingsDisplay(statusLabel)), \(localizedSettingsDisplay(nextActionLabel))")
     }
 }
 
@@ -1948,12 +1956,12 @@ private struct AIProviderReadinessSummaryItem: View {
                     .truncationMode(.tail)
                     .help(row.provider.displayName)
 
-                Text(row.statusLabel)
+                Text(localizedSettingsDisplay(row.statusLabel))
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(tone.color)
                     .lineLimit(1)
 
-                Text(row.nextActionLabel)
+                Text(localizedSettingsDisplay(row.nextActionLabel))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -1964,7 +1972,7 @@ private struct AIProviderReadinessSummaryItem: View {
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("ai-provider-readiness-summary-\(row.provider.rawValue)")
         .accessibilityLabel(row.provider.displayName)
-        .accessibilityValue("\(row.statusLabel), \(row.nextActionLabel)")
+        .accessibilityValue("\(localizedSettingsDisplay(row.statusLabel)), \(localizedSettingsDisplay(row.nextActionLabel))")
     }
 }
 
@@ -1983,24 +1991,24 @@ private struct SyncValueStatusRow: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("\(planLabel) Sync")
+                Text(localizedDisplay("%@ Sync", planLabel))
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                     .truncationMode(.tail)
 
-                Text(statusLabel)
+                Text(localizedSettingsDisplay(statusLabel))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(tone.color)
                     .lineLimit(1)
                     .truncationMode(.tail)
 
-                Text(valueLabel)
+                Text(localizedSettingsDisplay(valueLabel))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Label(boundaryLabel, systemImage: "lock.shield")
+                Label(localizedSettingsDisplay(boundaryLabel), systemImage: "lock.shield")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -2013,7 +2021,7 @@ private struct SyncValueStatusRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("sync-paid-value-row")
         .accessibilityLabel("Sync paid value and safety boundary")
-        .accessibilityValue("\(planLabel), \(statusLabel), \(boundaryLabel)")
+        .accessibilityValue("\(planLabel), \(localizedSettingsDisplay(statusLabel)), \(localizedSettingsDisplay(boundaryLabel))")
     }
 }
 
@@ -2039,13 +2047,13 @@ private struct ExternalConnectorScopeRow: View {
                         .truncationMode(.tail)
                         .help(name)
 
-                    Text(status)
+                    Text(localizedSettingsDisplay(status))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(tone.color)
                         .lineLimit(1)
                 }
 
-                Text(detail)
+                Text(localizedSettingsDisplay(detail))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -2057,7 +2065,7 @@ private struct ExternalConnectorScopeRow: View {
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(name) external connector")
-        .accessibilityValue("\(status), \(detail)")
+        .accessibilityValue("\(localizedSettingsDisplay(status)), \(localizedSettingsDisplay(detail))")
     }
 }
 
@@ -2076,23 +2084,23 @@ private struct MCPPaidExecutionBoundaryRow: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("\(planLabel) MCP Execution")
+                Text(localizedDisplay("%@ MCP Execution", planLabel))
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                     .truncationMode(.tail)
 
-                Text(statusLabel)
+                Text(localizedSettingsDisplay(statusLabel))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(tone.color)
                     .lineLimit(1)
 
-                Text(valueLabel)
+                Text(localizedSettingsDisplay(valueLabel))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Label(boundaryLabel, systemImage: "checkmark.seal")
+                Label(localizedSettingsDisplay(boundaryLabel), systemImage: "checkmark.seal")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -2105,7 +2113,7 @@ private struct MCPPaidExecutionBoundaryRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("mcp-paid-execution-boundary-row")
         .accessibilityLabel("MCP paid execution boundary")
-        .accessibilityValue("\(planLabel), \(statusLabel), \(boundaryLabel)")
+        .accessibilityValue("\(planLabel), \(localizedSettingsDisplay(statusLabel)), \(localizedSettingsDisplay(boundaryLabel))")
     }
 }
 
@@ -2199,18 +2207,18 @@ private struct ProValueOverviewItem: View {
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
 
-                Text(statusLabel)
+                Text(localizedSettingsDisplay(statusLabel))
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(tone.color)
                     .lineLimit(1)
 
-                Text(valueLabel)
+                Text(localizedSettingsDisplay(valueLabel))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Label(boundaryLabel, systemImage: "lock.shield")
+                Label(localizedSettingsDisplay(boundaryLabel), systemImage: "lock.shield")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -2222,7 +2230,25 @@ private struct ProValueOverviewItem: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
-        .accessibilityValue("\(statusLabel), \(boundaryLabel)")
+        .accessibilityValue("\(localizedSettingsDisplay(statusLabel)), \(localizedSettingsDisplay(boundaryLabel))")
+    }
+}
+
+private struct LocalizedValueLabeledContent: View {
+    let title: LocalizedStringKey
+    let value: String
+
+    init(_ title: LocalizedStringKey, value: String) {
+        self.title = title
+        self.value = value
+    }
+
+    var body: some View {
+        LabeledContent {
+            Text(localizedSettingsDisplay(value))
+        } label: {
+            Text(title)
+        }
     }
 }
 
@@ -2340,18 +2366,18 @@ private struct SettingsStatusTile: View {
                         .accessibilityHidden(true)
                 }
 
-                Text(value)
+                Text(localizedSettingsDisplay(value))
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .help(value)
+                    .help(localizedSettingsDisplay(value))
 
-                Text(detail)
+                Text(localizedSettingsDisplay(detail))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .help(detail)
+                    .help(localizedSettingsDisplay(detail))
             }
 
             Spacer(minLength: 0)
@@ -2742,6 +2768,10 @@ private struct UnavailableProjectBoardStore: ProjectBoardStore {
     }
 
     func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask] {
+        throw error
+    }
+
+    func moveTasks(ids: [Int64], toProjectID projectID: Int64) throws -> [ProjectBoardTask] {
         throw error
     }
 
