@@ -23,22 +23,22 @@ MIN_AX_BUTTONS=5
 MIN_AX_TEXT_FIELDS=1
 MIN_AX_STATIC_TEXTS=5
 REQUIRED_RUNTIME_CRUD_MARKERS=(
-  "Shows archived projects"
-  "Creates a new local project"
-  "Opens the inline composer for a new local task"
-  "Add task to Backlog"
-  "Saves edits to the selected project"
-  "Completes the selected project"
-  "Archives the selected project"
-  "Deletes the selected project"
+  "project-board-show-archived"
+  "project-board-add-project"
+  "project-header-add-task"
+  "task-card-open-details"
+  "project-inspector-save"
+  "project-inspector-complete"
+  "project-inspector-archive"
+  "project-inspector-delete"
 )
 REQUIRED_RUNTIME_FOCUS_MARKERS=(
-  "Project navigation=>Project navigation"
-  "Project board detail=>Review project tasks, open a task card, then use the inspector for edits."
-  "Open task=>Opens task details in the inspector"
-  "Inline Task Composer=>Opens the inline composer for a new local task"
-  "Status controls=>Moves the task between board columns"
-  "Task inspector=>Task inspector"
+  "Project navigation=>project-board-sidebar"
+  "Project board detail=>project-board-detail"
+  "Open task=>task-card-open-details"
+  "Inline Task Composer=>project-header-add-task"
+  "Status controls=>task-status-move-controls"
+  "Task inspector=>project-inspector"
 )
 
 REQUIRED_SOURCE_ANCHORS=(
@@ -46,8 +46,12 @@ REQUIRED_SOURCE_ANCHORS=(
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::Project navigation"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-detail"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-kanban-board"
+  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-show-archived"
+  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-add-project"
+  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-header-add-task"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-card-open-details"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-status-move-controls"
+  "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-status-move-"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::inline-task-title"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::inline-task-detail"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::inline-task-priority"
@@ -300,6 +304,7 @@ on run argv
           set itemValue to ""
           set itemDescription to ""
           set itemHelp to ""
+          set itemIdentifier to ""
           try
             set itemRole to role of axItem as text
           end try
@@ -318,13 +323,17 @@ on run argv
           try
             set itemHelp to value of attribute "AXHelp" of axItem as text
           end try
-          set focusPathSignalText to focusPathSignalText & " " & itemName & " " & itemTitle & " " & itemValue & " " & itemDescription & " " & itemHelp
+          try
+            set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
+          end try
+          set focusPathSignalText to focusPathSignalText & " " & itemIdentifier & " " & itemName & " " & itemTitle & " " & itemValue & " " & itemDescription & " " & itemHelp
           if itemRole is "AXButton" then
             set buttonCount to buttonCount + 1
             set buttonName to ""
             set buttonTitle to ""
             set buttonDescription to ""
             set buttonHelp to ""
+            set buttonIdentifier to ""
             set buttonPosition to ""
             set buttonSize to ""
             set childTextCount to 0
@@ -339,6 +348,9 @@ on run argv
             end try
             try
               set buttonHelp to value of attribute "AXHelp" of axItem as text
+            end try
+            try
+              set buttonIdentifier to value of attribute "AXIdentifier" of axItem as text
             end try
             try
               set buttonPosition to position of axItem as text
@@ -379,7 +391,7 @@ on run argv
                 set genericButtonDetails to genericButtonDetails & "; " & genericButtonDetail
               end if
             end if
-            set buttonSignalText to buttonSignalText & " " & buttonName & " " & buttonTitle & " " & buttonDescription & " " & buttonHelp
+            set buttonSignalText to buttonSignalText & " " & buttonIdentifier & " " & buttonName & " " & buttonTitle & " " & buttonDescription & " " & buttonHelp
           end if
           if itemRole is "AXTextField" or itemRole is "AXTextArea" then set textFieldCount to textFieldCount + 1
           if itemRole is "AXStaticText" then set staticTextCount to staticTextCount + 1

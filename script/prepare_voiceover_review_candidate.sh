@@ -323,16 +323,35 @@ write_voiceover_evidence_command() {
     printf '\n'
     printf '%s\n' 'verify_voiceover_worksheet_for_evidence'
     printf '\n'
-    printf '%s\n' 'terminate_voiceover_candidate() {'
-    printf '%s\n' '  /usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true'
-    printf '%s\n' '  pkill -x "$APP_NAME" >/dev/null 2>&1 || true'
+	    printf '%s\n' 'terminate_voiceover_candidate() {'
+	    printf '%s\n' '  pkill -x "$APP_NAME" >/dev/null 2>&1 || true'
     printf '%s\n' '  if [[ -n "${CANDIDATE_APP_PID:-}" ]]; then'
     printf '%s\n' '    wait "$CANDIDATE_APP_PID" >/dev/null 2>&1 || true'
     printf '%s\n' '    CANDIDATE_APP_PID=""'
     printf '%s\n' '  fi'
-    printf '%s\n' '}'
-    printf '\n'
-    printf '%s\n' 'wait_for_voiceover_candidate_process() {'
+	    printf '%s\n' '}'
+	    printf '\n'
+	    printf '%s\n' 'activate_voiceover_candidate() {'
+	    printf '%s\n' '  /usr/bin/osascript - "$APP_NAME" <<'"'"'APPLESCRIPT'"'"' >/dev/null 2>&1 || true'
+	    printf '%s\n' 'on run argv'
+	    printf '%s\n' '  set appName to item 1 of argv'
+	    printf '%s\n' '  tell application "System Events"'
+	    printf '%s\n' '    if not (exists process appName) then return "missing"'
+	    printf '%s\n' '    tell process appName'
+	    printf '%s\n' '      set frontmost to true'
+	    printf '%s\n' '      if (count of windows) > 0 then'
+	    printf '%s\n' '        try'
+	    printf '%s\n' '          perform action "AXRaise" of window 1'
+	    printf '%s\n' '        end try'
+	    printf '%s\n' '      end if'
+	    printf '%s\n' '    end tell'
+	    printf '%s\n' '  end tell'
+	    printf '%s\n' '  return "activated"'
+	    printf '%s\n' 'end run'
+	    printf '%s\n' 'APPLESCRIPT'
+	    printf '%s\n' '}'
+	    printf '\n'
+	    printf '%s\n' 'wait_for_voiceover_candidate_process() {'
     printf '%s\n' '  local timeout_seconds="${SOLOPM_VOICEOVER_REVIEW_TIMEOUT_SECONDS:-30}"'
     printf '%s\n' '  local deadline=$((SECONDS + timeout_seconds))'
     printf '%s\n' '  while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do'
@@ -341,18 +360,53 @@ write_voiceover_evidence_command() {
     printf '%s\n' '      exit 2'
     printf '%s\n' '    fi'
     printf '%s\n' '    sleep 1'
-    printf '%s\n' '  done'
-    printf '%s\n' '}'
-    printf '\n'
-    printf '%s\n' 'launch_voiceover_candidate_for_evidence() {'
-    printf '%s\n' '  terminate_voiceover_candidate'
-    printf '%s\n' '  SOLOPM_DATABASE_PATH="$EXPECTED_DATABASE_PATH" \'
-    printf '%s\n' '    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="$EXPECTED_SELECTED_DESTINATION" \'
-    printf '%s\n' '    "$APP_BINARY" &'
-    printf '%s\n' '  CANDIDATE_APP_PID=$!'
-    printf '%s\n' '  /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 || true'
-    printf '%s\n' '  wait_for_voiceover_candidate_process'
-    printf '%s\n' '}'
+	    printf '%s\n' '  done'
+	    printf '%s\n' '}'
+	    printf '\n'
+	    printf '%s\n' 'wait_for_voiceover_candidate_windows() {'
+	    printf '%s\n' '  local timeout_seconds="${SOLOPM_VOICEOVER_REVIEW_TIMEOUT_SECONDS:-30}"'
+	    printf '%s\n' '  local deadline=$((SECONDS + timeout_seconds))'
+	    printf '%s\n' '  local window_count=""'
+	    printf '%s\n' '  local osascript_status=1'
+	    printf '%s\n' '  while true; do'
+	    printf '%s\n' '    set +e'
+	    printf '%s\n' '    window_count="$(/usr/bin/osascript - "$APP_NAME" <<'"'"'APPLESCRIPT'"'"' 2>/dev/null'
+	    printf '%s\n' 'on run argv'
+	    printf '%s\n' '  set appName to item 1 of argv'
+	    printf '%s\n' '  tell application "System Events"'
+	    printf '%s\n' '    if not (exists process appName) then return "0"'
+	    printf '%s\n' '    tell process appName'
+	    printf '%s\n' '      return (count of windows) as text'
+	    printf '%s\n' '    end tell'
+	    printf '%s\n' '  end tell'
+	    printf '%s\n' 'end run'
+	    printf '%s\n' 'APPLESCRIPT'
+	    printf '%s\n' ')"'
+	    printf '%s\n' '    osascript_status=$?'
+	    printf '%s\n' '    set -e'
+	    printf '%s\n' '    if [[ "$osascript_status" -eq 0 && "${window_count:-0}" =~ ^[0-9]+$ && "$window_count" -ge 1 ]]; then'
+	    printf '%s\n' '      return 0'
+	    printf '%s\n' '    fi'
+	    printf '%s\n' '    activate_voiceover_candidate'
+	    printf '%s\n' '    if [[ "$SECONDS" -ge "$deadline" ]]; then'
+	    printf '%s\n' '      printf "BLOCKER: %s did not expose a visible AX window for VoiceOver evidence within %ss\n" "$APP_NAME" "$timeout_seconds" >&2'
+	    printf '%s\n' '      exit 2'
+	    printf '%s\n' '    fi'
+	    printf '%s\n' '    sleep 1'
+	    printf '%s\n' '  done'
+	    printf '%s\n' '}'
+	    printf '\n'
+	    printf '%s\n' 'launch_voiceover_candidate_for_evidence() {'
+	    printf '%s\n' '  terminate_voiceover_candidate'
+	    printf '%s\n' '  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \'
+	    printf '%s\n' '    SOLOPM_DATABASE_PATH="$EXPECTED_DATABASE_PATH" \'
+	    printf '%s\n' '    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="$EXPECTED_SELECTED_DESTINATION" \'
+	    printf '%s\n' '    "$APP_BINARY" &'
+	    printf '%s\n' '  CANDIDATE_APP_PID=$!'
+	    printf '%s\n' '  wait_for_voiceover_candidate_process'
+	    printf '%s\n' '  activate_voiceover_candidate'
+	    printf '%s\n' '  wait_for_voiceover_candidate_windows'
+	    printf '%s\n' '}'
     printf '\n'
     printf '%s\n' 'trap terminate_voiceover_candidate EXIT INT TERM'
     printf '\n'
@@ -391,7 +445,6 @@ wait_for_no_app_process() {
 }
 
 terminate_app() {
-  /usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
   pkill -x "$APP_NAME" >/dev/null 2>&1 || true
   if [[ -n "${app_pid:-}" ]]; then
     wait "$app_pid" >/dev/null 2>&1 || true
@@ -400,7 +453,60 @@ terminate_app() {
 }
 
 activate_app() {
-  /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 || true
+  # Avoid LaunchServices activation here; it can start a second instance without
+  # the isolated VoiceOver review database environment.
+  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 || true
+on run argv
+  set appName to item 1 of argv
+  tell application "System Events"
+    if not (exists process appName) then return "missing"
+    tell process appName
+      set frontmost to true
+      if (count of windows) > 0 then
+        try
+          perform action "AXRaise" of window 1
+        end try
+      end if
+    end tell
+  end tell
+  return "activated"
+end run
+APPLESCRIPT
+}
+
+wait_for_visible_windows() {
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local window_count=""
+  local osascript_status=1
+
+  while true; do
+    set +e
+    window_count="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' 2>/dev/null
+on run argv
+  set appName to item 1 of argv
+  tell application "System Events"
+    if not (exists process appName) then return "0"
+    tell process appName
+      return (count of windows) as text
+    end tell
+  end tell
+end run
+APPLESCRIPT
+)"
+    osascript_status=$?
+    set -e
+
+    if [[ "$osascript_status" -eq 0 && "${window_count:-0}" =~ ^[0-9]+$ && "$window_count" -ge 1 ]]; then
+      return 0
+    fi
+
+    activate_app
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: $APP_NAME did not expose a visible AX window within ${TIMEOUT_SECONDS}s" >&2
+      return 1
+    fi
+    sleep 1
+  done
 }
 
 wait_for_database_table() {
@@ -564,10 +670,11 @@ if [[ ! -x "$APP_BINARY" ]]; then
 fi
 
 terminate_app
-SOLOPM_DATABASE_PATH="$database_path" "$APP_BINARY" &
+SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" "$APP_BINARY" &
 app_pid=$!
-activate_app
 wait_for_app_process
+activate_app
+wait_for_visible_windows
 wait_for_database_table "projects"
 terminate_app
 wait_for_no_app_process
@@ -591,6 +698,7 @@ worksheet_file="$ROOT_DIR/.tmp/voiceover-review/voiceover-worksheet.md"
 pending_evidence_file="$ROOT_DIR/.tmp/voiceover-review/accessibility-voiceover-pending-$SOURCE_COMMIT.md"
 pending_evidence_source="dist/$APP_NAME.app manual VoiceOver pass using $database_path project:$seed_project_id"
 {
+  printf 'SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1\n'
   printf 'SOLOPM_DATABASE_PATH=%q\n' "$database_path"
   printf 'SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=%q\n' "project:$seed_project_id"
   printf 'SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT=%q\n' "$SOURCE_COMMIT"
@@ -610,14 +718,16 @@ printf 'Worksheet: %s\n' "$worksheet_file"
 printf 'Evidence command: %s\n' "$evidence_command_file"
 
 if [[ "$launch_app" -eq 1 ]]; then
-  SOLOPM_DATABASE_PATH="$database_path" \
+  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SOLOPM_DATABASE_PATH="$database_path" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
     "$APP_BINARY" &
   app_pid=$!
-  activate_app
   wait_for_app_process
+  activate_app
+  wait_for_visible_windows
   printf 'App launched for manual VoiceOver review with SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:%s"\n' "$seed_project_id"
 else
   printf 'Launch skipped. To open the same candidate manually, run:\n'
-  printf 'SOLOPM_DATABASE_PATH=%q SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=%q %q\n' "$database_path" "project:$seed_project_id" "$APP_BINARY"
+  printf 'SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH=%q SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=%q %q\n' "$database_path" "project:$seed_project_id" "$APP_BINARY"
 fi

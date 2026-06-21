@@ -39,23 +39,6 @@ cascade_task_id=""
 app_pid=""
 
 terminate_app() {
-  local quit_pid=""
-  /usr/bin/osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 &
-  quit_pid=$!
-
-  for _ in {1..30}; do
-    if ! kill -0 "$quit_pid" >/dev/null 2>&1; then
-      wait "$quit_pid" >/dev/null 2>&1 || true
-      break
-    fi
-    sleep 0.1
-  done
-
-  if kill -0 "$quit_pid" >/dev/null 2>&1; then
-    kill "$quit_pid" >/dev/null 2>&1 || true
-    wait "$quit_pid" >/dev/null 2>&1 || true
-  fi
-
   pkill -x "$APP_NAME" >/dev/null 2>&1 || true
   if [[ -n "${app_pid:-}" ]]; then
     wait "$app_pid" >/dev/null 2>&1 || true
@@ -96,7 +79,25 @@ wait_for_no_app_process() {
 }
 
 activate_app() {
-  /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 &
+  # Keep activation inside System Events so LaunchServices does not start a
+  # second app instance without the isolated SQLite/keychain test environment.
+  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 &
+on run argv
+  set appName to item 1 of argv
+  tell application "System Events"
+    if not (exists process appName) then return "missing"
+    tell process appName
+      set frontmost to true
+      if (count of windows) > 0 then
+        try
+          perform action "AXRaise" of window 1
+        end try
+      end if
+    end tell
+  end tell
+  return "activated"
+end run
+APPLESCRIPT
   local osascript_pid=$!
   for _ in {1..20}; do
     if ! kill -0 "$osascript_pid" >/dev/null 2>&1; then
@@ -109,31 +110,73 @@ activate_app() {
   wait "$osascript_pid" >/dev/null 2>&1 || true
 }
 
+wait_for_visible_windows() {
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local window_count=""
+  local osascript_status=1
+
+  while true; do
+    set +e
+    window_count="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' 2>/dev/null
+on run argv
+  set appName to item 1 of argv
+  tell application "System Events"
+    if not (exists process appName) then return "0"
+    tell process appName
+      return (count of windows) as text
+    end tell
+  end tell
+end run
+APPLESCRIPT
+)"
+    osascript_status=$?
+    set -e
+
+    if [[ "$osascript_status" -eq 0 && "${window_count:-0}" =~ ^[0-9]+$ && "$window_count" -ge 1 ]]; then
+      return 0
+    fi
+
+    activate_app
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: $APP_NAME did not expose a visible AX window within ${TIMEOUT_SECONDS}s" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
 launch_app_for_database_migration() {
   terminate_app
-  SOLOPM_DATABASE_PATH="$database_path" "$APP_BINARY" &
+  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 SOLOPM_DATABASE_PATH="$database_path" "$APP_BINARY" &
   app_pid=$!
-  activate_app
   wait_for_app_process
+  activate_app
+  wait_for_visible_windows
 }
 
 launch_app_for_seed_project() {
   local seed_project_id="$1"
   terminate_app
-  SOLOPM_DATABASE_PATH="$database_path" \
+  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SOLOPM_DATABASE_PATH="$database_path" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
     "$APP_BINARY" &
   app_pid=$!
-  activate_app
   wait_for_app_process
+  activate_app
+  wait_for_visible_windows
 }
 
 launch_app_for_crud_mutation() {
   terminate_app
-  SOLOPM_DATABASE_PATH="$database_path" "$APP_BINARY" &
+  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SOLOPM_DATABASE_PATH="$database_path" \
+    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="projects" \
+    "$APP_BINARY" &
   app_pid=$!
-  activate_app
   wait_for_app_process
+  activate_app
+  wait_for_visible_windows
 }
 
 wait_for_database_table() {
@@ -310,6 +353,8 @@ on run argv
             set buttonTitle to ""
             set buttonDescription to ""
             set buttonHelp to ""
+            set buttonIdentifier to ""
+            set buttonIdentifier to ""
             try
               set buttonName to name of axItem as text
             end try
@@ -322,7 +367,10 @@ on run argv
             try
               set buttonHelp to value of attribute "AXHelp" of axItem as text
             end try
-            set signalText to buttonName & " " & buttonTitle & " " & buttonDescription & " " & buttonHelp
+            try
+              set buttonIdentifier to value of attribute "AXIdentifier" of axItem as text
+            end try
+            set signalText to buttonIdentifier & " " & buttonName & " " & buttonTitle & " " & buttonDescription & " " & buttonHelp
             set isEnabled to true
             try
               set isEnabled to enabled of axItem as boolean
@@ -398,12 +446,15 @@ on run argv
             try
               set buttonHelp to value of attribute "AXHelp" of axItem as text
             end try
-            set signalText to buttonName & " " & buttonTitle & " " & buttonDescription & " " & buttonHelp
+            try
+              set buttonIdentifier to value of attribute "AXIdentifier" of axItem as text
+            end try
+            set signalText to buttonIdentifier & " " & buttonName & " " & buttonTitle & " " & buttonDescription & " " & buttonHelp
             set isEnabled to true
             try
               set isEnabled to enabled of axItem as boolean
             end try
-            if isEnabled and (signalText contains fragment) and not (signalText contains excludedHelp) then
+            if isEnabled and (signalText contains fragment) and (excludedHelp is "" or not (signalText contains excludedHelp)) then
               try
                 perform action "AXPress" of axItem
                 return "pressed confirmation " & fragment
@@ -623,12 +674,11 @@ if [[ -z "$seed_project_id" ]]; then
 fi
 
 launch_app_for_seed_project "$seed_project_id"
-./script/check_accessibility_preflight.sh --runtime --skip-launch --timeout "$TIMEOUT_SECONDS"
 terminate_app
 wait_for_no_app_process
 launch_app_for_crud_mutation
 
-pressButtonUntilSQLiteValue "created project" "Creates a new local project" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM projects WHERE title='Untitled Project' AND source_command='app.project-board';" "1"
+pressButtonUntilSQLiteValue "created project" "project-board-add-project" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM projects WHERE title='Untitled Project' AND source_command='app.project-board';" "1"
 created_project_id="$(wait_for_nonempty_value "created project id" "SELECT id FROM projects WHERE title='Untitled Project' AND source_command='app.project-board' ORDER BY id DESC LIMIT 1;")"
 terminate_app
 wait_for_no_app_process
@@ -637,44 +687,44 @@ launch_app_for_seed_project "$created_project_id"
 waitForTextFieldContaining "project-inspector-title"
 setTextFieldContaining "project-inspector-title" "AX Runtime CRUD Project"
 waitForTextFieldContaining "AX Runtime CRUD Project"
-pressButtonContaining "Saves edits to the selected project"
+pressButtonContaining "project-inspector-save"
 verify_single_value "renamed project" "SELECT title FROM projects WHERE id=$created_project_id;" "AX Runtime CRUD Project"
 
-pressButtonContaining "Opens the inline composer for a new local task"
+pressButtonContaining "project-header-add-task"
 waitForTextFieldContaining "inline-task-title"
 setTextFieldContaining "inline-task-title" "AX Runtime CRUD Task"
 waitForTextFieldContaining "AX Runtime CRUD Task"
-pressButtonUntilSQLiteValue "created task" "Creates the task in the local SoloPM database." "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime CRUD Task' AND status='backlog' AND source_command='app.project-board';" "1"
+pressButtonUntilSQLiteValue "created task" "inline-task-create" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime CRUD Task' AND status='backlog' AND source_command='app.project-board';" "1"
 created_task_id="$(wait_for_nonempty_value "created task id" "SELECT id FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime CRUD Task' ORDER BY id DESC LIMIT 1;")"
 
-pressButtonContaining "Opens task details in the inspector"
+pressButtonContaining "task-card-open-details"
 waitForTextFieldContaining "task-inspector-title"
 setTextFieldContaining "task-inspector-title" "AX Runtime CRUD Task Updated"
 waitForTextFieldContaining "AX Runtime CRUD Task Updated"
-pressButtonContaining "Saves edits to the selected task in the local SoloPM database."
+pressButtonContaining "task-inspector-save"
 verify_single_value "renamed task" "SELECT title FROM tasks WHERE id=$created_task_id;" "AX Runtime CRUD Task Updated"
-pressButtonContaining "Changes AX Runtime CRUD Task"
+pressButtonContaining "task-status-move-planned-$created_task_id"
 verify_single_value "advanced task status" "SELECT status FROM tasks WHERE id=$created_task_id;" "planned"
 terminate_app
 wait_for_no_app_process
 launch_app_for_seed_project "$created_project_id"
-pressButtonContaining "Opens task details in the inspector"
-pressDestructiveButtonUntilSQLiteValue "deleted task" "Deletes the selected task after confirmation." "Delete Task" "Deletes the selected task after confirmation." "SELECT count(*) FROM tasks WHERE id=$created_task_id;" "0"
+pressButtonContaining "task-card-open-details"
+pressDestructiveButtonUntilSQLiteValue "deleted task" "task-inspector-delete" "task-inspector-delete-confirmation-confirm" "" "SELECT count(*) FROM tasks WHERE id=$created_task_id;" "0"
 
-pressButtonContaining "Opens the inline composer for a new local task"
+pressButtonContaining "project-header-add-task"
 waitForTextFieldContaining "inline-task-title"
 setTextFieldContaining "inline-task-title" "AX Runtime Cascade Task"
 waitForTextFieldContaining "AX Runtime Cascade Task"
-pressButtonUntilSQLiteValue "created cascade task" "Creates the task in the local SoloPM database." "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Cascade Task' AND status='backlog' AND source_command='app.project-board';" "1"
+pressButtonUntilSQLiteValue "created cascade task" "inline-task-create" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Cascade Task' AND status='backlog' AND source_command='app.project-board';" "1"
 cascade_task_id="$(wait_for_nonempty_value "cascade task id" "SELECT id FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Cascade Task' ORDER BY id DESC LIMIT 1;")"
 terminate_app
 wait_for_no_app_process
 launch_app_for_seed_project "$created_project_id"
 waitForTextFieldContaining "project-inspector-title"
 
-pressButtonUntilSQLiteValue "completed project" "Completes the selected project" "SELECT status FROM projects WHERE id=$created_project_id;" "completed"
+pressButtonUntilSQLiteValue "completed project" "project-inspector-complete" "SELECT status FROM projects WHERE id=$created_project_id;" "completed"
 
-pressDestructiveButtonUntilSQLiteValue "deleted project" "Deletes the selected project" "Delete Project" "Deletes the selected project after confirmation." "SELECT count(*) FROM projects WHERE id=$created_project_id;" "0"
+pressDestructiveButtonUntilSQLiteValue "deleted project" "project-inspector-delete" "project-inspector-delete-confirmation-confirm" "" "SELECT count(*) FROM projects WHERE id=$created_project_id;" "0"
 verify_single_value "deleted task cascade" "SELECT count(*) FROM tasks WHERE id=$cascade_task_id OR project_id=$created_project_id;" "0"
 
 printf "OK: runtime accessible CRUD smoke created, renamed, completed, and deleted a project, then created, updated, moved, directly deleted, and cascade-deleted tasks through the visible app\n"

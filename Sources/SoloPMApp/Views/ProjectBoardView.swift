@@ -88,6 +88,7 @@ struct ProjectBoardView: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Show archived projects")
+                .accessibilityIdentifier("project-board-show-archived")
                 .accessibilityLabel("Show archived projects")
                 .accessibilityValue(viewModel.showsArchivedProjects ? "On" : "Off")
                 .accessibilityHint("Shows archived projects in the sidebar without deleting local data.")
@@ -104,6 +105,7 @@ struct ProjectBoardView: View {
                 .buttonStyle(.borderless)
                 .keyboardShortcut("n", modifiers: [.command, .shift])
                 .help("Add a project")
+                .accessibilityIdentifier("project-board-add-project")
                 .accessibilityLabel("Add Project")
                 .accessibilityHint("Creates a new local project and selects it.")
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1650,6 +1652,7 @@ private struct ProjectHeaderActions: View {
         .keyboardShortcut("n", modifiers: [.command])
         .disabled(project.isArchived)
         .help("Add task to \(project.title)")
+        .accessibilityIdentifier("project-header-add-task")
         .accessibilityLabel("Add task to \(project.title)")
         .accessibilityHint("Opens the inline composer for a new local task.")
     }
@@ -2154,6 +2157,7 @@ private struct TaskStatusMoveControls: View {
         .controlSize(.small)
         .disabled(targetStatus == nil)
         .help(targetStatus.map { "\(title): \($0.title)" } ?? title)
+        .accessibilityIdentifier(targetStatus.map { "task-status-move-\($0.rawValue)-\(task.id)" } ?? "task-status-move-disabled-\(task.id)")
         .accessibilityLabel(targetStatus.map { "\(title) to \($0.title)" } ?? title)
         .accessibilityHint("Changes \(task.title) status.")
     }
