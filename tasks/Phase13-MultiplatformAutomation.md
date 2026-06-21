@@ -87,10 +87,10 @@
 
 ## P13-009: Pricing and packaging update
 
-- [ ] `docs/product/pricing.md` に iOS/Web/macOS access、document-scoped automation、Harness retention のplan境界を反映する。
-- [ ] Free / Sync / Pro / Team のUI表現とFeatureGateを更新する。
-- [ ] Free usersがクラウド実行前に必ずupgrade gateで止まるテストを追加する。
-- [ ] 完了条件: 価格案と実装gateが矛盾しない。
+- [x] `docs/product/pricing.md` に iOS/Web/macOS access、document-scoped automation、Harness retention のplan境界を反映する。
+- [x] Free / Sync / Pro / Team のUI表現とFeatureGateを更新する。
+- [x] Free usersがクラウド実行前に必ずupgrade gateで止まるテストを追加する。
+- [x] 完了条件: 価格案と実装gateが矛盾しない。
 
 ## Verification
 

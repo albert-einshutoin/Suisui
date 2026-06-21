@@ -30,6 +30,23 @@ This is not just "remote MCP." The user-facing value is that SoloPM can receive 
 | Founder | $99 one-time or $120/year | Pro during early access, beta features, feedback channel, supporter badge/license metadata | Do not promise lifetime cloud cost unless the entitlement is explicitly capped |
 | Team | $12-15/user/month | Shared projects, team sync spaces, admin controls, organization audit log, shared relay policies | Later; requires RBAC and organization billing |
 
+## Implementation Gate Map
+
+The current app-level entitlement model mirrors the packaging boundary with these `FeatureGate` values:
+
+| FeatureGate | Minimum plan | UI/product meaning |
+| --- | --- | --- |
+| `externalSync` | Sync | End-to-end encrypted device sync for iOS, Web, and macOS. |
+| `advancedMCPExecution` | Pro | SoloPM calling registered external MCP tools after approval. |
+| `cloudRelay` | Pro | Always-available request capture when the primary Mac is not running. |
+| `hostedMCPEndpoint` | Pro | User-owned HTTPS endpoint for approved external LLM/MCP clients. |
+| `documentScopedAutomation` | Pro | AI-assisted preparation and artifact drafting from approved app/project docs. |
+| `harnessHistory` | Pro | Harness runs, execution history, and diffable regression evidence. |
+| `externalConnectorWrite` | Pro | External side effects such as calendar writes or SaaS connector writes. |
+| `providerPresets` | Pro | Paid presets/support metadata; BYOK provider configuration remains Free. |
+
+Free users must hit the upgrade gate before network-backed sync, Cloud Relay, Hosted MCP, or external connector writes start. Sync users can sync personal data across devices, but they still need Pro before any externally reachable endpoint or third-party write action is executed.
+
 Obsidian's current public model is a useful reference point: the core app is free, and Sync is a paid add-on starting at $4/month billed annually or $5/month billed monthly, with end-to-end encryption and version history. SoloPM should use the same mental model but charge Pro for remote relay and harness features because those create a larger security and infrastructure burden.
 
 References:

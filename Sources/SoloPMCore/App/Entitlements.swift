@@ -2,6 +2,7 @@ import Foundation
 
 public enum SubscriptionPlan: String, Codable, CaseIterable, Equatable, Sendable {
     case free
+    case sync
     case pro
     case founder
 
@@ -9,6 +10,8 @@ public enum SubscriptionPlan: String, Codable, CaseIterable, Equatable, Sendable
         switch self {
         case .free:
             "Free"
+        case .sync:
+            "Sync"
         case .pro:
             "Pro"
         case .founder:
@@ -24,10 +27,12 @@ public enum SubscriptionPlan: String, Codable, CaseIterable, Equatable, Sendable
         switch self {
         case .free:
             0
-        case .pro:
+        case .sync:
             1
-        case .founder:
+        case .pro:
             2
+        case .founder:
+            3
         }
     }
 }
@@ -35,11 +40,26 @@ public enum SubscriptionPlan: String, Codable, CaseIterable, Equatable, Sendable
 public enum FeatureGate: String, Codable, CaseIterable, Equatable, Sendable {
     case externalSync
     case advancedMCPExecution
+    case cloudRelay
+    case hostedMCPEndpoint
+    case documentScopedAutomation
+    case harnessHistory
+    case externalConnectorWrite
     case providerPresets
 
     public var requiredPlan: SubscriptionPlan {
         switch self {
-        case .externalSync, .advancedMCPExecution, .providerPresets:
+        case .externalSync:
+            .sync
+        case .advancedMCPExecution,
+             .cloudRelay,
+             .hostedMCPEndpoint,
+             .documentScopedAutomation,
+             .harnessHistory,
+             .externalConnectorWrite,
+             .providerPresets:
+            // External execution and cloud automation carry ongoing security,
+            // audit, and support cost, so they stay above the personal Sync tier.
             .pro
         }
     }

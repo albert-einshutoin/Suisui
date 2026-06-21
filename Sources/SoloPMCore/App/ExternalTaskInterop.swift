@@ -357,8 +357,10 @@ public final class GoogleCalendarTaskSyncService {
 
     public func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult {
         let snapshot = try entitlementStore.snapshot()
-        guard snapshot.plan.allows(.externalSync) else {
-            throw SyncServiceError.upgradeRequired(requiredPlan: FeatureGate.externalSync.requiredPlan)
+        guard snapshot.plan.allows(.externalConnectorWrite) else {
+            // Device sync is a personal data feature; writing to a third-party
+            // calendar is an external side effect and must stay behind Pro.
+            throw SyncServiceError.upgradeRequired(requiredPlan: FeatureGate.externalConnectorWrite.requiredPlan)
         }
 
         var result = GoogleCalendarTaskSyncResult()

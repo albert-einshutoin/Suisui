@@ -166,6 +166,20 @@ final class ExternalTaskInteropTests: XCTestCase {
         }
         XCTAssertEqual(calendarSink.createdDrafts.count, 0)
 
+        let syncPlanService = GoogleCalendarTaskSyncService(
+            entitlementStore: StaticEntitlementStore(plan: .sync),
+            store: store,
+            linkStore: linkStore,
+            calendarSink: calendarSink,
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo"
+        )
+
+        XCTAssertThrowsError(try syncPlanService.syncDueTasks(context: approvedContext())) { error in
+            XCTAssertEqual(error as? SyncServiceError, .upgradeRequired(requiredPlan: .pro))
+        }
+        XCTAssertEqual(calendarSink.createdDrafts.count, 0)
+
         let proService = GoogleCalendarTaskSyncService(
             entitlementStore: StaticEntitlementStore(plan: .pro),
             store: store,

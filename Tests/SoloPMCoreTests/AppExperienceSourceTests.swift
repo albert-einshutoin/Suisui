@@ -1771,7 +1771,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(syncSource.contains("public var syncUnavailableLabel: String?"))
         XCTAssertTrue(syncSource.contains("status.state == .idle"))
         XCTAssertTrue(syncSource.contains("throw SyncServiceError.syncBackendNotConfigured"))
+        XCTAssertTrue(entitlementSource.contains("case sync"))
         XCTAssertTrue(entitlementSource.contains("case externalSync"))
+        XCTAssertTrue(entitlementSource.contains("case cloudRelay"))
+        XCTAssertTrue(entitlementSource.contains("case hostedMCPEndpoint"))
+        XCTAssertTrue(entitlementSource.contains("case documentScopedAutomation"))
+        XCTAssertTrue(entitlementSource.contains("case harnessHistory"))
+        XCTAssertTrue(entitlementSource.contains("case externalConnectorWrite"))
         XCTAssertFalse(syncSource.contains("return SyncStartResult(startedAt: Date())"))
     }
 
