@@ -1113,16 +1113,17 @@ write_manual_helper_freshness_item() {
   local success_phrase="$2"
   local relative_path="$3"
   local expected_commit="$4"
+  local commit_context="$5"
   local helper_path="$ROOT_DIR/$relative_path"
 
   if [[ ! -f "$helper_path" ]]; then
-    printf -- "- [ ] %s missing for current source commit: \`%s\`\n" "$label" "$relative_path"
+    printf -- "- [ ] %s missing for %s: \`%s\`\n" "$label" "$commit_context" "$relative_path"
     return 1
   elif manual_helper_contains_current_source_commit "$helper_path" "$expected_commit"; then
-    printf -- "- [x] %s %s current source commit: \`%s\`\n" "$label" "$success_phrase" "$relative_path"
+    printf -- "- [x] %s %s %s: \`%s\`\n" "$label" "$success_phrase" "$commit_context" "$relative_path"
     return 0
   else
-    printf -- "- [ ] %s is stale or not pinned to current source commit \`%s\`: \`%s\`\n" "$label" "$expected_commit" "$relative_path"
+    printf -- "- [ ] %s is stale or not pinned to %s \`%s\`: \`%s\`\n" "$label" "$commit_context" "$expected_commit" "$relative_path"
     return 1
   fi
 }
@@ -1171,7 +1172,7 @@ write_ignored_stale_manual_helper_preview_actions() {
   printf "## Ignored Stale Manual Helper Previews\n"
   while IFS= read -r stale_preview; do
     [[ -n "$stale_preview" ]] || continue
-    printf -- "- [!] \`%s\` is ignored because the current source commit is \`%s\`.\n" "$stale_preview" "$expected_commit"
+    printf -- "- [!] \`%s\` is ignored because the release-candidate source commit is \`%s\`.\n" "$stale_preview" "$expected_commit"
   done <<<"$stale_previews"
   printf -- "- These stale previews do not unblock readiness; use the current helper paths above or rerun \`./script/prepare_release_manual_helpers.sh\`.\n"
   printf -- "- Optional cleanup: run \`./script/prepare_release_manual_helpers.sh --prune-stale\` after committing source changes to remove ignored old pending previews and legacy default previews without writing passed evidence.\n\n"
@@ -1179,6 +1180,8 @@ write_ignored_stale_manual_helper_preview_actions() {
 
 write_manual_helper_freshness_actions() {
   local manual_expected_commit release_expected_commit
+  local manual_commit_context="release-candidate source commit"
+  local release_commit_context="release evidence source commit"
   local stale_or_missing=0
   manual_expected_commit="$(manual_release_evidence_source_commit)"
   release_expected_commit="$(source_commit)"
@@ -1188,56 +1191,66 @@ write_manual_helper_freshness_actions() {
     "VoiceOver pending preview" \
     "is generated for" \
     ".tmp/voiceover-review/accessibility-voiceover-pending-$manual_expected_commit.md" \
-    "$manual_expected_commit" || stale_or_missing=1
+    "$manual_expected_commit" \
+    "$manual_commit_context" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "VoiceOver launch env" \
     "is pinned to" \
     ".tmp/voiceover-review/launch.env" \
-    "$manual_expected_commit" || stale_or_missing=1
+    "$manual_expected_commit" \
+    "$manual_commit_context" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "VoiceOver worksheet" \
     "is generated for" \
     ".tmp/voiceover-review/voiceover-worksheet.md" \
-    "$manual_expected_commit" || stale_or_missing=1
+    "$manual_expected_commit" \
+    "$manual_commit_context" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "VoiceOver evidence command" \
     "is pinned to" \
     ".tmp/voiceover-review/create-evidence-command.sh" \
-    "$manual_expected_commit" || stale_or_missing=1
+    "$manual_expected_commit" \
+    "$manual_commit_context" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "Competitor pending evidence" \
     "is generated for" \
     ".tmp/competitor-hands-on/competitor-hands-on-pending-$manual_expected_commit.md" \
-    "$manual_expected_commit" || stale_or_missing=1
+    "$manual_expected_commit" \
+    "$manual_commit_context" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "Competitor benchmark pending worksheet" \
     "is generated for" \
     ".tmp/competitor-hands-on/competitor-benchmark-pending-$manual_expected_commit.md" \
-    "$manual_expected_commit" || stale_or_missing=1
+    "$manual_expected_commit" \
+    "$manual_commit_context" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "Competitor worksheet" \
     "is generated for" \
     ".tmp/competitor-hands-on/hands-on-worksheet.md" \
-    "$manual_expected_commit" || stale_or_missing=1
+    "$manual_expected_commit" \
+    "$manual_commit_context" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "Competitor evidence command" \
     "is pinned to" \
     ".tmp/competitor-hands-on/create-evidence-command.sh" \
-    "$manual_expected_commit" || stale_or_missing=1
+    "$manual_expected_commit" \
+    "$manual_commit_context" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "Release machine worksheet" \
     "is generated for" \
     ".tmp/release-machine/release-machine-worksheet.md" \
-    "$release_expected_commit" || stale_or_missing=1
+    "$release_expected_commit" \
+    "$release_commit_context" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "Release evidence command" \
     "is pinned to" \
     ".tmp/release-machine/create-release-evidence-command.sh" \
-    "$release_expected_commit" || stale_or_missing=1
+    "$release_expected_commit" \
+    "$release_commit_context" || stale_or_missing=1
 
   if [[ "$stale_or_missing" -ne 0 ]]; then
     printf "\n"
-    printf "NEXT: regenerate manual review helpers for current source commit before running any passed-evidence command.\n"
+    printf "NEXT: regenerate manual review helpers for the current release candidate before running any passed-evidence command.\n"
     printf '%s\n' '```bash'
     printf '%s\n' './script/prepare_release_manual_helpers.sh'
     printf '%s\n' '```'
