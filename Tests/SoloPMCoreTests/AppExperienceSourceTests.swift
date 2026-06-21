@@ -2408,6 +2408,40 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] Investor reviewはUI screenshot証跡をpassed local evidenceとして扱い、VoiceOver、競合hands-on、署名/Notarization/Sparkle/Gatekeeperを残release blockerとして分離する。"))
     }
 
+    func testPhase12ExitAuditPinsLocalCockpitScopeAndRemainingManualGates() throws {
+        let audit = try readPackageFile("docs/ux/phase12-exit-audit.md")
+        let phase = try readPackageFile("tasks/Phase12-ProductCockpitUXParity.md")
+        let clickPath = try readPackageFile("docs/ux/click-path-audit.md")
+
+        XCTAssertTrue(audit.contains("Phase 12 Exit Audit"))
+        XCTAssertTrue(audit.contains("Status: passed for local/source/runtime-covered scope."))
+        XCTAssertTrue(audit.contains("Status: passed for implemented / deferred / non-goal classification."))
+        XCTAssertTrue(audit.contains("Status: passed for source/test-covered local scope."))
+        XCTAssertTrue(audit.contains("Status: passed for implemented cockpit surfaces."))
+        XCTAssertTrue(audit.contains("Status: passed for Phase 12 local cockpit scope."))
+
+        for sample in 1...7 {
+            XCTAssertTrue(audit.contains(String(format: "`ui-samples/%02d.png`", sample)))
+        }
+
+        for screen in ["Inbox", "Today", "Projects", "Project Detail", "Schedule", "Done", "Settings"] {
+            XCTAssertTrue(audit.contains("| \(screen) |"), "Missing Phase 12 screen role: \(screen)")
+            XCTAssertTrue(clickPath.contains(screen), "Click-path audit should cover \(screen)")
+        }
+
+        XCTAssertTrue(audit.contains("API keys and provider tokens stay behind Keychain-oriented settings flows"))
+        XCTAssertTrue(audit.contains("Calendar writes are not direct"))
+        XCTAssertTrue(audit.contains("MCP tools/call is gated by entitlement, tool policy, and explicit approval"))
+        XCTAssertTrue(audit.contains("Sync fails closed for Free/local-only and missing backend paths before upload"))
+        XCTAssertTrue(audit.contains("AI/LLM output is converted to Action Plan review/validation"))
+        XCTAssertTrue(audit.contains("Manual VoiceOver pass"))
+        XCTAssertTrue(audit.contains("Real 2-4 hour competitor hands-on evidence"))
+        XCTAssertTrue(audit.contains("Developer ID signing, notarization, Gatekeeper, stapling, Sparkle appcast signature"))
+
+        XCTAssertTrue(phase.contains("## Exit Gate"))
+        XCTAssertFalse(audit.contains("Status: passed for release-machine scope."))
+    }
+
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)

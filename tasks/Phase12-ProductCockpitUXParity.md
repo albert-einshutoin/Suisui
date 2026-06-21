@@ -721,20 +721,20 @@ Phase 12は画面役割を増やすため、実装後にスクリーンショッ
 
 ## Exit Gate
 
-- [ ] 現行Project Board / Inbox / Today / Voice Command / Settings / Menu Barの既存機能が退行していない。
-- [ ] `ui-samples/01.png` から `07.png` の不足が、実装済み、後続、非対象のいずれかで説明できる。
-- [ ] Inbox、Today、Projects、Project Detail、Schedule、Done、Settingsの画面役割がdocsとUIで一致している。
+- [x] 現行Project Board / Inbox / Today / Voice Command / Settings / Menu Barの既存機能が退行していない。
+- [x] `ui-samples/01.png` から `07.png` の不足が、実装済み、後続、非対象のいずれかで説明できる。
+- [x] Inbox、Today、Projects、Project Detail、Schedule、Done、Settingsの画面役割がdocsとUIで一致している。
 - [x] 主要機能のクリック数が `docs/ux/click-path-audit.md` に反映されている。
 - [x] 新規UIはLight/Dark/System screenshotで重なり、空白、黒画面、低情報量を確認している。
-- [ ] API key、token、音声file path、transcript、Calendar/Reminder dataがログや不要なSQLite/UserDefaultsへ漏れていない。
-- [ ] 外部Calendar/Reminder/MCP/Sync writeはapproval/gateなしに実行されない。
+- [x] API key、token、音声file path、transcript、Calendar/Reminder dataがログや不要なSQLite/UserDefaultsへ漏れていない。
+- [x] 外部Calendar/Reminder/MCP/Sync writeはapproval/gateなしに実行されない。
 - [x] `swift test --skip ReleasePipelineTests` と該当source/evidence testsがgreen。
 
 ## Self Review Checklist
 
-- [ ] 各PRは1画面または1domain modelに閉じ、UI、DB、外部API、release evidenceを不必要に混ぜていない。
-- [ ] 既存画面のクリック数を悪化させていない。悪化する場合は理由と代替shortcutを `docs/ux/click-path-audit.md` に書く。
-- [ ] 新規画面は空状態、エラー状態、未設定状態、Free/Pro gate状態を持つ。
-- [ ] 音声、transcript、Calendar/Reminder、API key、MCP environment referencesはログ、スクリーンショット、UserDefaultsへ漏れない。
-- [ ] AI/LLMが絡む提案は直接writeせず、Action Plan validationまたはapproval flowへ接続する。
-- [ ] OSS contributorがfake store / fake adapterでテストを書ける責務境界になっている。
+- [x] 各PRは1画面または1domain modelに閉じ、UI、DB、外部API、release evidenceを不必要に混ぜていない。
+- [x] 既存画面のクリック数を悪化させていない。悪化する場合は理由と代替shortcutを `docs/ux/click-path-audit.md` に書く。
+- [x] 新規画面は空状態、エラー状態、未設定状態、Free/Pro gate状態を持つ。
+- [x] 音声、transcript、Calendar/Reminder、API key、MCP environment referencesはログ、スクリーンショット、UserDefaultsへ漏れない。
+- [x] AI/LLMが絡む提案は直接writeせず、Action Plan validationまたはapproval flowへ接続する。
+- [x] OSS contributorがfake store / fake adapterでテストを書ける責務境界になっている。
