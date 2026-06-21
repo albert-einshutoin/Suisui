@@ -803,6 +803,26 @@ write_release_environment_routes() {
   write_release_environment_route_group "Local Inspection" "$local_inspection_items"
 }
 
+write_release_machine_local_doctor() {
+  if [[ "${#RELEASE_ENVIRONMENT_BLOCKER_MESSAGES[@]}" -eq 0 ]]; then
+    return 0
+  fi
+
+  printf "## Release Machine Local Doctor\n"
+  printf -- "- Run these non-secret diagnostics on the release machine before filling release evidence:\n\n"
+  printf '%s\n' '```bash'
+  printf '%s\n' 'security find-identity -p codesigning -v'
+  printf '%s\n' 'ls -l packaging/signing.env packaging/notarization.env packaging/sparkle.env'
+  printf '%s\n' './script/verify_signing_setup.sh'
+  printf '%s\n' 'SOLOPM_RELEASE_PREFLIGHT_ONLINE=1 ./script/verify_notarization_setup.sh'
+  printf '%s\n' './script/validate_sparkle_release_config.sh'
+  printf '%s\n' './script/verify_release_environment.sh'
+  printf '%s\n' '```'
+  printf "\n"
+  printf -- "- Do not paste Developer ID certificate material, notary credentials, Sparkle private keys, tokens, or passwords into the action summary.\n"
+  printf -- "- If these diagnostics report zero Developer ID identities or missing local env files, complete release-machine setup before running the generated release evidence command.\n\n"
+}
+
 collect_manual_action_blocker() {
   local action_group="$1"
   local message="$2"
@@ -1305,6 +1325,7 @@ write_release_actions() {
         printf -- "- [ ] %s\n" "$release_environment_blocker"
       done
       printf "\n"
+      write_release_machine_local_doctor
       write_release_environment_routes
     fi
 

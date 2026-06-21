@@ -1381,6 +1381,12 @@
 - [x] `ReleasePipelineTests` locks the order: clean tree / source commit / local config guard -> setup verifiers -> release evidence validate-only -> release evidence write -> online final preflight.
 - [x] 完了条件: release-machine operator は manual evidence の文面を埋める前に、署名ID、notary profile、Sparkle release config の前提が通るか確認できる。
 
+### P10-166: Release action summary surfaces non-secret release-machine diagnostics
+
+- [x] action summary は release-machine blocker が残る場合、秘密値を出さずに Developer ID identity、local env、signing/notary/Sparkle verifier、final preflight を確認する `Release Machine Local Doctor` を表示する。
+- [x] Doctor は `security find-identity -p codesigning -v`、local env file presence、`verify_signing_setup.sh`、online notary setup、Sparkle release config、`verify_release_environment.sh` だけを案内し、証明書、notary credential、Sparkle private key、token、passwordを転記しない。
+- [x] 完了条件: release-machine operator は evidence command を編集する前に、現在のマシンが署名/公証/Sparkle前提を満たすかをaction summaryから確認できる。
+
 ## PDCA Loop
 
 各サイクルで以下を繰り返す。
