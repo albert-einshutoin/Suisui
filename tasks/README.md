@@ -21,6 +21,7 @@ Phase ファイルは Epic / Issue seed として扱います。実装に入る�
 | [Phase 10: Release Readiness Runtime](./Phase10-ReleaseReadinessRuntime.md) | モックを外し実働 MVP にする | 永続 DB、Keychain、CRUD、実行導線、投資家視点セルフレビュー |
 | [Phase 11: Provider Sync UX Productization](./Phase11-ProviderSyncUXProductization.md) | Provider/同期/UXを製品化する | MCP仕様準拠、主要LLM provider、有料同期ゲート、競合/UX監査 |
 | [Phase 12: Product Cockpit UX Parity](./Phase12-ProductCockpitUXParity.md) | ui-samplesとの差分を日次運用cockpitへ落とす | Inbox音声triage、Schedule、Projects俯瞰、Done分析、Settings連携 |
+| [Phase 13: Multiplatform Automation](./Phase13-MultiplatformAutomation.md) | iOS / Web / macOS で使える会話ベースのタスク管理&自動化へ拡張する | Cloud Sync、Cloud Relay、Hosted MCP、docs-scoped automation、Harness |
 
 ## 開発原則
 

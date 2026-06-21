@@ -4,6 +4,8 @@ Last updated: 2026-06-17
 Verified against public docs: 2026-06-17  
 Target: macOS native app / local-first / BYOK / voice-first personal PM
 
+Long-term product direction: iOS / Web / macOS からアクセスできる会話ベースのタスク管理&自動化ツール。詳細は `docs/product/multiplatform-automation.md` を正とし、本書のMVP設計は macOS alpha の実装境界を扱う。
+
 ---
 
 ## 0. 最新性チェック結果
@@ -877,30 +879,35 @@ Sparkle
 
 ## 13.3 課金
 
-Obsidian 型を前提にする。
+Obsidian 型を前提にする。詳細な価格案、PC未起動時のタスク作成訴求、Sync / Cloud Relay / Harness の境界は `docs/product/pricing.md` を正とする。
 
 ```text
 Free:
 - ローカル基本機能
 - BYOK
 - Apple Calendar / Reminders / Notifications
+- SoloPM 中継型のローカル tool 実行
+- External MCP registration / diagnostics
 
 Founder:
 - 開発支援
 - Early access
 - Beta MCP packs
 
-Personal Plus later:
-- 高度な通知ルール
-- カスタム MCP
-- Developer Mode
-- GitHub 連携
-- CLI
-
 Sync later:
 - 複数デバイス同期
 - E2E encryption
 - version history
+
+Pro later:
+- Sync
+- Cloud Relay
+- Hosted MCP endpoint
+- PC未起動時のタスク作成
+- iOS / Web / macOS access
+- docs-scoped automation
+- SoloPM Harness
+- advanced MCP execution
 ```
 
 ---

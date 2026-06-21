@@ -1,0 +1,103 @@
+# Phase 13: Multiplatform Automation
+
+目的は、SoloPM を macOS-first の個人PMアプリから、iOS / Web / macOS で使える会話ベースのタスク管理&自動化ツールへ拡張するための実装計画を固定すること。既存の local-first、BYOK、approval-first、audit-first の境界は維持し、Cloud Sync / Cloud Relay / Hosted MCP / Harness を段階的に追加する。
+
+参照: `docs/product/multiplatform-automation.md`
+
+## Product Bar
+
+- iOS、Web、macOS のどこからでもタスク一覧、作成、完了、ステータス変更、期日変更ができるか。
+- 会話から生成された変更が、必ず Action Plan / pending action / audit log のいずれかに残るか。
+- Mac が起動していなくても、Cloud Relay がタスク作成または pending action を受け付け、後から各デバイスへ同期できるか。
+- App / Project docs をAIに渡す場合、ユーザーが対象ドキュメント、理由、変更内容、承認要否を確認できるか。
+- Harness で provider prompt、task mutation、document-scoped automation、MCP compatibility を再現可能に検証できるか。
+
+## Non-Goals
+
+- 初期iOSで macOS と同等のローカルファイル自動生成を実装しない。
+- 初期WebでOS固有のCalendar / Reminders / filesystem writeを直接実行しない。
+- Cloud LLM が無制限にローカルデータを変更するモデルにしない。
+- Team / RBAC / organization policy は personal cross-device sync が安定するまで実装しない。
+
+## P13-001: Shared domain contract
+
+- [ ] Project / Task / Conversation / Document / ActionPlan / AutomationRequest / HarnessRun の同期対象モデルを定義する。
+- [ ] 既存SQLite schemaからSync API向けDTOへ変換するadapterを作る。
+- [ ] task status、due date、project assignment、priority、source command、audit metadataの互換性テストを追加する。
+- [ ] `ActionTool.taskUpdate` / `taskComplete` / task project move / due date update が platform-neutral に表現できることを確認する。
+- [ ] 完了条件: macOS local DBと将来のSync payloadで同じタスク変更を表現できる。
+
+## P13-002: Conversation task operations
+
+- [ ] 会話入力から task list / create / update / complete / move / due-date change を生成する intent model を整理する。
+- [ ] LLM providerに依存しないAction Plan validationを通す。
+- [ ] 「タスクを列挙して」「これを進行中にして」「明日までにして」のような会話ケースをfixture化する。
+- [ ] write系はapproval policyを通し、read/list系は不要な承認を求めない。
+- [ ] 完了条件: 会話ベースでタスク列挙とステータス変更ができ、監査ログに残る。
+
+## P13-003: Cloud Sync foundation
+
+- [ ] E2EE前提のsync ledger設計を作る。
+- [ ] Project / Task / safe Settings / Conversation metadata の同期対象と除外対象を明文化する。
+- [ ] Provider API key、MCP secret、OAuth token がplaintext sync対象に入らないテストを追加する。
+- [ ] offline create / update / conflict / deleted recovery のmerge policyを決める。
+- [ ] 完了条件: iOS/Web/macOSが共有する最小タスクデータを安全に同期できる設計になる。
+
+## P13-004: iOS companion MVP
+
+- [ ] SwiftUI iOS targetのpackage/app構成を決める。
+- [ ] Sign in / entitlement restore / device registration flowを設計する。
+- [ ] Inbox / Today / Project task list / board-lite status controls を実装する。
+- [ ] 会話入力、音声入力、Shortcuts、Share Sheetの初期範囲を決める。
+- [ ] Pending action approval inboxを作る。
+- [ ] 完了条件: iOSからタスク作成、完了、ステータス変更、期日変更、承認ができる。
+
+## P13-005: Web app MVP
+
+- [ ] Web frontend / backend boundaryを決める。
+- [ ] Task board / list / Project docs / conversation / automation reviewを実装する。
+- [ ] Account / billing / devices / relay tokens の管理画面を設計する。
+- [ ] Webから実行できないOS-bound actionを明示するUIを作る。
+- [ ] 完了条件: Webから基本タスク管理とCloud Relay管理ができる。
+
+## P13-006: Cloud Relay and Hosted MCP
+
+- [ ] User-owned endpoint credential、token、revocation、rate limitを設計する。
+- [ ] `task_create`、`task_update`、`task_complete`、due-date update、project moveのHosted MCP schemaを定義する。
+- [ ] Mac未起動時は task または pending action としてsync ledgerへ保存する。
+- [ ] destructive / external write はpending approvalへ倒す。
+- [ ] audit logにsource client、tool name、arguments redaction、approval stateを残す。
+- [ ] 完了条件: 外部LLM/APIからMac未起動でもタスク作成でき、危険な操作は承認待ちになる。
+
+## P13-007: Document-scoped automation
+
+- [ ] App docs / Project docs / Task artifacts / external sources のscope modelを作る。
+- [ ] AI requestごとに「参照したドキュメント」「理由」「提案変更」「承認要否」を表示する。
+- [ ] ドキュメントから準備タスク、成果物ドラフト、リリースノート、PR planを生成するtool flowを設計する。
+- [ ] embeddings / FTS / provider prompt context のどこで処理するかを選べるadapterにする。
+- [ ] 完了条件: 設定されたdocsだけをAIに渡し、成果物や事前準備タスクをreviewableに生成できる。
+
+## P13-008: SoloPM Harness
+
+- [ ] Provider prompt regression、task mutation flow、document-scoped automation、MCP compatibilityのscenario schemaを作る。
+- [ ] Local harnessとCloud-triggered harnessを同じ結果形式にする。
+- [ ] 実行履歴、diff、失敗理由、redacted logsを保存する。
+- [ ] Sync / Pro planで履歴保持期間とstorage扱いを分ける。
+- [ ] 完了条件: 複数platform・複数providerでも自動化が壊れていないことを再現可能に検証できる。
+
+## P13-009: Pricing and packaging update
+
+- [ ] `docs/product/pricing.md` に iOS/Web/macOS access、document-scoped automation、Harness retention のplan境界を反映する。
+- [ ] Free / Sync / Pro / Team のUI表現とFeatureGateを更新する。
+- [ ] Free usersがクラウド実行前に必ずupgrade gateで止まるテストを追加する。
+- [ ] 完了条件: 価格案と実装gateが矛盾しない。
+
+## Verification
+
+- [ ] `swift test --filter SyncEntitlementTests`
+- [ ] `swift test --filter ProjectBoardStoreTests`
+- [ ] `swift test --filter GeminiDirectProviderTests`
+- [ ] Hosted MCP / Cloud Relay schema tests
+- [ ] iOS target build
+- [ ] Web app unit/e2e tests
+- [ ] Harness scenario smoke
