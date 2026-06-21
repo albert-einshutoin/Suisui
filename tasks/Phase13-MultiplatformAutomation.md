@@ -71,11 +71,11 @@
 
 ## P13-007: Document-scoped automation
 
-- [ ] App docs / Project docs / Task artifacts / external sources のscope modelを作る。
-- [ ] AI requestごとに「参照したドキュメント」「理由」「提案変更」「承認要否」を表示する。
-- [ ] ドキュメントから準備タスク、成果物ドラフト、リリースノート、PR planを生成するtool flowを設計する。
-- [ ] embeddings / FTS / provider prompt context のどこで処理するかを選べるadapterにする。
-- [ ] 完了条件: 設定されたdocsだけをAIに渡し、成果物や事前準備タスクをreviewableに生成できる。
+- [x] App docs / Project docs / Task artifacts / external sources のscope modelを作る。
+- [x] AI requestごとに「参照したドキュメント」「理由」「提案変更」「承認要否」を表示する。
+- [x] ドキュメントから準備タスク、成果物ドラフト、リリースノート、PR planを生成するtool flowを設計する。
+- [x] embeddings / FTS / provider prompt context のどこで処理するかを選べるadapterにする。
+- [x] 完了条件: 設定されたdocsだけをAIに渡し、成果物や事前準備タスクをreviewableに生成できる。
 
 ## P13-008: SoloPM Harness
 
