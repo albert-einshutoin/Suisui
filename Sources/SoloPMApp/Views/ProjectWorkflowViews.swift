@@ -4,6 +4,7 @@ import SwiftUI
 enum ProjectBoardSidebarDestination: Hashable {
     case inbox
     case today
+    case schedule
     case projects
     case project(Int64)
 
@@ -13,6 +14,8 @@ enum ProjectBoardSidebarDestination: Hashable {
             "Inbox"
         case .today:
             "Today"
+        case .schedule:
+            "Schedule"
         case .projects:
             "Projects"
         case .project:
@@ -26,6 +29,8 @@ enum ProjectBoardSidebarDestination: Hashable {
             "tray"
         case .today:
             "sun.max"
+        case .schedule:
+            "calendar"
         case .projects:
             "folder.circle"
         case .project:
@@ -39,6 +44,8 @@ enum ProjectBoardSidebarDestination: Hashable {
             "inbox"
         case .today:
             "today"
+        case .schedule:
+            "schedule"
         case .projects:
             "projects"
         case .project(let projectID):
@@ -68,6 +75,8 @@ enum ProjectBoardSelectionPersistence {
             return "inbox"
         case .today:
             return "today"
+        case .schedule:
+            return "schedule"
         case .projects:
             return "projects"
         case .project(let projectID):
@@ -84,6 +93,8 @@ enum ProjectBoardSelectionPersistence {
             return .inbox
         case "today":
             return .today
+        case "schedule":
+            return .schedule
         case "projects":
             return .projects
         default:
@@ -160,6 +171,166 @@ struct TodayWorkflowView: View {
                 TodaySuggestionPanel(plan: plan, viewModel: viewModel)
             }
         )
+    }
+}
+
+struct ScheduleWorkflowView: View {
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    @State private var approvalToken = ""
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 10) {
+                    Label("Schedule", systemImage: "calendar")
+                        .font(.title2.weight(.semibold))
+                    Spacer()
+                    Button {
+                        _ = viewModel.prepareScheduleDraft()
+                    } label: {
+                        Label("Generate Draft", systemImage: "wand.and.stars")
+                    }
+                    .accessibilityIdentifier("schedule-generate-draft")
+                    .accessibilityHint("Combines today's local time blocks and unscheduled tasks without writing to Calendar.")
+                }
+
+                ScheduleStatusBanner(result: viewModel.scheduleApplyResult)
+
+                HStack(alignment: .top, spacing: 12) {
+                    ScheduleDraftPanel(viewModel: viewModel)
+                    ScheduleUnscheduledPanel(tasks: viewModel.unscheduledScheduleTasks())
+                }
+
+                HStack(spacing: 8) {
+                    SecureField("Approval token", text: $approvalToken)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("schedule-approval-token")
+                        .accessibilityLabel("Schedule approval token")
+                        .accessibilityHint("Required before writing reviewed schedule blocks to Calendar.")
+                    Button {
+                        _ = viewModel.applyScheduleDraftToCalendar(approvalToken: approvalToken)
+                    } label: {
+                        Label("Apply to Calendar", systemImage: "calendar.badge.checkmark")
+                    }
+                    .disabled(viewModel.scheduleDraft == nil)
+                    .accessibilityIdentifier("schedule-apply-calendar")
+                    .accessibilityHint("Requires approval and a configured Calendar backend before any external write.")
+                }
+
+                if let feedback = viewModel.todayCommandFeedback {
+                    Label(feedback, systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("schedule-feedback")
+                }
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityIdentifier("schedule-workflow")
+    }
+}
+
+private struct ScheduleDraftPanel: View {
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Draft Blocks", systemImage: "clock")
+                .font(.headline)
+            if let draft = viewModel.scheduleDraft, !draft.timeBlocks.isEmpty {
+                ForEach(draft.timeBlocks) { block in
+                    HStack(spacing: 8) {
+                        Text(block.label)
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 92, alignment: .leading)
+                        Text(block.task.title)
+                            .font(.caption.weight(.medium))
+                            .lineLimit(1)
+                        Spacer(minLength: 8)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(String(format: String(localized: "Schedule block %@"), block.task.title))
+                }
+            } else {
+                Text("Generate a draft from Today time blocks.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct ScheduleUnscheduledPanel: View {
+    let tasks: [ProjectBoardTask]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Unscheduled Tasks", systemImage: "tray.full")
+                .font(.headline)
+            if tasks.isEmpty {
+                Text("No unscheduled open tasks.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(tasks.prefix(8)) { task in
+                    Label(task.title, systemImage: "circle")
+                        .font(.caption)
+                        .lineLimit(1)
+                        .accessibilityIdentifier("schedule-unscheduled-task-\(task.id)")
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct ScheduleStatusBanner: View {
+    let result: ScheduleApplyResult?
+
+    var body: some View {
+        let label = message
+        Label(label, systemImage: systemImage)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            .accessibilityIdentifier("schedule-status-banner")
+    }
+
+    private var systemImage: String {
+        switch result {
+        case .applied:
+            "checkmark.circle"
+        case .approvalRequired, .calendarNotConfigured, .failed, .noDraft:
+            "exclamationmark.triangle"
+        case .none:
+            "lock.shield"
+        }
+    }
+
+    private var message: String {
+        switch result {
+        case .approvalRequired:
+            String(localized: "Approval is required before Calendar write.")
+        case .calendarNotConfigured:
+            String(localized: "Calendar is not configured.")
+        case .noDraft:
+            String(localized: "Create a schedule draft first.")
+        case .applied(let eventCount):
+            String(format: String(localized: "Applied %d Calendar events."), eventCount)
+        case .failed:
+            String(localized: "Calendar apply failed.")
+        case .none:
+            String(localized: "External Calendar writes require review approval.")
+        }
     }
 }
 

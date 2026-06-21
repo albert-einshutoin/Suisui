@@ -214,10 +214,14 @@ public struct TodayTimeBlock: Identifiable, Equatable, Sendable {
     public var id: String { "\(task.id)-\(label)" }
     public var label: String
     public var task: ProjectBoardTask
+    public var startAt: String?
+    public var endAt: String?
 
-    public init(label: String, task: ProjectBoardTask) {
+    public init(label: String, task: ProjectBoardTask, startAt: String? = nil, endAt: String? = nil) {
         self.label = label
         self.task = task
+        self.startAt = startAt
+        self.endAt = endAt
     }
 }
 
@@ -284,6 +288,24 @@ public struct TodayScheduleDraft: Equatable, Sendable {
     public init(timeBlocks: [TodayTimeBlock]) {
         self.timeBlocks = timeBlocks
     }
+}
+
+public struct ScheduleDraft: Equatable, Sendable {
+    public var timeBlocks: [TodayTimeBlock]
+    public var unscheduledTasks: [ProjectBoardTask]
+
+    public init(timeBlocks: [TodayTimeBlock], unscheduledTasks: [ProjectBoardTask]) {
+        self.timeBlocks = timeBlocks
+        self.unscheduledTasks = unscheduledTasks
+    }
+}
+
+public enum ScheduleApplyResult: Equatable, Sendable {
+    case approvalRequired
+    case calendarNotConfigured
+    case noDraft
+    case applied(eventCount: Int)
+    case failed(String)
 }
 
 public enum ProjectPortfolioHealth: String, CaseIterable, Identifiable, Sendable {
@@ -869,12 +891,15 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var todayCommandFeedback: String?
     @Published public private(set) var todayFocusTaskID: Int64?
     @Published public private(set) var todayScheduleDraft: TodayScheduleDraft?
+    @Published public private(set) var scheduleDraft: ScheduleDraft?
+    @Published public private(set) var scheduleApplyResult: ScheduleApplyResult?
     @Published public private(set) var projectAssistantAnswer: ProjectAssistantAnswer?
     @Published public private(set) var projectAssistantReviewDraft: ProjectAssistantReviewDraft?
 
     private let store: any ProjectBoardStore
     private let inboxCaptureStore: (any InboxCaptureStore)?
     private let externalTaskLinkStore: (any ExternalTaskLinkStore)?
+    private let scheduleCalendarClient: (any CalendarClient)?
     private let onChange: () -> Void
     private var lastInboxClassificationUndo: InboxClassificationUndo?
 
@@ -882,12 +907,14 @@ public final class ProjectBoardViewModel: ObservableObject {
         store: any ProjectBoardStore,
         inboxCaptureStore: (any InboxCaptureStore)? = nil,
         externalTaskLinkStore: (any ExternalTaskLinkStore)? = nil,
+        scheduleCalendarClient: (any CalendarClient)? = nil,
         snapshot: ProjectBoardSnapshot = .empty,
         onChange: @escaping () -> Void = {}
     ) {
         self.store = store
         self.inboxCaptureStore = inboxCaptureStore
         self.externalTaskLinkStore = externalTaskLinkStore
+        self.scheduleCalendarClient = scheduleCalendarClient
         self.snapshot = snapshot
         self.onChange = onChange
         self.selectedProjectID = snapshot.projects.first?.id
@@ -897,6 +924,8 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.todayCommandFeedback = nil
         self.todayFocusTaskID = nil
         self.todayScheduleDraft = nil
+        self.scheduleDraft = nil
+        self.scheduleApplyResult = nil
         self.projectAssistantAnswer = nil
         self.projectAssistantReviewDraft = nil
     }
@@ -987,6 +1016,23 @@ public final class ProjectBoardViewModel: ObservableObject {
                 case (nil, nil):
                     return lhs.id > rhs.id
                 }
+            }
+    }
+
+    public func unscheduledScheduleTasks() -> [ProjectBoardTask] {
+        snapshot.projects
+            .filter { project in
+                !project.isArchived && !project.isCompleted
+            }
+            .flatMap(\.tasks)
+            .filter { task in
+                task.status != .done && task.dueAt == nil
+            }
+            .sorted { lhs, rhs in
+                if lhs.priority.sortRank != rhs.priority.sortRank {
+                    return lhs.priority.sortRank < rhs.priority.sortRank
+                }
+                return lhs.id > rhs.id
             }
     }
 
@@ -1121,6 +1167,70 @@ public final class ProjectBoardViewModel: ObservableObject {
         todayScheduleDraft = draft
         todayCommandFeedback = String(format: String(localized: "Prepared %d time blocks for schedule review."), draft.timeBlocks.count)
         return draft
+    }
+
+    @discardableResult
+    public func prepareScheduleDraft(
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> ScheduleDraft {
+        let todayDraft = prepareTodayScheduleDraft(on: referenceDate, calendar: calendar)
+        let draft = ScheduleDraft(
+            timeBlocks: todayDraft.timeBlocks,
+            unscheduledTasks: unscheduledScheduleTasks()
+        )
+        scheduleDraft = draft
+        scheduleApplyResult = nil
+        todayCommandFeedback = String(
+            format: String(localized: "Prepared schedule draft with %d time blocks and %d unscheduled tasks."),
+            draft.timeBlocks.count,
+            draft.unscheduledTasks.count
+        )
+        return draft
+    }
+
+    @discardableResult
+    public func applyScheduleDraftToCalendar(approvalToken: String?) -> ScheduleApplyResult {
+        guard let approvalToken, !approvalToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            scheduleApplyResult = .approvalRequired
+            todayCommandFeedback = String(localized: "Schedule review approval is required before Calendar write.")
+            return .approvalRequired
+        }
+        guard let draft = scheduleDraft else {
+            scheduleApplyResult = .noDraft
+            todayCommandFeedback = String(localized: "Create a schedule draft before applying to Calendar.")
+            return .noDraft
+        }
+        guard let scheduleCalendarClient else {
+            scheduleApplyResult = .calendarNotConfigured
+            todayCommandFeedback = String(localized: "Calendar is not configured. No external write was performed.")
+            return .calendarNotConfigured
+        }
+
+        do {
+            var eventCount = 0
+            for block in draft.timeBlocks {
+                guard let startAt = block.startAt, let endAt = block.endAt else {
+                    continue
+                }
+                _ = try scheduleCalendarClient.createEvent(CalendarEventDraft(
+                    title: block.task.title,
+                    startAt: startAt,
+                    endAt: endAt,
+                    notes: String(localized: "Created from a reviewed SoloPM schedule draft.")
+                ))
+                eventCount += 1
+            }
+            let result = ScheduleApplyResult.applied(eventCount: eventCount)
+            scheduleApplyResult = result
+            todayCommandFeedback = String(format: String(localized: "Applied %d Calendar events."), eventCount)
+            return result
+        } catch {
+            let result = ScheduleApplyResult.failed(Self.userFacingMessage(for: error))
+            scheduleApplyResult = result
+            todayCommandFeedback = String(localized: "Calendar apply failed.")
+            return result
+        }
     }
 
     public func projectPortfolioSummaries(
@@ -2349,13 +2459,20 @@ public final class ProjectBoardViewModel: ObservableObject {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "HH:mm"
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.timeZone = calendar.timeZone
 
         return tasks.prefix(4).enumerated().compactMap { offset, task in
             guard let start = calendar.date(byAdding: .minute, value: offset * 30, to: firstBlockStart),
                   let end = calendar.date(byAdding: .minute, value: 30, to: start) else {
                 return nil
             }
-            return TodayTimeBlock(label: "\(formatter.string(from: start))-\(formatter.string(from: end))", task: task)
+            return TodayTimeBlock(
+                label: "\(formatter.string(from: start))-\(formatter.string(from: end))",
+                task: task,
+                startAt: isoFormatter.string(from: start),
+                endAt: isoFormatter.string(from: end)
+            )
         }
     }
 
@@ -2388,6 +2505,19 @@ private extension ProjectPortfolioHealth {
             2
         case .completed:
             3
+        }
+    }
+}
+
+private extension ProjectTaskPriority {
+    var sortRank: Int {
+        switch self {
+        case .high:
+            0
+        case .medium:
+            1
+        case .low:
+            2
         }
     }
 }

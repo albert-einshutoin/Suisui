@@ -444,17 +444,17 @@
 
 ### Tests First
 
-- [ ] Unscheduled queryがdone/archived/completed projectを除外するtest。
-- [ ] ScheduleDraft生成がDBを書き換えないtest。
-- [ ] Apply前にapprovalが必須であるtest。
-- [ ] Calendar backend未設定時にmock successにならないtest。
+- [x] Unscheduled queryがdone/archived/completed projectを除外するtest。
+- [x] ScheduleDraft生成がDBを書き換えないtest。
+- [x] Apply前にapprovalが必須であるtest。
+- [x] Calendar backend未設定時にmock successにならないtest。
 
 ### Acceptance Criteria
 
-- [ ] Schedule画面がSidebarから1クリックで開く。
-- [ ] Today time blockと未スケジュールtaskをSchedule draftへ渡せる。
-- [ ] 外部Calendar writeは承認前に実行されない。
-- [ ] 既存Todayのlocal time blockは残る。
+- [x] Schedule画面がSidebarから1クリックで開く。
+- [x] Today time blockと未スケジュールtaskをSchedule draftへ渡せる。
+- [x] 外部Calendar writeは承認前に実行されない。
+- [x] 既存Todayのlocal time blockは残る。
 
 ### Non-goals
 

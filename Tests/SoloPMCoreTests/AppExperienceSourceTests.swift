@@ -1042,6 +1042,27 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("public func todayPlan("))
     }
 
+    func testScheduleWorkflowIsReachableAndApprovalFirst() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+
+        XCTAssertTrue(boardSource.contains("ProjectBoardSidebarDestinationRow(destination: .schedule"))
+        XCTAssertTrue(boardSource.contains("case .schedule:"))
+        XCTAssertTrue(boardSource.contains("ScheduleWorkflowView(viewModel: viewModel)"))
+        XCTAssertTrue(workflowSource.contains("case schedule"))
+        XCTAssertTrue(workflowSource.contains("ScheduleWorkflowView"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workflow\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-generate-draft\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-apply-calendar\")"))
+        XCTAssertTrue(coreSource.contains("public struct ScheduleDraft"))
+        XCTAssertTrue(coreSource.contains("public func unscheduledScheduleTasks"))
+        XCTAssertTrue(coreSource.contains("public func prepareScheduleDraft"))
+        XCTAssertTrue(coreSource.contains("public func applyScheduleDraftToCalendar"))
+        XCTAssertTrue(coreSource.contains("approvalToken"))
+        XCTAssertFalse(coreSource.contains("return .applied(eventCount: 0)"))
+    }
+
     func testAppAndCLIShareDefaultDatabaseLocation() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let cliSource = try readPackageFile("Sources/SoloPMCLI/SoloPMCLIEntrypoint.swift")

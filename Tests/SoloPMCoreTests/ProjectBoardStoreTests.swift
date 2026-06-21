@@ -835,6 +835,84 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testScheduleUnscheduledQueryExcludesDoneArchivedAndCompletedProjects() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let active = try XCTUnwrap(viewModel.createProject(title: "Active Schedule"))
+        let archived = try XCTUnwrap(viewModel.createProject(title: "Archived Schedule"))
+        let completed = try XCTUnwrap(viewModel.createProject(title: "Completed Schedule"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Active unscheduled", projectID: active.id, status: .planned, dueAt: nil))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Done unscheduled", projectID: active.id, status: .done, dueAt: nil))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Already scheduled", projectID: active.id, status: .planned, dueAt: "2026-06-22"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Archived unscheduled", projectID: archived.id, status: .planned, dueAt: nil))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Completed unscheduled", projectID: completed.id, status: .planned, dueAt: nil))
+        viewModel.selectedProjectID = archived.id
+        viewModel.archiveSelectedProject()
+        viewModel.selectedProjectID = completed.id
+        viewModel.completeSelectedProject()
+
+        XCTAssertEqual(viewModel.unscheduledScheduleTasks().map(\.title), ["Active unscheduled"])
+    }
+
+    @MainActor
+    func testScheduleDraftCombinesTodayBlocksAndUnscheduledTasksWithoutWritingStore() throws {
+        var changeCount = 0
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 21, hour: 9).date)
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore(), onChange: { changeCount += 1 })
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Schedule Draft"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Today task", projectID: project.id, status: .planned, dueAt: "2026-06-21"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Unscheduled task", projectID: project.id, status: .planned, dueAt: nil))
+        changeCount = 0
+
+        let draft = viewModel.prepareScheduleDraft(on: referenceDate, calendar: calendar)
+
+        XCTAssertEqual(changeCount, 0)
+        XCTAssertEqual(draft.timeBlocks.map(\.task.title), ["Today task"])
+        XCTAssertEqual(draft.unscheduledTasks.map(\.title), ["Unscheduled task"])
+        XCTAssertEqual(viewModel.scheduleDraft, draft)
+        XCTAssertEqual(viewModel.todayScheduleDraft?.timeBlocks.map(\.task.title), ["Today task"])
+    }
+
+    @MainActor
+    func testScheduleApplyRequiresApprovalBeforeCalendarWrite() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 21, hour: 9).date)
+        let calendarClient = InMemoryCalendarClient()
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore(), scheduleCalendarClient: calendarClient)
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Approval Schedule"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Calendar block", projectID: project.id, status: .planned, dueAt: "2026-06-21"))
+        _ = viewModel.prepareScheduleDraft(on: referenceDate, calendar: calendar)
+
+        let result = viewModel.applyScheduleDraftToCalendar(approvalToken: nil)
+
+        XCTAssertEqual(result, .approvalRequired)
+        XCTAssertTrue(try calendarClient.listEvents().isEmpty)
+        XCTAssertEqual(viewModel.scheduleApplyResult, .approvalRequired)
+    }
+
+    @MainActor
+    func testScheduleApplyWithoutCalendarBackendDoesNotReturnMockSuccess() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 21, hour: 9).date)
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "No Calendar"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Calendar block", projectID: project.id, status: .planned, dueAt: "2026-06-21"))
+        _ = viewModel.prepareScheduleDraft(on: referenceDate, calendar: calendar)
+
+        let result = viewModel.applyScheduleDraftToCalendar(approvalToken: "approved")
+
+        XCTAssertEqual(result, .calendarNotConfigured)
+        XCTAssertEqual(viewModel.scheduleApplyResult, .calendarNotConfigured)
+    }
+
+    @MainActor
     func testProjectBoardViewModelRejectsInvalidDroppedTaskIDsWithoutPartialMove() {
         var changeCount = 0
         let viewModel = ProjectBoardViewModel(
