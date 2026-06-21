@@ -62,12 +62,12 @@
 
 ## P13-006: Cloud Relay and Hosted MCP
 
-- [ ] User-owned endpoint credential、token、revocation、rate limitを設計する。
-- [ ] `task_create`、`task_update`、`task_complete`、due-date update、project moveのHosted MCP schemaを定義する。
-- [ ] Mac未起動時は task または pending action としてsync ledgerへ保存する。
-- [ ] destructive / external write はpending approvalへ倒す。
-- [ ] audit logにsource client、tool name、arguments redaction、approval stateを残す。
-- [ ] 完了条件: 外部LLM/APIからMac未起動でもタスク作成でき、危険な操作は承認待ちになる。
+- [x] User-owned endpoint credential、token、revocation、rate limitを設計する。
+- [x] `task_create`、`task_update`、`task_complete`、due-date update、project moveのHosted MCP schemaを定義する。
+- [x] Mac未起動時は task または pending action としてsync ledgerへ保存する。
+- [x] destructive / external write はpending approvalへ倒す。
+- [x] audit logにsource client、tool name、arguments redaction、approval stateを残す。
+- [x] 完了条件: 外部LLM/APIからMac未起動でもタスク作成でき、危険な操作は承認待ちになる。
 
 ## P13-007: Document-scoped automation
 
@@ -97,7 +97,7 @@
 - [x] `swift test --filter SyncEntitlementTests`
 - [x] `swift test --filter ProjectBoardStoreTests`
 - [x] `swift test --filter GeminiDirectProviderTests`
-- [ ] Hosted MCP / Cloud Relay schema tests
+- [x] Hosted MCP / Cloud Relay schema tests
 - [ ] iOS target build
 - [ ] Web app unit/e2e tests
 - [ ] Harness scenario smoke

@@ -204,11 +204,27 @@ public struct SyncAutomationRequestPayload: Codable, Equatable, Sendable {
     public var id: String
     public var source: SyncMutationSource
     public var approvalState: SyncApprovalState
+    public var sourceClientID: String?
+    public var toolName: String?
+    public var redactedArgumentSummary: String
+    public var taskMutation: SyncTaskMutationPayload?
 
-    public init(id: String, source: SyncMutationSource, approvalState: SyncApprovalState) {
+    public init(
+        id: String,
+        source: SyncMutationSource,
+        approvalState: SyncApprovalState,
+        sourceClientID: String? = nil,
+        toolName: String? = nil,
+        redactedArgumentSummary: String = "",
+        taskMutation: SyncTaskMutationPayload? = nil
+    ) {
         self.id = id
         self.source = source
         self.approvalState = approvalState
+        self.sourceClientID = sourceClientID
+        self.toolName = toolName
+        self.redactedArgumentSummary = redactedArgumentSummary
+        self.taskMutation = taskMutation
     }
 }
 

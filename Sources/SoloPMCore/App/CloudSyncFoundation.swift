@@ -31,6 +31,7 @@ public enum SyncLedgerEntityKind: String, Codable, Equatable, Sendable {
     case task
     case settings
     case conversation
+    case automationRequest
 }
 
 public struct SyncLedgerEntity: Codable, Equatable, Sendable {
