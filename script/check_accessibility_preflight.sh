@@ -85,7 +85,7 @@ REQUIRED_SOURCE_ANCHORS=(
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-overview-task-open-"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-overview-add-task"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-local-suggestion-open-task"
-  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-local-suggestion-unblock-task"
+  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-local-suggestion-review-action"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-artifact-path"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-artifact-track"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-artifact-remove-"

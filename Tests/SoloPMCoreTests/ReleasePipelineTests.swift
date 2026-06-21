@@ -4033,7 +4033,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-overview-task-open-"))
         XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-overview-add-task"))
         XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-local-suggestion-open-task"))
-        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-local-suggestion-unblock-task"))
+        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-local-suggestion-review-action"))
         XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-artifact-path"))
         XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-artifact-track"))
         XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-artifact-remove-"))
