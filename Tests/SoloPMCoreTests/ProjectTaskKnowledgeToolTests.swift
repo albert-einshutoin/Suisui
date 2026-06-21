@@ -197,6 +197,38 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(try stores.tasks.listAll().map(\.title), ["Draft", "Review"])
     }
 
+    func testTaskListToolReturnsPersistentOpenTaskRecordsWithoutApproval() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "Launch Readiness")
+        let first = try stores.tasks.create(
+            title: "Draft release notes",
+            projectID: project.id,
+            dueAt: "2026-06-22T09:00:00Z",
+            priority: "high",
+            sourceCommand: "token=task-secret",
+            status: "planned",
+            detail: "Write user-facing changes."
+        )
+        let completed = try stores.tasks.create(title: "Already done", status: "completed")
+        let tool = TaskTool(name: .taskList, store: stores.tasks)
+
+        let result = try tool.execute(arguments: [:], context: ToolExecutionContext(source: .developerTool))
+
+        XCTAssertEqual(result.output["count"], JSONValue.number(1))
+        let tasks = try XCTUnwrap(result.output["tasks"]?.arrayValue)
+        XCTAssertEqual(tasks.count, 1)
+        let task = try XCTUnwrap(tasks.first?.objectValue)
+        XCTAssertEqual(task["id"], JSONValue.number(Double(first.id)))
+        XCTAssertEqual(task["title"], JSONValue.string("Draft release notes"))
+        XCTAssertEqual(task["status"], JSONValue.string("planned"))
+        XCTAssertEqual(task["projectId"], JSONValue.number(Double(project.id)))
+        XCTAssertEqual(task["dueAt"], JSONValue.string("2026-06-22T09:00:00Z"))
+        XCTAssertEqual(task["priority"], JSONValue.string("high"))
+        XCTAssertEqual(task["detail"], JSONValue.string("Write user-facing changes."))
+        XCTAssertNil(task["sourceCommand"])
+        XCTAssertFalse(tasks.contains { $0.objectValue?["id"] == JSONValue.number(Double(completed.id)) })
+    }
+
     func testProjectCompleteToolCompletesOpenProjectTasks() throws {
         let stores = try makeStores()
         let project = try stores.projects.create(title: "Launch Readiness")

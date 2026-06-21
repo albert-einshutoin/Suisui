@@ -364,7 +364,7 @@ private enum GeminiDirectFunctionDeclarationCatalog {
             .replacingOccurrences(of: "-", with: "_")
     }
 
-    private static let supportedTools: [ActionTool] = [.taskCreate, .taskBulkCreate, .taskUpdate, .taskComplete]
+    private static let supportedTools: [ActionTool] = [.taskCreate, .taskBulkCreate, .taskList, .taskUpdate, .taskComplete]
 
     private static func declaration(for tool: ActionTool) -> GeminiDirectFunctionDeclaration {
         switch tool {
@@ -396,6 +396,16 @@ private enum GeminiDirectFunctionDeclarationCatalog {
                         )
                     ],
                     required: ["tasks"]
+                )
+            )
+        case .taskList:
+            GeminiDirectFunctionDeclaration(
+                name: functionName(for: tool),
+                description: "List current local SoloPM tasks. This is read-only and does not require local write approval.",
+                parameters: GeminiDirectSchema(
+                    type: "object",
+                    properties: [:],
+                    required: []
                 )
             )
         case .taskUpdate:

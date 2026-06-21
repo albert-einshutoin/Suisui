@@ -178,6 +178,18 @@ public struct TaskTool: Tool {
         case .taskGet:
             let record = try store.get(id: try args.requiredInt64("id"))
             return ToolResult(tool: name, status: .succeeded, summary: record.title, output: record.output)
+        case .taskList:
+            // Conversation read flows should show current actionable work by default, while keeping completed history out of short AI context windows.
+            let tasks = try store.listAll().filter { $0.status != "completed" }
+            return ToolResult(
+                tool: name,
+                status: .succeeded,
+                summary: "\(tasks.count) tasks",
+                output: [
+                    "count": .number(Double(tasks.count)),
+                    "tasks": .array(tasks.map { .object($0.output) })
+                ]
+            )
         case .taskUpdate:
             let taskID = try args.requiredInt64("id")
             let current = try store.get(id: taskID)
@@ -471,6 +483,7 @@ public extension ToolRegistry {
             ProjectTool(name: .projectDelete, store: projectStore, taskStore: taskStore),
             TaskTool(name: .taskCreate, store: taskStore, projectStore: projectStore),
             TaskTool(name: .taskBulkCreate, store: taskStore, projectStore: projectStore),
+            TaskTool(name: .taskList, store: taskStore, projectStore: projectStore),
             TaskTool(name: .taskGet, store: taskStore, projectStore: projectStore),
             TaskTool(name: .taskUpdate, store: taskStore, projectStore: projectStore),
             TaskTool(name: .taskComplete, store: taskStore),

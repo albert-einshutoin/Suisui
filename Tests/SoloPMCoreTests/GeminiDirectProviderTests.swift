@@ -123,7 +123,7 @@ final class GeminiDirectProviderTests: XCTestCase {
         ).makeRequest(
             apiKey: "gemini-test-key",
             prompt: PlanningPrompt(system: "system prompt", user: "user prompt"),
-            availableTools: [.taskCreate, .taskBulkCreate, .taskUpdate, .taskComplete, .gitStatus]
+            availableTools: [.taskList, .taskCreate, .taskBulkCreate, .taskUpdate, .taskComplete, .gitStatus]
         )
 
         let body = try XCTUnwrap(request.httpBody)
@@ -137,9 +137,9 @@ final class GeminiDirectProviderTests: XCTestCase {
         let names = declarations.compactMap { $0["name"] as? String }
 
         XCTAssertNil(generationConfig["responseMimeType"])
-        XCTAssertEqual(names, ["task_create", "task_bulk_create", "task_update", "task_complete"])
+        XCTAssertEqual(names, ["task_create", "task_bulk_create", "task_list", "task_update", "task_complete"])
         XCTAssertEqual(functionCallingConfig["mode"] as? String, "ANY")
-        XCTAssertEqual(functionCallingConfig["allowedFunctionNames"] as? [String], ["task_create", "task_bulk_create", "task_update", "task_complete"])
+        XCTAssertEqual(functionCallingConfig["allowedFunctionNames"] as? [String], ["task_create", "task_bulk_create", "task_list", "task_update", "task_complete"])
         XCTAssertFalse(names.contains("git_status"))
 
         let taskCreate = try XCTUnwrap(declarations.first { $0["name"] as? String == "task_create" })
@@ -158,6 +158,10 @@ final class GeminiDirectProviderTests: XCTestCase {
         XCTAssertNotNil(updateProperties["status"])
         XCTAssertNotNil(updateProperties["projectId"])
         XCTAssertNotNil(updateProperties["dueAt"])
+
+        let taskList = try XCTUnwrap(declarations.first { $0["name"] as? String == "task_list" })
+        let listParameters = try XCTUnwrap(taskList["parameters"] as? [String: Any])
+        XCTAssertEqual(listParameters["required"] as? [String], [])
 
         let taskComplete = try XCTUnwrap(declarations.first { $0["name"] as? String == "task_complete" })
         let completeParameters = try XCTUnwrap(taskComplete["parameters"] as? [String: Any])
@@ -468,6 +472,50 @@ final class GeminiDirectProviderTests: XCTestCase {
                 requiresUserConfirmation: false
             )
         ])
+    }
+
+    func testProviderMapsGeminiTaskListFunctionCallToReadOnlyActionPlan() async throws {
+        let provider = GeminiDirectProvider(
+            secretStore: InMemorySecretStore(values: [.geminiAPIKey: "gemini-test-key"]),
+            httpClient: GeminiStubHTTPDataClient(
+                data: Data(
+                    """
+                    {
+                      "candidates": [
+                        {
+                          "content": {
+                            "parts": [
+                              {
+                                "functionCall": {
+                                  "id": "call-list",
+                                  "name": "task_list",
+                                  "args": {}
+                                }
+                              }
+                            ]
+                          },
+                          "finishReason": "STOP"
+                        }
+                      ]
+                    }
+                    """.utf8
+                ),
+                statusCode: 200
+            )
+        )
+
+        let response = try await provider.generatePlan(
+            for: PlanningRequest(
+                userInput: "タスクを列挙して",
+                availableTools: [.taskList]
+            )
+        )
+
+        let plan = try XCTUnwrap(response.actionPlan)
+        XCTAssertTrue(response.validationResult.isValid)
+        XCTAssertFalse(plan.requiresApproval)
+        XCTAssertEqual(plan.approvalRequirement, .none)
+        XCTAssertEqual(plan.actions.first?.tool, .taskList)
     }
 
     func testProviderRejectsUnavailableGeminiFunctionCallBeforeLocalExecution() async throws {

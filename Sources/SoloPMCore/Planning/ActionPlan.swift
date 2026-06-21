@@ -97,6 +97,7 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
     case projectDelete = "project.delete"
     case taskCreate = "task.create"
     case taskBulkCreate = "task.bulk_create"
+    case taskList = "task.list"
     case taskGet = "task.get"
     case taskUpdate = "task.update"
     case taskComplete = "task.complete"
@@ -134,6 +135,7 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
         switch self {
         case .projectList,
              .projectGet,
+             .taskList,
              .taskGet,
              .taskListDue,
              .taskListOverdue,
@@ -182,7 +184,7 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
         switch self {
         case .projectCreate, .projectUpdate, .projectList, .projectGet, .projectComplete, .projectDelete:
             .project
-        case .taskCreate, .taskBulkCreate, .taskGet, .taskUpdate, .taskComplete, .taskDelete, .taskListDue, .taskListOverdue:
+        case .taskCreate, .taskBulkCreate, .taskList, .taskGet, .taskUpdate, .taskComplete, .taskDelete, .taskListDue, .taskListOverdue:
             .task
         case .notificationSchedule, .notificationScheduleRelative, .notificationScheduleOverdueRule, .notificationCancel, .notificationList:
             .notification

@@ -29,11 +29,11 @@
 
 ## P13-002: Conversation task operations
 
-- [ ] 会話入力から task list / create / update / complete / move / due-date change を生成する intent model を整理する。
-- [ ] LLM providerに依存しないAction Plan validationを通す。
-- [ ] 「タスクを列挙して」「これを進行中にして」「明日までにして」のような会話ケースをfixture化する。
-- [ ] write系はapproval policyを通し、read/list系は不要な承認を求めない。
-- [ ] 完了条件: 会話ベースでタスク列挙とステータス変更ができ、監査ログに残る。
+- [x] 会話入力から task list / create / update / complete / move / due-date change を生成する intent model を整理する。
+- [x] LLM providerに依存しないAction Plan validationを通す。
+- [x] 「タスクを列挙して」「これを進行中にして」「明日までにして」のような会話ケースをfixture化する。
+- [x] write系はapproval policyを通し、read/list系は不要な承認を求めない。
+- [x] 完了条件: 会話ベースでタスク列挙とステータス変更ができ、監査ログに残る。
 
 ## P13-003: Cloud Sync foundation
 
