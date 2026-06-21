@@ -240,6 +240,7 @@ blocker() {
 check_manual_unblocker_runbook_freshness() {
   local runbook="$ROOT_DIR/docs/release/manual-unblockers.md"
   local freshness_blockers=0
+  local required_automated_evidence_bootstrap='SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$automated_evidence" ./script/check_automated_release_preflight.sh'
 
   if [[ ! -f "$runbook" ]]; then
     blocker "missing manual unblocker runbook: docs/release/manual-unblockers.md"
@@ -259,6 +260,11 @@ check_manual_unblocker_runbook_freshness() {
   if grep -Eq 'pending-[[:xdigit:]]{7,}\.md' "$runbook"; then
     freshness_blockers=$((freshness_blockers + 1))
     blocker "manual unblocker runbook hardcodes generated pending helper paths; use <release-candidate-source-commit> placeholders"
+  fi
+
+  if ! grep -Fq "$required_automated_evidence_bootstrap" "$runbook"; then
+    freshness_blockers=$((freshness_blockers + 1))
+    blocker "manual unblocker runbook missing automated preflight evidence bootstrap"
   fi
 
   if [[ "$freshness_blockers" -eq 0 ]]; then

@@ -457,6 +457,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(report.contains("OK: manual unblocker runbook avoids hardcoded release-candidate paths"))
         XCTAssertTrue(report.contains("manual unblocker runbook hardcodes automated preflight evidence"))
         XCTAssertTrue(report.contains("manual unblocker runbook hardcodes release-candidate source commit"))
+        XCTAssertTrue(report.contains("manual unblocker runbook missing automated preflight evidence bootstrap"))
+        XCTAssertTrue(report.contains("SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=\"$automated_evidence\" ./script/check_automated_release_preflight.sh"))
 
         XCTAssertTrue(checklist.contains("manual-unblockers.md"))
         XCTAssertTrue(phase.contains("[x] release readiness は `docs/release/manual-unblockers.md` が hardcoded automated preflight evidence や release-candidate source commit を含む場合 blocker にする。"))
