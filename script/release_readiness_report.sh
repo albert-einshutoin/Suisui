@@ -865,6 +865,7 @@ write_automated_proof_gate_actions() {
   if automated_preflight_evidence_covers "Release CI"; then
     printf -- "- [x] Automated preflight evidence accepted: \`%s\`\n" "${AUTOMATED_PREFLIGHT_EVIDENCE_PATH#"$ROOT_DIR/"}"
     printf -- "- Source commit: \`%s\`\n" "$(automated_preflight_context_value "Source commit")"
+    printf -- "- Release candidate product source commit: \`%s\`\n" "$(automated_preflight_context_value "VoiceOver candidate source commit")"
     printf -- "- Generated at: \`%s\`\n" "$(automated_preflight_context_value "Generated at")"
     printf -- "- Runtime AX smoke: \`%s\`\n" "$(automated_preflight_context_value "Runtime AX smoke")"
     printf -- "- VoiceOver candidate: source \`%s\`, project \`%s\`, destination \`%s\`\n" \
