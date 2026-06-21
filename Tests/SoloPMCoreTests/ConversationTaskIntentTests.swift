@@ -2,25 +2,25 @@ import XCTest
 @testable import SoloPMCore
 
 final class ConversationTaskIntentTests: XCTestCase {
-    func testPhase13FixturesCoverConversationTaskOperations() {
-        let fixtures = ConversationTaskIntent.phase13Fixtures
+    func testPhase13BaselineIntentsCoverConversationTaskOperations() {
+        let baselineIntents = ConversationTaskIntent.phase13BaselineIntents
 
-        XCTAssertEqual(Set(fixtures.map(\.operation)), Set(ConversationTaskOperation.allCases))
-        XCTAssertTrue(fixtures.contains { $0.utterance == "タスクを列挙して" })
-        XCTAssertTrue(fixtures.contains { $0.utterance == "これを進行中にして" })
-        XCTAssertTrue(fixtures.contains { $0.utterance == "明日までにして" })
+        XCTAssertEqual(Set(baselineIntents.map(\.operation)), Set(ConversationTaskOperation.allCases))
+        XCTAssertTrue(baselineIntents.contains { $0.utterance == "タスクを列挙して" })
+        XCTAssertTrue(baselineIntents.contains { $0.utterance == "これを進行中にして" })
+        XCTAssertTrue(baselineIntents.contains { $0.utterance == "明日までにして" })
     }
 
-    func testFixturesBuildProviderIndependentActionPlansThatPassValidation() {
-        for fixture in ConversationTaskIntent.phase13Fixtures {
-            let plan = fixture.actionPlan(id: "plan-\(fixture.operation.rawValue)", actionID: "action-1")
+    func testBaselineIntentsBuildProviderIndependentActionPlansThatPassValidation() {
+        for intent in ConversationTaskIntent.phase13BaselineIntents {
+            let plan = intent.actionPlan(id: "plan-\(intent.operation.rawValue)", actionID: "action-1")
             let result = ActionPlanValidator().validate(plan)
 
-            XCTAssertTrue(result.isValid, "Expected \(fixture.operation) fixture to be valid: \(result.issues)")
-            XCTAssertEqual(plan.actions.first?.tool, fixture.tool)
-            XCTAssertEqual(plan.requiresApproval, fixture.riskLevel >= .write)
-            XCTAssertEqual(plan.riskLevel, fixture.riskLevel)
-            if fixture.riskLevel == .read {
+            XCTAssertTrue(result.isValid, "Expected \(intent.operation) baseline intent to be valid: \(result.issues)")
+            XCTAssertEqual(plan.actions.first?.tool, intent.tool)
+            XCTAssertEqual(plan.requiresApproval, intent.riskLevel >= .write)
+            XCTAssertEqual(plan.riskLevel, intent.riskLevel)
+            if intent.riskLevel == .read {
                 XCTAssertEqual(plan.approvalRequirement, .none)
             } else {
                 XCTAssertEqual(plan.approvalRequirement, .explicitApproval)
@@ -28,20 +28,20 @@ final class ConversationTaskIntentTests: XCTestCase {
         }
     }
 
-    func testStatusMoveProjectAndDueDateFixturesUseTaskUpdateArguments() throws {
-        let fixtures = Dictionary(uniqueKeysWithValues: ConversationTaskIntent.phase13Fixtures.map { ($0.operation, $0) })
+    func testStatusMoveProjectAndDueDateBaselineIntentsUseTaskUpdateArguments() throws {
+        let baselineIntents = Dictionary(uniqueKeysWithValues: ConversationTaskIntent.phase13BaselineIntents.map { ($0.operation, $0) })
 
-        let status = try XCTUnwrap(fixtures[.updateStatus])
+        let status = try XCTUnwrap(baselineIntents[.updateStatus])
         XCTAssertEqual(status.tool, .taskUpdate)
         XCTAssertEqual(status.arguments["id"], .number(101))
         XCTAssertEqual(status.arguments["status"], .string("in_progress"))
 
-        let move = try XCTUnwrap(fixtures[.moveProject])
+        let move = try XCTUnwrap(baselineIntents[.moveProject])
         XCTAssertEqual(move.tool, .taskUpdate)
         XCTAssertEqual(move.arguments["id"], .number(101))
         XCTAssertEqual(move.arguments["projectId"], .number(42))
 
-        let dueDate = try XCTUnwrap(fixtures[.updateDueDate])
+        let dueDate = try XCTUnwrap(baselineIntents[.updateDueDate])
         XCTAssertEqual(dueDate.tool, .taskUpdate)
         XCTAssertEqual(dueDate.arguments["id"], .number(101))
         XCTAssertEqual(dueDate.arguments["dueAt"], .string("2026-06-22"))
@@ -62,9 +62,9 @@ final class ConversationTaskIntentTests: XCTestCase {
                 ToolResult(tool: .taskUpdate, status: .succeeded, summary: "Updated task")
             }
         ])
-        let fixtures = Dictionary(uniqueKeysWithValues: ConversationTaskIntent.phase13Fixtures.map { ($0.operation, $0) })
-        let listIntent = try XCTUnwrap(fixtures[.list])
-        let statusIntent = try XCTUnwrap(fixtures[.updateStatus])
+        let baselineIntents = Dictionary(uniqueKeysWithValues: ConversationTaskIntent.phase13BaselineIntents.map { ($0.operation, $0) })
+        let listIntent = try XCTUnwrap(baselineIntents[.list])
+        let statusIntent = try XCTUnwrap(baselineIntents[.updateStatus])
         let plan = ActionPlan(
             id: "conversation-task-plan",
             userInput: "\(listIntent.utterance)\n\(statusIntent.utterance)",

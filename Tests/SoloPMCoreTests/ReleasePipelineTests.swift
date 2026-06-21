@@ -6011,9 +6011,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Sources/SoloPMCore"))
         XCTAssertTrue(script.contains("Sources/SoloPMApp"))
         XCTAssertTrue(script.contains("Sources/SoloPMCLI"))
-        XCTAssertTrue(script.contains("(?i:fake|mock|fixture|canned|stub|skeleton|todo|fixme"))
+        XCTAssertTrue(script.contains("(?i:fake|mock|fixture|canned|stub|skeleton|fixme"))
         XCTAssertTrue(script.contains("not[[:space:]_-]*implemented"))
-        XCTAssertTrue(script.contains("(?i:(^|[^[:alnum:]_])(demo|sample|placeholder)([^[:alnum:]_]|$))"))
+        XCTAssertTrue(script.contains("(?i:(^|[^[:alnum:]_])(todo|demo|sample|placeholder)([^[:alnum:]_]|$))"))
         XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PROOF_GATES"))
         XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PROOF_GATES must be 0 or 1"))
         XCTAssertTrue(script.contains("RELEASE_CI_PREFLIGHT=\"${SOLOPM_RELEASE_CI_PREFLIGHT:-$AUTOMATED_PROOF_GATES}\""))
@@ -9243,6 +9243,8 @@ final class ReleasePipelineTests: XCTestCase {
         try """
         let settings = [AVSampleRateKey: 44_100]
         let openCodeModelID = "opencode-model"
+        let todoistProviderID = "todoist"
+        struct TodoistConnector {}
         private struct ArchivedProjectReadOnlyState {}
         static func buildProductionValue() {}
         """.write(to: benignFile, atomically: true, encoding: .utf8)

@@ -95,7 +95,7 @@ final class SoloPMHarnessTests: XCTestCase {
             ]
         )
 
-        var store = InMemorySoloPMHarnessRunStore()
+        var store = RedactingSoloPMHarnessRunStore()
         try store.save(run, plan: .pro)
         let saved = try XCTUnwrap(store.runs.first)
 

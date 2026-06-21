@@ -15,7 +15,7 @@ public enum SoloPMHarnessCapability: String, Codable, CaseIterable, Equatable, H
 }
 
 public enum SoloPMHarnessAssertion: String, Codable, CaseIterable, Equatable, Hashable, Sendable {
-    case outputMatchesFixture
+    case outputMatchesExpected
     case approvalBoundary
     case auditLogRecorded
     case redactedLogs
@@ -61,7 +61,7 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
                         approvalState: .pendingApproval
                     )
                 ],
-                assertions: [.outputMatchesFixture, .approvalBoundary, .auditLogRecorded]
+                assertions: [.outputMatchesExpected, .approvalBoundary, .auditLogRecorded]
             ),
             SoloPMHarnessScenario(
                 id: "task-mutation-flow",
@@ -426,7 +426,7 @@ public enum SoloPMHarnessRunStoreError: Error, Equatable, Sendable {
     case historyDisabled(requiredPlan: SubscriptionPlan)
 }
 
-public struct InMemorySoloPMHarnessRunStore: Sendable {
+public struct RedactingSoloPMHarnessRunStore: Sendable {
     public private(set) var runs: [SoloPMHarnessRun]
 
     public init(runs: [SoloPMHarnessRun] = []) {

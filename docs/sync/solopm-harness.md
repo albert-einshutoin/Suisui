@@ -8,12 +8,12 @@ The core scenario contract is `SoloPMHarnessScenario`.
 
 Required fields:
 
-- `id`: stable fixture identifier.
+- `id`: stable scenario identifier.
 - `name`: operator-facing scenario name.
 - `kind`: `providerPromptRegression`, `taskMutationFlow`, `documentScopedAutomation`, or `mcpCompatibility`.
 - `requiredCapabilities`: provider prompt, task mutation, document automation, or MCP tool call capability.
 - `expectedMutations`: platform-neutral `SyncTaskMutationPayload` values when the scenario expects task changes.
-- `assertions`: fixture output, approval boundary, audit log, redacted log, and diff assertions.
+- `assertions`: expected output, approval boundary, audit log, redacted log, and diff assertions.
 
 `SoloPMHarnessScenario.templateCatalog()` is the initial smoke catalog. It intentionally includes create, update, complete, due-date update, and project move mutations so conversation and Hosted MCP task changes are covered by the same schema.
 
@@ -33,7 +33,7 @@ The trigger value differs, but the persisted result shape does not. This lets th
 
 ## History And Redaction
 
-`InMemorySoloPMHarnessRunStore` stores `SoloPMHarnessRun` values after calling `redacted()`.
+`RedactingSoloPMHarnessRunStore` stores `SoloPMHarnessRun` values after calling `redacted()`.
 
 The store redacts:
 

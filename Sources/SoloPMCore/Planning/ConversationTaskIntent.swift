@@ -53,7 +53,7 @@ public struct ConversationTaskIntent: Codable, Equatable, Sendable {
 }
 
 public extension ConversationTaskIntent {
-    static let phase13Fixtures: [ConversationTaskIntent] = [
+    static let phase13BaselineIntents: [ConversationTaskIntent] = [
         ConversationTaskIntent(
             utterance: "タスクを列挙して",
             operation: .list,

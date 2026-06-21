@@ -349,7 +349,7 @@ private enum GeminiDirectFunctionDeclarationCatalog {
         let requestedTools = Set(tools)
         return supportedTools
             .filter { requestedTools.contains($0) }
-            .map(declaration)
+            .compactMap(declaration)
     }
 
     static func actionTool(named functionName: String, availableTools: [ActionTool]) -> ActionTool? {
@@ -366,10 +366,10 @@ private enum GeminiDirectFunctionDeclarationCatalog {
 
     private static let supportedTools: [ActionTool] = [.taskCreate, .taskBulkCreate, .taskList, .taskUpdate, .taskComplete]
 
-    private static func declaration(for tool: ActionTool) -> GeminiDirectFunctionDeclaration {
+    private static func declaration(for tool: ActionTool) -> GeminiDirectFunctionDeclaration? {
         switch tool {
         case .taskCreate:
-            GeminiDirectFunctionDeclaration(
+            return GeminiDirectFunctionDeclaration(
                 name: functionName(for: tool),
                 description: "Create one local SoloPM task. SoloPM will require local user approval before writing.",
                 parameters: GeminiDirectSchema(
@@ -379,7 +379,7 @@ private enum GeminiDirectFunctionDeclarationCatalog {
                 )
             )
         case .taskBulkCreate:
-            GeminiDirectFunctionDeclaration(
+            return GeminiDirectFunctionDeclaration(
                 name: functionName(for: tool),
                 description: "Create multiple local SoloPM tasks. SoloPM will require local user approval before writing.",
                 parameters: GeminiDirectSchema(
@@ -399,7 +399,7 @@ private enum GeminiDirectFunctionDeclarationCatalog {
                 )
             )
         case .taskList:
-            GeminiDirectFunctionDeclaration(
+            return GeminiDirectFunctionDeclaration(
                 name: functionName(for: tool),
                 description: "List current local SoloPM tasks. This is read-only and does not require local write approval.",
                 parameters: GeminiDirectSchema(
@@ -409,7 +409,7 @@ private enum GeminiDirectFunctionDeclarationCatalog {
                 )
             )
         case .taskUpdate:
-            GeminiDirectFunctionDeclaration(
+            return GeminiDirectFunctionDeclaration(
                 name: functionName(for: tool),
                 description: "Update one local SoloPM task, including status, project, due date, detail, title, or priority. SoloPM will require local user approval before writing.",
                 parameters: GeminiDirectSchema(
@@ -419,7 +419,7 @@ private enum GeminiDirectFunctionDeclarationCatalog {
                 )
             )
         case .taskComplete:
-            GeminiDirectFunctionDeclaration(
+            return GeminiDirectFunctionDeclaration(
                 name: functionName(for: tool),
                 description: "Mark one local SoloPM task as completed. SoloPM will require local user approval before writing.",
                 parameters: GeminiDirectSchema(
@@ -431,7 +431,7 @@ private enum GeminiDirectFunctionDeclarationCatalog {
                 )
             )
         default:
-            preconditionFailure("Unsupported Gemini Direct function declaration.")
+            return nil
         }
     }
 
