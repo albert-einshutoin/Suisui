@@ -1334,6 +1334,7 @@
 - [x] action summary は release-machine evidence の `generator.name: script/create_release_evidence.sh` 要件をManual Evidence Source Hygieneに表示し、手書き `packaging/release-evidence.json` がrelease readyにならないことを示す。
 - [x] VoiceOver passed evidence は実際の `macOS version` を必須にし、`macOS unknown` / placeholder / sample / example / replacement text をgeneratorとreadiness reportの両方でrelease blockerにする。
 - [x] action summary は generated VoiceOver / competitor / release-machine command が placeholder 未置換のままでは `--validate-only` でも失敗することを表示し、template command を evidence-ready に見せない。
+- [x] action summary は `docs/release/manual-unblockers.md` への Persistent Manual Unblocker Runbook 導線を出し、一時ファイルが再生成されても恒久runbookへ戻れるようにする。
 - [x] `script/prepare_release_manual_helpers.sh` は current source commit の VoiceOver pending preview / launch env / worksheet / command、competitor pending evidence、competitor benchmark pending worksheet、competitor worksheet / command、release-machine worksheet / command を一括再生成し、passed evidence を書かない。
 - [x] `script/prepare_release_manual_helpers.sh` は tracked source tree がdirtyな場合、pending preview / command生成前に停止し、未コミット差分をcurrent commitのrelease candidateとして扱わない。
 - [x] action summary の Manual Review Helper Freshness は stale/missing helper を見つけた場合、個別コマンドの羅列ではなく `./script/prepare_release_manual_helpers.sh` を次アクションとして提示する。

@@ -1230,6 +1230,10 @@ write_release_actions() {
     printf "This file is an action summary, not release evidence.\n"
     printf "It does not mark manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper checks as passed.\n\n"
 
+    printf "## Persistent Manual Unblocker Runbook\n"
+    printf -- "- Use \`docs/release/manual-unblockers.md\` as the tracked checklist for Manual VoiceOver, Competitor Hands-On, and Release Machine lanes.\n"
+    printf -- "- Use the persistent runbook above as the stable checklist when this generated action summary is replaced or regenerated.\n\n"
+
     write_operator_priority_queue
 
     printf "## Current Blocker Groups\n"
