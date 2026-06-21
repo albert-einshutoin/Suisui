@@ -3292,7 +3292,7 @@ final class ReleasePipelineTests: XCTestCase {
         try FileManager.default.createDirectory(at: callsDirectory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: fixtureRoot) }
 
-        let currentShortCommit = try manualReleaseEvidenceSourceCommit()
+        let currentShortCommit = String(try currentGitCommit().prefix(7))
         let voiceOverDirectory = fixtureRoot
             .appendingPathComponent(".tmp", isDirectory: true)
             .appendingPathComponent("voiceover-review", isDirectory: true)
