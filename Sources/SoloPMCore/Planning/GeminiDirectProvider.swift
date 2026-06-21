@@ -364,7 +364,7 @@ private enum GeminiDirectFunctionDeclarationCatalog {
             .replacingOccurrences(of: "-", with: "_")
     }
 
-    private static let supportedTools: [ActionTool] = [.taskCreate, .taskBulkCreate]
+    private static let supportedTools: [ActionTool] = [.taskCreate, .taskBulkCreate, .taskUpdate, .taskComplete]
 
     private static func declaration(for tool: ActionTool) -> GeminiDirectFunctionDeclaration {
         switch tool {
@@ -398,6 +398,28 @@ private enum GeminiDirectFunctionDeclarationCatalog {
                     required: ["tasks"]
                 )
             )
+        case .taskUpdate:
+            GeminiDirectFunctionDeclaration(
+                name: functionName(for: tool),
+                description: "Update one local SoloPM task, including status, project, due date, detail, title, or priority. SoloPM will require local user approval before writing.",
+                parameters: GeminiDirectSchema(
+                    type: "object",
+                    properties: taskUpdateProperties(),
+                    required: ["id"]
+                )
+            )
+        case .taskComplete:
+            GeminiDirectFunctionDeclaration(
+                name: functionName(for: tool),
+                description: "Mark one local SoloPM task as completed. SoloPM will require local user approval before writing.",
+                parameters: GeminiDirectSchema(
+                    type: "object",
+                    properties: [
+                        "id": GeminiDirectSchema(type: "integer", description: "Required local SoloPM task id.")
+                    ],
+                    required: ["id"]
+                )
+            )
         default:
             preconditionFailure("Unsupported Gemini Direct function declaration.")
         }
@@ -411,6 +433,18 @@ private enum GeminiDirectFunctionDeclarationCatalog {
             "dueAt": GeminiDirectSchema(type: "string", description: "Optional ISO-8601 due date or timestamp."),
             "priority": GeminiDirectSchema(type: "string", description: "Optional priority label."),
             "sourceCommand": GeminiDirectSchema(type: "string", description: "Optional original user command.")
+        ]
+    }
+
+    private static func taskUpdateProperties() -> [String: GeminiDirectSchema] {
+        [
+            "id": GeminiDirectSchema(type: "integer", description: "Required local SoloPM task id."),
+            "title": GeminiDirectSchema(type: "string", description: "Optional replacement task title."),
+            "projectId": GeminiDirectSchema(type: "integer", description: "Optional local SoloPM project id to move the task into."),
+            "status": GeminiDirectSchema(type: "string", description: "Optional task status: open, backlog, planned, in_progress, blocked, or completed."),
+            "detail": GeminiDirectSchema(type: "string", description: "Optional task detail."),
+            "dueAt": GeminiDirectSchema(type: "string", description: "Optional ISO-8601 due date or timestamp."),
+            "priority": GeminiDirectSchema(type: "string", description: "Optional priority label.")
         ]
     }
 }
@@ -475,7 +509,7 @@ private struct GeminiDirectFunctionCallActionPlanMapper {
            case .string(let title)? = actions[0].arguments["title"] {
             return "Create task: \(title)"
         }
-        return "Create \(actions.count) task action\(actions.count == 1 ? "" : "s") from Gemini function call."
+        return "Prepare \(actions.count) SoloPM task action\(actions.count == 1 ? "" : "s") from Gemini function call."
     }
 
     private func nonBlank(_ value: String?) -> String? {

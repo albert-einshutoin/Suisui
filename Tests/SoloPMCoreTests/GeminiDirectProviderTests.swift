@@ -117,13 +117,13 @@ final class GeminiDirectProviderTests: XCTestCase {
         XCTAssertFalse(String(data: body, encoding: .utf8)?.contains("gemini-test-key") ?? true)
     }
 
-    func testRequestBodyExposesTaskCreationAsGeminiFunctionDeclarations() throws {
+    func testRequestBodyExposesTaskMutationAsGeminiFunctionDeclarations() throws {
         let request = try GeminiDirectRequestBuilder(
             configuration: GeminiDirectConfiguration(model: "gemini-test", maxOutputTokens: 4_096)
         ).makeRequest(
             apiKey: "gemini-test-key",
             prompt: PlanningPrompt(system: "system prompt", user: "user prompt"),
-            availableTools: [.taskCreate, .taskBulkCreate, .gitStatus]
+            availableTools: [.taskCreate, .taskBulkCreate, .taskUpdate, .taskComplete, .gitStatus]
         )
 
         let body = try XCTUnwrap(request.httpBody)
@@ -137,9 +137,9 @@ final class GeminiDirectProviderTests: XCTestCase {
         let names = declarations.compactMap { $0["name"] as? String }
 
         XCTAssertNil(generationConfig["responseMimeType"])
-        XCTAssertEqual(names, ["task_create", "task_bulk_create"])
+        XCTAssertEqual(names, ["task_create", "task_bulk_create", "task_update", "task_complete"])
         XCTAssertEqual(functionCallingConfig["mode"] as? String, "ANY")
-        XCTAssertEqual(functionCallingConfig["allowedFunctionNames"] as? [String], ["task_create", "task_bulk_create"])
+        XCTAssertEqual(functionCallingConfig["allowedFunctionNames"] as? [String], ["task_create", "task_bulk_create", "task_update", "task_complete"])
         XCTAssertFalse(names.contains("git_status"))
 
         let taskCreate = try XCTUnwrap(declarations.first { $0["name"] as? String == "task_create" })
@@ -149,6 +149,21 @@ final class GeminiDirectProviderTests: XCTestCase {
         XCTAssertEqual(parameters["required"] as? [String], ["title"])
         XCTAssertNotNil(properties["title"])
         XCTAssertNotNil(properties["projectId"])
+
+        let taskUpdate = try XCTUnwrap(declarations.first { $0["name"] as? String == "task_update" })
+        let updateParameters = try XCTUnwrap(taskUpdate["parameters"] as? [String: Any])
+        let updateProperties = try XCTUnwrap(updateParameters["properties"] as? [String: Any])
+        XCTAssertEqual(updateParameters["required"] as? [String], ["id"])
+        XCTAssertNotNil(updateProperties["id"])
+        XCTAssertNotNil(updateProperties["status"])
+        XCTAssertNotNil(updateProperties["projectId"])
+        XCTAssertNotNil(updateProperties["dueAt"])
+
+        let taskComplete = try XCTUnwrap(declarations.first { $0["name"] as? String == "task_complete" })
+        let completeParameters = try XCTUnwrap(taskComplete["parameters"] as? [String: Any])
+        let completeProperties = try XCTUnwrap(completeParameters["properties"] as? [String: Any])
+        XCTAssertEqual(completeParameters["required"] as? [String], ["id"])
+        XCTAssertNotNil(completeProperties["id"])
     }
 
     func testOutputTextExtractorReadsCandidateTextParts() throws {
@@ -367,6 +382,87 @@ final class GeminiDirectProviderTests: XCTestCase {
                 arguments: [
                     "title": .string("Review MCP bridge"),
                     "priority": .string("high")
+                ],
+                riskLevel: .write,
+                requiresUserConfirmation: false
+            )
+        ])
+    }
+
+    func testProviderMapsGeminiTaskMutationFunctionCallsToApprovalBackedActionPlan() async throws {
+        let provider = GeminiDirectProvider(
+            secretStore: InMemorySecretStore(values: [.geminiAPIKey: "gemini-test-key"]),
+            httpClient: GeminiStubHTTPDataClient(
+                data: Data(
+                    """
+                    {
+                      "candidates": [
+                        {
+                          "content": {
+                            "parts": [
+                              {
+                                "functionCall": {
+                                  "id": "call-update",
+                                  "name": "task_update",
+                                  "args": {
+                                    "id": 42,
+                                    "status": "in_progress",
+                                    "projectId": 7,
+                                    "dueAt": "2026-06-22T09:00:00Z"
+                                  }
+                                }
+                              },
+                              {
+                                "functionCall": {
+                                  "id": "call-complete",
+                                  "name": "task_complete",
+                                  "args": {
+                                    "id": 43
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          "finishReason": "STOP"
+                        }
+                      ]
+                    }
+                    """.utf8
+                ),
+                statusCode: 200
+            )
+        )
+
+        let response = try await provider.generatePlan(
+            for: PlanningRequest(
+                userInput: "42を進行中にして、43は完了にして",
+                availableTools: [.taskUpdate, .taskComplete]
+            )
+        )
+
+        XCTAssertEqual(response.providerID, "gemini.direct")
+        XCTAssertTrue(response.validationResult.isValid)
+        XCTAssertEqual(response.actionPlan?.id, "gemini-function-plan")
+        XCTAssertEqual(response.actionPlan?.requiresApproval, true)
+        XCTAssertEqual(response.actionPlan?.riskLevel, .write)
+        XCTAssertEqual(response.actionPlan?.actions, [
+            PlanAction(
+                id: "call-update",
+                tool: .taskUpdate,
+                arguments: [
+                    "id": .number(42),
+                    "status": .string("in_progress"),
+                    "projectId": .number(7),
+                    "dueAt": .string("2026-06-22T09:00:00Z")
+                ],
+                riskLevel: .write,
+                requiresUserConfirmation: false
+            ),
+            PlanAction(
+                id: "call-complete",
+                tool: .taskComplete,
+                arguments: [
+                    "id": .number(43)
                 ],
                 riskLevel: .write,
                 requiresUserConfirmation: false
