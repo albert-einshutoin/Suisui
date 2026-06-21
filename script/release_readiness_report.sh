@@ -237,6 +237,27 @@ blocker() {
   printf "BLOCKER: %s\n" "$1"
 }
 
+check_manual_unblocker_runbook_freshness() {
+  local runbook="$ROOT_DIR/docs/release/manual-unblockers.md"
+
+  if [[ ! -f "$runbook" ]]; then
+    blocker "missing manual unblocker runbook: docs/release/manual-unblockers.md"
+    return
+  fi
+
+  if grep -Eq 'automated-release-preflight-[[:xdigit:]]{7,}\.md' "$runbook"; then
+    blocker "manual unblocker runbook hardcodes automated preflight evidence; derive it from git rev-parse --short HEAD"
+  fi
+
+  if grep -Eq 'Current release-candidate source commit: `[[:xdigit:]]{7,}`' "$runbook"; then
+    blocker "manual unblocker runbook hardcodes release-candidate source commit; use the latest action summary and generated helper paths"
+  fi
+
+  if grep -Eq 'pending-[[:xdigit:]]{7,}\.md' "$runbook"; then
+    blocker "manual unblocker runbook hardcodes generated pending helper paths; use <release-candidate-source-commit> placeholders"
+  fi
+}
+
 source_commit() {
   git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown"
 }
@@ -2143,6 +2164,9 @@ else
   printf "INFO: release launch preflight skipped; set SOLOPM_RELEASE_LAUNCH_PREFLIGHT=1 to run %s --verify inside this report.\n" "$RELEASE_LAUNCH_PREFLIGHT_RELATIVE"
   blocker "release launch preflight was not run"
 fi
+
+section "Manual unblocker runbook freshness"
+check_manual_unblocker_runbook_freshness
 
 section "Phase checklist blockers"
 phase_implementation_unchecked=""
