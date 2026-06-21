@@ -125,7 +125,7 @@ public struct CloudRelayTaskRequest: Codable, Equatable, Sendable {
                 title: try requiredString("title"),
                 detail: optionalString("detail"),
                 status: optionalString("status"),
-                projectID: try optionalInt64("projectID"),
+                projectID: try optionalPositiveInt64("projectID"),
                 dueAt: optionalString("dueAt"),
                 priority: optionalString("priority"),
                 source: source,
@@ -133,12 +133,12 @@ public struct CloudRelayTaskRequest: Codable, Equatable, Sendable {
             )
         case .taskUpdate:
             return SyncTaskMutationPayload(
-                taskID: try requiredInt64("taskID"),
+                taskID: try requiredPositiveInt64("taskID"),
                 operation: .update,
                 title: optionalString("title"),
                 detail: optionalString("detail"),
                 status: optionalString("status"),
-                projectID: try optionalInt64("projectID"),
+                projectID: try optionalPositiveInt64("projectID"),
                 dueAt: optionalString("dueAt"),
                 priority: optionalString("priority"),
                 source: source,
@@ -146,7 +146,7 @@ public struct CloudRelayTaskRequest: Codable, Equatable, Sendable {
             )
         case .taskComplete:
             return SyncTaskMutationPayload(
-                taskID: try requiredInt64("taskID"),
+                taskID: try requiredPositiveInt64("taskID"),
                 operation: .complete,
                 status: "completed",
                 source: source,
@@ -154,7 +154,7 @@ public struct CloudRelayTaskRequest: Codable, Equatable, Sendable {
             )
         case .taskDueDateUpdate:
             return SyncTaskMutationPayload(
-                taskID: try requiredInt64("taskID"),
+                taskID: try requiredPositiveInt64("taskID"),
                 operation: .updateDueDate,
                 dueAt: try requiredString("dueAt"),
                 source: source,
@@ -162,9 +162,9 @@ public struct CloudRelayTaskRequest: Codable, Equatable, Sendable {
             )
         case .taskProjectMove:
             return SyncTaskMutationPayload(
-                taskID: try requiredInt64("taskID"),
+                taskID: try requiredPositiveInt64("taskID"),
                 operation: .moveProject,
-                projectID: try requiredInt64("projectID"),
+                projectID: try requiredPositiveInt64("projectID"),
                 source: source,
                 approvalState: approvalState
             )
@@ -216,25 +216,41 @@ public struct CloudRelayTaskRequest: Codable, Equatable, Sendable {
         guard let value = arguments[key] else {
             throw CloudRelayTaskRequestError.missingArgument(key)
         }
-        guard case let .string(string) = value, !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard case let .string(string) = value else {
             throw CloudRelayTaskRequestError.invalidArgument(key)
         }
-        return string
+        let normalized = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else {
+            throw CloudRelayTaskRequestError.invalidArgument(key)
+        }
+        return normalized
     }
 
     private func optionalString(_ key: String) -> String? {
-        guard case let .string(string) = arguments[key],
-              !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard case let .string(string) = arguments[key] else {
             return nil
         }
-        return string
+        let normalized = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? nil : normalized
     }
 
-    private func requiredInt64(_ key: String) throws -> Int64 {
-        guard let value = try optionalInt64(key) else {
+    private func requiredPositiveInt64(_ key: String) throws -> Int64 {
+        guard let value = try optionalPositiveInt64(key) else {
             throw arguments[key] == nil
                 ? CloudRelayTaskRequestError.missingArgument(key)
                 : CloudRelayTaskRequestError.invalidArgument(key)
+        }
+        return value
+    }
+
+    private func optionalPositiveInt64(_ key: String) throws -> Int64? {
+        guard let value = try optionalInt64(key) else {
+            return nil
+        }
+        // Hosted requests encode existing SQLite identifiers; zero or negative
+        // IDs cannot identify a task/project and should not enter approval queues.
+        guard value > 0 else {
+            throw CloudRelayTaskRequestError.invalidArgument(key)
         }
         return value
     }

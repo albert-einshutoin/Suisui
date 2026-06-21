@@ -42,6 +42,73 @@ final class HostedMCPCloudRelayTests: XCTestCase {
         XCTAssertEqual(automation.approvalState, .notRequired)
     }
 
+    func testCloudRelayTaskRequestNormalizesRemoteTextArguments() throws {
+        let request = CloudRelayTaskRequest(
+            id: "relay-normalized",
+            source: .hostedMCP,
+            sourceClientID: "gemini-voice",
+            toolName: .taskCreate,
+            arguments: [
+                "title": .string("  Geminiから作成したいタスク  "),
+                "detail": .string("\nTTSで依頼された内容\n"),
+                "dueAt": .string("  2026-06-22  "),
+                "priority": .string(" high ")
+            ],
+            receivedAt: "2026-06-21T06:11:00Z"
+        )
+
+        let mutation = try request.taskMutationPayload(policy: .defaultPersonal)
+
+        XCTAssertEqual(mutation.title, "Geminiから作成したいタスク")
+        XCTAssertEqual(mutation.detail, "TTSで依頼された内容")
+        XCTAssertEqual(mutation.dueAt, "2026-06-22")
+        XCTAssertEqual(mutation.priority, "high")
+    }
+
+    func testCloudRelayTaskRequestRejectsNonPositiveRemoteIdentifiers() {
+        let requests: [(CloudRelayTaskRequest, CloudRelayTaskRequestError)] = [
+            (
+                CloudRelayTaskRequest(
+                    id: "relay-zero-task",
+                    source: .hostedMCP,
+                    sourceClientID: "external-llm",
+                    toolName: .taskComplete,
+                    arguments: ["taskID": .number(0)],
+                    receivedAt: "2026-06-21T06:11:30Z"
+                ),
+                .invalidArgument("taskID")
+            ),
+            (
+                CloudRelayTaskRequest(
+                    id: "relay-negative-project",
+                    source: .hostedMCP,
+                    sourceClientID: "external-llm",
+                    toolName: .taskProjectMove,
+                    arguments: ["taskID": .number(42), "projectID": .number(-7)],
+                    receivedAt: "2026-06-21T06:11:31Z"
+                ),
+                .invalidArgument("projectID")
+            ),
+            (
+                CloudRelayTaskRequest(
+                    id: "relay-update-zero-project",
+                    source: .cloudRelay,
+                    sourceClientID: "ios-shortcut",
+                    toolName: .taskUpdate,
+                    arguments: ["taskID": .number(42), "projectID": .number(0)],
+                    receivedAt: "2026-06-21T06:11:32Z"
+                ),
+                .invalidArgument("projectID")
+            )
+        ]
+
+        for (request, expectedError) in requests {
+            XCTAssertThrowsError(try request.taskMutationPayload(policy: .defaultPersonal)) { error in
+                XCTAssertEqual(error as? CloudRelayTaskRequestError, expectedError)
+            }
+        }
+    }
+
     func testRemoteStatusDueDateAndProjectMoveRequestsStayPendingApproval() throws {
         let requests: [(CloudRelayTaskRequest, SyncTaskMutationOperation)] = [
             (
