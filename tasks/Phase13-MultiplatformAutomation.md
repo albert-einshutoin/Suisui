@@ -94,9 +94,9 @@
 
 ## Verification
 
-- [ ] `swift test --filter SyncEntitlementTests`
-- [ ] `swift test --filter ProjectBoardStoreTests`
-- [ ] `swift test --filter GeminiDirectProviderTests`
+- [x] `swift test --filter SyncEntitlementTests`
+- [x] `swift test --filter ProjectBoardStoreTests`
+- [x] `swift test --filter GeminiDirectProviderTests`
 - [ ] Hosted MCP / Cloud Relay schema tests
 - [ ] iOS target build
 - [ ] Web app unit/e2e tests
