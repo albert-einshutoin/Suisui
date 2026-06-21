@@ -707,6 +707,61 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("public func todayTasks("))
     }
 
+    func testPhase12SidebarDestinationRawValuesStayBackwardCompatible() throws {
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+
+        XCTAssertTrue(workflowSource.contains("static let defaultRawValue = \"today\""))
+        XCTAssertTrue(workflowSource.contains("case .inbox:\n            return \"inbox\""))
+        XCTAssertTrue(workflowSource.contains("case .today:\n            return \"today\""))
+        XCTAssertTrue(workflowSource.contains("case .projects:\n            return \"projects\""))
+        XCTAssertTrue(workflowSource.contains("case .schedule:\n            return \"schedule\""))
+        XCTAssertTrue(workflowSource.contains("case .done:\n            return \"done\""))
+        XCTAssertTrue(workflowSource.contains("case .project(let projectID):\n            return \"project:\\(projectID)\""))
+        XCTAssertTrue(workflowSource.contains("case \"inbox\":\n            return .inbox"))
+        XCTAssertTrue(workflowSource.contains("case \"today\":\n            return .today"))
+        XCTAssertTrue(workflowSource.contains("case \"projects\":\n            return .projects"))
+        XCTAssertTrue(workflowSource.contains("case \"schedule\":\n            return .schedule"))
+        XCTAssertTrue(workflowSource.contains("case \"done\":\n            return .done"))
+        XCTAssertTrue(workflowSource.contains("guard parts.count == 2 else {\n                return .today"))
+        XCTAssertTrue(workflowSource.contains("availableProjects.contains(where: { $0.id == projectID }) else {\n                    return .today"))
+    }
+
+    func testPhase12SidebarShowsWorkflowDestinationsBeforeProjectRows() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        let inboxRow = try XCTUnwrap(boardSource.range(of: "ProjectBoardSidebarDestinationRow(destination: .inbox"))
+        let todayRow = try XCTUnwrap(boardSource.range(of: "ProjectBoardSidebarDestinationRow(destination: .today"))
+        let scheduleRow = try XCTUnwrap(boardSource.range(of: "ProjectBoardSidebarDestinationRow(destination: .schedule"))
+        let doneRow = try XCTUnwrap(boardSource.range(of: "ProjectBoardSidebarDestinationRow(destination: .done"))
+        let projectsSection = try XCTUnwrap(boardSource.range(of: "Section(\"Projects\")"))
+
+        XCTAssertLessThan(inboxRow.lowerBound, projectsSection.lowerBound)
+        XCTAssertLessThan(todayRow.lowerBound, projectsSection.lowerBound)
+        XCTAssertLessThan(scheduleRow.lowerBound, projectsSection.lowerBound)
+        XCTAssertLessThan(doneRow.lowerBound, projectsSection.lowerBound)
+        XCTAssertTrue(boardSource.contains("ProjectBoardSidebarDestinationRow(\n                            destination: .projects"))
+        XCTAssertTrue(boardSource.contains(".tag(ProjectBoardSidebarDestination.projects)"))
+        XCTAssertTrue(boardSource.contains(".tag(ProjectBoardSidebarDestination.project(project.id))"))
+        XCTAssertTrue(boardSource.contains("Label(\"Add Project\", systemImage: \"folder.badge.plus\")"))
+        XCTAssertTrue(boardSource.contains("Label(\n                        \"Show Archived\""))
+    }
+
+    func testPhase12SidebarDoesNotStealInboxCommandNumberShortcuts() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+
+        XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"1\", modifiers: [.command])"))
+        XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"2\", modifiers: [.command])"))
+        XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"3\", modifiers: [.command])"))
+        XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"4\", modifiers: [.command])"))
+        XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"5\", modifiers: [.command])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"1\", modifiers: [.command])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"2\", modifiers: [.command])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"3\", modifiers: [.command])"))
+        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"4\", modifiers: [.command])"))
+        XCTAssertFalse(workflowSource.contains(".keyboardShortcut(\"5\", modifiers: [.command])"))
+    }
+
     func testInboxActionPanelSurfacesClassificationFeedbackAndUndo() throws {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")

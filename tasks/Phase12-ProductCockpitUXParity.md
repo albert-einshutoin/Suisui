@@ -639,15 +639,15 @@ Samples全体では、Inbox、Today、Projects、Schedule、Done、Settingsが�
 
 ### Tests First
 
-- [ ] destination raw value互換test。
-- [ ] Sidebar source test。
-- [ ] Command shortcut衝突がないことのsource test。
+- [x] destination raw value互換test。
+- [x] Sidebar source test。
+- [x] Command shortcut衝突がないことのsource test。
 
 ### Acceptance Criteria
 
-- [ ] 5つのworkflow画面がSidebarから1クリックで開く。
-- [ ] 既存Project rowsとAdd Projectが残る。
-- [ ] 既存selection persistenceが破綻しない。
+- [x] 5つのworkflow画面がSidebarから1クリックで開く。
+- [x] 既存Project rowsとAdd Projectが残る。
+- [x] 既存selection persistenceが破綻しない。
 
 ### Non-goals
 
