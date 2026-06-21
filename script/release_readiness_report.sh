@@ -1174,7 +1174,7 @@ write_ignored_stale_manual_helper_preview_actions() {
     [[ -n "$stale_preview" ]] || continue
     printf -- "- [!] \`%s\` is ignored because the release-candidate source commit is \`%s\`.\n" "$stale_preview" "$expected_commit"
   done <<<"$stale_previews"
-  printf -- "- These stale previews do not unblock readiness; use the current helper paths above or rerun \`./script/prepare_release_manual_helpers.sh\`.\n"
+  printf -- "- These stale previews do not unblock readiness; use the release-candidate helper paths above or rerun \`./script/prepare_release_manual_helpers.sh\`.\n"
   printf -- "- Optional cleanup: run \`./script/prepare_release_manual_helpers.sh --prune-stale\` after committing source changes to remove ignored old pending previews and legacy default previews without writing passed evidence.\n\n"
 }
 
@@ -1377,7 +1377,7 @@ write_release_actions() {
 
     printf "## Competitor Hands-On\n"
     printf -- "- Complete the 2-4 hour Notion, Todoist, Linear, and Motion hands-on pass before release.\n"
-    printf -- "- Run \`./script/prepare_release_manual_helpers.sh\` first if you want current-commit pending helper files for review.\n"
+    printf -- "- Run \`./script/prepare_release_manual_helpers.sh\` first if you want release-candidate pending helper files for review.\n"
     printf -- "- The competitor helper files include \`.tmp/competitor-hands-on/hands-on-worksheet.md\`, \`.tmp/competitor-hands-on/competitor-benchmark-pending-%s.md\`, and \`.tmp/competitor-hands-on/create-evidence-command.sh\`.\n" "$(manual_release_evidence_source_commit)"
     printf -- "- For this action summary, the expected pending evidence path is \`.tmp/competitor-hands-on/competitor-hands-on-pending-%s.md\`.\n" "$(manual_release_evidence_source_commit)"
     printf -- "- The generated competitor hands-on evidence command is pinned to a clean tracked source tree and the source commit it was created for. Rerun \`./script/prepare_release_manual_helpers.sh\` after source changes instead of reusing an older command.\n"

@@ -3046,7 +3046,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("confirm-manual-voiceover-pass"))
         XCTAssertFalse(script.contains("confirm-manual-hands-on"))
         XCTAssertTrue(checklist.contains("./script/check_automated_release_preflight.sh"))
-        XCTAssertTrue(checklist.contains("After automated preflight passes, it refreshes the current-commit manual helper files without writing passed evidence."))
+        XCTAssertTrue(checklist.contains("After automated preflight passes, it refreshes the release-candidate manual helper files without writing passed evidence."))
         XCTAssertTrue(checklist.contains("The automated preflight evidence also records the seeded VoiceOver candidate source commit, project ID, database path, and selected destination used for runtime AX smoke."))
         XCTAssertTrue(phase.contains("[x] 自動proof証跡は seeded runtime AX smoke の `OK: runtime AX smoke visible` 行を保存し、`unlabeledButtons=0`、`genericButtons=0`、`crudSignals=8/8`、`focusPathSignals=6/6` が欠ける証跡を release readiness で拒否する。"))
         XCTAssertTrue(phase.contains("[x] 自動proof証跡は runtime AX smoke 対象の VoiceOver candidate source commit / project ID / database / selected destination を保存し、どのseeded candidateで検証したか追跡できる。"))
@@ -3204,7 +3204,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actions.contains("- [!] `.tmp/competitor-hands-on/competitor-hands-on-pending-oldcafe.md` is ignored because the release-candidate source commit is `\(commit)`."))
         XCTAssertTrue(actions.contains("- [!] `.tmp/competitor-hands-on/competitor-benchmark-pending-oldcafe.md` is ignored because the release-candidate source commit is `\(commit)`."))
         XCTAssertTrue(actions.contains("- [!] `.tmp/competitor-hands-on/evidence.md` is ignored because the release-candidate source commit is `\(commit)`."))
-        XCTAssertTrue(actions.contains("These stale previews do not unblock readiness; use the current helper paths above or rerun `./script/prepare_release_manual_helpers.sh`."))
+        XCTAssertTrue(actions.contains("These stale previews do not unblock readiness; use the release-candidate helper paths above or rerun `./script/prepare_release_manual_helpers.sh`."))
         XCTAssertTrue(actions.contains("Optional cleanup: run `./script/prepare_release_manual_helpers.sh --prune-stale` after committing source changes to remove ignored old pending previews and legacy default previews without writing passed evidence."))
     }
 
@@ -6467,7 +6467,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("--inline-task-composer-note \"<VoiceOver observation for title/detail/priority/due create flow>\""))
         XCTAssertTrue(script.contains("--no-unlabeled-crud-note \"<VoiceOver observation proving primary CRUD controls have labels or help>\""))
         XCTAssertTrue(script.contains("## Competitor Hands-On"))
-        XCTAssertTrue(script.contains("Run \\`./script/prepare_release_manual_helpers.sh\\` first if you want current-commit pending helper files for review."))
+        XCTAssertTrue(script.contains("Run \\`./script/prepare_release_manual_helpers.sh\\` first if you want release-candidate pending helper files for review."))
         XCTAssertTrue(script.contains("The competitor helper files include \\`.tmp/competitor-hands-on/hands-on-worksheet.md\\`, \\`.tmp/competitor-hands-on/competitor-benchmark-pending-%s.md\\`, and \\`.tmp/competitor-hands-on/create-evidence-command.sh\\`."))
         XCTAssertTrue(script.contains(".tmp/competitor-hands-on/hands-on-worksheet.md"))
         XCTAssertTrue(script.contains(".tmp/competitor-hands-on/competitor-benchmark-pending-<commit>.md"))
