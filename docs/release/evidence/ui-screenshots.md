@@ -2,8 +2,8 @@
 
 Generated with `script/capture_ui_evidence.sh`.
 
-- Generated at: `2026-06-21T10:04:28Z`
-- Source commit: `17880b5`
+- Generated at: `2026-06-21T13:39:33Z`
+- Source commit: `303e9b6`
 - App bundle: `dist/SoloPM.app`
 - Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`
 - Seed data: local `Launch Readiness` project with planned, in-progress, blocked, Inbox voice, Schedule, Done analytics, milestone, completed project, and deterministic MCP registration rows
