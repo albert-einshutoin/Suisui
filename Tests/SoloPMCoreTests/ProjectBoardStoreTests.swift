@@ -1026,6 +1026,40 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelRollsBackMultiTaskProjectDropWhenStoreFailsMidMove() {
+        var changeCount = 0
+        let store = PartiallyFailingBulkMoveProjectBoardStore()
+        let viewModel = ProjectBoardViewModel(
+            store: store,
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+        let sourceProjectID = Int64(1)
+        let targetProjectID = Int64(2)
+        let taskIDs = store.snapshot.projects
+            .first(where: { $0.id == sourceProjectID })?
+            .tasks
+            .map(\.id) ?? []
+
+        let didMove = viewModel.moveDroppedTasks(ids: taskIDs, toProjectID: targetProjectID)
+
+        XCTAssertFalse(didMove)
+        XCTAssertEqual(changeCount, 0)
+        XCTAssertEqual(viewModel.errorMessage, "Project board unavailable")
+
+        viewModel.load()
+
+        XCTAssertEqual(
+            viewModel.snapshot.projects.first(where: { $0.id == sourceProjectID })?.tasks.map(\.id),
+            taskIDs
+        )
+        XCTAssertEqual(
+            viewModel.snapshot.projects.first(where: { $0.id == targetProjectID })?.tasks,
+            []
+        )
+    }
+
+    @MainActor
     func testProjectBoardViewModelCanShowAndRestoreArchivedProjects() {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()
@@ -1579,6 +1613,37 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelMovesMultipleDroppedTasksIntoTargetProject() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let inboxID = try XCTUnwrap(viewModel.inboxProject?.id)
+        let targetProject = try XCTUnwrap(viewModel.createProject(title: "Batch Launch Plan"))
+        let first = try XCTUnwrap(viewModel.createTask(
+            title: "Classify first drag card",
+            projectID: inboxID,
+            status: .backlog
+        ))
+        let second = try XCTUnwrap(viewModel.createTask(
+            title: "Classify second drag card",
+            projectID: inboxID,
+            status: .planned
+        ))
+
+        XCTAssertTrue(viewModel.moveDroppedTasks(ids: [String(first.id), String(second.id)], toProjectID: targetProject.id))
+
+        let movedTasks = viewModel.snapshot.projects
+            .first(where: { $0.id == targetProject.id })?
+            .tasks
+        XCTAssertEqual(movedTasks?.map(\.id).sorted(), [first.id, second.id].sorted())
+        XCTAssertEqual(movedTasks?.first(where: { $0.id == first.id })?.status, .backlog)
+        XCTAssertEqual(movedTasks?.first(where: { $0.id == second.id })?.status, .planned)
+        XCTAssertEqual(viewModel.selectedProjectID, targetProject.id)
+        XCTAssertEqual(viewModel.selectedTaskID, second.id)
+        XCTAssertFalse(viewModel.inboxTasks.contains { [first.id, second.id].contains($0.id) })
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Moved 2 tasks to project.")
+    }
+
+    @MainActor
     func testCompletedProjectsRemainVisibleWhenArchivedProjectsAreHidden() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()
@@ -1931,6 +1996,15 @@ private final class PartiallyFailingBulkMoveProjectBoardStore: ProjectBoardStore
                 columns: ProjectTaskStatus.allCases.map { status in
                     ProjectBoardColumn(status: status, tasks: status == .planned ? plannedTasks : [])
                 }
+            ),
+            ProjectBoardProject(
+                id: 2,
+                title: "Target",
+                status: "active",
+                subtitle: "0 open / 0 total",
+                columns: ProjectTaskStatus.allCases.map { status in
+                    ProjectBoardColumn(status: status, tasks: [])
+                }
             )
         ])
     }
@@ -2017,7 +2091,43 @@ private final class PartiallyFailingBulkMoveProjectBoardStore: ProjectBoardStore
     }
 
     func moveTasks(ids: [Int64], toProjectID projectID: Int64) throws -> [ProjectBoardTask] {
-        throw ProjectBoardStoreTestError.unavailable
+        let originalSnapshot = currentSnapshot
+        do {
+            return try ids.map { try moveTask(id: $0, toProjectID: projectID) }
+        } catch {
+            currentSnapshot = originalSnapshot
+            throw error
+        }
+    }
+
+    private func moveTask(id: Int64, toProjectID projectID: Int64) throws -> ProjectBoardTask {
+        guard id == 1 else {
+            throw ProjectBoardStoreTestError.unavailable
+        }
+        guard let sourceProjectIndex = currentSnapshot.projects.firstIndex(where: { project in
+            project.tasks.contains { $0.id == id }
+        }),
+            let targetProjectIndex = currentSnapshot.projects.firstIndex(where: { $0.id == projectID }),
+            let task = currentSnapshot.projects[sourceProjectIndex].tasks.first(where: { $0.id == id }) else {
+            throw ProjectBoardStoreTestError.unavailable
+        }
+
+        let movedTask = ProjectBoardTask(
+            id: task.id,
+            projectID: projectID,
+            title: task.title,
+            detail: task.detail,
+            status: task.status,
+            priority: task.priority,
+            dueAt: task.dueAt
+        )
+        for columnIndex in currentSnapshot.projects[sourceProjectIndex].columns.indices {
+            currentSnapshot.projects[sourceProjectIndex].columns[columnIndex].tasks.removeAll { $0.id == id }
+        }
+        if let targetColumnIndex = currentSnapshot.projects[targetProjectIndex].columns.firstIndex(where: { $0.status == movedTask.status }) {
+            currentSnapshot.projects[targetProjectIndex].columns[targetColumnIndex].tasks.insert(movedTask, at: 0)
+        }
+        return movedTask
     }
 
     func deleteTask(id: Int64) throws {
