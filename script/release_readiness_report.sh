@@ -442,7 +442,7 @@ manual_helper_relative_is_current() {
 
 voiceover_review_helpers_are_current() {
   local expected_commit
-  expected_commit="$(source_commit)"
+  expected_commit="$(manual_release_evidence_source_commit)"
 
   manual_helper_relative_is_current ".tmp/voiceover-review/accessibility-voiceover-pending-$expected_commit.md" "$expected_commit" &&
     manual_helper_relative_is_current ".tmp/voiceover-review/launch.env" "$expected_commit" &&
@@ -452,7 +452,7 @@ voiceover_review_helpers_are_current() {
 
 competitor_hands_on_helpers_are_current() {
   local expected_commit
-  expected_commit="$(source_commit)"
+  expected_commit="$(manual_release_evidence_source_commit)"
 
   manual_helper_relative_is_current ".tmp/competitor-hands-on/competitor-hands-on-pending-$expected_commit.md" "$expected_commit" &&
     manual_helper_relative_is_current ".tmp/competitor-hands-on/competitor-benchmark-pending-$expected_commit.md" "$expected_commit" &&
@@ -478,7 +478,7 @@ voiceover_priority_next_action() {
 
 competitor_priority_next_action() {
   if competitor_hands_on_helpers_are_current; then
-    printf 'fill `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/competitor-benchmark-pending-%s.md` during the 2-4h pass, complete generated `.tmp/competitor-hands-on/create-evidence-command.sh`, run its validate-only path first, then rerun readiness.' "$(source_commit)"
+    printf 'fill `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/competitor-benchmark-pending-%s.md` during the 2-4h pass, complete generated `.tmp/competitor-hands-on/create-evidence-command.sh`, run its validate-only path first, then rerun readiness.' "$(manual_release_evidence_source_commit)"
   else
     printf 'run `./script/prepare_release_manual_helpers.sh`, fill `.tmp/competitor-hands-on/hands-on-worksheet.md`, complete `.tmp/competitor-hands-on/create-evidence-command.sh`, then rerun readiness.'
   fi
@@ -1128,61 +1128,62 @@ write_ignored_stale_manual_helper_preview_actions() {
 }
 
 write_manual_helper_freshness_actions() {
-  local expected_commit
+  local manual_expected_commit release_expected_commit
   local stale_or_missing=0
-  expected_commit="$(source_commit)"
+  manual_expected_commit="$(manual_release_evidence_source_commit)"
+  release_expected_commit="$(source_commit)"
 
   printf "## Manual Review Helper Freshness\n"
   write_manual_helper_freshness_item \
     "VoiceOver pending preview" \
     "is generated for" \
-    ".tmp/voiceover-review/accessibility-voiceover-pending-$expected_commit.md" \
-    "$expected_commit" || stale_or_missing=1
+    ".tmp/voiceover-review/accessibility-voiceover-pending-$manual_expected_commit.md" \
+    "$manual_expected_commit" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "VoiceOver launch env" \
     "is pinned to" \
     ".tmp/voiceover-review/launch.env" \
-    "$expected_commit" || stale_or_missing=1
+    "$manual_expected_commit" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "VoiceOver worksheet" \
     "is generated for" \
     ".tmp/voiceover-review/voiceover-worksheet.md" \
-    "$expected_commit" || stale_or_missing=1
+    "$manual_expected_commit" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "VoiceOver evidence command" \
     "is pinned to" \
     ".tmp/voiceover-review/create-evidence-command.sh" \
-    "$expected_commit" || stale_or_missing=1
+    "$manual_expected_commit" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "Competitor pending evidence" \
     "is generated for" \
-    ".tmp/competitor-hands-on/competitor-hands-on-pending-$expected_commit.md" \
-    "$expected_commit" || stale_or_missing=1
+    ".tmp/competitor-hands-on/competitor-hands-on-pending-$manual_expected_commit.md" \
+    "$manual_expected_commit" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "Competitor benchmark pending worksheet" \
     "is generated for" \
-    ".tmp/competitor-hands-on/competitor-benchmark-pending-$expected_commit.md" \
-    "$expected_commit" || stale_or_missing=1
+    ".tmp/competitor-hands-on/competitor-benchmark-pending-$manual_expected_commit.md" \
+    "$manual_expected_commit" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "Competitor worksheet" \
     "is generated for" \
     ".tmp/competitor-hands-on/hands-on-worksheet.md" \
-    "$expected_commit" || stale_or_missing=1
+    "$manual_expected_commit" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "Competitor evidence command" \
     "is pinned to" \
     ".tmp/competitor-hands-on/create-evidence-command.sh" \
-    "$expected_commit" || stale_or_missing=1
+    "$manual_expected_commit" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "Release machine worksheet" \
     "is generated for" \
     ".tmp/release-machine/release-machine-worksheet.md" \
-    "$expected_commit" || stale_or_missing=1
+    "$release_expected_commit" || stale_or_missing=1
   write_manual_helper_freshness_item \
     "Release evidence command" \
     "is pinned to" \
     ".tmp/release-machine/create-release-evidence-command.sh" \
-    "$expected_commit" || stale_or_missing=1
+    "$release_expected_commit" || stale_or_missing=1
 
   if [[ "$stale_or_missing" -ne 0 ]]; then
     printf "\n"
@@ -1193,7 +1194,7 @@ write_manual_helper_freshness_actions() {
   fi
   printf "\n"
 
-  write_ignored_stale_manual_helper_preview_actions "$expected_commit"
+  write_ignored_stale_manual_helper_preview_actions "$manual_expected_commit"
 }
 
 write_release_actions() {
@@ -1293,7 +1294,7 @@ write_release_actions() {
     write_voiceover_review_candidate_command
     printf "\n"
     printf -- "- The candidate writes \`.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md\` so you can inspect the release-candidate context without modifying tracked evidence.\n"
-    printf -- "- For this action summary, the expected pending preview path is \`.tmp/voiceover-review/accessibility-voiceover-pending-%s.md\`.\n" "$(source_commit)"
+    printf -- "- For this action summary, the expected pending preview path is \`.tmp/voiceover-review/accessibility-voiceover-pending-%s.md\`.\n" "$(manual_release_evidence_source_commit)"
     printf -- "- The candidate writes \`.tmp/voiceover-review/launch.env\` with \`SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT\` and \`SOLOPM_VOICEOVER_REVIEW_PROJECT_ID\`; verify those values before launching the manual VoiceOver pass.\n"
     printf -- "- The candidate writes \`.tmp/voiceover-review/voiceover-worksheet.md\`; fill it during the real VoiceOver pass and mark it \`Status: completed\` before running the generated command.\n"
     printf -- "- The candidate writes \`.tmp/voiceover-review/create-evidence-command.sh\` with the same database/project context. Replace every placeholder in that generated command with concrete VoiceOver observations before running it.\n"
@@ -1309,10 +1310,10 @@ write_release_actions() {
     printf "## Competitor Hands-On\n"
     printf -- "- Complete the 2-4 hour Notion, Todoist, Linear, and Motion hands-on pass before release.\n"
     printf -- "- Run \`./script/prepare_release_manual_helpers.sh\` first if you want current-commit pending helper files for review.\n"
-    printf -- "- The competitor helper files include \`.tmp/competitor-hands-on/hands-on-worksheet.md\`, \`.tmp/competitor-hands-on/competitor-benchmark-pending-%s.md\`, and \`.tmp/competitor-hands-on/create-evidence-command.sh\`.\n" "$(source_commit)"
-    printf -- "- For this action summary, the expected pending evidence path is \`.tmp/competitor-hands-on/competitor-hands-on-pending-%s.md\`.\n" "$(source_commit)"
+    printf -- "- The competitor helper files include \`.tmp/competitor-hands-on/hands-on-worksheet.md\`, \`.tmp/competitor-hands-on/competitor-benchmark-pending-%s.md\`, and \`.tmp/competitor-hands-on/create-evidence-command.sh\`.\n" "$(manual_release_evidence_source_commit)"
+    printf -- "- For this action summary, the expected pending evidence path is \`.tmp/competitor-hands-on/competitor-hands-on-pending-%s.md\`.\n" "$(manual_release_evidence_source_commit)"
     printf -- "- The generated competitor hands-on evidence command is pinned to a clean tracked source tree and the source commit it was created for. Rerun \`./script/prepare_release_manual_helpers.sh\` after source changes instead of reusing an older command.\n"
-    printf -- "- The generated competitor hands-on evidence command also refuses to run until \`.tmp/competitor-hands-on/hands-on-worksheet.md\` and \`.tmp/competitor-hands-on/competitor-benchmark-pending-%s.md\` are \`Status: completed\`, pinned to the same source commit, free of pending/unchecked/template markers, and filled.\n" "$(source_commit)"
+    printf -- "- The generated competitor hands-on evidence command also refuses to run until \`.tmp/competitor-hands-on/hands-on-worksheet.md\` and \`.tmp/competitor-hands-on/competitor-benchmark-pending-%s.md\` are \`Status: completed\`, pinned to the same source commit, free of pending/unchecked/template markers, and filled.\n" "$(manual_release_evidence_source_commit)"
     printf -- "- Run the generated \`--validate-only\` command first; it performs the same passed-evidence validation without writing \`docs/release/evidence/competitor-hands-on.md\` or \`docs/product/competitor-benchmark.md\`.\n"
     printf -- "- The passed command requires \`--hands-on-duration\` with a real 2-4 hour total and per-competitor timing for Notion, Todoist, Linear, and Motion.\n"
     printf -- "- Replace every placeholder below with concrete observations and Ship / Defer / Reject decisions before running it.\n\n"
@@ -1867,8 +1868,10 @@ validate_automated_preflight_evidence() {
     set_automated_preflight_evidence_reason "missing VoiceOver candidate context: VoiceOver candidate source commit"
     return 1
   fi
-  if [[ "$voiceover_candidate_source" != "$evidence_commit" ]]; then
-    set_automated_preflight_evidence_reason "VoiceOver candidate source commit mismatch: expected $evidence_commit"
+  local expected_voiceover_candidate_source
+  expected_voiceover_candidate_source="$(manual_release_evidence_source_commit)"
+  if [[ "$voiceover_candidate_source" != "$expected_voiceover_candidate_source" ]]; then
+    set_automated_preflight_evidence_reason "VoiceOver candidate source commit mismatch: expected $expected_voiceover_candidate_source"
     return 1
   fi
 
@@ -2702,7 +2705,7 @@ else
   done
 fi
 if [[ "$competitor_evidence_blocker_count" -gt 0 ]]; then
-  printf "NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass by running ./script/prepare_release_manual_helpers.sh, filling .tmp/competitor-hands-on/hands-on-worksheet.md and .tmp/competitor-hands-on/competitor-benchmark-pending-%s.md, editing/running .tmp/competitor-hands-on/create-evidence-command.sh after replacing placeholders, or running ./script/create_competitor_hands_on_evidence.sh --passed with complete reviewer/date/source/environment context, complete Notion/Todoist/Linear/Motion notes, Ship/Defer/Reject deltas, --benchmark-output docs/product/competitor-benchmark.md, and no pending/template/unchecked markers; the generator also updates docs/product/competitor-benchmark.md from worksheet/desk research to hands-on findings.\n" "$(source_commit)"
+  printf "NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass by running ./script/prepare_release_manual_helpers.sh, filling .tmp/competitor-hands-on/hands-on-worksheet.md and .tmp/competitor-hands-on/competitor-benchmark-pending-%s.md, editing/running .tmp/competitor-hands-on/create-evidence-command.sh after replacing placeholders, or running ./script/create_competitor_hands_on_evidence.sh --passed with complete reviewer/date/source/environment context, complete Notion/Todoist/Linear/Motion notes, Ship/Defer/Reject deltas, --benchmark-output docs/product/competitor-benchmark.md, and no pending/template/unchecked markers; the generator also updates docs/product/competitor-benchmark.md from worksheet/desk research to hands-on findings.\n" "$(manual_release_evidence_source_commit)"
 else
   printf "OK: competitor hands-on evidence covers Notion, Todoist, Linear, Motion, and public alpha scope boundaries\n"
 fi
