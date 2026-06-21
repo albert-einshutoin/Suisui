@@ -398,6 +398,20 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("Could not move task: invalid drag payload."))
     }
 
+    func testDoneWorkflowIsReachableFromSidebarAndExposesReviewActions() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+
+        XCTAssertTrue(workflowSource.contains("case done"))
+        XCTAssertTrue(boardSource.contains("ProjectBoardSidebarDestinationRow(destination: .done"))
+        XCTAssertTrue(boardSource.contains("DoneWorkflowView(viewModel: viewModel)"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-workflow\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-reopen-task-\\(task.id)\")"))
+        XCTAssertTrue(coreSource.contains("public func doneAnalytics("))
+        XCTAssertTrue(coreSource.contains("public func reopenCompletedTask(id: Int64)"))
+    }
+
     func testProjectBoardSupportsPersistentLightDarkAppearanceSelection() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")

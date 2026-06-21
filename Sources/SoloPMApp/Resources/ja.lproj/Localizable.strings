@@ -557,3 +557,14 @@
 "Combines today's local time blocks and unscheduled tasks without writing to Calendar." = "カレンダーへ書き込まず、今日のローカル時間枠と未スケジュールタスクを結合します。";
 "Required before writing reviewed schedule blocks to Calendar." = "確認済みの予定枠をカレンダーへ書き込む前に必要です。";
 "Requires approval and a configured Calendar backend before any external write." = "外部書き込み前に承認と設定済みカレンダーバックエンドが必要です。";
+"Completed Tasks" = "完了タスク";
+"Completed Projects" = "完了プロジェクト";
+"7 Days" = "7日間";
+"Streak" = "連続日数";
+"Recent Completed" = "最近の完了";
+"No completed tasks yet" = "完了タスクはまだありません";
+"Tasks appear here after they are completed." = "タスクを完了するとここに表示されます。";
+"%@ completed at %@" = "%@ で %@ に完了";
+"%@ completed" = "%@ で完了";
+"Reopen" = "再開";
+"Done analytics uses local completed_at history; reopened tasks remain visible in completion history." = "Done分析はローカルのcompleted_at履歴を使います。再開したタスクも完了履歴に残ります。";

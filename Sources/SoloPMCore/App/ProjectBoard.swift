@@ -186,6 +186,7 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
     public var status: ProjectTaskStatus
     public var priority: ProjectTaskPriority
     public var dueAt: String?
+    public var completedAt: String?
 
     public init(
         id: Int64,
@@ -194,7 +195,8 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
         detail: String,
         status: ProjectTaskStatus,
         priority: ProjectTaskPriority,
-        dueAt: String?
+        dueAt: String?,
+        completedAt: String? = nil
     ) {
         self.id = id
         self.projectID = projectID
@@ -203,6 +205,7 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
         self.status = status
         self.priority = priority
         self.dueAt = dueAt
+        self.completedAt = completedAt
     }
 
     public var dueLabel: String? {
@@ -377,6 +380,34 @@ public struct ProjectPortfolioSummary: Identifiable, Equatable, Sendable {
         self.health = health
         self.riskReason = riskReason
         self.localHealthRuleDescription = localHealthRuleDescription
+    }
+}
+
+public struct DoneAnalyticsSummary: Equatable, Sendable {
+    public var completedTaskCount: Int
+    public var completedProjectCount: Int
+    public var completedTodayCount: Int
+    public var completedThisWeekCount: Int
+    public var streakDays: Int
+    public var recentTasks: [ProjectBoardTask]
+    public var localRuleInsight: String
+
+    public init(
+        completedTaskCount: Int,
+        completedProjectCount: Int,
+        completedTodayCount: Int,
+        completedThisWeekCount: Int,
+        streakDays: Int,
+        recentTasks: [ProjectBoardTask],
+        localRuleInsight: String
+    ) {
+        self.completedTaskCount = completedTaskCount
+        self.completedProjectCount = completedProjectCount
+        self.completedTodayCount = completedTodayCount
+        self.completedThisWeekCount = completedThisWeekCount
+        self.streakDays = streakDays
+        self.recentTasks = recentTasks
+        self.localRuleInsight = localRuleInsight
     }
 }
 
@@ -851,7 +882,8 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             detail: record.detail ?? "",
             status: ProjectTaskStatus.normalized(record.status),
             priority: try ProjectTaskPriority.normalized(record.priority, column: "tasks.priority"),
-            dueAt: record.dueAt
+            dueAt: record.dueAt,
+            completedAt: record.completedAt
         )
     }
 
@@ -1249,6 +1281,68 @@ public final class ProjectBoardViewModel: ObservableObject {
                 }
                 return lhs.projectID > rhs.projectID
             }
+    }
+
+    public func doneAnalytics(
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> DoneAnalyticsSummary {
+        let completedProjects = snapshot.projects.filter { !$0.isArchived && $0.isCompleted && !isInboxProject($0) }
+        let historyTasks = snapshot.projects
+            .filter { !$0.isArchived }
+            .flatMap(\.tasks)
+            .filter { task in task.completedAt != nil || task.status == .done }
+        let dayInterval = calendar.dateInterval(of: .day, for: referenceDate)
+        let rollingWeekStart = calendar.date(byAdding: .day, value: -6, to: dayInterval?.start ?? referenceDate) ?? referenceDate
+        let completedTodayCount = historyTasks.filter { task in
+            guard let dayInterval, let completedDate = completedDate(for: task) else {
+                return false
+            }
+            return completedDate >= dayInterval.start && completedDate < dayInterval.end
+        }.count
+        let completedThisWeekCount = historyTasks.filter { task in
+            guard let completedDate = completedDate(for: task) else {
+                return false
+            }
+            return completedDate >= rollingWeekStart && completedDate <= referenceDate
+        }.count
+        let completedDayStarts = Set(historyTasks.compactMap { task -> Date? in
+            guard let completedDate = completedDate(for: task) else {
+                return nil
+            }
+            return calendar.dateInterval(of: .day, for: completedDate)?.start
+        })
+        let streakDays = Self.doneStreakDays(
+            from: completedDayStarts,
+            on: referenceDate,
+            calendar: calendar
+        )
+        let recentTasks = historyTasks
+            .sorted { lhs, rhs in
+                switch (completedDate(for: lhs), completedDate(for: rhs)) {
+                case let (lhsDate?, rhsDate?):
+                    if lhsDate == rhsDate {
+                        return lhs.id > rhs.id
+                    }
+                    return lhsDate > rhsDate
+                case (_?, nil):
+                    return true
+                case (nil, _?):
+                    return false
+                case (nil, nil):
+                    return lhs.id > rhs.id
+                }
+            }
+
+        return DoneAnalyticsSummary(
+            completedTaskCount: historyTasks.count,
+            completedProjectCount: completedProjects.count,
+            completedTodayCount: completedTodayCount,
+            completedThisWeekCount: completedThisWeekCount,
+            streakDays: streakDays,
+            recentTasks: Array(recentTasks.prefix(12)),
+            localRuleInsight: "Done analytics uses local completed_at history; reopened tasks remain visible in completion history."
+        )
     }
 
     @discardableResult
@@ -1844,6 +1938,10 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    public func reopenCompletedTask(id: Int64) {
+        moveTask(id: id, to: .planned)
+    }
+
     @discardableResult
     public func moveDroppedTasks(ids rawIDs: [String], to status: ProjectTaskStatus) -> Bool {
         guard !rawIDs.isEmpty else {
@@ -2266,6 +2364,48 @@ public final class ProjectBoardViewModel: ObservableObject {
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.date(from: rawDueAt)
+    }
+
+    private func completedDate(for task: ProjectBoardTask) -> Date? {
+        guard let rawCompletedAt = task.completedAt else {
+            return nil
+        }
+
+        if let date = ISO8601DateFormatter().date(from: rawCompletedAt) {
+            return date
+        }
+
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        if let date = formatter.date(from: rawCompletedAt) {
+            return date
+        }
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: rawCompletedAt)
+    }
+
+    private static func doneStreakDays(
+        from completedDayStarts: Set<Date>,
+        on referenceDate: Date,
+        calendar: Calendar
+    ) -> Int {
+        guard let referenceDayStart = calendar.dateInterval(of: .day, for: referenceDate)?.start else {
+            return 0
+        }
+
+        var streak = 0
+        var cursor = referenceDayStart
+        while completedDayStarts.contains(cursor) {
+            streak += 1
+            guard let previousDay = calendar.date(byAdding: .day, value: -1, to: cursor) else {
+                break
+            }
+            cursor = previousDay
+        }
+        return streak
     }
 
     private func projectPortfolioSummary(

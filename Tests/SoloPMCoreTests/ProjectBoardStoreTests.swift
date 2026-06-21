@@ -34,6 +34,23 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(plannedTasks.first?.dueLabel, "2026-06-20")
     }
 
+    func testTaskCompletionPersistsCompletedAtMigrationAndSnapshot() throws {
+        let stores = try makeStoreBundle()
+        let columns = try stores.connection.queryRows("PRAGMA table_info(tasks);").compactMap { $0["name"] }
+        let projectID = try XCTUnwrap(stores.board.loadSnapshot().projects.first?.id)
+        let task = try stores.board.createTask(ProjectBoardTaskDraft(
+            projectID: projectID,
+            title: "Ship Done analytics",
+            status: .planned
+        ))
+
+        _ = try stores.board.moveTask(id: task.id, to: .done)
+
+        let completedTask = try XCTUnwrap(stores.board.loadSnapshot().projects.first?.column(.done)?.tasks.first)
+        XCTAssertTrue(columns.contains("completed_at"))
+        XCTAssertNotNil(completedTask.completedAt)
+    }
+
     func testLoadSnapshotShowsUnassignedPersistentTasksInInbox() throws {
         let stores = try makeStoreBundle()
         _ = try stores.projects.create(title: "Launch Readiness")
@@ -125,6 +142,7 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         let renamed = try stores.board.updateProject(id: project.id, title: "Alpha Launch Readiness")
         let completed = try stores.board.completeProject(id: project.id)
+        let completedTasks = try XCTUnwrap(stores.board.loadSnapshot(includeArchived: true).projects.first { $0.id == project.id }?.column(.done)?.tasks)
         let restoresCompletedProject = try stores.board.createTask(ProjectBoardTaskDraft(
             projectID: project.id,
             title: "Restore active status",
@@ -135,6 +153,7 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         XCTAssertEqual(renamed.title, "Alpha Launch Readiness")
         XCTAssertTrue(completed.isCompleted)
+        XCTAssertTrue(completedTasks.allSatisfy { $0.completedAt != nil })
         XCTAssertEqual(restoresCompletedProject.title, "Restore active status")
         XCTAssertTrue(archived.isArchived)
         XCTAssertFalse(restored.isArchived)
@@ -1405,6 +1424,51 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(launchSummary.localHealthRuleDescription, "Local Health prioritizes blocked tasks, then overdue work, then open task progress.")
         XCTAssertEqual(tidySummary.health, .completed)
         XCTAssertEqual(tidySummary.progress, 1.0, accuracy: 0.001)
+    }
+
+    @MainActor
+    func testDoneAnalyticsCalculatesDailyWeeklyCountsAndStreak() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
+            ProjectBoardProject(
+                id: 1,
+                title: "Launch",
+                status: "active",
+                subtitle: "0 open / 3 total",
+                columns: ProjectTaskStatus.allCases.map { status in
+                    ProjectBoardColumn(status: status, tasks: status == .done ? [
+                        ProjectBoardTask(id: 1, projectID: 1, title: "Today", detail: "", status: .done, priority: .medium, dueAt: nil, completedAt: "2026-06-21T08:00:00Z"),
+                        ProjectBoardTask(id: 2, projectID: 1, title: "Yesterday", detail: "", status: .done, priority: .medium, dueAt: nil, completedAt: "2026-06-20T08:00:00Z"),
+                        ProjectBoardTask(id: 3, projectID: 1, title: "Earlier week", detail: "", status: .done, priority: .medium, dueAt: nil, completedAt: "2026-06-18T08:00:00Z")
+                    ] : [])
+                }
+            )
+        ])))
+        viewModel.load()
+
+        let analytics = viewModel.doneAnalytics(on: try isoDate("2026-06-21T09:00:00Z"), calendar: calendar)
+
+        XCTAssertEqual(analytics.completedTaskCount, 3)
+        XCTAssertEqual(analytics.completedTodayCount, 1)
+        XCTAssertEqual(analytics.completedThisWeekCount, 3)
+        XCTAssertEqual(analytics.streakDays, 2)
+        XCTAssertEqual(analytics.recentTasks.map(\.title), ["Today", "Yesterday", "Earlier week"])
+        XCTAssertEqual(analytics.localRuleInsight, "Done analytics uses local completed_at history; reopened tasks remain visible in completion history.")
+    }
+
+    @MainActor
+    func testReopenCompletedTaskMovesToPlannedAndKeepsCompletedHistory() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.snapshot.projects.first)
+        let task = try XCTUnwrap(viewModel.createTask(title: "Review closeout", projectID: project.id, status: .done))
+        let completedAt = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id }?.completedAt)
+
+        viewModel.reopenCompletedTask(id: task.id)
+
+        let reopened = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+        XCTAssertEqual(reopened.status, .planned)
+        XCTAssertEqual(reopened.completedAt, completedAt)
     }
 
     @MainActor

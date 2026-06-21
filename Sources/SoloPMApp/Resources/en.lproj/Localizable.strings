@@ -557,3 +557,14 @@
 "Combines today's local time blocks and unscheduled tasks without writing to Calendar." = "Combines today's local time blocks and unscheduled tasks without writing to Calendar.";
 "Required before writing reviewed schedule blocks to Calendar." = "Required before writing reviewed schedule blocks to Calendar.";
 "Requires approval and a configured Calendar backend before any external write." = "Requires approval and a configured Calendar backend before any external write.";
+"Completed Tasks" = "Completed Tasks";
+"Completed Projects" = "Completed Projects";
+"7 Days" = "7 Days";
+"Streak" = "Streak";
+"Recent Completed" = "Recent Completed";
+"No completed tasks yet" = "No completed tasks yet";
+"Tasks appear here after they are completed." = "Tasks appear here after they are completed.";
+"%@ completed at %@" = "%@ completed at %@";
+"%@ completed" = "%@ completed";
+"Reopen" = "Reopen";
+"Done analytics uses local completed_at history; reopened tasks remain visible in completion history." = "Done analytics uses local completed_at history; reopened tasks remain visible in completion history.";
