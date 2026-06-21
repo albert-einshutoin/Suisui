@@ -30,7 +30,6 @@ RUNTIME_AX_SMOKE_NOTE=""
 CAPTURE_RUNTIME_AX_SMOKE=0
 CONFIRM_MANUAL_PASS=0
 VALIDATE_ONLY=0
-SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
 PROJECT_NAVIGATION_NOTE=""
 PROJECT_BOARD_DETAIL_NOTE=""
 OPEN_TASK_NOTE=""
@@ -41,6 +40,28 @@ SAVE_CHANGES_NOTE=""
 DELETE_CONFIRMATION_NOTE=""
 NO_KEYBOARD_TRAP_NOTE=""
 NO_UNLABELED_CRUD_NOTE=""
+
+release_candidate_source_commit() {
+  local commit
+  # Passed manual evidence is tracked after the pass, so bind it to the
+  # release-candidate runtime/app metadata paths instead of the evidence commit.
+  commit="$(
+    git -C "$ROOT_DIR" log -1 --format=%h -- \
+      Sources/SoloPMApp \
+      Sources/SoloPMCore \
+      Sources/SoloPMCLI \
+      Sources/SoloPMExternalConnectors \
+      Package.swift \
+      packaging/app_metadata.env 2>/dev/null || true
+  )"
+  if [[ -n "$commit" ]]; then
+    printf "%s" "$commit"
+  else
+    git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown"
+  fi
+}
+
+SOURCE_COMMIT="$(release_candidate_source_commit)"
 
 usage() {
   printf '%s\n' "usage: $0 (--pending|--passed|--validate-only) [--output PATH] [--checked-by NAME] [--macos-version VERSION] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--accessibility-environment TEXT] [--runtime-ax-smoke-note TEXT|--capture-runtime-ax-smoke] [--project-navigation-note TEXT] [--project-board-detail-note TEXT] [--open-task-note TEXT] [--inline-task-composer-note TEXT] [--status-controls-note TEXT] [--task-inspector-note TEXT] [--save-changes-note TEXT] [--delete-confirmation-note TEXT] [--no-keyboard-trap-note TEXT] [--no-unlabeled-crud-note TEXT] [--confirm-manual-voiceover-pass]"

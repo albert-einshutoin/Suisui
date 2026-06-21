@@ -2823,8 +2823,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("The release readiness report auto-discovers `.tmp/automated-release-preflight-<commit>.md` for the current source commit when the environment variable is omitted."))
         XCTAssertTrue(checklist.contains("Evidence-file mode requires a clean tracked source tree"))
         XCTAssertTrue(checklist.contains("When the final report reuses this evidence, it verifies the generator identity, UTC timestamp, source commit, clean-tree marker, app name, Xcode workspace/scheme/configuration/destination, every automated proof gate, the runtime AX smoke OK line with `unlabeledButtons=0`, `genericButtons=0`, `crudSignals=8/8`, and `focusPathSignals=6/6`, and the manual-evidence boundary text."))
-        XCTAssertTrue(checklist.contains("Manual VoiceOver and competitor hands-on evidence record the current `Source commit`"))
-        XCTAssertTrue(checklist.contains("rerun `./script/prepare_release_manual_helpers.sh` and then repeat the affected manual passes after code changes instead of reusing evidence from an older release candidate"))
+        XCTAssertTrue(checklist.contains("Manual VoiceOver and competitor hands-on evidence record the current release-candidate product `Source commit`"))
+        XCTAssertTrue(checklist.contains("rerun `./script/prepare_release_manual_helpers.sh` and then repeat the affected manual passes after product source changes instead of reusing evidence from an older release candidate"))
         XCTAssertTrue(checklist.contains("This automated sweep does not replace manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper evidence."))
         XCTAssertTrue(checklist.contains("The final readiness report treats skipped automated proof gates as blockers by default."))
         XCTAssertTrue(checklist.contains("Do not claim release readiness from the default report output if CI, SQLite CRUD, runtime accessible CRUD, Xcode build, visible launch, or runtime AX were skipped."))
@@ -3292,7 +3292,7 @@ final class ReleasePipelineTests: XCTestCase {
         try FileManager.default.createDirectory(at: callsDirectory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: fixtureRoot) }
 
-        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let currentShortCommit = try manualReleaseEvidenceSourceCommit()
         let voiceOverDirectory = fixtureRoot
             .appendingPathComponent(".tmp", isDirectory: true)
             .appendingPathComponent("voiceover-review", isDirectory: true)
@@ -3462,7 +3462,7 @@ final class ReleasePipelineTests: XCTestCase {
             try? FileManager.default.removeItem(at: validateOnlyURL)
             try? FileManager.default.removeItem(at: runtimeAXSmokeScriptURL)
         }
-        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let currentShortCommit = try manualReleaseEvidenceSourceCommit()
 
         let pendingResult = try runScript(
             "script/create_voiceover_evidence.sh",
@@ -3975,7 +3975,7 @@ final class ReleasePipelineTests: XCTestCase {
 
     func testVoiceOverPendingDefaultsUseIgnoredCurrentCommitPreview() throws {
         let root = packageRoot()
-        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let currentShortCommit = try manualReleaseEvidenceSourceCommit()
         let trackedEvidenceURL = root
             .appendingPathComponent("docs/release/evidence/accessibility-voiceover.md")
         let defaultPendingURL = root
@@ -4126,7 +4126,7 @@ final class ReleasePipelineTests: XCTestCase {
             .appendingPathComponent("docs/product/competitor-benchmark.md")
         let originalEvidence = try String(contentsOf: trackedEvidenceURL, encoding: .utf8)
         let originalBenchmark = try String(contentsOf: trackedBenchmarkURL, encoding: .utf8)
-        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let currentShortCommit = try manualReleaseEvidenceSourceCommit()
         let pendingURL = packageRoot()
             .appendingPathComponent(".tmp/competitor-hands-on/competitor-hands-on-pending-\(currentShortCommit).md")
         let pendingBenchmarkURL = packageRoot()
@@ -4203,7 +4203,7 @@ final class ReleasePipelineTests: XCTestCase {
                 try? removeItemIfPresent(at: artifactURL)
             }
         }
-        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let currentShortCommit = try manualReleaseEvidenceSourceCommit()
         let handsOnDuration = "2h 15m total: Notion 35m, Todoist 30m, Linear 35m, Motion 35m"
 
         let pendingResult = try runScript(
@@ -4268,7 +4268,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(generatedCommand.contains("REPO_ROOT="))
         XCTAssertTrue(generatedCommand.contains("cd \"$REPO_ROOT\""))
         XCTAssertTrue(generatedCommand.contains("EXPECTED_SOURCE_COMMIT=\(currentShortCommit)"))
-        XCTAssertTrue(generatedCommand.contains("CURRENT_SOURCE_COMMIT=\"$(git rev-parse --short HEAD 2>/dev/null || printf unknown)\""))
+        XCTAssertTrue(generatedCommand.contains("CURRENT_SOURCE_COMMIT=\"$(release_candidate_source_commit)\""))
         XCTAssertTrue(generatedCommand.contains("TRACKED_SOURCE_STATUS=\"$(git status --porcelain --untracked-files=no)\""))
         XCTAssertTrue(generatedCommand.contains("competitor hands-on evidence command requires a clean tracked source tree"))
         XCTAssertTrue(generatedCommand.contains("competitor hands-on evidence command was generated for source commit"))
@@ -5010,7 +5010,7 @@ final class ReleasePipelineTests: XCTestCase {
         let result = try runTool(["bash", reportURL.path])
 
         XCTAssertNotEqual(result.exitCode, 0)
-        XCTAssertFalse(result.output.contains("Competitor benchmark source commit does not match current git commit"))
+        XCTAssertFalse(result.output.contains("Competitor benchmark source commit does not match current release-candidate source commit"))
         XCTAssertFalse(result.output.contains("Competitor benchmark still reads as desk research or a hands-on worksheet"))
         XCTAssertFalse(result.output.contains("Competitor benchmark missing hands-on marker"))
         XCTAssertTrue(result.output.contains("OK: competitor hands-on evidence covers Notion, Todoist, Linear, Motion, and public alpha scope boundaries"))
@@ -5114,8 +5114,8 @@ final class ReleasePipelineTests: XCTestCase {
         let result = try runTool(["bash", reportURL.path])
 
         XCTAssertNotEqual(result.exitCode, 0)
-        XCTAssertTrue(result.output.contains("Competitor benchmark source commit does not match current git commit"))
-        XCTAssertFalse(result.output.contains("Competitor hands-on evidence source commit does not match current git commit"))
+        XCTAssertTrue(result.output.contains("Competitor benchmark source commit does not match current release-candidate source commit"))
+        XCTAssertFalse(result.output.contains("Competitor hands-on evidence source commit does not match current release-candidate source commit"))
         XCTAssertFalse(result.output.contains("Competitor benchmark still reads as desk research or a hands-on worksheet"))
         XCTAssertFalse(result.output.contains("Competitor benchmark missing hands-on marker"))
     }
@@ -5249,11 +5249,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("printf 'SOLOPM_VOICEOVER_REVIEW_PROJECT_ID=%q\\n' \"$seed_project_id\""))
         XCTAssertTrue(script.contains("write_voiceover_evidence_command()"))
         XCTAssertTrue(script.contains("# This command must fail if placeholders are not replaced."))
-        XCTAssertTrue(script.contains("SOURCE_COMMIT=\"$(git -C \"$ROOT_DIR\" rev-parse --short HEAD 2>/dev/null || printf \"unknown\")\""))
+        XCTAssertTrue(script.contains("release_candidate_source_commit()"))
         XCTAssertTrue(script.contains("REPO_ROOT=%q"))
         XCTAssertTrue(script.contains("cd \"$REPO_ROOT\""))
         XCTAssertTrue(script.contains("EXPECTED_SOURCE_COMMIT=%q"))
-        XCTAssertTrue(script.contains("CURRENT_SOURCE_COMMIT=\"$(git rev-parse --short HEAD 2>/dev/null || printf unknown)\""))
+        XCTAssertTrue(script.contains("CURRENT_SOURCE_COMMIT=\"$(release_candidate_source_commit)\""))
         XCTAssertTrue(script.contains("TRACKED_SOURCE_STATUS=\"$(git status --porcelain --untracked-files=no)\""))
         XCTAssertTrue(script.contains("VoiceOver evidence command requires a clean tracked source tree"))
         XCTAssertTrue(script.contains("VoiceOver evidence command was generated for source commit"))
@@ -6129,7 +6129,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("focusPathSignals=6/6"))
         XCTAssertTrue(script.contains("Generated by: script/create_voiceover_evidence.sh"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence was not generated by script/create_voiceover_evidence.sh"))
-        XCTAssertTrue(script.contains("VoiceOver accessibility evidence source commit does not match current git commit"))
+        XCTAssertTrue(script.contains("VoiceOver accessibility evidence source commit does not match current release-candidate source commit"))
         XCTAssertTrue(script.contains("packaging/app_metadata.env"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence bundle identifier does not match packaging metadata"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence app build does not match packaging metadata"))
@@ -6156,8 +6156,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Competitor hands-on evidence still contains unchecked checklist markers"))
         XCTAssertTrue(script.contains("Generated by: script/create_competitor_hands_on_evidence.sh"))
         XCTAssertTrue(script.contains("Competitor hands-on evidence was not generated by script/create_competitor_hands_on_evidence.sh"))
-        XCTAssertTrue(script.contains("Competitor hands-on evidence source commit does not match current git commit"))
-        XCTAssertTrue(script.contains("Competitor benchmark source commit does not match current git commit"))
+        XCTAssertTrue(script.contains("Competitor hands-on evidence source commit does not match current release-candidate source commit"))
+        XCTAssertTrue(script.contains("Competitor benchmark source commit does not match current release-candidate source commit"))
         XCTAssertTrue(script.contains("Competitor benchmark still reads as desk research or a hands-on worksheet"))
         XCTAssertTrue(script.contains("macOS/browser versions|competitor app/account tiers|whether any paid trial"))
         XCTAssertTrue(script.contains("NEXT: replace docs/release/evidence/competitor-hands-on.md with a real 2-4 hour hands-on pass"))
@@ -6243,7 +6243,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("## Manual VoiceOver Blockers"))
         XCTAssertTrue(script.contains("## Competitor Hands-On Blockers"))
         XCTAssertTrue(script.contains("release environment blocker contained a sensitive field"))
-        XCTAssertTrue(phase.contains("[x] VoiceOver / competitor hands-on の手動証跡は `Source commit` を記録し、`Status: passed` の場合は現在の git commit と一致しない証跡をrelease blockerにする。"))
+        XCTAssertTrue(phase.contains("[x] VoiceOver / competitor hands-on の手動証跡は `Source commit` を記録し、`Status: passed` の場合は現在のrelease-candidate product source commitと一致しない証跡をrelease blockerにする。"))
         XCTAssertTrue(phase.contains("[x] competitor benchmark の `Source commit` も `Status: passed` の competitor hands-on 証跡と同じrelease候補commitであることをrelease blockerにする。"))
         XCTAssertTrue(phase.contains("[x] UI screenshot証跡は `Sources/SoloPMApp` / `Sources/SoloPMCore` / `Package.swift` の最新UI source commitを記録し"))
         XCTAssertTrue(script.contains("Blocker groups:"))
@@ -8057,9 +8057,9 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence has future release context date: Check date"))
-        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence source commit does not match current git commit"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence source commit does not match current release-candidate source commit"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence has future review context date: Check date"))
-        XCTAssertTrue(result.output.contains("Competitor hands-on evidence source commit does not match current git commit"))
+        XCTAssertTrue(result.output.contains("Competitor hands-on evidence source commit does not match current release-candidate source commit"))
         XCTAssertFalse(result.output.contains("VoiceOver accessibility evidence missing concrete focus note"))
         XCTAssertFalse(result.output.contains("Competitor hands-on evidence missing concrete note"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
@@ -8335,8 +8335,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence was not generated by script/create_voiceover_evidence.sh"))
         XCTAssertTrue(result.output.contains("Competitor hands-on evidence was not generated by script/create_competitor_hands_on_evidence.sh"))
-        XCTAssertFalse(result.output.contains("VoiceOver accessibility evidence source commit does not match current git commit"))
-        XCTAssertFalse(result.output.contains("Competitor hands-on evidence source commit does not match current git commit"))
+        XCTAssertFalse(result.output.contains("VoiceOver accessibility evidence source commit does not match current release-candidate source commit"))
+        XCTAssertFalse(result.output.contains("Competitor hands-on evidence source commit does not match current release-candidate source commit"))
         XCTAssertFalse(result.output.contains("VoiceOver accessibility evidence missing concrete focus note"))
         XCTAssertFalse(result.output.contains("Competitor hands-on evidence missing concrete note"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
@@ -9362,6 +9362,31 @@ final class ReleasePipelineTests: XCTestCase {
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         XCTAssertEqual(process.terminationStatus, 0, output)
         return output
+    }
+
+    private func manualReleaseEvidenceSourceCommit() throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = [
+            "git", "-C", packageRoot().path,
+            "log", "-1", "--format=%h", "--",
+            "Sources/SoloPMApp",
+            "Sources/SoloPMCore",
+            "Sources/SoloPMCLI",
+            "Sources/SoloPMExternalConnectors",
+            "Package.swift",
+            "packaging/app_metadata.env"
+        ]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        try process.run()
+        process.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        XCTAssertEqual(process.terminationStatus, 0, output)
+        return output.isEmpty ? String(try currentGitCommit().prefix(7)) : output
     }
 
     private func writeArtifactChecksum(

@@ -19,7 +19,28 @@ DEFAULT_DATABASE_PATH="$ROOT_DIR/.tmp/voiceover-review/SoloPM-voiceover-review.s
 VOICEOVER_REVIEW_ARTIFACT_PATH="$ROOT_DIR/docs/release/evidence/accessibility-voiceover.md"
 TIMEOUT_SECONDS="${SOLOPM_VOICEOVER_REVIEW_TIMEOUT_SECONDS:-30}"
 SQLITE3="${SQLITE3:-sqlite3}"
-SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
+
+release_candidate_source_commit() {
+  local commit
+  # The VoiceOver pass targets the built release candidate. Evidence/helper
+  # files may be committed later, so use product source paths instead of HEAD.
+  commit="$(
+    git -C "$ROOT_DIR" log -1 --format=%h -- \
+      Sources/SoloPMApp \
+      Sources/SoloPMCore \
+      Sources/SoloPMCLI \
+      Sources/SoloPMExternalConnectors \
+      Package.swift \
+      packaging/app_metadata.env 2>/dev/null || true
+  )"
+  if [[ -n "$commit" ]]; then
+    printf "%s" "$commit"
+  else
+    git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown"
+  fi
+}
+
+SOURCE_COMMIT="$(release_candidate_source_commit)"
 
 database_path="$DEFAULT_DATABASE_PATH"
 launch_app=1
@@ -192,7 +213,12 @@ write_voiceover_evidence_command() {
     printf '%s\n' 'fi'
     printf '\n'
     printf 'EXPECTED_SOURCE_COMMIT=%q\n' "$SOURCE_COMMIT"
-    printf '%s\n' 'CURRENT_SOURCE_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || printf unknown)"'
+    printf '%s\n' 'release_candidate_source_commit() {'
+    printf '%s\n' '  local commit'
+    printf '%s\n' '  commit="$(git log -1 --format=%h -- Sources/SoloPMApp Sources/SoloPMCore Sources/SoloPMCLI Sources/SoloPMExternalConnectors Package.swift packaging/app_metadata.env 2>/dev/null || true)"'
+    printf '%s\n' '  if [[ -n "$commit" ]]; then printf "%s" "$commit"; else git rev-parse --short HEAD 2>/dev/null || printf unknown; fi'
+    printf '%s\n' '}'
+    printf '%s\n' 'CURRENT_SOURCE_COMMIT="$(release_candidate_source_commit)"'
     printf '%s\n' 'if [[ "$CURRENT_SOURCE_COMMIT" != "$EXPECTED_SOURCE_COMMIT" ]]; then'
     printf '%s\n' '  printf "BLOCKER: VoiceOver evidence command was generated for source commit %s but current source commit is %s. Rerun ./script/prepare_voiceover_review_candidate.sh for this release candidate.\n" "$EXPECTED_SOURCE_COMMIT" "$CURRENT_SOURCE_COMMIT" >&2'
     printf '%s\n' '  exit 2'
