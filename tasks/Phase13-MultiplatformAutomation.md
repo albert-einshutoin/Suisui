@@ -54,11 +54,11 @@
 
 ## P13-005: Web app MVP
 
-- [ ] Web frontend / backend boundaryを決める。
-- [ ] Task board / list / Project docs / conversation / automation reviewを実装する。
-- [ ] Account / billing / devices / relay tokens の管理画面を設計する。
-- [ ] Webから実行できないOS-bound actionを明示するUIを作る。
-- [ ] 完了条件: Webから基本タスク管理とCloud Relay管理ができる。
+- [x] Web frontend / backend boundaryを決める。
+- [x] Task board / list / Project docs / conversation / automation reviewを実装する。
+- [x] Account / billing / devices / relay tokens の管理画面を設計する。
+- [x] Webから実行できないOS-bound actionを明示するUIを作る。
+- [x] 完了条件: Webから基本タスク管理とCloud Relay管理ができる。
 
 ## P13-006: Cloud Relay and Hosted MCP
 
@@ -99,5 +99,5 @@
 - [x] `swift test --filter GeminiDirectProviderTests`
 - [x] Hosted MCP / Cloud Relay schema tests
 - [x] iOS target build
-- [ ] Web app unit/e2e tests
+- [x] Web app unit/e2e tests
 - [x] Harness scenario smoke

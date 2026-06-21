@@ -18,6 +18,10 @@ let package = Package(
             name: "SoloPMiOS",
             targets: ["SoloPMiOS"]
         ),
+        .library(
+            name: "SoloPMWeb",
+            targets: ["SoloPMWeb"]
+        ),
         .executable(
             name: "SoloPM",
             targets: ["SoloPM"]
@@ -50,6 +54,11 @@ let package = Package(
             dependencies: ["SoloPMCore"],
             path: "Sources/SoloPMiOS"
         ),
+        .target(
+            name: "SoloPMWeb",
+            dependencies: ["SoloPMCore"],
+            path: "Sources/SoloPMWeb"
+        ),
         .executableTarget(
             name: "SoloPM",
             dependencies: [
@@ -68,7 +77,7 @@ let package = Package(
         ),
         .testTarget(
             name: "SoloPMCoreTests",
-            dependencies: ["SoloPMCore", "SoloPMExternalConnectors"],
+            dependencies: ["SoloPMCore", "SoloPMExternalConnectors", "SoloPMWeb"],
             resources: [
                 .process("Fixtures")
             ]
