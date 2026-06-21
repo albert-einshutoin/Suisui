@@ -786,6 +786,11 @@ write_automated_proof_gate_actions() {
     printf -- "- Source commit: \`%s\`\n" "$(automated_preflight_context_value "Source commit")"
     printf -- "- Generated at: \`%s\`\n" "$(automated_preflight_context_value "Generated at")"
     printf -- "- Runtime AX smoke: \`%s\`\n" "$(automated_preflight_context_value "Runtime AX smoke")"
+    printf -- "- VoiceOver candidate: source \`%s\`, project \`%s\`, destination \`%s\`\n" \
+      "$(automated_preflight_context_value "VoiceOver candidate source commit")" \
+      "$(automated_preflight_context_value "VoiceOver candidate project ID")" \
+      "$(automated_preflight_context_value "VoiceOver candidate selected destination")"
+    printf -- "- VoiceOver candidate database: \`%s\`\n" "$(automated_preflight_context_value "VoiceOver candidate database")"
     printf -- "- This proves local automated gates only; it does not mark manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper checks as passed.\n"
     for required_gate in "${AUTOMATED_PREFLIGHT_REQUIRED_GATES[@]}"; do
       printf -- "- [x] %s: passed\n" "$required_gate"
@@ -1824,6 +1829,39 @@ validate_automated_preflight_evidence() {
       return 1
     fi
   done
+
+  local voiceover_candidate_source voiceover_candidate_project voiceover_candidate_database voiceover_candidate_destination
+  voiceover_candidate_source="$(automated_preflight_context_value "VoiceOver candidate source commit")"
+  if [[ -z "$(tr -d '[:space:]' <<<"$voiceover_candidate_source")" ]]; then
+    set_automated_preflight_evidence_reason "missing VoiceOver candidate context: VoiceOver candidate source commit"
+    return 1
+  fi
+  if [[ "$voiceover_candidate_source" != "$evidence_commit" ]]; then
+    set_automated_preflight_evidence_reason "VoiceOver candidate source commit mismatch: expected $evidence_commit"
+    return 1
+  fi
+
+  voiceover_candidate_project="$(automated_preflight_context_value "VoiceOver candidate project ID")"
+  if [[ -z "$(tr -d '[:space:]' <<<"$voiceover_candidate_project")" ]]; then
+    set_automated_preflight_evidence_reason "missing VoiceOver candidate context: VoiceOver candidate project ID"
+    return 1
+  fi
+
+  voiceover_candidate_database="$(automated_preflight_context_value "VoiceOver candidate database")"
+  if [[ -z "$(tr -d '[:space:]' <<<"$voiceover_candidate_database")" ]]; then
+    set_automated_preflight_evidence_reason "missing VoiceOver candidate context: VoiceOver candidate database"
+    return 1
+  fi
+
+  voiceover_candidate_destination="$(automated_preflight_context_value "VoiceOver candidate selected destination")"
+  if [[ -z "$(tr -d '[:space:]' <<<"$voiceover_candidate_destination")" ]]; then
+    set_automated_preflight_evidence_reason "missing VoiceOver candidate context: VoiceOver candidate selected destination"
+    return 1
+  fi
+  if [[ "$voiceover_candidate_destination" != "project:$voiceover_candidate_project" ]]; then
+    set_automated_preflight_evidence_reason "VoiceOver candidate destination mismatch: expected project:$voiceover_candidate_project"
+    return 1
+  fi
 
   if ! grep -Fx -- "- This does not mark the release ready." "$AUTOMATED_PREFLIGHT_EVIDENCE_PATH" >/dev/null; then
     set_automated_preflight_evidence_reason "missing release-readiness boundary"

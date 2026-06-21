@@ -12,6 +12,10 @@ AUTOMATED_PREFLIGHT_EVIDENCE_FILE="${SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE:-}
 REFRESH_MANUAL_HELPERS="${SOLOPM_REFRESH_MANUAL_HELPERS:-1}"
 APP_NAME="SoloPM"
 RUNTIME_AX_SMOKE_OUTPUT=""
+VOICEOVER_CANDIDATE_SOURCE_COMMIT=""
+VOICEOVER_CANDIDATE_PROJECT_ID=""
+VOICEOVER_CANDIDATE_DATABASE=""
+VOICEOVER_CANDIDATE_SELECTED_DESTINATION=""
 
 if [[ -f "$METADATA_FILE" ]]; then
   # shellcheck source=/dev/null
@@ -94,6 +98,10 @@ Xcode workspace: $XCODE_WORKSPACE_RELATIVE
 Xcode scheme: $XCODE_SCHEME
 Xcode configuration: $XCODE_CONFIGURATION
 Xcode destination: $XCODE_DESTINATION
+VoiceOver candidate source commit: $VOICEOVER_CANDIDATE_SOURCE_COMMIT
+VoiceOver candidate project ID: $VOICEOVER_CANDIDATE_PROJECT_ID
+VoiceOver candidate database: $VOICEOVER_CANDIDATE_DATABASE
+VoiceOver candidate selected destination: $VOICEOVER_CANDIDATE_SELECTED_DESTINATION
 
 ## Passed Gates
 
@@ -118,6 +126,32 @@ Runtime AX smoke: $RUNTIME_AX_SMOKE_OUTPUT
 EOF
 
   printf "Automated release preflight evidence written to %s\n" "$evidence_file"
+}
+
+capture_voiceover_candidate_context() {
+  local launch_env_file="$ROOT_DIR/.tmp/voiceover-review/launch.env"
+
+  if [[ ! -f "$launch_env_file" ]]; then
+    echo "BLOCKER: VoiceOver candidate launch env was not generated: $launch_env_file" >&2
+    exit 2
+  fi
+
+  # Source the generated launch env instead of re-deriving values so the evidence
+  # records the exact seeded candidate used by the runtime AX smoke gate.
+  # shellcheck source=/dev/null
+  source "$launch_env_file"
+  VOICEOVER_CANDIDATE_SOURCE_COMMIT="${SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT:-}"
+  VOICEOVER_CANDIDATE_PROJECT_ID="${SOLOPM_VOICEOVER_REVIEW_PROJECT_ID:-}"
+  VOICEOVER_CANDIDATE_DATABASE="${SOLOPM_DATABASE_PATH:-}"
+  VOICEOVER_CANDIDATE_SELECTED_DESTINATION="${SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION:-}"
+
+  if [[ -z "${VOICEOVER_CANDIDATE_SOURCE_COMMIT//[[:space:]]/}" ||
+    -z "${VOICEOVER_CANDIDATE_PROJECT_ID//[[:space:]]/}" ||
+    -z "${VOICEOVER_CANDIDATE_DATABASE//[[:space:]]/}" ||
+    -z "${VOICEOVER_CANDIDATE_SELECTED_DESTINATION//[[:space:]]/}" ]]; then
+    echo "BLOCKER: VoiceOver candidate launch env is missing source/project/database/destination context" >&2
+    exit 2
+  fi
 }
 
 terminate_app() {
@@ -180,6 +214,7 @@ section "Launch preflight"
 
 section "Runtime accessibility candidate"
 ./script/prepare_voiceover_review_candidate.sh --skip-build
+capture_voiceover_candidate_context
 
 section "Runtime accessibility preflight"
 set +e
