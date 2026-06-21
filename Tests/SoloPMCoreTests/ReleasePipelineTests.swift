@@ -362,6 +362,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(runbook.contains("generator.name: script/create_release_evidence.sh"))
         XCTAssertTrue(runbook.contains("SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=\"$automated_evidence\" ./script/release_readiness_report.sh"))
         XCTAssertTrue(report.contains("check_manual_unblocker_runbook_freshness()"))
+        XCTAssertTrue(report.contains("OK: manual unblocker runbook avoids hardcoded release-candidate paths"))
         XCTAssertTrue(report.contains("manual unblocker runbook hardcodes automated preflight evidence"))
         XCTAssertTrue(report.contains("manual unblocker runbook hardcodes release-candidate source commit"))
 

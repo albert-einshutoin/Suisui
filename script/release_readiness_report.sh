@@ -239,6 +239,7 @@ blocker() {
 
 check_manual_unblocker_runbook_freshness() {
   local runbook="$ROOT_DIR/docs/release/manual-unblockers.md"
+  local freshness_blockers=0
 
   if [[ ! -f "$runbook" ]]; then
     blocker "missing manual unblocker runbook: docs/release/manual-unblockers.md"
@@ -246,15 +247,22 @@ check_manual_unblocker_runbook_freshness() {
   fi
 
   if grep -Eq 'automated-release-preflight-[[:xdigit:]]{7,}\.md' "$runbook"; then
+    freshness_blockers=$((freshness_blockers + 1))
     blocker "manual unblocker runbook hardcodes automated preflight evidence; derive it from git rev-parse --short HEAD"
   fi
 
   if grep -Eq 'Current release-candidate source commit: `[[:xdigit:]]{7,}`' "$runbook"; then
+    freshness_blockers=$((freshness_blockers + 1))
     blocker "manual unblocker runbook hardcodes release-candidate source commit; use the latest action summary and generated helper paths"
   fi
 
   if grep -Eq 'pending-[[:xdigit:]]{7,}\.md' "$runbook"; then
+    freshness_blockers=$((freshness_blockers + 1))
     blocker "manual unblocker runbook hardcodes generated pending helper paths; use <release-candidate-source-commit> placeholders"
+  fi
+
+  if [[ "$freshness_blockers" -eq 0 ]]; then
+    printf "OK: manual unblocker runbook avoids hardcoded release-candidate paths\n"
   fi
 }
 
