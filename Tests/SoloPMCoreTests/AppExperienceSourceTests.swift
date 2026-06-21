@@ -269,16 +269,24 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("Text(LocalizedStringKey(plan.recommendationReason))"))
         XCTAssertTrue(appSource.contains("localizedSettingsDisplay(statusLabel)"))
         XCTAssertTrue(coreBoardSource.contains("String(localized: \"Kept \\\"%@\\\" as a task.\")"))
+        XCTAssertTrue(coreBoardSource.contains("String(localized: \"Review unblock plan\")"))
+        XCTAssertTrue(coreBoardSource.contains("String(localized: \"Review next action\")"))
+        XCTAssertTrue(coreBoardSource.contains("String(localized: \"Start with %@, then check milestone %@.\")"))
+        XCTAssertTrue(coreBoardSource.contains("String(localized: \"No open tasks or milestones need attention.\")"))
 
         XCTAssertFalse(boardSource.contains("Text(project.isArchived ? \"Archived\" : \"\\(project.taskCount) tasks\")"))
         XCTAssertFalse(boardSource.contains("return \"\\(task.title) is blocked. Resolve it before adding more work.\""))
         XCTAssertFalse(workflowSource.contains("Text(plan.recommendationReason)"))
         XCTAssertFalse(appSource.contains("Label(syncUnavailableLabel, systemImage: \"lock\")"))
+        XCTAssertFalse(coreBoardSource.contains("return \"Start with \\(task.title).\""))
+        XCTAssertFalse(coreBoardSource.contains("return \"No open tasks or milestones need attention.\""))
 
         XCTAssertTrue(japaneseKeys.contains("%@ is blocked. Resolve it before adding more work."))
         XCTAssertTrue(japaneseKeys.contains(#"Kept \"%@\" as a task."#))
         XCTAssertTrue(japaneseKeys.contains("Plan: %@"))
         XCTAssertTrue(japaneseKeys.contains("Smoke: %@"))
+        XCTAssertTrue(japaneseKeys.contains("Review unblock plan"))
+        XCTAssertTrue(japaneseKeys.contains("Start with %@, then check milestone %@."))
     }
 
     func testThemePickerIsOwnedOnlyBySettingsAppearanceSectionAcrossAppSources() throws {
@@ -789,6 +797,26 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("SQLiteArtifactStore(connection: connection)"))
     }
 
+    func testProjectDetailSurfacesMilestonesTimelineAndAssistantWithoutDroppingExistingSections() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+
+        XCTAssertTrue(source.contains("ProjectMilestoneSection(project: project, viewModel: viewModel)"))
+        XCTAssertTrue(source.contains("ProjectAssistantPanel(project: project, viewModel: viewModel)"))
+        XCTAssertTrue(source.contains("ProjectArtifactSection(project: project, viewModel: viewModel)"))
+        XCTAssertTrue(source.contains("ProjectLocalSuggestionPanel(project: project, viewModel: viewModel)"))
+        XCTAssertTrue(source.contains("project.milestones"))
+        XCTAssertTrue(source.contains("case .milestone"))
+        XCTAssertTrue(source.contains("viewModel.createProjectMilestone"))
+        XCTAssertTrue(source.contains("viewModel.answerProjectAssistantQuestion"))
+        XCTAssertTrue(source.contains("viewModel.prepareProjectAssistantSuggestedActionForReview"))
+        XCTAssertFalse(source.contains("moveTask(id: suggestedTask.id, to: .inProgress)"))
+
+        XCTAssertTrue(coreSource.contains("public struct ProjectBoardMilestone"))
+        XCTAssertTrue(coreSource.contains("public var milestones: [ProjectBoardMilestone]"))
+        XCTAssertTrue(coreSource.contains("ProjectAssistantReviewDraft"))
+    }
+
     func testTaskInspectorGroupsEditingDeletionAndSuggestionApplication() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
@@ -933,9 +961,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-overview-add-task\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-local-suggestion-open-task\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Opens the suggested task in the inspector.\")"))
-        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-local-suggestion-unblock-task\")"))
-        XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Moves the suggested blocked task back to In Progress in the local database.\")"))
-        XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Project timeline item \\(task.title)\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-local-suggestion-review-action\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Prepares the suggested blocked task action for review without writing task status.\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Project timeline item \\(item.title)\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Track artifact path\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Track artifact link\")"))
         XCTAssertTrue(audit.contains("Project OverviewのTask snapshot、Local Suggestions、Artifactsはaccessibility identifier / label / hint付きのCRUD入口になっている"))

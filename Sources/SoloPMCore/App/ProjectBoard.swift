@@ -82,6 +82,7 @@ public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
     public var subtitle: String
     public var columns: [ProjectBoardColumn]
     public var artifacts: [ProjectBoardArtifact]
+    public var milestones: [ProjectBoardMilestone]
 
     public init(
         id: Int64,
@@ -89,7 +90,8 @@ public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
         status: String = "active",
         subtitle: String,
         columns: [ProjectBoardColumn],
-        artifacts: [ProjectBoardArtifact] = []
+        artifacts: [ProjectBoardArtifact] = [],
+        milestones: [ProjectBoardMilestone] = []
     ) {
         self.id = id
         self.title = title
@@ -97,6 +99,7 @@ public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
         self.subtitle = subtitle
         self.columns = columns
         self.artifacts = artifacts
+        self.milestones = milestones
     }
 
     public var taskCount: Int {
@@ -113,6 +116,11 @@ public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
 
     public var isArchived: Bool {
         status == "archived"
+    }
+
+    public var milestoneSummary: String {
+        let completedCount = milestones.filter(\.isCompleted).count
+        return "\(completedCount)/\(milestones.count) milestones complete"
     }
 }
 
@@ -138,6 +146,22 @@ public struct ProjectBoardArtifact: Identifiable, Equatable, Sendable {
         self.expectedPath = expectedPath
         self.createdState = createdState
         self.lastModifiedAt = lastModifiedAt
+    }
+}
+
+public struct ProjectBoardMilestone: Identifiable, Equatable, Sendable {
+    public var id: Int64
+    public var projectID: Int64
+    public var title: String
+    public var dueAt: String?
+    public var isCompleted: Bool
+
+    public init(id: Int64, projectID: Int64, title: String, dueAt: String?, isCompleted: Bool) {
+        self.id = id
+        self.projectID = projectID
+        self.title = title
+        self.dueAt = dueAt
+        self.isCompleted = isCompleted
     }
 }
 
@@ -334,6 +358,34 @@ public struct ProjectPortfolioSummary: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct ProjectAssistantAnswer: Equatable, Sendable {
+    public var projectID: Int64
+    public var question: String
+    public var message: String
+    public var suggestedActionTitle: String
+    public var requiresReview: Bool
+
+    public init(projectID: Int64, question: String, message: String, suggestedActionTitle: String, requiresReview: Bool) {
+        self.projectID = projectID
+        self.question = question
+        self.message = message
+        self.suggestedActionTitle = suggestedActionTitle
+        self.requiresReview = requiresReview
+    }
+}
+
+public struct ProjectAssistantReviewDraft: Equatable, Sendable {
+    public var projectID: Int64
+    public var suggestedActionTitle: String
+    public var summary: String
+
+    public init(projectID: Int64, suggestedActionTitle: String, summary: String) {
+        self.projectID = projectID
+        self.suggestedActionTitle = suggestedActionTitle
+        self.summary = summary
+    }
+}
+
 public struct InboxClassificationFeedback: Equatable, Sendable {
     public var message: String
     public var systemImage: String
@@ -422,6 +474,9 @@ public protocol ProjectBoardStore {
     func deleteTask(id: Int64) throws
     func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact
     func deleteProjectArtifact(id: Int64) throws
+    func createProjectMilestone(projectID: Int64, title: String, dueAt: String?) throws -> ProjectBoardMilestone
+    func updateProjectMilestone(id: Int64, title: String, dueAt: String?, isCompleted: Bool) throws -> ProjectBoardMilestone
+    func deleteProjectMilestone(id: Int64) throws
 }
 
 public extension ProjectBoardStore {
@@ -446,12 +501,14 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     private let projectStore: SQLiteProjectStore
     private let taskStore: SQLiteTaskStore
     private let artifactStore: SQLiteArtifactStore
+    private let milestoneStore: SQLiteProjectMilestoneStore
 
     public init(connection: SQLiteConnection) {
         self.connection = connection
         self.projectStore = SQLiteProjectStore(connection: connection)
         self.taskStore = SQLiteTaskStore(connection: connection)
         self.artifactStore = SQLiteArtifactStore(connection: connection)
+        self.milestoneStore = SQLiteProjectMilestoneStore(connection: connection)
     }
 
     public convenience init(path: String, migrations: [DatabaseMigration] = CoreMigrations.current) throws {
@@ -468,7 +525,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         let boardData = try loadBoardData(includeArchived: includeArchived)
 
         let boardProjects = boardData.projects.map {
-            makeBoardProject(project: $0, tasks: boardData.tasks, artifacts: boardData.artifacts)
+            makeBoardProject(project: $0, tasks: boardData.tasks, artifacts: boardData.artifacts, milestones: boardData.milestones)
         }
 
         return ProjectBoardSnapshot(projects: boardProjects)
@@ -486,28 +543,28 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         let normalizedTitle = try normalizedProjectTitle(title)
         let record = try projectStore.updateTitleForProjectBoard(id: id, title: normalizedTitle)
         let boardData = try loadBoardData(includeArchived: true)
-        return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts)
+        return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts, milestones: boardData.milestones)
     }
 
     @discardableResult
     public func completeProject(id: Int64) throws -> ProjectBoardProject {
         let record = try projectStore.completeForProjectBoard(id: id, taskStore: taskStore)
         let boardData = try loadBoardData(includeArchived: true)
-        return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts)
+        return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts, milestones: boardData.milestones)
     }
 
     @discardableResult
     public func archiveProject(id: Int64) throws -> ProjectBoardProject {
         let record = try projectStore.updateStatusForProjectBoard(id: id, status: "archived")
         let boardData = try loadBoardData(includeArchived: true)
-        return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts)
+        return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts, milestones: boardData.milestones)
     }
 
     @discardableResult
     public func restoreProject(id: Int64) throws -> ProjectBoardProject {
         let record = try projectStore.updateStatusForProjectBoard(id: id, status: "active")
         let boardData = try loadBoardData(includeArchived: true)
-        return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts)
+        return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts, milestones: boardData.milestones)
     }
 
     public func deleteProject(id: Int64) throws {
@@ -601,6 +658,25 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         try artifactStore.delete(id: id)
     }
 
+    @discardableResult
+    public func createProjectMilestone(projectID: Int64, title: String, dueAt: String?) throws -> ProjectBoardMilestone {
+        _ = try projectStore.getForProjectBoard(id: projectID)
+        let milestoneTitle = try normalizedMilestoneTitle(title)
+        let record = try milestoneStore.create(projectID: projectID, title: milestoneTitle, dueAt: normalizedOptionalDateString(dueAt))
+        return makeBoardMilestone(record)
+    }
+
+    @discardableResult
+    public func updateProjectMilestone(id: Int64, title: String, dueAt: String?, isCompleted: Bool) throws -> ProjectBoardMilestone {
+        let milestoneTitle = try normalizedMilestoneTitle(title)
+        let record = try milestoneStore.update(id: id, title: milestoneTitle, dueAt: normalizedOptionalDateString(dueAt), isCompleted: isCompleted)
+        return makeBoardMilestone(record)
+    }
+
+    public func deleteProjectMilestone(id: Int64) throws {
+        try milestoneStore.delete(id: id)
+    }
+
     private func prepareProjectForTaskMutation(projectID: Int64, taskStatus: ProjectTaskStatus) throws {
         let project = try projectStore.getForProjectBoard(id: projectID)
         if project.status == "archived" {
@@ -624,11 +700,13 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     private func loadBoardData(includeArchived: Bool) throws -> (
         projects: [ProjectRecord],
         tasks: [ProjectBoardTask],
-        artifacts: [ProjectBoardArtifact]
+        artifacts: [ProjectBoardArtifact],
+        milestones: [ProjectBoardMilestone]
     ) {
         var projects = try ensureProjects(includeArchived: includeArchived)
         let taskRecords = try taskStore.listAll()
         let artifacts = try artifactStore.list().map(makeBoardArtifact(_:))
+        let milestones = try milestoneStore.list().map(makeBoardMilestone(_:))
         let fallbackProjectID: Int64?
 
         if taskRecords.contains(where: { $0.projectID == nil }) {
@@ -641,7 +719,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         let tasks = try taskRecords.map { record in
             try makeBoardTask(record, fallbackProjectID: fallbackProjectID).requiredTask()
         }
-        return (projects, tasks, artifacts)
+        return (projects, tasks, artifacts, milestones)
     }
 
     private func ensureActiveInboxProject() throws -> ProjectRecord {
@@ -680,6 +758,19 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         return normalizedTitle
     }
 
+    private func normalizedMilestoneTitle(_ title: String) throws -> String {
+        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedTitle.isEmpty else {
+            throw ProjectBoardStoreError.emptyTitle
+        }
+        return normalizedTitle
+    }
+
+    private func normalizedOptionalDateString(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == true ? nil : trimmed
+    }
+
     private func normalizedArtifactPath(_ path: String) throws -> String {
         let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPath.isEmpty else {
@@ -697,7 +788,8 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     private func makeBoardProject(
         project: ProjectRecord,
         tasks: [ProjectBoardTask],
-        artifacts: [ProjectBoardArtifact]
+        artifacts: [ProjectBoardArtifact],
+        milestones: [ProjectBoardMilestone] = []
     ) -> ProjectBoardProject {
         let projectTasks = tasks.filter { $0.projectID == project.id }
         let projectTaskIDs = Set(projectTasks.map(\.id))
@@ -720,7 +812,8 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             status: project.status,
             subtitle: subtitle,
             columns: columns,
-            artifacts: projectArtifacts
+            artifacts: projectArtifacts,
+            milestones: milestones.filter { $0.projectID == project.id }
         )
     }
 
@@ -750,6 +843,16 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             lastModifiedAt: record.lastModifiedAt
         )
     }
+
+    private func makeBoardMilestone(_ record: ProjectMilestoneRecord) -> ProjectBoardMilestone {
+        ProjectBoardMilestone(
+            id: record.id,
+            projectID: record.projectID,
+            title: record.title,
+            dueAt: record.dueAt,
+            isCompleted: record.isCompleted
+        )
+    }
 }
 
 @MainActor
@@ -766,6 +869,8 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var todayCommandFeedback: String?
     @Published public private(set) var todayFocusTaskID: Int64?
     @Published public private(set) var todayScheduleDraft: TodayScheduleDraft?
+    @Published public private(set) var projectAssistantAnswer: ProjectAssistantAnswer?
+    @Published public private(set) var projectAssistantReviewDraft: ProjectAssistantReviewDraft?
 
     private let store: any ProjectBoardStore
     private let inboxCaptureStore: (any InboxCaptureStore)?
@@ -792,6 +897,8 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.todayCommandFeedback = nil
         self.todayFocusTaskID = nil
         self.todayScheduleDraft = nil
+        self.projectAssistantAnswer = nil
+        self.projectAssistantReviewDraft = nil
     }
 
     public var selectedProject: ProjectBoardProject? {
@@ -1789,6 +1896,135 @@ public final class ProjectBoardViewModel: ObservableObject {
             errorMessage = Self.userFacingMessage(for: error)
             return false
         }
+    }
+
+    @discardableResult
+    public func createProjectMilestone(title: String, dueAt: String? = nil, projectID: Int64? = nil) -> ProjectBoardMilestone? {
+        guard let targetProjectID = projectID ?? selectedProject?.id else {
+            errorMessage = "Project is required."
+            return nil
+        }
+
+        do {
+            let milestone = try store.createProjectMilestone(projectID: targetProjectID, title: title, dueAt: dueAt)
+            load()
+            selectedProjectID = targetProjectID
+            errorMessage = nil
+            onChange()
+            return milestone
+        } catch ProjectBoardStoreError.emptyTitle {
+            errorMessage = "Milestone title is required."
+            return nil
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+            return nil
+        }
+    }
+
+    @discardableResult
+    public func completeProjectMilestone(id: Int64, projectID: Int64? = nil) -> ProjectBoardMilestone? {
+        guard let milestone = snapshot.projects.flatMap(\.milestones).first(where: { $0.id == id }) else {
+            errorMessage = "Milestone is no longer available."
+            return nil
+        }
+
+        do {
+            let updated = try store.updateProjectMilestone(
+                id: id,
+                title: milestone.title,
+                dueAt: milestone.dueAt,
+                isCompleted: true
+            )
+            load()
+            selectedProjectID = projectID ?? milestone.projectID
+            errorMessage = nil
+            onChange()
+            return updated
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+            return nil
+        }
+    }
+
+    @discardableResult
+    public func answerProjectAssistantQuestion(_ rawQuestion: String, projectID: Int64? = nil) -> ProjectAssistantAnswer? {
+        let question = rawQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !question.isEmpty else {
+            errorMessage = "Assistant question is required."
+            return nil
+        }
+        guard let project = project(for: projectID) else {
+            errorMessage = "Project is required."
+            return nil
+        }
+
+        let task = project.tasks.first { $0.status == .blocked }
+            ?? project.tasks.first { $0.status != .done && $0.priority == .high }
+            ?? project.tasks.filter { $0.status != .done }.sorted { ($0.dueAt ?? "9999") < ($1.dueAt ?? "9999") }.first
+        let milestone = project.milestones.filter { !$0.isCompleted }.sorted { ($0.dueAt ?? "9999") < ($1.dueAt ?? "9999") }.first
+        let actionTitle = task?.status == .blocked
+            ? String(localized: "Review unblock plan")
+            : String(localized: "Review next action")
+        let answer = ProjectAssistantAnswer(
+            projectID: project.id,
+            question: question,
+            message: localAssistantMessage(project: project, task: task, milestone: milestone),
+            suggestedActionTitle: actionTitle,
+            requiresReview: true
+        )
+        projectAssistantAnswer = answer
+        projectAssistantReviewDraft = nil
+        errorMessage = nil
+        return answer
+    }
+
+    @discardableResult
+    public func prepareProjectAssistantSuggestedActionForReview(projectID: Int64? = nil) -> Bool {
+        guard let answer = projectAssistantAnswer,
+              let project = project(for: projectID ?? answer.projectID) else {
+            errorMessage = "Ask the project assistant before preparing review."
+            return false
+        }
+
+        // Assistant suggestions stay approval-first. This records the proposed
+        // next step for a Review flow instead of mutating tasks immediately.
+        projectAssistantReviewDraft = ProjectAssistantReviewDraft(
+            projectID: project.id,
+            suggestedActionTitle: answer.suggestedActionTitle,
+            summary: answer.message
+        )
+        selectedProjectID = project.id
+        selectedTaskID = nil
+        errorMessage = nil
+        return true
+    }
+
+    private func project(for projectID: Int64?) -> ProjectBoardProject? {
+        if let projectID {
+            return snapshot.projects.first { $0.id == projectID }
+        }
+        return selectedProject
+    }
+
+    private func localAssistantMessage(
+        project: ProjectBoardProject,
+        task: ProjectBoardTask?,
+        milestone: ProjectBoardMilestone?
+    ) -> String {
+        if let task, let milestone {
+            return String(
+                format: String(localized: "Start with %@, then check milestone %@."),
+                task.title,
+                milestone.title
+            )
+        }
+        if let task {
+            return String(format: String(localized: "Start with %@."), task.title)
+        }
+        if let milestone {
+            return String(format: String(localized: "Next milestone is %@."), milestone.title)
+        }
+        return String(localized: "No open tasks or milestones need attention.")
     }
 
     private func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) {

@@ -506,6 +506,28 @@ public enum CoreMigrations {
                     ON inbox_capture_records(created_at);
                     """
                 )
+            },
+            DatabaseMigration(id: "0011_create_project_milestones") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS project_milestones (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        project_id INTEGER NOT NULL,
+                        title TEXT NOT NULL,
+                        due_at TEXT,
+                        is_completed INTEGER NOT NULL DEFAULT 0 CHECK(is_completed IN (0, 1)),
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_project_milestones_project
+                    ON project_milestones(project_id);
+
+                    CREATE INDEX IF NOT EXISTS idx_project_milestones_due_at
+                    ON project_milestones(due_at);
+                    """
+                )
             }
         ]
     }

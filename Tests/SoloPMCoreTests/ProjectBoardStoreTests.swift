@@ -212,6 +212,98 @@ final class ProjectBoardStoreTests: XCTestCase {
         }
     }
 
+    func testProjectMilestoneCRUDPersistsToSnapshot() throws {
+        let stores = try makeStoreBundle()
+        let project = try stores.board.createProject(title: "Launch Readiness")
+
+        let milestone = try stores.board.createProjectMilestone(
+            projectID: project.id,
+            title: "Public beta",
+            dueAt: "2026-07-01"
+        )
+        let updated = try stores.board.updateProjectMilestone(
+            id: milestone.id,
+            title: "Public beta launch",
+            dueAt: "2026-07-03",
+            isCompleted: true
+        )
+
+        XCTAssertEqual(updated.title, "Public beta launch")
+        XCTAssertEqual(updated.dueAt, "2026-07-03")
+        XCTAssertTrue(updated.isCompleted)
+        let stored = try stores.milestones.get(id: milestone.id)
+        XCTAssertEqual(stored.title, updated.title)
+        XCTAssertEqual(stored.dueAt, updated.dueAt)
+        XCTAssertEqual(stored.isCompleted, updated.isCompleted)
+        XCTAssertEqual(
+            try stores.board.loadSnapshot().projects.first { $0.id == project.id }?.milestones,
+            [updated]
+        )
+
+        try stores.board.deleteProjectMilestone(id: milestone.id)
+
+        XCTAssertTrue(try XCTUnwrap(stores.board.loadSnapshot().projects.first { $0.id == project.id }).milestones.isEmpty)
+    }
+
+    func testProjectSnapshotIncludesMilestoneSummarySeparateFromTasks() throws {
+        let stores = try makeStoreBundle()
+        let project = try stores.board.createProject(title: "Milestone Plan")
+        _ = try stores.board.createTask(ProjectBoardTaskDraft(
+            projectID: project.id,
+            title: "Implement task",
+            status: .planned,
+            dueAt: "2026-07-02"
+        ))
+        _ = try stores.board.createProjectMilestone(
+            projectID: project.id,
+            title: "Design freeze",
+            dueAt: "2026-06-30"
+        )
+
+        let loaded = try XCTUnwrap(stores.board.loadSnapshot().projects.first { $0.id == project.id })
+
+        XCTAssertEqual(loaded.milestones.map(\.title), ["Design freeze"])
+        XCTAssertEqual(loaded.tasks.map(\.title), ["Implement task"])
+        XCTAssertEqual(loaded.milestoneSummary, "0/1 milestones complete")
+    }
+
+    func testProjectMilestoneRejectsBlankTitleAndRequiresExistingProject() throws {
+        let stores = try makeStoreBundle()
+        let project = try stores.board.createProject(title: "Milestone Boundaries")
+
+        XCTAssertThrowsError(try stores.board.createProjectMilestone(
+            projectID: project.id,
+            title: "   ",
+            dueAt: "2026-07-01"
+        )) { error in
+            XCTAssertEqual(error as? ProjectBoardStoreError, .emptyTitle)
+        }
+
+        XCTAssertThrowsError(try stores.board.createProjectMilestone(
+            projectID: 99_999,
+            title: "Missing project milestone",
+            dueAt: nil
+        ))
+
+        XCTAssertTrue(try stores.board.loadSnapshot().projects.first { $0.id == project.id }?.milestones.isEmpty == true)
+    }
+
+    func testDeletingProjectCascadesProjectMilestones() throws {
+        let stores = try makeStoreBundle()
+        let project = try stores.board.createProject(title: "Cascade Milestones")
+        let milestone = try stores.board.createProjectMilestone(
+            projectID: project.id,
+            title: "Release candidate",
+            dueAt: "2026-07-10"
+        )
+
+        try stores.board.deleteProject(id: project.id)
+
+        XCTAssertThrowsError(try stores.milestones.get(id: milestone.id)) { error in
+            XCTAssertEqual(error as? ProjectMilestoneStoreError, .notFound(milestone.id))
+        }
+    }
+
     func testMoveTaskAssignsUnassignedPersistentTaskToInbox() throws {
         let stores = try makeStoreBundle()
         let orphan = try stores.tasks.create(title: "Move loose task", projectID: nil, status: "planned")
@@ -709,6 +801,37 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         XCTAssertEqual(changeCount, 0)
         XCTAssertEqual(viewModel.errorMessage, "Artifact link is no longer available.")
+    }
+
+    @MainActor
+    func testProjectBoardViewModelAnswersProjectAssistantQuestionWithoutExternalLLM() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Assistant Plan"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Resolve blocker", projectID: project.id, status: .blocked, dueAt: "2026-06-21"))
+        _ = try XCTUnwrap(viewModel.createProjectMilestone(title: "Beta", dueAt: "2026-06-30", projectID: project.id))
+
+        let answer = try XCTUnwrap(viewModel.answerProjectAssistantQuestion("What should I do next?", projectID: project.id))
+
+        XCTAssertTrue(answer.message.contains("Resolve blocker"))
+        XCTAssertEqual(answer.suggestedActionTitle, "Review unblock plan")
+        XCTAssertTrue(answer.requiresReview)
+        XCTAssertEqual(viewModel.projectAssistantAnswer, answer)
+    }
+
+    @MainActor
+    func testProjectAssistantSuggestedActionPreparesReviewWithoutWritingTaskStatus() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Review Boundary"))
+        let task = try XCTUnwrap(viewModel.createTask(title: "Blocked task", projectID: project.id, status: .blocked))
+        _ = try XCTUnwrap(viewModel.answerProjectAssistantQuestion("Unblock this", projectID: project.id))
+
+        XCTAssertTrue(viewModel.prepareProjectAssistantSuggestedActionForReview(projectID: project.id))
+
+        XCTAssertEqual(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id }?.status, .blocked)
+        XCTAssertEqual(viewModel.projectAssistantReviewDraft?.projectID, project.id)
+        XCTAssertEqual(viewModel.projectAssistantReviewDraft?.suggestedActionTitle, "Review unblock plan")
     }
 
     @MainActor
@@ -1519,7 +1642,8 @@ final class ProjectBoardStoreTests: XCTestCase {
         board: SQLiteProjectBoardStore,
         projects: SQLiteProjectStore,
         tasks: SQLiteTaskStore,
-        artifacts: SQLiteArtifactStore
+        artifacts: SQLiteArtifactStore,
+        milestones: SQLiteProjectMilestoneStore
     ) {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
@@ -1528,7 +1652,8 @@ final class ProjectBoardStoreTests: XCTestCase {
             SQLiteProjectBoardStore(connection: connection),
             SQLiteProjectStore(connection: connection),
             SQLiteTaskStore(connection: connection),
-            SQLiteArtifactStore(connection: connection)
+            SQLiteArtifactStore(connection: connection),
+            SQLiteProjectMilestoneStore(connection: connection)
         )
     }
 }
@@ -1607,6 +1732,18 @@ private struct AlwaysFailingProjectBoardStore: ProjectBoardStore {
     }
 
     func deleteProjectArtifact(id: Int64) throws {
+        throw error
+    }
+
+    func createProjectMilestone(projectID: Int64, title: String, dueAt: String?) throws -> ProjectBoardMilestone {
+        throw error
+    }
+
+    func updateProjectMilestone(id: Int64, title: String, dueAt: String?, isCompleted: Bool) throws -> ProjectBoardMilestone {
+        throw error
+    }
+
+    func deleteProjectMilestone(id: Int64) throws {
         throw error
     }
 }
@@ -1750,6 +1887,18 @@ private final class PartiallyFailingBulkMoveProjectBoardStore: ProjectBoardStore
     }
 
     func deleteProjectArtifact(id: Int64) throws {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func createProjectMilestone(projectID: Int64, title: String, dueAt: String?) throws -> ProjectBoardMilestone {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func updateProjectMilestone(id: Int64, title: String, dueAt: String?, isCompleted: Bool) throws -> ProjectBoardMilestone {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func deleteProjectMilestone(id: Int64) throws {
         throw ProjectBoardStoreTestError.unavailable
     }
 }

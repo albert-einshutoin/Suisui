@@ -922,8 +922,10 @@ private struct ProjectDetailOverview: View {
 
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
                     ProjectTaskSnapshotSection(project: project, viewModel: viewModel, onAddTask: onAddTask)
+                    ProjectMilestoneSection(project: project, viewModel: viewModel)
                     ProjectArtifactSection(project: project, viewModel: viewModel)
                     ProjectTimelineSection(project: project)
+                    ProjectAssistantPanel(project: project, viewModel: viewModel)
                     ProjectLocalSuggestionPanel(project: project, viewModel: viewModel)
                 }
             }
@@ -987,6 +989,7 @@ private struct ProjectProgressOverview: View {
         ProjectMetricBadge(label: "Open", value: openCount, tint: .blue)
         ProjectMetricBadge(label: "Done", value: completedCount, tint: .green)
         ProjectMetricBadge(label: "Blocked", value: blockedCount, tint: .orange)
+        ProjectMetricBadge(label: "Milestones", value: project.milestones.count, tint: .teal)
         ProjectMetricBadge(label: "Artifacts", value: project.artifacts.count, tint: .purple)
     }
 }
@@ -1089,6 +1092,110 @@ private struct ProjectTaskSnapshotSection: View {
     }
 }
 
+private struct ProjectMilestoneSection: View {
+    let project: ProjectBoardProject
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    @State private var milestoneTitle = ""
+    @State private var milestoneDueAt = ""
+
+    var body: some View {
+        ProjectOverviewPanel(title: "Milestones", systemImage: "flag.checkered") {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    milestoneTitleField
+                    milestoneDueField
+                    addButton
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    milestoneTitleField
+                    milestoneDueField
+                    addButton
+                }
+            }
+
+            if project.milestones.isEmpty {
+                Text("No milestones yet")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(project.milestones.prefix(4)) { milestone in
+                    HStack(spacing: 8) {
+                        Image(systemName: milestone.isCompleted ? "checkmark.circle.fill" : "flag")
+                            .foregroundStyle(milestone.isCompleted ? .green : .teal)
+                            .frame(width: 16)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(milestone.title)
+                                .font(.caption.weight(.medium))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Text(milestone.dueAt ?? String(localized: "No due date"))
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 8)
+                        Button {
+                            _ = viewModel.completeProjectMilestone(id: milestone.id, projectID: project.id)
+                        } label: {
+                            Label("Complete milestone", systemImage: "checkmark.circle")
+                        }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                        .disabled(project.isArchived || milestone.isCompleted)
+                        .help("Complete milestone")
+                        .accessibilityIdentifier("project-milestone-complete-\(milestone.id)")
+                        .accessibilityLabel("Complete milestone \(milestone.title)")
+                        .accessibilityHint("Marks this local project milestone as complete.")
+                    }
+                }
+            }
+        }
+    }
+
+    private func addMilestone() {
+        guard viewModel.createProjectMilestone(
+            title: milestoneTitle,
+            dueAt: milestoneDueAt,
+            projectID: project.id
+        ) != nil else {
+            return
+        }
+        milestoneTitle = ""
+        milestoneDueAt = ""
+    }
+
+    private var milestoneTitleField: some View {
+        TextField("Milestone title", text: $milestoneTitle)
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.small)
+            .onSubmit(addMilestone)
+            .accessibilityIdentifier("project-milestone-title")
+            .accessibilityLabel("Milestone title")
+            .accessibilityHint("Enter a local milestone title for this project.")
+    }
+
+    private var milestoneDueField: some View {
+        TextField("Due date", text: $milestoneDueAt)
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.small)
+            .onSubmit(addMilestone)
+            .accessibilityIdentifier("project-milestone-due")
+            .accessibilityLabel("Milestone due date")
+            .accessibilityHint("Optional local milestone due date.")
+    }
+
+    private var addButton: some View {
+        Button(action: addMilestone) {
+            Label("Add Milestone", systemImage: "plus")
+        }
+        .controlSize(.small)
+        .disabled(project.isArchived || milestoneTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .accessibilityIdentifier("project-milestone-add")
+        .accessibilityHint("Adds a local milestone without creating a task.")
+    }
+}
+
 private struct ProjectArtifactSection: View {
     let project: ProjectBoardProject
     @ObservedObject var viewModel: ProjectBoardViewModel
@@ -1185,41 +1292,185 @@ private struct ProjectArtifactSection: View {
 private struct ProjectTimelineSection: View {
     let project: ProjectBoardProject
 
-    private var dueTasks: [ProjectBoardTask] {
-        project.tasks
-            .filter { $0.dueAt != nil }
-            .sorted { ($0.dueAt ?? "") < ($1.dueAt ?? "") }
+    private var timelineItems: [ProjectTimelineItem] {
+        let taskItems = project.tasks
+            .compactMap { task -> ProjectTimelineItem? in
+                guard let dueAt = task.dueAt else {
+                    return nil
+                }
+                return .task(task, dueAt: dueAt)
+            }
+        let milestoneItems = project.milestones
+            .compactMap { milestone -> ProjectTimelineItem? in
+                guard let dueAt = milestone.dueAt else {
+                    return nil
+                }
+                return .milestone(milestone, dueAt: dueAt)
+            }
+        return (taskItems + milestoneItems).sorted { lhs, rhs in
+            if lhs.dueAt == rhs.dueAt {
+                return lhs.id < rhs.id
+            }
+            return lhs.dueAt < rhs.dueAt
+        }
     }
 
     var body: some View {
         ProjectOverviewPanel(title: "Timeline", systemImage: "calendar") {
-            if dueTasks.isEmpty {
+            if timelineItems.isEmpty {
                 Text("No due dates yet")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(dueTasks.prefix(5)) { task in
+                ForEach(timelineItems.prefix(5)) { item in
                     HStack(spacing: 8) {
                         Circle()
-                            .fill(task.status.tint)
+                            .fill(item.tint)
                             .frame(width: 7, height: 7)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(task.title)
+                            Text(item.title)
                                 .font(.caption.weight(.medium))
                                 .lineLimit(1)
                                 .truncationMode(.tail)
-                            Text(task.dueLabel ?? "")
+                            Text(item.dueAt)
                                 .font(.caption2.monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    .help(task.title)
+                    .help(item.title)
                     .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Project timeline item \(task.title)")
-                    .accessibilityValue(task.dueLabel ?? "No due date")
+                    .accessibilityLabel("Project timeline item \(item.title)")
+                    .accessibilityValue(item.dueAt)
                 }
             }
         }
+    }
+}
+
+private enum ProjectTimelineItem: Identifiable {
+    case task(ProjectBoardTask, dueAt: String)
+    case milestone(ProjectBoardMilestone, dueAt: String)
+
+    var id: String {
+        switch self {
+        case .task(let task, _):
+            "task-\(task.id)"
+        case .milestone(let milestone, _):
+            "milestone-\(milestone.id)"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .task(let task, _):
+            task.title
+        case .milestone(let milestone, _):
+            milestone.title
+        }
+    }
+
+    var dueAt: String {
+        switch self {
+        case .task(_, let dueAt), .milestone(_, let dueAt):
+            dueAt
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .task(let task, _):
+            task.status.tint
+        case .milestone(let milestone, _):
+            milestone.isCompleted ? .green : .teal
+        }
+    }
+}
+
+private struct ProjectAssistantPanel: View {
+    let project: ProjectBoardProject
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    @State private var question = ""
+
+    var body: some View {
+        ProjectOverviewPanel(title: "Assistant", systemImage: "bubble.left.and.text.bubble.right") {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    questionField
+                    askButton
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    questionField
+                    askButton
+                }
+            }
+
+            if let answer = viewModel.projectAssistantAnswer, answer.projectID == project.id {
+                Text(answer.message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("project-assistant-answer")
+
+                HStack(spacing: 8) {
+                    Label(answer.suggestedActionTitle, systemImage: "checklist")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+
+                    Spacer(minLength: 8)
+
+                    Button {
+                        _ = viewModel.prepareProjectAssistantSuggestedActionForReview(projectID: project.id)
+                    } label: {
+                        Label("Review Action", systemImage: "doc.text.magnifyingglass")
+                    }
+                    .controlSize(.small)
+                    .help("Prepare suggested action for review")
+                    .accessibilityIdentifier("project-assistant-review-action")
+                    .accessibilityHint("Prepares the local assistant suggestion for review without writing task status.")
+                }
+            } else {
+                Text("Ask for a local next step without contacting an external LLM.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let draft = viewModel.projectAssistantReviewDraft, draft.projectID == project.id {
+                Label(draft.suggestedActionTitle, systemImage: "doc.badge.clock")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("project-assistant-review-draft")
+            }
+        }
+    }
+
+    private func ask() {
+        let trimmed = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return
+        }
+        _ = viewModel.answerProjectAssistantQuestion(trimmed, projectID: project.id)
+    }
+
+    private var questionField: some View {
+        TextField("Ask about this project", text: $question)
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.small)
+            .onSubmit(ask)
+            .accessibilityIdentifier("project-assistant-question")
+            .accessibilityLabel("Project assistant question")
+            .accessibilityHint("Asks the local project assistant for a next step without external LLM execution.")
+    }
+
+    private var askButton: some View {
+        Button(action: ask) {
+            Label("Ask", systemImage: "paperplane")
+        }
+        .controlSize(.small)
+        .disabled(question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .accessibilityIdentifier("project-assistant-ask")
+        .accessibilityHint("Generates a local assistant answer for this project.")
     }
 }
 
@@ -1254,14 +1505,15 @@ private struct ProjectLocalSuggestionPanel: View {
 
                     if suggestedTask.status == .blocked {
                         Button {
-                            viewModel.moveTask(id: suggestedTask.id, to: .inProgress)
+                            _ = viewModel.answerProjectAssistantQuestion("Review blocked task", projectID: project.id)
+                            _ = viewModel.prepareProjectAssistantSuggestedActionForReview(projectID: project.id)
                         } label: {
-                            Label("Unblock", systemImage: "arrow.triangle.2.circlepath")
+                            Label("Review Action", systemImage: "doc.text.magnifyingglass")
                         }
                         .controlSize(.small)
-                        .help("Move the suggested blocked task to In Progress")
-                        .accessibilityIdentifier("project-local-suggestion-unblock-task")
-                        .accessibilityHint("Moves the suggested blocked task back to In Progress in the local database.")
+                        .help("Prepare suggested action for review")
+                        .accessibilityIdentifier("project-local-suggestion-review-action")
+                        .accessibilityHint("Prepares the suggested blocked task action for review without writing task status.")
                     }
                 }
             } else {

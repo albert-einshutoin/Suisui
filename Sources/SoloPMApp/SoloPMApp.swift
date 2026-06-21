@@ -2846,6 +2846,18 @@ private struct UnavailableProjectBoardStore: ProjectBoardStore {
     func deleteProjectArtifact(id: Int64) throws {
         throw error
     }
+
+    func createProjectMilestone(projectID: Int64, title: String, dueAt: String?) throws -> ProjectBoardMilestone {
+        throw error
+    }
+
+    func updateProjectMilestone(id: Int64, title: String, dueAt: String?, isCompleted: Bool) throws -> ProjectBoardMilestone {
+        throw error
+    }
+
+    func deleteProjectMilestone(id: Int64) throws {
+        throw error
+    }
 }
 
 private struct LaunchVerificationSecretStore: SecretStore {

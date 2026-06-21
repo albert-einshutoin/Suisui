@@ -5,6 +5,7 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
     private var snapshot: ProjectBoardSnapshot
     private var nextTaskID: Int64
     private var nextArtifactID: Int64
+    private var nextMilestoneID: Int64
 
     init(snapshot: ProjectBoardSnapshot = ProjectBoardSnapshot(projects: [
         ProjectBoardProject(
@@ -18,6 +19,7 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         self.snapshot = snapshot
         self.nextTaskID = snapshot.projects.flatMap(\.tasks).map(\.id).max().map { $0 + 1 } ?? 1
         self.nextArtifactID = snapshot.projects.flatMap(\.artifacts).map(\.id).max().map { $0 + 1 } ?? 1
+        self.nextMilestoneID = snapshot.projects.flatMap(\.milestones).map(\.id).max().map { $0 + 1 } ?? 1
     }
 
     func loadSnapshot() throws -> ProjectBoardSnapshot {
@@ -275,6 +277,63 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         throw ArtifactStoreError.notFound(id)
     }
 
+    @discardableResult
+    func createProjectMilestone(projectID: Int64, title: String, dueAt: String?) throws -> ProjectBoardMilestone {
+        guard let projectIndex = snapshot.projects.firstIndex(where: { $0.id == projectID }) else {
+            throw DatabaseError.stepFailed("Project \(projectID) was not found.")
+        }
+        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedTitle.isEmpty else {
+            throw ProjectBoardStoreError.emptyTitle
+        }
+
+        let milestone = ProjectBoardMilestone(
+            id: nextMilestoneID,
+            projectID: projectID,
+            title: normalizedTitle,
+            dueAt: dueAt?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank,
+            isCompleted: false
+        )
+        nextMilestoneID += 1
+        snapshot.projects[projectIndex].milestones.append(milestone)
+        snapshot.projects[projectIndex].milestones.sort { ($0.dueAt ?? "9999") < ($1.dueAt ?? "9999") }
+        return milestone
+    }
+
+    @discardableResult
+    func updateProjectMilestone(id: Int64, title: String, dueAt: String?, isCompleted: Bool) throws -> ProjectBoardMilestone {
+        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedTitle.isEmpty else {
+            throw ProjectBoardStoreError.emptyTitle
+        }
+        for projectIndex in snapshot.projects.indices {
+            guard let milestoneIndex = snapshot.projects[projectIndex].milestones.firstIndex(where: { $0.id == id }) else {
+                continue
+            }
+            let updated = ProjectBoardMilestone(
+                id: id,
+                projectID: snapshot.projects[projectIndex].id,
+                title: normalizedTitle,
+                dueAt: dueAt?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank,
+                isCompleted: isCompleted
+            )
+            snapshot.projects[projectIndex].milestones[milestoneIndex] = updated
+            return updated
+        }
+        throw ProjectMilestoneStoreError.notFound(id)
+    }
+
+    func deleteProjectMilestone(id: Int64) throws {
+        for projectIndex in snapshot.projects.indices {
+            let originalCount = snapshot.projects[projectIndex].milestones.count
+            snapshot.projects[projectIndex].milestones.removeAll { $0.id == id }
+            if snapshot.projects[projectIndex].milestones.count != originalCount {
+                return
+            }
+        }
+        throw ProjectMilestoneStoreError.notFound(id)
+    }
+
     private func upsert(_ task: ProjectBoardTask) {
         guard let projectIndex = snapshot.projects.firstIndex(where: { $0.id == task.projectID }) else {
             return
@@ -323,6 +382,12 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         let tasks = snapshot.projects[projectIndex].tasks
         let openCount = tasks.filter { $0.status != .done }.count
         snapshot.projects[projectIndex].subtitle = "\(openCount) open / \(tasks.count) total"
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? {
+        isEmpty ? nil : self
     }
 }
 

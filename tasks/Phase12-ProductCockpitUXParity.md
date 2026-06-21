@@ -377,17 +377,17 @@
 
 ### Tests First
 
-- [ ] Milestone store CRUD test。
-- [ ] Project snapshotにmilestone summaryが含まれるtest。
-- [ ] Assistant local suggestionが外部LLMなしで表示されるtest。
-- [ ] Suggested actionが直接writeせずReviewへ進むtest。
+- [x] Milestone store CRUD test。
+- [x] Project snapshotにmilestone summaryが含まれるtest。
+- [x] Assistant local suggestionが外部LLMなしで表示されるtest。
+- [x] Suggested actionが直接writeせずReviewへ進むtest。
 
 ### Acceptance Criteria
 
-- [ ] Project detailにMilestoneが表示/追加できる。
-- [ ] Timelineにmilestoneとdue taskが混在表示される。
-- [ ] 既存Task/Artifact/Local Suggestionsが削除されない。
-- [ ] Assistantはapproval-first境界を守る。
+- [x] Project detailにMilestoneが表示/追加できる。
+- [x] Timelineにmilestoneとdue taskが混在表示される。
+- [x] 既存Task/Artifact/Local Suggestionsが削除されない。
+- [x] Assistantはapproval-first境界を守る。
 
 ### Non-goals
 
