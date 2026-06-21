@@ -82,7 +82,8 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
                 detail: task.detail,
                 status: .done,
                 priority: task.priority,
-                dueAt: task.dueAt
+                dueAt: task.dueAt,
+                completedAt: task.completedAt ?? Self.nowCompletedAt()
             )
         }
         completedTasks.sort { $0.id > $1.id }
@@ -146,7 +147,8 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
             detail: draft.detail.trimmingCharacters(in: .whitespacesAndNewlines),
             status: draft.status,
             priority: draft.priority,
-            dueAt: draft.dueAt
+            dueAt: draft.dueAt,
+            completedAt: draft.status == .done ? Self.nowCompletedAt() : nil
         )
         nextTaskID += 1
         upsert(task)
@@ -168,7 +170,8 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
             detail: draft.detail.trimmingCharacters(in: .whitespacesAndNewlines),
             status: draft.status,
             priority: draft.priority,
-            dueAt: draft.dueAt
+            dueAt: draft.dueAt,
+            completedAt: existingCompletedAt(id: id, status: draft.status)
         )
         upsert(task)
         return task
@@ -184,7 +187,8 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
             detail: task.detail,
             status: status,
             priority: task.priority,
-            dueAt: task.dueAt
+            dueAt: task.dueAt,
+            completedAt: status == .done ? task.completedAt ?? Self.nowCompletedAt() : task.completedAt
         )
         upsert(movedTask)
         return movedTask
@@ -213,7 +217,8 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
                     detail: task.detail,
                     status: task.status,
                     priority: task.priority,
-                    dueAt: task.dueAt
+                    dueAt: task.dueAt,
+                    completedAt: task.completedAt
                 )
                 upsert(movedTask)
                 return movedTask
@@ -364,6 +369,13 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         throw DatabaseError.stepFailed("Task \(id) was not found.")
     }
 
+    private func existingCompletedAt(id: Int64, status: ProjectTaskStatus) -> String? {
+        guard let task = try? findTask(id: id) else {
+            return status == .done ? Self.nowCompletedAt() : nil
+        }
+        return status == .done ? task.completedAt ?? Self.nowCompletedAt() : task.completedAt
+    }
+
     private func prepareProjectForTaskMutation(projectID: Int64, taskStatus: ProjectTaskStatus) throws {
         guard let projectIndex = snapshot.projects.firstIndex(where: { $0.id == projectID }) else {
             throw DatabaseError.stepFailed("Project \(projectID) was not found.")
@@ -382,6 +394,10 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         let tasks = snapshot.projects[projectIndex].tasks
         let openCount = tasks.filter { $0.status != .done }.count
         snapshot.projects[projectIndex].subtitle = "\(openCount) open / \(tasks.count) total"
+    }
+
+    private static func nowCompletedAt() -> String {
+        ISO8601DateFormatter().string(from: Date())
     }
 }
 

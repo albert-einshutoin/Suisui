@@ -5,6 +5,7 @@ enum ProjectBoardSidebarDestination: Hashable {
     case inbox
     case today
     case schedule
+    case done
     case projects
     case project(Int64)
 
@@ -16,6 +17,8 @@ enum ProjectBoardSidebarDestination: Hashable {
             "Today"
         case .schedule:
             "Schedule"
+        case .done:
+            "Done"
         case .projects:
             "Projects"
         case .project:
@@ -31,6 +34,8 @@ enum ProjectBoardSidebarDestination: Hashable {
             "sun.max"
         case .schedule:
             "calendar"
+        case .done:
+            "checkmark.circle"
         case .projects:
             "folder.circle"
         case .project:
@@ -46,6 +51,8 @@ enum ProjectBoardSidebarDestination: Hashable {
             "today"
         case .schedule:
             "schedule"
+        case .done:
+            "done"
         case .projects:
             "projects"
         case .project(let projectID):
@@ -77,6 +84,8 @@ enum ProjectBoardSelectionPersistence {
             return "today"
         case .schedule:
             return "schedule"
+        case .done:
+            return "done"
         case .projects:
             return "projects"
         case .project(let projectID):
@@ -95,6 +104,8 @@ enum ProjectBoardSelectionPersistence {
             return .today
         case "schedule":
             return .schedule
+        case "done":
+            return .done
         case "projects":
             return .projects
         default:
@@ -228,6 +239,123 @@ struct ScheduleWorkflowView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityIdentifier("schedule-workflow")
+    }
+}
+
+struct DoneWorkflowView: View {
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    private var analytics: DoneAnalyticsSummary {
+        viewModel.doneAnalytics()
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 10) {
+                    Label("Done", systemImage: "checkmark.circle")
+                        .font(.title2.weight(.semibold))
+                    Spacer()
+                }
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 10)], spacing: 10) {
+                    DoneStatTile(title: "Completed Tasks", value: analytics.completedTaskCount, systemImage: "checkmark.square")
+                    DoneStatTile(title: "Completed Projects", value: analytics.completedProjectCount, systemImage: "folder.badge.checkmark")
+                    DoneStatTile(title: "Today", value: analytics.completedTodayCount, systemImage: "sun.max")
+                    DoneStatTile(title: "7 Days", value: analytics.completedThisWeekCount, systemImage: "calendar")
+                    DoneStatTile(title: "Streak", value: analytics.streakDays, systemImage: "flame")
+                }
+
+                Label {
+                    Text(LocalizedStringKey(analytics.localRuleInsight))
+                } icon: {
+                    Image(systemName: "lock.doc")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("done-local-rule-insight")
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("Recent Completed", systemImage: "clock.arrow.circlepath")
+                        .font(.headline)
+                    if analytics.recentTasks.isEmpty {
+                        ContentUnavailableView(
+                            "No completed tasks yet",
+                            systemImage: "checkmark.circle",
+                            description: Text("Tasks appear here after they are completed.")
+                        )
+                    } else {
+                        ForEach(analytics.recentTasks) { task in
+                            DoneTaskHistoryRow(task: task, viewModel: viewModel)
+                        }
+                    }
+                }
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityIdentifier("done-workflow")
+    }
+}
+
+private struct DoneStatTile: View {
+    let title: LocalizedStringKey
+    let value: Int
+    let systemImage: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(title, systemImage: systemImage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Text("\(value)")
+                .font(.title3.weight(.semibold))
+                .monospacedDigit()
+        }
+        .frame(minWidth: 112, maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct DoneTaskHistoryRow: View {
+    let task: ProjectBoardTask
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: task.status == .done ? "checkmark.circle.fill" : "arrow.uturn.backward.circle")
+                .foregroundStyle(task.status == .done ? .green : .secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(task.title)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(1)
+                Text(doneMetadata)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer()
+            if task.status == .done {
+                Button {
+                    viewModel.reopenCompletedTask(id: task.id)
+                } label: {
+                    Label("Reopen", systemImage: "arrow.uturn.backward")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityIdentifier("done-reopen-task-\(task.id)")
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private var doneMetadata: String {
+        let projectTitle = viewModel.projectTitle(for: task)
+        if let completedAt = task.completedAt {
+            return String(format: String(localized: "%@ completed at %@"), projectTitle, completedAt)
+        }
+        return String(format: String(localized: "%@ completed"), projectTitle)
     }
 }
 

@@ -30,6 +30,8 @@ struct ProjectBoardView: View {
                             .tag(ProjectBoardSidebarDestination.today)
                         ProjectBoardSidebarDestinationRow(destination: .schedule, count: viewModel.unscheduledScheduleTasks().count)
                             .tag(ProjectBoardSidebarDestination.schedule)
+                        ProjectBoardSidebarDestinationRow(destination: .done, count: viewModel.doneAnalytics().completedTaskCount)
+                            .tag(ProjectBoardSidebarDestination.done)
                     }
 
                     Section("Projects") {
@@ -125,6 +127,8 @@ struct ProjectBoardView: View {
                             TodayWorkflowView(viewModel: viewModel)
                         case .schedule:
                             ScheduleWorkflowView(viewModel: viewModel)
+                        case .done:
+                            DoneWorkflowView(viewModel: viewModel)
                         case .projects:
                             ProjectsPortfolioOverview(viewModel: viewModel) { projectID in
                                 if viewModel.openProjectFromPortfolioCard(projectID: projectID) {
@@ -338,7 +342,7 @@ struct ProjectBoardView: View {
             viewModel.selectedProjectID = projectID
             viewModel.selectedTaskID = nil
             isInspectorPresented = true
-        case .inbox, .today, .schedule, .projects, .none:
+        case .inbox, .today, .schedule, .done, .projects, .none:
             viewModel.selectedTaskID = nil
             isInspectorPresented = false
         }

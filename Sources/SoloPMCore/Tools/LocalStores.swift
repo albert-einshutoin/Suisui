@@ -64,6 +64,7 @@ public struct TaskRecord: Equatable, Sendable {
     public var title: String
     public var status: String
     public var dueAt: String?
+    public var completedAt: String?
     public var priority: String?
     public var sourceCommand: String?
     public var detail: String?
@@ -74,6 +75,7 @@ public struct TaskRecord: Equatable, Sendable {
         title: String,
         status: String,
         dueAt: String?,
+        completedAt: String? = nil,
         priority: String?,
         sourceCommand: String?,
         detail: String? = nil
@@ -83,6 +85,7 @@ public struct TaskRecord: Equatable, Sendable {
         self.title = title
         self.status = status
         self.dueAt = dueAt
+        self.completedAt = completedAt
         self.priority = priority
         self.sourceCommand = sourceCommand
         self.detail = detail
@@ -638,13 +641,14 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         let normalizedStatus = try StoreFieldValidation.taskStatus(draft.status, tool: tool)
         try connection.execute(
             """
-            INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command)
+            INSERT INTO tasks (project_id, title, status, detail, due_at, completed_at, priority, source_command)
             VALUES (
               \(draft.projectID.map(String.init) ?? "NULL"),
               '\(SQL.escape(normalizedTitle))',
               '\(SQL.escape(normalizedStatus))',
               \(SQL.optional(draft.detail)),
               \(SQL.optional(draft.dueAt)),
+              \(normalizedStatus == "completed" ? "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')" : "NULL"),
               \(SQL.optional(draft.priority)),
               \(SQL.optional(draft.sourceCommand))
             );
@@ -694,6 +698,10 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         if let status {
             let normalizedStatus = try StoreFieldValidation.taskStatus(status, tool: .taskUpdate)
             assignments.append("status = '\(SQL.escape(normalizedStatus))'")
+            if normalizedStatus == "completed" {
+                // Completion history is intentionally write-once so reopened tasks still appear in Done analytics.
+                assignments.append("completed_at = COALESCE(completed_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))")
+            }
         }
         switch detail {
         case .unchanged:
@@ -802,6 +810,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             """
             UPDATE tasks
             SET status = 'completed',
+                completed_at = COALESCE(completed_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
                 updated_at = CURRENT_TIMESTAMP
             WHERE project_id = \(projectID)
               AND status != 'completed';
@@ -1214,6 +1223,7 @@ private extension TaskRecord {
             title: try SQL.requiredString(row["title"], column: "tasks.title"),
             status: status,
             dueAt: SQL.nilIfEmpty(row["due_at"]),
+            completedAt: SQL.nilIfEmpty(row["completed_at"]),
             priority: SQL.nilIfEmpty(row["priority"]),
             sourceCommand: SQL.nilIfEmpty(row["source_command"]),
             detail: SQL.nilIfEmpty(row["detail"])

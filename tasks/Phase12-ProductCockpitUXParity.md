@@ -509,16 +509,16 @@
 
 ### Tests First
 
-- [ ] completed_at migration test。
-- [ ] Daily/weekly countとstreak算出test。
-- [ ] Reopen時にtask statusがplannedへ戻るがcompleted historyを保持するtest。
-- [ ] Done view source accessibility test。
+- [x] completed_at migration test。
+- [x] Daily/weekly countとstreak算出test。
+- [x] Reopen時にtask statusがplannedへ戻るがcompleted historyを保持するtest。
+- [x] Done view source accessibility test。
 
 ### Acceptance Criteria
 
-- [ ] Done画面がSidebarから1クリックで開く。
-- [ ] 完了履歴と基本統計が見える。
-- [ ] 既存Done status columnやProject completionが退行しない。
+- [x] Done画面がSidebarから1クリックで開く。
+- [x] 完了履歴と基本統計が見える。
+- [x] 既存Done status columnやProject completionが退行しない。
 
 ### Non-goals
 

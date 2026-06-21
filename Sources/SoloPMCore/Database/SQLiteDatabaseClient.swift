@@ -256,6 +256,7 @@ public enum CoreMigrations {
                         status TEXT NOT NULL,
                         detail TEXT,
                         due_at TEXT,
+                        completed_at TEXT,
                         priority TEXT,
                         source_command TEXT,
                         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -526,6 +527,21 @@ public enum CoreMigrations {
 
                     CREATE INDEX IF NOT EXISTS idx_project_milestones_due_at
                     ON project_milestones(due_at);
+                    """
+                )
+            },
+            DatabaseMigration(id: "0012_add_task_completed_at") { connection in
+                let columns = try connection.queryRows("PRAGMA table_info(tasks);").compactMap { $0["name"] }
+                guard !columns.contains("completed_at") else {
+                    return
+                }
+                try connection.execute("ALTER TABLE tasks ADD COLUMN completed_at TEXT;")
+                try connection.execute(
+                    """
+                    UPDATE tasks
+                    SET completed_at = strftime('%Y-%m-%dT%H:%M:%SZ', COALESCE(updated_at, 'now'))
+                    WHERE status = 'completed'
+                      AND completed_at IS NULL;
                     """
                 )
             }
