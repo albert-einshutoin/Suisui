@@ -576,17 +576,17 @@
 
 ### Tests First
 
-- [ ] Settings source testでOverview tilesが表示されることを固定する。
-- [ ] Data location validation test。
-- [ ] Calendar/Reminder permission status mapping test。
-- [ ] TTSが未実装時に選択可能に見えないtest。
+- [x] Settings source testでOverview tilesが表示されることを固定する。
+- [x] Data location validation test。
+- [x] Calendar/Reminder permission status mapping test。
+- [x] TTSが未実装時に選択可能に見えないtest。
 
 ### Acceptance Criteria
 
-- [ ] Settings Overviewで連携状態が一覧できる。
-- [ ] Calendar/Reminder/TTSの未対応や未設定が明確に出る。
-- [ ] API keyやtokenはKeychainのままで、UserDefaults/SQLite/logへ漏れない。
-- [ ] 既存AI/MCP/Sync/Privacy tabsが退行しない。
+- [x] Settings Overviewで連携状態が一覧できる。
+- [x] Calendar/Reminder/TTSの未対応や未設定が明確に出る。
+- [x] API keyやtokenはKeychainのままで、UserDefaults/SQLite/logへ漏れない。
+- [x] 既存AI/MCP/Sync/Privacy tabsが退行しない。
 
 ### Non-goals
 

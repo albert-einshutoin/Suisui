@@ -1657,6 +1657,36 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("settingsViewModel.settings.notificationsEnabled"))
     }
 
+    func testSettingsOverviewSurfacesIntegrationStatusTilesForPhase12() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(appSource.contains("integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot()"))
+        XCTAssertTrue(appSource.contains("title: \"STT\""))
+        XCTAssertTrue(appSource.contains("title: \"TTS\""))
+        XCTAssertTrue(appSource.contains("title: \"Calendar\""))
+        XCTAssertTrue(appSource.contains("title: \"Reminder\""))
+        XCTAssertTrue(appSource.contains("title: \"Data Location\""))
+        XCTAssertTrue(appSource.contains("settingsViewModel.settings.sttProvider.displayName"))
+        XCTAssertTrue(appSource.contains("TTSProvider.systemSpeech.unavailableReason"))
+        XCTAssertTrue(appSource.contains("integrationPermissionSnapshot.status(for: .calendar)"))
+        XCTAssertTrue(appSource.contains("integrationPermissionSnapshot.status(for: .reminders)"))
+        XCTAssertTrue(appSource.contains("dataLocationOverviewStatusLabel"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-status-overview\")"))
+    }
+
+    func testSettingsDoesNotExposeSelectableTTSProviderWhenUnsupported() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let aiTabStart = try XCTUnwrap(appSource.range(of: "private var aiSettingsTab: some View"))
+        let syncTabStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
+        let aiTabSource = String(appSource[aiTabStart.lowerBound..<syncTabStart.lowerBound])
+
+        XCTAssertTrue(aiTabSource.contains("LabeledContent(\"Text to Speech\""))
+        XCTAssertTrue(aiTabSource.contains("TTSProvider.releaseReadyCases.isEmpty"))
+        XCTAssertTrue(aiTabSource.contains("TTSProvider.systemSpeech.unavailableReason"))
+        XCTAssertTrue(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-unavailable\")"))
+        XCTAssertFalse(aiTabSource.contains("Picker(\"Text to Speech\""))
+    }
+
     func testSettingsOverviewSurfacesProValueWithoutOpeningSyncOrMCPTabs() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let audit = try readPackageFile("docs/ux/click-path-audit.md")

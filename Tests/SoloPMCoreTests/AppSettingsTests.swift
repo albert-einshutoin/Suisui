@@ -829,6 +829,29 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertNil(openRouterSettings.openCodeModelID)
     }
 
+    func testDefaultWorkspacePathMustBeAnAbsoluteDirectoryLocation() {
+        let relativeSettings = AppSettings(defaultWorkspacePath: "relative/project")
+        let fileSettings = AppSettings(defaultWorkspacePath: "/tmp/soloPM-token.json")
+        let absoluteSettings = AppSettings(defaultWorkspacePath: "/tmp/SoloPM")
+
+        XCTAssertEqual(
+            relativeSettings.validate().first { $0.field == "defaultWorkspacePath" }?.message,
+            "Default workspace path must be an absolute directory path."
+        )
+        XCTAssertEqual(
+            fileSettings.validate().first { $0.field == "defaultWorkspacePath" }?.message,
+            "Default workspace path must not point to a credential or token file."
+        )
+        XCTAssertFalse(absoluteSettings.validate().contains { $0.field == "defaultWorkspacePath" })
+    }
+
+    func testTTSProvidersAreExplicitlyUnsupportedInThisRelease() {
+        XCTAssertTrue(TTSProvider.releaseReadyCases.isEmpty)
+        XCTAssertFalse(TTSProvider.systemSpeech.isReleaseReady)
+        XCTAssertEqual(TTSProvider.systemSpeech.displayName, "System Speech")
+        XCTAssertEqual(TTSProvider.systemSpeech.unavailableReason, "TTS is not supported in this release.")
+    }
+
     @MainActor
     func testAppSettingsViewModelNormalizesUnsupportedSTTProvider() throws {
         let suiteName = "SoloPM.AppSettingsViewModelUnsupportedSTT.\(UUID().uuidString)"
