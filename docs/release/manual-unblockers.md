@@ -9,7 +9,7 @@ current_commit="$(git rev-parse --short HEAD)"
 automated_evidence=".tmp/automated-release-preflight-${current_commit}.md"
 ```
 
-Use the latest action summary for the current release-candidate source commit and generated helper paths. The release-candidate source commit can intentionally differ from HEAD when only docs, tests, or release scripts changed after the product source was built.
+Use the latest action summary for the current release-candidate source commit and generated helper paths. Use `Release candidate product source commit`, not the action summary `Source commit`, when filling manual VoiceOver or competitor evidence. The release-candidate source commit can intentionally differ from HEAD when only docs, tests, or release scripts changed after the product source was built.
 
 Use this runbook after `release_readiness_report.sh` is green for automated gates and still reports manual/release-machine blockers. Do not hand-edit passed evidence. The release report rejects hand-written pass files and stale source commits. Run `--validate-only` before writing tracked evidence, then rerun readiness with the current automated preflight evidence.
 
