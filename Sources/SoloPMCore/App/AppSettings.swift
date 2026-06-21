@@ -131,14 +131,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
             )
         }
 
-        if let defaultWorkspacePath, defaultWorkspacePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            issues.append(
-                ValidationIssue(
-                    field: "defaultWorkspacePath",
-                    message: "Default workspace path cannot be blank.",
-                    severity: .error
-                )
-            )
+        if let defaultWorkspacePath {
+            appendDefaultWorkspacePathIssue(defaultWorkspacePath, to: &issues)
         }
 
         if !LLMProviderCatalog.isAvailableInCurrentBuild(aiProvider) {
@@ -211,6 +205,50 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 ValidationIssue(
                     field: "isOpenCodeLocalExecutionApproved",
                     message: "OpenCode local execution requires explicit approval.",
+                    severity: .error
+                )
+            )
+        }
+    }
+
+    private func appendDefaultWorkspacePathIssue(_ path: String, to issues: inout [ValidationIssue]) {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            issues.append(
+                ValidationIssue(
+                    field: "defaultWorkspacePath",
+                    message: "Default workspace path cannot be blank.",
+                    severity: .error
+                )
+            )
+            return
+        }
+
+        let expandedPath = NSString(string: trimmed).expandingTildeInPath
+        guard NSString(string: expandedPath).isAbsolutePath else {
+            issues.append(
+                ValidationIssue(
+                    field: "defaultWorkspacePath",
+                    message: "Default workspace path must be an absolute directory path.",
+                    severity: .error
+                )
+            )
+            return
+        }
+
+        let url = URL(fileURLWithPath: expandedPath)
+        let fileName = url.lastPathComponent.lowercased()
+        let pathExtension = url.pathExtension.lowercased()
+        let sensitiveNameSignals = ["credential", "credentials", "secret", "token", "api-key", "apikey", "auth"]
+        let sensitiveFileNames = [".env", "credentials.json", "token.json", "auth.json"]
+        // The data location is a workspace directory. Rejecting credential-like files prevents users from
+        // accidentally pointing SoloPM at secrets that should stay in Keychain or provider-specific stores.
+        if sensitiveFileNames.contains(fileName)
+            || (!pathExtension.isEmpty && sensitiveNameSignals.contains { fileName.contains($0) }) {
+            issues.append(
+                ValidationIssue(
+                    field: "defaultWorkspacePath",
+                    message: "Default workspace path must not point to a credential or token file.",
                     severity: .error
                 )
             )
@@ -319,6 +357,27 @@ public enum STTProvider: String, CaseIterable, Codable, Equatable, Sendable {
         case .openAITranscribe:
             "OpenAI Transcribe"
         }
+    }
+}
+
+public enum TTSProvider: String, CaseIterable, Codable, Equatable, Sendable {
+    case systemSpeech
+
+    public static let releaseReadyCases: [TTSProvider] = []
+
+    public var isReleaseReady: Bool {
+        Self.releaseReadyCases.contains(self)
+    }
+
+    public var displayName: String {
+        switch self {
+        case .systemSpeech:
+            "System Speech"
+        }
+    }
+
+    public var unavailableReason: String {
+        "TTS is not supported in this release."
     }
 }
 
@@ -531,6 +590,12 @@ public final class AppSettingsViewModel: ObservableObject {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.defaultWorkspacePath = trimmed.isEmpty ? nil : trimmed
         clearMessages()
+    }
+
+    public func setTransientErrorMessage(_ message: String) {
+        rejectedAIProvider = nil
+        errorMessage = message
+        successMessage = nil
     }
 
     public func setGeminiModelID(_ modelID: String) {

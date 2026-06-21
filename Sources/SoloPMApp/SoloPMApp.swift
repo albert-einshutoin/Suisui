@@ -1,5 +1,6 @@
 import SoloPMCore
 import SwiftUI
+import UniformTypeIdentifiers
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -63,6 +64,7 @@ struct SoloPM: App {
                 settingsViewModel: AppRuntimeFactory.makeAppSettingsViewModel(),
                 launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
                 watcherDiagnosticsSnapshot: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot(),
+                integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot(),
                 externalMCPViewModel: AppRuntimeFactory.makeExternalMCPSettingsViewModel(),
                 syncViewModel: AppRuntimeFactory.makeSyncSettingsViewModel(),
                 appearancePreference: $appearancePreference,
@@ -899,6 +901,7 @@ private struct SummaryRow: View {
 
 private struct SettingsView: View {
     let watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot
+    let integrationPermissionSnapshot: PermissionSnapshot
     @StateObject private var settingsViewModel: AppSettingsViewModel
     @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
     @StateObject private var externalMCPViewModel: ExternalMCPSettingsViewModel
@@ -906,17 +909,20 @@ private struct SettingsView: View {
     @Binding private var appearancePreference: SoloPMAppearancePreference
     @Binding private var languagePreference: AppLanguagePreference
     @State private var isConfirmingMCPRegistrationDeletion = false
+    @State private var isChoosingDataLocation = false
 
     init(
         settingsViewModel: AppSettingsViewModel,
         launchAtLoginViewModel: LaunchAtLoginSettingsViewModel,
         watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot,
+        integrationPermissionSnapshot: PermissionSnapshot,
         externalMCPViewModel: ExternalMCPSettingsViewModel,
         syncViewModel: SyncSettingsViewModel,
         appearancePreference: Binding<SoloPMAppearancePreference>,
         languagePreference: Binding<AppLanguagePreference>
     ) {
         self.watcherDiagnosticsSnapshot = watcherDiagnosticsSnapshot
+        self.integrationPermissionSnapshot = integrationPermissionSnapshot
         _settingsViewModel = StateObject(wrappedValue: settingsViewModel)
         _launchAtLoginViewModel = StateObject(wrappedValue: launchAtLoginViewModel)
         _externalMCPViewModel = StateObject(wrappedValue: externalMCPViewModel)
@@ -970,6 +976,18 @@ private struct SettingsView: View {
                     aiProviderLabel: settingsViewModel.settings.aiProvider.displayName,
                     aiStatusLabel: activeAIProviderStatusLabel,
                     aiTone: activeAIProviderTone,
+                    sttStatusLabel: settingsViewModel.settings.sttProvider.displayName,
+                    sttDetailLabel: sttOverviewDetailLabel,
+                    sttTone: sttOverviewTone,
+                    ttsStatusLabel: ttsOverviewStatusLabel,
+                    ttsDetailLabel: TTSProvider.systemSpeech.unavailableReason,
+                    ttsTone: .neutral,
+                    calendarStatusLabel: calendarOverviewStatusLabel,
+                    calendarDetailLabel: calendarOverviewDetailLabel,
+                    calendarTone: integrationTone(for: integrationPermissionSnapshot.status(for: .calendar)),
+                    reminderStatusLabel: reminderOverviewStatusLabel,
+                    reminderDetailLabel: reminderOverviewDetailLabel,
+                    reminderTone: integrationTone(for: integrationPermissionSnapshot.status(for: .reminders)),
                     mcpStatusLabel: externalMCPViewModel.connectionCheckResultLabel,
                     mcpDetailLabel: externalMCPViewModel.display.statusLabel,
                     mcpTone: mcpOverviewTone,
@@ -978,7 +996,10 @@ private struct SettingsView: View {
                     syncTone: syncOverviewTone,
                     privacyStatusLabel: privacyOverviewStatusLabel,
                     privacyDetailLabel: localizedDisplay("Login Item: %@", localizedSettingsDisplay(launchAtLoginViewModel.statusLabel)),
-                    privacyTone: privacyOverviewTone
+                    privacyTone: privacyOverviewTone,
+                    dataLocationStatusLabel: dataLocationOverviewStatusLabel,
+                    dataLocationDetailLabel: dataLocationOverviewDetailLabel,
+                    dataLocationTone: dataLocationOverviewTone
                 )
             }
 
@@ -1046,6 +1067,13 @@ private struct SettingsView: View {
                     }
                 }
                 LabeledContent("Shortcut", value: "Option + Space")
+                if TTSProvider.releaseReadyCases.isEmpty {
+                    LabeledContent("Text to Speech", value: ttsOverviewStatusLabel)
+                    Label(TTSProvider.systemSpeech.unavailableReason, systemImage: "speaker.slash")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("settings-tts-unavailable")
+                }
             }
 
         }
@@ -1410,6 +1438,12 @@ private struct SettingsView: View {
                         set: { settingsViewModel.setDefaultWorkspacePath($0) }
                     )
                 )
+                LabeledContent("Data Location", value: dataLocationOverviewStatusLabel)
+                Button {
+                    isChoosingDataLocation = true
+                } label: {
+                    Label("Choose Data Location", systemImage: "folder")
+                }
                 Button {
                     settingsViewModel.saveSettings()
                 } label: {
@@ -1440,6 +1474,21 @@ private struct SettingsView: View {
 
         }
         .formStyle(.grouped)
+        .fileImporter(
+            isPresented: $isChoosingDataLocation,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    settingsViewModel.setDefaultWorkspacePath(url.path)
+                }
+            case .failure(let error):
+                settingsViewModel.setDefaultWorkspacePath(settingsViewModel.settings.defaultWorkspacePath ?? "")
+                settingsViewModel.setTransientErrorMessage(error.localizedDescription)
+            }
+        }
     }
 
     private var mcpSettingsTab: some View {
@@ -1659,6 +1708,64 @@ private struct SettingsView: View {
         tone(for: activeAIProviderReadinessRow)
     }
 
+    private var sttOverviewDetailLabel: String {
+        settingsViewModel.settings.sttProvider.isReleaseReady ? "Ready for voice capture" : "Unsupported provider"
+    }
+
+    private var sttOverviewTone: SettingsStatusTone {
+        settingsViewModel.settings.sttProvider.isReleaseReady ? .ready : .danger
+    }
+
+    private var ttsOverviewStatusLabel: String {
+        TTSProvider.releaseReadyCases.isEmpty ? "Not supported in this release" : "Not configured"
+    }
+
+    private var calendarOverviewStatusLabel: String {
+        PermissionDisplayPolicy.integrationStatusLabel(for: integrationPermissionSnapshot.status(for: .calendar))
+    }
+
+    private var calendarOverviewDetailLabel: String {
+        integrationOverviewDetailLabel(
+            for: integrationPermissionSnapshot.status(for: .calendar),
+            serviceName: "Calendar"
+        )
+    }
+
+    private var reminderOverviewStatusLabel: String {
+        PermissionDisplayPolicy.integrationStatusLabel(for: integrationPermissionSnapshot.status(for: .reminders))
+    }
+
+    private var reminderOverviewDetailLabel: String {
+        integrationOverviewDetailLabel(
+            for: integrationPermissionSnapshot.status(for: .reminders),
+            serviceName: "Reminder"
+        )
+    }
+
+    private var dataLocationOverviewStatusLabel: String {
+        if settingsViewModel.settings.validate().contains(where: { $0.field == "defaultWorkspacePath" }) {
+            return "Needs attention"
+        }
+        return settingsViewModel.settings.defaultWorkspacePath == nil ? "Default app container" : "Custom folder"
+    }
+
+    private var dataLocationOverviewDetailLabel: String {
+        if settingsViewModel.settings.validate().contains(where: { $0.field == "defaultWorkspacePath" }) {
+            return "Choose an absolute folder path."
+        }
+        guard let path = settingsViewModel.settings.defaultWorkspacePath else {
+            return "No custom workspace path configured."
+        }
+        return localizedDisplay("Folder: %@", URL(fileURLWithPath: path).lastPathComponent)
+    }
+
+    private var dataLocationOverviewTone: SettingsStatusTone {
+        if settingsViewModel.settings.validate().contains(where: { $0.field == "defaultWorkspacePath" }) {
+            return .danger
+        }
+        return settingsViewModel.settings.defaultWorkspacePath == nil ? .neutral : .ready
+    }
+
     private func tone(for row: AIProviderReadinessRow) -> SettingsStatusTone {
         switch row.statusLabel {
         case "Configured", "Approved", "Local":
@@ -1678,6 +1785,30 @@ private struct SettingsView: View {
             return .danger
         }
         return externalMCPViewModel.display.isEnabled ? .warning : .neutral
+    }
+
+    private func integrationOverviewDetailLabel(for status: PermissionStatus, serviceName: String) -> String {
+        switch status {
+        case .notDetermined:
+            return localizedDisplay("%@ permission has not been requested.", serviceName)
+        case .granted:
+            return localizedDisplay("%@ permission is available; writes still require approval.", serviceName)
+        case .denied:
+            return localizedDisplay("%@ permission is denied in System Settings.", serviceName)
+        case .restricted:
+            return localizedDisplay("%@ permission is restricted on this Mac.", serviceName)
+        }
+    }
+
+    private func integrationTone(for status: PermissionStatus) -> SettingsStatusTone {
+        switch status {
+        case .notDetermined:
+            return .warning
+        case .granted:
+            return .ready
+        case .denied, .restricted:
+            return .danger
+        }
     }
 
     private var mcpExecutionStatusLabel: String {
@@ -2345,6 +2476,18 @@ private struct SettingsStatusOverview: View {
     let aiProviderLabel: String
     let aiStatusLabel: String
     let aiTone: SettingsStatusTone
+    let sttStatusLabel: String
+    let sttDetailLabel: String
+    let sttTone: SettingsStatusTone
+    let ttsStatusLabel: String
+    let ttsDetailLabel: String
+    let ttsTone: SettingsStatusTone
+    let calendarStatusLabel: String
+    let calendarDetailLabel: String
+    let calendarTone: SettingsStatusTone
+    let reminderStatusLabel: String
+    let reminderDetailLabel: String
+    let reminderTone: SettingsStatusTone
     let mcpStatusLabel: String
     let mcpDetailLabel: String
     let mcpTone: SettingsStatusTone
@@ -2354,6 +2497,9 @@ private struct SettingsStatusOverview: View {
     let privacyStatusLabel: String
     let privacyDetailLabel: String
     let privacyTone: SettingsStatusTone
+    let dataLocationStatusLabel: String
+    let dataLocationDetailLabel: String
+    let dataLocationTone: SettingsStatusTone
 
     private let columns = [
         GridItem(.flexible(), spacing: 10),
@@ -2368,6 +2514,34 @@ private struct SettingsStatusOverview: View {
                 detail: aiStatusLabel,
                 tone: aiTone,
                 systemImage: "sparkles"
+            )
+            SettingsStatusTile(
+                title: "STT",
+                value: sttStatusLabel,
+                detail: sttDetailLabel,
+                tone: sttTone,
+                systemImage: "waveform"
+            )
+            SettingsStatusTile(
+                title: "TTS",
+                value: ttsStatusLabel,
+                detail: ttsDetailLabel,
+                tone: ttsTone,
+                systemImage: "speaker.slash"
+            )
+            SettingsStatusTile(
+                title: "Calendar",
+                value: calendarStatusLabel,
+                detail: calendarDetailLabel,
+                tone: calendarTone,
+                systemImage: "calendar"
+            )
+            SettingsStatusTile(
+                title: "Reminder",
+                value: reminderStatusLabel,
+                detail: reminderDetailLabel,
+                tone: reminderTone,
+                systemImage: "checklist"
             )
             SettingsStatusTile(
                 title: "MCP",
@@ -2390,8 +2564,16 @@ private struct SettingsStatusOverview: View {
                 tone: privacyTone,
                 systemImage: "lock.shield"
             )
+            SettingsStatusTile(
+                title: "Data Location",
+                value: dataLocationStatusLabel,
+                detail: dataLocationDetailLabel,
+                tone: dataLocationTone,
+                systemImage: "folder"
+            )
         }
         .padding(.vertical, 2)
+        .accessibilityIdentifier("settings-status-overview")
     }
 }
 
@@ -2411,7 +2593,7 @@ private struct SettingsStatusTile: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(title)
+                    Text(localizedSettingsDisplay(title))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -2500,6 +2682,10 @@ private enum AppRuntimeFactory {
                 networkClient: UnavailableSyncNetworkClient()
             )
         )
+    }
+
+    static func makeIntegrationPermissionSnapshot() -> PermissionSnapshot {
+        EventKitPermissionSnapshotReader.snapshot(base: UserNotificationsPermissionSnapshotReader.snapshot())
     }
 
     static func makeWatcherDiagnosticsSnapshot() -> WatcherDiagnosticsSnapshot {

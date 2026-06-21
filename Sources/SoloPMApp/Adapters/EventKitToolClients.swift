@@ -2,6 +2,30 @@ import Foundation
 import SoloPMCore
 @preconcurrency import EventKit
 
+enum EventKitPermissionSnapshotReader {
+    static func snapshot(base: PermissionSnapshot = .empty) -> PermissionSnapshot {
+        var snapshot = base
+        snapshot.setStatus(permissionStatus(from: EKEventStore.authorizationStatus(for: .event)), for: .calendar)
+        snapshot.setStatus(permissionStatus(from: EKEventStore.authorizationStatus(for: .reminder)), for: .reminders)
+        return snapshot
+    }
+
+    static func permissionStatus(from status: EKAuthorizationStatus) -> PermissionStatus {
+        switch status {
+        case .notDetermined:
+            return .notDetermined
+        case .authorized, .fullAccess, .writeOnly:
+            return .granted
+        case .denied:
+            return .denied
+        case .restricted:
+            return .restricted
+        @unknown default:
+            return .restricted
+        }
+    }
+}
+
 final class EventKitCalendarClient: CalendarClient, @unchecked Sendable {
     private let eventStore: EKEventStore
     private let dateFormatter = ISO8601DateFormatter()

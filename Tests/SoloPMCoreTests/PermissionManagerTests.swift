@@ -19,4 +19,11 @@ final class PermissionManagerTests: XCTestCase {
         XCTAssertTrue(PermissionDisplayPolicy.isActionDisabled(for: .restricted))
         XCTAssertEqual(PermissionDisplayPolicy.label(for: .denied), "Denied")
     }
+
+    func testPermissionDisplayPolicyMapsIntegrationConnectionStatus() {
+        XCTAssertEqual(PermissionDisplayPolicy.integrationStatusLabel(for: .notDetermined), "Not configured")
+        XCTAssertEqual(PermissionDisplayPolicy.integrationStatusLabel(for: .granted), "Connected")
+        XCTAssertEqual(PermissionDisplayPolicy.integrationStatusLabel(for: .denied), "Permission denied")
+        XCTAssertEqual(PermissionDisplayPolicy.integrationStatusLabel(for: .restricted), "Restricted")
+    }
 }
