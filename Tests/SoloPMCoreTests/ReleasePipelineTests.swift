@@ -5377,6 +5377,34 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("Static"))
     }
 
+    func testRuntimeWorkflowSmokeScriptDefinesScenarioRegistryAndFailureArtifacts() throws {
+        let script = try readPackageFile("script/check_runtime_workflow_smoke.sh")
+
+        XCTAssertTrue(script.contains("SCENARIOS=(\"project_task_crud\" \"inbox_triage\" \"today_complete\" \"settings_save\" \"voice_review\")"))
+        for scenario in [
+            "project_task_crud",
+            "inbox_triage",
+            "today_complete",
+            "settings_save",
+            "voice_review"
+        ] {
+            XCTAssertTrue(script.contains("run_\(scenario)()"), "workflow smoke must define \(scenario)")
+            XCTAssertTrue(script.contains("write_scenario_artifact \"\(scenario)\""))
+        }
+
+        XCTAssertTrue(script.contains("SOLOPM_RUNTIME_WORKFLOW_ARTIFACT_DIR"))
+        XCTAssertTrue(script.contains("last_visible_window_context()"))
+        XCTAssertTrue(script.contains("scenario_reason"))
+        XCTAssertTrue(script.contains("scenario_status=\"failed\""))
+        XCTAssertTrue(script.contains("./script/check_runtime_accessible_crud_smoke.sh"))
+        XCTAssertTrue(script.contains("SOLOPM_RUNTIME_ACCESSIBLE_CRUD_KEEP_DATABASE=1"))
+        XCTAssertTrue(script.contains("BLOCKER: runtime workflow scenario failed"))
+        XCTAssertTrue(script.contains("Last visible window"))
+        XCTAssertFalse(script.contains("SKIP"))
+        XCTAssertFalse(script.contains("TODO"))
+        XCTAssertFalse(script.contains("fake success"))
+    }
+
     func testLayoutStabilitySmokeScriptSamplesImmediateFramesAndWritesArtifacts() throws {
         let script = try readPackageFile("script/check_layout_stability_smoke.sh")
         let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")

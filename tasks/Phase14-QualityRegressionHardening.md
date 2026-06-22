@@ -233,9 +233,9 @@ Priority: High
 
 ### Tests First
 
-- [ ] smoke scriptが isolated `SOLOPM_DATABASE_PATH` を必須にしていることをsource testで固定する。
-- [ ] 実行後のSQLite stateを確認し、UI操作だけ成功してDB未反映の場合に失敗するテストを追加する。
-- [ ] click-pathごとに `PASS/FAIL/SKIP` ではなく、失敗理由と最後に見えたwindow情報を出すことをsource testで固定する。
+- [x] smoke scriptが isolated `SOLOPM_DATABASE_PATH` を必須にしていることをsource testで固定する。
+- [x] 実行後のSQLite stateを確認し、UI操作だけ成功してDB未反映の場合に失敗するテストを追加する。
+- [x] click-pathごとに `PASS/FAIL/SKIP` ではなく、失敗理由と最後に見えたwindow情報を出すことをsource testで固定する。
 
 ### Implementation Steps
 
@@ -247,7 +247,7 @@ Priority: High
 
 ### Acceptance Criteria
 
-- [ ] Project / Task CRUDがUIから永続DBへ反映される。
+- [x] Project / Task CRUDがUIから永続DBへ反映される。
 - [ ] Inbox item分類とUndoが実アプリで完走する。
 - [ ] Today row completionがTask statusへ反映される。
 - [ ] Settings saveがUI stateとstore stateに反映される。

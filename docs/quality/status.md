@@ -1,26 +1,22 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T20:24:45Z
-Source commit: ac59306
+Generated at: 2026-06-22T20:33:29Z
+Source commit: 31160dc
 
 ## Summary
 
-- Phase14 completion: 64/183 checked, 119 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 68/183 checked, 115 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 4 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-ac59306.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-31160dc.md`
 
 ## Unfinished Phase14 Items
 
-- [ ] tasks/Phase14-QualityRegressionHardening.md:236:- [ ] smoke scriptが isolated `SOLOPM_DATABASE_PATH` を必須にしていることをsource testで固定する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:237:- [ ] 実行後のSQLite stateを確認し、UI操作だけ成功してDB未反映の場合に失敗するテストを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:238:- [ ] click-pathごとに `PASS/FAIL/SKIP` ではなく、失敗理由と最後に見えたwindow情報を出すことをsource testで固定する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:242:- [ ] `project_task_crud`、`inbox_triage`、`today_complete`、`settings_save`、`voice_review` のscenarioに分ける。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:243:- [ ] 各scenarioはisolated DB seed -> app launch -> AX操作 -> DB/assertion -> artifact保存の順で実行する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:244:- [ ] destructive actionは必ずconfirmationを通ることを確認する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:245:- [ ] Settings保存ではKeychain secret値そのものをartifactへ出さない。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:246:- [ ] Voice CommandはAPI key未設定時にfake successへ倒れないことを確認する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:250:- [ ] Project / Task CRUDがUIから永続DBへ反映される。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:251:- [ ] Inbox item分類とUndoが実アプリで完走する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:252:- [ ] Today row completionがTask statusへ反映される。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:253:- [ ] Settings saveがUI stateとstore stateに反映される。
@@ -42,6 +38,10 @@ Source commit: ac59306
 - [ ] tasks/Phase14-QualityRegressionHardening.md:320:- [ ] `ProjectBoardLayoutMetrics` のような局所的metricsを作るか、既存DesignSystemへ追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:321:- [ ] magic numberを局所定数へ寄せ、なぜ固定するかコメントする。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:322:- [ ] ローカライズ文字列が長い場合はline limit、minimumScaleFactor、tooltip、label/hintのどれで処理するか決める。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:323:- [ ] Runtime smokeで主要AX frameのoverlapとnegative sizeを検出する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:327:- [ ] Header、sidebar、detail、inspector、cardsの寸法ルールがコードとテストで固定されている。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:328:- [ ] 長いラベルやempty/error stateでUIが重ならない。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:329:- [ ] Magic numberの追加がレビューで見つけやすい。
 
 ## Open Risk Items
 
@@ -69,8 +69,8 @@ Source commit: ac59306
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
 - `script/check_visual_regression_smoke.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-ac59306.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-ac59306.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-31160dc.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-31160dc.md ./script/release_readiness_report.sh`
 
 ## Notes
 
