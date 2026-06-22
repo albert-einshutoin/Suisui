@@ -42,6 +42,16 @@ REQUIRED_RUNTIME_FOCUS_MARKERS=(
   "Status controls=>task-status-move-controls"
   "Task inspector=>project-inspector"
 )
+REQUIRED_RUNTIME_BUTTON_A11Y_MARKERS=(
+  "project-board-show-archived=>Show archived"
+  "project-board-add-project=>Add Project"
+  "project-header-add-task=>Add task"
+  "task-card-open-details=>Open task"
+  "project-inspector-save=>Saves edits"
+  "project-inspector-complete=>Completes the selected project"
+  "project-inspector-archive=>Archives the selected project"
+  "project-inspector-delete=>Deletes the selected project"
+)
 
 REQUIRED_SOURCE_ANCHORS=(
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-sidebar"
@@ -124,7 +134,7 @@ usage() {
   printf '%s\n' ""
   printf '%s\n' "Checks accessibility anchors before the manual VoiceOver release pass."
   printf '%s\n' "This is not a substitute for the manual VoiceOver pass."
-  printf '%s\n' "Runtime smoke fails when the visible window has fewer than $MIN_AX_BUTTONS buttons, $MIN_AX_TEXT_FIELDS text field, $MIN_AX_STATIC_TEXTS static texts, unlabeled buttons, generic button labels without help or child text, missing primary CRUD button help signals, or missing VoiceOver focus path signals."
+  printf '%s\n' "Runtime smoke fails when the visible window has fewer than $MIN_AX_BUTTONS buttons, $MIN_AX_TEXT_FIELDS text field, $MIN_AX_STATIC_TEXTS static texts, unlabeled buttons, generic button labels without help or child text, missing primary CRUD button help signals, missing primary button label/help signals, or missing VoiceOver focus path signals."
 }
 
 while [[ "$#" -gt 0 ]]; do
@@ -238,6 +248,38 @@ if [[ -n "$LAUNCH_ENV_FILE" ]]; then
   fi
 fi
 
+activate_app() {
+  # Keep activation inside System Events so LaunchServices does not start or
+  # block on a second app instance outside the isolated launch environment.
+  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 &
+on run argv
+  set appName to item 1 of argv
+  tell application "System Events"
+    if not (exists process appName) then return "missing"
+    tell process appName
+      set frontmost to true
+      if (count of windows) > 0 then
+        try
+          perform action "AXRaise" of window 1
+        end try
+      end if
+    end tell
+  end tell
+  return "activated"
+end run
+APPLESCRIPT
+  local osascript_pid=$!
+  for _ in {1..20}; do
+    if ! kill -0 "$osascript_pid" >/dev/null 2>&1; then
+      wait "$osascript_pid" >/dev/null 2>&1 || true
+      return 0
+    fi
+    sleep 0.1
+  done
+  kill "$osascript_pid" >/dev/null 2>&1 || true
+  wait "$osascript_pid" >/dev/null 2>&1 || true
+}
+
 if [[ "$LAUNCH_APP" -eq 1 ]]; then
   pkill -x "$APP_NAME" >/dev/null 2>&1 || true
   if [[ -n "$LAUNCH_ENV_FILE" ]]; then
@@ -250,7 +292,7 @@ if [[ "$LAUNCH_APP" -eq 1 ]]; then
   else
     /usr/bin/open -n -F "$APP_BUNDLE"
   fi
-  /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 || true
+  activate_app
 fi
 
 deadline=$((SECONDS + TIMEOUT_SECONDS))
@@ -283,9 +325,18 @@ for required_runtime_focus_marker in "${REQUIRED_RUNTIME_FOCUS_MARKERS[@]}"; do
   fi
 done
 required_runtime_focus_marker_count="${#REQUIRED_RUNTIME_FOCUS_MARKERS[@]}"
+required_runtime_button_a11y_markers_joined=""
+for required_runtime_button_a11y_marker in "${REQUIRED_RUNTIME_BUTTON_A11Y_MARKERS[@]}"; do
+  if [[ -z "$required_runtime_button_a11y_markers_joined" ]]; then
+    required_runtime_button_a11y_markers_joined="$required_runtime_button_a11y_marker"
+  else
+    required_runtime_button_a11y_markers_joined="${required_runtime_button_a11y_markers_joined}|||${required_runtime_button_a11y_marker}"
+  fi
+done
+required_runtime_button_a11y_marker_count="${#REQUIRED_RUNTIME_BUTTON_A11Y_MARKERS[@]}"
 while true; do
   set +e
-  ax_output="$(/usr/bin/osascript - "$APP_NAME" "$MIN_AX_BUTTONS" "$MIN_AX_TEXT_FIELDS" "$MIN_AX_STATIC_TEXTS" "$required_runtime_crud_markers_joined" "$required_runtime_crud_marker_count" "$required_runtime_focus_markers_joined" "$required_runtime_focus_marker_count" <<APPLESCRIPT 2>&1
+  ax_output="$(/usr/bin/osascript - "$APP_NAME" "$MIN_AX_BUTTONS" "$MIN_AX_TEXT_FIELDS" "$MIN_AX_STATIC_TEXTS" "$required_runtime_crud_markers_joined" "$required_runtime_crud_marker_count" "$required_runtime_focus_markers_joined" "$required_runtime_focus_marker_count" "$required_runtime_button_a11y_markers_joined" "$required_runtime_button_a11y_marker_count" <<APPLESCRIPT 2>&1
 on run argv
   set appName to item 1 of argv
   set minButtons to (item 2 of argv) as integer
@@ -295,10 +346,13 @@ on run argv
   set requiredCRUDMarkerCount to (item 6 of argv) as integer
   set requiredFocusMarkersRaw to item 7 of argv
   set requiredFocusMarkerCount to (item 8 of argv) as integer
+  set requiredButtonA11yMarkersRaw to item 9 of argv
+  set requiredButtonA11yMarkerCount to (item 10 of argv) as integer
   set previousTextItemDelimiters to text item delimiters of AppleScript
   set text item delimiters of AppleScript to "|||"
   set requiredCRUDMarkers to text items of requiredCRUDMarkersRaw
   set requiredFocusMarkers to text items of requiredFocusMarkersRaw
+  set requiredButtonA11yMarkers to text items of requiredButtonA11yMarkersRaw
   set text item delimiters of AppleScript to previousTextItemDelimiters
   set bestSummary to ""
   set bestScore to -1
@@ -311,6 +365,8 @@ on run argv
   set bestMissingCRUDSignals to ""
   set bestFocusPathSignalCount to 0
   set bestMissingFocusPathSignals to ""
+  set bestButtonA11ySignalCount to 0
+  set bestMissingButtonA11ySignals to ""
   tell application "System Events"
     if not (exists process appName) then error appName & " process is not visible to System Events"
     tell process appName
@@ -329,6 +385,7 @@ on run argv
         set genericButtonCount to 0
         set genericButtonDetails to ""
         set buttonSignalText to ""
+        set buttonA11ySignalText to ""
         set focusPathSignalText to ""
         set axItems to entire contents of currentWindow
         repeat with axItem in axItems
@@ -371,6 +428,7 @@ on run argv
             set buttonPosition to ""
             set buttonSize to ""
             set childTextCount to 0
+            set childTextSignal to ""
             try
               set buttonName to name of axItem as text
             end try
@@ -408,7 +466,10 @@ on run argv
                       set childText to value of childItem as text
                     end try
                   end if
-                  if childText is not "" and childText is not "missing value" then set childTextCount to childTextCount + 1
+                  if childText is not "" and childText is not "missing value" then
+                    set childTextCount to childTextCount + 1
+                    set childTextSignal to childTextSignal & " " & childText
+                  end if
                 end if
               end repeat
             end try
@@ -426,6 +487,27 @@ on run argv
               end if
             end if
             set buttonSignalText to buttonSignalText & " " & buttonIdentifier & " " & buttonName & " " & buttonTitle & " " & buttonDescription & " " & buttonHelp
+            set buttonHasReadableA11yText to false
+            if buttonName is not "" and buttonName is not "missing value" and buttonName is not "button" then set buttonHasReadableA11yText to true
+            if buttonTitle is not "" and buttonTitle is not "missing value" and buttonTitle is not "button" then set buttonHasReadableA11yText to true
+            if buttonDescription is not "" and buttonDescription is not "missing value" and buttonDescription is not "button" then set buttonHasReadableA11yText to true
+            if buttonHelp is not "" and buttonHelp is not "missing value" then set buttonHasReadableA11yText to true
+            if childTextCount > 0 then set buttonHasReadableA11yText to true
+            repeat with requiredButtonA11yMarker in requiredButtonA11yMarkers
+              set requiredButtonA11yMarkerText to requiredButtonA11yMarker as text
+              if requiredButtonA11yMarkerText is not "" then
+                set requiredButtonIdentifier to requiredButtonA11yMarkerText
+                set requiredButtonTextNeedle to ""
+                set buttonA11ySeparatorOffset to offset of "=>" in requiredButtonA11yMarkerText
+                if buttonA11ySeparatorOffset > 0 then
+                  set requiredButtonIdentifier to text 1 thru (buttonA11ySeparatorOffset - 1) of requiredButtonA11yMarkerText
+                  set requiredButtonTextNeedle to text (buttonA11ySeparatorOffset + 2) thru -1 of requiredButtonA11yMarkerText
+                end if
+                if buttonIdentifier contains requiredButtonIdentifier and requiredButtonTextNeedle is not "" and buttonHasReadableA11yText then
+                  set buttonA11ySignalText to buttonA11ySignalText & " " & requiredButtonA11yMarkerText
+                end if
+              end if
+            end repeat
           end if
           if itemRole is "AXTextField" or itemRole is "AXTextArea" then set textFieldCount to textFieldCount + 1
           if itemRole is "AXStaticText" then set staticTextCount to staticTextCount + 1
@@ -442,6 +524,22 @@ on run argv
                 set missingCRUDSignals to requiredCRUDMarkerText
               else
                 set missingCRUDSignals to missingCRUDSignals & "; " & requiredCRUDMarkerText
+              end if
+            end if
+          end if
+        end repeat
+        set buttonA11ySignalCount to 0
+        set missingButtonA11ySignals to ""
+        repeat with requiredButtonA11yMarker in requiredButtonA11yMarkers
+          set requiredButtonA11yMarkerText to requiredButtonA11yMarker as text
+          if requiredButtonA11yMarkerText is not "" then
+            if buttonA11ySignalText contains requiredButtonA11yMarkerText then
+              set buttonA11ySignalCount to buttonA11ySignalCount + 1
+            else
+              if missingButtonA11ySignals is "" then
+                set missingButtonA11ySignals to requiredButtonA11yMarkerText
+              else
+                set missingButtonA11ySignals to missingButtonA11ySignals & "; " & requiredButtonA11yMarkerText
               end if
             end if
           end if
@@ -469,7 +567,7 @@ on run argv
             end if
           end if
         end repeat
-        set currentSummary to "window=" & windowIndex & " name=" & windowName & ", buttons=" & buttonCount & ", textFields=" & textFieldCount & ", staticTexts=" & staticTextCount & ", unlabeledButtons=" & unlabeledButtonCount & ", genericButtons=" & genericButtonCount & ", crudSignals=" & crudSignalCount & "/" & requiredCRUDMarkerCount & ", focusPathSignals=" & focusPathSignalCount & "/" & requiredFocusMarkerCount
+        set currentSummary to "window=" & windowIndex & " name=" & windowName & ", buttons=" & buttonCount & ", textFields=" & textFieldCount & ", staticTexts=" & staticTextCount & ", unlabeledButtons=" & unlabeledButtonCount & ", genericButtons=" & genericButtonCount & ", crudSignals=" & crudSignalCount & "/" & requiredCRUDMarkerCount & ", buttonA11ySignals=" & buttonA11ySignalCount & "/" & requiredButtonA11yMarkerCount & ", focusPathSignals=" & focusPathSignalCount & "/" & requiredFocusMarkerCount
         if genericButtonDetails is not "" then set currentSummary to currentSummary & ", genericButtonDetails=" & genericButtonDetails
         set currentScore to buttonCount + textFieldCount + staticTextCount
         if bestSummary is "" then
@@ -484,6 +582,8 @@ on run argv
           set bestMissingCRUDSignals to missingCRUDSignals
           set bestFocusPathSignalCount to focusPathSignalCount
           set bestMissingFocusPathSignals to missingFocusPathSignals
+          set bestButtonA11ySignalCount to buttonA11ySignalCount
+          set bestMissingButtonA11ySignals to missingButtonA11ySignals
         else if currentScore > bestScore then
           set bestSummary to currentSummary
           set bestScore to currentScore
@@ -496,8 +596,10 @@ on run argv
           set bestMissingCRUDSignals to missingCRUDSignals
           set bestFocusPathSignalCount to focusPathSignalCount
           set bestMissingFocusPathSignals to missingFocusPathSignals
+          set bestButtonA11ySignalCount to buttonA11ySignalCount
+          set bestMissingButtonA11ySignals to missingButtonA11ySignals
         end if
-        if buttonCount >= minButtons and textFieldCount >= minTextFields and staticTextCount >= minStaticTexts and unlabeledButtonCount is 0 and genericButtonCount is 0 and crudSignalCount is requiredCRUDMarkerCount and focusPathSignalCount is requiredFocusMarkerCount then
+        if buttonCount >= minButtons and textFieldCount >= minTextFields and staticTextCount >= minStaticTexts and unlabeledButtonCount is 0 and genericButtonCount is 0 and crudSignalCount is requiredCRUDMarkerCount and buttonA11ySignalCount is requiredButtonA11yMarkerCount and focusPathSignalCount is requiredFocusMarkerCount then
           return "OK: runtime AX smoke visible, windows=" & windowCount & ", " & currentSummary
         end if
       end repeat
@@ -509,6 +611,7 @@ on run argv
       if bestUnlabeledButtonCount > 0 then error "runtime AX smoke has unlabeled buttons: " & bestUnlabeledButtonCount & " (" & bestSummary & ")"
       if bestGenericButtonCount > 0 then error "runtime AX smoke has generic button labels without help or child text: " & bestGenericButtonCount & " (" & bestSummary & ")"
       if bestCRUDSignalCount < requiredCRUDMarkerCount then error "runtime AX smoke is missing primary CRUD button labels or help: " & bestMissingCRUDSignals & " (" & bestSummary & ")"
+      if bestButtonA11ySignalCount < requiredButtonA11yMarkerCount then error "runtime AX smoke is missing primary button label or help: " & bestMissingButtonA11ySignals & " (" & bestSummary & ")"
       if bestFocusPathSignalCount < requiredFocusMarkerCount then error "runtime AX smoke is missing VoiceOver focus path labels or help: " & bestMissingFocusPathSignals & " (" & bestSummary & ")"
       error "runtime AX smoke did not find a qualifying visible window: " & bestSummary
     end tell

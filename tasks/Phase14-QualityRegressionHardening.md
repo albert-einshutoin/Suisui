@@ -386,7 +386,7 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 
 ### Tests First
 
-- [ ] 主要buttonがAX labelまたはhelpを失ったら失敗するruntime smokeを追加する。
+- [x] 主要buttonがAX labelまたはhelpを失ったら失敗するruntime smokeを追加する。
 - [x] Keyboard shortcutがmenu commandまたはfocused actionに接続されていることをsource testで固定する。
 - [x] destructive confirmationが確認なしに実行できないことをruntime smokeで確認する。
 
