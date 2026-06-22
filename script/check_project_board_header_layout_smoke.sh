@@ -483,14 +483,17 @@ on clickMatchingIdentifier(uiElement, targetIdentifier)
     if identifierValue is targetIdentifier then
       try
         perform action "AXPress" of uiElement
+        return true
       end try
       try
         click uiElement
+        return true
       end try
       try
         set itemPosition to position of uiElement
         set itemSize to size of uiElement
         click at {((item 1 of itemPosition) + ((item 1 of itemSize) / 2)), ((item 2 of itemPosition) + ((item 2 of itemSize) / 2))}
+        return true
       end try
       return true
     end if
@@ -563,6 +566,14 @@ click_inspector_close() {
 
 click_task_card_open_details() {
   click_first_ax_identifier "task-card-open-details"
+}
+
+click_terminal_toggle() {
+  click_first_ax_identifier "project-board-terminal-toggle"
+}
+
+click_terminal_close() {
+  click_first_ax_identifier "embedded-terminal-close"
 }
 
 click_sidebar_toggle() {
@@ -802,5 +813,17 @@ wait_for_ax_identifier_present "task-inspector"
 assert_toolbar_layout_is_stable "inspector-reopened-immediate" 5
 capture_window "inspector-reopened"
 assert_action_buttons_are_trailing "inspector-reopened"
+
+click_terminal_toggle
+wait_for_ax_identifier_present "embedded-terminal-close"
+assert_toolbar_layout_is_stable "terminal-open-immediate" 5
+capture_window "terminal-open"
+assert_action_buttons_are_trailing "terminal-open"
+
+click_terminal_close
+wait_for_ax_identifier_absent "embedded-terminal-close"
+assert_toolbar_layout_is_stable "terminal-closed-immediate" 5
+capture_window "terminal-closed"
+assert_action_buttons_are_trailing "terminal-closed"
 
 printf "OK: Project Board header layout smoke passed\n"

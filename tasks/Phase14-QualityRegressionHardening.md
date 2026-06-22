@@ -153,7 +153,7 @@ Project Board は sidebar、header、detail board、inspector、toolbar/AppKit b
   - [x] iconAndLabel -> iconOnly -> iconAndLabel
   - [x] Board -> List -> Overview -> Board
   - [x] inspector open -> close -> open
-  - [ ] terminal panel open -> close
+  - [x] terminal panel open -> close
   - [ ] project selection change
 
 ### Implementation Steps
@@ -163,6 +163,7 @@ Project Board は sidebar、header、detail board、inspector、toolbar/AppKit b
 - [x] Header actionsがdetail column右端に収まることを、window右端ではなくdetail frame基準で判定する。
 - [x] Inspector表示時にheaderがinspector下へ潜らないことを確認する。
 - [x] Board/List/Overviewの切替でheader heightとtop offsetが変わらないことを確認する。
+- [x] Terminal panel表示/非表示でheader action groupが下部panelのlayout再計算に巻き込まれないことを確認する。
 
 ### Acceptance Criteria
 

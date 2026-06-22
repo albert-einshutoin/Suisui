@@ -55,7 +55,6 @@ struct EmbeddedTerminalPanel: View {
         }
         .frame(minHeight: 220, idealHeight: 280)
         .background(.regularMaterial)
-        .accessibilityIdentifier("embedded-terminal-panel")
     }
 
     private var header: some View {

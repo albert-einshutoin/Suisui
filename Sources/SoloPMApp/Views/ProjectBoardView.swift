@@ -334,7 +334,6 @@ struct ProjectBoardView: View {
             }
             .keyboardShortcut("`", modifiers: [.control])
             .help("Terminal")
-            .accessibilityElement(children: .ignore)
             .accessibilityLabel("Terminal")
             .accessibilityIdentifier("project-board-terminal-toggle")
         }
