@@ -2597,6 +2597,327 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(audit.contains("Status: passed for release-machine scope."))
     }
 
+    func testRegressionRiskMapExistsAndCoversPrimaryScreens() throws {
+        let riskMap = try readPackageFile("docs/quality/regression-risk-map.md")
+        let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
+
+        XCTAssertTrue(riskMap.contains("Regression Risk Map"))
+        XCTAssertTrue(riskMap.contains("## Scope"))
+        XCTAssertTrue(riskMap.contains("## Verification Layers"))
+        XCTAssertTrue(riskMap.contains("## Coverage Status"))
+
+        for screen in ["Project Board", "Inbox", "Today", "Settings", "Voice Command", "Menu Bar"] {
+            XCTAssertTrue(
+                riskMap.contains("| \(screen) |"),
+                "Risk map should list \(screen) as a primary screen row"
+            )
+        }
+
+        XCTAssertTrue(
+            phase.contains("### Tests First"),
+            "P14-001 is the regression inventory task; risk map test must reference Phase 14"
+        )
+        XCTAssertTrue(
+            phase.contains("docs/quality/regression-risk-map.md"),
+            "Phase 14 P14-001 should pin docs/quality/regression-risk-map.md as the canonical artifact"
+        )
+    }
+
+    func testRegressionRiskMapDocumentsProjectBoardLayoutStability() throws {
+        let riskMap = try readPackageFile("docs/quality/regression-risk-map.md")
+
+        for region in ["header", "sidebar", "detail", "inspector"] {
+            XCTAssertTrue(
+                riskMap.contains(region),
+                "Risk map must cover Project Board layout stability for \(region)"
+            )
+        }
+
+        let invariants = [
+            "Header action group is detail-right aligned",
+            "Sidebar toggle mutates synchronously",
+            "Toolbar display mode preserves primary action position",
+            "Light / Dark / System switch does not collapse or overlap",
+            "Window resize preserves fixed dimension bounds",
+            "Layout correction avoids delayed animation"
+        ]
+        for invariant in invariants {
+            XCTAssertTrue(
+                riskMap.contains(invariant),
+                "Risk map must record layout stability invariant: \(invariant)"
+            )
+        }
+
+        XCTAssertTrue(
+            riskMap.contains("project-board-header-bar"),
+            "Risk map must reference the canonical AX identifier for header"
+        )
+        XCTAssertTrue(
+            riskMap.contains("project-board-sidebar"),
+            "Risk map must reference the canonical AX identifier for sidebar"
+        )
+        XCTAssertTrue(
+            riskMap.contains("project-board-detail"),
+            "Risk map must reference the canonical AX identifier for detail"
+        )
+        XCTAssertTrue(
+            riskMap.contains("project-inspector"),
+            "Risk map must reference the canonical AX identifier for inspector (project-inspector, not project-board-inspector)"
+        )
+        XCTAssertFalse(
+            riskMap.contains("project-board-inspector"),
+            "Risk map must not invent a project-board-inspector identifier that does not exist in ProjectBoardView.swift"
+        )
+    }
+
+    func testRegressionRiskMapAlignsRisksToAllFiveVerificationLayers() throws {
+        let riskMap = try readPackageFile("docs/quality/regression-risk-map.md")
+
+        for layer in ["unit", "source", "runtime", "visual", "manual"] {
+            XCTAssertTrue(
+                riskMap.contains(layer),
+                "Risk map must list verification layer: \(layer)"
+            )
+        }
+
+        XCTAssertTrue(
+            riskMap.contains("AppExperienceSourceTests"),
+            "Risk map must point to AppExperienceSourceTests as the source-level owner"
+        )
+        XCTAssertTrue(
+            riskMap.contains("ReleasePipelineTests"),
+            "Risk map must point to ReleasePipelineTests for release pipeline source checks"
+        )
+        XCTAssertTrue(
+            riskMap.contains("check_project_board_header_layout_smoke.sh"),
+            "Risk map must point to header layout smoke for runtime AX verification"
+        )
+        XCTAssertTrue(
+            riskMap.contains("check_runtime_accessible_crud_smoke.sh"),
+            "Risk map must point to runtime CRUD smoke for click-path verification"
+        )
+        XCTAssertTrue(
+            riskMap.contains("capture_ui_evidence.sh"),
+            "Risk map must point to visual evidence capture for screenshot verification"
+        )
+
+        let manualOnlyMarkers = ["VoiceOver", "Gatekeeper", "manual-only"]
+        for marker in manualOnlyMarkers {
+            XCTAssertTrue(
+                riskMap.contains(marker),
+                "Risk map must classify manual-only gates explicitly: \(marker)"
+            )
+        }
+
+        XCTAssertTrue(
+            riskMap.contains("P14-002") || riskMap.contains("P14-003") || riskMap.contains("P14-005"),
+            "Risk map must forward uncovered risks to follow-up P14 tasks"
+        )
+    }
+
+    func testRegressionRiskMapDataRowsDeclareVerificationLayerOwnerAndCoverage() throws {
+        let riskMap = try readPackageFile("docs/quality/regression-risk-map.md")
+        let tables = try parseMarkdownTables(in: riskMap)
+
+        XCTAssertFalse(tables.isEmpty, "Risk map must contain at least one markdown table")
+
+        let verificationLayerHeaders = ["Verification layer", "Layer", "Verification Layer"]
+        let ownerTestHeaders = ["Owner test / script", "代表コマンド / owner"]
+        let coverageHeaders = ["Coverage"]
+        let allowedLayerTokens: Set<String> = ["unit", "source", "runtime", "visual", "manual"]
+        let allowedCoverageValues: Set<String> = ["automated", "partial", "manual-only", "open", "automated+", "partial+"]
+
+        for (sectionTitle, header, rows) in tables {
+            let normalizedHeader = header.map { $0.trimmingCharacters(in: .whitespaces) }
+
+            guard let layerColumnIndex = normalizedHeader.firstIndex(where: { verificationLayerHeaders.contains($0) }),
+                  let ownerColumnIndex = normalizedHeader.firstIndex(where: { ownerTestHeaders.contains($0) }) else {
+                continue
+            }
+
+            XCTAssertFalse(
+                rows.isEmpty,
+                "Table under '\(sectionTitle)' must contain at least one data row"
+            )
+
+            for (rowIndex, row) in rows.enumerated() {
+                let rowLabel = "section='\(sectionTitle)' row=\(rowIndex + 1)"
+                XCTAssertGreaterThanOrEqual(
+                    row.count,
+                    max(layerColumnIndex, ownerColumnIndex) + 1,
+                    "\(rowLabel) must have a cell for Verification layer and Owner test"
+                )
+
+                let layerCell = row[layerColumnIndex]
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                XCTAssertFalse(
+                    layerCell.isEmpty,
+                    "\(rowLabel) Verification layer must not be empty"
+                )
+
+                let layerTokens = layerCell
+                    .lowercased()
+                    .components(separatedBy: CharacterSet(charactersIn: "+,/、& "))
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+                for token in layerTokens {
+                    XCTAssertTrue(
+                        allowedLayerTokens.contains(token),
+                        "\(rowLabel) Verification layer contains unknown token '\(token)': '\(layerCell)'"
+                    )
+                }
+
+                let ownerCell = row[ownerColumnIndex]
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                XCTAssertFalse(
+                    ownerCell.isEmpty,
+                    "\(rowLabel) Owner test / script must not be empty"
+                )
+                XCTAssertFalse(
+                    ownerCell.contains("TBD") || ownerCell.contains("TODO"),
+                    "\(rowLabel) Owner test / script must not be a placeholder: '\(ownerCell)'"
+                )
+            }
+
+            if let coverageColumnIndex = normalizedHeader.firstIndex(where: { coverageHeaders.contains($0) }) {
+                for (rowIndex, row) in rows.enumerated() {
+                    let rowLabel = "section='\(sectionTitle)' row=\(rowIndex + 1)"
+                    XCTAssertGreaterThanOrEqual(
+                        row.count,
+                        coverageColumnIndex + 1,
+                        "\(rowLabel) must have a Coverage cell"
+                    )
+                    let coverageCell = row[coverageColumnIndex]
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    XCTAssertFalse(
+                        coverageCell.isEmpty,
+                        "\(rowLabel) Coverage must not be empty"
+                    )
+                    XCTAssertTrue(
+                        allowedCoverageValues.contains(coverageCell),
+                        "\(rowLabel) Coverage '\(coverageCell)' is not one of the allowed values"
+                    )
+                }
+            }
+        }
+    }
+
+    func testRegressionRiskMapDoesNotReferenceUnbuiltVisualRegressionSmokeScript() throws {
+        let root = packageRoot().appendingPathComponent("script")
+        let visualScriptURL = root.appendingPathComponent("check_visual_regression_smoke.sh")
+        let fileExists = FileManager.default.fileExists(atPath: visualScriptURL.path)
+
+        XCTAssertFalse(
+            fileExists,
+            "check_visual_regression_smoke.sh is not yet implemented; P14-004 follow-up must add it before verification layer / owner refs can pin it"
+        )
+
+        let riskMap = try readPackageFile("docs/quality/regression-risk-map.md")
+        let visualRow = riskMap
+            .components(separatedBy: "\n")
+            .first(where: { $0.hasPrefix("| visual   |") || $0.hasPrefix("| visual |") })
+
+        XCTAssertNotNil(visualRow, "Risk map must keep a visual layer row")
+        XCTAssertFalse(
+            visualRow?.contains("check_visual_regression_smoke.sh") ?? false,
+            "Visual layer representative command must not list check_visual_regression_smoke.sh until the script exists"
+        )
+
+        XCTAssertTrue(
+            riskMap.contains("P14-004"),
+            "Risk map must forward the unbuilt visual regression script to P14-004 follow-up"
+        )
+    }
+
+    func testRegressionRiskMapUsesExistingInspectorAccessibilityIdentifier() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let riskMap = try readPackageFile("docs/quality/regression-risk-map.md")
+
+        XCTAssertTrue(
+            boardSource.contains(".accessibilityIdentifier(\"project-inspector\")"),
+            "ProjectBoardView.swift must define project-inspector as the inspector identifier"
+        )
+        XCTAssertFalse(
+            boardSource.contains("project-board-inspector"),
+            "ProjectBoardView.swift must not invent project-board-inspector"
+        )
+        XCTAssertTrue(
+            riskMap.contains("project-inspector"),
+            "Risk map must point to the existing project-inspector identifier for the inspector region"
+        )
+        XCTAssertFalse(
+            riskMap.contains("project-board-inspector"),
+            "Risk map must not reference the non-existent project-board-inspector identifier"
+        )
+    }
+
+    private func parseMarkdownTables(in source: String) throws -> [(section: String, header: [String], rows: [[String]])] {
+        let lines = source.components(separatedBy: "\n")
+        var tables: [(String, [String], [[String]])] = []
+        var currentSection = "preamble"
+        var index = 0
+
+        while index < lines.count {
+            let line = lines[index]
+
+            if line.hasPrefix("#") {
+                currentSection = String(line.drop(while: { $0 == "#" }))
+                    .trimmingCharacters(in: .whitespaces)
+                index += 1
+                continue
+            }
+
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("|") && trimmed.hasSuffix("|") && trimmed.contains("|") {
+                var tableLines: [String] = [trimmed]
+                var cursor = index + 1
+                while cursor < lines.count {
+                    let next = lines[cursor].trimmingCharacters(in: .whitespaces)
+                    if next.hasPrefix("|") && next.hasSuffix("|") && next.contains("|") {
+                        tableLines.append(next)
+                        cursor += 1
+                    } else {
+                        break
+                    }
+                }
+
+                if tableLines.count >= 3 {
+                    let header = splitTableRow(tableLines[0])
+                    let separator = splitTableRow(tableLines[1])
+                    let isSeparator = separator.allSatisfy { cell in
+                        let trimmedCell = cell.trimmingCharacters(in: .whitespaces)
+                        if trimmedCell.isEmpty { return true }
+                        let core = trimmedCell.trimmingCharacters(in: CharacterSet(charactersIn: "-:"))
+                        return !core.isEmpty
+                    }
+                    if isSeparator {
+                        let dataRows = tableLines[2...]
+                            .map(splitTableRow)
+                            .filter { !$0.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty } }
+                        tables.append((currentSection, header, dataRows))
+                        index = cursor
+                        continue
+                    }
+                }
+            }
+
+            index += 1
+        }
+
+        return tables
+    }
+
+    private func splitTableRow(_ line: String) -> [String] {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("|"), trimmed.hasSuffix("|") else {
+            return []
+        }
+        let inner = String(trimmed.dropFirst().dropLast())
+        return inner
+            .components(separatedBy: "|")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
