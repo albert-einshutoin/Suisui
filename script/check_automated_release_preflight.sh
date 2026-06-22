@@ -185,7 +185,7 @@ trap cleanup EXIT
 require_clean_source_tree_for_evidence
 
 section "Release CI"
-./scripts/ci.sh
+SOLOPM_CI_RELEASE_GATES=1 ./scripts/ci.sh
 
 section "Local CRUD smoke"
 ./script/check_local_crud_smoke.sh

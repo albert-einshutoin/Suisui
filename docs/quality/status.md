@@ -1,29 +1,17 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T23:30:00Z
-Source commit: f2b5ab9
+Generated at: 2026-06-22T23:39:13Z
+Source commit: 0199644
 
 ## Summary
 
-- Phase14 completion: 136/183 checked, 47 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
-- Open risk items: 4 (`docs/quality/regression-risk-map.md`)
+- Phase14 completion: 148/183 checked, 35 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Open risk items: 3 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-f2b5ab9.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-0199644.md`
 
 ## Unfinished Phase14 Items
 
-- [ ] tasks/Phase14-QualityRegressionHardening.md:500:- [ ] `scripts/ci.sh` が軽量PR gateと重いruntime gateを混同しないことをsource testで固定する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:501:- [ ] `release_readiness_report.sh` がlayout stability smokeの結果を取り込めることをテストする。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:502:- [ ] Flake quarantine listが空でない場合、owner/reason/expiryが必要なことをテストする。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:506:- [ ] `docs/quality/test-triage.md` にfailure categoryを書く。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:507:- [ ] `docs/quality/flake-quarantine.md` を作り、期限付きでしかskipできない運用にする。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:508:- [ ] `scripts/ci.sh` はunit/sourceを必須、runtime/visualは明示フラグで実行する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:509:- [ ] `release_readiness_report.sh` はruntime/visual/manual evidenceを集約する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:510:- [ ] 失敗時は最小再現コマンドをaction summaryに出す。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:514:- [ ] PRでは速いテストで明確に落ちる。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:515:- [ ] UI/release前にはruntime/visual gateが実行できる。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:516:- [ ] フレークを無期限skipできない。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:517:- [ ] 失敗分類がbuild / assertion / crash / timing / environment / manual gateに分かれる。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:539:- [ ] Manual evidenceにfailure noteがある場合、linked regression testまたはfollow-up issueが必要なことをreportで検出する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:545:- [ ] VoiceOverで見つかったlabel/focus問題はAX/source testへ戻す。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:546:- [ ] Gatekeeper/clean environmentで見つかった起動問題はpackaging/preflight testへ戻す。
@@ -42,13 +30,24 @@ Source commit: f2b5ab9
 - [ ] tasks/Phase14-QualityRegressionHardening.md:606:- [ ] `swift test`
 - [ ] tasks/Phase14-QualityRegressionHardening.md:607:- [ ] `bash -n script/check_project_board_header_layout_smoke.sh`
 - [ ] tasks/Phase14-QualityRegressionHardening.md:608:- [ ] `script/check_project_board_header_layout_smoke.sh`
+- [ ] tasks/Phase14-QualityRegressionHardening.md:609:- [ ] `script/check_layout_stability_smoke.sh`
+- [ ] tasks/Phase14-QualityRegressionHardening.md:610:- [ ] `script/check_runtime_accessible_crud_smoke.sh`
+- [ ] tasks/Phase14-QualityRegressionHardening.md:611:- [ ] `script/check_accessibility_preflight.sh --runtime`
+- [ ] tasks/Phase14-QualityRegressionHardening.md:612:- [ ] `script/capture_ui_evidence.sh --doctor`
+- [ ] tasks/Phase14-QualityRegressionHardening.md:613:- [ ] `script/check_visual_regression_smoke.sh`
+- [ ] tasks/Phase14-QualityRegressionHardening.md:614:- [ ] `script/check_security_regressions.sh`
+- [ ] tasks/Phase14-QualityRegressionHardening.md:615:- [ ] `script/quality_status_report.sh`
+- [ ] tasks/Phase14-QualityRegressionHardening.md:619:- [ ] Risk mapが主要画面、主要状態変更、検証層、owner testを網羅している。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:620:- [ ] Project Boardのsidebar/header/detail/inspectorのlayout stability smokeが通る。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:621:- [ ] Sidebar toggle、toolbar display mode、window resize、theme switch、inspector open/closeの直後frame jumpを検出できる。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:622:- [ ] Runtime CRUD、Inbox、Today、Settings、Voice Commandの主要クリックパスがsmokeで検証される。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:623:- [ ] Visual screenshot smokeがLight/Dark/Systemの主要画面を検証し、黒画面/低情報量/対象window誤りを落とす。
 
 ## Open Risk Items
 
 - [ ] docs/quality/regression-risk-map.md:92:  DB mutation に到達しないことの runtime smoke 拡張が未完了。 Coverage: open。
 - [ ] docs/quality/regression-risk-map.md:95:  しないことの source test が未着手。 Coverage: open。 Follow-up: P14-010。
 - [ ] docs/quality/regression-risk-map.md:98:  未着手。 Coverage: open。 Follow-up: P14-011。
-- [ ] docs/quality/regression-risk-map.md:100:  `script/release_readiness_report.sh`) が未着手。 Coverage: open。
 
 ## Runtime / Visual / Manual Evidence
 
@@ -69,8 +68,10 @@ Source commit: f2b5ab9
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
 - `script/check_visual_regression_smoke.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-f2b5ab9.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-f2b5ab9.md ./script/release_readiness_report.sh`
+- `docs/quality/test-triage.md`
+- `docs/quality/flake-quarantine.md`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-0199644.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-0199644.md ./script/release_readiness_report.sh`
 
 ## Notes
 

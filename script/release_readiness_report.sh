@@ -20,6 +20,8 @@ LOCAL_CRUD_SMOKE="${SOLOPM_LOCAL_CRUD_SMOKE:-$AUTOMATED_PROOF_GATES}"
 LOCAL_CRUD_SMOKE_RELATIVE="script/check_local_crud_smoke.sh"
 RUNTIME_ACCESSIBLE_CRUD_SMOKE="${SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SMOKE:-$AUTOMATED_PROOF_GATES}"
 RUNTIME_ACCESSIBLE_CRUD_SMOKE_RELATIVE="script/check_runtime_accessible_crud_smoke.sh"
+LAYOUT_STABILITY_SMOKE="${SOLOPM_LAYOUT_STABILITY_SMOKE:-0}"
+LAYOUT_STABILITY_SMOKE_RELATIVE="script/check_layout_stability_smoke.sh"
 RELEASE_XCODE_PREFLIGHT="${SOLOPM_RELEASE_XCODE_PREFLIGHT:-$AUTOMATED_PROOF_GATES}"
 XCODE_WORKSPACE_RELATIVE=".swiftpm/xcode/package.xcworkspace"
 XCODE_SCHEME="${SOLOPM_XCODE_SCHEME:-SoloPM}"
@@ -650,6 +652,7 @@ has_local_product_gate_blocker() {
       *"release CI preflight"*|\
       *"local CRUD smoke"*|\
       *"runtime accessible CRUD smoke"*|\
+      *"layout stability smoke"*|\
       *"release Xcode preflight"*|\
       *"release launch preflight"*|\
       *"accessibility runtime preflight"*|\
@@ -682,6 +685,62 @@ write_local_product_gate_status() {
     if has_runtime_product_source_blocker; then
       printf -- "- [ ] Runtime source scan still has product-source blockers; remove runtime mock/fake/fixture/demo paths before release.\n"
     fi
+  fi
+  printf "\n"
+}
+
+failure_reproduction_command() {
+  local blocker_message="$1"
+
+  case "$blocker_message" in
+    *"release CI preflight"*)
+      printf 'SOLOPM_RELEASE_CI_PREFLIGHT=1 ./script/release_readiness_report.sh'
+      ;;
+    *"local CRUD smoke"*)
+      printf './script/check_local_crud_smoke.sh'
+      ;;
+    *"runtime accessible CRUD smoke"*)
+      printf './script/check_runtime_accessible_crud_smoke.sh'
+      ;;
+    *"layout stability smoke"*)
+      printf 'SOLOPM_LAYOUT_STABILITY_SMOKE=1 ./script/release_readiness_report.sh'
+      ;;
+    *"release Xcode preflight"*)
+      printf 'SOLOPM_RELEASE_XCODE_PREFLIGHT=1 ./script/release_readiness_report.sh'
+      ;;
+    *"release launch preflight"*)
+      printf 'SOLOPM_RELEASE_LAUNCH_PREFLIGHT=1 ./script/release_readiness_report.sh'
+      ;;
+    *"accessibility runtime preflight"*)
+      printf 'SOLOPM_ACCESSIBILITY_RUNTIME_PREFLIGHT=1 ./script/release_readiness_report.sh'
+      ;;
+    *"MCP compliance"*)
+      printf './script/verify_mcp_compliance.sh'
+      ;;
+    *"release environment preflight"*)
+      printf './script/verify_release_environment.sh'
+      ;;
+    *)
+      printf './script/release_readiness_report.sh'
+      ;;
+  esac
+}
+
+write_failure_triage_actions() {
+  local blocker_message
+
+  printf "## Failure Triage\n"
+  printf -- "- Classify each blocker with \`docs/quality/test-triage.md\` before retrying or quarantining it.\n"
+  printf -- "- Quarantine requires \`docs/quality/flake-quarantine.md\` fields: owner, reason, expiry, category, and minimal reproduction command.\n"
+  printf -- "- No indefinite quarantine is allowed; expired entries become blocking failures again.\n"
+  if [[ "${#BLOCKER_MESSAGES[@]}" -eq 0 ]]; then
+    printf -- "- [x] No blocker groups need reproduction commands in this report run.\n"
+  else
+    for blocker_message in "${BLOCKER_MESSAGES[@]}"; do
+      printf -- "- [ ] %s. Minimal reproduction command: \`%s\`\n" \
+        "$blocker_message" \
+        "$(failure_reproduction_command "$blocker_message")"
+    done
   fi
   printf "\n"
 }
@@ -1333,6 +1392,8 @@ write_release_actions() {
       done
     fi
     printf "\n"
+
+    write_failure_triage_actions
 
     write_blocker_bucket_summary
 
@@ -2162,6 +2223,33 @@ elif automated_preflight_evidence_covers "Runtime accessible CRUD smoke"; then
 else
   printf "INFO: runtime accessible CRUD smoke skipped; set SOLOPM_RUNTIME_ACCESSIBLE_CRUD_SMOKE=1 to run %s against the visible app and isolated SQLite database.\n" "$RUNTIME_ACCESSIBLE_CRUD_SMOKE_RELATIVE"
   blocker "runtime accessible CRUD smoke was not run"
+fi
+
+section "Layout stability smoke"
+layout_stability_smoke_script="$ROOT_DIR/$LAYOUT_STABILITY_SMOKE_RELATIVE"
+if [[ "$LAYOUT_STABILITY_SMOKE" != "0" && "$LAYOUT_STABILITY_SMOKE" != "1" ]]; then
+  blocker "SOLOPM_LAYOUT_STABILITY_SMOKE must be 0 or 1"
+elif [[ "$LAYOUT_STABILITY_SMOKE" == "1" ]]; then
+  if [[ ! -x "$layout_stability_smoke_script" ]]; then
+    blocker "missing executable layout stability smoke: $LAYOUT_STABILITY_SMOKE_RELATIVE"
+  else
+    set +e
+    layout_stability_smoke_output="$("$layout_stability_smoke_script" 2>&1)"
+    layout_stability_smoke_status=$?
+    set -e
+
+    if [[ -n "$layout_stability_smoke_output" ]]; then
+      printf "%s\n" "$layout_stability_smoke_output"
+    fi
+
+    if [[ "$layout_stability_smoke_status" -ne 0 ]]; then
+      blocker "layout stability smoke failed"
+    else
+      printf "OK: layout stability smoke passed\n"
+    fi
+  fi
+else
+  printf "INFO: layout stability smoke skipped; set SOLOPM_LAYOUT_STABILITY_SMOKE=1 to run %s against the Project Board frame stability harness.\n" "$LAYOUT_STABILITY_SMOKE_RELATIVE"
 fi
 
 section "Release Xcode preflight"

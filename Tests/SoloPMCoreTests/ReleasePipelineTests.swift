@@ -47,6 +47,36 @@ final class ReleasePipelineTests: XCTestCase {
         )
     }
 
+    func testCIScriptSeparatesLightweightPRGateFromRuntimeAndVisualGates() throws {
+        let script = try readPackageFile("scripts/ci.sh")
+        let automatedPreflight = try readPackageFile("script/check_automated_release_preflight.sh")
+        let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
+
+        XCTAssertTrue(script.contains("CI_RUNTIME_GATES=\"${SOLOPM_CI_RUNTIME_GATES:-0}\""))
+        XCTAssertTrue(script.contains("CI_VISUAL_GATES=\"${SOLOPM_CI_VISUAL_GATES:-0}\""))
+        XCTAssertTrue(script.contains("CI_RELEASE_GATES=\"${SOLOPM_CI_RELEASE_GATES:-0}\""))
+        XCTAssertTrue(script.contains("run_pr_gate()"))
+        XCTAssertTrue(script.contains("swift test --filter AppExperienceSourceTests"))
+        XCTAssertTrue(script.contains("swift test --filter QualitySourceContractTests"))
+        XCTAssertTrue(script.contains("swift test --filter ProjectBoardStoreTests"))
+        XCTAssertTrue(script.contains("run_runtime_gates()"))
+        XCTAssertTrue(script.contains("script/check_runtime_accessible_crud_smoke.sh"))
+        XCTAssertTrue(script.contains("script/check_layout_stability_smoke.sh"))
+        XCTAssertTrue(script.contains("script/check_accessibility_preflight.sh --runtime"))
+        XCTAssertTrue(script.contains("run_visual_gates()"))
+        XCTAssertTrue(script.contains("script/check_visual_regression_smoke.sh"))
+        XCTAssertTrue(script.contains("if [[ \"$CI_RUNTIME_GATES\" == \"1\" ]]; then\n  run_runtime_gates"))
+        XCTAssertTrue(script.contains("if [[ \"$CI_VISUAL_GATES\" == \"1\" ]]; then\n  run_visual_gates"))
+        XCTAssertLessThan(
+            try XCTUnwrap(script.range(of: "run_pr_gate")).lowerBound,
+            try XCTUnwrap(script.range(of: "run_runtime_gates")).lowerBound
+        )
+
+        XCTAssertTrue(automatedPreflight.contains("SOLOPM_CI_RELEASE_GATES=1 ./scripts/ci.sh"))
+        XCTAssertTrue(phase.contains("- [x] `scripts/ci.sh` が軽量PR gateと重いruntime gateを混同しないことをsource testで固定する。"))
+        XCTAssertTrue(phase.contains("- [x] `scripts/ci.sh` はunit/sourceを必須、runtime/visualは明示フラグで実行する。"))
+    }
+
     func testNotarizationScriptUsesStoredCredentialsStaplingAndLogRecovery() throws {
         let script = try readPackageFile("script/notarize_app.sh")
 
@@ -9435,6 +9465,74 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("OK: Project Board window visible"))
         XCTAssertFalse(result.output.contains("release launch preflight failed"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
+    }
+
+    func testReleaseReadinessReportCanRunLayoutStabilitySmokeWhenEnabled() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-layout-stability-smoke", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let packagingDirectory = fixtureRoot.appendingPathComponent("packaging", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let releasePreflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
+        let layoutStabilityURL = scriptDirectory.appendingPathComponent("check_layout_stability_smoke.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: packagingDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        for targetName in ["SoloPMCore", "SoloPMApp", "SoloPMCLI"] {
+            let targetDirectory = sourcesDirectory.appendingPathComponent(targetName, isDirectory: true)
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "final class \(targetName)RuntimeSource {}\n"
+                .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
+        }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "OK: layout stability smoke passed; artifacts written to .tmp/layout-stability\\n"
+        """.write(to: layoutStabilityURL, atomically: true, encoding: .utf8)
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        printf "preflight ok\\n"
+        """.write(to: releasePreflightURL, atomically: true, encoding: .utf8)
+        try """
+        APP_NAME=SoloPM
+        BUNDLE_IDENTIFIER=dev.solopm.app
+        MARKETING_VERSION=0.1.0
+        CURRENT_PROJECT_VERSION=1
+        """.write(to: packagingDirectory.appendingPathComponent("app_metadata.env"), atomically: true, encoding: .utf8)
+        try "- [x] release gate checked\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] release readme checked\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        for url in [reportURL, releasePreflightURL, layoutStabilityURL] {
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        }
+
+        let result = try runTool(
+            ["bash", reportURL.path],
+            environment: ["SOLOPM_LAYOUT_STABILITY_SMOKE": "1"]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("OK: layout stability smoke passed; artifacts written to .tmp/layout-stability"))
+        XCTAssertFalse(result.output.contains("layout stability smoke failed"))
+        XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
+
+        let script = try readPackageFile("script/release_readiness_report.sh")
+        XCTAssertTrue(script.contains("SOLOPM_LAYOUT_STABILITY_SMOKE"))
+        XCTAssertTrue(script.contains("script/check_layout_stability_smoke.sh"))
+        let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
+        XCTAssertTrue(phase.contains("- [x] `release_readiness_report.sh` がlayout stability smokeの結果を取り込めることをテストする。"))
     }
 
     func testReleaseReadinessReportFailsWhenMCPInspectorEvidenceIsMissing() throws {

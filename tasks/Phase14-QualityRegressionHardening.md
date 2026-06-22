@@ -497,24 +497,24 @@ Priority: High
 
 ### Tests First
 
-- [ ] `scripts/ci.sh` が軽量PR gateと重いruntime gateを混同しないことをsource testで固定する。
-- [ ] `release_readiness_report.sh` がlayout stability smokeの結果を取り込めることをテストする。
-- [ ] Flake quarantine listが空でない場合、owner/reason/expiryが必要なことをテストする。
+- [x] `scripts/ci.sh` が軽量PR gateと重いruntime gateを混同しないことをsource testで固定する。
+- [x] `release_readiness_report.sh` がlayout stability smokeの結果を取り込めることをテストする。
+- [x] Flake quarantine listが空でない場合、owner/reason/expiryが必要なことをテストする。
 
 ### Implementation Steps
 
-- [ ] `docs/quality/test-triage.md` にfailure categoryを書く。
-- [ ] `docs/quality/flake-quarantine.md` を作り、期限付きでしかskipできない運用にする。
-- [ ] `scripts/ci.sh` はunit/sourceを必須、runtime/visualは明示フラグで実行する。
-- [ ] `release_readiness_report.sh` はruntime/visual/manual evidenceを集約する。
-- [ ] 失敗時は最小再現コマンドをaction summaryに出す。
+- [x] `docs/quality/test-triage.md` にfailure categoryを書く。
+- [x] `docs/quality/flake-quarantine.md` を作り、期限付きでしかskipできない運用にする。
+- [x] `scripts/ci.sh` はunit/sourceを必須、runtime/visualは明示フラグで実行する。
+- [x] `release_readiness_report.sh` はruntime/visual/manual evidenceを集約する。
+- [x] 失敗時は最小再現コマンドをaction summaryに出す。
 
 ### Acceptance Criteria
 
-- [ ] PRでは速いテストで明確に落ちる。
-- [ ] UI/release前にはruntime/visual gateが実行できる。
-- [ ] フレークを無期限skipできない。
-- [ ] 失敗分類がbuild / assertion / crash / timing / environment / manual gateに分かれる。
+- [x] PRでは速いテストで明確に落ちる。
+- [x] UI/release前にはruntime/visual gateが実行できる。
+- [x] フレークを無期限skipできない。
+- [x] 失敗分類がbuild / assertion / crash / timing / environment / manual gateに分かれる。
 
 ### Non-goals
 

@@ -96,9 +96,10 @@ runtime AX smoke で固定する。Phase 14 で加わった layout stability har
 - secret-like pattern (API key, OAuth token, MCP secret, file path) が test
   fixture / screenshot metadata / release evidence へ漏れていないことの scan が
   未着手。 Coverage: open。 Follow-up: P14-011。
-- flake quarantine 運用の source test (`scripts/ci.sh` / `scripts/verify.sh` /
-  `script/release_readiness_report.sh`) が未着手。 Coverage: open。
-  Follow-up: P14-012。
+- flake quarantine 運用は `docs/quality/test-triage.md` /
+  `docs/quality/flake-quarantine.md` と source test で owner/reason/expiry を固定し、
+  `script/release_readiness_report.sh` の action summary が最小再現コマンドを返す。
+  Coverage: partial。 Follow-up: P14-013 manual finding bridge。
 - quality status dashboard (`script/quality_status_report.sh`) は Phase14 未完了項目、
   open risk、runtime / visual / manual evidence、推奨 verifier を出力するbaselineを持つ。
   Coverage: partial。 Follow-up: P14-014 の release readiness 集約と full gate分類。

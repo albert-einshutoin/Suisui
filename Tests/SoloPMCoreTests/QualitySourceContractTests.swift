@@ -234,6 +234,48 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(phase.contains("- [x] Screenshotは必要最小限にし、secret入力画面を撮る場合はmask状態を検証する。"))
     }
 
+    func testFlakeTriageRequiresOwnedReasonedExpiringQuarantineEntries() throws {
+        let triage = try readPackageFile("docs/quality/test-triage.md")
+        let quarantine = try readPackageFile("docs/quality/flake-quarantine.md")
+        let releaseReport = try readPackageFile("script/release_readiness_report.sh")
+        let status = try readPackageFile("docs/quality/status.md")
+        let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
+
+        for category in [
+            "build",
+            "assertion",
+            "crash",
+            "timing",
+            "environment",
+            "manual gate"
+        ] {
+            XCTAssertTrue(triage.contains(category), "test triage doc must classify \(category)")
+        }
+
+        for marker in [
+            "owner",
+            "reason",
+            "expiry",
+            "minimal reproduction command",
+            "No indefinite quarantine",
+            "automation-backlog"
+        ] {
+            XCTAssertTrue(quarantine.contains(marker), "flake quarantine doc must require \(marker)")
+            XCTAssertTrue(triage.contains(marker), "test triage doc must route \(marker)")
+        }
+
+        XCTAssertTrue(releaseReport.contains("write_failure_triage_actions"))
+        XCTAssertTrue(releaseReport.contains("minimal reproduction command"))
+        XCTAssertTrue(releaseReport.contains("failure_reproduction_command"))
+        XCTAssertTrue(status.contains("docs/quality/flake-quarantine.md"))
+        XCTAssertTrue(phase.contains("- [x] Flake quarantine listが空でない場合、owner/reason/expiryが必要なことをテストする。"))
+        XCTAssertTrue(phase.contains("- [x] `docs/quality/test-triage.md` にfailure categoryを書く。"))
+        XCTAssertTrue(phase.contains("- [x] `docs/quality/flake-quarantine.md` を作り、期限付きでしかskipできない運用にする。"))
+        XCTAssertTrue(phase.contains("- [x] 失敗時は最小再現コマンドをaction summaryに出す。"))
+        XCTAssertTrue(phase.contains("- [x] フレークを無期限skipできない。"))
+        XCTAssertTrue(phase.contains("- [x] 失敗分類がbuild / assertion / crash / timing / environment / manual gateに分かれる。"))
+    }
+
     func testGitignoreKeepsLocalAgentArtifactsAndRuntimeEvidenceOutOfSource() throws {
         let gitignore = try readPackageFile(".gitignore")
 
