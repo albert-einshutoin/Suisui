@@ -1,19 +1,18 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T22:27:43Z
-Source commit: efe1478
+Generated at: 2026-06-22T22:34:48Z
+Source commit: 55049a0
 
 ## Summary
 
-- Phase14 completion: 109/183 checked, 74 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 110/183 checked, 73 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 4 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-efe1478.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-55049a0.md`
 
 ## Unfinished Phase14 Items
 
 - [ ] tasks/Phase14-QualityRegressionHardening.md:389:- [ ] 主要buttonがAX labelまたはhelpを失ったら失敗するruntime smokeを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:390:- [ ] Keyboard shortcutがmenu commandまたはfocused actionに接続されていることをsource testで固定する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:396:- [ ] `check_accessibility_preflight.sh --runtime` の対象画面をInbox/Today/Settingsへ広げる。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:397:- [ ] UI component追加時のAX identifier命名規則を定義する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:398:- [ ] Manual VoiceOver worksheetとruntime AX smokeの項目を対応付ける。
@@ -42,6 +41,7 @@ Source commit: efe1478
 - [ ] tasks/Phase14-QualityRegressionHardening.md:500:- [ ] `scripts/ci.sh` が軽量PR gateと重いruntime gateを混同しないことをsource testで固定する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:501:- [ ] `release_readiness_report.sh` がlayout stability smokeの結果を取り込めることをテストする。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:502:- [ ] Flake quarantine listが空でない場合、owner/reason/expiryが必要なことをテストする。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:506:- [ ] `docs/quality/test-triage.md` にfailure categoryを書く。
 
 ## Open Risk Items
 
@@ -69,8 +69,8 @@ Source commit: efe1478
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
 - `script/check_visual_regression_smoke.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-efe1478.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-efe1478.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-55049a0.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-55049a0.md ./script/release_readiness_report.sh`
 
 ## Notes
 

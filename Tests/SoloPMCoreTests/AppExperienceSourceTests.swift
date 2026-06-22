@@ -1030,6 +1030,81 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(suggestionSource.components(separatedBy: ".keyboardShortcut(.return, modifiers: [.command])").count - 1, 2)
     }
 
+    func testPrimaryKeyboardShortcutsAreAttachedToConcreteCommandsAndFocusedActions() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
+
+        let settingsCommand = try sourceBlock(
+            in: appSource,
+            from: "CommandGroup(replacing: .appSettings)",
+            to: "Window(\"Voice Command\", id: \"voice-capture\")"
+        )
+        XCTAssertTrue(settingsCommand.contains("SettingsLink"))
+        XCTAssertTrue(settingsCommand.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
+
+        let addProjectButton = try sourceBlock(
+            in: boardSource,
+            from: "if let project = viewModel.createProject()",
+            to: ".accessibilityIdentifier(\"project-board-add-project\")"
+        )
+        XCTAssertTrue(addProjectButton.contains(".keyboardShortcut(\"n\", modifiers: [.command, .shift])"))
+
+        let addTaskButton = try sourceBlock(
+            in: boardSource,
+            from: "private var addTaskButton: some View",
+            to: ".accessibilityIdentifier(\"project-header-add-task\")"
+        )
+        XCTAssertTrue(addTaskButton.contains("Button(action: onAddTask)"))
+        XCTAssertTrue(addTaskButton.contains(".keyboardShortcut(\"n\", modifiers: [.command])"))
+
+        let inlineComposer = try sourceBlock(
+            in: boardSource,
+            from: "private struct InlineTaskComposer",
+            to: "private struct BoardTaskCard"
+        )
+        XCTAssertTrue(inlineComposer.contains(".accessibilityIdentifier(\"inline-task-create\")"))
+        XCTAssertTrue(inlineComposer.contains(".keyboardShortcut(.return, modifiers: [.command])"))
+        XCTAssertTrue(inlineComposer.contains(".accessibilityIdentifier(\"inline-task-cancel\")"))
+        XCTAssertTrue(inlineComposer.contains(".keyboardShortcut(.escape, modifiers: [])"))
+
+        let projectInspector = try sourceBlock(
+            in: boardSource,
+            from: "private struct ProjectInspectorView",
+            to: "private struct ProjectInspectorSuggestionSection"
+        )
+        XCTAssertTrue(projectInspector.contains(".accessibilityIdentifier(\"project-inspector-save\")"))
+        XCTAssertTrue(projectInspector.contains(".keyboardShortcut(\"s\", modifiers: [.command])"))
+        XCTAssertTrue(projectInspector.contains(".accessibilityIdentifier(\"project-inspector-delete\")"))
+        XCTAssertTrue(projectInspector.contains(".keyboardShortcut(.delete, modifiers: [.command])"))
+
+        let taskInspector = try sourceBlock(
+            in: boardSource,
+            from: "private struct TaskInspectorView",
+            to: "private struct TaskInspectorSuggestionSection"
+        )
+        XCTAssertTrue(taskInspector.contains(".accessibilityIdentifier(\"task-inspector-save\")"))
+        XCTAssertTrue(taskInspector.contains(".keyboardShortcut(\"s\", modifiers: [.command])"))
+        XCTAssertTrue(taskInspector.contains(".accessibilityIdentifier(\"task-inspector-delete\")"))
+        XCTAssertTrue(taskInspector.contains(".keyboardShortcut(.delete, modifiers: [.command])"))
+
+        let inboxActions = try sourceBlock(
+            in: workflowSource,
+            from: "private var actionButtons: some View",
+            to: "private struct InboxCaptureMetadataPanel"
+        )
+        XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-make-task\")"))
+        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"1\", modifiers: [.command])"))
+        XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-make-project\")"))
+        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"2\", modifiers: [.command])"))
+        XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-schedule-today\")"))
+        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"3\", modifiers: [.command])"))
+        XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-review-later\")"))
+        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"4\", modifiers: [.command])"))
+        XCTAssertTrue(phase.contains("- [x] Keyboard shortcutがmenu commandまたはfocused actionに接続されていることをsource testで固定する。"))
+    }
+
     func testInspectorsExposeVisibleCloseButtonsThatDismissTheSidebar() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
@@ -3226,6 +3301,12 @@ final class AppExperienceSourceTests: XCTestCase {
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func sourceBlock(in source: String, from startNeedle: String, to endNeedle: String) throws -> String {
+        let start = try XCTUnwrap(source.range(of: startNeedle))
+        let end = try XCTUnwrap(source.range(of: endNeedle, range: start.upperBound..<source.endIndex))
+        return String(source[start.lowerBound..<end.upperBound])
     }
 
     private func relativePackagePath(for url: URL) -> String {
