@@ -38,7 +38,7 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(doc.contains("MCP"))
         XCTAssertTrue(doc.contains("VoiceOver"))
         XCTAssertTrue(doc.contains("document-scoped automation"))
-        XCTAssertFalse(doc.contains("sk-"))
+        XCTAssertNil(doc.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
     }
 
     func testManualToAutomatedRegressionBridgeDocumentsManualGateBackstops() throws {
@@ -69,7 +69,32 @@ final class QualitySourceContractTests: XCTestCase {
             XCTAssertTrue(doc.contains(requiredMarker), "manual bridge doc must route \(requiredMarker)")
         }
 
-        XCTAssertFalse(doc.contains("sk-"))
+        XCTAssertNil(doc.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
+    }
+
+    func testAccessibilityIdentifierGuidelinesDefineStableComponentNaming() throws {
+        let doc = try readPackageFile("docs/quality/accessibility-identifiers.md")
+        let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
+
+        for marker in [
+            "## Naming Contract",
+            "screen-area-action",
+            "dynamic suffix",
+            "project-board",
+            "inbox",
+            "today",
+            "settings",
+            "task-inspector-save",
+            "sidebar-destination-<destination>",
+            "workflow-task-row-<taskID>",
+            "settings-task-auto-execution-toggle",
+            "Required for new interactive components",
+            "Do not encode user-provided content, secrets, or filesystem paths"
+        ] {
+            XCTAssertTrue(doc.contains(marker), "identifier guidelines must document \(marker)")
+        }
+
+        XCTAssertTrue(phase.contains("- [x] UI component追加時のAX identifier命名規則を定義する。"))
     }
 
     func testQualityStatusDashboardScriptAndSnapshotDocumentQualityGates() throws {
