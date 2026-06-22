@@ -5377,6 +5377,37 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("Static"))
     }
 
+    func testLayoutStabilitySmokeScriptSamplesImmediateFramesAndWritesArtifacts() throws {
+        let script = try readPackageFile("script/check_layout_stability_smoke.sh")
+        let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
+
+        XCTAssertTrue(script.contains("LAYOUT_STABILITY_OUTPUT_DIR=\"${SOLOPM_LAYOUT_STABILITY_OUTPUT_DIR:-$ROOT_DIR/.tmp/layout-stability}\""))
+        XCTAssertTrue(script.contains("./script/build_and_run.sh --build-only"))
+        XCTAssertTrue(script.contains("./script/prepare_voiceover_review_candidate.sh --database \"$LAYOUT_STABILITY_DATABASE_PATH\" --no-launch --skip-build"))
+        XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$layout_project_id\""))
+        XCTAssertTrue(script.contains("collect_ax_frames()"))
+        XCTAssertTrue(script.contains("sample_layout_frames()"))
+        XCTAssertTrue(script.contains("assert_layout_stable()"))
+        XCTAssertTrue(script.contains("capture_layout_screenshot()"))
+        XCTAssertTrue(script.contains("t=0ms"))
+        XCTAssertTrue(script.contains("t=50ms"))
+        XCTAssertTrue(script.contains("t=150ms"))
+        XCTAssertTrue(script.contains("t=300ms"))
+        XCTAssertTrue(script.contains("LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX"))
+        XCTAssertTrue(script.contains("BLOCKER: required AX identifier missing"))
+        XCTAssertTrue(script.contains("project-board-header-bar"))
+        XCTAssertTrue(script.contains("project-board-detail"))
+        XCTAssertTrue(script.contains("project-board-sidebar"))
+        XCTAssertTrue(script.contains("project-inspector"))
+        XCTAssertTrue(script.contains("layout-stability-summary.md"))
+        XCTAssertTrue(script.contains("samples.tsv"))
+        XCTAssertTrue(script.contains("diff.tsv"))
+
+        XCTAssertTrue(phase.contains("- [x] `ReleasePipelineTests` にlayout stability scriptの存在、`t=0`即時サンプル、複数サンプル、frame delta thresholdをsource-levelで確認するテストを追加する。"))
+        XCTAssertTrue(phase.contains("- [x] scriptが対象AX identifier不足をskipではなく失敗扱いにするテストを追加する。"))
+        XCTAssertTrue(phase.contains("- [x] scriptが差分artifactを `.tmp/layout-stability/` に保存することを確認するテストを追加する。"))
+    }
+
     func testVoiceOverReviewCandidateScriptSeedsIsolatedDatabaseAndLaunchesSelectedProject() throws {
         let script = try readPackageFile("script/prepare_voiceover_review_candidate.sh")
 

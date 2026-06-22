@@ -1,30 +1,21 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T16:12:20Z
-Source commit: 8cc20f9
+Generated at: 2026-06-22T16:27:02Z
+Source commit: f89d534
 
 ## Summary
 
-- Phase14 completion: 21/181 checked, 160 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 30/181 checked, 151 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 6 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `.tmp/automated-release-preflight-8cc20f9.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-f89d534.md`
 
 ## Unfinished Phase14 Items
 
-- [ ] tasks/Phase14-QualityRegressionHardening.md:108:- [ ] `ReleasePipelineTests` にlayout stability scriptの存在、`t=0`即時サンプル、複数サンプル、frame delta thresholdをsource-levelで確認するテストを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:109:- [ ] scriptが対象AX identifier不足をskipではなく失敗扱いにするテストを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:110:- [ ] scriptが差分artifactを `.tmp/layout-stability/` に保存することを確認するテストを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:114:- [ ] AX frame取得処理を reusable shell / AppleScript helper に分離する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:115:- [ ] `project-board-header-bar`, `project-board-detail`, `project-board-sidebar`, `project-board-inspector` を必須identifierにする。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:116:- [ ] クリック操作直後にframeを採取し、後続sampleと比較する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:117:- [ ] thresholdは基本 `0px`、OS差が出る箇所だけ `1px` tolerance を明示する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:118:- [ ] 失敗時は before / immediate / after のJSONとPNGを保存する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:119:- [ ] scriptの終了メッセージに、検証した遷移名と最大deltaを出す。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:123:- [ ] Sidebar toggle直後のheader / detail / inspector frame deltaを検出できる。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:124:- [ ] Toolbar display mode切替直後のheader action frame deltaを検出できる。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:125:- [ ] Window resize直後のoverlap / clipping / frame jumpを検出できる。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:126:- [ ] 失敗時にPR reviewerが再現コマンドとartifact pathを見て判断できる。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:148:- [ ] Header actionsがnative primary toolbar itemに戻ったら失敗するsource testを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:149:- [ ] Sidebar toggleがanimation有効transactionへ戻ったら失敗するsource testを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:150:- [ ] Header action groupが固定height / trailing alignment / stable AX identifierを失ったら失敗するsource testを追加する。
@@ -42,6 +33,15 @@ Source commit: 8cc20f9
 - [ ] tasks/Phase14-QualityRegressionHardening.md:195:- [ ] 画像が小さすぎる、黒画面、低情報量の場合にscriptが失敗するsource testを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:196:- [ ] baseline更新には明示フラグが必要で、通常実行では上書きしないことをテストする。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:200:- [ ] `docs/quality/visual-baselines.md` に対象画面、viewport、theme、許容差、更新手順を書く。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:201:- [ ] screenshot manifestをJSONまたはMarkdown tableで定義する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:202:- [ ] capture scriptでwindow sizeとthemeを固定する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:203:- [ ] perceptual hashまたは簡易histogramで黒画面/低情報量を検出する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:204:- [ ] 重なり検出はAX frameと併用し、画像比較だけにしない。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:205:- [ ] baseline update時はPRにbefore/after artifactを添付する運用にする。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:209:- [ ] Light/Dark/Systemで主要画面のスクリーンショット証跡が取れる。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:210:- [ ] 画像が空、黒、極端に小さい、対象windowでない場合に失敗する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:211:- [ ] baseline更新が意図的なデザイン変更としてレビューできる。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:212:- [ ] macOS rendering差で不必要にフレークしない許容差が文書化されている。
 
 ## Open Risk Items
 
@@ -69,8 +69,8 @@ Source commit: 8cc20f9
 - `script/check_runtime_accessible_crud_smoke.sh`
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-8cc20f9.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-8cc20f9.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-f89d534.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-f89d534.md ./script/release_readiness_report.sh`
 
 ## Notes
 

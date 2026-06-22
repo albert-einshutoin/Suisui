@@ -105,25 +105,25 @@ Priority: High
 
 ### Tests First
 
-- [ ] `ReleasePipelineTests` にlayout stability scriptの存在、`t=0`即時サンプル、複数サンプル、frame delta thresholdをsource-levelで確認するテストを追加する。
-- [ ] scriptが対象AX identifier不足をskipではなく失敗扱いにするテストを追加する。
-- [ ] scriptが差分artifactを `.tmp/layout-stability/` に保存することを確認するテストを追加する。
+- [x] `ReleasePipelineTests` にlayout stability scriptの存在、`t=0`即時サンプル、複数サンプル、frame delta thresholdをsource-levelで確認するテストを追加する。
+- [x] scriptが対象AX identifier不足をskipではなく失敗扱いにするテストを追加する。
+- [x] scriptが差分artifactを `.tmp/layout-stability/` に保存することを確認するテストを追加する。
 
 ### Implementation Steps
 
-- [ ] AX frame取得処理を reusable shell / AppleScript helper に分離する。
-- [ ] `project-board-header-bar`, `project-board-detail`, `project-board-sidebar`, `project-board-inspector` を必須identifierにする。
-- [ ] クリック操作直後にframeを採取し、後続sampleと比較する。
+- [x] AX frame取得処理を reusable shell / AppleScript helper に分離する。
+- [x] `project-board-header-bar`, `project-board-detail`, `project-board-sidebar`, `project-inspector` を必須identifierにする。
+- [x] クリック操作直後にframeを採取し、後続sampleと比較する。
 - [ ] thresholdは基本 `0px`、OS差が出る箇所だけ `1px` tolerance を明示する。
 - [ ] 失敗時は before / immediate / after のJSONとPNGを保存する。
-- [ ] scriptの終了メッセージに、検証した遷移名と最大deltaを出す。
+- [x] scriptの終了メッセージに、検証した遷移名と最大deltaを出す。
 
 ### Acceptance Criteria
 
-- [ ] Sidebar toggle直後のheader / detail / inspector frame deltaを検出できる。
+- [x] Sidebar toggle直後のheader / detail / inspector frame deltaを検出できる。
 - [ ] Toolbar display mode切替直後のheader action frame deltaを検出できる。
 - [ ] Window resize直後のoverlap / clipping / frame jumpを検出できる。
-- [ ] 失敗時にPR reviewerが再現コマンドとartifact pathを見て判断できる。
+- [x] 失敗時にPR reviewerが再現コマンドとartifact pathを見て判断できる。
 
 ### Non-goals
 
