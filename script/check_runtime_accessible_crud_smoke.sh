@@ -280,11 +280,20 @@ pressDestructiveButtonUntilSQLiteValue() {
   local excluded_help="$4"
   local sql="$5"
   local expected="$6"
+  local before_confirmation_expected="${7:-}"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   local actual=""
+  local did_verify_confirmation_gate=0
 
   while true; do
     pressButtonContaining "$destructive_fragment"
+    if [[ -n "$before_confirmation_expected" && "$did_verify_confirmation_gate" -eq 0 ]]; then
+      verify_single_value "$label waits for confirmation" "$sql" "$before_confirmation_expected" || {
+        echo "BLOCKER: $label mutated before confirmation" >&2
+        return 1
+      }
+      did_verify_confirmation_gate=1
+    fi
     sleep 1
     pressConfirmationButtonContaining "$confirmation_fragment" "$excluded_help"
 
@@ -709,7 +718,7 @@ terminate_app
 wait_for_no_app_process
 launch_app_for_seed_project "$created_project_id"
 pressButtonContaining "task-card-open-details"
-pressDestructiveButtonUntilSQLiteValue "deleted task" "task-inspector-delete" "task-inspector-delete-confirmation-confirm" "" "SELECT count(*) FROM tasks WHERE id=$created_task_id;" "0"
+pressDestructiveButtonUntilSQLiteValue "deleted task" "task-inspector-delete" "task-inspector-delete-confirmation-confirm" "" "SELECT count(*) FROM tasks WHERE id=$created_task_id;" "0" "1"
 
 pressButtonContaining "project-header-add-task"
 waitForTextFieldContaining "inline-task-title"
@@ -724,7 +733,7 @@ waitForTextFieldContaining "project-inspector-title"
 
 pressButtonUntilSQLiteValue "completed project" "project-inspector-complete" "SELECT status FROM projects WHERE id=$created_project_id;" "completed"
 
-pressDestructiveButtonUntilSQLiteValue "deleted project" "project-inspector-delete" "project-inspector-delete-confirmation-confirm" "" "SELECT count(*) FROM projects WHERE id=$created_project_id;" "0"
+pressDestructiveButtonUntilSQLiteValue "deleted project" "project-inspector-delete" "project-inspector-delete-confirmation-confirm" "" "SELECT count(*) FROM projects WHERE id=$created_project_id;" "0" "1"
 verify_single_value "deleted task cascade" "SELECT count(*) FROM tasks WHERE id=$cascade_task_id OR project_id=$created_project_id;" "0"
 
 printf "OK: runtime accessible CRUD smoke created, renamed, completed, and deleted a project, then created, updated, moved, directly deleted, and cascade-deleted tasks through the visible app\n"

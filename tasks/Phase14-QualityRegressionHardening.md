@@ -241,7 +241,7 @@ Priority: High
 
 - [x] `project_task_crud`、`inbox_triage`、`today_complete`、`settings_save`、`voice_review` のscenarioに分ける。
 - [x] 各scenarioはisolated DB seed -> app launch -> AX操作 -> DB/assertion -> artifact保存の順で実行する。
-- [ ] destructive actionは必ずconfirmationを通ることを確認する。
+- [x] destructive actionは必ずconfirmationを通ることを確認する。
 - [x] Settings保存ではKeychain secret値そのものをartifactへ出さない。
 - [x] Voice CommandはAPI key未設定時にfake successへ倒れないことを確認する。
 
@@ -388,7 +388,7 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 
 - [ ] 主要buttonがAX labelまたはhelpを失ったら失敗するruntime smokeを追加する。
 - [ ] Keyboard shortcutがmenu commandまたはfocused actionに接続されていることをsource testで固定する。
-- [ ] destructive confirmationが確認なしに実行できないことをruntime smokeで確認する。
+- [x] destructive confirmationが確認なしに実行できないことをruntime smokeで確認する。
 
 ### Implementation Steps
 
@@ -400,7 +400,7 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 ### Acceptance Criteria
 
 - [ ] Mouse、keyboard、VoiceOver前提のAX pathで主要CRUD入口が検出できる。
-- [ ] destructive actionはconfirmationを経由しないとDB mutationしない。
+- [x] destructive actionはconfirmationを経由しないとDB mutationしない。
 - [ ] 手動VoiceOver前に明らかなlabel/focus漏れを自動検出できる。
 
 ### Non-goals

@@ -1,18 +1,17 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T21:48:09Z
-Source commit: 07e7ec2
+Generated at: 2026-06-22T21:57:53Z
+Source commit: 0a237f9
 
 ## Summary
 
-- Phase14 completion: 87/183 checked, 96 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 90/183 checked, 93 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 4 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-07e7ec2.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-0a237f9.md`
 
 ## Unfinished Phase14 Items
 
-- [ ] tasks/Phase14-QualityRegressionHardening.md:244:- [ ] destructive actionは必ずconfirmationを通ることを確認する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:314:- [ ] 主要UI componentのmin/max frame指定が消えた場合に失敗するsource testを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:315:- [ ] AX frameのoverlap検出をruntime smokeに追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:316:- [ ] 長い日本語/英語ラベル、空状態、エラー状態でbutton textがはみ出ないfixtureを追加する。
@@ -34,14 +33,15 @@ Source commit: 07e7ec2
 - [ ] tasks/Phase14-QualityRegressionHardening.md:367:- [ ] 起動直後にwindowが見えない退行を検出できる。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:389:- [ ] 主要buttonがAX labelまたはhelpを失ったら失敗するruntime smokeを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:390:- [ ] Keyboard shortcutがmenu commandまたはfocused actionに接続されていることをsource testで固定する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:391:- [ ] destructive confirmationが確認なしに実行できないことをruntime smokeで確認する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:396:- [ ] `check_accessibility_preflight.sh --runtime` の対象画面をInbox/Today/Settingsへ広げる。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:397:- [ ] UI component追加時のAX identifier命名規則を定義する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:398:- [ ] Manual VoiceOver worksheetとruntime AX smokeの項目を対応付ける。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:402:- [ ] Mouse、keyboard、VoiceOver前提のAX pathで主要CRUD入口が検出できる。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:403:- [ ] destructive actionはconfirmationを経由しないとDB mutationしない。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:404:- [ ] 手動VoiceOver前に明らかなlabel/focus漏れを自動検出できる。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:426:- [ ] 古いschemaから最新schemaへのmigration testを追加する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:427:- [ ] invalid JSON / blank string / unknown enum / dangling foreign keyをfail-closedまたはsafe fallbackするテストを追加する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:428:- [ ] UI ViewModelが破損recordを受け取ってもProject Board全体をUnavailableにしないテストを追加する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:432:- [ ] Migration fixture DBを `.tmp` ではなく test resource として最小化して持つ。
 
 ## Open Risk Items
 
@@ -69,8 +69,8 @@ Source commit: 07e7ec2
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
 - `script/check_visual_regression_smoke.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-07e7ec2.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-07e7ec2.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-0a237f9.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-0a237f9.md ./script/release_readiness_report.sh`
 
 ## Notes
 
