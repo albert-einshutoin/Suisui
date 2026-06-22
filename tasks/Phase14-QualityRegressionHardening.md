@@ -228,7 +228,7 @@ Priority: High
 
 ### Scope
 
-- 対象: `script/check_runtime_accessible_crud_smoke.sh`, `script/check_runtime_workflow_smoke.sh`, `Tests/SoloPMCoreTests/ReleasePipelineTests.swift`
+- 対象: `script/check_runtime_accessible_crud_smoke.sh`, `script/check_runtime_inbox_triage_smoke.sh`, `script/check_runtime_workflow_smoke.sh`, `Tests/SoloPMCoreTests/ReleasePipelineTests.swift`
 - 既存CRUD smokeを拡張し、日次利用クリックパスを分けて検証する。
 
 ### Tests First
@@ -239,7 +239,7 @@ Priority: High
 
 ### Implementation Steps
 
-- [ ] `project_task_crud`、`inbox_triage`、`today_complete`、`settings_save`、`voice_review` のscenarioに分ける。
+- [x] `project_task_crud`、`inbox_triage`、`today_complete`、`settings_save`、`voice_review` のscenarioに分ける。
 - [ ] 各scenarioはisolated DB seed -> app launch -> AX操作 -> DB/assertion -> artifact保存の順で実行する。
 - [ ] destructive actionは必ずconfirmationを通ることを確認する。
 - [ ] Settings保存ではKeychain secret値そのものをartifactへ出さない。
@@ -248,7 +248,7 @@ Priority: High
 ### Acceptance Criteria
 
 - [x] Project / Task CRUDがUIから永続DBへ反映される。
-- [ ] Inbox item分類とUndoが実アプリで完走する。
+- [x] Inbox item分類とUndoが実アプリで完走する。
 - [ ] Today row completionがTask statusへ反映される。
 - [ ] Settings saveがUI stateとstore stateに反映される。
 - [ ] Voice Command review flowが承認前に止まり、audit logに残る。

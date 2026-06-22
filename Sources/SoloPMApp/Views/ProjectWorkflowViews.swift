@@ -884,7 +884,7 @@ private struct InboxActionPanel: View {
                 }
                 .padding(8)
                 .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-                .accessibilityElement(children: .combine)
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("inbox-classification-feedback")
             }
             ViewThatFits(in: .horizontal) {

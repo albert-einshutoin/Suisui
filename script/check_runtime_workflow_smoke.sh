@@ -121,8 +121,20 @@ run_project_task_crud() {
 }
 
 run_inbox_triage() {
+  local scenario_output
   local scenario_status="failed"
-  local scenario_reason="inbox_triage runtime DB assertion is not implemented yet"
+  local scenario_reason="inbox_triage scenario did not finish"
+
+  if scenario_output="$(SOLOPM_RUNTIME_INBOX_TRIAGE_KEEP_DATABASE=1 ./script/check_runtime_inbox_triage_smoke.sh 2>&1)"; then
+    printf '%s\n' "$scenario_output"
+    scenario_status="passed"
+    scenario_reason="Inbox quick add, classification actions, and undo SQLite postconditions passed"
+    write_scenario_artifact "inbox_triage" "$scenario_status" "$scenario_reason"
+    return 0
+  fi
+
+  printf '%s\n' "$scenario_output" >&2
+  scenario_reason="inbox_triage command failed"
   write_scenario_artifact "inbox_triage" "$scenario_status" "$scenario_reason"
   echo "BLOCKER: runtime workflow scenario failed: inbox_triage - $scenario_reason" >&2
   return 1

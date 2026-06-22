@@ -1,23 +1,21 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T20:33:29Z
-Source commit: 31160dc
+Generated at: 2026-06-22T20:53:03Z
+Source commit: 501ffb7
 
 ## Summary
 
-- Phase14 completion: 68/183 checked, 115 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 70/183 checked, 113 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 4 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-31160dc.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-501ffb7.md`
 
 ## Unfinished Phase14 Items
 
-- [ ] tasks/Phase14-QualityRegressionHardening.md:242:- [ ] `project_task_crud`、`inbox_triage`、`today_complete`、`settings_save`、`voice_review` のscenarioに分ける。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:243:- [ ] 各scenarioはisolated DB seed -> app launch -> AX操作 -> DB/assertion -> artifact保存の順で実行する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:244:- [ ] destructive actionは必ずconfirmationを通ることを確認する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:245:- [ ] Settings保存ではKeychain secret値そのものをartifactへ出さない。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:246:- [ ] Voice CommandはAPI key未設定時にfake successへ倒れないことを確認する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:251:- [ ] Inbox item分類とUndoが実アプリで完走する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:252:- [ ] Today row completionがTask statusへ反映される。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:253:- [ ] Settings saveがUI stateとstore stateに反映される。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:254:- [ ] Voice Command review flowが承認前に止まり、audit logに残る。
@@ -42,6 +40,8 @@ Source commit: 31160dc
 - [ ] tasks/Phase14-QualityRegressionHardening.md:327:- [ ] Header、sidebar、detail、inspector、cardsの寸法ルールがコードとテストで固定されている。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:328:- [ ] 長いラベルやempty/error stateでUIが重ならない。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:329:- [ ] Magic numberの追加がレビューで見つけやすい。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:351:- [ ] LaunchExperienceTestsに「保存状態がwindow-lessでもProject Boardが見える」ことを維持するテストを追加または確認する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:353:- [ ] 前回選択Projectが削除済みの場合にsafe fallbackするテストを追加する。
 
 ## Open Risk Items
 
@@ -69,8 +69,8 @@ Source commit: 31160dc
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
 - `script/check_visual_regression_smoke.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-31160dc.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-31160dc.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-501ffb7.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-501ffb7.md ./script/release_readiness_report.sh`
 
 ## Notes
 

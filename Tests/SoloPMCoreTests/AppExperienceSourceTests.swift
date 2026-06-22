@@ -1009,6 +1009,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("Label(feedback.message, systemImage: feedback.systemImage)"))
         XCTAssertTrue(workflowSource.contains("viewModel.undoLastInboxClassification()"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-classification-feedback\")"))
+
+        let feedbackStart = try XCTUnwrap(workflowSource.range(of: "if let feedback = viewModel.inboxClassificationFeedback"))
+        let feedbackEnd = try XCTUnwrap(workflowSource[feedbackStart.lowerBound...].range(of: "ViewThatFits(in: .horizontal)"))
+        let feedbackBlock = String(workflowSource[feedbackStart.lowerBound..<feedbackEnd.lowerBound])
+        XCTAssertTrue(feedbackBlock.contains(".accessibilityElement(children: .contain)"))
+        XCTAssertFalse(feedbackBlock.contains(".accessibilityElement(children: .combine)"))
     }
 
     func testInboxWorkflowSurfacesVoiceCaptureMetadataWithoutReplacingVoiceCommand() throws {
