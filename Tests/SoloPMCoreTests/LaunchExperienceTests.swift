@@ -27,6 +27,21 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertFalse(script.contains("sleep 1\n    pgrep -x \"$APP_NAME\" >/dev/null\n    ;;"))
     }
 
+    func testWindowlessSavedStateStillShowsProjectBoardOnLaunch() throws {
+        let script = try readPackageFile("script/build_and_run.sh")
+        let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(script.contains("<key>NSQuitAlwaysKeepsWindows</key>"))
+        XCTAssertTrue(script.contains("<false/>"))
+        XCTAssertTrue(script.contains("wait_for_project_board_window"))
+        XCTAssertTrue(script.contains("BLOCKER: Project Board window was not visible within"))
+        XCTAssertTrue(source.contains("SoloPMProjectBoardWindowFallback.shared.showIfNeeded()"))
+        XCTAssertTrue(source.contains("createFallbackProjectBoardWindow()"))
+        XCTAssertTrue(source.contains("guard visibleProjectBoardWindows.isEmpty else"))
+        XCTAssertTrue(source.contains("window.makeKeyAndOrderFront(nil)"))
+        XCTAssertTrue(source.contains("window.orderFrontRegardless()"))
+    }
+
     func testBundleDisablesWindowRestorationForPrimaryBoardLaunch() throws {
         let script = try readPackageFile("script/build_and_run.sh")
 
@@ -88,6 +103,19 @@ final class LaunchExperienceTests: XCTestCase {
         let boardWindow = try XCTUnwrap(source.range(of: "WindowGroup(\"SoloPM\", id: \"project-board\")"))
         let menuBar = try XCTUnwrap(source.range(of: "MenuBarExtra(\"SoloPM\", systemImage: \"checklist\")"))
         XCTAssertLessThan(boardWindow.lowerBound, menuBar.lowerBound)
+    }
+
+    func testProjectBoardMultiWindowBoundaryUsesIndependentViewModelsAndSharedSelectionPersistence() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(appSource.contains("WindowGroup(\"SoloPM\", id: \"project-board\")"))
+        XCTAssertTrue(appSource.contains("ProjectBoardView(viewModel: AppRuntimeFactory.makeProjectBoardViewModel())"))
+        XCTAssertTrue(appSource.contains("#selector(NSWindow.newWindowForTab(_:))"))
+        XCTAssertTrue(appSource.contains("New SoloPM Window"))
+        XCTAssertTrue(boardSource.contains("@StateObject private var viewModel: ProjectBoardViewModel"))
+        XCTAssertTrue(boardSource.contains("@AppStorage(ProjectBoardSelectionPersistence.storageKey)"))
+        XCTAssertTrue(boardSource.contains("@State private var selectedDestination: ProjectBoardSidebarDestination? = .today"))
     }
 
     private func readPackageFile(_ relativePath: String) throws -> String {

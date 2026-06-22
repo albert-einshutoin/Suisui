@@ -1,26 +1,18 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T22:12:32Z
-Source commit: 6953ae8
+Generated at: 2026-06-22T22:21:43Z
+Source commit: 8d2e37b
 
 ## Summary
 
-- Phase14 completion: 100/183 checked, 83 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 108/183 checked, 75 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 4 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-6953ae8.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-8d2e37b.md`
 
 ## Unfinished Phase14 Items
 
-- [ ] tasks/Phase14-QualityRegressionHardening.md:351:- [ ] LaunchExperienceTestsに「保存状態がwindow-lessでもProject Boardが見える」ことを維持するテストを追加または確認する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:353:- [ ] 前回選択Projectが削除済みの場合にsafe fallbackするテストを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:358:- [ ] selected destinationをseed DBとenvで制御する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:359:- [ ] 削除済みselection、空DB、大量project、大量taskのfixtureを作る。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:360:- [ ] multi-windowが未対応の場合は、開けない/開いても独立stateになる境界をsource testで固定する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:364:- [ ] 空DB、通常DB、大量DBでProject Boardが起動する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:365:- [ ] 最小幅/標準幅/広幅でheaderとdetailが重ならない。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:366:- [ ] 保存済みselectionが壊れていても起動不能にならない。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:367:- [ ] 起動直後にwindowが見えない退行を検出できる。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:389:- [ ] 主要buttonがAX labelまたはhelpを失ったら失敗するruntime smokeを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:390:- [ ] Keyboard shortcutがmenu commandまたはfocused actionに接続されていることをsource testで固定する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:396:- [ ] `check_accessibility_preflight.sh --runtime` の対象画面をInbox/Today/Settingsへ広げる。
@@ -42,6 +34,14 @@ Source commit: 6953ae8
 - [ ] tasks/Phase14-QualityRegressionHardening.md:464:- [ ] Runtime smoke artifact directoryが `.gitignore` 対象であることをテストする。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:465:- [ ] Keychain referenceとraw secretの区別をsource testで固定する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:469:- [ ] `script/check_security_regressions.sh` を作るか既存security grepへ統合する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:470:- [ ] `sk-`, OAuth token風文字列、notary password、MCP token、filesystem pathの扱いを分類する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:471:- [ ] Smoke scriptsはartifactにredaction済みsummaryだけを書く。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:472:- [ ] Screenshotは必要最小限にし、secret入力画面を撮る場合はmask状態を検証する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:476:- [ ] テスト追加が秘密情報漏洩riskを増やさない。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:477:- [ ] Runtime smoke artifactはtracked sourceへ混ざらない。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:478:- [ ] 失敗ログにAPI key/provider token/OAuth token/MCP secretが出ない。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:500:- [ ] `scripts/ci.sh` が軽量PR gateと重いruntime gateを混同しないことをsource testで固定する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:501:- [ ] `release_readiness_report.sh` がlayout stability smokeの結果を取り込めることをテストする。
 
 ## Open Risk Items
 
@@ -69,8 +69,8 @@ Source commit: 6953ae8
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
 - `script/check_visual_regression_smoke.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-6953ae8.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-6953ae8.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-8d2e37b.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-8d2e37b.md ./script/release_readiness_report.sh`
 
 ## Notes
 

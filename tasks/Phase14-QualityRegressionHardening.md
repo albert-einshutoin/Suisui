@@ -348,23 +348,23 @@ Priority: Middle
 
 ### Tests First
 
-- [ ] LaunchExperienceTestsに「保存状態がwindow-lessでもProject Boardが見える」ことを維持するテストを追加または確認する。
+- [x] LaunchExperienceTestsに「保存状態がwindow-lessでもProject Boardが見える」ことを維持するテストを追加または確認する。
 - [x] Runtime smokeに最小幅/標準幅/広幅でのlayout stability checkを追加する。
-- [ ] 前回選択Projectが削除済みの場合にsafe fallbackするテストを追加する。
+- [x] 前回選択Projectが削除済みの場合にsafe fallbackするテストを追加する。
 
 ### Implementation Steps
 
 - [x] Runtime launch helperでwindow sizeを明示的に設定できるようにする。
-- [ ] selected destinationをseed DBとenvで制御する。
-- [ ] 削除済みselection、空DB、大量project、大量taskのfixtureを作る。
-- [ ] multi-windowが未対応の場合は、開けない/開いても独立stateになる境界をsource testで固定する。
+- [x] selected destinationをseed DBとenvで制御する。
+- [x] 削除済みselection、空DB、大量project、大量taskのfixtureを作る。
+- [x] multi-windowが未対応の場合は、開けない/開いても独立stateになる境界をsource testで固定する。
 
 ### Acceptance Criteria
 
 - [ ] 空DB、通常DB、大量DBでProject Boardが起動する。
-- [ ] 最小幅/標準幅/広幅でheaderとdetailが重ならない。
-- [ ] 保存済みselectionが壊れていても起動不能にならない。
-- [ ] 起動直後にwindowが見えない退行を検出できる。
+- [x] 最小幅/標準幅/広幅でheaderとdetailが重ならない。
+- [x] 保存済みselectionが壊れていても起動不能にならない。
+- [x] 起動直後にwindowが見えない退行を検出できる。
 
 ### Non-goals
 

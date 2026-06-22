@@ -129,11 +129,11 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectsOverviewKeepsSidebarProjectSelectionAndDetailModesSeparate() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
 
-        XCTAssertTrue(workflowSource.contains("case projects"))
-        XCTAssertTrue(workflowSource.contains("case .projects:"))
-        XCTAssertTrue(workflowSource.contains("return \"projects\""))
+        XCTAssertTrue(persistenceSource.contains("case projects"))
+        XCTAssertTrue(persistenceSource.contains("case .projects:"))
+        XCTAssertTrue(persistenceSource.contains("return \"projects\""))
         XCTAssertTrue(boardSource.contains("destination: .projects"))
         XCTAssertTrue(boardSource.contains(".tag(ProjectBoardSidebarDestination.projects)"))
         XCTAssertTrue(boardSource.contains("ProjectsPortfolioOverview("))
@@ -472,6 +472,39 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("ProjectBoardLayoutMetrics.emptyColumnMinHeight"))
     }
 
+    func testProjectBoardStateRestorationFixtureCoversLaunchMatrix() throws {
+        let fixture = try readPackageFile("Tests/SoloPMCoreTests/Fixtures/ProjectBoard/state-restoration-matrix.json")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
+        let layoutSmoke = try readPackageFile("script/check_layout_stability_smoke.sh")
+        let crudSmoke = try readPackageFile("script/check_runtime_accessible_crud_smoke.sh")
+
+        XCTAssertTrue(fixture.contains("\"emptyDatabase\""))
+        XCTAssertTrue(fixture.contains("\"normalSeededDatabase\""))
+        XCTAssertTrue(fixture.contains("\"deletedSavedProject\""))
+        XCTAssertTrue(fixture.contains("\"manyProjectsAndTasks\""))
+        XCTAssertTrue(fixture.contains("\"savedSelection\": \"project:42\""))
+        XCTAssertTrue(fixture.contains("\"expectedDestination\": \"today\""))
+        XCTAssertTrue(fixture.contains("\"envOverride\": \"project:42\""))
+        XCTAssertTrue(fixture.contains("\"projectCount\": 24"))
+        XCTAssertTrue(fixture.contains("\"tasksPerProject\": 12"))
+        XCTAssertTrue(fixture.contains("SOLOPM_DATABASE_PATH"))
+        XCTAssertTrue(fixture.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION"))
+        XCTAssertTrue(fixture.contains("SOLOPM_LAYOUT_STABILITY_WINDOW_MIN_WIDTH"))
+        XCTAssertTrue(fixture.contains("SOLOPM_LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH"))
+        XCTAssertTrue(fixture.contains("SOLOPM_LAYOUT_STABILITY_WINDOW_WIDE_WIDTH"))
+
+        XCTAssertTrue(boardSource.contains("restoreSelectedDestinationIfNeeded()"))
+        XCTAssertTrue(boardSource.contains("ProjectBoardSelectionPersistence.destination("))
+        XCTAssertTrue(boardSource.contains("persistSelectedDestination(destination)"))
+        XCTAssertTrue(boardSource.contains("applySelectedDestination(destination)"))
+        XCTAssertTrue(persistenceSource.contains("Saved app state can outlive a project row"))
+        XCTAssertTrue(persistenceSource.contains("availableProjects.contains(where: { $0.id == projectID }) else"))
+        XCTAssertTrue(layoutSmoke.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$layout_project_id\""))
+        XCTAssertTrue(crudSmoke.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$seed_project_id\""))
+        XCTAssertTrue(crudSmoke.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"projects\""))
+    }
+
     func testProjectBoardToolbarDisplayModeOnlyAllowsIconAndTextOrIconOnly() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
@@ -777,9 +810,10 @@ final class AppExperienceSourceTests: XCTestCase {
     func testDoneWorkflowIsReachableFromSidebarAndExposesReviewActions() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
 
-        XCTAssertTrue(workflowSource.contains("case done"))
+        XCTAssertTrue(persistenceSource.contains("case done"))
         XCTAssertTrue(boardSource.contains("ProjectBoardSidebarDestinationRow(destination: .done"))
         XCTAssertTrue(boardSource.contains("DoneWorkflowView(viewModel: viewModel)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-workflow\")"))
@@ -1091,22 +1125,24 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testPhase12SidebarDestinationRawValuesStayBackwardCompatible() throws {
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
 
-        XCTAssertTrue(workflowSource.contains("static let defaultRawValue = \"today\""))
-        XCTAssertTrue(workflowSource.contains("case .inbox:\n            return \"inbox\""))
-        XCTAssertTrue(workflowSource.contains("case .today:\n            return \"today\""))
-        XCTAssertTrue(workflowSource.contains("case .projects:\n            return \"projects\""))
-        XCTAssertTrue(workflowSource.contains("case .schedule:\n            return \"schedule\""))
-        XCTAssertTrue(workflowSource.contains("case .done:\n            return \"done\""))
-        XCTAssertTrue(workflowSource.contains("case .project(let projectID):\n            return \"project:\\(projectID)\""))
-        XCTAssertTrue(workflowSource.contains("case \"inbox\":\n            return .inbox"))
-        XCTAssertTrue(workflowSource.contains("case \"today\":\n            return .today"))
-        XCTAssertTrue(workflowSource.contains("case \"projects\":\n            return .projects"))
-        XCTAssertTrue(workflowSource.contains("case \"schedule\":\n            return .schedule"))
-        XCTAssertTrue(workflowSource.contains("case \"done\":\n            return .done"))
-        XCTAssertTrue(workflowSource.contains("guard parts.count == 2 else {\n                return .today"))
-        XCTAssertTrue(workflowSource.contains("availableProjects.contains(where: { $0.id == projectID }) else {\n                    return .today"))
+        XCTAssertTrue(persistenceSource.contains("public enum ProjectBoardSidebarDestination"))
+        XCTAssertTrue(persistenceSource.contains("public enum ProjectBoardSelectionPersistence"))
+        XCTAssertTrue(persistenceSource.contains("static let defaultRawValue = \"today\""))
+        XCTAssertTrue(persistenceSource.contains("case .inbox:\n            return \"inbox\""))
+        XCTAssertTrue(persistenceSource.contains("case .today:\n            return \"today\""))
+        XCTAssertTrue(persistenceSource.contains("case .projects:\n            return \"projects\""))
+        XCTAssertTrue(persistenceSource.contains("case .schedule:\n            return \"schedule\""))
+        XCTAssertTrue(persistenceSource.contains("case .done:\n            return \"done\""))
+        XCTAssertTrue(persistenceSource.contains("case .project(let projectID):\n            return \"project:\\(projectID)\""))
+        XCTAssertTrue(persistenceSource.contains("case \"inbox\":\n            return .inbox"))
+        XCTAssertTrue(persistenceSource.contains("case \"today\":\n            return .today"))
+        XCTAssertTrue(persistenceSource.contains("case \"projects\":\n            return .projects"))
+        XCTAssertTrue(persistenceSource.contains("case \"schedule\":\n            return .schedule"))
+        XCTAssertTrue(persistenceSource.contains("case \"done\":\n            return .done"))
+        XCTAssertTrue(persistenceSource.contains("guard parts.count == 2 else {\n                return .today"))
+        XCTAssertTrue(persistenceSource.contains("availableProjects.contains(where: { $0.id == projectID }) else {\n                    return .today"))
     }
 
     func testPhase12SidebarShowsWorkflowDestinationsBeforeProjectRows() throws {
@@ -1521,12 +1557,13 @@ final class AppExperienceSourceTests: XCTestCase {
     func testScheduleWorkflowIsReachableAndApprovalFirst() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
 
         XCTAssertTrue(boardSource.contains("ProjectBoardSidebarDestinationRow(destination: .schedule"))
         XCTAssertTrue(boardSource.contains("case .schedule:"))
         XCTAssertTrue(boardSource.contains("ScheduleWorkflowView(viewModel: viewModel)"))
-        XCTAssertTrue(workflowSource.contains("case schedule"))
+        XCTAssertTrue(persistenceSource.contains("case schedule"))
         XCTAssertTrue(workflowSource.contains("ScheduleWorkflowView"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workflow\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-generate-draft\")"))
@@ -2549,7 +2586,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let windowMetadataScript = try readPackageFile("script/ui_evidence_window_metadata.swift")
         let contentCheckScript = try readPackageFile("script/ui_evidence_content_check.swift")
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
         let evidence = try readPackageFile("docs/release/evidence/ui-screenshots.md")
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
@@ -2610,11 +2647,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("@AppStorage(ProjectBoardSelectionPersistence.storageKey)"))
         XCTAssertTrue(boardSource.contains("restoreSelectedDestinationIfNeeded()"))
         XCTAssertTrue(boardSource.contains("persistSelectedDestination(_ destination: ProjectBoardSidebarDestination?)"))
-        XCTAssertTrue(workflowSource.contains("enum ProjectBoardSelectionPersistence"))
-        XCTAssertTrue(workflowSource.contains("static let storageKey = \"solopm.projectBoard.selectedDestination\""))
-        XCTAssertTrue(workflowSource.contains("static let environmentOverrideKey = \"SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION\""))
+        XCTAssertTrue(persistenceSource.contains("public enum ProjectBoardSelectionPersistence"))
+        XCTAssertTrue(persistenceSource.contains("static let storageKey = \"solopm.projectBoard.selectedDestination\""))
+        XCTAssertTrue(persistenceSource.contains("static let environmentOverrideKey = \"SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION\""))
         XCTAssertTrue(boardSource.contains("ProjectBoardSelectionPersistence.environmentOverrideRawValue"))
-        XCTAssertTrue(workflowSource.contains("case \"project\""))
+        XCTAssertTrue(persistenceSource.contains("case \"project\""))
 
         XCTAssertTrue(evidence.contains("script/capture_ui_evidence.sh"))
         XCTAssertTrue(evidence.contains("- Source commit: `"))
