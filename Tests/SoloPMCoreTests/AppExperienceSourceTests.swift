@@ -518,6 +518,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("click_sidebar_toggle"))
         XCTAssertTrue(script.contains("set_toolbar_display_mode"))
         XCTAssertTrue(script.contains("click_project_display_mode"))
+        XCTAssertTrue(script.contains("click_inspector_close"))
+        XCTAssertTrue(script.contains("click_task_card_open_details"))
+        XCTAssertTrue(script.contains("wait_for_ax_identifier_present \"task-inspector\""))
+        XCTAssertTrue(script.contains("wait_for_ax_identifier_absent \"project-inspector\""))
         XCTAssertTrue(script.contains("capture_window \"sidebar-visible\""))
         XCTAssertTrue(script.contains("capture_window \"sidebar-hidden\""))
         XCTAssertTrue(script.contains("capture_window \"sidebar-restored\""))
@@ -526,6 +530,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("capture_window \"display-mode-list\""))
         XCTAssertTrue(script.contains("capture_window \"display-mode-overview\""))
         XCTAssertTrue(script.contains("capture_window \"display-mode-board\""))
+        XCTAssertTrue(script.contains("capture_window \"inspector-closed\""))
+        XCTAssertTrue(script.contains("capture_window \"inspector-reopened\""))
         XCTAssertTrue(script.contains("assert_toolbar_layout_is_stable"))
         XCTAssertTrue(script.contains("toolbar_items_deduplicated >\"$baseline_file\""))
         XCTAssertTrue(script.contains("sidebar-hidden-immediate"))
@@ -535,6 +541,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("display-mode-list-immediate"))
         XCTAssertTrue(script.contains("display-mode-overview-immediate"))
         XCTAssertTrue(script.contains("display-mode-board-immediate"))
+        XCTAssertTrue(script.contains("inspector-closed-immediate"))
+        XCTAssertTrue(script.contains("inspector-reopened-immediate"))
         XCTAssertTrue(script.contains("Icon Only"))
         XCTAssertTrue(script.contains("Icon and Text"))
         XCTAssertTrue(script.contains("アイコンのみ"))
@@ -545,6 +553,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("BLOCKER: header action controls are not trailing"))
         XCTAssertTrue(script.contains("BLOCKER: toolbar display mode menu item was not available"))
         XCTAssertTrue(script.contains("BLOCKER: Project display mode control was not available"))
+        XCTAssertTrue(script.contains("BLOCKER: AX identifier stayed visible"))
+        XCTAssertTrue(script.contains("BLOCKER: AX identifier was not visible"))
     }
 
     func testMenuBarPanelHostsSettingsLinkWithoutThemeControls() throws {

@@ -1,14 +1,14 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T17:32:39Z
-Source commit: 01250c2
+Generated at: 2026-06-22T17:58:29Z
+Source commit: 92e4335
 
 ## Summary
 
-- Phase14 completion: 40/181 checked, 141 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 41/181 checked, 140 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 5 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-01250c2.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-92e4335.md`
 
 ## Unfinished Phase14 Items
 
@@ -16,7 +16,6 @@ Source commit: 01250c2
 - [ ] tasks/Phase14-QualityRegressionHardening.md:149:- [ ] Sidebar toggleがanimation有効transactionへ戻ったら失敗するsource testを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:150:- [ ] Header action groupが固定height / trailing alignment / stable AX identifierを失ったら失敗するsource testを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:151:- [ ] Runtime smokeに以下の遷移を追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:164:- [ ] Inspector表示時にheaderがinspector下へ潜らないことを確認する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:169:- [ ] Project Boardの主要状態遷移でheader / sidebar / detail / inspectorのframe jumpが検出される。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:170:- [ ] Header action controlsが常に同じ順序とAX identifierで取得できる。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:171:- [ ] Runtime smokeで失敗した時、どの遷移でどのframeがズレたか出力される。
@@ -42,6 +41,7 @@ Source commit: 01250c2
 - [ ] tasks/Phase14-QualityRegressionHardening.md:242:- [ ] destructive actionは必ずconfirmationを通ることを確認する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:243:- [ ] Settings保存ではKeychain secret値そのものをartifactへ出さない。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:244:- [ ] Voice CommandはAPI key未設定時にfake successへ倒れないことを確認する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:248:- [ ] Project / Task CRUDがUIから永続DBへ反映される。
 
 ## Open Risk Items
 
@@ -69,8 +69,8 @@ Source commit: 01250c2
 - `script/check_runtime_accessible_crud_smoke.sh`
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-01250c2.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-01250c2.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-92e4335.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-92e4335.md ./script/release_readiness_report.sh`
 
 ## Notes
 

@@ -152,7 +152,7 @@ Project Board は sidebar、header、detail board、inspector、toolbar/AppKit b
   - [x] sidebar visible -> hidden -> visible
   - [x] iconAndLabel -> iconOnly -> iconAndLabel
   - [x] Board -> List -> Overview -> Board
-  - [ ] inspector open -> close -> open
+  - [x] inspector open -> close -> open
   - [ ] terminal panel open -> close
   - [ ] project selection change
 
@@ -161,7 +161,7 @@ Project Board は sidebar、header、detail board、inspector、toolbar/AppKit b
 - [x] Project Boardの主要領域にAX identifierを追加または確認する。
 - [x] smoke scriptの操作を小さな関数に分け、各遷移後に `assert_layout_stable` を呼ぶ。
 - [x] Header actionsがdetail column右端に収まることを、window右端ではなくdetail frame基準で判定する。
-- [ ] Inspector表示時にheaderがinspector下へ潜らないことを確認する。
+- [x] Inspector表示時にheaderがinspector下へ潜らないことを確認する。
 - [x] Board/List/Overviewの切替でheader heightとtop offsetが変わらないことを確認する。
 
 ### Acceptance Criteria

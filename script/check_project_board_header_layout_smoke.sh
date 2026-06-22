@@ -471,6 +471,100 @@ assert_toolbar_layout_is_stable() {
   printf "OK: header layout stayed stable after %s\n" "$label"
 }
 
+click_first_ax_identifier() {
+  local target_identifier="$1"
+  /usr/bin/osascript - "$APP_NAME" "$target_identifier" <<'APPLESCRIPT' >/dev/null
+on clickMatchingIdentifier(uiElement, targetIdentifier)
+  tell application "System Events"
+    set identifierValue to ""
+    try
+      set identifierValue to value of attribute "AXIdentifier" of uiElement
+    end try
+    if identifierValue is targetIdentifier then
+      try
+        perform action "AXPress" of uiElement
+      end try
+      try
+        click uiElement
+      end try
+      try
+        set itemPosition to position of uiElement
+        set itemSize to size of uiElement
+        click at {((item 1 of itemPosition) + ((item 1 of itemSize) / 2)), ((item 2 of itemPosition) + ((item 2 of itemSize) / 2))}
+      end try
+      return true
+    end if
+
+    try
+      repeat with childElement in UI elements of uiElement
+        if my clickMatchingIdentifier(childElement, targetIdentifier) then return true
+      end repeat
+    end try
+  end tell
+  return false
+end clickMatchingIdentifier
+
+on run argv
+  set appName to item 1 of argv
+  set targetIdentifier to item 2 of argv
+  tell application "System Events"
+    tell process appName
+      set frontmost to true
+      if not my clickMatchingIdentifier(window 1, targetIdentifier) then
+        error "BLOCKER: AX identifier was not clickable: " & targetIdentifier
+      end if
+    end tell
+  end tell
+end run
+APPLESCRIPT
+}
+
+wait_for_ax_identifier_present() {
+  local target_identifier="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local probe_file="$OUTPUT_DIR/identifier-present-${target_identifier}.tsv"
+  while true; do
+    if toolbar_items_deduplicated >"$probe_file" 2>"$OUTPUT_DIR/identifier-present-${target_identifier}.err" &&
+      awk -F $'\t' -v wanted="$target_identifier" '$1 == wanted { found = 1 } END { exit(found ? 0 : 1) }' "$probe_file"; then
+      return 0
+    fi
+
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: AX identifier was not visible: $target_identifier" >&2
+      cat "$probe_file" >&2 || true
+      return 1
+    fi
+    sleep 0.2
+  done
+}
+
+wait_for_ax_identifier_absent() {
+  local target_identifier="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local probe_file="$OUTPUT_DIR/identifier-absent-${target_identifier}.tsv"
+  while true; do
+    if toolbar_items_deduplicated >"$probe_file" 2>"$OUTPUT_DIR/identifier-absent-${target_identifier}.err" &&
+      ! awk -F $'\t' -v wanted="$target_identifier" '$1 == wanted { found = 1 } END { exit(found ? 0 : 1) }' "$probe_file"; then
+      return 0
+    fi
+
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: AX identifier stayed visible: $target_identifier" >&2
+      cat "$probe_file" >&2 || true
+      return 1
+    fi
+    sleep 0.2
+  done
+}
+
+click_inspector_close() {
+  click_first_ax_identifier "project-inspector-close"
+}
+
+click_task_card_open_details() {
+  click_first_ax_identifier "task-card-open-details"
+}
+
 click_sidebar_toggle() {
   /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null
 on run argv
@@ -696,5 +790,17 @@ wait_for_display_mode_content "board"
 assert_toolbar_layout_is_stable "display-mode-board-immediate" 5
 capture_window "display-mode-board"
 assert_action_buttons_are_trailing "display-mode-board"
+
+click_inspector_close
+wait_for_ax_identifier_absent "project-inspector"
+assert_toolbar_layout_is_stable "inspector-closed-immediate" 5
+capture_window "inspector-closed"
+assert_action_buttons_are_trailing "inspector-closed"
+
+click_task_card_open_details
+wait_for_ax_identifier_present "task-inspector"
+assert_toolbar_layout_is_stable "inspector-reopened-immediate" 5
+capture_window "inspector-reopened"
+assert_action_buttons_are_trailing "inspector-reopened"
 
 printf "OK: Project Board header layout smoke passed\n"
