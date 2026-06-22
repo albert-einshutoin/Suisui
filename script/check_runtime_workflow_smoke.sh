@@ -141,8 +141,20 @@ run_inbox_triage() {
 }
 
 run_today_complete() {
+  local scenario_output
   local scenario_status="failed"
-  local scenario_reason="today_complete runtime DB assertion is not implemented yet"
+  local scenario_reason="today_complete scenario did not finish"
+
+  if scenario_output="$(SOLOPM_RUNTIME_TODAY_COMPLETE_KEEP_DATABASE=1 ./script/check_runtime_today_complete_smoke.sh 2>&1)"; then
+    printf '%s\n' "$scenario_output"
+    scenario_status="passed"
+    scenario_reason="Today visible row completion SQLite postconditions passed"
+    write_scenario_artifact "today_complete" "$scenario_status" "$scenario_reason"
+    return 0
+  fi
+
+  printf '%s\n' "$scenario_output" >&2
+  scenario_reason="today_complete command failed"
   write_scenario_artifact "today_complete" "$scenario_status" "$scenario_reason"
   echo "BLOCKER: runtime workflow scenario failed: today_complete - $scenario_reason" >&2
   return 1
