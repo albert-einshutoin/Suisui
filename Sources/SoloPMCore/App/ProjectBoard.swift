@@ -760,17 +760,28 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         let taskRecords = try taskStore.listAll()
         let artifacts = try artifactStore.list().map(makeBoardArtifact(_:))
         let milestones = try milestoneStore.list().map(makeBoardMilestone(_:))
+        var projectIDs = Set(projects.map(\.id))
         let fallbackProjectID: Int64?
 
-        if taskRecords.contains(where: { $0.projectID == nil }) {
+        if taskRecords.contains(where: { task in task.projectID.map { !projectIDs.contains($0) } ?? true }) {
             fallbackProjectID = try ensureActiveInboxProject().id
             projects = try projectStore.listForProjectBoard(includeArchived: includeArchived)
+            projectIDs = Set(projects.map(\.id))
         } else {
             fallbackProjectID = nil
         }
 
-        let tasks = try taskRecords.map { record in
-            try makeBoardTask(record, fallbackProjectID: fallbackProjectID).requiredTask()
+        let tasks = try taskRecords.compactMap { record in
+            do {
+                return try makeBoardTask(
+                    record,
+                    fallbackProjectID: fallbackProjectID,
+                    projectIDs: projectIDs
+                ).requiredTask()
+            } catch let error as LocalStoreDecodingError where error.isProjectBoardSkippableRecord {
+                // A single corrupted imported task must not make the whole board unavailable; mutation paths still validate strictly.
+                return nil
+            }
         }
         return (projects, tasks, artifacts, milestones)
     }
@@ -870,8 +881,19 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         )
     }
 
-    private func makeBoardTask(_ record: TaskRecord, fallbackProjectID: Int64? = nil) throws -> ProjectBoardTask? {
-        guard let projectID = record.projectID ?? fallbackProjectID else {
+    private func makeBoardTask(
+        _ record: TaskRecord,
+        fallbackProjectID: Int64? = nil,
+        projectIDs: Set<Int64>? = nil
+    ) throws -> ProjectBoardTask? {
+        let rawProjectID = record.projectID
+        let projectID = if let rawProjectID, projectIDs?.contains(rawProjectID) != false {
+            rawProjectID
+        } else {
+            fallbackProjectID
+        }
+
+        guard let projectID else {
             return nil
         }
 
@@ -906,6 +928,17 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             dueAt: record.dueAt,
             isCompleted: record.isCompleted
         )
+    }
+}
+
+private extension LocalStoreDecodingError {
+    var isProjectBoardSkippableRecord: Bool {
+        switch self {
+        case .invalidEnum(column: "tasks.priority", value: _):
+            true
+        default:
+            false
+        }
     }
 }
 

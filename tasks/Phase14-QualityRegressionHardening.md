@@ -423,22 +423,22 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 
 ### Tests First
 
-- [ ] 古いschemaから最新schemaへのmigration testを追加する。
-- [ ] invalid JSON / blank string / unknown enum / dangling foreign keyをfail-closedまたはsafe fallbackするテストを追加する。
-- [ ] UI ViewModelが破損recordを受け取ってもProject Board全体をUnavailableにしないテストを追加する。
+- [x] 古いschemaから最新schemaへのmigration testを追加する。
+- [x] invalid JSON / blank string / unknown enum / dangling foreign keyをfail-closedまたはsafe fallbackするテストを追加する。
+- [x] UI ViewModelが破損recordを受け取ってもProject Board全体をUnavailableにしないテストを追加する。
 
 ### Implementation Steps
 
-- [ ] Migration fixture DBを `.tmp` ではなく test resource として最小化して持つ。
-- [ ] 破損データの扱いを「表示除外」「repair candidate」「blocking error」に分類する。
-- [ ] Store layerでvalidationし、Viewでad hoc parseしない。
+- [x] Migration fixture DBを `.tmp` ではなく test resource として最小化して持つ。
+- [x] 破損データの扱いを「表示除外」「repair candidate」「blocking error」に分類する。
+- [x] Store layerでvalidationし、Viewでad hoc parseしない。
 - [ ] Repair可能なものはaudit logに残す。
 
 ### Acceptance Criteria
 
-- [ ] 既存ユーザーDBのshape差分でアプリが起動不能になりにくい。
-- [ ] 破損recordがある場合も、原因と対象がユーザー/ログに安全に見える。
-- [ ] 秘密情報やraw DB contentをerror messageへ出さない。
+- [x] 既存ユーザーDBのshape差分でアプリが起動不能になりにくい。
+- [x] 破損recordがある場合も、原因と対象がユーザー/ログに安全に見える。
+- [x] 秘密情報やraw DB contentをerror messageへ出さない。
 
 ### Non-goals
 

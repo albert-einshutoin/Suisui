@@ -99,6 +99,31 @@ final class DatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(appliedMigrationIDs.contains("0007_add_task_detail"))
     }
 
+    func testProjectBoardMigrationFixtureUpgradesLegacyTaskShapeToCurrentSnapshot() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let fixtureURL = try XCTUnwrap(Bundle.module.url(
+            forResource: "phase2-project-board",
+            withExtension: "sql"
+        ))
+        let fixtureSQL = try String(contentsOf: fixtureURL, encoding: .utf8)
+
+        try connection.execute(fixtureSQL)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+
+        let taskColumns = try connection.queryRows("PRAGMA table_info(tasks);").compactMap { $0["name"] }
+        let snapshot = try SQLiteProjectBoardStore(connection: connection).loadSnapshot()
+        let project = try XCTUnwrap(snapshot.projects.first { $0.title == "Legacy Launch" })
+        let plannedTask = try XCTUnwrap(project.columns.first { $0.status == .planned }?.tasks.first)
+        let doneTask = try XCTUnwrap(project.columns.first { $0.status == .done }?.tasks.first)
+
+        XCTAssertTrue(taskColumns.contains("detail"))
+        XCTAssertTrue(taskColumns.contains("completed_at"))
+        XCTAssertEqual(plannedTask.detail, "")
+        XCTAssertEqual(doneTask.title, "Legacy completed task")
+        XCTAssertNotNil(doneTask.completedAt)
+        XCTAssertTrue(try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;").contains("0012_add_task_completed_at"))
+    }
+
     func testCurrentMigrationsCreateMCPRegistrationTable() throws {
         let database = try SQLiteDatabaseClient(path: ":memory:")
 

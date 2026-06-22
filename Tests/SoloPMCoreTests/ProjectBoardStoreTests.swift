@@ -68,6 +68,22 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(inbox.subtitle, "1 open / 1 total")
     }
 
+    func testLoadSnapshotShowsDanglingProjectTasksInInboxWithoutRepairingAutomatically() throws {
+        let stores = try makeStoreBundle()
+        _ = try stores.tasks.create(
+            title: "Recover dangling task",
+            projectID: 99_999,
+            status: "planned"
+        )
+
+        let snapshot = try stores.board.loadSnapshot()
+        let inbox = try XCTUnwrap(snapshot.projects.first { $0.title == "Inbox" })
+
+        XCTAssertEqual(inbox.column(.planned)?.tasks.map(\.title), ["Recover dangling task"])
+        XCTAssertEqual(inbox.subtitle, "1 open / 1 total")
+        XCTAssertEqual(try stores.tasks.listAll().first?.projectID, 99_999)
+    }
+
     func testLoadSnapshotIncludesProjectAndTaskArtifactsWithoutMockRows() throws {
         let stores = try makeStoreBundle()
         let project = try stores.board.createProject(title: "Launch Readiness")
@@ -336,19 +352,22 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(try stores.tasks.get(id: orphan.id).projectID, inbox.id)
     }
 
-    func testLoadSnapshotRejectsCorruptedTaskPriorityInsteadOfDefaultingToMedium() throws {
+    func testLoadSnapshotSkipsCorruptedTaskPriorityWithoutMakingBoardUnavailable() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         let board = SQLiteProjectBoardStore(connection: connection)
         let tasks = SQLiteTaskStore(connection: connection)
         let inbox = try XCTUnwrap(board.loadSnapshot().projects.first)
         let task = try tasks.create(title: "Review launch risk", projectID: inbox.id, priority: "high")
+        _ = try tasks.create(title: "Keep board usable", projectID: inbox.id, priority: "medium")
 
         try connection.execute("UPDATE tasks SET priority = 'urgent' WHERE id = \(task.id);")
 
-        XCTAssertThrowsError(try board.loadSnapshot()) { error in
-            XCTAssertEqual(error as? LocalStoreDecodingError, .invalidEnum(column: "tasks.priority", value: "urgent"))
-        }
+        let snapshot = try board.loadSnapshot()
+        let loadedInbox = try XCTUnwrap(snapshot.projects.first { $0.id == inbox.id })
+
+        XCTAssertEqual(loadedInbox.tasks.map(\.title), ["Keep board usable"])
+        XCTAssertEqual(loadedInbox.subtitle, "1 open / 1 total")
     }
 
     func testUpdateTaskMovesCardAcrossColumnsAndUpdatesMetadata() throws {

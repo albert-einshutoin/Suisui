@@ -1,27 +1,18 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T23:06:59Z
-Source commit: 139d4bb
+Generated at: 2026-06-22T23:14:57Z
+Source commit: db8c079
 
 ## Summary
 
-- Phase14 completion: 116/183 checked, 67 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 125/183 checked, 58 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 4 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-139d4bb.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-db8c079.md`
 
 ## Unfinished Phase14 Items
 
-- [ ] tasks/Phase14-QualityRegressionHardening.md:426:- [ ] 古いschemaから最新schemaへのmigration testを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:427:- [ ] invalid JSON / blank string / unknown enum / dangling foreign keyをfail-closedまたはsafe fallbackするテストを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:428:- [ ] UI ViewModelが破損recordを受け取ってもProject Board全体をUnavailableにしないテストを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:432:- [ ] Migration fixture DBを `.tmp` ではなく test resource として最小化して持つ。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:433:- [ ] 破損データの扱いを「表示除外」「repair candidate」「blocking error」に分類する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:434:- [ ] Store layerでvalidationし、Viewでad hoc parseしない。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:435:- [ ] Repair可能なものはaudit logに残す。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:439:- [ ] 既存ユーザーDBのshape差分でアプリが起動不能になりにくい。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:440:- [ ] 破損recordがある場合も、原因と対象がユーザー/ログに安全に見える。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:441:- [ ] 秘密情報やraw DB contentをerror messageへ出さない。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:463:- [ ] secret-like patternがtest fixture、screenshot metadata、release evidenceに出たら失敗するscanを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:464:- [ ] Runtime smoke artifact directoryが `.gitignore` 対象であることをテストする。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:465:- [ ] Keychain referenceとraw secretの区別をsource testで固定する。
@@ -42,6 +33,15 @@ Source commit: 139d4bb
 - [ ] tasks/Phase14-QualityRegressionHardening.md:510:- [ ] 失敗時は最小再現コマンドをaction summaryに出す。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:514:- [ ] PRでは速いテストで明確に落ちる。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:515:- [ ] UI/release前にはruntime/visual gateが実行できる。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:516:- [ ] フレークを無期限skipできない。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:517:- [ ] 失敗分類がbuild / assertion / crash / timing / environment / manual gateに分かれる。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:539:- [ ] Manual evidenceにfailure noteがある場合、linked regression testまたはfollow-up issueが必要なことをreportで検出する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:545:- [ ] VoiceOverで見つかったlabel/focus問題はAX/source testへ戻す。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:546:- [ ] Gatekeeper/clean environmentで見つかった起動問題はpackaging/preflight testへ戻す。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:547:- [ ] Competitor hands-onで見つかったUX差分はPhase taskまたはproduct docへ戻す。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:552:- [ ] 手動確認で見つかった問題が、次回以降の自動検出対象になる。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:553:- [ ] manual-only gateとautomation-backlogが混ざらない。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:554:- [ ] release前に未処理manual findingが見える。
 
 ## Open Risk Items
 
@@ -69,8 +69,8 @@ Source commit: 139d4bb
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
 - `script/check_visual_regression_smoke.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-139d4bb.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-139d4bb.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-db8c079.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-db8c079.md ./script/release_readiness_report.sh`
 
 ## Notes
 
