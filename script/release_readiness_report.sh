@@ -1316,6 +1316,12 @@ write_release_actions() {
     printf -- "- Use \`docs/release/manual-unblockers.md\` as the tracked checklist for Manual VoiceOver, Competitor Hands-On, and Release Machine lanes.\n"
     printf -- "- Use the persistent runbook above as the stable checklist when this generated action summary is replaced or regenerated.\n\n"
 
+    printf "## Manual Finding Regression Bridge\n"
+    printf -- "- Use \`docs/quality/manual-to-automated-regression.md\` to route any manual VoiceOver, competitor, or release-machine finding back into source/runtime/visual regression coverage.\n"
+    printf -- "- VoiceOver findings should link to AX/source tests before the manual evidence is treated as closed.\n"
+    printf -- "- Competitor hands-on deltas should link to \`docs/product/competitor-benchmark.md\`, a Phase task, or a focused UI regression test.\n"
+    printf -- "- Release-machine failures should link to \`script/verify_release_environment.sh\` or \`Tests/SoloPMCoreTests/ReleasePipelineTests.swift\`.\n\n"
+
     write_operator_priority_queue
 
     printf "## Current Blocker Groups\n"

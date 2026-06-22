@@ -107,8 +107,9 @@ runtime AX smoke で固定する。Phase 14 で加わった layout stability har
 - flake quarantine 運用の source test (`scripts/ci.sh` / `scripts/verify.sh` /
   `script/release_readiness_report.sh`) が未着手。 Coverage: open。
   Follow-up: P14-012。
-- quality status dashboard (`script/quality_status_report.sh`) が未着手。
-  Coverage: open。 Follow-up: P14-014。
+- quality status dashboard (`script/quality_status_report.sh`) は Phase14 未完了項目、
+  open risk、runtime / visual / manual evidence、推奨 verifier を出力するbaselineを持つ。
+  Coverage: partial。 Follow-up: P14-014 の release readiness 集約と full gate分類。
 
 ## How to use this map
 

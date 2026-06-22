@@ -41,6 +41,60 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertFalse(doc.contains("sk-"))
     }
 
+    func testManualToAutomatedRegressionBridgeDocumentsManualGateBackstops() throws {
+        let doc = try readPackageFile("docs/quality/manual-to-automated-regression.md")
+
+        for requiredSection in [
+            "## Manual VoiceOver",
+            "## Competitor Hands-On",
+            "## Release Machine",
+            "## Manual Finding Intake"
+        ] {
+            XCTAssertTrue(doc.contains(requiredSection), "manual bridge doc must include \(requiredSection)")
+        }
+
+        for requiredMarker in [
+            "manual-only",
+            "automation-backlog",
+            "docs/release/evidence/accessibility-voiceover.md",
+            "docs/release/evidence/competitor-hands-on.md",
+            "packaging/release-evidence.json",
+            "script/check_accessibility_preflight.sh --runtime",
+            "script/check_runtime_accessible_crud_smoke.sh",
+            "script/verify_release_environment.sh",
+            "Tests/SoloPMCoreTests/AppExperienceSourceTests.swift",
+            "Tests/SoloPMCoreTests/ReleasePipelineTests.swift",
+            "tasks/Phase14-QualityRegressionHardening.md"
+        ] {
+            XCTAssertTrue(doc.contains(requiredMarker), "manual bridge doc must route \(requiredMarker)")
+        }
+
+        XCTAssertFalse(doc.contains("sk-"))
+    }
+
+    func testQualityStatusDashboardScriptAndSnapshotDocumentQualityGates() throws {
+        let script = try readPackageFile("script/quality_status_report.sh")
+        let status = try readPackageFile("docs/quality/status.md")
+
+        for marker in [
+            "tasks/Phase14-QualityRegressionHardening.md",
+            "docs/quality/regression-risk-map.md",
+            "docs/release/evidence/ui-screenshots.md",
+            "docs/release/evidence/mcp-inspector.md",
+            "docs/release/evidence/accessibility-voiceover.md",
+            "docs/release/evidence/competitor-hands-on.md"
+        ] {
+            XCTAssertTrue(script.contains(marker), "quality status script must read \(marker)")
+            XCTAssertTrue(status.contains(marker), "quality status snapshot must mention \(marker)")
+        }
+
+        XCTAssertTrue(script.contains("SOLOPM_QUALITY_STATUS_FILE"))
+        XCTAssertTrue(status.contains("## Unfinished Phase14 Items"))
+        XCTAssertTrue(status.contains("## Open Risk Items"))
+        XCTAssertTrue(status.contains("## Verification Commands"))
+        XCTAssertNil(status.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
+    }
+
     func testGitignoreKeepsLocalAgentArtifactsAndRuntimeEvidenceOutOfSource() throws {
         let gitignore = try readPackageFile(".gitignore")
 

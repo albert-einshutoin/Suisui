@@ -535,15 +535,15 @@ VoiceOver、競合hands-on、Gatekeeper、clean environmentなどは手動gate�
 ### Tests First
 
 - [ ] Manual evidenceにfailure noteがある場合、linked regression testまたはfollow-up issueが必要なことをreportで検出する。
-- [ ] `docs/quality/manual-to-automated-regression.md` が存在し、VoiceOver/Gatekeeper/competitorの戻し先を持つことをsource testで確認する。
+- [x] `docs/quality/manual-to-automated-regression.md` が存在し、VoiceOver/Gatekeeper/competitorの戻し先を持つことをsource testで確認する。
 
 ### Implementation Steps
 
-- [ ] 手動gateごとに「自動化へ戻せる部分」「manual-onlyに残す部分」を分類する。
+- [x] 手動gateごとに「自動化へ戻せる部分」「manual-onlyに残す部分」を分類する。
 - [ ] VoiceOverで見つかったlabel/focus問題はAX/source testへ戻す。
 - [ ] Gatekeeper/clean environmentで見つかった起動問題はpackaging/preflight testへ戻す。
 - [ ] Competitor hands-onで見つかったUX差分はPhase taskまたはproduct docへ戻す。
-- [ ] Release action summaryに「manual finding regression follow-up」を表示する。
+- [x] Release action summaryに「manual finding regression follow-up」を表示する。
 
 ### Acceptance Criteria
 
@@ -571,15 +571,15 @@ Priority: Low
 
 ### Tests First
 
-- [ ] status reportがrisk map、test commands、runtime artifact、manual gateを読み込むことをテストする。
-- [ ] 未完了P14 checkboxとrisk mapのuncovered itemがreportに出ることをテストする。
-- [ ] reportがsecret-like valuesを出さないことをテストする。
+- [x] status reportがrisk map、test commands、runtime artifact、manual gateを読み込むことをテストする。
+- [x] 未完了P14 checkboxとrisk mapのuncovered itemがreportに出ることをテストする。
+- [x] reportがsecret-like valuesを出さないことをテストする。
 
 ### Implementation Steps
 
-- [ ] `script/quality_status_report.sh` を作る。
-- [ ] `tasks/Phase14-QualityRegressionHardening.md` の未完了項目を集計する。
-- [ ] 直近のruntime/visual artifact pathを表示する。
+- [x] `script/quality_status_report.sh` を作る。
+- [x] `tasks/Phase14-QualityRegressionHardening.md` の未完了項目を集計する。
+- [x] 直近のruntime/visual artifact pathを表示する。
 - [ ] `swift test`、focused tests、runtime smoke、visual smoke、manual evidenceの状態を分類する。
 - [ ] `release_readiness_report.sh` から参照できるようにする。
 
@@ -623,5 +623,5 @@ Phase14の各PRは、変更範囲に応じて以下を使い分ける。
 - [ ] Persistence/migration/security regression suiteが破損データとsecret leakageを検出する。
 - [ ] Flake quarantineはowner、reason、expiryなしに追加できない。
 - [ ] Manual evidenceで見つかった問題を自動regressionへ戻す運用が文書化されている。
-- [ ] `script/quality_status_report.sh` で品質状態と残riskを確認できる。
+- [x] `script/quality_status_report.sh` で品質状態と残riskを確認できる。
 - [ ] `swift test` がgreen。

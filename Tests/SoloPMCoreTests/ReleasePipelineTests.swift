@@ -6913,7 +6913,43 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("This file is an action summary, not release evidence."))
         XCTAssertTrue(actionSummary.contains("Manual-only evidence boundary"))
         XCTAssertTrue(actionSummary.contains("Do not ask an LLM, automation, or this action summary to create passed evidence for manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, Gatekeeper, clean install, or Launch at Login checks without the real pass."))
+        XCTAssertTrue(actionSummary.contains("## Manual Finding Regression Bridge"))
+        XCTAssertTrue(actionSummary.contains("Use `docs/quality/manual-to-automated-regression.md` to route any manual VoiceOver, competitor, or release-machine finding back into source/runtime/visual regression coverage."))
+        XCTAssertTrue(actionSummary.contains("VoiceOver findings should link to AX/source tests before the manual evidence is treated as closed."))
+        XCTAssertTrue(actionSummary.contains("Competitor hands-on deltas should link to `docs/product/competitor-benchmark.md`, a Phase task, or a focused UI regression test."))
+        XCTAssertTrue(actionSummary.contains("Release-machine failures should link to `script/verify_release_environment.sh` or `Tests/SoloPMCoreTests/ReleasePipelineTests.swift`."))
         XCTAssertFalse(actionSummary.contains("Status: ready"))
+    }
+
+    func testQualityStatusReportSummarizesPhase14RiskAndArtifactsWithoutSecrets() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-quality-status-report", isDirectory: true)
+        let outputURL = fixtureRoot.appendingPathComponent("quality-status.md")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        let result = try runTool(
+            ["bash", packageRoot().appendingPathComponent("script/quality_status_report.sh").path],
+            environment: ["SOLOPM_QUALITY_STATUS_FILE": outputURL.path]
+        )
+        let report = try String(contentsOf: outputURL, encoding: .utf8)
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("Quality status report written to"))
+        XCTAssertTrue(report.contains("# SoloPM Quality Status"))
+        XCTAssertTrue(report.contains("Phase14 completion"))
+        XCTAssertTrue(report.contains("## Unfinished Phase14 Items"))
+        XCTAssertTrue(report.contains("## Open Risk Items"))
+        XCTAssertTrue(report.contains("## Runtime / Visual / Manual Evidence"))
+        XCTAssertTrue(report.contains("docs/quality/regression-risk-map.md"))
+        XCTAssertTrue(report.contains("tasks/Phase14-QualityRegressionHardening.md"))
+        XCTAssertTrue(report.contains("script/check_runtime_accessible_crud_smoke.sh"))
+        XCTAssertTrue(report.contains("script/check_accessibility_preflight.sh --runtime"))
+        XCTAssertTrue(report.contains("script/capture_ui_evidence.sh --doctor"))
+        XCTAssertNil(report.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
+        XCTAssertFalse(report.contains("super-secret-token"))
     }
 
     func testReleaseReadinessReportClassifiesUncheckedPhaseItems() throws {
