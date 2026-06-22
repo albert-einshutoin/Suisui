@@ -30,6 +30,17 @@ The task path covers create, edit, status execution, automation review, approved
 - The first approved local execution step may move a task into active work. External writes, completion, and destructive actions remain separate reviewed actions.
 - Runtime AX checks can verify labels, help text, and confirmation anchors, but the real VoiceOver pass still records concrete observations in `docs/release/evidence/accessibility-voiceover.md`.
 
+## Runtime Smoke To Manual Worksheet Mapping
+
+| Runtime AX smoke marker | Manual worksheet field | What the manual pass must still prove |
+| --- | --- | --- |
+| `unlabeledButtons=0` | No unlabeled primary CRUD controls | No focused primary button is announced as empty or ambiguous. |
+| `genericButtons=0` | No unlabeled primary CRUD controls | No primary action is exposed only as a generic button without help or child text. |
+| `crudSignals=8/8` | Save Changes, Delete Task confirmation, No unlabeled primary CRUD controls | Create, update, complete/archive/delete, and confirmation entry points are visible to AX. |
+| `buttonA11ySignals=8/8` | No unlabeled primary CRUD controls | Primary Project Board buttons retain a concrete label, visible text, help, or child text. |
+| `screenSignals=4/4` | Project navigation | Inbox, Today, Settings, and Voice Command entry points are present before manual navigation starts. |
+| `focusPathSignals=6/6` | Project navigation, Project board detail, Open task, Inline Task Composer, Status controls, Task inspector | The automated focus anchors exist; manual VoiceOver still verifies announcement order and keyboard traversal. |
+
 ## MCP Pseudo VoiceOver Harness
 
 `SoloPMHarnessAccessibilityAuditRunner` exposes this focus path as the `mcp-pseudo-voiceover-focus-path` harness scenario.

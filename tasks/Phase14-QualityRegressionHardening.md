@@ -395,7 +395,7 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 - [x] 主要CRUDのfocus pathを `docs/quality/accessibility-focus-paths.md` に記録する。
 - [x] `check_accessibility_preflight.sh --runtime` の対象画面をInbox/Today/Settingsへ広げる。
 - [x] UI component追加時のAX identifier命名規則を定義する。
-- [ ] Manual VoiceOver worksheetとruntime AX smokeの項目を対応付ける。
+- [x] Manual VoiceOver worksheetとruntime AX smokeの項目を対応付ける。
 
 ### Acceptance Criteria
 

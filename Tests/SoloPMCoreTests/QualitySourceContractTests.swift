@@ -97,6 +97,34 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(phase.contains("- [x] UI component追加時のAX identifier命名規則を定義する。"))
     }
 
+    func testAccessibilityFocusPathsMapRuntimeSmokeMarkersToManualWorksheet() throws {
+        let doc = try readPackageFile("docs/quality/accessibility-focus-paths.md")
+        let candidateScript = try readPackageFile("script/prepare_voiceover_review_candidate.sh")
+        let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
+
+        for marker in [
+            "## Runtime Smoke To Manual Worksheet Mapping",
+            "`unlabeledButtons=0`",
+            "`genericButtons=0`",
+            "`crudSignals=8/8`",
+            "`buttonA11ySignals=8/8`",
+            "`screenSignals=4/4`",
+            "`focusPathSignals=6/6`",
+            "No unlabeled primary CRUD controls",
+            "Project navigation",
+            "Project board detail",
+            "Open task",
+            "Inline Task Composer",
+            "Status controls",
+            "Task inspector"
+        ] {
+            XCTAssertTrue(doc.contains(marker), "focus path doc must map \(marker)")
+            XCTAssertTrue(candidateScript.contains(marker), "worksheet generator must map \(marker)")
+        }
+
+        XCTAssertTrue(phase.contains("- [x] Manual VoiceOver worksheetとruntime AX smokeの項目を対応付ける。"))
+    }
+
     func testQualityStatusDashboardScriptAndSnapshotDocumentQualityGates() throws {
         let script = try readPackageFile("script/quality_status_report.sh")
         let status = try readPackageFile("docs/quality/status.md")
