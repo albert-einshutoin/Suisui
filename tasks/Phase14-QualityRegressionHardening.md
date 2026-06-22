@@ -121,7 +121,7 @@ Priority: High
 ### Acceptance Criteria
 
 - [x] Sidebar toggle直後のheader / detail / inspector frame deltaを検出できる。
-- [ ] Toolbar display mode切替直後のheader action frame deltaを検出できる。
+- [x] Toolbar display mode切替直後のheader action frame deltaを検出できる。
 - [x] Window resize直後のoverlap / clipping / frame jumpを検出できる。
 - [x] 失敗時にPR reviewerが再現コマンドとartifact pathを見て判断できる。
 
@@ -150,7 +150,7 @@ Project Board は sidebar、header、detail board、inspector、toolbar/AppKit b
 - [ ] Header action groupが固定height / trailing alignment / stable AX identifierを失ったら失敗するsource testを追加する。
 - [ ] Runtime smokeに以下の遷移を追加する。
   - [ ] sidebar visible -> hidden -> visible
-  - [ ] iconAndLabel -> iconOnly -> iconAndLabel
+  - [x] iconAndLabel -> iconOnly -> iconAndLabel
   - [ ] Board -> List -> Overview -> Board
   - [ ] inspector open -> close -> open
   - [ ] terminal panel open -> close

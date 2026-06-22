@@ -88,9 +88,6 @@ runtime AX smoke で固定する。Phase 14 で加わった layout stability har
 
 ## Open risks (P14-001 baseline, not yet covered by tests)
 
-- toolbar display mode 切替直後の header action frame delta は
-  `script/check_layout_stability_smoke.sh` の対象に追加が未完了。
-  Coverage: open。 Follow-up: P14-002 / P14-008。
 - Light / Dark / System 直後の project board card / sidebar selection / header /
   inspector field の overlap 検出は visual regression smoke
   (`script/check_visual_regression_smoke.sh` として P14-004 で新規作成予定。

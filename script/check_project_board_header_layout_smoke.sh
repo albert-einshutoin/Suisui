@@ -13,12 +13,21 @@ fi
 source "$METADATA_FILE"
 
 APP_NAME="${APP_NAME:?APP_NAME is required}"
+APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
+APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 TIMEOUT_SECONDS="${SOLOPM_HEADER_LAYOUT_SMOKE_TIMEOUT_SECONDS:-20}"
 OUTPUT_DIR="${SOLOPM_HEADER_LAYOUT_SMOKE_OUTPUT_DIR:-$ROOT_DIR/.tmp/project-board-header-layout-smoke}"
 WINDOW_NAME="${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}"
+HEADER_LAYOUT_DATABASE_PATH="${SOLOPM_HEADER_LAYOUT_DATABASE_PATH:-$OUTPUT_DIR/SoloPM-header-layout.sqlite}"
+SQLITE3="${SQLITE3:-sqlite3}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_HEADER_LAYOUT_SMOKE_TIMEOUT_SECONDS must be a positive integer" >&2
+  exit 2
+fi
+
+if ! command -v "$SQLITE3" >/dev/null 2>&1; then
+  echo "BLOCKER: sqlite3 is required for Project Board header layout smoke" >&2
   exit 2
 fi
 
@@ -30,13 +39,103 @@ window_x=""
 window_y=""
 window_width=""
 window_height=""
+header_layout_project_id=""
+app_pid=""
 
 terminate_app() {
+  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+  if [[ -n "${app_pid:-}" ]]; then
+    wait "$app_pid" >/dev/null 2>&1 || true
+    app_pid=""
+  fi
+}
+
+activate_app() {
   /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 || true
 on run argv
-  tell application (item 1 of argv) to quit
+  set appName to item 1 of argv
+  tell application "System Events"
+    if not (exists process appName) then return "missing"
+    tell process appName
+      set frontmost to true
+      if (count of windows) > 0 then
+        try
+          perform action "AXRaise" of window 1
+        end try
+      end if
+    end tell
+  end tell
 end run
 APPLESCRIPT
+}
+
+wait_for_app_process() {
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: $APP_NAME process did not appear within ${TIMEOUT_SECONDS}s" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+wait_for_visible_windows() {
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local window_count=""
+  local osascript_status=1
+
+  while true; do
+    set +e
+    window_count="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' 2>/dev/null
+on run argv
+  set appName to item 1 of argv
+  tell application "System Events"
+    if not (exists process appName) then return "0"
+    tell process appName
+      return (count of windows) as text
+    end tell
+  end tell
+end run
+APPLESCRIPT
+)"
+    osascript_status=$?
+    set -e
+
+    if [[ "$osascript_status" -eq 0 && "${window_count:-0}" =~ ^[0-9]+$ && "$window_count" -ge 1 ]]; then
+      return 0
+    fi
+
+    activate_app
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: $APP_NAME did not expose a visible AX window within ${TIMEOUT_SECONDS}s" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+prepare_header_layout_candidate() {
+  ./script/build_and_run.sh --build-only
+  SOLOPM_VOICEOVER_REVIEW_TIMEOUT_SECONDS="$TIMEOUT_SECONDS" \
+    ./script/prepare_voiceover_review_candidate.sh --database "$HEADER_LAYOUT_DATABASE_PATH" --no-launch --skip-build >/dev/null
+  header_layout_project_id="$("$SQLITE3" -batch -noheader "$HEADER_LAYOUT_DATABASE_PATH" "SELECT id FROM projects WHERE title='VoiceOver Review Project' AND source_command='voiceover-review-seed' ORDER BY id DESC LIMIT 1;" | tail -n 1)"
+  if [[ -z "${header_layout_project_id//[[:space:]]/}" ]]; then
+    echo "BLOCKER: header layout candidate project was not seeded" >&2
+    return 1
+  fi
+}
+
+launch_header_layout_candidate() {
+  terminate_app
+  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SOLOPM_DATABASE_PATH="$HEADER_LAYOUT_DATABASE_PATH" \
+    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$header_layout_project_id" \
+    "$APP_BINARY" &
+  app_pid=$!
+  wait_for_app_process
+  activate_app
+  wait_for_visible_windows
 }
 
 read_window_metadata() {
@@ -60,6 +159,74 @@ wait_for_window_metadata() {
       return 1
     fi
     sleep 1
+  done
+}
+
+ensure_project_detail_visible() {
+  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 || true
+on clickFirstMatching(uiElement)
+  tell application "System Events"
+    set identifierValue to ""
+    try
+      set identifierValue to value of attribute "AXIdentifier" of uiElement
+    end try
+    if identifierValue starts with "project-sidebar-row-" or identifierValue starts with "projects-portfolio-open-" then
+      try
+        perform action "AXPress" of uiElement
+      end try
+      try
+        click uiElement
+      end try
+      try
+        set itemPosition to position of uiElement
+        set itemSize to size of uiElement
+        click at {((item 1 of itemPosition) + ((item 1 of itemSize) / 2)), ((item 2 of itemPosition) + ((item 2 of itemSize) / 2))}
+        return true
+      end try
+      return true
+    end if
+    try
+      repeat with childElement in UI elements of uiElement
+        if my clickFirstMatching(childElement) then return true
+      end repeat
+    end try
+  end tell
+  return false
+end clickFirstMatching
+
+on run argv
+  set appName to item 1 of argv
+  tell application "System Events"
+    if not (exists process appName) then return "missing"
+    tell process appName
+      if not (exists window 1) then return "window missing"
+      set frontmost to true
+      try
+        perform action "AXRaise" of window 1
+      end try
+      my clickFirstMatching(window 1)
+    end tell
+  end tell
+end run
+APPLESCRIPT
+}
+
+wait_for_project_detail_visible() {
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local probe_file="$OUTPUT_DIR/project-detail-probe.tsv"
+  while true; do
+    ensure_project_detail_visible
+    if toolbar_items_deduplicated >"$probe_file" 2>"$OUTPUT_DIR/project-detail-probe.err" &&
+      awk -F $'\t' '$1 == "project-board-detail" { found = 1 } END { exit(found ? 0 : 1) }' "$probe_file"; then
+      return 0
+    fi
+
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: Project Board detail was not visible within ${TIMEOUT_SECONDS}s" >&2
+      cat "$probe_file" >&2 || true
+      return 1
+    fi
+    sleep 0.2
   done
 }
 
@@ -259,7 +426,6 @@ assert_action_buttons_are_trailing() {
 
 toolbar_position_signature() {
   awk -F $'\t' '
-    $1 == "project-board-sidebar-toggle" ||
     $1 == "project-board-integrations-menu" ||
     $1 == "project-board-voice-command" ||
     $1 == "project-board-settings-link" ||
@@ -275,7 +441,7 @@ assert_toolbar_layout_is_stable() {
   local baseline_file="$OUTPUT_DIR/toolbar-${label}-sample-0.tsv"
   local baseline_signature sample_file sample_signature
 
-  if ! toolbar_items >"$baseline_file" 2>"$OUTPUT_DIR/toolbar-${label}-sample-0.err"; then
+  if ! toolbar_items_deduplicated >"$baseline_file" 2>"$OUTPUT_DIR/toolbar-${label}-sample-0.err"; then
     echo "BLOCKER: header layout stability baseline failed after $label" >&2
     cat "$OUTPUT_DIR/toolbar-${label}-sample-0.err" >&2 || true
     return 1
@@ -284,7 +450,7 @@ assert_toolbar_layout_is_stable() {
 
   for ((sample = 1; sample <= samples; sample += 1)); do
     sample_file="$OUTPUT_DIR/toolbar-${label}-sample-${sample}.tsv"
-    if ! toolbar_items >"$sample_file" 2>"$OUTPUT_DIR/toolbar-${label}-sample-${sample}.err"; then
+    if ! toolbar_items_deduplicated >"$sample_file" 2>"$OUTPUT_DIR/toolbar-${label}-sample-${sample}.err"; then
       echo "BLOCKER: header layout stability sample $sample failed after $label" >&2
       cat "$OUTPUT_DIR/toolbar-${label}-sample-${sample}.err" >&2 || true
       return 1
@@ -320,9 +486,70 @@ end run
 APPLESCRIPT
 }
 
+set_toolbar_display_mode() {
+  local mode="$1"
+  local primary_title localized_title
+  case "$mode" in
+    icon-only)
+      primary_title="Icon Only"
+      localized_title="アイコンのみ"
+      ;;
+    icon-and-label)
+      primary_title="Icon and Text"
+      localized_title="アイコンとテキスト"
+      ;;
+    *)
+      echo "unknown toolbar display mode: $mode" >&2
+      return 2
+      ;;
+  esac
+
+  /usr/bin/osascript - "$APP_NAME" "$primary_title" "$localized_title" <<'APPLESCRIPT' >/dev/null
+on pressDisplayModeMenuItem(toolbarElement, primaryTitle, localizedTitle)
+  tell application "System Events"
+    repeat with attempt from 1 to 20
+      if (exists menu 1 of toolbarElement) then
+        tell menu 1 of toolbarElement
+          if exists menu item primaryTitle then
+            perform action "AXPress" of menu item primaryTitle
+            return true
+          end if
+          if exists menu item localizedTitle then
+            perform action "AXPress" of menu item localizedTitle
+            return true
+          end if
+        end tell
+      end if
+      delay 0.05
+    end repeat
+  end tell
+  return false
+end pressDisplayModeMenuItem
+
+on run argv
+  set appName to item 1 of argv
+  set primaryTitle to item 2 of argv
+  set localizedTitle to item 3 of argv
+  tell application "System Events"
+    tell process appName
+      set frontmost to true
+      tell toolbar 1 of window 1
+        perform action "AXShowMenu"
+        if my pressDisplayModeMenuItem(it, primaryTitle, localizedTitle) is false then
+          error "BLOCKER: toolbar display mode menu item was not available: " & primaryTitle & " / " & localizedTitle
+        end if
+      end tell
+    end tell
+  end tell
+end run
+APPLESCRIPT
+}
+
 trap terminate_app EXIT
 
-SOLOPM_VERIFY_TIMEOUT_SECONDS="$TIMEOUT_SECONDS" ./script/build_and_run.sh --verify
+prepare_header_layout_candidate
+launch_header_layout_candidate
+wait_for_project_detail_visible
 
 capture_window "sidebar-visible"
 assert_action_buttons_are_trailing "sidebar-visible"
@@ -336,5 +563,15 @@ click_sidebar_toggle
 assert_toolbar_layout_is_stable "sidebar-restored-immediate" 5
 capture_window "sidebar-restored"
 assert_action_buttons_are_trailing "sidebar-restored"
+
+set_toolbar_display_mode "icon-only"
+assert_toolbar_layout_is_stable "toolbar-icon-only-immediate" 5
+capture_window "toolbar-icon-only"
+assert_action_buttons_are_trailing "toolbar-icon-only"
+
+set_toolbar_display_mode "icon-and-label"
+assert_toolbar_layout_is_stable "toolbar-icon-and-label-immediate" 5
+capture_window "toolbar-icon-and-label"
+assert_action_buttons_are_trailing "toolbar-icon-and-label"
 
 printf "OK: Project Board header layout smoke passed\n"
