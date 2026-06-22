@@ -1,14 +1,14 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T17:19:01Z
-Source commit: c462aa2
+Generated at: 2026-06-22T17:32:39Z
+Source commit: 01250c2
 
 ## Summary
 
-- Phase14 completion: 36/181 checked, 145 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 40/181 checked, 141 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 5 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-c462aa2.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-01250c2.md`
 
 ## Unfinished Phase14 Items
 
@@ -16,11 +16,7 @@ Source commit: c462aa2
 - [ ] tasks/Phase14-QualityRegressionHardening.md:149:- [ ] Sidebar toggleがanimation有効transactionへ戻ったら失敗するsource testを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:150:- [ ] Header action groupが固定height / trailing alignment / stable AX identifierを失ったら失敗するsource testを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:151:- [ ] Runtime smokeに以下の遷移を追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:161:- [ ] Project Boardの主要領域にAX identifierを追加または確認する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:162:- [ ] smoke scriptの操作を小さな関数に分け、各遷移後に `assert_layout_stable` を呼ぶ。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:163:- [ ] Header actionsがdetail column右端に収まることを、window右端ではなくdetail frame基準で判定する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:164:- [ ] Inspector表示時にheaderがinspector下へ潜らないことを確認する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:165:- [ ] Board/List/Overviewの切替でheader heightとtop offsetが変わらないことを確認する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:169:- [ ] Project Boardの主要状態遷移でheader / sidebar / detail / inspectorのframe jumpが検出される。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:170:- [ ] Header action controlsが常に同じ順序とAX identifierで取得できる。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:171:- [ ] Runtime smokeで失敗した時、どの遷移でどのframeがズレたか出力される。
@@ -42,6 +38,10 @@ Source commit: c462aa2
 - [ ] tasks/Phase14-QualityRegressionHardening.md:235:- [ ] 実行後のSQLite stateを確認し、UI操作だけ成功してDB未反映の場合に失敗するテストを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:236:- [ ] click-pathごとに `PASS/FAIL/SKIP` ではなく、失敗理由と最後に見えたwindow情報を出すことをsource testで固定する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:240:- [ ] `project_task_crud`、`inbox_triage`、`today_complete`、`settings_save`、`voice_review` のscenarioに分ける。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:241:- [ ] 各scenarioはisolated DB seed -> app launch -> AX操作 -> DB/assertion -> artifact保存の順で実行する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:242:- [ ] destructive actionは必ずconfirmationを通ることを確認する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:243:- [ ] Settings保存ではKeychain secret値そのものをartifactへ出さない。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:244:- [ ] Voice CommandはAPI key未設定時にfake successへ倒れないことを確認する。
 
 ## Open Risk Items
 
@@ -69,8 +69,8 @@ Source commit: c462aa2
 - `script/check_runtime_accessible_crud_smoke.sh`
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-c462aa2.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-c462aa2.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-01250c2.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-01250c2.md ./script/release_readiness_report.sh`
 
 ## Notes
 

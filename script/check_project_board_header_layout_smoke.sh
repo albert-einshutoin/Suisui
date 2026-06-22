@@ -486,6 +486,111 @@ end run
 APPLESCRIPT
 }
 
+click_project_display_mode() {
+  local mode="$1"
+  local target_identifier fallback_identifier
+  case "$mode" in
+    overview)
+      target_identifier="project-display-mode-overview"
+      fallback_identifier="rectangle.grid.2x2"
+      ;;
+    board)
+      target_identifier="project-display-mode-board"
+      fallback_identifier="rectangle.3.group"
+      ;;
+    list)
+      target_identifier="project-display-mode-list"
+      fallback_identifier="list.bullet"
+      ;;
+    *)
+      echo "unknown Project display mode: $mode" >&2
+      return 2
+      ;;
+  esac
+
+  /usr/bin/osascript - "$APP_NAME" "$target_identifier" "$fallback_identifier" <<'APPLESCRIPT' >/dev/null
+on clickMatchingDisplayMode(uiElement, targetIdentifier, fallbackIdentifier)
+  tell application "System Events"
+    set identifierValue to ""
+    try
+      set identifierValue to value of attribute "AXIdentifier" of uiElement
+    end try
+    if identifierValue is targetIdentifier or identifierValue is fallbackIdentifier then
+      try
+        perform action "AXPress" of uiElement
+      end try
+      try
+        click uiElement
+      end try
+      try
+        set itemPosition to position of uiElement
+        set itemSize to size of uiElement
+        click at {((item 1 of itemPosition) + ((item 1 of itemSize) / 2)), ((item 2 of itemPosition) + ((item 2 of itemSize) / 2))}
+      end try
+      return true
+    end if
+
+    try
+      repeat with childElement in UI elements of uiElement
+        if my clickMatchingDisplayMode(childElement, targetIdentifier, fallbackIdentifier) then return true
+      end repeat
+    end try
+  end tell
+  return false
+end clickMatchingDisplayMode
+
+on run argv
+  set appName to item 1 of argv
+  set targetIdentifier to item 2 of argv
+  set fallbackIdentifier to item 3 of argv
+  tell application "System Events"
+    tell process appName
+      set frontmost to true
+      if not my clickMatchingDisplayMode(window 1, targetIdentifier, fallbackIdentifier) then
+        error "BLOCKER: Project display mode control was not available: " & targetIdentifier
+      end if
+    end tell
+  end tell
+end run
+APPLESCRIPT
+}
+
+wait_for_display_mode_content() {
+  local mode="$1"
+  local content_identifier
+  case "$mode" in
+    overview)
+      content_identifier="project-overview-add-task"
+      ;;
+    board)
+      content_identifier="project-kanban-board"
+      ;;
+    list)
+      content_identifier="project-task-list"
+      ;;
+    *)
+      echo "unknown Project display mode content: $mode" >&2
+      return 2
+      ;;
+  esac
+
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local probe_file="$OUTPUT_DIR/display-mode-${mode}-probe.tsv"
+  while true; do
+    if toolbar_items_deduplicated >"$probe_file" 2>"$OUTPUT_DIR/display-mode-${mode}-probe.err" &&
+      awk -F $'\t' -v wanted="$content_identifier" '$1 == wanted { found = 1 } END { exit(found ? 0 : 1) }' "$probe_file"; then
+      return 0
+    fi
+
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: Project display mode content was not visible for $mode: $content_identifier" >&2
+      cat "$probe_file" >&2 || true
+      return 1
+    fi
+    sleep 0.2
+  done
+}
+
 set_toolbar_display_mode() {
   local mode="$1"
   local primary_title localized_title
@@ -573,5 +678,23 @@ set_toolbar_display_mode "icon-and-label"
 assert_toolbar_layout_is_stable "toolbar-icon-and-label-immediate" 5
 capture_window "toolbar-icon-and-label"
 assert_action_buttons_are_trailing "toolbar-icon-and-label"
+
+click_project_display_mode "list"
+wait_for_display_mode_content "list"
+assert_toolbar_layout_is_stable "display-mode-list-immediate" 5
+capture_window "display-mode-list"
+assert_action_buttons_are_trailing "display-mode-list"
+
+click_project_display_mode "overview"
+wait_for_display_mode_content "overview"
+assert_toolbar_layout_is_stable "display-mode-overview-immediate" 5
+capture_window "display-mode-overview"
+assert_action_buttons_are_trailing "display-mode-overview"
+
+click_project_display_mode "board"
+wait_for_display_mode_content "board"
+assert_toolbar_layout_is_stable "display-mode-board-immediate" 5
+capture_window "display-mode-board"
+assert_action_buttons_are_trailing "display-mode-board"
 
 printf "OK: Project Board header layout smoke passed\n"

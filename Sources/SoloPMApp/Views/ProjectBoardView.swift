@@ -2000,7 +2000,9 @@ private struct ProjectHeaderActions: View {
                 } icon: {
                     Image(systemName: mode.systemImage)
                 }
-                    .tag(mode)
+                .tag(mode)
+                .accessibilityIdentifier("project-display-mode-\(mode.rawValue)")
+                .accessibilityLabel(LocalizedStringKey(mode.label))
             }
         }
         .pickerStyle(.segmented)
@@ -2645,6 +2647,7 @@ private struct ProjectTaskList: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .accessibilityIdentifier("project-task-list")
     }
 }
 

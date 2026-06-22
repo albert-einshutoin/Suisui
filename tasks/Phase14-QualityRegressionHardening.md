@@ -149,20 +149,20 @@ Project Board は sidebar、header、detail board、inspector、toolbar/AppKit b
 - [ ] Sidebar toggleがanimation有効transactionへ戻ったら失敗するsource testを追加する。
 - [ ] Header action groupが固定height / trailing alignment / stable AX identifierを失ったら失敗するsource testを追加する。
 - [ ] Runtime smokeに以下の遷移を追加する。
-  - [ ] sidebar visible -> hidden -> visible
+  - [x] sidebar visible -> hidden -> visible
   - [x] iconAndLabel -> iconOnly -> iconAndLabel
-  - [ ] Board -> List -> Overview -> Board
+  - [x] Board -> List -> Overview -> Board
   - [ ] inspector open -> close -> open
   - [ ] terminal panel open -> close
   - [ ] project selection change
 
 ### Implementation Steps
 
-- [ ] Project Boardの主要領域にAX identifierを追加または確認する。
-- [ ] smoke scriptの操作を小さな関数に分け、各遷移後に `assert_layout_stable` を呼ぶ。
-- [ ] Header actionsがdetail column右端に収まることを、window右端ではなくdetail frame基準で判定する。
+- [x] Project Boardの主要領域にAX identifierを追加または確認する。
+- [x] smoke scriptの操作を小さな関数に分け、各遷移後に `assert_layout_stable` を呼ぶ。
+- [x] Header actionsがdetail column右端に収まることを、window右端ではなくdetail frame基準で判定する。
 - [ ] Inspector表示時にheaderがinspector下へ潜らないことを確認する。
-- [ ] Board/List/Overviewの切替でheader heightとtop offsetが変わらないことを確認する。
+- [x] Board/List/Overviewの切替でheader heightとtop offsetが変わらないことを確認する。
 
 ### Acceptance Criteria
 
