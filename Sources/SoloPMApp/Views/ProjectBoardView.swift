@@ -580,6 +580,10 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
 
         didScheduleInitialToolbarLayoutStabilization = true
         for delay in [0.05, 0.25, 0.75] {
+            // layout-attachment-delay: initial AppKit toolbar attachment gap.
+            // SwiftUI can attach the bridge before NSToolbar items exist; this
+            // bounded startup sampling is the only delayed correction allowed
+            // by ADR 0009, and user-triggered display-mode/sidebar changes run synchronously.
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 self?.performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: false)
             }
@@ -722,6 +726,7 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
         // window, and its toolbar items can arrive shortly after the toolbar
         // itself. Retry only for that initial attachment gap; user-triggered
         // display-mode/sidebar changes run synchronously once the toolbar exists.
+        // layout-attachment-delay: initial AppKit toolbar attachment gap.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let self else {
                 return

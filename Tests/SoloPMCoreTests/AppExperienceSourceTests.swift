@@ -483,6 +483,84 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(bridgeSource.contains("scheduleToolbarLayoutRefreshIfDisplayModeChanged()"))
     }
 
+    func testSynchronousUIMutationPolicyADRDefinesLayoutSensitiveBoundaries() throws {
+        let adr = try readPackageFile("docs/adr/0009-synchronous-ui-mutation-policy.md")
+
+        XCTAssertTrue(adr.contains("Status: Accepted"))
+        XCTAssertTrue(adr.contains("Sidebar toggle"))
+        XCTAssertTrue(adr.contains("toolbar display mode"))
+        XCTAssertTrue(adr.contains("split view visibility"))
+        XCTAssertTrue(adr.contains("theme switching"))
+        XCTAssertTrue(adr.contains("inspector open/close"))
+        XCTAssertTrue(adr.contains("project selection"))
+        XCTAssertTrue(adr.contains("DispatchQueue.main.asyncAfter"))
+        XCTAssertTrue(adr.contains("Timer"))
+        XCTAssertTrue(adr.contains("Transaction.disablesAnimations = true"))
+        XCTAssertTrue(adr.contains("layoutSubtreeIfNeeded"))
+        XCTAssertTrue(adr.contains("displayIfNeeded"))
+        XCTAssertTrue(adr.contains("layout-attachment-delay:"))
+        XCTAssertTrue(adr.contains("script/check_layout_stability_smoke.sh"))
+        XCTAssertTrue(adr.contains("script/check_project_board_header_layout_smoke.sh"))
+        XCTAssertTrue(adr.contains("AppExperienceSourceTests"))
+    }
+
+    func testViewLayoutDelaysRemainLimitedToInitialToolbarAttachmentPolicyException() throws {
+        let viewFiles = try allSwiftFiles(under: "Sources/SoloPMApp/Views")
+        var delayedCorrections: [String] = []
+        var timerCorrections: [String] = []
+
+        for fileURL in viewFiles {
+            let relativePath = relativePackagePath(for: fileURL)
+            let lines = try String(contentsOf: fileURL, encoding: .utf8)
+                .components(separatedBy: .newlines)
+
+            for (index, line) in lines.enumerated() {
+                let location = "\(relativePath):\(index + 1)"
+                if line.contains("DispatchQueue.main.asyncAfter") {
+                    delayedCorrections.append(location)
+                }
+                if line.contains("Timer.") || line.contains("Timer(") {
+                    timerCorrections.append(location)
+                }
+            }
+        }
+
+        XCTAssertTrue(timerCorrections.isEmpty, timerCorrections.joined(separator: "\n"))
+        XCTAssertEqual(delayedCorrections.count, 2, delayedCorrections.joined(separator: "\n"))
+        XCTAssertTrue(
+            delayedCorrections.allSatisfy { $0.hasPrefix("Sources/SoloPMApp/Views/ProjectBoardView.swift:") },
+            delayedCorrections.joined(separator: "\n")
+        )
+
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let bridgeStart = try XCTUnwrap(boardSource.range(of: "private final class ProjectBoardToolbarLayoutBridgeView"))
+        let appKitEnd = try XCTUnwrap(boardSource.range(of: "#else", range: bridgeStart.upperBound..<boardSource.endIndex))
+        let bridgeSource = String(boardSource[bridgeStart.lowerBound..<appKitEnd.lowerBound])
+
+        XCTAssertEqual(bridgeSource.components(separatedBy: "DispatchQueue.main.asyncAfter").count - 1, 2)
+        XCTAssertEqual(bridgeSource.components(separatedBy: "layout-attachment-delay:").count - 1, 2)
+        XCTAssertTrue(bridgeSource.contains("initial AppKit toolbar attachment gap"))
+        XCTAssertTrue(bridgeSource.contains("user-triggered display-mode/sidebar changes run synchronously"))
+    }
+
+    func testLayoutSensitiveStateMutationsUseSynchronousTransactionPolicy() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let toggleStart = try XCTUnwrap(boardSource.range(of: "private func toggleSidebarVisibility()"))
+        let toolbarBridgeStart = try XCTUnwrap(boardSource.range(of: "private func refreshProjectBoardColumnsAfterToolbarDisplayModeChange()"))
+        let toggleSource = String(boardSource[toggleStart.lowerBound..<toolbarBridgeStart.lowerBound])
+
+        XCTAssertTrue(toggleSource.contains("var transaction = Transaction()"))
+        XCTAssertTrue(toggleSource.contains("transaction.disablesAnimations = true"))
+        XCTAssertTrue(toggleSource.contains("withTransaction(transaction)"))
+        XCTAssertTrue(toggleSource.contains("columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly"))
+        XCTAssertFalse(toggleSource.contains("DispatchQueue.main.async"))
+        XCTAssertFalse(toggleSource.contains("withAnimation"))
+
+        let adr = try readPackageFile("docs/adr/0009-synchronous-ui-mutation-policy.md")
+        XCTAssertTrue(adr.contains("SwiftUI state mutationは最小scopeのtransaction"))
+        XCTAssertTrue(adr.contains("AppKit interopはProjectBoardToolbarLayoutBridgeView"))
+    }
+
     func testProjectBoardReplacesDefaultSidebarToggleWithShortAdaptiveToolbarItem() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let toggleStart = try XCTUnwrap(boardSource.range(of: "private func toggleSidebarVisibility()"))
@@ -3042,6 +3120,15 @@ final class AppExperienceSourceTests: XCTestCase {
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func relativePackagePath(for url: URL) -> String {
+        let packageRootPath = packageRoot().standardizedFileURL.path
+        let filePath = url.standardizedFileURL.path
+        guard filePath.hasPrefix(packageRootPath + "/") else {
+            return filePath
+        }
+        return String(filePath.dropFirst(packageRootPath.count + 1))
     }
 
     private func allSwiftFiles(under relativePath: String) throws -> [URL] {

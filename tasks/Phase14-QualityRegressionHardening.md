@@ -273,23 +273,23 @@ Priority: High
 
 ### Tests First
 
-- [ ] UI layout correctionに `DispatchQueue.main.asyncAfter` やtimer retryを使う箇所が追加されたら失敗するsource testを追加する。
-- [ ] layout-sensitive state mutationが `Transaction.disablesAnimations = true` または明示的な同期layout policyを持たない場合に検出するテストを追加する。
-- [ ] AppKit bridgeが `layoutSubtreeIfNeeded` / `displayIfNeeded` の同期passを持つことを固定するテストを追加する。
+- [x] UI layout correctionに `DispatchQueue.main.asyncAfter` やtimer retryを使う箇所が追加されたら失敗するsource testを追加する。
+- [x] layout-sensitive state mutationが `Transaction.disablesAnimations = true` または明示的な同期layout policyを持たない場合に検出するテストを追加する。
+- [x] AppKit bridgeが `layoutSubtreeIfNeeded` / `displayIfNeeded` の同期passを持つことを固定するテストを追加する。
 
 ### Implementation Steps
 
-- [ ] `docs/adr/NNNN-synchronous-ui-mutation-policy.md` を追加する。
-- [ ] layout-sensitive operation一覧と禁止patternを定義する。
-- [ ] SwiftUI state mutationは最小scopeのtransactionに閉じる。
-- [ ] AppKit interopは必要箇所だけに置き、View全体へ散らさない。
-- [ ] 遅延補正を使う場合はinitial attachmentなど例外理由をコメントとテストで固定する。
+- [x] `docs/adr/NNNN-synchronous-ui-mutation-policy.md` を追加する。
+- [x] layout-sensitive operation一覧と禁止patternを定義する。
+- [x] SwiftUI state mutationは最小scopeのtransactionに閉じる。
+- [x] AppKit interopは必要箇所だけに置き、View全体へ散らさない。
+- [x] 遅延補正を使う場合はinitial attachmentなど例外理由をコメントとテストで固定する。
 
 ### Acceptance Criteria
 
-- [ ] 新しいUI PRが同期/非同期の判断基準を参照できる。
-- [ ] 遅延補正が便利な逃げ道として増えない。
-- [ ] Layout stability smokeとsource invariantが同じpolicyを守る。
+- [x] 新しいUI PRが同期/非同期の判断基準を参照できる。
+- [x] 遅延補正が便利な逃げ道として増えない。
+- [x] Layout stability smokeとsource invariantが同じpolicyを守る。
 
 ### Non-goals
 
