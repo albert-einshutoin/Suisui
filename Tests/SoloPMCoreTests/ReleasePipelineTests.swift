@@ -7409,6 +7409,30 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(report.contains("super-secret-token"))
     }
 
+    func testSecurityRegressionScriptPassesCurrentArtifactsAndFailsTmpLeaksWhenEnabled() throws {
+        let passing = try runScript("script/check_security_regressions.sh")
+
+        XCTAssertEqual(passing.exitCode, 0, passing.output)
+        XCTAssertTrue(passing.output.contains("OK: security regression scan passed"))
+
+        let leakRoot = packageRoot().appendingPathComponent(".tmp/security-regression-test", isDirectory: true)
+        let leakFile = leakRoot.appendingPathComponent("leak.md")
+        let token = "sk-" + "securityRegressionLeak1234"
+        try? FileManager.default.removeItem(at: leakRoot)
+        try FileManager.default.createDirectory(at: leakRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: leakRoot) }
+        try "token=\(token)\n".write(to: leakFile, atomically: true, encoding: .utf8)
+
+        let failing = try runScript(
+            "script/check_security_regressions.sh",
+            environment: ["SOLOPM_SECURITY_SCAN_EXTRA_PATHS": ".tmp/security-regression-test"]
+        )
+
+        XCTAssertNotEqual(failing.exitCode, 0)
+        XCTAssertTrue(failing.output.contains("BLOCKER: secret-like token matched in .tmp/security-regression-test/leak.md"))
+        XCTAssertTrue(failing.output.contains("security regression scan found secret-like material"))
+    }
+
     func testReleaseReadinessReportClassifiesUncheckedPhaseItems() throws {
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-release-readiness-phase-classification", isDirectory: true)

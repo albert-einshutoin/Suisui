@@ -460,22 +460,22 @@ Priority: High
 
 ### Tests First
 
-- [ ] secret-like patternがtest fixture、screenshot metadata、release evidenceに出たら失敗するscanを追加する。
-- [ ] Runtime smoke artifact directoryが `.gitignore` 対象であることをテストする。
-- [ ] Keychain referenceとraw secretの区別をsource testで固定する。
+- [x] secret-like patternがtest fixture、screenshot metadata、release evidenceに出たら失敗するscanを追加する。
+- [x] Runtime smoke artifact directoryが `.gitignore` 対象であることをテストする。
+- [x] Keychain referenceとraw secretの区別をsource testで固定する。
 
 ### Implementation Steps
 
-- [ ] `script/check_security_regressions.sh` を作るか既存security grepへ統合する。
-- [ ] `sk-`, OAuth token風文字列、notary password、MCP token、filesystem pathの扱いを分類する。
-- [ ] Smoke scriptsはartifactにredaction済みsummaryだけを書く。
+- [x] `script/check_security_regressions.sh` を作るか既存security grepへ統合する。
+- [x] `sk-`, OAuth token風文字列、notary password、MCP token、filesystem pathの扱いを分類する。
+- [x] Smoke scriptsはartifactにredaction済みsummaryだけを書く。
 - [ ] Screenshotは必要最小限にし、secret入力画面を撮る場合はmask状態を検証する。
 
 ### Acceptance Criteria
 
-- [ ] テスト追加が秘密情報漏洩riskを増やさない。
-- [ ] Runtime smoke artifactはtracked sourceへ混ざらない。
-- [ ] 失敗ログにAPI key/provider token/OAuth token/MCP secretが出ない。
+- [x] テスト追加が秘密情報漏洩riskを増やさない。
+- [x] Runtime smoke artifactはtracked sourceへ混ざらない。
+- [x] 失敗ログにAPI key/provider token/OAuth token/MCP secretが出ない。
 
 ### Non-goals
 

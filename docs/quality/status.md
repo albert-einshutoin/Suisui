@@ -1,27 +1,18 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T23:19:22Z
-Source commit: cb23961
+Generated at: 2026-06-22T23:26:43Z
+Source commit: e7b16f1
 
 ## Summary
 
-- Phase14 completion: 126/183 checked, 57 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 135/183 checked, 48 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 4 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-cb23961.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-e7b16f1.md`
 
 ## Unfinished Phase14 Items
 
-- [ ] tasks/Phase14-QualityRegressionHardening.md:463:- [ ] secret-like patternがtest fixture、screenshot metadata、release evidenceに出たら失敗するscanを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:464:- [ ] Runtime smoke artifact directoryが `.gitignore` 対象であることをテストする。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:465:- [ ] Keychain referenceとraw secretの区別をsource testで固定する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:469:- [ ] `script/check_security_regressions.sh` を作るか既存security grepへ統合する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:470:- [ ] `sk-`, OAuth token風文字列、notary password、MCP token、filesystem pathの扱いを分類する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:471:- [ ] Smoke scriptsはartifactにredaction済みsummaryだけを書く。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:472:- [ ] Screenshotは必要最小限にし、secret入力画面を撮る場合はmask状態を検証する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:476:- [ ] テスト追加が秘密情報漏洩riskを増やさない。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:477:- [ ] Runtime smoke artifactはtracked sourceへ混ざらない。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:478:- [ ] 失敗ログにAPI key/provider token/OAuth token/MCP secretが出ない。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:500:- [ ] `scripts/ci.sh` が軽量PR gateと重いruntime gateを混同しないことをsource testで固定する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:501:- [ ] `release_readiness_report.sh` がlayout stability smokeの結果を取り込めることをテストする。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:502:- [ ] Flake quarantine listが空でない場合、owner/reason/expiryが必要なことをテストする。
@@ -42,6 +33,15 @@ Source commit: cb23961
 - [ ] tasks/Phase14-QualityRegressionHardening.md:553:- [ ] manual-only gateとautomation-backlogが混ざらない。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:554:- [ ] release前に未処理manual findingが見える。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:585:- [ ] `swift test`、focused tests、runtime smoke、visual smoke、manual evidenceの状態を分類する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:586:- [ ] `release_readiness_report.sh` から参照できるようにする。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:590:- [ ] 品質状態を1コマンドで確認できる。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:591:- [ ] 次に潰すべきテスト漏れが明確になる。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:592:- [ ] release readinessと重複せず、品質観点の補助reportとして使える。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:603:- [ ] `swift test --filter AppExperienceSourceTests`
+- [ ] tasks/Phase14-QualityRegressionHardening.md:604:- [ ] `swift test --filter ReleasePipelineTests`
+- [ ] tasks/Phase14-QualityRegressionHardening.md:605:- [ ] `swift test --filter ProjectBoardStoreTests`
+- [ ] tasks/Phase14-QualityRegressionHardening.md:606:- [ ] `swift test`
+- [ ] tasks/Phase14-QualityRegressionHardening.md:607:- [ ] `bash -n script/check_project_board_header_layout_smoke.sh`
 
 ## Open Risk Items
 
@@ -69,8 +69,8 @@ Source commit: cb23961
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
 - `script/check_visual_regression_smoke.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-cb23961.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-cb23961.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-e7b16f1.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-e7b16f1.md ./script/release_readiness_report.sh`
 
 ## Notes
 

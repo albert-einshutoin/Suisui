@@ -178,6 +178,40 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertNil(status.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
     }
 
+    func testSecurityRegressionScriptCoversArtifactsAndSecretTaxonomy() throws {
+        let script = try readPackageFile("script/check_security_regressions.sh")
+        let gitignore = try readPackageFile(".gitignore")
+        let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
+
+        for marker in [
+            "Tests/SoloPMCoreTests/Fixtures",
+            "docs/release/evidence",
+            "docs/release/evidence/ui-screenshots",
+            "packaging",
+            "TOKEN_PATTERNS",
+            "sk-[A-Za-z0-9_-]",
+            "xox[baprs]-",
+            "ghp_",
+            "github_pat_",
+            "AIza",
+            "AKIA",
+            "PRIVATE KEY",
+            "OAUTH",
+            "MCP",
+            "NOTARY",
+            "KEYCHAIN_REFERENCE_ALLOWLIST",
+            "RAW_SECRET_DENYLIST",
+            "SOLOPM_SECURITY_SCAN_INCLUDE_TMP"
+        ] {
+            XCTAssertTrue(script.contains(marker), "security regression script must cover \(marker)")
+        }
+
+        XCTAssertTrue(gitignore.contains("/.tmp/"))
+        XCTAssertTrue(phase.contains("- [x] secret-like patternがtest fixture、screenshot metadata、release evidenceに出たら失敗するscanを追加する。"))
+        XCTAssertTrue(phase.contains("- [x] Runtime smoke artifact directoryが `.gitignore` 対象であることをテストする。"))
+        XCTAssertTrue(phase.contains("- [x] Keychain referenceとraw secretの区別をsource testで固定する。"))
+    }
+
     func testGitignoreKeepsLocalAgentArtifactsAndRuntimeEvidenceOutOfSource() throws {
         let gitignore = try readPackageFile(".gitignore")
 
