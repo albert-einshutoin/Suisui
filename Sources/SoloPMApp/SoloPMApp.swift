@@ -133,12 +133,14 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
     private var projectBoardWindowRestoreAttempts = 0
     private var fallbackProjectBoardWindow: NSWindow?
     private var settingsEvidenceWindow: NSWindow?
+    private var voiceCommandEvidenceWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
         createFallbackProjectBoardWindow()
         openSettingsWindowForEvidenceIfRequested()
+        openVoiceCommandWindowForEvidenceIfRequested()
 
 #if canImport(Sparkle)
         guard Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String != nil,
@@ -243,6 +245,36 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
             window.isReleasedWhenClosed = false
             window.setFrame(NSRect(x: 120, y: 160, width: 680, height: 620), display: true)
             self.settingsEvidenceWindow = window
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+        }
+    }
+
+    private func openVoiceCommandWindowForEvidenceIfRequested() {
+        guard ProcessInfo.processInfo.environment["SOLOPM_OPEN_VOICE_COMMAND_ON_LAUNCH"] == "1" else {
+            return
+        }
+
+        // Runtime evidence opens Voice Command directly so AX tests do not rely
+        // on menu focus, menu bar state, or localized window-opening commands.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            let hostingController = NSHostingController(
+                rootView: VoiceCaptureView(viewModel: AppRuntimeFactory.makeVoiceCaptureViewModel())
+                    .preferredColorScheme(SoloPMAppearancePreference.environmentOverride?.colorScheme)
+                    .environment(\.locale, (AppLanguagePreference.environmentOverride ?? .system).locale)
+            )
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 760, height: 640),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = "Voice Command"
+            window.contentViewController = hostingController
+            window.isReleasedWhenClosed = false
+            window.setFrame(NSRect(x: 160, y: 140, width: 760, height: 640), display: true)
+            self.voiceCommandEvidenceWindow = window
             window.makeKeyAndOrderFront(nil)
             window.orderFrontRegardless()
         }
@@ -407,6 +439,7 @@ private struct VoiceCaptureView: View {
                         Label("Clear", systemImage: "xmark.circle")
                     }
                     .disabled(viewModel.draft.text.isEmpty && viewModel.planningResponse == nil)
+                    .accessibilityIdentifier("voice-command-clear")
                 }
 
                 StatusRow(phase: viewModel.phase)
@@ -428,6 +461,7 @@ private struct VoiceCaptureView: View {
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(.quaternary)
                 }
+                .accessibilityIdentifier("voice-command-input")
 
                 HStack {
                     Button {
@@ -446,6 +480,7 @@ private struct VoiceCaptureView: View {
                         Label(viewModel.isRecording ? "Stop" : "Record", systemImage: viewModel.isRecording ? "stop.circle" : "record.circle")
                     }
                     .disabled(viewModel.phase == .generatingPlan || viewModel.phase == .transcribing)
+                    .accessibilityIdentifier("voice-command-record")
 
                     Spacer()
 
@@ -458,6 +493,7 @@ private struct VoiceCaptureView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(!viewModel.canGeneratePlan)
+                    .accessibilityIdentifier("voice-command-generate-plan")
                 }
 
                 if let response = viewModel.planningResponse {
@@ -474,6 +510,7 @@ private struct VoiceCaptureView: View {
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .accessibilityIdentifier("voice-command-root")
     }
 
     private func recordingOutputURL() -> URL {
@@ -489,6 +526,7 @@ private struct StatusRow: View {
         Label(localizedSettingsDisplay(label), systemImage: systemImage)
             .font(.caption)
             .foregroundStyle(isError ? .red : .secondary)
+            .accessibilityIdentifier("voice-command-status")
     }
 
     private var label: String {
@@ -576,6 +614,7 @@ private struct ActionReviewPanel: View {
                 }
             }
         }
+        .accessibilityIdentifier("voice-action-review-panel")
     }
 
     @ViewBuilder
@@ -586,6 +625,7 @@ private struct ActionReviewPanel: View {
             Label("Approve", systemImage: "checkmark.seal")
         }
         .disabled(!viewModel.canApprove)
+        .accessibilityIdentifier("voice-action-review-approve")
 
         Button {
             if viewModel.executeOrReportError(), viewModel.session.executionStatus == .completed {
@@ -596,6 +636,7 @@ private struct ActionReviewPanel: View {
         }
         .buttonStyle(.borderedProminent)
         .disabled(!viewModel.canExecute)
+        .accessibilityIdentifier("voice-action-review-execute")
 
         Button {
             viewModel.cancel()
@@ -603,6 +644,7 @@ private struct ActionReviewPanel: View {
             Label("Cancel", systemImage: "xmark.circle")
         }
         .disabled(viewModel.session.executionStatus == .completed || viewModel.session.executionStatus == .canceled)
+        .accessibilityIdentifier("voice-action-review-cancel")
     }
 
     private var approvalLabel: String {

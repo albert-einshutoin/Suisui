@@ -83,6 +83,7 @@
 "Save OpenRouter Key" = "Save OpenRouter Key";
 "Save Secret" = "Save Secret";
 "Save Settings" = "Save Settings";
+"Persists non-secret settings to local UserDefaults." = "Persists non-secret settings to local UserDefaults.";
 "Server Enabled" = "Server Enabled";
 "Servers" = "Servers";
 "Settings..." = "Settings...";

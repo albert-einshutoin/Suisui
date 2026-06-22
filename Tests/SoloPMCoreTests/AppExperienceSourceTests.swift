@@ -1966,6 +1966,21 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains(".accessibilityHint(\"Persists non-secret settings to local UserDefaults.\")"))
     }
 
+    func testVoiceCommandRuntimeEvidenceLaunchAndReviewAnchors() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(appSource.contains("SOLOPM_OPEN_VOICE_COMMAND_ON_LAUNCH"))
+        XCTAssertTrue(appSource.contains("openVoiceCommandWindowForEvidenceIfRequested()"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-root\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-input\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-generate-plan\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-status\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-action-review-panel\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-action-review-approve\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-action-review-execute\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-action-review-cancel\")"))
+    }
+
     func testSettingsSurfaceStartsWithStatusOverviewForCoreOperationalAreas() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 

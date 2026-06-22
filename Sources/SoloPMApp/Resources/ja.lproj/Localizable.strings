@@ -83,6 +83,7 @@
 "Save OpenRouter Key" = "OpenRouterキーを保存";
 "Save Secret" = "シークレットを保存";
 "Save Settings" = "設定を保存";
+"Persists non-secret settings to local UserDefaults." = "シークレットではない設定をローカルのUserDefaultsに保存します。";
 "Server Enabled" = "サーバー有効";
 "Servers" = "サーバー";
 "Settings..." = "設定...";

@@ -181,8 +181,20 @@ run_settings_save() {
 }
 
 run_voice_review() {
+  local scenario_output
   local scenario_status="failed"
-  local scenario_reason="voice_review approval-boundary runtime assertion is not implemented yet"
+  local scenario_reason="voice_review scenario did not finish"
+
+  if scenario_output="$(SOLOPM_RUNTIME_VOICE_REVIEW_KEEP_DATABASE=1 ./script/check_runtime_voice_review_smoke.sh 2>&1)"; then
+    printf '%s\n' "$scenario_output"
+    scenario_status="passed"
+    scenario_reason="Voice Command fail-closed planning audit and pre-approval write boundary passed"
+    write_scenario_artifact "voice_review" "$scenario_status" "$scenario_reason"
+    return 0
+  fi
+
+  printf '%s\n' "$scenario_output" >&2
+  scenario_reason="voice_review command failed"
   write_scenario_artifact "voice_review" "$scenario_status" "$scenario_reason"
   echo "BLOCKER: runtime workflow scenario failed: voice_review - $scenario_reason" >&2
   return 1

@@ -5400,15 +5400,18 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("./script/check_runtime_inbox_triage_smoke.sh"))
         XCTAssertTrue(script.contains("./script/check_runtime_today_complete_smoke.sh"))
         XCTAssertTrue(script.contains("./script/check_runtime_settings_save_smoke.sh"))
+        XCTAssertTrue(script.contains("./script/check_runtime_voice_review_smoke.sh"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_ACCESSIBLE_CRUD_KEEP_DATABASE=1"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_INBOX_TRIAGE_KEEP_DATABASE=1"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_TODAY_COMPLETE_KEEP_DATABASE=1"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_SETTINGS_SAVE_KEEP_HOME=1"))
+        XCTAssertTrue(script.contains("SOLOPM_RUNTIME_VOICE_REVIEW_KEEP_DATABASE=1"))
         XCTAssertTrue(script.contains("BLOCKER: runtime workflow scenario failed"))
         XCTAssertTrue(script.contains("Last visible window"))
         XCTAssertFalse(script.contains("inbox_triage runtime DB assertion is not implemented yet"))
         XCTAssertFalse(script.contains("today_complete runtime DB assertion is not implemented yet"))
         XCTAssertFalse(script.contains("settings_save runtime store assertion is not implemented yet"))
+        XCTAssertFalse(script.contains("voice_review approval-boundary runtime assertion is not implemented yet"))
         XCTAssertFalse(script.contains("SKIP"))
         XCTAssertFalse(script.contains("TODO"))
         XCTAssertFalse(script.contains("fake success"))
@@ -5492,6 +5495,28 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(helper.contains("\"isEnabled\""))
         XCTAssertTrue(helper.contains("BLOCKER: settings save smoke"))
         XCTAssertFalse(helper.contains("print(data)"))
+    }
+
+    func testRuntimeVoiceReviewSmokeScriptFailsClosedWithoutAPIKeyAndPersistsPlanningAudit() throws {
+        let script = try readPackageFile("script/check_runtime_voice_review_smoke.sh")
+
+        XCTAssertTrue(script.contains("SOLOPM_OPEN_VOICE_COMMAND_ON_LAUNCH=1"))
+        XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"))
+        XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH=\"$database_path\""))
+        XCTAssertTrue(script.contains("settings_suite_name=\"$BUNDLE_IDENTIFIER.runtime-voice-review."))
+        XCTAssertTrue(script.contains("SOLOPM_APP_SETTINGS_SUITE_NAME=\"$settings_suite_name\""))
+        XCTAssertTrue(script.contains("/usr/bin/defaults delete \"$settings_suite_name\""))
+        XCTAssertTrue(script.contains("setTextAreaContaining \"voice-command-input\""))
+        XCTAssertTrue(script.contains("pressControlContaining \"voice-command-generate-plan\""))
+        XCTAssertTrue(script.contains("The AI provider rejected the configured API key."))
+        XCTAssertTrue(script.contains("category='planning' AND action='generate_plan' AND status='started'"))
+        XCTAssertTrue(script.contains("category='planning' AND action='generate_plan' AND status='failed'"))
+        XCTAssertTrue(script.contains("category='planning' AND action='generate_plan' AND status='succeeded'"))
+        XCTAssertTrue(script.contains("SELECT count(*) FROM tasks;"))
+        XCTAssertTrue(script.contains("OK: runtime voice review smoke verified fail-closed planning audit and no pre-approval writes"))
+        XCTAssertFalse(script.contains(":memory:"))
+        XCTAssertFalse(script.contains("not implemented yet"))
+        XCTAssertFalse(script.contains("fake success"))
     }
 
     func testLayoutStabilitySmokeScriptSamplesImmediateFramesAndWritesArtifacts() throws {
