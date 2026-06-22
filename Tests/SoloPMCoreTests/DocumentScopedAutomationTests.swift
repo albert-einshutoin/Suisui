@@ -61,4 +61,66 @@ final class DocumentScopedAutomationTests: XCTestCase {
         XCTAssertEqual(flow.processingBoundary(for: .localEmbeddings), .localVectorIndex)
         XCTAssertEqual(flow.processingBoundary(for: .providerPromptContext), .providerRequest)
     }
+
+    func testDocumentArtifactPlannerChoosesAppropriateOutputsFromDocumentGroup() {
+        let documents = [
+            ScopedAutomationDocument(
+                id: "phase14",
+                title: "Phase14 quality plan",
+                scope: .projectDocs,
+                redactedSummary: "High priority tasks, regression risk map, E2E smoke expansion, and due-date driven automation.",
+                inclusionReason: "The user asked to use the quality plan."
+            ),
+            ScopedAutomationDocument(
+                id: "release",
+                title: "Release checklist",
+                scope: .appDocs,
+                redactedSummary: "Signing, notarization, VoiceOver evidence, release notes, and public alpha checklist.",
+                inclusionReason: "Release readiness was selected."
+            ),
+            ScopedAutomationDocument(
+                id: "sample",
+                title: "Private raw notes",
+                scope: .taskArtifacts,
+                redactedSummary: "Do not leak sk-test-secret while preparing article.md and README.md drafts.",
+                inclusionReason: "The artifact notes were attached."
+            )
+        ]
+
+        let plan = DocumentAutomationArtifactPlanner().plan(
+            userRequest: "Create the right deliverables from these docs and prepare implementation tasks.",
+            documents: documents
+        )
+
+        XCTAssertEqual(
+            plan.proposedOutputs.map(\.kind),
+            [.taskDraft, .preparationChecklist, .draftArtifact, .releaseNotes, .pullRequestPlan]
+        )
+        XCTAssertTrue(plan.requiresApproval)
+        XCTAssertEqual(plan.highestRisk, .write)
+        XCTAssertTrue(plan.documentReasons.map(\.documentID).contains("phase14"))
+        XCTAssertTrue(plan.documentReasons.map(\.documentID).contains("release"))
+        XCTAssertFalse(plan.documentsConsidered.map(\.redactedSummary).joined().contains("sk-test-secret"))
+    }
+
+    func testDocumentArtifactPlannerKeepsProviderContextBehindApproval() {
+        let request = DocumentAutomationArtifactPlanner().makeRequest(
+            id: "doc-planner-1",
+            userRequest: "Generate release notes and PR plan from selected docs",
+            documents: [
+                ScopedAutomationDocument(
+                    id: "release",
+                    title: "Release checklist",
+                    scope: .appDocs,
+                    redactedSummary: "release notes, Gatekeeper, notarization",
+                    inclusionReason: "Selected by the user."
+                )
+            ],
+            contextStrategy: .providerPromptContext
+        )
+
+        XCTAssertEqual(request.proposedOutputs.map(\.kind), [.preparationChecklist, .releaseNotes, .pullRequestPlan])
+        XCTAssertEqual(request.contextStrategy, .providerPromptContext)
+        XCTAssertTrue(request.reviewSummary.requiresApproval)
+    }
 }

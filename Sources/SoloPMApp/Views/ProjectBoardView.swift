@@ -3104,6 +3104,10 @@ private struct TaskInspectorView: View {
                 TaskInspectorSuggestionSection(task: task, viewModel: viewModel)
             }
 
+            Section("Automation") {
+                TaskInspectorAutomationSection(task: task, viewModel: viewModel)
+            }
+
             Section("Save") {
                 Button {
                     viewModel.updateSelectedTask(
@@ -3351,6 +3355,49 @@ private struct TaskInspectorSuggestionSection: View {
             return localizedDisplay("High-priority task: move it forward when the next step is clear.")
         }
         return localizedDisplay("Move this task to the next status when you are ready.")
+    }
+}
+
+private struct TaskInspectorAutomationSection: View {
+    let task: ProjectBoardTask
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    private var hasReviewDraft: Bool {
+        viewModel.taskAutomationReviewDecision?.selectedTasks.contains(where: { $0.id == task.id }) == true
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Review-only task automation", systemImage: "sparkles")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                viewModel.prepareAutomationReviewForSelectedTask()
+            } label: {
+                Label("Review automation plan", systemImage: "doc.text.magnifyingglass")
+            }
+            .help("Builds a review-only LLM plan for the selected task")
+            .accessibilityIdentifier("task-auto-execution-review")
+            .accessibilityHint("Builds a review-only LLM plan for the selected task.")
+
+            Button {
+                viewModel.runApprovedAutomationForSelectedTask()
+            } label: {
+                Label("Run approved plan", systemImage: "play.circle")
+            }
+            .disabled(!hasReviewDraft)
+            .help("Runs the reviewed local task step after explicit user approval")
+            .accessibilityIdentifier("task-auto-execution-run-plan")
+            .accessibilityHint("Runs the reviewed local task step after explicit user approval.")
+
+            if hasReviewDraft {
+                Text(localizedDisplay("Review draft is ready. Running it only starts local task execution."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }
 

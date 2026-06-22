@@ -927,6 +927,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var scheduleApplyResult: ScheduleApplyResult?
     @Published public private(set) var projectAssistantAnswer: ProjectAssistantAnswer?
     @Published public private(set) var projectAssistantReviewDraft: ProjectAssistantReviewDraft?
+    @Published public private(set) var taskAutomationReviewDecision: TaskAutoExecutionDecision?
 
     private let store: any ProjectBoardStore
     private let inboxCaptureStore: (any InboxCaptureStore)?
@@ -960,6 +961,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.scheduleApplyResult = nil
         self.projectAssistantAnswer = nil
         self.projectAssistantReviewDraft = nil
+        self.taskAutomationReviewDecision = nil
     }
 
     public var selectedProject: ProjectBoardProject? {
@@ -1188,6 +1190,42 @@ public final class ProjectBoardViewModel: ObservableObject {
             return
         }
         startFocus(taskID: task.id)
+    }
+
+    public func prepareAutomationReviewForSelectedTask() {
+        guard let selectedTask else {
+            todayCommandFeedback = String(localized: "Select a task before reviewing automation.")
+            return
+        }
+
+        taskAutomationReviewDecision = TaskAutoExecutionDecision(
+            status: .readyForReview,
+            selectedTasks: [selectedTask],
+            reason: String(localized: "Selected task is ready for review-only automation."),
+            llmCallBudgetRemaining: 1,
+            requiresUserApproval: true,
+            allowsDirectExecution: false
+        )
+        integrationStatusMessage = String(format: String(localized: "Prepared review-only automation for \"%@\"."), selectedTask.title)
+        errorMessage = nil
+    }
+
+    public func runApprovedAutomationForSelectedTask() {
+        guard let selectedTask else {
+            todayCommandFeedback = String(localized: "Select a task before running automation.")
+            return
+        }
+        guard taskAutomationReviewDecision?.selectedTasks.contains(where: { $0.id == selectedTask.id }) == true else {
+            todayCommandFeedback = String(localized: "Review the automation plan before running it.")
+            return
+        }
+
+        // The first approved execution step is intentionally a local status
+        // transition. External writes and destructive actions remain separate
+        // reviewed plan actions so LLM prioritization cannot bypass approval.
+        moveTask(id: selectedTask.id, to: selectedTask.status == .done ? .done : .inProgress)
+        integrationStatusMessage = String(format: String(localized: "Started approved automation for \"%@\"."), selectedTask.title)
+        taskAutomationReviewDecision = nil
     }
 
     @discardableResult

@@ -119,6 +119,10 @@ public struct DocumentScopedAutomationReviewSummary: Codable, Equatable, Sendabl
         // even draft outputs need review until project-level policies are explicit.
         self.requiresApproval = proposedChanges.contains { $0.requiresApproval } || highestRisk >= .draft
     }
+
+    public var proposedOutputs: [DocumentAutomationProposedOutput] {
+        proposedChanges
+    }
 }
 
 public struct DocumentScopedAutomationRequest: Codable, Equatable, Sendable {
@@ -193,5 +197,130 @@ public struct DocumentAutomationToolFlow: Codable, Equatable, Sendable {
         case .providerPromptContext:
             .providerRequest
         }
+    }
+}
+
+public struct DocumentAutomationArtifactPlanner: Sendable {
+    public init() {}
+
+    public func plan(
+        userRequest: String,
+        documents: [ScopedAutomationDocument]
+    ) -> DocumentScopedAutomationReviewSummary {
+        DocumentScopedAutomationReviewSummary(
+            documentsConsidered: documents,
+            documentReasons: documents.map {
+                DocumentAutomationDocumentReason(
+                    documentID: $0.id,
+                    title: $0.title,
+                    reason: artifactReason(for: $0)
+                )
+            },
+            proposedChanges: proposedOutputs(userRequest: userRequest, documents: documents)
+        )
+    }
+
+    public func makeRequest(
+        id: String,
+        userRequest: String,
+        documents: [ScopedAutomationDocument],
+        contextStrategy: DocumentAutomationContextStrategy
+    ) -> DocumentScopedAutomationRequest {
+        DocumentScopedAutomationRequest(
+            id: id,
+            userRequest: userRequest,
+            documents: documents,
+            contextStrategy: contextStrategy,
+            proposedOutputs: proposedOutputs(userRequest: userRequest, documents: documents)
+        )
+    }
+
+    private func proposedOutputs(
+        userRequest: String,
+        documents: [ScopedAutomationDocument]
+    ) -> [DocumentAutomationProposedOutput] {
+        let searchable = ([userRequest] + documents.flatMap { [$0.title, $0.redactedSummary, $0.inclusionReason] })
+            .joined(separator: "\n")
+            .lowercased()
+        var kinds: [DocumentAutomationOutputKind] = []
+
+        append(.taskDraft, to: &kinds, when: searchable.containsAny(["task", "todo", "phase", "implementation", "実装", "タスク"]))
+        append(.preparationChecklist, to: &kinds, when: searchable.containsAny(["checklist", "gate", "signing", "notarization", "voiceover", "release", "準備"]))
+        append(.draftArtifact, to: &kinds, when: searchable.containsAny(["artifact", ".md", "draft", "readme", "article", "成果物", "下書き"]))
+        append(.releaseNotes, to: &kinds, when: searchable.containsAny(["release note", "release notes", "changelog", "public alpha", "リリース"]))
+        append(.pullRequestPlan, to: &kinds, when: searchable.containsAny(["pull request", "pr plan", "pr", "implementation", "phase", "regression", "実装"]))
+
+        if kinds.isEmpty {
+            kinds = [.preparationChecklist]
+        }
+
+        // Proposed document outputs can mutate tasks or produce files later, so
+        // every item remains approval-gated even when the planner itself is local.
+        return kinds.map { kind in
+            DocumentAutomationProposedOutput(
+                kind: kind,
+                title: title(for: kind),
+                riskLevel: riskLevel(for: kind),
+                requiresApproval: true
+            )
+        }
+    }
+
+    private func artifactReason(for document: ScopedAutomationDocument) -> String {
+        switch document.scope {
+        case .appDocs:
+            "App documentation can define release, privacy, or product-wide output requirements."
+        case .projectDocs:
+            "Project documentation can define tasks, milestones, and implementation plans."
+        case .taskArtifacts:
+            "Task artifacts can provide draftable output paths and acceptance criteria."
+        case .externalSources:
+            "External sources require connector-specific review before use."
+        }
+    }
+
+    private func append(
+        _ kind: DocumentAutomationOutputKind,
+        to kinds: inout [DocumentAutomationOutputKind],
+        when condition: Bool
+    ) {
+        guard condition, !kinds.contains(kind) else {
+            return
+        }
+        kinds.append(kind)
+    }
+
+    private func title(for kind: DocumentAutomationOutputKind) -> String {
+        switch kind {
+        case .taskDraft:
+            "Implementation task draft"
+        case .statusChange:
+            "Status change proposal"
+        case .dueDateChange:
+            "Due date change proposal"
+        case .preparationChecklist:
+            "Preparation checklist"
+        case .draftArtifact:
+            "Draft artifact"
+        case .releaseNotes:
+            "Release notes draft"
+        case .pullRequestPlan:
+            "Pull request plan"
+        }
+    }
+
+    private func riskLevel(for kind: DocumentAutomationOutputKind) -> RiskLevel {
+        switch kind {
+        case .taskDraft, .statusChange, .dueDateChange:
+            .write
+        case .preparationChecklist, .draftArtifact, .releaseNotes, .pullRequestPlan:
+            .draft
+        }
+    }
+}
+
+private extension String {
+    func containsAny(_ needles: [String]) -> Bool {
+        needles.contains { contains($0) }
     }
 }

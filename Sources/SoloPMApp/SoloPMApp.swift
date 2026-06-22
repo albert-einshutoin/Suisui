@@ -1115,6 +1115,72 @@ private struct SettingsView: View {
                 selectedProviderConfigurationFields
             }
 
+            Section("Task Automation") {
+                Toggle(
+                    isOn: Binding(
+                        get: { settingsViewModel.settings.taskAutoExecution.isEnabled },
+                        set: { settingsViewModel.setTaskAutoExecutionEnabled($0) }
+                    )
+                ) {
+                    Label("Review task automation", systemImage: "sparkles")
+                }
+                .accessibilityIdentifier("settings-task-auto-execution-toggle")
+                .accessibilityHint("Enables review-only LLM planning for due and high-priority tasks.")
+
+                Picker(
+                    "Frequency",
+                    selection: Binding(
+                        get: { settingsViewModel.settings.taskAutoExecution.cadence },
+                        set: { settingsViewModel.setTaskAutoExecutionCadence($0) }
+                    )
+                ) {
+                    ForEach(TaskAutoExecutionCadence.allCases, id: \.self) { cadence in
+                        Text(cadence.label)
+                            .tag(cadence)
+                    }
+                }
+                .accessibilityIdentifier("settings-task-auto-execution-frequency")
+
+                Stepper(
+                    value: Binding(
+                        get: { settingsViewModel.settings.taskAutoExecution.maxTasksPerRun },
+                        set: { settingsViewModel.setTaskAutoExecutionMaxTasksPerRun($0) }
+                    ),
+                    in: 1...10
+                ) {
+                    LabeledContent("Tasks per run", value: "\(settingsViewModel.settings.taskAutoExecution.maxTasksPerRun)")
+                }
+                .accessibilityIdentifier("settings-task-auto-execution-max-tasks")
+
+                Stepper(
+                    value: Binding(
+                        get: { settingsViewModel.settings.taskAutoExecution.dailyLLMCallLimit },
+                        set: { settingsViewModel.setTaskAutoExecutionDailyLLMCallLimit($0) }
+                    ),
+                    in: 1...48
+                ) {
+                    LabeledContent("Daily LLM limit", value: "\(settingsViewModel.settings.taskAutoExecution.dailyLLMCallLimit)")
+                }
+                .accessibilityIdentifier("settings-task-auto-execution-daily-limit")
+
+                Stepper(
+                    value: Binding(
+                        get: { settingsViewModel.settings.taskAutoExecution.lookaheadHours },
+                        set: { settingsViewModel.setTaskAutoExecutionLookaheadHours($0) }
+                    ),
+                    in: 1...(24 * 30),
+                    step: 1
+                ) {
+                    LabeledContent("Due lookahead", value: "\(settingsViewModel.settings.taskAutoExecution.lookaheadHours)h")
+                }
+                .accessibilityIdentifier("settings-task-auto-execution-lookahead")
+
+                Label("Plans stay review-before-execution; deletion and completion are never run directly by automation.", systemImage: "checkmark.shield")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("settings-task-auto-execution-boundary")
+            }
+
             Section("Voice") {
                 Picker(
                     "Speech to Text",

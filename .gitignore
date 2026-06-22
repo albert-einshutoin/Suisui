@@ -1,6 +1,8 @@
 .DS_Store
 /.build/
 /.tmp/
+/.codex/hooks.json
+/.opencode/
 /DerivedData/
 /dist/
 /ui-samples/

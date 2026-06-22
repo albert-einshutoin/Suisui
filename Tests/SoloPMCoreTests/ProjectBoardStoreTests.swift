@@ -738,6 +738,45 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelRequiresReviewBeforeApprovedTaskAutomationExecution() throws {
+        var changeCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Draft release notes",
+            detail: "Use the selected docs to prepare a reviewed artifact.",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-22"
+        ))
+        changeCount = 0
+
+        viewModel.runApprovedAutomationForSelectedTask()
+
+        XCTAssertEqual(changeCount, 0)
+        XCTAssertEqual(viewModel.selectedTask?.status, .planned)
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Review the automation plan before running it.")
+        XCTAssertNil(viewModel.taskAutomationReviewDecision)
+
+        viewModel.prepareAutomationReviewForSelectedTask()
+        let decision = try XCTUnwrap(viewModel.taskAutomationReviewDecision)
+
+        XCTAssertEqual(decision.status, .readyForReview)
+        XCTAssertEqual(decision.selectedTasks.map(\.id), [task.id])
+        XCTAssertTrue(decision.requiresUserApproval)
+        XCTAssertFalse(decision.allowsDirectExecution)
+
+        viewModel.runApprovedAutomationForSelectedTask()
+
+        XCTAssertEqual(changeCount, 1)
+        XCTAssertEqual(viewModel.selectedTask?.status, .inProgress)
+        XCTAssertNil(viewModel.taskAutomationReviewDecision)
+    }
+
+    @MainActor
     func testProjectBoardViewModelCreatesProjectArtifactAndNotifies() throws {
         var changeCount = 0
         let viewModel = ProjectBoardViewModel(
