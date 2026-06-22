@@ -25,6 +25,8 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(preflight.contains("task-auto-execution-review"))
         XCTAssertTrue(preflight.contains("task-auto-execution-run-plan"))
         XCTAssertTrue(docs.contains("Manual VoiceOver is still required"))
+        XCTAssertTrue(docs.contains("SoloPMHarnessAccessibilityAuditRunner"))
+        XCTAssertTrue(docs.contains("mcp-pseudo-voiceover-focus-path"))
         XCTAssertTrue(script.contains("AccessibilityFocusPathAudit"))
     }
 

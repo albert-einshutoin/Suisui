@@ -5,6 +5,7 @@ public enum SoloPMHarnessScenarioKind: String, Codable, CaseIterable, Equatable,
     case taskMutationFlow
     case documentScopedAutomation
     case mcpCompatibility
+    case accessibilityFocusPath
 }
 
 public enum SoloPMHarnessCapability: String, Codable, CaseIterable, Equatable, Hashable, Sendable {
@@ -12,6 +13,7 @@ public enum SoloPMHarnessCapability: String, Codable, CaseIterable, Equatable, H
     case taskMutation
     case documentAutomation
     case mcpToolCall
+    case accessibilityAudit
 }
 
 public enum SoloPMHarnessAssertion: String, Codable, CaseIterable, Equatable, Hashable, Sendable {
@@ -20,6 +22,7 @@ public enum SoloPMHarnessAssertion: String, Codable, CaseIterable, Equatable, Ha
     case auditLogRecorded
     case redactedLogs
     case resultDiffRecorded
+    case accessibilityFocusPathCovered
 }
 
 public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
@@ -121,6 +124,14 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
                 requiredCapabilities: [.mcpToolCall],
                 expectedMutations: [],
                 assertions: [.approvalBoundary, .auditLogRecorded, .redactedLogs, .resultDiffRecorded]
+            ),
+            SoloPMHarnessScenario(
+                id: "mcp-pseudo-voiceover-focus-path",
+                name: "MCP pseudo VoiceOver focus path",
+                kind: .accessibilityFocusPath,
+                requiredCapabilities: [.mcpToolCall, .accessibilityAudit],
+                expectedMutations: [],
+                assertions: [.outputMatchesExpected, .approvalBoundary, .auditLogRecorded, .redactedLogs, .resultDiffRecorded, .accessibilityFocusPathCovered]
             )
         ]
     }
@@ -367,6 +378,93 @@ public struct SoloPMHarnessRun: Codable, Equatable, Sendable {
             failureReason: failureReason,
             diffSummary: diff.map { "\($0.stepID): \($0.expected) -> \($0.actual)" },
             redactedLogCount: redactedLogs.count
+        )
+    }
+}
+
+public struct SoloPMHarnessAccessibilityAuditRunner: Sendable {
+    public init() {}
+
+    public func run(
+        id: String,
+        trigger: SoloPMHarnessRunTrigger,
+        startedAt: String,
+        finishedAt: String,
+        nodes: [AccessibilityNodeSnapshot],
+        requirements: AccessibilityFocusPathRequirement = .taskLifecycleAndExecution
+    ) -> SoloPMHarnessRun {
+        let scenario = Self.accessibilityScenario()
+        let result = AccessibilityFocusPathAudit().audit(nodes: nodes, requirements: requirements)
+        let findingsByNodeID = Dictionary(grouping: result.findings, by: \.nodeID)
+
+        // Emit one harness step per required focus node so a broad MCP smoke
+        // cannot hide one missing create/edit/execute/delete control behind a
+        // single aggregate "accessibility passed" line.
+        let steps = requirements.requiredNodeIDs.map { nodeID in
+            step(for: nodeID, findings: findingsByNodeID[nodeID] ?? [], coveredNodeIDs: result.coveredRequiredNodeIDs)
+        }
+        let logs = [
+            SoloPMHarnessLogEntry(
+                level: result.findings.isEmpty ? .info : .error,
+                message: "MCP pseudo VoiceOver focus path covered=\(result.coveredRequiredNodeIDs.count)/\(requirements.requiredNodeIDs.count) findings=\(result.findings.count)"
+            )
+        ] + result.findings.map {
+            SoloPMHarnessLogEntry(level: .warning, message: "\($0.kind.rawValue): \($0.message)")
+        }
+
+        return SoloPMHarnessRun.completed(
+            id: id,
+            scenario: scenario,
+            trigger: trigger,
+            startedAt: startedAt,
+            finishedAt: finishedAt,
+            steps: steps,
+            logs: logs
+        )
+    }
+
+    private static func accessibilityScenario() -> SoloPMHarnessScenario {
+        SoloPMHarnessScenario.templateCatalog()
+            .first(where: { $0.kind == .accessibilityFocusPath })
+            ?? SoloPMHarnessScenario(
+                id: "mcp-pseudo-voiceover-focus-path",
+                name: "MCP pseudo VoiceOver focus path",
+                kind: .accessibilityFocusPath,
+                requiredCapabilities: [.mcpToolCall, .accessibilityAudit],
+                expectedMutations: [],
+                assertions: [.accessibilityFocusPathCovered]
+            )
+    }
+
+    private func step(
+        for nodeID: String,
+        findings: [AccessibilityFocusPathFinding],
+        coveredNodeIDs: [String]
+    ) -> SoloPMHarnessStepResult {
+        let expected = "required focus path node present and descriptive"
+        let actual: String
+        let status: SoloPMHarnessRunStatus
+        let failureReason: String?
+
+        if findings.isEmpty, coveredNodeIDs.contains(nodeID) {
+            actual = expected
+            status = .passed
+            failureReason = nil
+        } else {
+            actual = findings.isEmpty
+                ? "missingRequiredNode: Missing required accessibility node \(nodeID)."
+                : findings.map { "\($0.kind.rawValue): \($0.message)" }.joined(separator: " | ")
+            status = .failed
+            failureReason = actual
+        }
+
+        return SoloPMHarnessStepResult(
+            id: "focus-path-\(nodeID)",
+            status: status,
+            expected: expected,
+            actual: actual,
+            failureReason: failureReason,
+            durationMilliseconds: 0
         )
     }
 }

@@ -10,7 +10,8 @@ final class SoloPMHarnessTests: XCTestCase {
                 .providerPromptRegression,
                 .taskMutationFlow,
                 .documentScopedAutomation,
-                .mcpCompatibility
+                .mcpCompatibility,
+                .accessibilityFocusPath
             ]
         )
 
@@ -26,6 +27,48 @@ final class SoloPMHarnessTests: XCTestCase {
         let encoded = try JSONEncoder().encode(taskMutation)
         let decoded = try JSONDecoder().decode(SoloPMHarnessScenario.self, from: encoded)
         XCTAssertEqual(decoded, taskMutation)
+
+        let accessibility = try XCTUnwrap(catalog.first { $0.kind == .accessibilityFocusPath })
+        XCTAssertEqual(accessibility.id, "mcp-pseudo-voiceover-focus-path")
+        XCTAssertTrue(accessibility.requiredCapabilities.contains(.mcpToolCall))
+        XCTAssertTrue(accessibility.requiredCapabilities.contains(.accessibilityAudit))
+        XCTAssertTrue(accessibility.assertions.contains(.accessibilityFocusPathCovered))
+    }
+
+    func testAccessibilityHarnessRunPassesCompletePseudoVoiceOverFocusPath() {
+        let run = SoloPMHarnessAccessibilityAuditRunner().run(
+            id: "run-ax-pass",
+            trigger: .cloudTriggered,
+            startedAt: "2026-06-23T00:00:00Z",
+            finishedAt: "2026-06-23T00:00:01Z",
+            nodes: completeAccessibilityNodes()
+        )
+
+        XCTAssertEqual(run.status, .passed)
+        XCTAssertEqual(run.scenario.kind, .accessibilityFocusPath)
+        XCTAssertEqual(run.resultEnvelope.scenarioKind, .accessibilityFocusPath)
+        XCTAssertEqual(run.steps.count, AccessibilityFocusPathRequirement.taskLifecycleAndExecution.requiredNodeIDs.count)
+        XCTAssertNil(run.diff)
+        XCTAssertTrue(run.redactedLogs.contains { $0.message.contains("covered=12/12") })
+    }
+
+    func testAccessibilityHarnessRunFailsWithConcreteMissingFocusPathDiff() {
+        let incompleteNodes = completeAccessibilityNodes()
+            .filter { $0.id != "task-auto-execution-run-plan" }
+
+        let run = SoloPMHarnessAccessibilityAuditRunner().run(
+            id: "run-ax-fail",
+            trigger: .cloudTriggered,
+            startedAt: "2026-06-23T00:00:00Z",
+            finishedAt: "2026-06-23T00:00:01Z",
+            nodes: incompleteNodes
+        )
+
+        XCTAssertEqual(run.status, .failed)
+        XCTAssertEqual(run.diff?.stepID, "focus-path-task-auto-execution-run-plan")
+        XCTAssertEqual(run.diff?.expected, "required focus path node present and descriptive")
+        XCTAssertTrue(run.diff?.actual.contains("missingRequiredNode") ?? false)
+        XCTAssertTrue(run.failureReason?.contains("task-auto-execution-run-plan") ?? false)
     }
 
     func testLocalAndCloudTriggeredRunsShareResultEnvelopeShape() {
@@ -158,5 +201,40 @@ final class SoloPMHarnessTests: XCTestCase {
         XCTAssertEqual(founderPolicy.historyStorage, .extendedCloudBacked)
         XCTAssertGreaterThan(founderPolicy.maxRuns, proPolicy.maxRuns)
         XCTAssertGreaterThan(founderPolicy.retentionDays, proPolicy.retentionDays)
+    }
+
+    private func completeAccessibilityNodes() -> [AccessibilityNodeSnapshot] {
+        [
+            node("project-board-sidebar", role: .outline, label: "Project navigation"),
+            node("project-board-detail", role: .group, label: "Project board detail"),
+            node("project-header-add-task", role: .button, label: "Add Task", help: "Opens inline task composer."),
+            node("inline-task-title", role: .textField, label: "Task title"),
+            node("inline-task-create", role: .button, label: "Create Task", help: "Creates the task in the local SoloPM database."),
+            node("task-card-open-details", role: .button, label: "Open task details", help: "Opens the task inspector."),
+            node("task-inspector-save", role: .button, label: "Save Changes", help: "Saves edits to the selected task."),
+            node("task-status-move-controls", role: .group, label: "Task status controls"),
+            node("task-auto-execution-review", role: .button, label: "Review automation plan", help: "Builds a review-only LLM plan."),
+            node("task-auto-execution-run-plan", role: .button, label: "Run approved plan", help: "Runs after explicit approval."),
+            node("task-inspector-delete", role: .button, label: "Delete Task", help: "Deletes after confirmation.", isDestructive: true),
+            node("task-inspector-delete-confirmation-confirm", role: .button, label: "Confirm Delete Task", help: "Confirms deletion.", confirmsDestructiveAction: true)
+        ]
+    }
+
+    private func node(
+        _ id: String,
+        role: AccessibilityNodeRole,
+        label: String,
+        help: String = "",
+        isDestructive: Bool = false,
+        confirmsDestructiveAction: Bool = false
+    ) -> AccessibilityNodeSnapshot {
+        AccessibilityNodeSnapshot(
+            id: id,
+            role: role,
+            label: label,
+            help: help,
+            isDestructive: isDestructive,
+            confirmsDestructiveAction: confirmsDestructiveAction
+        )
     }
 }

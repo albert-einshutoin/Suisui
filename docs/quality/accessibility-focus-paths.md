@@ -30,9 +30,16 @@ The task path covers create, edit, status execution, automation review, approved
 - The first approved local execution step may move a task into active work. External writes, completion, and destructive actions remain separate reviewed actions.
 - Runtime AX checks can verify labels, help text, and confirmation anchors, but the real VoiceOver pass still records concrete observations in `docs/release/evidence/accessibility-voiceover.md`.
 
+## MCP Pseudo VoiceOver Harness
+
+`SoloPMHarnessAccessibilityAuditRunner` exposes this focus path as the `mcp-pseudo-voiceover-focus-path` harness scenario.
+
+The harness emits one step per required AX identifier so create, edit, automation review, approved execution, and destructive delete confirmation cannot pass as a single aggregate smoke result when one control is missing.
+
 ## Source Owners
 
 - Pure logic: `AccessibilityFocusPathAudit`
+- MCP pseudo VoiceOver harness: `SoloPMHarnessAccessibilityAuditRunner`
 - Runtime AX smoke: `script/check_accessibility_preflight.sh --runtime`
 - Pseudo VoiceOver source contract: `script/check_pseudo_voiceover_paths.sh`
 - Manual release evidence: `script/create_voiceover_evidence.sh`
