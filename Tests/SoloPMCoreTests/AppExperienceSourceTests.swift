@@ -445,6 +445,33 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".help(task.detail)"))
     }
 
+    func testProjectBoardLongContentFixtureMapsToResponsiveGuards() throws {
+        let fixture = try readPackageFile("Tests/SoloPMCoreTests/Fixtures/ProjectBoard/long-content-layout.json")
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(fixture.contains("\"longJapaneseProjectTitle\""))
+        XCTAssertTrue(fixture.contains("長い日本語のプロジェクト名"))
+        XCTAssertTrue(fixture.contains("\"longEnglishTaskTitle\""))
+        XCTAssertTrue(fixture.contains("Coordinate multi-window Project Board release readiness"))
+        XCTAssertTrue(fixture.contains("\"emptyState\""))
+        XCTAssertTrue(fixture.contains("\"No tasks\""))
+        XCTAssertTrue(fixture.contains("\"errorState\""))
+        XCTAssertTrue(fixture.contains("\"Project Board Unavailable\""))
+
+        XCTAssertTrue(source.contains("Text(project.title)"))
+        XCTAssertTrue(source.contains(".lineLimit(1)"))
+        XCTAssertTrue(source.contains(".truncationMode(.tail)"))
+        XCTAssertTrue(source.contains(".help(project.title)"))
+        XCTAssertTrue(source.contains("Text(task.title)"))
+        XCTAssertTrue(source.contains(".help(task.title)"))
+        XCTAssertTrue(source.contains("Text(task.detail)"))
+        XCTAssertTrue(source.contains(".help(task.detail)"))
+        XCTAssertTrue(source.contains("ContentUnavailableView(\n                            \"Project Board Unavailable\""))
+        XCTAssertTrue(source.contains("ContentUnavailableView(\"No Projects\""))
+        XCTAssertTrue(source.contains("Text(\"No tasks\")"))
+        XCTAssertTrue(source.contains("ProjectBoardLayoutMetrics.emptyColumnMinHeight"))
+    }
+
     func testProjectBoardToolbarDisplayModeOnlyAllowsIconAndTextOrIconOnly() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 

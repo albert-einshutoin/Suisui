@@ -313,7 +313,7 @@ Priority: Middle
 
 - [x] 主要UI componentのmin/max frame指定が消えた場合に失敗するsource testを追加する。
 - [x] AX frameのoverlap検出をruntime smokeに追加する。
-- [ ] 長い日本語/英語ラベル、空状態、エラー状態でbutton textがはみ出ないfixtureを追加する。
+- [x] 長い日本語/英語ラベル、空状態、エラー状態でbutton textがはみ出ないfixtureを追加する。
 
 ### Implementation Steps
 
@@ -325,7 +325,7 @@ Priority: Middle
 ### Acceptance Criteria
 
 - [x] Header、sidebar、detail、inspector、cardsの寸法ルールがコードとテストで固定されている。
-- [ ] 長いラベルやempty/error stateでUIが重ならない。
+- [x] 長いラベルやempty/error stateでUIが重ならない。
 - [x] Magic numberの追加がレビューで見つけやすい。
 
 ### Non-goals

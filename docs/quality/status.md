@@ -1,19 +1,17 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T22:05:28Z
-Source commit: bb660fb
+Generated at: 2026-06-22T22:12:32Z
+Source commit: 6953ae8
 
 ## Summary
 
-- Phase14 completion: 98/183 checked, 85 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 100/183 checked, 83 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 4 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-bb660fb.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-6953ae8.md`
 
 ## Unfinished Phase14 Items
 
-- [ ] tasks/Phase14-QualityRegressionHardening.md:316:- [ ] 長い日本語/英語ラベル、空状態、エラー状態でbutton textがはみ出ないfixtureを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:328:- [ ] 長いラベルやempty/error stateでUIが重ならない。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:351:- [ ] LaunchExperienceTestsに「保存状態がwindow-lessでもProject Boardが見える」ことを維持するテストを追加または確認する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:353:- [ ] 前回選択Projectが削除済みの場合にsafe fallbackするテストを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:358:- [ ] selected destinationをseed DBとenvで制御する。
@@ -42,6 +40,8 @@ Source commit: bb660fb
 - [ ] tasks/Phase14-QualityRegressionHardening.md:441:- [ ] 秘密情報やraw DB contentをerror messageへ出さない。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:463:- [ ] secret-like patternがtest fixture、screenshot metadata、release evidenceに出たら失敗するscanを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:464:- [ ] Runtime smoke artifact directoryが `.gitignore` 対象であることをテストする。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:465:- [ ] Keychain referenceとraw secretの区別をsource testで固定する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:469:- [ ] `script/check_security_regressions.sh` を作るか既存security grepへ統合する。
 
 ## Open Risk Items
 
@@ -69,8 +69,8 @@ Source commit: bb660fb
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
 - `script/check_visual_regression_smoke.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-bb660fb.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-bb660fb.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-6953ae8.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-6953ae8.md ./script/release_readiness_report.sh`
 
 ## Notes
 
