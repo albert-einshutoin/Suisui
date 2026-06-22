@@ -469,7 +469,7 @@ Priority: High
 - [x] `script/check_security_regressions.sh` を作るか既存security grepへ統合する。
 - [x] `sk-`, OAuth token風文字列、notary password、MCP token、filesystem pathの扱いを分類する。
 - [x] Smoke scriptsはartifactにredaction済みsummaryだけを書く。
-- [ ] Screenshotは必要最小限にし、secret入力画面を撮る場合はmask状態を検証する。
+- [x] Screenshotは必要最小限にし、secret入力画面を撮る場合はmask状態を検証する。
 
 ### Acceptance Criteria
 

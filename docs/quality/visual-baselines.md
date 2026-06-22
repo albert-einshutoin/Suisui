@@ -31,6 +31,8 @@ Run `script/capture_ui_evidence.sh --doctor` before writing release evidence. No
 
 The capture script also records the Light/Dark/System visual baseline manifest path and viewport contract in generated evidence so reviewers know which product screens were targeted.
 
+Secret input screens are excluded from the default visual baseline manifest. Only masked SecureField state may be captured if a future release needs a secret-entry screenshot. API keys and provider tokens are not read, written, logged, rendered, or captured unmasked.
+
 ## Update Flow
 
 Normal `script/check_visual_regression_smoke.sh` runs do not overwrite baselines. In other words, a default visual smoke run does not overwrite baselines. Baseline updates require an intentional command:

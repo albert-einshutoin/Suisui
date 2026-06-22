@@ -212,6 +212,28 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(phase.contains("- [x] Keychain referenceとraw secretの区別をsource testで固定する。"))
     }
 
+    func testVisualEvidenceContractExcludesUnmaskedSecretInputScreens() throws {
+        let visualDoc = try readPackageFile("docs/quality/visual-baselines.md")
+        let evidenceDoc = try readPackageFile("docs/release/evidence/ui-screenshots.md")
+        let captureScript = try readPackageFile("script/capture_ui_evidence.sh")
+        let manifest = try readPackageFile("docs/quality/visual-baseline-manifest.json")
+        let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
+
+        for marker in [
+            "Secret input screens are excluded from the default visual baseline manifest.",
+            "Only masked SecureField state may be captured",
+            "masked SecureField",
+            "API keys and provider tokens are not read, written, logged, rendered, or captured unmasked"
+        ] {
+            XCTAssertTrue(visualDoc.contains(marker), "visual baseline doc must mention \(marker)")
+            XCTAssertTrue(evidenceDoc.contains(marker), "screenshot evidence doc must mention \(marker)")
+            XCTAssertTrue(captureScript.contains(marker), "capture script must write \(marker)")
+        }
+
+        XCTAssertNil(manifest.range(of: #"(?i)(api[-_ ]?key|secret|token)"#, options: .regularExpression))
+        XCTAssertTrue(phase.contains("- [x] Screenshotは必要最小限にし、secret入力画面を撮る場合はmask状態を検証する。"))
+    }
+
     func testGitignoreKeepsLocalAgentArtifactsAndRuntimeEvidenceOutOfSource() throws {
         let gitignore = try readPackageFile(".gitignore")
 

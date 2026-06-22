@@ -1,18 +1,17 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T23:26:43Z
-Source commit: e7b16f1
+Generated at: 2026-06-22T23:30:00Z
+Source commit: f2b5ab9
 
 ## Summary
 
-- Phase14 completion: 135/183 checked, 48 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 136/183 checked, 47 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 4 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-e7b16f1.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-f2b5ab9.md`
 
 ## Unfinished Phase14 Items
 
-- [ ] tasks/Phase14-QualityRegressionHardening.md:472:- [ ] Screenshotは必要最小限にし、secret入力画面を撮る場合はmask状態を検証する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:500:- [ ] `scripts/ci.sh` が軽量PR gateと重いruntime gateを混同しないことをsource testで固定する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:501:- [ ] `release_readiness_report.sh` がlayout stability smokeの結果を取り込めることをテストする。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:502:- [ ] Flake quarantine listが空でない場合、owner/reason/expiryが必要なことをテストする。
@@ -42,6 +41,7 @@ Source commit: e7b16f1
 - [ ] tasks/Phase14-QualityRegressionHardening.md:605:- [ ] `swift test --filter ProjectBoardStoreTests`
 - [ ] tasks/Phase14-QualityRegressionHardening.md:606:- [ ] `swift test`
 - [ ] tasks/Phase14-QualityRegressionHardening.md:607:- [ ] `bash -n script/check_project_board_header_layout_smoke.sh`
+- [ ] tasks/Phase14-QualityRegressionHardening.md:608:- [ ] `script/check_project_board_header_layout_smoke.sh`
 
 ## Open Risk Items
 
@@ -69,8 +69,8 @@ Source commit: e7b16f1
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
 - `script/check_visual_regression_smoke.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-e7b16f1.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-e7b16f1.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-f2b5ab9.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-f2b5ab9.md ./script/release_readiness_report.sh`
 
 ## Notes
 
