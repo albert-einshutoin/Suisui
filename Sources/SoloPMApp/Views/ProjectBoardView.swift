@@ -2,6 +2,9 @@ import SoloPMCore
 import Dispatch
 import SwiftUI
 import UniformTypeIdentifiers
+#if canImport(AppKit)
+import AppKit
+#endif
 
 struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
@@ -10,6 +13,8 @@ struct ProjectBoardView: View {
     @State private var displayMode: ProjectBoardDisplayMode = .board
     @State private var selectedDestination: ProjectBoardSidebarDestination? = .today
     @State private var isInspectorPresented = true
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var toolbarLayoutRefreshToken = 0
     @State private var isTerminalPanelPresented = false
     @State private var isExportingTaskInterop = false
     @State private var isImportingTaskInterop = false
@@ -20,7 +25,7 @@ struct ProjectBoardView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             VStack(spacing: 0) {
                 List(selection: $selectedDestination) {
                     Section {
@@ -111,7 +116,8 @@ struct ProjectBoardView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
             }
-            .navigationTitle("SoloPM")
+            .id(toolbarLayoutRefreshToken)
+            .projectBoardSynchronizedColumnBounds()
         } detail: {
             VStack(spacing: 0) {
                 Group {
@@ -163,59 +169,8 @@ struct ProjectBoardView: View {
                     .frame(minHeight: 220, idealHeight: 280, maxHeight: 360)
                 }
             }
-            .toolbar {
-                ToolbarItemGroup {
-                    Menu {
-                        Button {
-                            beginTaskInteropExport()
-                        } label: {
-                            Label("Export Tasks", systemImage: "square.and.arrow.up")
-                        }
-                        .accessibilityIdentifier("project-board-export-tasks")
-
-                        Button {
-                            isImportingTaskInterop = true
-                        } label: {
-                            Label("Import Tasks", systemImage: "square.and.arrow.down")
-                        }
-                        .accessibilityIdentifier("project-board-import-tasks")
-
-                        Divider()
-
-                        Button {
-                            viewModel.recordTaskInteropFileFailure(ProjectBoardIntegrationUnavailableError.googleCalendarOAuthNotConfigured)
-                        } label: {
-                            Label("Google Calendar Sync", systemImage: "calendar.badge.plus")
-                        }
-                        .disabled(true)
-                        .help("Google Calendar sync requires Pro and OAuth authorization.")
-                    } label: {
-                        Label("Integrations", systemImage: "arrow.left.arrow.right")
-                    }
-                    .help("Import, export, and sync task data")
-
-                    Button {
-                        openWindow(id: "voice-capture")
-                    } label: {
-                        Label("Voice Command", systemImage: "mic")
-                    }
-
-                    SettingsLink {
-                        Label("Settings", systemImage: "gearshape")
-                    }
-                    .help("Open Settings")
-                    .accessibilityIdentifier("project-board-settings-link")
-
-                    Button {
-                        isTerminalPanelPresented.toggle()
-                    } label: {
-                        Label("Terminal", systemImage: "terminal")
-                    }
-                    .keyboardShortcut("`", modifiers: [.control])
-                    .help("Terminal")
-                    .accessibilityIdentifier("project-board-terminal-toggle")
-                }
-            }
+            .id(toolbarLayoutRefreshToken)
+            .projectBoardSynchronizedColumnBounds()
             .inspector(isPresented: inspectorBinding) {
                 Group {
                     if let task = viewModel.selectedTask {
@@ -238,6 +193,85 @@ struct ProjectBoardView: View {
             }
         }
         .navigationTitle("SoloPM")
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    toggleSidebarVisibility()
+                } label: {
+                    Label("Sidebar", systemImage: "sidebar.left")
+                }
+                .help(sidebarToggleHelp)
+                .accessibilityIdentifier("project-board-sidebar-toggle")
+                .accessibilityLabel(sidebarToggleHelp)
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button {
+                        beginTaskInteropExport()
+                    } label: {
+                        Label("Export Tasks", systemImage: "square.and.arrow.up")
+                    }
+                    .accessibilityIdentifier("project-board-export-tasks")
+
+                    Button {
+                        isImportingTaskInterop = true
+                    } label: {
+                        Label("Import Tasks", systemImage: "square.and.arrow.down")
+                    }
+                    .accessibilityIdentifier("project-board-import-tasks")
+
+                    Divider()
+
+                    Button {
+                        viewModel.recordTaskInteropFileFailure(ProjectBoardIntegrationUnavailableError.googleCalendarOAuthNotConfigured)
+                    } label: {
+                        Label("Google Calendar Sync", systemImage: "calendar.badge.plus")
+                    }
+                    .disabled(true)
+                    .help("Google Calendar sync requires Pro and OAuth authorization.")
+                } label: {
+                    Label("Integrations", systemImage: "arrow.left.arrow.right")
+                }
+                .help("Import, export, and sync task data")
+                .accessibilityIdentifier("project-board-integrations-menu")
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    openWindow(id: "voice-capture")
+                } label: {
+                    Label("Voice Command", systemImage: "mic")
+                }
+                .accessibilityIdentifier("project-board-voice-command")
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                SettingsLink {
+                    Label("Settings", systemImage: "gearshape")
+                }
+                .help("Open Settings")
+                .accessibilityIdentifier("project-board-settings-link")
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    isTerminalPanelPresented.toggle()
+                } label: {
+                    Label("Terminal", systemImage: "terminal")
+                }
+                .keyboardShortcut("`", modifiers: [.control])
+                .help("Terminal")
+                .accessibilityIdentifier("project-board-terminal-toggle")
+            }
+        }
+        .toolbar(removing: .sidebarToggle)
+        .background(
+            ProjectBoardToolbarLayoutBridge(
+                columnVisibility: columnVisibility,
+                onToolbarLayoutChanged: refreshProjectBoardColumnsAfterToolbarDisplayModeChange
+            )
+        )
         .task {
             viewModel.load()
             restoreSelectedDestinationIfNeeded()
@@ -287,6 +321,18 @@ struct ProjectBoardView: View {
                 }
             }
         )
+    }
+
+    private var sidebarToggleHelp: String {
+        columnVisibility == .detailOnly ? "Show Sidebar" : "Hide Sidebar"
+    }
+
+    private func toggleSidebarVisibility() {
+        columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+    }
+
+    private func refreshProjectBoardColumnsAfterToolbarDisplayModeChange() {
+        toolbarLayoutRefreshToken += 1
     }
 
     private var selectedProjectForInspector: ProjectBoardProject? {
@@ -390,6 +436,220 @@ struct ProjectBoardView: View {
         return formatter
     }()
 }
+
+private struct ProjectBoardSynchronizedColumnBounds: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+private extension View {
+    func projectBoardSynchronizedColumnBounds() -> some View {
+        modifier(ProjectBoardSynchronizedColumnBounds())
+    }
+}
+
+#if canImport(AppKit)
+private struct ProjectBoardToolbarLayoutBridge: NSViewRepresentable {
+    let columnVisibility: NavigationSplitViewVisibility
+    let onToolbarLayoutChanged: () -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = ProjectBoardToolbarLayoutBridgeView(frame: .zero)
+        view.onToolbarLayoutChanged = onToolbarLayoutChanged
+        view.scheduleToolbarTrailingAlignment()
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        _ = columnVisibility
+        guard let view = nsView as? ProjectBoardToolbarLayoutBridgeView else {
+            return
+        }
+
+        view.onToolbarLayoutChanged = onToolbarLayoutChanged
+        view.scheduleNativeSidebarToggleRemoval()
+        view.scheduleToolbarTrailingAlignment()
+        view.installToolbarDisplayModeObservationIfNeeded()
+    }
+}
+
+private final class ProjectBoardToolbarLayoutBridgeView: NSView {
+    var onToolbarLayoutChanged: (() -> Void)?
+    private weak var observedToolbar: NSToolbar?
+    private var toolbarDisplayModeObservation: NSKeyValueObservation?
+    private var observedToolbarDisplayMode: NSToolbar.DisplayMode?
+    private var pendingToolbarLayoutRefresh: DispatchWorkItem?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        scheduleNativeSidebarToggleRemoval()
+        scheduleToolbarTrailingAlignment()
+        installToolbarDisplayModeObservationIfNeeded()
+    }
+
+    func removeNativeSidebarToggle(remainingAttempts: Int = 6) {
+        guard let toolbar = window?.toolbar else {
+            retryNativeSidebarToggleRemoval(remainingAttempts: remainingAttempts)
+            return
+        }
+
+        let removalIndexes = ProjectBoardToolbarLayoutPolicy.nativeSidebarRemovalIndexes(
+            in: toolbar.projectBoardLayoutItems
+        )
+
+        guard removalIndexes.isEmpty == false else {
+            retryNativeSidebarToggleRemoval(remainingAttempts: remainingAttempts)
+            return
+        }
+
+        // Keep toolbar display modes user-adaptive; only remove the native
+        // sidebar item and tracking separator that visually drift in this
+        // SwiftUI-hosted split view.
+        for index in removalIndexes.reversed() {
+            toolbar.removeItem(at: index)
+        }
+    }
+
+    func scheduleNativeSidebarToggleRemoval() {
+        DispatchQueue.main.async { [weak self] in
+            self?.removeNativeSidebarToggle()
+        }
+    }
+
+    func scheduleToolbarTrailingAlignment() {
+        DispatchQueue.main.async { [weak self] in
+            self?.alignProjectBoardActionsToTrailingToolbarEdge(remainingAttempts: 6)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            self?.alignProjectBoardActionsToTrailingToolbarEdge(remainingAttempts: 3)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) { [weak self] in
+            self?.alignProjectBoardActionsToTrailingToolbarEdge(remainingAttempts: 1)
+        }
+    }
+
+    func installToolbarDisplayModeObservationIfNeeded() {
+        guard let toolbar = window?.toolbar,
+              observedToolbar !== toolbar else {
+            return
+        }
+
+        toolbarDisplayModeObservation?.invalidate()
+        observedToolbar = toolbar
+        observedToolbarDisplayMode = toolbar.displayMode
+        toolbarDisplayModeObservation = toolbar.observe(\.displayMode, options: [.new]) { [weak self] _, _ in
+            DispatchQueue.main.async {
+                self?.scheduleToolbarLayoutRefreshIfDisplayModeChanged()
+            }
+        }
+    }
+
+    private func scheduleToolbarLayoutRefreshIfDisplayModeChanged() {
+        guard let toolbar = observedToolbar ?? window?.toolbar,
+              observedToolbarDisplayMode != toolbar.displayMode else {
+            return
+        }
+
+        observedToolbarDisplayMode = toolbar.displayMode
+        pendingToolbarLayoutRefresh?.cancel()
+
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.refreshToolbarDependentLayout()
+        }
+        pendingToolbarLayoutRefresh = workItem
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            self?.refreshToolbarDependentLayout()
+        }
+    }
+
+    private func refreshToolbarDependentLayout() {
+        removeNativeSidebarToggle(remainingAttempts: 1)
+        alignProjectBoardActionsToTrailingToolbarEdge(remainingAttempts: 1)
+
+        // NSToolbar display-mode changes come from AppKit context menus, outside
+        // SwiftUI state. Mark the host dirty and bump SwiftUI state so the
+        // sidebar and detail columns recalculate their bounds together.
+        window?.contentView?.needsLayout = true
+        window?.contentView?.needsDisplay = true
+        onToolbarLayoutChanged?()
+    }
+
+    private func alignProjectBoardActionsToTrailingToolbarEdge(remainingAttempts: Int) {
+        guard let toolbar = window?.toolbar,
+              ProjectBoardToolbarLayoutPolicy.trailingActionStartIndex(in: toolbar.projectBoardLayoutItems) != nil else {
+            retryToolbarTrailingAlignment(remainingAttempts: remainingAttempts)
+            return
+        }
+
+        guard let insertionIndex = ProjectBoardToolbarLayoutPolicy.flexibleSpaceInsertionIndex(
+            in: toolbar.projectBoardLayoutItems
+        ) else {
+            return
+        }
+
+        // SwiftUI's primaryAction items can anchor after the split-view gutter
+        // while the sidebar is visible. A native flexible space keeps the same
+        // toolbar actions at the window's trailing edge in both sidebar states.
+        toolbar.insertItem(withItemIdentifier: .flexibleSpace, at: insertionIndex)
+    }
+
+    private func retryToolbarTrailingAlignment(remainingAttempts: Int) {
+        guard remainingAttempts > 0 else {
+            return
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.alignProjectBoardActionsToTrailingToolbarEdge(remainingAttempts: remainingAttempts - 1)
+        }
+    }
+
+    private func retryNativeSidebarToggleRemoval(remainingAttempts: Int) {
+        guard remainingAttempts > 0 else {
+            return
+        }
+
+        // SwiftUI may attach the NavigationSplitView sidebar item after the
+        // representable enters the window, so retry briefly without changing
+        // the rest of the toolbar configuration.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.removeNativeSidebarToggle(remainingAttempts: remainingAttempts - 1)
+        }
+    }
+
+}
+
+private extension NSToolbar {
+    var projectBoardLayoutItems: [ProjectBoardToolbarLayoutPolicy.Item] {
+        items.map(\.projectBoardLayoutItem)
+    }
+}
+
+private extension NSToolbarItem {
+    var projectBoardLayoutItem: ProjectBoardToolbarLayoutPolicy.Item {
+        ProjectBoardToolbarLayoutPolicy.Item(
+            identifierRawValue: itemIdentifier.rawValue,
+            label: label,
+            paletteLabel: paletteLabel,
+            toolTip: toolTip,
+            accessibilityIdentifier: view?.accessibilityIdentifier(),
+            isNativeToggleAction: action == #selector(NSSplitViewController.toggleSidebar(_:))
+        )
+    }
+}
+#else
+private struct ProjectBoardToolbarLayoutBridge: View {
+    let columnVisibility: NavigationSplitViewVisibility
+    let onToolbarLayoutChanged: () -> Void
+
+    var body: some View {
+        EmptyView()
+    }
+}
+#endif
 
 extension Notification.Name {
     static let soloPMProjectBoardDidChange = Notification.Name("dev.solopm.projectBoardDidChange")

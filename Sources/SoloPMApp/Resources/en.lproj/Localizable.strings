@@ -86,7 +86,10 @@
 "Server Enabled" = "Server Enabled";
 "Servers" = "Servers";
 "Settings..." = "Settings...";
+"Hide Sidebar" = "Hide Sidebar";
+"Sidebar" = "Sidebar";
 "Show Archived" = "Show Archived";
+"Show Sidebar" = "Show Sidebar";
 "Shell Ended" = "Shell Ended";
 "Shell Exit %@" = "Shell Exit %@";
 "Status Overview" = "Status Overview";

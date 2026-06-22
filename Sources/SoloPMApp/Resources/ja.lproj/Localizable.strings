@@ -86,7 +86,10 @@
 "Server Enabled" = "サーバー有効";
 "Servers" = "サーバー";
 "Settings..." = "設定...";
+"Hide Sidebar" = "サイドバーを非表示";
+"Sidebar" = "サイドバー";
 "Show Archived" = "アーカイブを表示";
+"Show Sidebar" = "サイドバーを表示";
 "Shell Ended" = "シェルは終了しました";
 "Shell Exit %@" = "シェル終了 %@";
 "Status Overview" = "ステータス概要";

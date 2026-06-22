@@ -314,7 +314,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardToolbarHostsSettingsLinkWithoutThemeControls() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let sidebarStart = try XCTUnwrap(boardSource.range(of: "NavigationSplitView {"))
+        let sidebarStart = try XCTUnwrap(boardSource.range(of: "NavigationSplitView(columnVisibility: $columnVisibility) {"))
         let detailStart = try XCTUnwrap(boardSource.range(of: "} detail: {"))
         let sidebarSource = String(boardSource[sidebarStart.upperBound..<detailStart.lowerBound])
 
@@ -338,8 +338,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(sidebarSource.contains(".pickerStyle(.segmented)"))
 
         let toolbarStart = try XCTUnwrap(boardSource.range(of: ".toolbar {"))
-        let inspectorStart = try XCTUnwrap(boardSource.range(of: ".inspector(isPresented: inspectorBinding)"))
-        let toolbarSource = String(boardSource[toolbarStart.lowerBound..<inspectorStart.lowerBound])
+        let toolbarRemovalStart = try XCTUnwrap(boardSource.range(of: ".toolbar(removing: .sidebarToggle)"))
+        let toolbarSource = String(boardSource[toolbarStart.lowerBound..<toolbarRemovalStart.lowerBound])
 
         XCTAssertTrue(toolbarSource.contains("SettingsLink"))
         XCTAssertTrue(toolbarSource.contains("Label(\"Settings\", systemImage: \"gearshape\")"))
@@ -360,6 +360,87 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(toolbarSource.contains("settings-theme-picker"))
         XCTAssertFalse(toolbarSource.contains("appearancePreference"))
         XCTAssertFalse(toolbarSource.contains(".pickerStyle(.segmented)"))
+    }
+
+    func testProjectBoardToolbarKeepsAdaptiveLabelsForMacOSToolbarDisplayModes() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let toolbarStart = try XCTUnwrap(boardSource.range(of: ".toolbar {"))
+        let toolbarRemovalStart = try XCTUnwrap(boardSource.range(of: ".toolbar(removing: .sidebarToggle)"))
+        let toolbarSource = String(boardSource[toolbarStart.lowerBound..<toolbarRemovalStart.lowerBound])
+
+        XCTAssertTrue(toolbarSource.contains("Label(\"Integrations\", systemImage: \"arrow.left.arrow.right\")"))
+        XCTAssertTrue(toolbarSource.contains("Label(\"Voice Command\", systemImage: \"mic\")"))
+        XCTAssertTrue(toolbarSource.contains("Label(\"Settings\", systemImage: \"gearshape\")"))
+        XCTAssertTrue(toolbarSource.contains("Label(\"Terminal\", systemImage: \"terminal\")"))
+        XCTAssertEqual(toolbarSource.components(separatedBy: "ToolbarItem(placement: .primaryAction)").count - 1, 4)
+        XCTAssertFalse(toolbarSource.contains("ToolbarItemGroup(placement:"))
+        XCTAssertTrue(boardSource.contains("alignProjectBoardActionsToTrailingToolbarEdge(remainingAttempts:"))
+        XCTAssertTrue(boardSource.contains("toolbar.insertItem(withItemIdentifier: .flexibleSpace"))
+        XCTAssertTrue(boardSource.contains("alignProjectBoardActionsToTrailingToolbarEdge(remainingAttempts: 6)"))
+        XCTAssertTrue(boardSource.contains("retryToolbarTrailingAlignment(remainingAttempts: remainingAttempts)"))
+        XCTAssertTrue(boardSource.contains("ProjectBoardToolbarLayoutPolicy.trailingActionStartIndex(in: toolbar.projectBoardLayoutItems)"))
+        XCTAssertTrue(boardSource.contains("ProjectBoardToolbarLayoutPolicy.flexibleSpaceInsertionIndex("))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-integrations-menu\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-voice-command\")"))
+        XCTAssertTrue(boardSource.contains("private extension NSToolbar"))
+        XCTAssertTrue(boardSource.contains("var projectBoardLayoutItems: [ProjectBoardToolbarLayoutPolicy.Item]"))
+        XCTAssertTrue(boardSource.contains("accessibilityIdentifier: view?.accessibilityIdentifier()"))
+        XCTAssertFalse(boardSource.contains("private struct ProjectBoardToolbarIcon: View"))
+        XCTAssertFalse(boardSource.contains("toolbar.displayMode = .iconOnly"))
+        XCTAssertFalse(boardSource.contains("toolbar.allowsUserCustomization = false"))
+    }
+
+    func testProjectBoardHeaderIsSharedAndColumnsUseSynchronizedBounds() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let detailStart = try XCTUnwrap(boardSource.range(of: "} detail: {"))
+        let inspectorStart = try XCTUnwrap(boardSource.range(of: ".inspector(isPresented: inspectorBinding)"))
+        let toolbarStart = try XCTUnwrap(boardSource.range(of: ".toolbar {"))
+
+        XCTAssertGreaterThan(toolbarStart.lowerBound, inspectorStart.lowerBound)
+        XCTAssertEqual(boardSource.components(separatedBy: ".navigationTitle(\"SoloPM\")").count - 1, 1)
+        XCTAssertEqual(boardSource.components(separatedBy: ".projectBoardSynchronizedColumnBounds()").count - 1, 2)
+        XCTAssertFalse(boardSource.contains(".navigationSplitViewColumnWidth("))
+        XCTAssertFalse(boardSource.contains("ProjectBoardLayout.sidebarColumnWidth"))
+        XCTAssertEqual(boardSource.components(separatedBy: ".id(toolbarLayoutRefreshToken)").count - 1, 2)
+        XCTAssertTrue(boardSource.contains("@State private var toolbarLayoutRefreshToken = 0"))
+        XCTAssertTrue(boardSource.contains("private struct ProjectBoardSynchronizedColumnBounds: ViewModifier"))
+        XCTAssertTrue(boardSource.contains("ProjectBoardToolbarLayoutPolicy.nativeSidebarRemovalIndexes("))
+        XCTAssertTrue(boardSource.contains("sidebar item and tracking separator"))
+        XCTAssertTrue(boardSource.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
+        XCTAssertTrue(boardSource.contains("refreshProjectBoardColumnsAfterToolbarDisplayModeChange()"))
+        XCTAssertTrue(boardSource.contains("toolbarLayoutRefreshToken += 1"))
+        XCTAssertTrue(boardSource.contains("toolbar.observe(\\.displayMode, options: [.new])"))
+        XCTAssertTrue(boardSource.contains("scheduleToolbarLayoutRefreshIfDisplayModeChanged()"))
+        XCTAssertTrue(boardSource.contains("observedToolbarDisplayMode != toolbar.displayMode"))
+        XCTAssertTrue(boardSource.contains("window?.contentView?.needsLayout = true"))
+        XCTAssertTrue(boardSource.contains("window?.contentView?.needsDisplay = true"))
+        XCTAssertFalse(boardSource.contains("layoutSubtreeIfNeeded()"))
+
+        let detailColumnSource = String(boardSource[detailStart.lowerBound..<inspectorStart.lowerBound])
+        XCTAssertTrue(detailColumnSource.contains(".projectBoardSynchronizedColumnBounds()"))
+    }
+
+    func testProjectBoardReplacesDefaultSidebarToggleWithShortAdaptiveToolbarItem() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(boardSource.contains("@State private var columnVisibility: NavigationSplitViewVisibility = .all"))
+        XCTAssertTrue(boardSource.contains("NavigationSplitView(columnVisibility: $columnVisibility)"))
+        XCTAssertTrue(boardSource.contains("ToolbarItem(placement: .navigation)"))
+        XCTAssertTrue(boardSource.contains("ToolbarItem(placement: .primaryAction)"))
+        XCTAssertTrue(boardSource.contains("Label(\"Sidebar\", systemImage: \"sidebar.left\")"))
+        XCTAssertTrue(boardSource.contains(".toolbar(removing: .sidebarToggle)"))
+        XCTAssertTrue(boardSource.contains("ProjectBoardToolbarLayoutBridge("))
+        XCTAssertTrue(boardSource.contains("columnVisibility: columnVisibility"))
+        XCTAssertTrue(boardSource.contains("onToolbarLayoutChanged: refreshProjectBoardColumnsAfterToolbarDisplayModeChange"))
+        XCTAssertTrue(boardSource.contains("let columnVisibility: NavigationSplitViewVisibility"))
+        XCTAssertTrue(boardSource.contains("let onToolbarLayoutChanged: () -> Void"))
+        XCTAssertTrue(boardSource.contains("#selector(NSSplitViewController.toggleSidebar(_:))"))
+        XCTAssertTrue(boardSource.contains("identifierRawValue: itemIdentifier.rawValue"))
+        XCTAssertTrue(boardSource.contains("retryNativeSidebarToggleRemoval(remainingAttempts: remainingAttempts)"))
+        XCTAssertTrue(boardSource.contains("toggleSidebarVisibility()"))
+        XCTAssertTrue(boardSource.contains("columnVisibility == .detailOnly ? .all : .detailOnly"))
+        XCTAssertFalse(boardSource.contains("toolbar.displayMode = .iconOnly"))
+        XCTAssertFalse(boardSource.contains("toolbar.allowsUserCustomization = false"))
     }
 
     func testMenuBarPanelHostsSettingsLinkWithoutThemeControls() throws {
