@@ -6173,7 +6173,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Sources/SoloPMCLI"))
         XCTAssertTrue(script.contains("(?i:fake|mock|fixture|canned|stub|skeleton|fixme"))
         XCTAssertTrue(script.contains("not[[:space:]_-]*implemented"))
-        XCTAssertTrue(script.contains("(?i:(^|[^[:alnum:]_])(todo|demo|sample|placeholder)([^[:alnum:]_]|$))"))
+        XCTAssertTrue(script.contains("(?i:(^|[^[:alnum:]_])(demo|sample|placeholder)([^[:alnum:]_]|$))"))
+        XCTAssertTrue(script.contains("(?i:(^|[[:space:]#/*_-])todo([[:space:]:;.,)_-]|$))"))
         XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PROOF_GATES"))
         XCTAssertTrue(script.contains("SOLOPM_AUTOMATED_PROOF_GATES must be 0 or 1"))
         XCTAssertTrue(script.contains("RELEASE_CI_PREFLIGHT=\"${SOLOPM_RELEASE_CI_PREFLIGHT:-$AUTOMATED_PROOF_GATES}\""))
@@ -9429,11 +9430,13 @@ final class ReleasePipelineTests: XCTestCase {
         let demoProvider = "demo"
         let future = "Not_Implemented"
         let memoryDatabase = ":memory:"
+        // todo: remove this temporary local path before release.
         """.write(to: markerFile, atomically: true, encoding: .utf8)
         try """
         let settings = [AVSampleRateKey: 44_100]
         let openCodeModelID = "opencode-model"
         let todoistProviderID = "todoist"
+        let documentIntentKeywords = ["task", "todo", "implementation"]
         struct TodoistConnector {}
         private struct ArchivedProjectReadOnlyState {}
         static func buildProductionValue() {}
@@ -9446,6 +9449,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(markerResult.output.contains("demoProvider"))
         XCTAssertTrue(markerResult.output.contains("Not_Implemented"))
         XCTAssertTrue(markerResult.output.contains(":memory:"))
+        XCTAssertTrue(markerResult.output.contains("todo: remove"))
 
         let benignResult = try runTool(["rg", "-n", pattern, benignFile.path])
         XCTAssertEqual(benignResult.exitCode, 1, benignResult.output)
