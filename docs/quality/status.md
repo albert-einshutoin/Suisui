@@ -1,19 +1,18 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T16:37:33Z
-Source commit: 0489247
+Generated at: 2026-06-22T16:54:59Z
+Source commit: 331bfde
 
 ## Summary
 
-- Phase14 completion: 32/181 checked, 149 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 35/181 checked, 146 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 6 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-0489247.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-331bfde.md`
 
 ## Unfinished Phase14 Items
 
 - [ ] tasks/Phase14-QualityRegressionHardening.md:124:- [ ] Toolbar display mode切替直後のheader action frame deltaを検出できる。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:125:- [ ] Window resize直後のoverlap / clipping / frame jumpを検出できる。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:148:- [ ] Header actionsがnative primary toolbar itemに戻ったら失敗するsource testを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:149:- [ ] Sidebar toggleがanimation有効transactionへ戻ったら失敗するsource testを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:150:- [ ] Header action groupが固定height / trailing alignment / stable AX identifierを失ったら失敗するsource testを追加する。
@@ -42,10 +41,11 @@ Source commit: 0489247
 - [ ] tasks/Phase14-QualityRegressionHardening.md:212:- [ ] macOS rendering差で不必要にフレークしない許容差が文書化されている。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:234:- [ ] smoke scriptが isolated `SOLOPM_DATABASE_PATH` を必須にしていることをsource testで固定する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:235:- [ ] 実行後のSQLite stateを確認し、UI操作だけ成功してDB未反映の場合に失敗するテストを追加する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:236:- [ ] click-pathごとに `PASS/FAIL/SKIP` ではなく、失敗理由と最後に見えたwindow情報を出すことをsource testで固定する。
 
 ## Open Risk Items
 
-- [ ] docs/quality/regression-risk-map.md:93:  Coverage: open。 Follow-up: P14-008。
+- [ ] docs/quality/regression-risk-map.md:93:  Coverage: open。 Follow-up: P14-002 / P14-008。
 - [ ] docs/quality/regression-risk-map.md:98:  の拡張が未着手。 Coverage: open。 Follow-up: P14-004, P14-008。
 - [ ] docs/quality/regression-risk-map.md:100:  DB mutation に到達しないことの runtime smoke 拡張が未完了。 Coverage: open。
 - [ ] docs/quality/regression-risk-map.md:103:  しないことの source test が未着手。 Coverage: open。 Follow-up: P14-010。
@@ -70,8 +70,8 @@ Source commit: 0489247
 - `script/check_runtime_accessible_crud_smoke.sh`
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-0489247.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-0489247.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-331bfde.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-331bfde.md ./script/release_readiness_report.sh`
 
 ## Notes
 

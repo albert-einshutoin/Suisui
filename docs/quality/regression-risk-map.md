@@ -60,7 +60,7 @@ runtime AX smoke で固定する。Phase 14 で加わった layout stability har
 | sidebar    | Sidebar toggle mutates synchronously; frame stabilizes without delayed correction (no `DispatchQueue.main.asyncAfter`, no `Timer.scheduledTimer` retry for layout) | `project-board-sidebar`, `project-board-sidebar-toggle` | source + runtime            | `AppExperienceSourceTests.testProjectBoardHeaderLayoutBridgeAvoidsDelayedCorrectionDuringStateChanges`, `script/check_project_board_header_layout_smoke.sh` | partial      |
 | detail     | Toolbar display mode preserves primary action position; Board / List / Overview 切替で header height と top offset が変わらない | `project-board-detail`         | source + runtime + visual   | `AppExperienceSourceTests.testProjectBoardToolbarDisplayModeOnlyAllowsIconAndTextOrIconOnly`, `script/check_project_board_header_layout_smoke.sh`, `script/capture_ui_evidence.sh` | partial      |
 | inspector  | Light / Dark / System switch does not collapse or overlap; inspector open / close 後に header が潜らない | `project-inspector`           | source + runtime + visual   | `AppExperienceSourceTests`, `script/check_project_board_header_layout_smoke.sh`, `script/capture_ui_evidence.sh` | partial      |
-| window     | Window resize preserves fixed dimension bounds; min / standard / wide で header / detail が押し潰されない | `project-board-header-bar`, `project-board-detail` | source + runtime            | `AppExperienceSourceTests`, `script/check_project_board_header_layout_smoke.sh` | partial      |
+| window     | Window resize preserves fixed dimension bounds; min / standard / wide で header / detail が押し潰されない | `project-board-header-bar`, `project-board-detail` | source + runtime            | `AppExperienceSourceTests`, `script/check_layout_stability_smoke.sh` | automated    |
 | layout     | Layout correction avoids delayed animation; `Transaction.disablesAnimations = true` または同期 layout policy を layout-sensitive mutation に必ず付ける | `project-board-header-bar`     | source                      | `AppExperienceSourceTests.testProjectBoardHeaderIsSharedAndColumnsUseSynchronizedBounds`, `AppExperienceSourceTests.testProjectBoardHeaderLayoutBridgeAvoidsDelayedCorrectionDuringStateChanges` | automated    |
 
 ### Click-path coverage
@@ -88,9 +88,9 @@ runtime AX smoke で固定する。Phase 14 で加わった layout stability har
 
 ## Open risks (P14-001 baseline, not yet covered by tests)
 
-- window resize の min / standard / wide での layout stability は
-  `script/check_project_board_header_layout_smoke.sh` の対象に追加が未完了。
-  Coverage: open。 Follow-up: P14-008。
+- toolbar display mode 切替直後の header action frame delta は
+  `script/check_layout_stability_smoke.sh` の対象に追加が未完了。
+  Coverage: open。 Follow-up: P14-002 / P14-008。
 - Light / Dark / System 直後の project board card / sidebar selection / header /
   inspector field の overlap 検出は visual regression smoke
   (`script/check_visual_regression_smoke.sh` として P14-004 で新規作成予定。

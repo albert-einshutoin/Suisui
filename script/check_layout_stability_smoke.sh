@@ -23,6 +23,12 @@ LAYOUT_STABILITY_OUTPUT_DIR="${SOLOPM_LAYOUT_STABILITY_OUTPUT_DIR:-$ROOT_DIR/.tm
 # for a documented macOS rendering/runtime tolerance.
 LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX="${SOLOPM_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX:-0}"
 LAYOUT_STABILITY_DATABASE_PATH="${SOLOPM_LAYOUT_STABILITY_DATABASE_PATH:-$LAYOUT_STABILITY_OUTPUT_DIR/SoloPM-layout-stability.sqlite}"
+LAYOUT_STABILITY_WINDOW_MIN_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_MIN_WIDTH:-980}"
+LAYOUT_STABILITY_WINDOW_MIN_HEIGHT="${SOLOPM_LAYOUT_STABILITY_WINDOW_MIN_HEIGHT:-720}"
+LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH:-1180}"
+LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT="${SOLOPM_LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT:-760}"
+LAYOUT_STABILITY_WINDOW_WIDE_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_WIDE_WIDTH:-1420}"
+LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT="${SOLOPM_LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT:-860}"
 SQLITE3="${SQLITE3:-sqlite3}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
@@ -34,6 +40,20 @@ if [[ ! "$LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX" =~ ^[0-9]+$ ]]; then
   echo "LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX must be a non-negative integer" >&2
   exit 2
 fi
+
+for dimension_name in \
+  LAYOUT_STABILITY_WINDOW_MIN_WIDTH \
+  LAYOUT_STABILITY_WINDOW_MIN_HEIGHT \
+  LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH \
+  LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT \
+  LAYOUT_STABILITY_WINDOW_WIDE_WIDTH \
+  LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT; do
+  dimension_value="${!dimension_name}"
+  if [[ ! "$dimension_value" =~ ^[0-9]+$ || "$dimension_value" -lt 1 ]]; then
+    echo "$dimension_name must be a positive integer" >&2
+    exit 2
+  fi
+done
 
 if ! command -v "$SQLITE3" >/dev/null 2>&1; then
   echo "BLOCKER: sqlite3 is required for layout stability smoke" >&2
@@ -238,6 +258,32 @@ wait_for_window_metadata() {
   done
 }
 
+set_project_board_window_size() {
+  local width="$1"
+  local height="$2"
+  # Resize the real app window through AX so the smoke covers AppKit/SwiftUI
+  # bridge behavior instead of only source-level layout contracts.
+  /usr/bin/osascript - "$APP_NAME" "$width" "$height" <<'APPLESCRIPT' >/dev/null
+on run argv
+  set appName to item 1 of argv
+  set targetWidth to (item 2 of argv) as integer
+  set targetHeight to (item 3 of argv) as integer
+  tell application "System Events"
+    if not (exists process appName) then error "process missing"
+    tell process appName
+      if not (exists window 1) then error "window missing"
+      set frontmost to true
+      try
+        perform action "AXRaise" of window 1
+      end try
+      set size of window 1 to {targetWidth, targetHeight}
+    end tell
+  end tell
+end run
+APPLESCRIPT
+  wait_for_window_metadata
+}
+
 capture_layout_screenshot() {
   local label="$1"
   local offset_label="$2"
@@ -402,6 +448,87 @@ wait_for_required_layout_subjects() {
   done
 }
 
+assert_no_negative_or_overlapping_frames() {
+  local label="$1"
+  local frame_file="$2"
+  shift 2 || true
+  local required_identifiers=("$@")
+  local window_id window_x window_y window_width window_height required_list
+  if [[ "${#required_identifiers[@]}" -eq 0 ]]; then
+    required_identifiers=("${REQUIRED_AX_IDENTIFIERS[@]}")
+  fi
+
+  wait_for_window_metadata
+  read -r window_id window_x window_y window_width window_height <"$WINDOW_METADATA_FILE"
+  required_list="$(printf '%s,' "${required_identifiers[@]}")"
+
+  # Body regions are the only sibling areas that must not overlap. Header is a
+  # full-width bar by design, so it is clipped-checked but excluded from overlap.
+  awk -F $'\t' \
+    -v label="$label" \
+    -v frameFile="$frame_file" \
+    -v winX="$window_x" \
+    -v winY="$window_y" \
+    -v winW="$window_width" \
+    -v winH="$window_height" \
+    -v threshold="$LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX" \
+    -v required="$required_list" '
+      function right(id) { return x[id] + w[id] }
+      function bottom(id) { return y[id] + h[id] }
+      function isBodyRegion(id) {
+        return id == "project-board-sidebar" || id == "project-board-detail" || id == "project-inspector"
+      }
+      function overlaps(a, b) {
+        return right(a) > x[b] + threshold &&
+          right(b) > x[a] + threshold &&
+          bottom(a) > y[b] + threshold &&
+          bottom(b) > y[a] + threshold
+      }
+      BEGIN {
+        split(required, requiredIds, ",")
+        for (i in requiredIds) {
+          if (requiredIds[i] != "") wanted[requiredIds[i]] = 1
+        }
+        winRight = winX + winW
+        winBottom = winY + winH
+      }
+      ($1 in wanted) && !seen[$1] {
+        id = $1
+        x[id] = $2 + 0
+        y[id] = $3 + 0
+        w[id] = $4 + 0
+        h[id] = $5 + 0
+        seen[id] = 1
+
+        if (w[id] <= 0 || h[id] <= 0 ||
+          x[id] < winX - threshold || y[id] < winY - threshold ||
+          right(id) > winRight + threshold || bottom(id) > winBottom + threshold) {
+          printf "BLOCKER: layout frame is clipped outside window after %s: %s=(%d,%d %dx%d) window=(%d,%d %dx%d) file=%s\n",
+            label, id, x[id], y[id], w[id], h[id], winX, winY, winW, winH, frameFile > "/dev/stderr"
+          failed = 1
+        }
+
+        if (isBodyRegion(id)) {
+          body[++bodyCount] = id
+        }
+      }
+      END {
+        for (i = 1; i <= bodyCount; i++) {
+          for (j = i + 1; j <= bodyCount; j++) {
+            a = body[i]
+            b = body[j]
+            if (overlaps(a, b)) {
+              printf "BLOCKER: layout frame overlaps after %s: %s=(%d,%d %dx%d) %s=(%d,%d %dx%d) file=%s\n",
+                label, a, x[a], y[a], w[a], h[a], b, x[b], y[b], w[b], h[b], frameFile > "/dev/stderr"
+              failed = 1
+            }
+          }
+        }
+        exit failed ? 8 : 0
+      }
+    ' "$frame_file"
+}
+
 sample_layout_frames() {
   local label="$1"
   shift || true
@@ -435,6 +562,8 @@ sample_layout_frames() {
       }
     ' "$frame_file" >>"$SAMPLES_FILE"
 
+    assert_no_negative_or_overlapping_frames "$label" "$frame_file" "${required_identifiers[@]}"
+
     printf -- '- `%s` sample %s (`t=%sms`) -> `%s`\n' "$label" "$sample_index" "$offset_ms" "$frame_file" >>"$SUMMARY_FILE"
     sample_index=$((sample_index + 1))
     previous_offset_ms="$offset_ms"
@@ -449,7 +578,12 @@ assert_layout_stable() {
   if [[ "${#required_identifiers[@]}" -eq 0 ]]; then
     required_identifiers=("${REQUIRED_AX_IDENTIFIERS[@]}")
   fi
-  sample_layout_frames "$label" "${required_identifiers[@]}"
+  if ! sample_layout_frames "$label" "${required_identifiers[@]}"; then
+    write_json_artifacts
+    echo "BLOCKER: layout structural guard failed after $label" >&2
+    echo "See $SAMPLES_FILE, $SAMPLES_JSON_FILE, $DIFF_FILE, and $DIFF_JSON_FILE" >&2
+    return 1
+  fi
 
   max_delta="$(
     awk -F $'\t' -v label="$label" -v threshold="$LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX" '
@@ -520,6 +654,15 @@ assert_layout_stable "sidebar-hidden" "project-board-header-bar" "project-board-
 
 click_sidebar_toggle
 assert_layout_stable "sidebar-restored"
+
+set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_MIN_WIDTH" "$LAYOUT_STABILITY_WINDOW_MIN_HEIGHT"
+assert_layout_stable "window-min"
+
+set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH" "$LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT"
+assert_layout_stable "window-standard"
+
+set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_WIDE_WIDTH" "$LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT"
+assert_layout_stable "window-wide"
 
 write_json_artifacts
 

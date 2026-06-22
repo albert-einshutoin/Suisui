@@ -5388,6 +5388,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("collect_ax_frames()"))
         XCTAssertTrue(script.contains("sample_layout_frames()"))
         XCTAssertTrue(script.contains("assert_layout_stable()"))
+        XCTAssertTrue(script.contains("set_project_board_window_size()"))
+        XCTAssertTrue(script.contains("assert_no_negative_or_overlapping_frames()"))
         XCTAssertTrue(script.contains("capture_layout_screenshot()"))
         XCTAssertTrue(script.contains("t=0ms"))
         XCTAssertTrue(script.contains("t=50ms"))
@@ -5398,6 +5400,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("write_json_artifacts()"))
         XCTAssertTrue(script.contains("samples.json"))
         XCTAssertTrue(script.contains("diff.json"))
+        XCTAssertTrue(script.contains("window-min"))
+        XCTAssertTrue(script.contains("window-standard"))
+        XCTAssertTrue(script.contains("window-wide"))
+        XCTAssertTrue(script.contains("BLOCKER: layout frame overlaps after"))
+        XCTAssertTrue(script.contains("BLOCKER: layout frame is clipped outside window after"))
         XCTAssertTrue(script.contains("\"phase\":\"before\""))
         XCTAssertTrue(script.contains("\"phase\":\"immediate\""))
         XCTAssertTrue(script.contains("\"phase\":\"after\""))
@@ -5415,6 +5422,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("- [x] scriptが差分artifactを `.tmp/layout-stability/` に保存することを確認するテストを追加する。"))
         XCTAssertTrue(phase.contains("- [x] thresholdは基本 `0px`、OS差が出る箇所だけ `1px` tolerance を明示する。"))
         XCTAssertTrue(phase.contains("- [x] 失敗時は before / immediate / after のJSONとPNGを保存する。"))
+        XCTAssertTrue(phase.contains("- [x] Window resize直後のoverlap / clipping / frame jumpを検出できる。"))
     }
 
     func testVoiceOverReviewCandidateScriptSeedsIsolatedDatabaseAndLaunchesSelectedProject() throws {

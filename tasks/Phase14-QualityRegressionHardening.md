@@ -122,7 +122,7 @@ Priority: High
 
 - [x] Sidebar toggle直後のheader / detail / inspector frame deltaを検出できる。
 - [ ] Toolbar display mode切替直後のheader action frame deltaを検出できる。
-- [ ] Window resize直後のoverlap / clipping / frame jumpを検出できる。
+- [x] Window resize直後のoverlap / clipping / frame jumpを検出できる。
 - [x] 失敗時にPR reviewerが再現コマンドとartifact pathを見て判断できる。
 
 ### Non-goals
@@ -347,12 +347,12 @@ Priority: Middle
 ### Tests First
 
 - [ ] LaunchExperienceTestsに「保存状態がwindow-lessでもProject Boardが見える」ことを維持するテストを追加または確認する。
-- [ ] Runtime smokeに最小幅/標準幅/広幅でのlayout stability checkを追加する。
+- [x] Runtime smokeに最小幅/標準幅/広幅でのlayout stability checkを追加する。
 - [ ] 前回選択Projectが削除済みの場合にsafe fallbackするテストを追加する。
 
 ### Implementation Steps
 
-- [ ] Runtime launch helperでwindow sizeを明示的に設定できるようにする。
+- [x] Runtime launch helperでwindow sizeを明示的に設定できるようにする。
 - [ ] selected destinationをseed DBとenvで制御する。
 - [ ] 削除済みselection、空DB、大量project、大量taskのfixtureを作る。
 - [ ] multi-windowが未対応の場合は、開けない/開いても独立stateになる境界をsource testで固定する。
