@@ -390,6 +390,30 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(boardSource.contains("toolbar.allowsUserCustomization = false"))
     }
 
+    func testProjectBoardToolbarDisplayModeOnlyAllowsIconAndTextOrIconOnly() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(boardSource.contains("projectBoardSupportedToolbarDisplayMode(for:"))
+        XCTAssertTrue(boardSource.contains("enforceProjectBoardSupportedToolbarDisplayMode("))
+        XCTAssertTrue(boardSource.contains("case .iconAndLabel:"))
+        XCTAssertTrue(boardSource.contains("case .iconOnly:"))
+        XCTAssertTrue(boardSource.contains("case .labelOnly, .default:"))
+        XCTAssertTrue(boardSource.contains("return .iconAndLabel"))
+        XCTAssertTrue(boardSource.contains("toolbar.displayMode = supportedDisplayMode"))
+        XCTAssertTrue(boardSource.contains("enforceProjectBoardSupportedToolbarDisplayMode(toolbar)"))
+        XCTAssertTrue(boardSource.contains("installToolbarDisplayModeMenuPruningIfNeeded()"))
+        XCTAssertTrue(boardSource.contains("NSMenu.didBeginTrackingNotification"))
+        XCTAssertTrue(boardSource.contains("pruneUnsupportedProjectBoardToolbarDisplayModeItems(from:"))
+        XCTAssertTrue(boardSource.contains("isProjectBoardToolbarDisplayModeMenu("))
+        XCTAssertTrue(boardSource.contains("\"Icon and Text\""))
+        XCTAssertTrue(boardSource.contains("\"Icon Only\""))
+        XCTAssertTrue(boardSource.contains("\"アイコンとテキスト\""))
+        XCTAssertTrue(boardSource.contains("\"アイコンのみ\""))
+        XCTAssertTrue(boardSource.contains("\"Text Only\""))
+        XCTAssertTrue(boardSource.contains("\"テキストのみ\""))
+        XCTAssertFalse(boardSource.contains("toolbar.displayMode = .labelOnly"))
+    }
+
     func testProjectBoardHeaderIsSharedAndColumnsUseSynchronizedBounds() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
         let detailStart = try XCTUnwrap(boardSource.range(of: "} detail: {"))

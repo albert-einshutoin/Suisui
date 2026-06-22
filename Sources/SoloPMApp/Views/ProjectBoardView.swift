@@ -473,6 +473,7 @@ private struct ProjectBoardToolbarLayoutBridge: NSViewRepresentable {
         view.scheduleNativeSidebarToggleRemoval()
         view.scheduleToolbarTrailingAlignment()
         view.installToolbarDisplayModeObservationIfNeeded()
+        view.installToolbarDisplayModeMenuPruningIfNeeded()
     }
 }
 
@@ -480,6 +481,7 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
     var onToolbarLayoutChanged: (() -> Void)?
     private weak var observedToolbar: NSToolbar?
     private var toolbarDisplayModeObservation: NSKeyValueObservation?
+    private var isToolbarDisplayModeMenuPruningInstalled = false
     private var observedToolbarDisplayMode: NSToolbar.DisplayMode?
     private var pendingToolbarLayoutRefresh: DispatchWorkItem?
 
@@ -488,6 +490,7 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
         scheduleNativeSidebarToggleRemoval()
         scheduleToolbarTrailingAlignment()
         installToolbarDisplayModeObservationIfNeeded()
+        installToolbarDisplayModeMenuPruningIfNeeded()
     }
 
     func removeNativeSidebarToggle(remainingAttempts: Int = 6) {
@@ -537,6 +540,7 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
             return
         }
 
+        _ = enforceProjectBoardSupportedToolbarDisplayMode(toolbar)
         toolbarDisplayModeObservation?.invalidate()
         observedToolbar = toolbar
         observedToolbarDisplayMode = toolbar.displayMode
@@ -553,6 +557,7 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
             return
         }
 
+        let changedUnsupportedMode = enforceProjectBoardSupportedToolbarDisplayMode(toolbar)
         observedToolbarDisplayMode = toolbar.displayMode
         pendingToolbarLayoutRefresh?.cancel()
 
@@ -561,10 +566,87 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
         }
         pendingToolbarLayoutRefresh = workItem
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + (changedUnsupportedMode ? 0 : 0.03), execute: workItem)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
             self?.refreshToolbarDependentLayout()
         }
+    }
+
+    @discardableResult
+    private func enforceProjectBoardSupportedToolbarDisplayMode(_ toolbar: NSToolbar) -> Bool {
+        let supportedDisplayMode = projectBoardSupportedToolbarDisplayMode(for: toolbar.displayMode)
+        guard toolbar.displayMode != supportedDisplayMode else {
+            return false
+        }
+
+        toolbar.displayMode = supportedDisplayMode
+        return true
+    }
+
+    private func projectBoardSupportedToolbarDisplayMode(for displayMode: NSToolbar.DisplayMode) -> NSToolbar.DisplayMode {
+        switch displayMode {
+        case .iconAndLabel:
+            return .iconAndLabel
+        case .iconOnly:
+            return .iconOnly
+        case .labelOnly, .default:
+            // Text-only toolbar buttons collapse the icon anchors that the
+            // Project Board header uses for stable scan order. Prefer the
+            // full label mode when AppKit asks for an unsupported display mode.
+            return .iconAndLabel
+        @unknown default:
+            return .iconAndLabel
+        }
+    }
+
+    func installToolbarDisplayModeMenuPruningIfNeeded() {
+        guard isToolbarDisplayModeMenuPruningInstalled == false else {
+            return
+        }
+
+        isToolbarDisplayModeMenuPruningInstalled = true
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(projectBoardToolbarMenuDidBeginTracking(_:)),
+            name: NSMenu.didBeginTrackingNotification,
+            object: nil
+        )
+    }
+
+    @objc private func projectBoardToolbarMenuDidBeginTracking(_ notification: Notification) {
+        guard let menu = notification.object as? NSMenu,
+              window != nil else {
+            return
+        }
+
+        pruneUnsupportedProjectBoardToolbarDisplayModeItems(from: menu)
+    }
+
+    private func pruneUnsupportedProjectBoardToolbarDisplayModeItems(from menu: NSMenu) {
+        for item in menu.items {
+            if let submenu = item.submenu {
+                pruneUnsupportedProjectBoardToolbarDisplayModeItems(from: submenu)
+            }
+        }
+
+        guard isProjectBoardToolbarDisplayModeMenu(menu) else {
+            return
+        }
+
+        let unsupportedTitles = Set(["Text Only", "テキストのみ"])
+        for item in menu.items.reversed() where unsupportedTitles.contains(item.title) {
+            // AppKit builds toolbar display-mode menus lazily and does not
+            // expose a public allowed-display-modes API. Remove only the
+            // unsupported text-only item so users keep the two stable modes.
+            menu.removeItem(item)
+        }
+    }
+
+    private func isProjectBoardToolbarDisplayModeMenu(_ menu: NSMenu) -> Bool {
+        let itemTitles = Set(menu.items.map(\.title))
+        let hasIconAndTextMode = itemTitles.contains("Icon and Text") || itemTitles.contains("アイコンとテキスト")
+        let hasIconOnlyMode = itemTitles.contains("Icon Only") || itemTitles.contains("アイコンのみ")
+        return hasIconAndTextMode && hasIconOnlyMode
     }
 
     private func refreshToolbarDependentLayout() {
