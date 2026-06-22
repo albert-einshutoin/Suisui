@@ -47,9 +47,13 @@ struct ProjectBoardView: View {
                         .tag(ProjectBoardSidebarDestination.projects)
 
                         ForEach(activeSidebarProjects) { project in
-                            ProjectSidebarRow(project: project) { rawIDs in
-                                viewModel.moveDroppedTasks(ids: rawIDs, toProjectID: project.id)
-                            }
+                            ProjectSidebarRow(
+                                project: project,
+                                onSelect: { selectedDestination = .project(project.id) },
+                                onMoveDroppedTasks: { rawIDs in
+                                    viewModel.moveDroppedTasks(ids: rawIDs, toProjectID: project.id)
+                                }
+                            )
                             .tag(ProjectBoardSidebarDestination.project(project.id))
                         }
                     }
@@ -57,9 +61,13 @@ struct ProjectBoardView: View {
                     if !completedSidebarProjects.isEmpty {
                         Section("Completed") {
                             ForEach(completedSidebarProjects) { project in
-                                ProjectSidebarRow(project: project) { rawIDs in
-                                    viewModel.moveDroppedTasks(ids: rawIDs, toProjectID: project.id)
-                                }
+                                ProjectSidebarRow(
+                                    project: project,
+                                    onSelect: { selectedDestination = .project(project.id) },
+                                    onMoveDroppedTasks: { rawIDs in
+                                        viewModel.moveDroppedTasks(ids: rawIDs, toProjectID: project.id)
+                                    }
+                                )
                                 .tag(ProjectBoardSidebarDestination.project(project.id))
                             }
                         }
@@ -68,9 +76,13 @@ struct ProjectBoardView: View {
                     if viewModel.showsArchivedProjects {
                         Section("Archived") {
                             ForEach(archivedSidebarProjects) { project in
-                                ProjectSidebarRow(project: project) { rawIDs in
-                                    viewModel.moveDroppedTasks(ids: rawIDs, toProjectID: project.id)
-                                }
+                                ProjectSidebarRow(
+                                    project: project,
+                                    onSelect: { selectedDestination = .project(project.id) },
+                                    onMoveDroppedTasks: { rawIDs in
+                                        viewModel.moveDroppedTasks(ids: rawIDs, toProjectID: project.id)
+                                    }
+                                )
                                 .tag(ProjectBoardSidebarDestination.project(project.id))
                             }
                         }
@@ -812,6 +824,7 @@ private enum ProjectBoardDisplayMode: String, CaseIterable, Identifiable {
 
 private struct ProjectSidebarRow: View {
     let project: ProjectBoardProject
+    let onSelect: () -> Void
     let onMoveDroppedTasks: ([String]) -> Bool
     @State private var isDropTargeted = false
 
@@ -832,8 +845,11 @@ private struct ProjectSidebarRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(project.accessibilitySidebarLabel)
-        .accessibilityHint("Drop task cards here to move them into this project.")
+        .accessibilityHint("Selects this project. Drop task cards here to move them into this project.")
         .accessibilityIdentifier("project-sidebar-row-\(project.id)")
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
+        .accessibilityAction(.default, onSelect)
         .padding(.vertical, 2)
         .padding(.horizontal, 4)
         .background(isDropTargeted ? project.sidebarDropTint.opacity(0.14) : Color.clear, in: RoundedRectangle(cornerRadius: 6))

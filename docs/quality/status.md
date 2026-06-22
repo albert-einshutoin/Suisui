@@ -1,14 +1,14 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T18:59:15Z
-Source commit: 8ed9280
+Generated at: 2026-06-22T20:04:54Z
+Source commit: 316f2f6
 
 ## Summary
 
-- Phase14 completion: 42/182 checked, 140 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 43/183 checked, 140 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 5 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-8ed9280.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-316f2f6.md`
 
 ## Unfinished Phase14 Items
 
@@ -16,32 +16,32 @@ Source commit: 8ed9280
 - [ ] tasks/Phase14-QualityRegressionHardening.md:149:- [ ] Sidebar toggleがanimation有効transactionへ戻ったら失敗するsource testを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:150:- [ ] Header action groupが固定height / trailing alignment / stable AX identifierを失ったら失敗するsource testを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:151:- [ ] Runtime smokeに以下の遷移を追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:170:- [ ] Project Boardの主要状態遷移でheader / sidebar / detail / inspectorのframe jumpが検出される。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:171:- [ ] Header action controlsが常に同じ順序とAX identifierで取得できる。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:172:- [ ] Runtime smokeで失敗した時、どの遷移でどのframeがズレたか出力される。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:173:- [ ] Project Board UI変更PRはこのsuiteをfocused verifierとして使える。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:195:- [ ] `ReleasePipelineTests` にvisual baseline manifestの存在と対象画面リストを確認するテストを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:196:- [ ] 画像が小さすぎる、黒画面、低情報量の場合にscriptが失敗するsource testを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:197:- [ ] baseline更新には明示フラグが必要で、通常実行では上書きしないことをテストする。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:201:- [ ] `docs/quality/visual-baselines.md` に対象画面、viewport、theme、許容差、更新手順を書く。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:202:- [ ] screenshot manifestをJSONまたはMarkdown tableで定義する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:203:- [ ] capture scriptでwindow sizeとthemeを固定する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:204:- [ ] perceptual hashまたは簡易histogramで黒画面/低情報量を検出する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:205:- [ ] 重なり検出はAX frameと併用し、画像比較だけにしない。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:206:- [ ] baseline update時はPRにbefore/after artifactを添付する運用にする。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:210:- [ ] Light/Dark/Systemで主要画面のスクリーンショット証跡が取れる。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:211:- [ ] 画像が空、黒、極端に小さい、対象windowでない場合に失敗する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:212:- [ ] baseline更新が意図的なデザイン変更としてレビューできる。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:213:- [ ] macOS rendering差で不必要にフレークしない許容差が文書化されている。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:235:- [ ] smoke scriptが isolated `SOLOPM_DATABASE_PATH` を必須にしていることをsource testで固定する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:236:- [ ] 実行後のSQLite stateを確認し、UI操作だけ成功してDB未反映の場合に失敗するテストを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:237:- [ ] click-pathごとに `PASS/FAIL/SKIP` ではなく、失敗理由と最後に見えたwindow情報を出すことをsource testで固定する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:241:- [ ] `project_task_crud`、`inbox_triage`、`today_complete`、`settings_save`、`voice_review` のscenarioに分ける。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:242:- [ ] 各scenarioはisolated DB seed -> app launch -> AX操作 -> DB/assertion -> artifact保存の順で実行する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:243:- [ ] destructive actionは必ずconfirmationを通ることを確認する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:244:- [ ] Settings保存ではKeychain secret値そのものをartifactへ出さない。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:245:- [ ] Voice CommandはAPI key未設定時にfake successへ倒れないことを確認する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:249:- [ ] Project / Task CRUDがUIから永続DBへ反映される。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:171:- [ ] Project Boardの主要状態遷移でheader / sidebar / detail / inspectorのframe jumpが検出される。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:172:- [ ] Header action controlsが常に同じ順序とAX identifierで取得できる。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:173:- [ ] Runtime smokeで失敗した時、どの遷移でどのframeがズレたか出力される。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:174:- [ ] Project Board UI変更PRはこのsuiteをfocused verifierとして使える。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:196:- [ ] `ReleasePipelineTests` にvisual baseline manifestの存在と対象画面リストを確認するテストを追加する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:197:- [ ] 画像が小さすぎる、黒画面、低情報量の場合にscriptが失敗するsource testを追加する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:198:- [ ] baseline更新には明示フラグが必要で、通常実行では上書きしないことをテストする。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:202:- [ ] `docs/quality/visual-baselines.md` に対象画面、viewport、theme、許容差、更新手順を書く。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:203:- [ ] screenshot manifestをJSONまたはMarkdown tableで定義する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:204:- [ ] capture scriptでwindow sizeとthemeを固定する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:205:- [ ] perceptual hashまたは簡易histogramで黒画面/低情報量を検出する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:206:- [ ] 重なり検出はAX frameと併用し、画像比較だけにしない。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:207:- [ ] baseline update時はPRにbefore/after artifactを添付する運用にする。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:211:- [ ] Light/Dark/Systemで主要画面のスクリーンショット証跡が取れる。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:212:- [ ] 画像が空、黒、極端に小さい、対象windowでない場合に失敗する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:213:- [ ] baseline更新が意図的なデザイン変更としてレビューできる。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:214:- [ ] macOS rendering差で不必要にフレークしない許容差が文書化されている。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:236:- [ ] smoke scriptが isolated `SOLOPM_DATABASE_PATH` を必須にしていることをsource testで固定する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:237:- [ ] 実行後のSQLite stateを確認し、UI操作だけ成功してDB未反映の場合に失敗するテストを追加する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:238:- [ ] click-pathごとに `PASS/FAIL/SKIP` ではなく、失敗理由と最後に見えたwindow情報を出すことをsource testで固定する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:242:- [ ] `project_task_crud`、`inbox_triage`、`today_complete`、`settings_save`、`voice_review` のscenarioに分ける。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:243:- [ ] 各scenarioはisolated DB seed -> app launch -> AX操作 -> DB/assertion -> artifact保存の順で実行する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:244:- [ ] destructive actionは必ずconfirmationを通ることを確認する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:245:- [ ] Settings保存ではKeychain secret値そのものをartifactへ出さない。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:246:- [ ] Voice CommandはAPI key未設定時にfake successへ倒れないことを確認する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:250:- [ ] Project / Task CRUDがUIから永続DBへ反映される。
 
 ## Open Risk Items
 
@@ -69,8 +69,8 @@ Source commit: 8ed9280
 - `script/check_runtime_accessible_crud_smoke.sh`
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-8ed9280.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-8ed9280.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-316f2f6.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-316f2f6.md ./script/release_readiness_report.sh`
 
 ## Notes
 

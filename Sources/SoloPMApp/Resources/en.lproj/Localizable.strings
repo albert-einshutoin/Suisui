@@ -449,6 +449,7 @@
 "Show completed tasks" = "Show completed tasks";
 "Show completed tasks in Inbox and Today" = "Show completed tasks in Inbox and Today";
 "Drop task cards here to move them into this project." = "Drop task cards here to move them into this project.";
+"Selects this project. Drop task cards here to move them into this project." = "Selects this project. Drop task cards here to move them into this project.";
 "No due work is scheduled for today." = "No due work is scheduled for today.";
 "Overdue high-priority work should be cleared first." = "Overdue high-priority work should be cleared first.";
 "Overdue work should be cleared before new tasks." = "Overdue work should be cleared before new tasks.";

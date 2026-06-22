@@ -40,6 +40,9 @@ window_y=""
 window_width=""
 window_height=""
 header_layout_project_id=""
+header_layout_project_task_id=""
+header_layout_alternate_project_id=""
+header_layout_alternate_task_id=""
 app_pid=""
 
 terminate_app() {
@@ -122,6 +125,60 @@ prepare_header_layout_candidate() {
   header_layout_project_id="$("$SQLITE3" -batch -noheader "$HEADER_LAYOUT_DATABASE_PATH" "SELECT id FROM projects WHERE title='VoiceOver Review Project' AND source_command='voiceover-review-seed' ORDER BY id DESC LIMIT 1;" | tail -n 1)"
   if [[ -z "${header_layout_project_id//[[:space:]]/}" ]]; then
     echo "BLOCKER: header layout candidate project was not seeded" >&2
+    return 1
+  fi
+  header_layout_project_task_id="$("$SQLITE3" -batch -noheader "$HEADER_LAYOUT_DATABASE_PATH" "SELECT id FROM tasks WHERE project_id=$header_layout_project_id AND title='Verify inline composer keyboard path' AND source_command='voiceover-review-seed' ORDER BY id DESC LIMIT 1;" | tail -n 1)"
+  if [[ -z "${header_layout_project_task_id//[[:space:]]/}" ]]; then
+    echo "BLOCKER: header layout candidate project task was not seeded" >&2
+    return 1
+  fi
+}
+
+seed_header_layout_selection_project() {
+  "$SQLITE3" "$HEADER_LAYOUT_DATABASE_PATH" <<SQL
+PRAGMA foreign_keys = ON;
+DELETE FROM tasks WHERE source_command='header-layout-selection-seed';
+DELETE FROM projects WHERE source_command='header-layout-selection-seed';
+
+INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command, created_at, updated_at)
+VALUES (
+  'Header Layout Selection Project',
+  'active',
+  'medium',
+  strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+9 days'),
+  NULL,
+  '["layout","selection"]',
+  'header-layout-selection-seed',
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+);
+SQL
+
+  header_layout_alternate_project_id="$("$SQLITE3" -batch -noheader "$HEADER_LAYOUT_DATABASE_PATH" "SELECT id FROM projects WHERE title='Header Layout Selection Project' AND source_command='header-layout-selection-seed' ORDER BY id DESC LIMIT 1;" | tail -n 1)"
+  if [[ -z "${header_layout_alternate_project_id//[[:space:]]/}" ]]; then
+    echo "BLOCKER: header layout alternate project was not seeded" >&2
+    return 1
+  fi
+
+  "$SQLITE3" "$HEADER_LAYOUT_DATABASE_PATH" <<SQL
+PRAGMA foreign_keys = ON;
+INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command, created_at, updated_at)
+VALUES (
+  $header_layout_alternate_project_id,
+  'Validate project selection layout',
+  'planned',
+  'Switch between projects and verify the header action group stays anchored to the detail column.',
+  strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+6 days'),
+  'medium',
+  'header-layout-selection-seed',
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+);
+SQL
+
+  header_layout_alternate_task_id="$("$SQLITE3" -batch -noheader "$HEADER_LAYOUT_DATABASE_PATH" "SELECT id FROM tasks WHERE project_id=$header_layout_alternate_project_id AND title='Validate project selection layout' AND source_command='header-layout-selection-seed' ORDER BY id DESC LIMIT 1;" | tail -n 1)"
+  if [[ -z "${header_layout_alternate_task_id//[[:space:]]/}" ]]; then
+    echo "BLOCKER: header layout alternate project task was not seeded" >&2
     return 1
   fi
 }
@@ -487,7 +544,6 @@ on clickMatchingIdentifier(uiElement, targetIdentifier)
       end try
       try
         click uiElement
-        return true
       end try
       try
         set itemPosition to position of uiElement
@@ -515,6 +571,46 @@ on run argv
       set frontmost to true
       if not my clickMatchingIdentifier(window 1, targetIdentifier) then
         error "BLOCKER: AX identifier was not clickable: " & targetIdentifier
+      end if
+    end tell
+  end tell
+end run
+APPLESCRIPT
+}
+
+click_ax_identifier_center() {
+  local target_identifier="$1"
+  /usr/bin/osascript - "$APP_NAME" "$target_identifier" <<'APPLESCRIPT' >/dev/null
+on clickIdentifierCenter(uiElement, targetIdentifier)
+  tell application "System Events"
+    set identifierValue to ""
+    try
+      set identifierValue to value of attribute "AXIdentifier" of uiElement
+    end try
+    if identifierValue is targetIdentifier then
+      set itemPosition to position of uiElement
+      set itemSize to size of uiElement
+      click at {((item 1 of itemPosition) + ((item 1 of itemSize) / 2)), ((item 2 of itemPosition) + ((item 2 of itemSize) / 2))}
+      return true
+    end if
+
+    try
+      repeat with childElement in UI elements of uiElement
+        if my clickIdentifierCenter(childElement, targetIdentifier) then return true
+      end repeat
+    end try
+  end tell
+  return false
+end clickIdentifierCenter
+
+on run argv
+  set appName to item 1 of argv
+  set targetIdentifier to item 2 of argv
+  tell application "System Events"
+    tell process appName
+      set frontmost to true
+      if not my clickIdentifierCenter(window 1, targetIdentifier) then
+        error "BLOCKER: AX identifier center was not clickable: " & targetIdentifier
       end if
     end tell
   end tell
@@ -574,6 +670,11 @@ click_terminal_toggle() {
 
 click_terminal_close() {
   click_first_ax_identifier "embedded-terminal-close"
+}
+
+click_project_sidebar_row() {
+  local project_id="$1"
+  click_ax_identifier_center "project-sidebar-row-$project_id"
 }
 
 click_sidebar_toggle() {
@@ -758,6 +859,7 @@ APPLESCRIPT
 trap terminate_app EXIT
 
 prepare_header_layout_candidate
+seed_header_layout_selection_project
 launch_header_layout_candidate
 wait_for_project_detail_visible
 
@@ -825,5 +927,17 @@ wait_for_ax_identifier_absent "embedded-terminal-close"
 assert_toolbar_layout_is_stable "terminal-closed-immediate" 5
 capture_window "terminal-closed"
 assert_action_buttons_are_trailing "terminal-closed"
+
+click_project_sidebar_row "$header_layout_alternate_project_id"
+wait_for_ax_identifier_present "task-status-move-in_progress-$header_layout_alternate_task_id"
+assert_toolbar_layout_is_stable "project-selection-alternate-immediate" 5
+capture_window "project-selection-alternate"
+assert_action_buttons_are_trailing "project-selection-alternate"
+
+click_project_sidebar_row "$header_layout_project_id"
+wait_for_ax_identifier_present "task-status-move-in_progress-$header_layout_project_task_id"
+assert_toolbar_layout_is_stable "project-selection-original-immediate" 5
+capture_window "project-selection-original"
+assert_action_buttons_are_trailing "project-selection-original"
 
 printf "OK: Project Board header layout smoke passed\n"

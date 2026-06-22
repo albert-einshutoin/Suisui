@@ -449,6 +449,7 @@
 "Show completed tasks" = "完了済みタスクを表示";
 "Show completed tasks in Inbox and Today" = "Inboxと今日に完了済みタスクを表示";
 "Drop task cards here to move them into this project." = "タスクカードをここへドロップすると、このプロジェクトへ移動します。";
+"Selects this project. Drop task cards here to move them into this project." = "このプロジェクトを選択します。タスクカードをここへドロップすると、このプロジェクトへ移動します。";
 "No due work is scheduled for today." = "今日予定されている期限付き作業はありません。";
 "Overdue high-priority work should be cleared first." = "期限超過の高優先度作業を先に片付けてください。";
 "Overdue work should be cleared before new tasks." = "新しいタスクの前に期限超過作業を片付けてください。";
