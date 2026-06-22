@@ -1,18 +1,17 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T22:50:38Z
-Source commit: d867334
+Generated at: 2026-06-22T22:56:37Z
+Source commit: e8159ed
 
 ## Summary
 
-- Phase14 completion: 111/183 checked, 72 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 112/183 checked, 71 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 4 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-d867334.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-e8159ed.md`
 
 ## Unfinished Phase14 Items
 
-- [ ] tasks/Phase14-QualityRegressionHardening.md:396:- [ ] `check_accessibility_preflight.sh --runtime` の対象画面をInbox/Today/Settingsへ広げる。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:397:- [ ] UI component追加時のAX identifier命名規則を定義する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:398:- [ ] Manual VoiceOver worksheetとruntime AX smokeの項目を対応付ける。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:402:- [ ] Mouse、keyboard、VoiceOver前提のAX pathで主要CRUD入口が検出できる。
@@ -42,6 +41,7 @@ Source commit: d867334
 - [ ] tasks/Phase14-QualityRegressionHardening.md:502:- [ ] Flake quarantine listが空でない場合、owner/reason/expiryが必要なことをテストする。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:506:- [ ] `docs/quality/test-triage.md` にfailure categoryを書く。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:507:- [ ] `docs/quality/flake-quarantine.md` を作り、期限付きでしかskipできない運用にする。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:508:- [ ] `scripts/ci.sh` はunit/sourceを必須、runtime/visualは明示フラグで実行する。
 
 ## Open Risk Items
 
@@ -69,8 +69,8 @@ Source commit: d867334
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
 - `script/check_visual_regression_smoke.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-d867334.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-d867334.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-e8159ed.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-e8159ed.md ./script/release_readiness_report.sh`
 
 ## Notes
 

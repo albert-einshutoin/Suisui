@@ -52,6 +52,12 @@ REQUIRED_RUNTIME_BUTTON_A11Y_MARKERS=(
   "project-inspector-archive=>Archives the selected project"
   "project-inspector-delete=>Deletes the selected project"
 )
+REQUIRED_RUNTIME_SCREEN_MARKERS=(
+  "Inbox sidebar=>sidebar-destination-inbox"
+  "Today sidebar=>sidebar-destination-today"
+  "Settings toolbar=>project-board-settings-link"
+  "Voice Command toolbar=>project-board-voice-command"
+)
 
 REQUIRED_SOURCE_ANCHORS=(
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-sidebar"
@@ -134,7 +140,7 @@ usage() {
   printf '%s\n' ""
   printf '%s\n' "Checks accessibility anchors before the manual VoiceOver release pass."
   printf '%s\n' "This is not a substitute for the manual VoiceOver pass."
-  printf '%s\n' "Runtime smoke fails when the visible window has fewer than $MIN_AX_BUTTONS buttons, $MIN_AX_TEXT_FIELDS text field, $MIN_AX_STATIC_TEXTS static texts, unlabeled buttons, generic button labels without help or child text, missing primary CRUD button help signals, missing primary button label/help signals, or missing VoiceOver focus path signals."
+  printf '%s\n' "Runtime smoke fails when the visible window has fewer than $MIN_AX_BUTTONS buttons, $MIN_AX_TEXT_FIELDS text field, $MIN_AX_STATIC_TEXTS static texts, unlabeled buttons, generic button labels without help or child text, missing primary CRUD button help signals, missing primary button label/help signals, missing workflow screen entry signals, or missing VoiceOver focus path signals."
 }
 
 while [[ "$#" -gt 0 ]]; do
@@ -334,9 +340,18 @@ for required_runtime_button_a11y_marker in "${REQUIRED_RUNTIME_BUTTON_A11Y_MARKE
   fi
 done
 required_runtime_button_a11y_marker_count="${#REQUIRED_RUNTIME_BUTTON_A11Y_MARKERS[@]}"
+required_runtime_screen_markers_joined=""
+for required_runtime_screen_marker in "${REQUIRED_RUNTIME_SCREEN_MARKERS[@]}"; do
+  if [[ -z "$required_runtime_screen_markers_joined" ]]; then
+    required_runtime_screen_markers_joined="$required_runtime_screen_marker"
+  else
+    required_runtime_screen_markers_joined="${required_runtime_screen_markers_joined}|||${required_runtime_screen_marker}"
+  fi
+done
+required_runtime_screen_marker_count="${#REQUIRED_RUNTIME_SCREEN_MARKERS[@]}"
 while true; do
   set +e
-  ax_output="$(/usr/bin/osascript - "$APP_NAME" "$MIN_AX_BUTTONS" "$MIN_AX_TEXT_FIELDS" "$MIN_AX_STATIC_TEXTS" "$required_runtime_crud_markers_joined" "$required_runtime_crud_marker_count" "$required_runtime_focus_markers_joined" "$required_runtime_focus_marker_count" "$required_runtime_button_a11y_markers_joined" "$required_runtime_button_a11y_marker_count" <<APPLESCRIPT 2>&1
+  ax_output="$(/usr/bin/osascript - "$APP_NAME" "$MIN_AX_BUTTONS" "$MIN_AX_TEXT_FIELDS" "$MIN_AX_STATIC_TEXTS" "$required_runtime_crud_markers_joined" "$required_runtime_crud_marker_count" "$required_runtime_focus_markers_joined" "$required_runtime_focus_marker_count" "$required_runtime_button_a11y_markers_joined" "$required_runtime_button_a11y_marker_count" "$required_runtime_screen_markers_joined" "$required_runtime_screen_marker_count" <<APPLESCRIPT 2>&1
 on run argv
   set appName to item 1 of argv
   set minButtons to (item 2 of argv) as integer
@@ -348,11 +363,14 @@ on run argv
   set requiredFocusMarkerCount to (item 8 of argv) as integer
   set requiredButtonA11yMarkersRaw to item 9 of argv
   set requiredButtonA11yMarkerCount to (item 10 of argv) as integer
+  set requiredScreenMarkersRaw to item 11 of argv
+  set requiredScreenMarkerCount to (item 12 of argv) as integer
   set previousTextItemDelimiters to text item delimiters of AppleScript
   set text item delimiters of AppleScript to "|||"
   set requiredCRUDMarkers to text items of requiredCRUDMarkersRaw
   set requiredFocusMarkers to text items of requiredFocusMarkersRaw
   set requiredButtonA11yMarkers to text items of requiredButtonA11yMarkersRaw
+  set requiredScreenMarkers to text items of requiredScreenMarkersRaw
   set text item delimiters of AppleScript to previousTextItemDelimiters
   set bestSummary to ""
   set bestScore to -1
@@ -367,6 +385,8 @@ on run argv
   set bestMissingFocusPathSignals to ""
   set bestButtonA11ySignalCount to 0
   set bestMissingButtonA11ySignals to ""
+  set bestScreenSignalCount to 0
+  set bestMissingScreenSignals to ""
   tell application "System Events"
     if not (exists process appName) then error appName & " process is not visible to System Events"
     tell process appName
@@ -567,7 +587,30 @@ on run argv
             end if
           end if
         end repeat
-        set currentSummary to "window=" & windowIndex & " name=" & windowName & ", buttons=" & buttonCount & ", textFields=" & textFieldCount & ", staticTexts=" & staticTextCount & ", unlabeledButtons=" & unlabeledButtonCount & ", genericButtons=" & genericButtonCount & ", crudSignals=" & crudSignalCount & "/" & requiredCRUDMarkerCount & ", buttonA11ySignals=" & buttonA11ySignalCount & "/" & requiredButtonA11yMarkerCount & ", focusPathSignals=" & focusPathSignalCount & "/" & requiredFocusMarkerCount
+        set screenSignalCount to 0
+        set missingScreenSignals to ""
+        repeat with requiredScreenMarker in requiredScreenMarkers
+          set requiredScreenMarkerText to requiredScreenMarker as text
+          if requiredScreenMarkerText is not "" then
+            set requiredScreenMarkerLabel to requiredScreenMarkerText
+            set requiredScreenMarkerNeedle to requiredScreenMarkerText
+            set screenMarkerSeparatorOffset to offset of "=>" in requiredScreenMarkerText
+            if screenMarkerSeparatorOffset > 0 then
+              set requiredScreenMarkerLabel to text 1 thru (screenMarkerSeparatorOffset - 1) of requiredScreenMarkerText
+              set requiredScreenMarkerNeedle to text (screenMarkerSeparatorOffset + 2) thru -1 of requiredScreenMarkerText
+            end if
+            if focusPathSignalText contains requiredScreenMarkerNeedle then
+              set screenSignalCount to screenSignalCount + 1
+            else
+              if missingScreenSignals is "" then
+                set missingScreenSignals to requiredScreenMarkerLabel
+              else
+                set missingScreenSignals to missingScreenSignals & "; " & requiredScreenMarkerLabel
+              end if
+            end if
+          end if
+        end repeat
+        set currentSummary to "window=" & windowIndex & " name=" & windowName & ", buttons=" & buttonCount & ", textFields=" & textFieldCount & ", staticTexts=" & staticTextCount & ", unlabeledButtons=" & unlabeledButtonCount & ", genericButtons=" & genericButtonCount & ", crudSignals=" & crudSignalCount & "/" & requiredCRUDMarkerCount & ", buttonA11ySignals=" & buttonA11ySignalCount & "/" & requiredButtonA11yMarkerCount & ", screenSignals=" & screenSignalCount & "/" & requiredScreenMarkerCount & ", focusPathSignals=" & focusPathSignalCount & "/" & requiredFocusMarkerCount
         if genericButtonDetails is not "" then set currentSummary to currentSummary & ", genericButtonDetails=" & genericButtonDetails
         set currentScore to buttonCount + textFieldCount + staticTextCount
         if bestSummary is "" then
@@ -584,6 +627,8 @@ on run argv
           set bestMissingFocusPathSignals to missingFocusPathSignals
           set bestButtonA11ySignalCount to buttonA11ySignalCount
           set bestMissingButtonA11ySignals to missingButtonA11ySignals
+          set bestScreenSignalCount to screenSignalCount
+          set bestMissingScreenSignals to missingScreenSignals
         else if currentScore > bestScore then
           set bestSummary to currentSummary
           set bestScore to currentScore
@@ -598,8 +643,10 @@ on run argv
           set bestMissingFocusPathSignals to missingFocusPathSignals
           set bestButtonA11ySignalCount to buttonA11ySignalCount
           set bestMissingButtonA11ySignals to missingButtonA11ySignals
+          set bestScreenSignalCount to screenSignalCount
+          set bestMissingScreenSignals to missingScreenSignals
         end if
-        if buttonCount >= minButtons and textFieldCount >= minTextFields and staticTextCount >= minStaticTexts and unlabeledButtonCount is 0 and genericButtonCount is 0 and crudSignalCount is requiredCRUDMarkerCount and buttonA11ySignalCount is requiredButtonA11yMarkerCount and focusPathSignalCount is requiredFocusMarkerCount then
+        if buttonCount >= minButtons and textFieldCount >= minTextFields and staticTextCount >= minStaticTexts and unlabeledButtonCount is 0 and genericButtonCount is 0 and crudSignalCount is requiredCRUDMarkerCount and buttonA11ySignalCount is requiredButtonA11yMarkerCount and screenSignalCount is requiredScreenMarkerCount and focusPathSignalCount is requiredFocusMarkerCount then
           return "OK: runtime AX smoke visible, windows=" & windowCount & ", " & currentSummary
         end if
       end repeat
@@ -612,6 +659,7 @@ on run argv
       if bestGenericButtonCount > 0 then error "runtime AX smoke has generic button labels without help or child text: " & bestGenericButtonCount & " (" & bestSummary & ")"
       if bestCRUDSignalCount < requiredCRUDMarkerCount then error "runtime AX smoke is missing primary CRUD button labels or help: " & bestMissingCRUDSignals & " (" & bestSummary & ")"
       if bestButtonA11ySignalCount < requiredButtonA11yMarkerCount then error "runtime AX smoke is missing primary button label or help: " & bestMissingButtonA11ySignals & " (" & bestSummary & ")"
+      if bestScreenSignalCount < requiredScreenMarkerCount then error "runtime AX smoke is missing workflow screen entry labels or help: " & bestMissingScreenSignals & " (" & bestSummary & ")"
       if bestFocusPathSignalCount < requiredFocusMarkerCount then error "runtime AX smoke is missing VoiceOver focus path labels or help: " & bestMissingFocusPathSignals & " (" & bestSummary & ")"
       error "runtime AX smoke did not find a qualifying visible window: " & bestSummary
     end tell
