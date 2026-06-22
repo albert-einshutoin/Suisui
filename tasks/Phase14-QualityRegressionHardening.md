@@ -311,22 +311,22 @@ Priority: Middle
 
 ### Tests First
 
-- [ ] 主要UI componentのmin/max frame指定が消えた場合に失敗するsource testを追加する。
-- [ ] AX frameのoverlap検出をruntime smokeに追加する。
+- [x] 主要UI componentのmin/max frame指定が消えた場合に失敗するsource testを追加する。
+- [x] AX frameのoverlap検出をruntime smokeに追加する。
 - [ ] 長い日本語/英語ラベル、空状態、エラー状態でbutton textがはみ出ないfixtureを追加する。
 
 ### Implementation Steps
 
-- [ ] `ProjectBoardLayoutMetrics` のような局所的metricsを作るか、既存DesignSystemへ追加する。
-- [ ] magic numberを局所定数へ寄せ、なぜ固定するかコメントする。
-- [ ] ローカライズ文字列が長い場合はline limit、minimumScaleFactor、tooltip、label/hintのどれで処理するか決める。
-- [ ] Runtime smokeで主要AX frameのoverlapとnegative sizeを検出する。
+- [x] `ProjectBoardLayoutMetrics` のような局所的metricsを作るか、既存DesignSystemへ追加する。
+- [x] magic numberを局所定数へ寄せ、なぜ固定するかコメントする。
+- [x] ローカライズ文字列が長い場合はline limit、minimumScaleFactor、tooltip、label/hintのどれで処理するか決める。
+- [x] Runtime smokeで主要AX frameのoverlapとnegative sizeを検出する。
 
 ### Acceptance Criteria
 
-- [ ] Header、sidebar、detail、inspector、cardsの寸法ルールがコードとテストで固定されている。
+- [x] Header、sidebar、detail、inspector、cardsの寸法ルールがコードとテストで固定されている。
 - [ ] 長いラベルやempty/error stateでUIが重ならない。
-- [ ] Magic numberの追加がレビューで見つけやすい。
+- [x] Magic numberの追加がレビューで見つけやすい。
 
 ### Non-goals
 

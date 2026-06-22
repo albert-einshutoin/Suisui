@@ -1,27 +1,19 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T21:57:53Z
-Source commit: 0a237f9
+Generated at: 2026-06-22T22:05:28Z
+Source commit: bb660fb
 
 ## Summary
 
-- Phase14 completion: 90/183 checked, 93 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 98/183 checked, 85 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 4 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-0a237f9.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-bb660fb.md`
 
 ## Unfinished Phase14 Items
 
-- [ ] tasks/Phase14-QualityRegressionHardening.md:314:- [ ] 主要UI componentのmin/max frame指定が消えた場合に失敗するsource testを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:315:- [ ] AX frameのoverlap検出をruntime smokeに追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:316:- [ ] 長い日本語/英語ラベル、空状態、エラー状態でbutton textがはみ出ないfixtureを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:320:- [ ] `ProjectBoardLayoutMetrics` のような局所的metricsを作るか、既存DesignSystemへ追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:321:- [ ] magic numberを局所定数へ寄せ、なぜ固定するかコメントする。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:322:- [ ] ローカライズ文字列が長い場合はline limit、minimumScaleFactor、tooltip、label/hintのどれで処理するか決める。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:323:- [ ] Runtime smokeで主要AX frameのoverlapとnegative sizeを検出する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:327:- [ ] Header、sidebar、detail、inspector、cardsの寸法ルールがコードとテストで固定されている。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:328:- [ ] 長いラベルやempty/error stateでUIが重ならない。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:329:- [ ] Magic numberの追加がレビューで見つけやすい。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:351:- [ ] LaunchExperienceTestsに「保存状態がwindow-lessでもProject Boardが見える」ことを維持するテストを追加または確認する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:353:- [ ] 前回選択Projectが削除済みの場合にsafe fallbackするテストを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:358:- [ ] selected destinationをseed DBとenvで制御する。
@@ -42,6 +34,14 @@ Source commit: 0a237f9
 - [ ] tasks/Phase14-QualityRegressionHardening.md:427:- [ ] invalid JSON / blank string / unknown enum / dangling foreign keyをfail-closedまたはsafe fallbackするテストを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:428:- [ ] UI ViewModelが破損recordを受け取ってもProject Board全体をUnavailableにしないテストを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:432:- [ ] Migration fixture DBを `.tmp` ではなく test resource として最小化して持つ。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:433:- [ ] 破損データの扱いを「表示除外」「repair candidate」「blocking error」に分類する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:434:- [ ] Store layerでvalidationし、Viewでad hoc parseしない。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:435:- [ ] Repair可能なものはaudit logに残す。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:439:- [ ] 既存ユーザーDBのshape差分でアプリが起動不能になりにくい。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:440:- [ ] 破損recordがある場合も、原因と対象がユーザー/ログに安全に見える。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:441:- [ ] 秘密情報やraw DB contentをerror messageへ出さない。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:463:- [ ] secret-like patternがtest fixture、screenshot metadata、release evidenceに出たら失敗するscanを追加する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:464:- [ ] Runtime smoke artifact directoryが `.gitignore` 対象であることをテストする。
 
 ## Open Risk Items
 
@@ -69,8 +69,8 @@ Source commit: 0a237f9
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
 - `script/check_visual_regression_smoke.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-0a237f9.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-0a237f9.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-bb660fb.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-bb660fb.md ./script/release_readiness_report.sh`
 
 ## Notes
 

@@ -6,6 +6,27 @@ import UniformTypeIdentifiers
 import AppKit
 #endif
 
+private enum ProjectBoardLayoutMetrics {
+    // Project Board keeps these metrics local because the split-view header,
+    // Kanban columns, inspector, and inline composer are tuned as one surface.
+    // Keeping the numbers named makes UI review catch accidental magic values
+    // without forcing a premature app-wide design system abstraction.
+    static let headerHeight: CGFloat = 44
+    static let terminalPanelMinHeight: CGFloat = 220
+    static let terminalPanelIdealHeight: CGFloat = 280
+    static let terminalPanelMaxHeight: CGFloat = 360
+    static let portfolioCardMinHeight: CGFloat = 230
+    static let overviewPanelMinHeight: CGFloat = 170
+    static let displayModePickerWidth: CGFloat = 252
+    static let boardColumnWidth: CGFloat = 244
+    static let emptyColumnMinHeight: CGFloat = 82
+    static let inlinePriorityPickerWidth: CGFloat = 112
+    static let taskMetadataChipMinWidth: CGFloat = 64
+    static let taskMetadataChipMinHeight: CGFloat = 24
+    static let taskStatusRailWidth: CGFloat = 4
+    static let taskStatusRailHeight: CGFloat = 44
+}
+
 struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
     @StateObject private var viewModel: ProjectBoardViewModel
@@ -181,7 +202,11 @@ struct ProjectBoardView: View {
                         workingDirectory: terminalWorkingDirectory,
                         isPresented: $isTerminalPanelPresented
                     )
-                    .frame(minHeight: 220, idealHeight: 280, maxHeight: 360)
+                    .frame(
+                        minHeight: ProjectBoardLayoutMetrics.terminalPanelMinHeight,
+                        idealHeight: ProjectBoardLayoutMetrics.terminalPanelIdealHeight,
+                        maxHeight: ProjectBoardLayoutMetrics.terminalPanelMaxHeight
+                    )
                 }
             }
             .id(toolbarLayoutRefreshToken)
@@ -352,7 +377,12 @@ struct ProjectBoardView: View {
         .buttonStyle(.bordered)
         .controlSize(.small)
         .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44, alignment: .trailing)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: ProjectBoardLayoutMetrics.headerHeight,
+            maxHeight: ProjectBoardLayoutMetrics.headerHeight,
+            alignment: .trailing
+        )
         .background(.bar)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project-board-header-bar")
@@ -1142,7 +1172,7 @@ private struct ProjectPortfolioCard: View {
             .accessibilityHint("Opens the selected project detail without changing task status.")
         }
         .padding(12)
-        .frame(minHeight: 230, alignment: .topLeading)
+        .frame(minHeight: ProjectBoardLayoutMetrics.portfolioCardMinHeight, alignment: .topLeading)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
@@ -1947,7 +1977,7 @@ private struct ProjectOverviewPanel<Content: View>: View {
             content()
         }
         .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 170, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: ProjectBoardLayoutMetrics.overviewPanelMinHeight, alignment: .topLeading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 }
@@ -2026,7 +2056,7 @@ private struct ProjectHeaderActions: View {
             }
         }
         .pickerStyle(.segmented)
-        .frame(width: 252)
+        .frame(width: ProjectBoardLayoutMetrics.displayModePickerWidth)
     }
 
     private var addTaskButton: some View {
@@ -2153,7 +2183,7 @@ private struct BoardColumnView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 82, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, minHeight: ProjectBoardLayoutMetrics.emptyColumnMinHeight, alignment: .topLeading)
                     .padding(10)
                     .background(column.status.tint.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
                     .overlay {
@@ -2170,7 +2200,7 @@ private struct BoardColumnView: View {
                 }
             }
         }
-        .frame(width: 244, alignment: .topLeading)
+        .frame(width: ProjectBoardLayoutMetrics.boardColumnWidth, alignment: .topLeading)
         .padding(10)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
@@ -2279,7 +2309,7 @@ private struct InlineTaskComposer: View {
                     }
                 }
                 .labelsHidden()
-                .frame(width: 112)
+                .frame(width: ProjectBoardLayoutMetrics.inlinePriorityPickerWidth)
                 .accessibilityIdentifier("inline-task-priority")
                 .accessibilityHint("Sets the initial task priority.")
 
@@ -2444,8 +2474,8 @@ private struct TaskStatusAccentRail: View {
     var body: some View {
         Capsule()
             .fill(tint.opacity(0.92))
-            .frame(width: 4)
-            .frame(height: 44)
+            .frame(width: ProjectBoardLayoutMetrics.taskStatusRailWidth)
+            .frame(height: ProjectBoardLayoutMetrics.taskStatusRailHeight)
             .accessibilityHidden(true)
     }
 }
@@ -2616,7 +2646,12 @@ private struct TaskMetadataChip: View {
         .foregroundStyle(tint)
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
-        .frame(minWidth: 64, maxWidth: .infinity, minHeight: 24, alignment: .leading)
+        .frame(
+            minWidth: ProjectBoardLayoutMetrics.taskMetadataChipMinWidth,
+            maxWidth: .infinity,
+            minHeight: ProjectBoardLayoutMetrics.taskMetadataChipMinHeight,
+            alignment: .leading
+        )
         .background(tint.opacity(0.10), in: Capsule())
         .help(value)
     }
