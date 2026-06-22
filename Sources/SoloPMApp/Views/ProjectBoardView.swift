@@ -120,6 +120,9 @@ struct ProjectBoardView: View {
             .projectBoardSynchronizedColumnBounds()
         } detail: {
             VStack(spacing: 0) {
+                projectBoardHeaderBar
+                Divider()
+
                 Group {
                     if let errorMessage = viewModel.errorMessage {
                         ContentUnavailableView(
@@ -204,67 +207,6 @@ struct ProjectBoardView: View {
                 .accessibilityIdentifier("project-board-sidebar-toggle")
                 .accessibilityLabel(sidebarToggleHelp)
             }
-
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button {
-                        beginTaskInteropExport()
-                    } label: {
-                        Label("Export Tasks", systemImage: "square.and.arrow.up")
-                    }
-                    .accessibilityIdentifier("project-board-export-tasks")
-
-                    Button {
-                        isImportingTaskInterop = true
-                    } label: {
-                        Label("Import Tasks", systemImage: "square.and.arrow.down")
-                    }
-                    .accessibilityIdentifier("project-board-import-tasks")
-
-                    Divider()
-
-                    Button {
-                        viewModel.recordTaskInteropFileFailure(ProjectBoardIntegrationUnavailableError.googleCalendarOAuthNotConfigured)
-                    } label: {
-                        Label("Google Calendar Sync", systemImage: "calendar.badge.plus")
-                    }
-                    .disabled(true)
-                    .help("Google Calendar sync requires Pro and OAuth authorization.")
-                } label: {
-                    Label("Integrations", systemImage: "arrow.left.arrow.right")
-                        .accessibilityIdentifier("project-board-integrations-menu")
-                }
-                .help("Import, export, and sync task data")
-                .accessibilityIdentifier("project-board-integrations-menu")
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    openWindow(id: "voice-capture")
-                } label: {
-                    Label("Voice Command", systemImage: "mic")
-                }
-                .accessibilityIdentifier("project-board-voice-command")
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                SettingsLink {
-                    Label("Settings", systemImage: "gearshape")
-                }
-                .help("Open Settings")
-                .accessibilityIdentifier("project-board-settings-link")
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    isTerminalPanelPresented.toggle()
-                } label: {
-                    Label("Terminal", systemImage: "terminal")
-                }
-                .keyboardShortcut("`", modifiers: [.control])
-                .help("Terminal")
-                .accessibilityIdentifier("project-board-terminal-toggle")
-            }
         }
         .toolbar(removing: .sidebarToggle)
         .background(
@@ -328,8 +270,90 @@ struct ProjectBoardView: View {
         columnVisibility == .detailOnly ? "Show Sidebar" : "Hide Sidebar"
     }
 
+    private var projectBoardHeaderBar: some View {
+        HStack(spacing: 8) {
+            Spacer(minLength: 16)
+
+            Menu {
+                Button {
+                    beginTaskInteropExport()
+                } label: {
+                    Label("Export Tasks", systemImage: "square.and.arrow.up")
+                }
+                .accessibilityIdentifier("project-board-export-tasks")
+
+                Button {
+                    isImportingTaskInterop = true
+                } label: {
+                    Label("Import Tasks", systemImage: "square.and.arrow.down")
+                }
+                .accessibilityIdentifier("project-board-import-tasks")
+
+                Divider()
+
+                Button {
+                    viewModel.recordTaskInteropFileFailure(ProjectBoardIntegrationUnavailableError.googleCalendarOAuthNotConfigured)
+                } label: {
+                    Label("Google Calendar Sync", systemImage: "calendar.badge.plus")
+                }
+                .disabled(true)
+                .help("Google Calendar sync requires Pro and OAuth authorization.")
+            } label: {
+                Label("Integrations", systemImage: "arrow.left.arrow.right")
+                    .labelStyle(.titleAndIcon)
+            }
+            .help("Import, export, and sync task data")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Integrations")
+            .accessibilityIdentifier("project-board-integrations-menu")
+
+            Button {
+                openWindow(id: "voice-capture")
+            } label: {
+                Label("Voice Command", systemImage: "mic")
+                    .labelStyle(.titleAndIcon)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Voice Command")
+            .accessibilityIdentifier("project-board-voice-command")
+
+            SettingsLink {
+                Label("Settings", systemImage: "gearshape")
+                    .labelStyle(.titleAndIcon)
+            }
+            .help("Open Settings")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Settings")
+            .accessibilityIdentifier("project-board-settings-link")
+
+            Button {
+                isTerminalPanelPresented.toggle()
+            } label: {
+                Label("Terminal", systemImage: "terminal")
+                    .labelStyle(.titleAndIcon)
+            }
+            .keyboardShortcut("`", modifiers: [.control])
+            .help("Terminal")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Terminal")
+            .accessibilityIdentifier("project-board-terminal-toggle")
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44, alignment: .trailing)
+        .background(.bar)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("project-board-header-bar")
+    }
+
     private func toggleSidebarVisibility() {
-        columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+            refreshProjectBoardColumnsAfterToolbarDisplayModeChange()
+        }
     }
 
     private func refreshProjectBoardColumnsAfterToolbarDisplayModeChange() {
@@ -459,7 +483,7 @@ private struct ProjectBoardToolbarLayoutBridge: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let view = ProjectBoardToolbarLayoutBridgeView(frame: .zero)
         view.onToolbarLayoutChanged = onToolbarLayoutChanged
-        view.scheduleToolbarTrailingAlignment()
+        view.performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: true)
         return view
     }
 
@@ -470,10 +494,9 @@ private struct ProjectBoardToolbarLayoutBridge: NSViewRepresentable {
         }
 
         view.onToolbarLayoutChanged = onToolbarLayoutChanged
-        view.scheduleNativeSidebarToggleRemoval()
-        view.scheduleToolbarTrailingAlignment()
         view.installToolbarDisplayModeObservationIfNeeded()
         view.installToolbarDisplayModeMenuPruningIfNeeded()
+        view.performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: true)
     }
 }
 
@@ -483,54 +506,32 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
     private var toolbarDisplayModeObservation: NSKeyValueObservation?
     private var isToolbarDisplayModeMenuPruningInstalled = false
     private var observedToolbarDisplayMode: NSToolbar.DisplayMode?
-    private var pendingToolbarLayoutRefresh: DispatchWorkItem?
+    private var isPerformingToolbarLayoutPass = false
+    private var didScheduleInitialToolbarLayoutStabilization = false
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        scheduleNativeSidebarToggleRemoval()
-        scheduleToolbarTrailingAlignment()
         installToolbarDisplayModeObservationIfNeeded()
         installToolbarDisplayModeMenuPruningIfNeeded()
+        performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: true)
+        scheduleInitialProjectBoardToolbarLayoutStabilizationIfNeeded()
     }
 
-    func removeNativeSidebarToggle(remainingAttempts: Int = 6) {
-        guard let toolbar = window?.toolbar else {
-            retryNativeSidebarToggleRemoval(remainingAttempts: remainingAttempts)
-            return
-        }
+    override func layout() {
+        super.layout()
+        performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: false)
+    }
 
+    private func removeNativeSidebarToggle(in toolbar: NSToolbar) {
         let removalIndexes = ProjectBoardToolbarLayoutPolicy.nativeSidebarRemovalIndexes(
             in: toolbar.projectBoardLayoutItems
         )
-
-        guard removalIndexes.isEmpty == false else {
-            retryNativeSidebarToggleRemoval(remainingAttempts: remainingAttempts)
-            return
-        }
 
         // Keep toolbar display modes user-adaptive; only remove the native
         // sidebar item and tracking separator that visually drift in this
         // SwiftUI-hosted split view.
         for index in removalIndexes.reversed() {
             toolbar.removeItem(at: index)
-        }
-    }
-
-    func scheduleNativeSidebarToggleRemoval() {
-        DispatchQueue.main.async { [weak self] in
-            self?.removeNativeSidebarToggle()
-        }
-    }
-
-    func scheduleToolbarTrailingAlignment() {
-        DispatchQueue.main.async { [weak self] in
-            self?.alignProjectBoardActionsToTrailingToolbarEdge(remainingAttempts: 6)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-            self?.alignProjectBoardActionsToTrailingToolbarEdge(remainingAttempts: 3)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) { [weak self] in
-            self?.alignProjectBoardActionsToTrailingToolbarEdge(remainingAttempts: 1)
         }
     }
 
@@ -545,31 +546,44 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
         observedToolbar = toolbar
         observedToolbarDisplayMode = toolbar.displayMode
         toolbarDisplayModeObservation = toolbar.observe(\.displayMode, options: [.new]) { [weak self] _, _ in
-            DispatchQueue.main.async {
-                self?.scheduleToolbarLayoutRefreshIfDisplayModeChanged()
+            guard let self else {
+                return
+            }
+
+            if Thread.isMainThread {
+                MainActor.assumeIsolated {
+                    self.reconcileToolbarDisplayModeChangeSynchronously()
+                }
+            } else {
+                DispatchQueue.main.async {
+                    self.reconcileToolbarDisplayModeChangeSynchronously()
+                }
             }
         }
     }
 
-    private func scheduleToolbarLayoutRefreshIfDisplayModeChanged() {
+    private func scheduleInitialProjectBoardToolbarLayoutStabilizationIfNeeded() {
+        guard didScheduleInitialToolbarLayoutStabilization == false else {
+            return
+        }
+
+        didScheduleInitialToolbarLayoutStabilization = true
+        for delay in [0.05, 0.25, 0.75] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: false)
+            }
+        }
+    }
+
+    private func reconcileToolbarDisplayModeChangeSynchronously() {
         guard let toolbar = observedToolbar ?? window?.toolbar,
               observedToolbarDisplayMode != toolbar.displayMode else {
             return
         }
 
-        let changedUnsupportedMode = enforceProjectBoardSupportedToolbarDisplayMode(toolbar)
+        _ = enforceProjectBoardSupportedToolbarDisplayMode(toolbar)
         observedToolbarDisplayMode = toolbar.displayMode
-        pendingToolbarLayoutRefresh?.cancel()
-
-        let workItem = DispatchWorkItem { [weak self] in
-            self?.refreshToolbarDependentLayout()
-        }
-        pendingToolbarLayoutRefresh = workItem
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + (changedUnsupportedMode ? 0 : 0.03), execute: workItem)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
-            self?.refreshToolbarDependentLayout()
-        }
+        performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: false)
     }
 
     @discardableResult
@@ -649,57 +663,63 @@ private final class ProjectBoardToolbarLayoutBridgeView: NSView {
         return hasIconAndTextMode && hasIconOnlyMode
     }
 
-    private func refreshToolbarDependentLayout() {
-        removeNativeSidebarToggle(remainingAttempts: 1)
-        alignProjectBoardActionsToTrailingToolbarEdge(remainingAttempts: 1)
+    func performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: Bool) {
+        guard isPerformingToolbarLayoutPass == false else {
+            return
+        }
+
+        guard let toolbar = window?.toolbar else {
+            if allowRetryIfToolbarMissing {
+                retrySynchronousProjectBoardToolbarLayoutPass(remainingAttempts: 6)
+            }
+            return
+        }
+
+        isPerformingToolbarLayoutPass = true
+        defer { isPerformingToolbarLayoutPass = false }
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            context.allowsImplicitAnimation = false
+
+            window?.titleVisibility = .hidden
+            toolbar.centeredItemIdentifier = nil
+            _ = enforceProjectBoardSupportedToolbarDisplayMode(toolbar)
+            removeNativeSidebarToggle(in: toolbar)
+            flushProjectBoardWindowLayout()
+        }
 
         // NSToolbar display-mode changes come from AppKit context menus, outside
         // SwiftUI state. Mark the host dirty and bump SwiftUI state so the
         // sidebar and detail columns recalculate their bounds together.
-        window?.contentView?.needsLayout = true
-        window?.contentView?.needsDisplay = true
         onToolbarLayoutChanged?()
     }
 
-    private func alignProjectBoardActionsToTrailingToolbarEdge(remainingAttempts: Int) {
-        guard let toolbar = window?.toolbar,
-              ProjectBoardToolbarLayoutPolicy.trailingActionStartIndex(in: toolbar.projectBoardLayoutItems) != nil else {
-            retryToolbarTrailingAlignment(remainingAttempts: remainingAttempts)
-            return
-        }
-
-        guard let insertionIndex = ProjectBoardToolbarLayoutPolicy.flexibleSpaceInsertionIndex(
-            in: toolbar.projectBoardLayoutItems
-        ) else {
-            return
-        }
-
-        // SwiftUI's primaryAction items can anchor after the split-view gutter
-        // while the sidebar is visible. A native flexible space keeps the same
-        // toolbar actions at the window's trailing edge in both sidebar states.
-        toolbar.insertItem(withItemIdentifier: .flexibleSpace, at: insertionIndex)
+    private func flushProjectBoardWindowLayout() {
+        window?.contentView?.needsLayout = true
+        window?.contentView?.layoutSubtreeIfNeeded()
+        window?.contentView?.needsDisplay = true
+        window?.displayIfNeeded()
     }
 
-    private func retryToolbarTrailingAlignment(remainingAttempts: Int) {
+    private func retrySynchronousProjectBoardToolbarLayoutPass(remainingAttempts: Int) {
         guard remainingAttempts > 0 else {
             return
         }
 
+        // SwiftUI may attach the NSToolbar after the representable enters the
+        // window, and its toolbar items can arrive shortly after the toolbar
+        // itself. Retry only for that initial attachment gap; user-triggered
+        // display-mode/sidebar changes run synchronously once the toolbar exists.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            self?.alignProjectBoardActionsToTrailingToolbarEdge(remainingAttempts: remainingAttempts - 1)
-        }
-    }
+            guard let self else {
+                return
+            }
 
-    private func retryNativeSidebarToggleRemoval(remainingAttempts: Int) {
-        guard remainingAttempts > 0 else {
-            return
-        }
-
-        // SwiftUI may attach the NavigationSplitView sidebar item after the
-        // representable enters the window, so retry briefly without changing
-        // the rest of the toolbar configuration.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            self?.removeNativeSidebarToggle(remainingAttempts: remainingAttempts - 1)
+            self.performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing: false)
+            if self.window?.toolbar == nil {
+                self.retrySynchronousProjectBoardToolbarLayoutPass(remainingAttempts: remainingAttempts - 1)
+            }
         }
     }
 

@@ -15,31 +15,7 @@ final class ProjectBoardToolbarLayoutPolicyTests: XCTestCase {
         XCTAssertEqual(ProjectBoardToolbarLayoutPolicy.nativeSidebarRemovalIndexes(in: items), [0, 1])
     }
 
-    func testTrailingActionStartUsesProjectActionIdentifiersAfterSidebarItemsAreRemoved() {
-        let items = [
-            toolbarItem(identifier: "project.sidebar", label: "Sidebar", accessibilityIdentifier: "project-board-sidebar-toggle"),
-            toolbarItem(identifier: "project.integrations", label: "Integrations", accessibilityIdentifier: "project-board-integrations-menu"),
-            toolbarItem(identifier: "project.voice", label: "Voice Command", accessibilityIdentifier: "project-board-voice-command"),
-            toolbarItem(identifier: "project.settings", label: "Settings", accessibilityIdentifier: "project-board-settings-link"),
-            toolbarItem(identifier: "project.terminal", label: "Terminal", accessibilityIdentifier: "project-board-terminal-toggle")
-        ]
-
-        XCTAssertEqual(ProjectBoardToolbarLayoutPolicy.trailingActionStartIndex(in: items), 1)
-        XCTAssertEqual(ProjectBoardToolbarLayoutPolicy.flexibleSpaceInsertionIndex(in: items), 1)
-    }
-
-    func testFlexibleSpaceIsNotDuplicatedWhenToolbarAlreadySeparatesSidebarAndActions() {
-        let items = [
-            toolbarItem(identifier: "project.sidebar", label: "Sidebar", accessibilityIdentifier: "project-board-sidebar-toggle"),
-            toolbarItem(identifier: "NSToolbarFlexibleSpaceItem"),
-            toolbarItem(identifier: "project.integrations", label: "Integrations", accessibilityIdentifier: "project-board-integrations-menu"),
-            toolbarItem(identifier: "project.voice", label: "Voice Command", accessibilityIdentifier: "project-board-voice-command")
-        ]
-
-        XCTAssertNil(ProjectBoardToolbarLayoutPolicy.flexibleSpaceInsertionIndex(in: items))
-    }
-
-    func testLocalizedToolbarLabelsStillIdentifySidebarAndTrailingActions() {
+    func testLocalizedToolbarLabelsStillIdentifyNativeSidebarItems() {
         let items = [
             toolbarItem(identifier: "project.sidebar", label: "サイドバー", accessibilityIdentifier: "project-board-sidebar-toggle"),
             toolbarItem(identifier: "swiftui-toggle-sidebar", label: "サイドバーを表示"),
@@ -49,7 +25,6 @@ final class ProjectBoardToolbarLayoutPolicyTests: XCTestCase {
         ]
 
         XCTAssertEqual(ProjectBoardToolbarLayoutPolicy.nativeSidebarRemovalIndexes(in: items), [1, 2])
-        XCTAssertEqual(ProjectBoardToolbarLayoutPolicy.trailingActionStartIndex(in: items), 3)
     }
 
     private func toolbarItem(
