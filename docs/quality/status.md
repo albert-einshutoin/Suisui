@@ -1,14 +1,14 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T16:27:02Z
-Source commit: f89d534
+Generated at: 2026-06-22T16:32:25Z
+Source commit: 10bf4a9
 
 ## Summary
 
 - Phase14 completion: 30/181 checked, 151 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 6 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-f89d534.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-10bf4a9.md`
 
 ## Unfinished Phase14 Items
 
@@ -66,11 +66,12 @@ Source commit: f89d534
 - `swift test --filter AppExperienceSourceTests`
 - `swift test --filter ReleasePipelineTests`
 - `swift test --filter ProjectBoardStoreTests`
+- `script/check_layout_stability_smoke.sh`
 - `script/check_runtime_accessible_crud_smoke.sh`
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-f89d534.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-f89d534.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-10bf4a9.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-10bf4a9.md ./script/release_readiness_report.sh`
 
 ## Notes
 

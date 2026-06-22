@@ -175,6 +175,7 @@ risk_manual="$(count_risk_coverage "manual-only")"
   printf -- '- `swift test --filter AppExperienceSourceTests`\n'
   printf -- '- `swift test --filter ReleasePipelineTests`\n'
   printf -- '- `swift test --filter ProjectBoardStoreTests`\n'
+  printf -- '- `script/check_layout_stability_smoke.sh`\n'
   printf -- '- `script/check_runtime_accessible_crud_smoke.sh`\n'
   printf -- '- `script/check_accessibility_preflight.sh --runtime`\n'
   printf -- '- `script/capture_ui_evidence.sh --doctor`\n'
