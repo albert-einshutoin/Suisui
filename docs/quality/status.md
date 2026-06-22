@@ -1,25 +1,17 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T20:04:54Z
-Source commit: 316f2f6
+Generated at: 2026-06-22T20:08:25Z
+Source commit: e3886c6
 
 ## Summary
 
-- Phase14 completion: 43/183 checked, 140 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 51/183 checked, 132 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 5 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-316f2f6.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-e3886c6.md`
 
 ## Unfinished Phase14 Items
 
-- [ ] tasks/Phase14-QualityRegressionHardening.md:148:- [ ] Header actionsがnative primary toolbar itemに戻ったら失敗するsource testを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:149:- [ ] Sidebar toggleがanimation有効transactionへ戻ったら失敗するsource testを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:150:- [ ] Header action groupが固定height / trailing alignment / stable AX identifierを失ったら失敗するsource testを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:151:- [ ] Runtime smokeに以下の遷移を追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:171:- [ ] Project Boardの主要状態遷移でheader / sidebar / detail / inspectorのframe jumpが検出される。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:172:- [ ] Header action controlsが常に同じ順序とAX identifierで取得できる。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:173:- [ ] Runtime smokeで失敗した時、どの遷移でどのframeがズレたか出力される。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:174:- [ ] Project Board UI変更PRはこのsuiteをfocused verifierとして使える。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:196:- [ ] `ReleasePipelineTests` にvisual baseline manifestの存在と対象画面リストを確認するテストを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:197:- [ ] 画像が小さすぎる、黒画面、低情報量の場合にscriptが失敗するsource testを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:198:- [ ] baseline更新には明示フラグが必要で、通常実行では上書きしないことをテストする。
@@ -42,6 +34,14 @@ Source commit: 316f2f6
 - [ ] tasks/Phase14-QualityRegressionHardening.md:245:- [ ] Settings保存ではKeychain secret値そのものをartifactへ出さない。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:246:- [ ] Voice CommandはAPI key未設定時にfake successへ倒れないことを確認する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:250:- [ ] Project / Task CRUDがUIから永続DBへ反映される。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:251:- [ ] Inbox item分類とUndoが実アプリで完走する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:252:- [ ] Today row completionがTask statusへ反映される。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:253:- [ ] Settings saveがUI stateとstore stateに反映される。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:254:- [ ] Voice Command review flowが承認前に止まり、audit logに残る。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:276:- [ ] UI layout correctionに `DispatchQueue.main.asyncAfter` やtimer retryを使う箇所が追加されたら失敗するsource testを追加する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:277:- [ ] layout-sensitive state mutationが `Transaction.disablesAnimations = true` または明示的な同期layout policyを持たない場合に検出するテストを追加する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:278:- [ ] AppKit bridgeが `layoutSubtreeIfNeeded` / `displayIfNeeded` の同期passを持つことを固定するテストを追加する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:282:- [ ] `docs/adr/NNNN-synchronous-ui-mutation-policy.md` を追加する。
 
 ## Open Risk Items
 
@@ -69,8 +69,8 @@ Source commit: 316f2f6
 - `script/check_runtime_accessible_crud_smoke.sh`
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-316f2f6.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-316f2f6.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-e3886c6.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-e3886c6.md ./script/release_readiness_report.sh`
 
 ## Notes
 

@@ -145,10 +145,10 @@ Project Board は sidebar、header、detail board、inspector、toolbar/AppKit b
 
 ### Tests First
 
-- [ ] Header actionsがnative primary toolbar itemに戻ったら失敗するsource testを追加する。
-- [ ] Sidebar toggleがanimation有効transactionへ戻ったら失敗するsource testを追加する。
-- [ ] Header action groupが固定height / trailing alignment / stable AX identifierを失ったら失敗するsource testを追加する。
-- [ ] Runtime smokeに以下の遷移を追加する。
+- [x] Header actionsがnative primary toolbar itemに戻ったら失敗するsource testを追加する。
+- [x] Sidebar toggleがanimation有効transactionへ戻ったら失敗するsource testを追加する。
+- [x] Header action groupが固定height / trailing alignment / stable AX identifierを失ったら失敗するsource testを追加する。
+- [x] Runtime smokeに以下の遷移を追加する。
   - [x] sidebar visible -> hidden -> visible
   - [x] iconAndLabel -> iconOnly -> iconAndLabel
   - [x] Board -> List -> Overview -> Board
@@ -168,10 +168,10 @@ Project Board は sidebar、header、detail board、inspector、toolbar/AppKit b
 
 ### Acceptance Criteria
 
-- [ ] Project Boardの主要状態遷移でheader / sidebar / detail / inspectorのframe jumpが検出される。
-- [ ] Header action controlsが常に同じ順序とAX identifierで取得できる。
-- [ ] Runtime smokeで失敗した時、どの遷移でどのframeがズレたか出力される。
-- [ ] Project Board UI変更PRはこのsuiteをfocused verifierとして使える。
+- [x] Project Boardの主要状態遷移でheader / sidebar / detail / inspectorのframe jumpが検出される。
+- [x] Header action controlsが常に同じ順序とAX identifierで取得できる。
+- [x] Runtime smokeで失敗した時、どの遷移でどのframeがズレたか出力される。
+- [x] Project Board UI変更PRはこのsuiteをfocused verifierとして使える。
 
 ### Non-goals
 
