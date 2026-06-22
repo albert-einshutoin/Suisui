@@ -536,22 +536,22 @@ VoiceOver、競合hands-on、Gatekeeper、clean environmentなどは手動gate�
 
 ### Tests First
 
-- [ ] Manual evidenceにfailure noteがある場合、linked regression testまたはfollow-up issueが必要なことをreportで検出する。
+- [x] Manual evidenceにfailure noteがある場合、linked regression testまたはfollow-up issueが必要なことをreportで検出する。
 - [x] `docs/quality/manual-to-automated-regression.md` が存在し、VoiceOver/Gatekeeper/competitorの戻し先を持つことをsource testで確認する。
 
 ### Implementation Steps
 
 - [x] 手動gateごとに「自動化へ戻せる部分」「manual-onlyに残す部分」を分類する。
-- [ ] VoiceOverで見つかったlabel/focus問題はAX/source testへ戻す。
-- [ ] Gatekeeper/clean environmentで見つかった起動問題はpackaging/preflight testへ戻す。
-- [ ] Competitor hands-onで見つかったUX差分はPhase taskまたはproduct docへ戻す。
+- [x] VoiceOverで見つかったlabel/focus問題はAX/source testへ戻す。
+- [x] Gatekeeper/clean environmentで見つかった起動問題はpackaging/preflight testへ戻す。
+- [x] Competitor hands-onで見つかったUX差分はPhase taskまたはproduct docへ戻す。
 - [x] Release action summaryに「manual finding regression follow-up」を表示する。
 
 ### Acceptance Criteria
 
-- [ ] 手動確認で見つかった問題が、次回以降の自動検出対象になる。
-- [ ] manual-only gateとautomation-backlogが混ざらない。
-- [ ] release前に未処理manual findingが見える。
+- [x] 手動確認で見つかった問題が、次回以降の自動検出対象になる。
+- [x] manual-only gateとautomation-backlogが混ざらない。
+- [x] release前に未処理manual findingが見える。
 
 ### Non-goals
 

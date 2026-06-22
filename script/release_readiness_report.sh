@@ -2530,6 +2530,55 @@ normalize_voiceover_context_value() {
   context_value="${context_value//\`/}"
   printf '%s' "$context_value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
 }
+manual_failure_note_value() {
+  local evidence_file="$1"
+  local note_label="$2"
+
+  awk -v label="$note_label" '
+    index($0, "- " label ":") == 1 {
+      value = $0
+      sub("^- " label ":[[:space:]]*", "", value)
+      print value
+      found = 1
+      exit
+    }
+    END {
+      if (found != 1) {
+        exit 1
+      }
+    }
+  ' "$evidence_file" || true
+}
+manual_failure_note_has_blocker() {
+  local evidence_file="$1"
+  local observed
+  local compact
+
+  observed="$(manual_failure_note_value "$evidence_file" "Blocker observed")"
+  compact="$(tr -d '[:space:]' <<<"$observed")"
+  if [[ -z "$compact" ]]; then
+    return 1
+  fi
+  if grep -Eiq '^(none|none\.|none during|none during .+ pass\.?|no blocker|no blockers|n/a|not observed)' <<<"$observed"; then
+    return 1
+  fi
+  return 0
+}
+manual_failure_follow_up_is_actionable() {
+  local evidence_file="$1"
+  local follow_up
+  local compact
+
+  follow_up="$(manual_failure_note_value "$evidence_file" "Follow-up source/test link")"
+  compact="$(tr -d '[:space:]' <<<"$follow_up")"
+  if [[ -z "$compact" ]]; then
+    return 1
+  fi
+  if grep -Eiq '^(none|none\.|n/a|tbd|todo|pending|placeholder|not needed|no follow)' <<<"$follow_up"; then
+    return 1
+  fi
+  grep -Eq '(Tests/|script/|docs/(quality|product|release)/|tasks/|https://github\.com/[^[:space:]]+/issues/[0-9]+|#[0-9]+|issue[[:space:]]*#[0-9]+|follow-up issue)' <<<"$follow_up"
+}
 if [[ ! -x "$accessibility_preflight_script" ]]; then
   voiceover_blocker "missing executable accessibility source preflight: $ACCESSIBILITY_PREFLIGHT_RELATIVE"
 else
@@ -2682,6 +2731,10 @@ else
     if [[ -n "$voiceover_source_commit" && "$voiceover_source_commit" != "$expected_source_commit" ]]; then
       voiceover_blocker "VoiceOver accessibility evidence source commit does not match current release-candidate source commit: expected $expected_source_commit"
     fi
+  fi
+
+  if manual_failure_note_has_blocker "$voiceover_evidence_file" && ! manual_failure_follow_up_is_actionable "$voiceover_evidence_file"; then
+    voiceover_blocker "VoiceOver accessibility evidence manual failure note lacks linked regression test or follow-up issue"
   fi
 fi
 if [[ "$voiceover_evidence_blocker_count" -gt 0 ]]; then
@@ -2865,6 +2918,10 @@ else
     if [[ -n "$competitor_source_commit" && "$competitor_source_commit" != "$expected_source_commit" ]]; then
       competitor_blocker "Competitor hands-on evidence source commit does not match current release-candidate source commit: expected $expected_source_commit"
     fi
+  fi
+
+  if manual_failure_note_has_blocker "$competitor_evidence_file" && ! manual_failure_follow_up_is_actionable "$competitor_evidence_file"; then
+    competitor_blocker "Competitor hands-on evidence manual failure note lacks linked regression test or follow-up issue"
   fi
 fi
 if [[ ! -f "$competitor_benchmark_file" ]]; then

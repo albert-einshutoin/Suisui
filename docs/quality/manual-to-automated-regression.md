@@ -19,6 +19,15 @@ For every failed or risky manual observation, record these fields in the relevan
 
 The action summary points back to this document so temporary `.tmp/` worksheets do not become the only place where follow-up routing is described.
 
+## Failure Note Contract
+
+Manual evidence files that include `## Failure Notes` must use
+`Follow-up source/test link` to point at the regression target before the lane is
+closed. Valid targets include `Tests/`, `script/`, `docs/product/`,
+`docs/quality/`, `tasks/`, or a tracked follow-up issue. `none`, `TBD`,
+`pending`, or a blank value is only valid when `Blocker observed` is also
+explicitly `none`.
+
 ## Manual VoiceOver
 
 Evidence source: `docs/release/evidence/accessibility-voiceover.md`

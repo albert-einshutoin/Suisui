@@ -48,7 +48,8 @@ final class QualitySourceContractTests: XCTestCase {
             "## Manual VoiceOver",
             "## Competitor Hands-On",
             "## Release Machine",
-            "## Manual Finding Intake"
+            "## Manual Finding Intake",
+            "## Failure Note Contract"
         ] {
             XCTAssertTrue(doc.contains(requiredSection), "manual bridge doc must include \(requiredSection)")
         }
@@ -56,6 +57,8 @@ final class QualitySourceContractTests: XCTestCase {
         for requiredMarker in [
             "manual-only",
             "automation-backlog",
+            "Follow-up source/test link",
+            "Blocker observed",
             "docs/release/evidence/accessibility-voiceover.md",
             "docs/release/evidence/competitor-hands-on.md",
             "packaging/release-evidence.json",

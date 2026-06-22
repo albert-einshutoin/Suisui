@@ -1,24 +1,17 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T23:39:13Z
-Source commit: 0199644
+Generated at: 2026-06-22T23:49:27Z
+Source commit: 37ea5d7
 
 ## Summary
 
-- Phase14 completion: 148/183 checked, 35 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 155/183 checked, 28 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 3 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-0199644.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-37ea5d7.md`
 
 ## Unfinished Phase14 Items
 
-- [ ] tasks/Phase14-QualityRegressionHardening.md:539:- [ ] Manual evidenceにfailure noteがある場合、linked regression testまたはfollow-up issueが必要なことをreportで検出する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:545:- [ ] VoiceOverで見つかったlabel/focus問題はAX/source testへ戻す。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:546:- [ ] Gatekeeper/clean environmentで見つかった起動問題はpackaging/preflight testへ戻す。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:547:- [ ] Competitor hands-onで見つかったUX差分はPhase taskまたはproduct docへ戻す。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:552:- [ ] 手動確認で見つかった問題が、次回以降の自動検出対象になる。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:553:- [ ] manual-only gateとautomation-backlogが混ざらない。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:554:- [ ] release前に未処理manual findingが見える。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:585:- [ ] `swift test`、focused tests、runtime smoke、visual smoke、manual evidenceの状態を分類する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:586:- [ ] `release_readiness_report.sh` から参照できるようにする。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:590:- [ ] 品質状態を1コマンドで確認できる。
@@ -42,6 +35,11 @@ Source commit: 0199644
 - [ ] tasks/Phase14-QualityRegressionHardening.md:621:- [ ] Sidebar toggle、toolbar display mode、window resize、theme switch、inspector open/closeの直後frame jumpを検出できる。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:622:- [ ] Runtime CRUD、Inbox、Today、Settings、Voice Commandの主要クリックパスがsmokeで検証される。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:623:- [ ] Visual screenshot smokeがLight/Dark/Systemの主要画面を検証し、黒画面/低情報量/対象window誤りを落とす。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:624:- [ ] Accessibility preflightが主要CRUDのlabel/help/focus/keyboard pathを検証する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:625:- [ ] Persistence/migration/security regression suiteが破損データとsecret leakageを検出する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:626:- [ ] Flake quarantineはowner、reason、expiryなしに追加できない。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:627:- [ ] Manual evidenceで見つかった問題を自動regressionへ戻す運用が文書化されている。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:629:- [ ] `swift test` がgreen。
 
 ## Open Risk Items
 
@@ -70,8 +68,8 @@ Source commit: 0199644
 - `script/check_visual_regression_smoke.sh`
 - `docs/quality/test-triage.md`
 - `docs/quality/flake-quarantine.md`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-0199644.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-0199644.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-37ea5d7.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-37ea5d7.md ./script/release_readiness_report.sh`
 
 ## Notes
 

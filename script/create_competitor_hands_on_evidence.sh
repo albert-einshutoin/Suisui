@@ -474,6 +474,13 @@ write_pending_evidence() {
     printf '%s\n' '- Defer:'
     printf '%s\n' '- Reject:'
     printf '\n'
+    printf '%s\n' '## Failure Notes'
+    printf '\n'
+    printf '%s\n' '- Blocker observed:'
+    printf '%s\n' '- Affected path:'
+    printf '%s\n' '- Follow-up source/test link:'
+    printf '%s\n' '- Fix owner:'
+    printf '\n'
     printf '%s\n' '## Completion Instructions'
     printf '\n'
     printf '%s\n' '1. Run this script with `--passed --checked-by NAME --confirm-manual-hands-on` only after the hands-on pass.'
@@ -797,6 +804,13 @@ write_passed_evidence() {
     printf -- '- Ship: %s\n' "$SHIP_DELTA"
     printf -- '- Defer: %s\n' "$DEFER_DELTA"
     printf -- '- Reject: %s\n' "$REJECT_DELTA"
+    printf '\n'
+    printf '%s\n' '## Failure Notes'
+    printf '\n'
+    printf '%s\n' '- Blocker observed: none during the competitor hands-on pass.'
+    printf '%s\n' '- Affected path: none.'
+    printf '%s\n' '- Follow-up source/test link: `docs/product/competitor-benchmark.md` hands-on benchmark closure.'
+    printf '%s\n' '- Fix owner: none.'
   } >"$OUTPUT_FILE"
 }
 
