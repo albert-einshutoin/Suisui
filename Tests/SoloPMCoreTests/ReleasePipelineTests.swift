@@ -5569,6 +5569,35 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("- [x] Window resize直後のoverlap / clipping / frame jumpを検出できる。"))
     }
 
+    func testProjectBoardStateRestorationSmokeScriptLaunchesEmptyNormalAndManyDatabases() throws {
+        let script = try readPackageFile("script/check_project_board_state_restoration_smoke.sh")
+        let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
+
+        XCTAssertTrue(script.contains("STATE_RESTORATION_OUTPUT_DIR=\"${SOLOPM_STATE_RESTORATION_OUTPUT_DIR:-$ROOT_DIR/.tmp/project-board-state-restoration}\""))
+        XCTAssertTrue(script.contains("./script/build_and_run.sh --build-only"))
+        XCTAssertTrue(script.contains("./script/prepare_voiceover_review_candidate.sh --database \"$database_path\" --no-launch --skip-build"))
+        XCTAssertTrue(script.contains("launch_state_case \"empty-database\""))
+        XCTAssertTrue(script.contains("launch_state_case \"normal-database\""))
+        XCTAssertTrue(script.contains("launch_state_case \"many-database\""))
+        XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH=\"$database_path\""))
+        XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"$selected_destination\""))
+        XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:42\""))
+        XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$seed_project_id\""))
+        XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"projects\""))
+        XCTAssertTrue(script.contains("seed_many_projects_and_tasks()"))
+        XCTAssertTrue(script.contains("STATE_RESTORATION_MANY_PROJECT_COUNT"))
+        XCTAssertTrue(script.contains("STATE_RESTORATION_MANY_TASKS_PER_PROJECT"))
+        XCTAssertTrue(script.contains("wait_for_project_board_window_metadata()"))
+        XCTAssertTrue(script.contains("script/ui_evidence_window_metadata.swift"))
+        XCTAssertTrue(script.contains("state-restoration-summary.md"))
+        XCTAssertTrue(script.contains("OK: Project Board state restoration smoke launched empty, normal, and many databases"))
+        XCTAssertTrue(script.contains("BLOCKER: Project Board state restoration"))
+        XCTAssertFalse(script.contains(":memory:"))
+        XCTAssertFalse(script.contains("not implemented yet"))
+
+        XCTAssertTrue(phase.contains("- [x] 空DB、通常DB、大量DBでProject Boardが起動する。"))
+    }
+
     func testVoiceOverReviewCandidateScriptSeedsIsolatedDatabaseAndLaunchesSelectedProject() throws {
         let script = try readPackageFile("script/prepare_voiceover_review_candidate.sh")
 

@@ -361,7 +361,7 @@ Priority: Middle
 
 ### Acceptance Criteria
 
-- [ ] 空DB、通常DB、大量DBでProject Boardが起動する。
+- [x] 空DB、通常DB、大量DBでProject Boardが起動する。
 - [x] 最小幅/標準幅/広幅でheaderとdetailが重ならない。
 - [x] 保存済みselectionが壊れていても起動不能にならない。
 - [x] 起動直後にwindowが見えない退行を検出できる。
