@@ -157,6 +157,8 @@ final class QualitySourceContractTests: XCTestCase {
     func testQualityStatusDashboardScriptAndSnapshotDocumentQualityGates() throws {
         let script = try readPackageFile("script/quality_status_report.sh")
         let status = try readPackageFile("docs/quality/status.md")
+        let releaseReadiness = try readPackageFile("script/release_readiness_report.sh")
+        let riskMap = try readPackageFile("docs/quality/regression-risk-map.md")
 
         for marker in [
             "tasks/Phase14-QualityRegressionHardening.md",
@@ -175,9 +177,24 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(status.contains("script/check_layout_stability_smoke.sh"))
         XCTAssertTrue(script.contains("script/check_visual_regression_smoke.sh"))
         XCTAssertTrue(status.contains("script/check_visual_regression_smoke.sh"))
+        XCTAssertTrue(script.contains("## Gate Classification"))
+        XCTAssertTrue(status.contains("## Gate Classification"))
+        XCTAssertTrue(status.contains("Lightweight PR gate"))
+        XCTAssertTrue(status.contains("Focused tests"))
+        XCTAssertTrue(status.contains("Runtime smoke"))
+        XCTAssertTrue(status.contains("Visual smoke"))
+        XCTAssertTrue(status.contains("Manual evidence"))
+        XCTAssertTrue(status.contains("Release readiness handoff"))
+        XCTAssertTrue(script.contains("script/release_readiness_report.sh"))
+        XCTAssertTrue(status.contains("script/release_readiness_report.sh"))
+        XCTAssertTrue(releaseReadiness.contains("Quality status dashboard"))
+        XCTAssertTrue(releaseReadiness.contains("script/quality_status_report.sh"))
+        XCTAssertTrue(releaseReadiness.contains("quality triage aid, not release evidence"))
+        XCTAssertTrue(status.contains("## Next Quality Gaps"))
         XCTAssertTrue(status.contains("## Unfinished Phase14 Items"))
         XCTAssertTrue(status.contains("## Open Risk Items"))
         XCTAssertTrue(status.contains("## Verification Commands"))
+        XCTAssertFalse(riskMap.contains("Coverage: open。"))
         XCTAssertNil(status.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
     }
 

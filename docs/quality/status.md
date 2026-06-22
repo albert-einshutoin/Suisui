@@ -1,22 +1,17 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T23:49:27Z
-Source commit: 37ea5d7
+Generated at: 2026-06-22T23:59:10Z
+Source commit: e9f9164
 
 ## Summary
 
-- Phase14 completion: 155/183 checked, 28 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
-- Open risk items: 3 (`docs/quality/regression-risk-map.md`)
+- Phase14 completion: 160/183 checked, 23 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Open risk items: 0 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-37ea5d7.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-e9f9164.md`
 
 ## Unfinished Phase14 Items
 
-- [ ] tasks/Phase14-QualityRegressionHardening.md:585:- [ ] `swift test`、focused tests、runtime smoke、visual smoke、manual evidenceの状態を分類する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:586:- [ ] `release_readiness_report.sh` から参照できるようにする。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:590:- [ ] 品質状態を1コマンドで確認できる。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:591:- [ ] 次に潰すべきテスト漏れが明確になる。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:592:- [ ] release readinessと重複せず、品質観点の補助reportとして使える。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:603:- [ ] `swift test --filter AppExperienceSourceTests`
 - [ ] tasks/Phase14-QualityRegressionHardening.md:604:- [ ] `swift test --filter ReleasePipelineTests`
 - [ ] tasks/Phase14-QualityRegressionHardening.md:605:- [ ] `swift test --filter ProjectBoardStoreTests`
@@ -43,9 +38,7 @@ Source commit: 37ea5d7
 
 ## Open Risk Items
 
-- [ ] docs/quality/regression-risk-map.md:92:  DB mutation に到達しないことの runtime smoke 拡張が未完了。 Coverage: open。
-- [ ] docs/quality/regression-risk-map.md:95:  しないことの source test が未着手。 Coverage: open。 Follow-up: P14-010。
-- [ ] docs/quality/regression-risk-map.md:98:  未着手。 Coverage: open。 Follow-up: P14-011。
+- [x] No open risk markers found.
 
 ## Runtime / Visual / Manual Evidence
 
@@ -56,20 +49,49 @@ Source commit: 37ea5d7
 | `docs/release/evidence/accessibility-voiceover.md` | passed | e488456 |
 | `docs/release/evidence/competitor-hands-on.md` | pending | unknown |
 
+## Gate Classification
+
+| Gate | Layer | Status | Evidence / command | Next action |
+| --- | --- | --- | --- | --- |
+| Lightweight PR gate | source + build | available | `scripts/ci.sh` | Use as the default fast PR verifier; opt into runtime, visual, or release lanes with SOLOPM_CI_* flags. |
+| Focused tests | source + unit | pending | `swift test --filter <suite>` | Run the three owner suites when touching UI contracts, release gates, or Project Board persistence. |
+| Full test suite | unit + integration | passed | `swift test` | Run before closing the Phase14 exit gate. |
+| Runtime smoke | runtime AX | pending | `script/check_runtime_accessible_crud_smoke.sh` | Run on a visible macOS session to cover CRUD, Inbox, Today, Settings, Voice Command, and layout stability. |
+| Visual smoke | visual | pending | `script/check_visual_regression_smoke.sh` | Use screenshot doctor first, then compare Light/Dark/System evidence. |
+| Manual evidence | manual | VoiceOver: passed; Competitor: pending | `docs/release/evidence/accessibility-voiceover.md` | Manual findings must link back through docs/quality/manual-to-automated-regression.md. |
+| Release readiness handoff | release | available | `script/release_readiness_report.sh` | Run after quality gaps are classified; readiness remains the release gate, not this dashboard. |
+
+## Next Quality Gaps
+
+Unchecked Phase14 items to close next:
+- [ ] tasks/Phase14-QualityRegressionHardening.md:603:- [ ] `swift test --filter AppExperienceSourceTests`
+- [ ] tasks/Phase14-QualityRegressionHardening.md:604:- [ ] `swift test --filter ReleasePipelineTests`
+- [ ] tasks/Phase14-QualityRegressionHardening.md:605:- [ ] `swift test --filter ProjectBoardStoreTests`
+- [ ] tasks/Phase14-QualityRegressionHardening.md:606:- [ ] `swift test`
+- [ ] tasks/Phase14-QualityRegressionHardening.md:607:- [ ] `bash -n script/check_project_board_header_layout_smoke.sh`
+
+- [ ] Manual evidence status is VoiceOver=passed, Competitor=pending. Next: use `script/release_readiness_report.sh` for release evidence blockers and link any findings to regression coverage.
+
 ## Verification Commands
 
+- `scripts/ci.sh`
 - `swift test --filter AppExperienceSourceTests`
 - `swift test --filter ReleasePipelineTests`
 - `swift test --filter ProjectBoardStoreTests`
+- `swift test`
+- `bash -n script/check_project_board_header_layout_smoke.sh`
+- `script/check_project_board_header_layout_smoke.sh`
 - `script/check_layout_stability_smoke.sh`
 - `script/check_runtime_accessible_crud_smoke.sh`
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
 - `script/check_visual_regression_smoke.sh`
+- `script/check_security_regressions.sh`
+- `script/quality_status_report.sh`
 - `docs/quality/test-triage.md`
 - `docs/quality/flake-quarantine.md`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-37ea5d7.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-37ea5d7.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-e9f9164.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-e9f9164.md ./script/release_readiness_report.sh`
 
 ## Notes
 

@@ -45,6 +45,7 @@ COMPETITOR_BENCHMARK_RELATIVE="docs/product/competitor-benchmark.md"
 MCP_REVIEW_RELATIVE="docs/mcp-compliance.md"
 MCP_EVIDENCE_RELATIVE="docs/release/evidence/mcp-inspector.md"
 MCP_COMPLIANCE_RELATIVE="script/verify_mcp_compliance.sh"
+QUALITY_STATUS_RELATIVE="script/quality_status_report.sh"
 RUNTIME_SOURCE_DIRS=(
   "$ROOT_DIR/Sources/SoloPMCore"
   "$ROOT_DIR/Sources/SoloPMApp"
@@ -1381,6 +1382,10 @@ write_release_actions() {
     printf -- "- Competitor hands-on deltas should link to \`docs/product/competitor-benchmark.md\`, a Phase task, or a focused UI regression test.\n"
     printf -- "- Release-machine failures should link to \`script/verify_release_environment.sh\` or \`Tests/SoloPMCoreTests/ReleasePipelineTests.swift\`.\n\n"
 
+    printf "## Quality Status Dashboard\n"
+    printf -- "- Run \`script/quality_status_report.sh\` before rerunning readiness to classify lightweight PR gate, focused tests, runtime smoke, visual smoke, and manual evidence gaps.\n"
+    printf -- "- It is a quality triage aid, not release evidence; release readiness still depends on evidence-specific gates below.\n\n"
+
     write_operator_priority_queue
 
     printf "## Current Blocker Groups\n"
@@ -2133,6 +2138,14 @@ elif [[ -z "$AUTOMATED_PREFLIGHT_EVIDENCE_FILE" && "$AUTOMATED_PREFLIGHT_EVIDENC
   printf "INFO: no automated preflight evidence file provided or discovered at %s; local proof gates must run in this report or remain blockers.\n" "$(automated_preflight_default_relative_path)"
 else
   blocker "automated preflight evidence is invalid: $AUTOMATED_PREFLIGHT_EVIDENCE_REASON"
+fi
+
+section "Quality status dashboard"
+quality_status_script="$ROOT_DIR/$QUALITY_STATUS_RELATIVE"
+if [[ ! -x "$quality_status_script" ]]; then
+  blocker "missing quality status dashboard helper: $QUALITY_STATUS_RELATIVE"
+else
+  printf "INFO: %s is a quality triage aid, not release evidence; use it before readiness to classify lightweight PR gate, focused tests, runtime smoke, visual smoke, and manual evidence gaps.\n" "$QUALITY_STATUS_RELATIVE"
 fi
 
 section "Release CI preflight"

@@ -86,23 +86,28 @@ runtime AX smoke で固定する。Phase 14 で加わった layout stability har
 - Competitor hands-on (競合プロダクトの UX 差分) — `script/create_competitor_hands_on_evidence.sh`。
   Coverage: manual-only。 Follow-up: P14-013。
 
-## Open risks (P14-001 baseline, not yet covered by tests)
+## Baseline risks covered by Phase14 follow-ups
 
 - destructive confirmation (project archive, task delete) が confirmation なしで
-  DB mutation に到達しないことの runtime smoke 拡張が未完了。 Coverage: open。
-  Follow-up: P14-005, P14-009。
+  DB mutation に到達しないことは `script/check_runtime_accessible_crud_smoke.sh`
+  の pre-confirmation mutation check で固定する。 Coverage: automated。
+  Follow-up: P14-005, P14-009 closed。
 - persistence / migration の破損 record が Project Board 全体を Unavailable に
-  しないことの source test が未着手。 Coverage: open。 Follow-up: P14-010。
+  しないことは `ProjectBoardStoreTests` の legacy task-shape fixture、
+  dangling project fallback、corrupted priority skip / audit test で固定する。
+  Coverage: automated。 Follow-up: P14-010 closed。
 - secret-like pattern (API key, OAuth token, MCP secret, file path) が test
-  fixture / screenshot metadata / release evidence へ漏れていないことの scan が
-  未着手。 Coverage: open。 Follow-up: P14-011。
+  fixture / screenshot metadata / release evidence へ漏れていないことは
+  `script/check_security_regressions.sh` と release/source contract test で固定する。
+  Coverage: automated。 Follow-up: P14-011 closed。
 - flake quarantine 運用は `docs/quality/test-triage.md` /
   `docs/quality/flake-quarantine.md` と source test で owner/reason/expiry を固定し、
   `script/release_readiness_report.sh` の action summary が最小再現コマンドを返す。
-  Coverage: partial。 Follow-up: P14-013 manual finding bridge。
+  Coverage: automated。 Follow-up: P14-012, P14-013 closed。
 - quality status dashboard (`script/quality_status_report.sh`) は Phase14 未完了項目、
-  open risk、runtime / visual / manual evidence、推奨 verifier を出力するbaselineを持つ。
-  Coverage: partial。 Follow-up: P14-014 の release readiness 集約と full gate分類。
+  risk coverage、runtime / visual / manual evidence、推奨 verifier、次の品質gapを出力する。
+  `script/release_readiness_report.sh` はこの dashboard を quality triage aid として参照するが、
+  release evidence にはしない。 Coverage: automated。 Follow-up: P14-014 closed。
 
 ## How to use this map
 

@@ -582,14 +582,14 @@ Priority: Low
 - [x] `script/quality_status_report.sh` を作る。
 - [x] `tasks/Phase14-QualityRegressionHardening.md` の未完了項目を集計する。
 - [x] 直近のruntime/visual artifact pathを表示する。
-- [ ] `swift test`、focused tests、runtime smoke、visual smoke、manual evidenceの状態を分類する。
-- [ ] `release_readiness_report.sh` から参照できるようにする。
+- [x] `swift test`、focused tests、runtime smoke、visual smoke、manual evidenceの状態を分類する。
+- [x] `release_readiness_report.sh` から参照できるようにする。
 
 ### Acceptance Criteria
 
-- [ ] 品質状態を1コマンドで確認できる。
-- [ ] 次に潰すべきテスト漏れが明確になる。
-- [ ] release readinessと重複せず、品質観点の補助reportとして使える。
+- [x] 品質状態を1コマンドで確認できる。
+- [x] 次に潰すべきテスト漏れが明確になる。
+- [x] release readinessと重複せず、品質観点の補助reportとして使える。
 
 ### Non-goals
 
