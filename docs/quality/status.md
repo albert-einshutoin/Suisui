@@ -1,19 +1,17 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T23:04:24Z
-Source commit: 071db5b
+Generated at: 2026-06-22T23:06:59Z
+Source commit: 139d4bb
 
 ## Summary
 
-- Phase14 completion: 114/183 checked, 69 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 116/183 checked, 67 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 4 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-071db5b.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-139d4bb.md`
 
 ## Unfinished Phase14 Items
 
-- [ ] tasks/Phase14-QualityRegressionHardening.md:402:- [ ] Mouse、keyboard、VoiceOver前提のAX pathで主要CRUD入口が検出できる。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:404:- [ ] 手動VoiceOver前に明らかなlabel/focus漏れを自動検出できる。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:426:- [ ] 古いschemaから最新schemaへのmigration testを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:427:- [ ] invalid JSON / blank string / unknown enum / dangling foreign keyをfail-closedまたはsafe fallbackするテストを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:428:- [ ] UI ViewModelが破損recordを受け取ってもProject Board全体をUnavailableにしないテストを追加する。
@@ -42,6 +40,8 @@ Source commit: 071db5b
 - [ ] tasks/Phase14-QualityRegressionHardening.md:508:- [ ] `scripts/ci.sh` はunit/sourceを必須、runtime/visualは明示フラグで実行する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:509:- [ ] `release_readiness_report.sh` はruntime/visual/manual evidenceを集約する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:510:- [ ] 失敗時は最小再現コマンドをaction summaryに出す。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:514:- [ ] PRでは速いテストで明確に落ちる。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:515:- [ ] UI/release前にはruntime/visual gateが実行できる。
 
 ## Open Risk Items
 
@@ -69,8 +69,8 @@ Source commit: 071db5b
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
 - `script/check_visual_regression_smoke.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-071db5b.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-071db5b.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-139d4bb.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-139d4bb.md ./script/release_readiness_report.sh`
 
 ## Notes
 

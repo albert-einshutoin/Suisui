@@ -125,6 +125,32 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(phase.contains("- [x] Manual VoiceOver worksheetとruntime AX smokeの項目を対応付ける。"))
     }
 
+    func testPhase14AccessibilityAcceptanceIsBackedByAutomatedContracts() throws {
+        let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
+        let accessibilityPreflight = try readPackageFile("script/check_accessibility_preflight.sh")
+        let runtimeWorkflow = try readPackageFile("script/check_runtime_workflow_smoke.sh")
+        let focusPaths = try readPackageFile("docs/quality/accessibility-focus-paths.md")
+
+        for marker in [
+            "crudSignals=",
+            "buttonA11ySignals=",
+            "screenSignals=",
+            "focusPathSignals=",
+            "runtime AX smoke is missing primary button label or help",
+            "runtime AX smoke is missing workflow screen entry labels or help"
+        ] {
+            XCTAssertTrue(accessibilityPreflight.contains(marker), "preflight must enforce \(marker)")
+        }
+
+        XCTAssertTrue(runtimeWorkflow.contains("project_task_crud"))
+        XCTAssertTrue(runtimeWorkflow.contains("inbox_triage"))
+        XCTAssertTrue(runtimeWorkflow.contains("today_complete"))
+        XCTAssertTrue(runtimeWorkflow.contains("settings_save"))
+        XCTAssertTrue(focusPaths.contains("Runtime Smoke To Manual Worksheet Mapping"))
+        XCTAssertTrue(phase.contains("- [x] Mouse、keyboard、VoiceOver前提のAX pathで主要CRUD入口が検出できる。"))
+        XCTAssertTrue(phase.contains("- [x] 手動VoiceOver前に明らかなlabel/focus漏れを自動検出できる。"))
+    }
+
     func testQualityStatusDashboardScriptAndSnapshotDocumentQualityGates() throws {
         let script = try readPackageFile("script/quality_status_report.sh")
         let status = try readPackageFile("docs/quality/status.md")

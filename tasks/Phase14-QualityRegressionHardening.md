@@ -399,9 +399,9 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 
 ### Acceptance Criteria
 
-- [ ] Mouse、keyboard、VoiceOver前提のAX pathで主要CRUD入口が検出できる。
+- [x] Mouse、keyboard、VoiceOver前提のAX pathで主要CRUD入口が検出できる。
 - [x] destructive actionはconfirmationを経由しないとDB mutationしない。
-- [ ] 手動VoiceOver前に明らかなlabel/focus漏れを自動検出できる。
+- [x] 手動VoiceOver前に明らかなlabel/focus漏れを自動検出できる。
 
 ### Non-goals
 
