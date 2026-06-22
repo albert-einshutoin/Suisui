@@ -51,6 +51,20 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(try store.load(), settings)
     }
 
+    func testUserDefaultsAppSettingsStoreCanUseRuntimeSuiteOverride() throws {
+        let suiteName = "SoloPM.AppSettingsRuntimeSuite.\(UUID().uuidString)"
+        let defaults = UserDefaultsAppSettingsStore.defaultUserDefaults(environment: [
+            UserDefaultsAppSettingsStore.suiteNameEnvironmentKey: suiteName
+        ])
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let settings = AppSettings(notificationsEnabled: true)
+
+        try store.save(settings)
+
+        XCTAssertEqual(try store.load().notificationsEnabled, true)
+    }
+
     @MainActor
     func testAppSettingsViewModelReportsCorruptedStoredSettingsInsteadOfSilentDefault() throws {
         let suiteName = "SoloPM.AppSettingsCorrupted.\(UUID().uuidString)"

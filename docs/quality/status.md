@@ -1,14 +1,14 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T21:01:15Z
-Source commit: 2884e0d
+Generated at: 2026-06-22T21:22:19Z
+Source commit: 1748f3a
 
 ## Summary
 
-- Phase14 completion: 71/183 checked, 112 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 72/183 checked, 111 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 4 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-2884e0d.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-1748f3a.md`
 
 ## Unfinished Phase14 Items
 
@@ -16,7 +16,6 @@ Source commit: 2884e0d
 - [ ] tasks/Phase14-QualityRegressionHardening.md:244:- [ ] destructive actionは必ずconfirmationを通ることを確認する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:245:- [ ] Settings保存ではKeychain secret値そのものをartifactへ出さない。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:246:- [ ] Voice CommandはAPI key未設定時にfake successへ倒れないことを確認する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:253:- [ ] Settings saveがUI stateとstore stateに反映される。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:254:- [ ] Voice Command review flowが承認前に止まり、audit logに残る。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:276:- [ ] UI layout correctionに `DispatchQueue.main.asyncAfter` やtimer retryを使う箇所が追加されたら失敗するsource testを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:277:- [ ] layout-sensitive state mutationが `Transaction.disablesAnimations = true` または明示的な同期layout policyを持たない場合に検出するテストを追加する。
@@ -42,6 +41,7 @@ Source commit: 2884e0d
 - [ ] tasks/Phase14-QualityRegressionHardening.md:351:- [ ] LaunchExperienceTestsに「保存状態がwindow-lessでもProject Boardが見える」ことを維持するテストを追加または確認する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:353:- [ ] 前回選択Projectが削除済みの場合にsafe fallbackするテストを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:358:- [ ] selected destinationをseed DBとenvで制御する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:359:- [ ] 削除済みselection、空DB、大量project、大量taskのfixtureを作る。
 
 ## Open Risk Items
 
@@ -69,8 +69,8 @@ Source commit: 2884e0d
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
 - `script/check_visual_regression_smoke.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-2884e0d.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-2884e0d.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-1748f3a.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-1748f3a.md ./script/release_readiness_report.sh`
 
 ## Notes
 

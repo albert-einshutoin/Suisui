@@ -1179,6 +1179,8 @@ private struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("settings-task-auto-execution-boundary")
+
+                settingsSaveButton
             }
 
             Section("Voice") {
@@ -1572,11 +1574,7 @@ private struct SettingsView: View {
                 } label: {
                     Label("Choose Data Location", systemImage: "folder")
                 }
-                Button {
-                    settingsViewModel.saveSettings()
-                } label: {
-                    Label("Save Settings", systemImage: "square.and.arrow.down")
-                }
+                settingsSaveButton
                 if let errorMessage = settingsViewModel.errorMessage {
                     Label(errorMessage, systemImage: "exclamationmark.triangle")
                         .font(.caption)
@@ -1814,6 +1812,16 @@ private struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var settingsSaveButton: some View {
+        Button {
+            settingsViewModel.saveSettings()
+        } label: {
+            Label("Save Settings", systemImage: "square.and.arrow.down")
+        }
+        .accessibilityIdentifier("settings-save-button")
+        .accessibilityHint("Persists non-secret settings to local UserDefaults.")
     }
 
     private var activeAIProviderReadinessRow: AIProviderReadinessRow {

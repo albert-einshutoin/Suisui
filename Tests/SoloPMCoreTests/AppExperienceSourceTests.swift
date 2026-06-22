@@ -1952,6 +1952,20 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains("SecureField(\"API Key\", text: .constant(\"\"))"))
     }
 
+    func testSettingsSurfaceExposesTaskAutomationSaveAnchors() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(appSource.contains("Section(\"Task Automation\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-toggle\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-frequency\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-max-tasks\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-daily-limit\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-lookahead\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-boundary\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-save-button\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityHint(\"Persists non-secret settings to local UserDefaults.\")"))
+    }
+
     func testSettingsSurfaceStartsWithStatusOverviewForCoreOperationalAreas() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 

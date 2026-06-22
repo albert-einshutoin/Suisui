@@ -5399,13 +5399,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("./script/check_runtime_accessible_crud_smoke.sh"))
         XCTAssertTrue(script.contains("./script/check_runtime_inbox_triage_smoke.sh"))
         XCTAssertTrue(script.contains("./script/check_runtime_today_complete_smoke.sh"))
+        XCTAssertTrue(script.contains("./script/check_runtime_settings_save_smoke.sh"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_ACCESSIBLE_CRUD_KEEP_DATABASE=1"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_INBOX_TRIAGE_KEEP_DATABASE=1"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_TODAY_COMPLETE_KEEP_DATABASE=1"))
+        XCTAssertTrue(script.contains("SOLOPM_RUNTIME_SETTINGS_SAVE_KEEP_HOME=1"))
         XCTAssertTrue(script.contains("BLOCKER: runtime workflow scenario failed"))
         XCTAssertTrue(script.contains("Last visible window"))
         XCTAssertFalse(script.contains("inbox_triage runtime DB assertion is not implemented yet"))
         XCTAssertFalse(script.contains("today_complete runtime DB assertion is not implemented yet"))
+        XCTAssertFalse(script.contains("settings_save runtime store assertion is not implemented yet"))
         XCTAssertFalse(script.contains("SKIP"))
         XCTAssertFalse(script.contains("TODO"))
         XCTAssertFalse(script.contains("fake success"))
@@ -5459,6 +5462,36 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("OK: runtime today complete smoke completed a visible Today task and verified SQLite status"))
         XCTAssertFalse(script.contains(":memory:"))
         XCTAssertFalse(script.contains("not implemented yet"))
+    }
+
+    func testRuntimeSettingsSaveSmokeScriptPersistsNonSecretSettingsToIsolatedUserDefaults() throws {
+        let script = try readPackageFile("script/check_runtime_settings_save_smoke.sh")
+        let helper = try readPackageFile("script/settings_save_smoke_check.swift")
+
+        XCTAssertTrue(script.contains("SOLOPM_OPEN_SETTINGS_ON_LAUNCH=1"))
+        XCTAssertTrue(script.contains("SOLOPM_SETTINGS_EVIDENCE_TAB=AI"))
+        XCTAssertTrue(script.contains("HOME=\"$settings_home\""))
+        XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH=\"$database_path\""))
+        XCTAssertTrue(script.contains("settings-task-auto-execution-toggle"))
+        XCTAssertTrue(script.contains("settings-save-button"))
+        XCTAssertTrue(script.contains("settings_suite_name=\"$BUNDLE_IDENTIFIER.runtime-settings-save."))
+        XCTAssertTrue(script.contains("SOLOPM_APP_SETTINGS_SUITE_NAME=\"$settings_suite_name\""))
+        XCTAssertTrue(script.contains("SOLOPM_SETTINGS_SMOKE_BUNDLE_IDENTIFIER=\"$settings_suite_name\""))
+        XCTAssertTrue(script.contains("/usr/bin/defaults export \"$settings_suite_name\" \"$settings_home/app-settings.plist\""))
+        XCTAssertTrue(script.contains("/usr/bin/defaults delete \"$settings_suite_name\""))
+        XCTAssertTrue(script.contains("enableCheckboxContaining()"))
+        XCTAssertTrue(script.contains("enableCheckboxContaining \"settings-task-auto-execution-toggle\""))
+        XCTAssertTrue(script.contains("/usr/bin/swift \"$ROOT_DIR/script/settings_save_smoke_check.swift\""))
+        XCTAssertTrue(script.contains("OK: runtime settings save smoke enabled task automation and verified isolated UserDefaults"))
+        XCTAssertFalse(script.contains(":memory:"))
+        XCTAssertFalse(script.contains("not implemented yet"))
+
+        XCTAssertTrue(helper.contains("UserDefaults(suiteName: bundleIdentifier)"))
+        XCTAssertTrue(helper.contains("data(forKey: \"app.settings\")"))
+        XCTAssertTrue(helper.contains("\"taskAutoExecution\""))
+        XCTAssertTrue(helper.contains("\"isEnabled\""))
+        XCTAssertTrue(helper.contains("BLOCKER: settings save smoke"))
+        XCTAssertFalse(helper.contains("print(data)"))
     }
 
     func testLayoutStabilitySmokeScriptSamplesImmediateFramesAndWritesArtifacts() throws {

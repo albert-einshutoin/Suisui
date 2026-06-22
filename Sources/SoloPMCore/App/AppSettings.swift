@@ -417,12 +417,26 @@ public protocol AppSettingsStore: Sendable {
 }
 
 public final class UserDefaultsAppSettingsStore: AppSettingsStore, @unchecked Sendable {
+    public static let suiteNameEnvironmentKey = "SOLOPM_APP_SETTINGS_SUITE_NAME"
+
+    public static func defaultUserDefaults(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> UserDefaults {
+        // Runtime smoke tests need a disposable suite so settings assertions never
+        // read or mutate the user's real SoloPM preferences.
+        let suiteName = environment[suiteNameEnvironmentKey]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let suiteName, !suiteName.isEmpty, let defaults = UserDefaults(suiteName: suiteName) {
+            return defaults
+        }
+        return .standard
+    }
+
     private let defaults: UserDefaults
     private let key: String
     private let lock = NSLock()
 
-    public init(defaults: UserDefaults = .standard, key: String = "app.settings") {
-        self.defaults = defaults
+    public init(defaults: UserDefaults? = nil, key: String = "app.settings") {
+        self.defaults = defaults ?? Self.defaultUserDefaults()
         self.key = key
     }
 

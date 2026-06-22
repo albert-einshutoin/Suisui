@@ -161,8 +161,20 @@ run_today_complete() {
 }
 
 run_settings_save() {
+  local scenario_output
   local scenario_status="failed"
-  local scenario_reason="settings_save runtime store assertion is not implemented yet"
+  local scenario_reason="settings_save scenario did not finish"
+
+  if scenario_output="$(SOLOPM_RUNTIME_SETTINGS_SAVE_KEEP_HOME=1 ./script/check_runtime_settings_save_smoke.sh 2>&1)"; then
+    printf '%s\n' "$scenario_output"
+    scenario_status="passed"
+    scenario_reason="Settings non-secret UserDefaults postconditions passed"
+    write_scenario_artifact "settings_save" "$scenario_status" "$scenario_reason"
+    return 0
+  fi
+
+  printf '%s\n' "$scenario_output" >&2
+  scenario_reason="settings_save command failed"
   write_scenario_artifact "settings_save" "$scenario_status" "$scenario_reason"
   echo "BLOCKER: runtime workflow scenario failed: settings_save - $scenario_reason" >&2
   return 1

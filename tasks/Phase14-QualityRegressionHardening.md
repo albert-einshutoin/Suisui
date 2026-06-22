@@ -228,7 +228,7 @@ Priority: High
 
 ### Scope
 
-- 対象: `script/check_runtime_accessible_crud_smoke.sh`, `script/check_runtime_inbox_triage_smoke.sh`, `script/check_runtime_today_complete_smoke.sh`, `script/check_runtime_workflow_smoke.sh`, `Tests/SoloPMCoreTests/ReleasePipelineTests.swift`
+- 対象: `script/check_runtime_accessible_crud_smoke.sh`, `script/check_runtime_inbox_triage_smoke.sh`, `script/check_runtime_today_complete_smoke.sh`, `script/check_runtime_settings_save_smoke.sh`, `script/check_runtime_workflow_smoke.sh`, `Tests/SoloPMCoreTests/ReleasePipelineTests.swift`
 - 既存CRUD smokeを拡張し、日次利用クリックパスを分けて検証する。
 
 ### Tests First
@@ -250,7 +250,7 @@ Priority: High
 - [x] Project / Task CRUDがUIから永続DBへ反映される。
 - [x] Inbox item分類とUndoが実アプリで完走する。
 - [x] Today row completionがTask statusへ反映される。
-- [ ] Settings saveがUI stateとstore stateに反映される。
+- [x] Settings saveがUI stateとstore stateに反映される。
 - [ ] Voice Command review flowが承認前に止まり、audit logに残る。
 
 ### Non-goals
