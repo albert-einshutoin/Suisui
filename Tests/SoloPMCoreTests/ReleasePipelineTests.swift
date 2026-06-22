@@ -5394,6 +5394,13 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("t=150ms"))
         XCTAssertTrue(script.contains("t=300ms"))
         XCTAssertTrue(script.contains("LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX"))
+        XCTAssertTrue(script.contains("LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX=\"${SOLOPM_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX:-0}\""))
+        XCTAssertTrue(script.contains("write_json_artifacts()"))
+        XCTAssertTrue(script.contains("samples.json"))
+        XCTAssertTrue(script.contains("diff.json"))
+        XCTAssertTrue(script.contains("\"phase\":\"before\""))
+        XCTAssertTrue(script.contains("\"phase\":\"immediate\""))
+        XCTAssertTrue(script.contains("\"phase\":\"after\""))
         XCTAssertTrue(script.contains("BLOCKER: required AX identifier missing"))
         XCTAssertTrue(script.contains("project-board-header-bar"))
         XCTAssertTrue(script.contains("project-board-detail"))
@@ -5406,6 +5413,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("- [x] `ReleasePipelineTests` にlayout stability scriptの存在、`t=0`即時サンプル、複数サンプル、frame delta thresholdをsource-levelで確認するテストを追加する。"))
         XCTAssertTrue(phase.contains("- [x] scriptが対象AX identifier不足をskipではなく失敗扱いにするテストを追加する。"))
         XCTAssertTrue(phase.contains("- [x] scriptが差分artifactを `.tmp/layout-stability/` に保存することを確認するテストを追加する。"))
+        XCTAssertTrue(phase.contains("- [x] thresholdは基本 `0px`、OS差が出る箇所だけ `1px` tolerance を明示する。"))
+        XCTAssertTrue(phase.contains("- [x] 失敗時は before / immediate / after のJSONとPNGを保存する。"))
     }
 
     func testVoiceOverReviewCandidateScriptSeedsIsolatedDatabaseAndLaunchesSelectedProject() throws {

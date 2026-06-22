@@ -114,8 +114,8 @@ Priority: High
 - [x] AX frame取得処理を reusable shell / AppleScript helper に分離する。
 - [x] `project-board-header-bar`, `project-board-detail`, `project-board-sidebar`, `project-inspector` を必須identifierにする。
 - [x] クリック操作直後にframeを採取し、後続sampleと比較する。
-- [ ] thresholdは基本 `0px`、OS差が出る箇所だけ `1px` tolerance を明示する。
-- [ ] 失敗時は before / immediate / after のJSONとPNGを保存する。
+- [x] thresholdは基本 `0px`、OS差が出る箇所だけ `1px` tolerance を明示する。
+- [x] 失敗時は before / immediate / after のJSONとPNGを保存する。
 - [x] scriptの終了メッセージに、検証した遷移名と最大deltaを出す。
 
 ### Acceptance Criteria

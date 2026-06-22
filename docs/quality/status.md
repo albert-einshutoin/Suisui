@@ -1,19 +1,17 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T16:32:25Z
-Source commit: 10bf4a9
+Generated at: 2026-06-22T16:37:33Z
+Source commit: 0489247
 
 ## Summary
 
-- Phase14 completion: 30/181 checked, 151 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 32/181 checked, 149 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 6 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-10bf4a9.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-0489247.md`
 
 ## Unfinished Phase14 Items
 
-- [ ] tasks/Phase14-QualityRegressionHardening.md:117:- [ ] thresholdは基本 `0px`、OS差が出る箇所だけ `1px` tolerance を明示する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:118:- [ ] 失敗時は before / immediate / after のJSONとPNGを保存する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:124:- [ ] Toolbar display mode切替直後のheader action frame deltaを検出できる。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:125:- [ ] Window resize直後のoverlap / clipping / frame jumpを検出できる。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:148:- [ ] Header actionsがnative primary toolbar itemに戻ったら失敗するsource testを追加する。
@@ -42,6 +40,8 @@ Source commit: 10bf4a9
 - [ ] tasks/Phase14-QualityRegressionHardening.md:210:- [ ] 画像が空、黒、極端に小さい、対象windowでない場合に失敗する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:211:- [ ] baseline更新が意図的なデザイン変更としてレビューできる。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:212:- [ ] macOS rendering差で不必要にフレークしない許容差が文書化されている。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:234:- [ ] smoke scriptが isolated `SOLOPM_DATABASE_PATH` を必須にしていることをsource testで固定する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:235:- [ ] 実行後のSQLite stateを確認し、UI操作だけ成功してDB未反映の場合に失敗するテストを追加する。
 
 ## Open Risk Items
 
@@ -70,8 +70,8 @@ Source commit: 10bf4a9
 - `script/check_runtime_accessible_crud_smoke.sh`
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-10bf4a9.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-10bf4a9.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-0489247.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-0489247.md ./script/release_readiness_report.sh`
 
 ## Notes
 

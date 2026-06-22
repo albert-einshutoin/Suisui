@@ -18,7 +18,10 @@ APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 WINDOW_NAME="${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}"
 TIMEOUT_SECONDS="${SOLOPM_LAYOUT_STABILITY_TIMEOUT_SECONDS:-20}"
 LAYOUT_STABILITY_OUTPUT_DIR="${SOLOPM_LAYOUT_STABILITY_OUTPUT_DIR:-$ROOT_DIR/.tmp/layout-stability}"
-LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX="${SOLOPM_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX:-1}"
+# Default to 0px because layout-sensitive mutations should settle
+# synchronously. Set SOLOPM_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX=1 only
+# for a documented macOS rendering/runtime tolerance.
+LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX="${SOLOPM_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX:-0}"
 LAYOUT_STABILITY_DATABASE_PATH="${SOLOPM_LAYOUT_STABILITY_DATABASE_PATH:-$LAYOUT_STABILITY_OUTPUT_DIR/SoloPM-layout-stability.sqlite}"
 SQLITE3="${SQLITE3:-sqlite3}"
 
@@ -43,6 +46,8 @@ mkdir -p "$LAYOUT_STABILITY_OUTPUT_DIR"
 SUMMARY_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/layout-stability-summary.md"
 SAMPLES_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/samples.tsv"
 DIFF_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/diff.tsv"
+SAMPLES_JSON_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/samples.json"
+DIFF_JSON_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/diff.json"
 WINDOW_METADATA_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/window.tsv"
 REQUIRED_AX_IDENTIFIERS=(
   "project-board-header-bar"
@@ -57,6 +62,59 @@ app_pid=""
 
 : >"$SAMPLES_FILE"
 : >"$DIFF_FILE"
+
+write_json_artifacts() {
+  # JSON phase values: "phase":"before", "phase":"immediate", "phase":"after".
+  awk -F $'\t' '
+    function json_escape(value) {
+      gsub(/\\/,"\\\\",value)
+      gsub(/"/,"\\\"",value)
+      return value
+    }
+    function phase_for(label) {
+      if (label == "initial") return "before"
+      if (label == "sidebar-hidden") return "immediate"
+      if (label == "sidebar-restored") return "after"
+      return label
+    }
+    BEGIN { print "[" }
+    {
+      if (count > 0) printf ",\n"
+      printf "  {\"phase\":\"%s\",\"label\":\"%s\",\"sample\":%d,\"offset\":\"%s\",\"identifier\":\"%s\",\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d}",
+        phase_for($1), json_escape($1), $2, json_escape($3), json_escape($4), $5, $6, $7, $8
+      count += 1
+    }
+    END {
+      if (count > 0) print ""
+      print "]"
+    }
+  ' "$SAMPLES_FILE" >"$SAMPLES_JSON_FILE"
+
+  awk -F $'\t' '
+    function json_escape(value) {
+      gsub(/\\/,"\\\\",value)
+      gsub(/"/,"\\\"",value)
+      return value
+    }
+    function phase_for(label) {
+      if (label == "initial") return "before"
+      if (label == "sidebar-hidden") return "immediate"
+      if (label == "sidebar-restored") return "after"
+      return label
+    }
+    BEGIN { print "[" }
+    {
+      if (count > 0) printf ",\n"
+      printf "  {\"phase\":\"%s\",\"label\":\"%s\",\"offset\":\"%s\",\"identifier\":\"%s\",\"dx\":%d,\"dy\":%d,\"dw\":%d,\"dh\":%d,\"delta\":%d}",
+        phase_for($1), json_escape($1), json_escape($2), json_escape($3), $4, $5, $6, $7, $8
+      count += 1
+    }
+    END {
+      if (count > 0) print ""
+      print "]"
+    }
+  ' "$DIFF_FILE" >"$DIFF_JSON_FILE"
+}
 
 terminate_app() {
   pkill -x "$APP_NAME" >/dev/null 2>&1 || true
@@ -423,8 +481,9 @@ assert_layout_stable() {
       }
     ' diffFile="$DIFF_FILE" "$SAMPLES_FILE"
   )" || {
+    write_json_artifacts
     echo "BLOCKER: layout frame delta exceeded ${LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX}px after $label" >&2
-    echo "See $SAMPLES_FILE and $DIFF_FILE" >&2
+    echo "See $SAMPLES_FILE, $SAMPLES_JSON_FILE, $DIFF_FILE, and $DIFF_JSON_FILE" >&2
     return 1
   }
 
@@ -462,11 +521,15 @@ assert_layout_stable "sidebar-hidden" "project-board-header-bar" "project-board-
 click_sidebar_toggle
 assert_layout_stable "sidebar-restored"
 
+write_json_artifacts
+
 {
   printf '\n'
   printf '%s\n' '## Artifacts'
   printf -- '- `samples.tsv`\n'
+  printf -- '- `samples.json`\n'
   printf -- '- `diff.tsv`\n'
+  printf -- '- `diff.json`\n'
   printf '\n'
   printf '%s\n' 'Status: passed'
 } >>"$SUMMARY_FILE"
