@@ -84,6 +84,29 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(try stores.tasks.listAll().first?.projectID, 99_999)
     }
 
+    func testLoadSnapshotAuditsDanglingProjectRepairCandidateWithoutRawContent() throws {
+        let stores = try makeStoreBundle()
+        let logger = InMemoryAuditLogger()
+        let board = SQLiteProjectBoardStore(connection: stores.connection, auditLogger: logger)
+        let task = try stores.tasks.create(
+            title: "Recover dangling task",
+            projectID: 99_999,
+            status: "planned"
+        )
+
+        _ = try board.loadSnapshot()
+
+        let event = try XCTUnwrap(logger.recordedEvents.first)
+        XCTAssertEqual(event.category, "persistence")
+        XCTAssertEqual(event.action, "project_board.repair_candidate")
+        XCTAssertEqual(event.status, .skipped)
+        XCTAssertEqual(event.metadata["record_type"], "task")
+        XCTAssertEqual(event.metadata["record_id"], "\(task.id)")
+        XCTAssertEqual(event.metadata["column"], "tasks.project_id")
+        XCTAssertEqual(event.metadata["reason"], "dangling_project_reference")
+        XCTAssertFalse(event.metadata.values.contains { $0.contains("Recover dangling task") })
+    }
+
     func testLoadSnapshotIncludesProjectAndTaskArtifactsWithoutMockRows() throws {
         let stores = try makeStoreBundle()
         let project = try stores.board.createProject(title: "Launch Readiness")
@@ -368,6 +391,30 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         XCTAssertEqual(loadedInbox.tasks.map(\.title), ["Keep board usable"])
         XCTAssertEqual(loadedInbox.subtitle, "1 open / 1 total")
+    }
+
+    func testLoadSnapshotAuditsSkippedCorruptedTaskWithoutRawValue() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let logger = InMemoryAuditLogger()
+        let board = SQLiteProjectBoardStore(connection: connection, auditLogger: logger)
+        let tasks = SQLiteTaskStore(connection: connection)
+        let inbox = try XCTUnwrap(board.loadSnapshot().projects.first)
+        let task = try tasks.create(title: "Review launch risk", projectID: inbox.id, priority: "high")
+        _ = try tasks.create(title: "Keep board usable", projectID: inbox.id, priority: "medium")
+
+        try connection.execute("UPDATE tasks SET priority = 'urgent' WHERE id = \(task.id);")
+        _ = try board.loadSnapshot()
+
+        let event = try XCTUnwrap(logger.recordedEvents.first)
+        XCTAssertEqual(event.category, "persistence")
+        XCTAssertEqual(event.action, "project_board.record_skipped")
+        XCTAssertEqual(event.status, .skipped)
+        XCTAssertEqual(event.metadata["record_type"], "task")
+        XCTAssertEqual(event.metadata["record_id"], "\(task.id)")
+        XCTAssertEqual(event.metadata["column"], "tasks.priority")
+        XCTAssertEqual(event.metadata["reason"], "unsupported_priority")
+        XCTAssertFalse(event.metadata.values.contains { $0.contains("urgent") })
     }
 
     func testUpdateTaskMovesCardAcrossColumnsAndUpdatesMetadata() throws {

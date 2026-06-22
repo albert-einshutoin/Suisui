@@ -555,19 +555,25 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     private let taskStore: SQLiteTaskStore
     private let artifactStore: SQLiteArtifactStore
     private let milestoneStore: SQLiteProjectMilestoneStore
+    private let auditLogger: (any AuditLogger)?
 
-    public init(connection: SQLiteConnection) {
+    public init(connection: SQLiteConnection, auditLogger: (any AuditLogger)? = nil) {
         self.connection = connection
         self.projectStore = SQLiteProjectStore(connection: connection)
         self.taskStore = SQLiteTaskStore(connection: connection)
         self.artifactStore = SQLiteArtifactStore(connection: connection)
         self.milestoneStore = SQLiteProjectMilestoneStore(connection: connection)
+        self.auditLogger = auditLogger ?? RedactingAuditLogger(base: SQLiteAuditLogger(connection: connection))
     }
 
-    public convenience init(path: String, migrations: [DatabaseMigration] = CoreMigrations.current) throws {
+    public convenience init(
+        path: String,
+        migrations: [DatabaseMigration] = CoreMigrations.current,
+        auditLogger: (any AuditLogger)? = nil
+    ) throws {
         let connection = try SQLiteConnection(path: path)
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: migrations)
-        self.init(connection: connection)
+        self.init(connection: connection, auditLogger: auditLogger)
     }
 
     public func loadSnapshot() throws -> ProjectBoardSnapshot {
@@ -763,10 +769,25 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         var projectIDs = Set(projects.map(\.id))
         let fallbackProjectID: Int64?
 
+        let danglingProjectTasks = taskRecords.filter { task in
+            task.projectID.map { !projectIDs.contains($0) } ?? false
+        }
+
         if taskRecords.contains(where: { task in task.projectID.map { !projectIDs.contains($0) } ?? true }) {
             fallbackProjectID = try ensureActiveInboxProject().id
             projects = try projectStore.listForProjectBoard(includeArchived: includeArchived)
             projectIDs = Set(projects.map(\.id))
+            for task in danglingProjectTasks {
+                recordPersistenceAudit(
+                    action: "project_board.repair_candidate",
+                    metadata: [
+                        "record_type": "task",
+                        "record_id": "\(task.id)",
+                        "column": "tasks.project_id",
+                        "reason": "dangling_project_reference"
+                    ]
+                )
+            }
         } else {
             fallbackProjectID = nil
         }
@@ -780,6 +801,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
                 ).requiredTask()
             } catch let error as LocalStoreDecodingError where error.isProjectBoardSkippableRecord {
                 // A single corrupted imported task must not make the whole board unavailable; mutation paths still validate strictly.
+                recordSkippedTask(record, error: error)
                 return nil
             }
         }
@@ -929,6 +951,39 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             isCompleted: record.isCompleted
         )
     }
+
+    private func recordSkippedTask(_ record: TaskRecord, error: LocalStoreDecodingError) {
+        guard let auditReason = error.projectBoardAuditReason else {
+            return
+        }
+
+        recordPersistenceAudit(
+            action: "project_board.record_skipped",
+            metadata: [
+                "record_type": "task",
+                "record_id": "\(record.id)",
+                "column": auditReason.column,
+                "reason": auditReason.reason
+            ]
+        )
+    }
+
+    private func recordPersistenceAudit(action: String, metadata: [String: String]) {
+        guard let auditLogger else {
+            return
+        }
+
+        do {
+            try auditLogger.record(AuditEvent(
+                category: "persistence",
+                action: action,
+                status: .skipped,
+                metadata: metadata
+            ))
+        } catch {
+            // Repair diagnostics are best-effort; losing the audit row must not turn a recoverable board load into an outage.
+        }
+    }
 }
 
 private extension LocalStoreDecodingError {
@@ -938,6 +993,15 @@ private extension LocalStoreDecodingError {
             true
         default:
             false
+        }
+    }
+
+    var projectBoardAuditReason: (column: String, reason: String)? {
+        switch self {
+        case .invalidEnum(column: "tasks.priority", value: _):
+            ("tasks.priority", "unsupported_priority")
+        default:
+            nil
         }
     }
 }

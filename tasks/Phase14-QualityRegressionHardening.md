@@ -432,7 +432,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] Migration fixture DBを `.tmp` ではなく test resource として最小化して持つ。
 - [x] 破損データの扱いを「表示除外」「repair candidate」「blocking error」に分類する。
 - [x] Store layerでvalidationし、Viewでad hoc parseしない。
-- [ ] Repair可能なものはaudit logに残す。
+- [x] Repair可能なものはaudit logに残す。
 
 ### Acceptance Criteria
 
