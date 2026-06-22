@@ -20,6 +20,16 @@
 - SwiftUI標準部品の内部実装を前提にした脆いprivate API検証はしない。
 - 競合プロダクトの完全なE2E再現や、外部SaaS本番連携の自動実行はこのPhaseに含めない。
 
+## Priority Model
+
+| Priority | 判断基準 | 対象 |
+| --- | --- | --- |
+| High | ユーザーに見える崩れ、主要CRUD不能、データ破損、秘密情報漏洩、CIで見逃すとrelease品質に直結するもの | P14-001, P14-002, P14-003, P14-005, P14-006, P14-009, P14-010, P14-011, P14-012 |
+| Middle | 品質検出範囲を広げ、UI変更やrelease前確認の精度を上げるもの | P14-004, P14-007, P14-008, P14-013 |
+| Low | 品質状態の可視化、継続運用、開発効率を上げるが、先に検出基盤が必要なもの | P14-014 |
+
+着手順は High -> Middle -> Low とする。Highがgreenになるまで、新しい大きなUI機能追加より品質gate整備を優先する。
+
 ## Quality Architecture
 
 | 層 | 目的 | 代表コマンド | CI方針 |
@@ -42,6 +52,8 @@
 - Animation は意味のある状態変化だけに使い、layout correction のための遅延animationは使わない。
 
 ## P14-001: Regression inventory and risk map
+
+Priority: High
 
 ### Context
 
@@ -78,6 +90,8 @@
 - カバレッジ率の数値だけを品質指標にしない。
 
 ## P14-002: Layout stability measurement harness
+
+Priority: High
 
 ### Context
 
@@ -117,6 +131,8 @@
 - すべてのanimationを禁止しない。layout correction目的の遅延補正を禁止する。
 
 ## P14-003: Project Board split-view and header regression suite
+
+Priority: High
 
 ### Context
 
@@ -162,6 +178,8 @@ Project Board は sidebar、header、detail board、inspector、toolbar/AppKit b
 
 ## P14-004: Visual screenshot baselines with semantic tolerances
 
+Priority: Middle
+
 ### Context
 
 スクリーンショットは見た目の退行検知に有効だが、厳密なpixel一致だけではmacOS rendering差でフレークになる。比較する対象と許容差を意味ごとに分け、黒画面、空白、重なり、低情報量、テーマ崩れを検出する。
@@ -199,6 +217,8 @@ Project Board は sidebar、header、detail board、inspector、toolbar/AppKit b
 - screenshotだけでクリックパス成功を判定しない。
 
 ## P14-005: End-to-end click-path smoke expansion
+
+Priority: High
 
 ### Context
 
@@ -238,6 +258,8 @@ Project Board は sidebar、header、detail board、inspector、toolbar/AppKit b
 
 ## P14-006: Synchronous UI mutation policy
 
+Priority: High
+
 ### Context
 
 デザインの一瞬の崩れは、state mutation、animation、AppKit layout pass、SwiftUI view updateが別々のタイミングで走る時に起こる。今後のUI実装で同じ問題を作らないため、同期的に扱うべき操作と、非同期でよい操作を設計原則として固定する。
@@ -274,6 +296,8 @@ Project Board は sidebar、header、detail board、inspector、toolbar/AppKit b
 
 ## P14-007: Design system dimensions and overlap guards
 
+Priority: Middle
+
 ### Context
 
 カード、toolbar、header、sidebar row、inspector field の寸法が場当たり的だと、テキスト、アイコン、hover state、ローカライズでレイアウトが崩れる。固定すべき寸法と可変にすべき寸法をDesign Systemとして明文化し、source/runtime両方で守る。
@@ -308,6 +332,8 @@ Project Board は sidebar、header、detail board、inspector、toolbar/AppKit b
 - pixel-perfectを優先してnative macOSの柔軟性を壊さない。
 
 ## P14-008: State restoration, resize, and multi-window regression
+
+Priority: Middle
 
 ### Context
 
@@ -345,6 +371,8 @@ Project Board は sidebar、header、detail board、inspector、toolbar/AppKit b
 
 ## P14-009: Accessibility and keyboard regression expansion
 
+Priority: High
+
 ### Context
 
 VoiceOver実機確認はmanual gateとして残るが、支援技術で使えるかの多くはsource/runtimeで事前に検出できる。UI変更のたびにlabel、hint、focus anchor、keyboard shortcutが抜け落ちない状態を作る。
@@ -379,6 +407,8 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 - すべての読み上げ文言を固定しすぎて改善しにくくしない。
 
 ## P14-010: Persistence, migration, and data-shape hardening
+
+Priority: High
 
 ### Context
 
@@ -415,6 +445,8 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 
 ## P14-011: Security and privacy regression suite
 
+Priority: High
+
 ### Context
 
 品質改善でruntime smokeやscreenshotが増えると、transcript、API key、file path、OAuth token、MCP secretをartifactへ漏らすriskも増える。テスト基盤そのものをsecurity boundaryに含める。
@@ -449,6 +481,8 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - 全ファイルパスを秘匿しすぎてdebug不能にしない。
 
 ## P14-012: Flake classification and CI quality gates
+
+Priority: High
 
 ### Context
 
@@ -487,6 +521,8 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 
 ## P14-013: Manual evidence to automated regression bridge
 
+Priority: Middle
+
 ### Context
 
 VoiceOver、競合hands-on、Gatekeeper、clean environmentなどは手動gateとして残る。ただし、手動で見つかった問題を次回も手動でしか見つけられない状態にしてはいけない。見つかった問題をsource/runtime/visualのどれかに必ず戻す。
@@ -521,6 +557,8 @@ VoiceOver、競合hands-on、Gatekeeper、clean environmentなどは手動gate�
 - 競合プロダクトのUI変更追従を自動化する。
 
 ## P14-014: Quality completion dashboard
+
+Priority: Low
 
 ### Context
 
