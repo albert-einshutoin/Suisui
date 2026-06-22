@@ -91,6 +91,8 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(script.contains("SOLOPM_QUALITY_STATUS_FILE"))
         XCTAssertTrue(script.contains("script/check_layout_stability_smoke.sh"))
         XCTAssertTrue(status.contains("script/check_layout_stability_smoke.sh"))
+        XCTAssertTrue(script.contains("script/check_visual_regression_smoke.sh"))
+        XCTAssertTrue(status.contains("script/check_visual_regression_smoke.sh"))
         XCTAssertTrue(status.contains("## Unfinished Phase14 Items"))
         XCTAssertTrue(status.contains("## Open Risk Items"))
         XCTAssertTrue(status.contains("## Verification Commands"))

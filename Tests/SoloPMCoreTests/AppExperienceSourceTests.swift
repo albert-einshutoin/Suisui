@@ -2888,14 +2888,14 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
-    func testRegressionRiskMapDoesNotReferenceUnbuiltVisualRegressionSmokeScript() throws {
+    func testRegressionRiskMapReferencesBuiltVisualRegressionSmokeScript() throws {
         let root = packageRoot().appendingPathComponent("script")
         let visualScriptURL = root.appendingPathComponent("check_visual_regression_smoke.sh")
         let fileExists = FileManager.default.fileExists(atPath: visualScriptURL.path)
 
-        XCTAssertFalse(
+        XCTAssertTrue(
             fileExists,
-            "check_visual_regression_smoke.sh is not yet implemented; P14-004 follow-up must add it before verification layer / owner refs can pin it"
+            "check_visual_regression_smoke.sh must exist before the visual verification layer can pin it"
         )
 
         let riskMap = try readPackageFile("docs/quality/regression-risk-map.md")
@@ -2904,14 +2904,14 @@ final class AppExperienceSourceTests: XCTestCase {
             .first(where: { $0.hasPrefix("| visual   |") || $0.hasPrefix("| visual |") })
 
         XCTAssertNotNil(visualRow, "Risk map must keep a visual layer row")
-        XCTAssertFalse(
+        XCTAssertTrue(
             visualRow?.contains("check_visual_regression_smoke.sh") ?? false,
-            "Visual layer representative command must not list check_visual_regression_smoke.sh until the script exists"
+            "Visual layer representative command must list check_visual_regression_smoke.sh once P14-004 is implemented"
         )
 
-        XCTAssertTrue(
-            riskMap.contains("P14-004"),
-            "Risk map must forward the unbuilt visual regression script to P14-004 follow-up"
+        XCTAssertFalse(
+            riskMap.contains("リポジトリには未存在"),
+            "Risk map must not keep the old unbuilt-script wording after P14-004"
         )
     }
 

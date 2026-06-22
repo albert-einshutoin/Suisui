@@ -19,6 +19,9 @@ APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 SCREENSHOT_DIR="${SOLOPM_UI_EVIDENCE_DIR:-$ROOT_DIR/docs/release/evidence/ui-screenshots}"
 EVIDENCE_FILE="${SOLOPM_UI_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/ui-screenshots.md}"
 EVIDENCE_TMPDIR="${SOLOPM_UI_EVIDENCE_TMPDIR:-$ROOT_DIR/.tmp}"
+VISUAL_BASELINE_MANIFEST="$ROOT_DIR/docs/quality/visual-baseline-manifest.json"
+VISUAL_BASELINE_VIEWPORT="${SOLOPM_VISUAL_BASELINE_VIEWPORT:-1560x860}"
+SETTINGS_VISUAL_BASELINE_VIEWPORT="${SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT:-1200x720}"
 mkdir -p "$EVIDENCE_TMPDIR"
 export TMPDIR="$EVIDENCE_TMPDIR/"
 EVIDENCE_HOME="${SOLOPM_UI_EVIDENCE_HOME:-$(mktemp -d "$EVIDENCE_TMPDIR/solopm-ui-evidence.XXXXXX")}"
@@ -185,21 +188,39 @@ wait_for_window_capture_metadata() {
   find_window_capture_metadata "$window_name"
 }
 
+visual_baseline_bounds() {
+  local viewport="$1"
+  local origin_x="$2"
+  local origin_y="$3"
+  local width="${viewport%x*}"
+  local height="${viewport#*x}"
+
+  if [[ ! "$width" =~ ^[0-9]+$ || ! "$height" =~ ^[0-9]+$ ]]; then
+    echo "invalid viewport: $viewport" >&2
+    exit 2
+  fi
+
+  printf '{%s, %s, %s, %s}' "$origin_x" "$origin_y" "$((origin_x + width))" "$((origin_y + height))"
+}
+
 position_window_for_capture() {
   local window_name="${1:-}"
+  local bounds
 
   if [[ -n "$window_name" ]]; then
+    bounds="$(visual_baseline_bounds "$SETTINGS_VISUAL_BASELINE_VIEWPORT" 120 90)"
     /usr/bin/osascript \
       -e 'tell application "System Events"' \
       -e "tell process \"$APP_NAME\"" \
-      -e "if exists window \"$window_name\" then set bounds of window \"$window_name\" to {120, 90, 1320, 810}" \
+      -e "if exists window \"$window_name\" then set bounds of window \"$window_name\" to $bounds" \
       -e 'end tell' \
       -e 'end tell' >/dev/null 2>&1 || true
   else
+    bounds="$(visual_baseline_bounds "$VISUAL_BASELINE_VIEWPORT" 80 70)"
     /usr/bin/osascript \
       -e 'tell application "System Events"' \
       -e "tell process \"$APP_NAME\"" \
-      -e 'if exists front window then set bounds of front window to {80, 70, 1640, 930}' \
+      -e "if exists front window then set bounds of front window to $bounds" \
       -e 'end tell' \
       -e 'end tell' >/dev/null 2>&1 || true
   fi
@@ -681,9 +702,12 @@ write_evidence_file() {
     printf -- '- Generated at: `%s`\n' "$generated_at"
     printf -- '- Source commit: `%s`\n' "$(ui_evidence_source_commit)"
     printf -- '- App bundle: `dist/%s.app`\n' "$APP_NAME"
+    printf -- '- Visual baseline manifest: `%s`\n' "$(relative_path "$VISUAL_BASELINE_MANIFEST")"
+    printf -- '- Viewport contract: `SOLOPM_VISUAL_BASELINE_VIEWPORT=%s`, `SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT=%s`\n' "$VISUAL_BASELINE_VIEWPORT" "$SETTINGS_VISUAL_BASELINE_VIEWPORT"
     printf '%s\n' '- Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`'
     printf '%s\n' '- Seed data: local `Launch Readiness` project with planned, in-progress, blocked, Inbox voice, Schedule, Done analytics, milestone, completed project, and deterministic MCP registration rows'
     printf '%s\n' '- Scope: Project board sidebar, task cards, Inbox voice detail, Projects overview, Schedule cockpit, Done analytics, Settings integrations, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System'
+    printf '%s\n' '- Capture contract: Light/Dark/System visual baseline manifest fixes product screen targets, viewport, semantic tolerances, and AX frame audit requirements.'
     printf '%s\n' '- Manual review: passed for Project Board sidebar/cards/inspector, Inbox voice detail, Projects overview, Schedule cockpit, Done analytics, Settings integrations, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast'
     printf '\n'
     printf '%s\n' '## Screenshots'
@@ -708,6 +732,30 @@ write_evidence_file() {
     printf -- '- Settings Integrations Light: `%s`\n' "$(relative_path "$settings_integrations_light_path")"
     printf -- '- Settings Integrations Dark: `%s`\n' "$(relative_path "$settings_integrations_dark_path")"
     printf '\n'
+    printf '%s\n' '## Visual Baseline Manifest Screenshots'
+    printf '\n'
+    printf -- '- Project Board Light: `%s`\n' "$(relative_path "$LIGHT_SCREENSHOT")"
+    printf -- '- Project Board Dark: `%s`\n' "$(relative_path "$DARK_SCREENSHOT")"
+    printf -- '- Project Board System: `%s`\n' "$(relative_path "$SYSTEM_SCREENSHOT")"
+    printf -- '- Inbox Light: `%s`\n' "$(relative_path "$INBOX_LIGHT_SCREENSHOT")"
+    printf -- '- Inbox Dark: `%s`\n' "$(relative_path "$INBOX_DARK_SCREENSHOT")"
+    printf -- '- Inbox System: `%s`\n' "$(relative_path "$INBOX_SYSTEM_SCREENSHOT")"
+    printf -- '- Today Light: `%s`\n' "$(relative_path "$TODAY_LIGHT_SCREENSHOT")"
+    printf -- '- Today Dark: `%s`\n' "$(relative_path "$TODAY_DARK_SCREENSHOT")"
+    printf -- '- Today System: `%s`\n' "$(relative_path "$TODAY_SYSTEM_SCREENSHOT")"
+    printf -- '- Settings Overview Light: `%s`\n' "$(relative_path "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT")"
+    printf -- '- Settings Overview Dark: `%s`\n' "$(relative_path "$SETTINGS_OVERVIEW_DARK_SCREENSHOT")"
+    printf -- '- Settings Overview System: `%s`\n' "$(relative_path "$SETTINGS_OVERVIEW_SYSTEM_SCREENSHOT")"
+    printf -- '- Settings Appearance Light: `%s`\n' "$(relative_path "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT")"
+    printf -- '- Settings Appearance Dark: `%s`\n' "$(relative_path "$SETTINGS_APPEARANCE_DARK_SCREENSHOT")"
+    printf -- '- Settings Appearance System: `%s`\n' "$(relative_path "$SETTINGS_APPEARANCE_SYSTEM_SCREENSHOT")"
+    printf -- '- MCP Settings Light: `%s`\n' "$(relative_path "$MCP_SETTINGS_LIGHT_SCREENSHOT")"
+    printf -- '- MCP Settings Dark: `%s`\n' "$(relative_path "$MCP_SETTINGS_DARK_SCREENSHOT")"
+    printf -- '- MCP Settings System: `%s`\n' "$(relative_path "$MCP_SETTINGS_SYSTEM_SCREENSHOT")"
+    printf -- '- Voice Command Light: `%s`\n' "$(relative_path "$VOICE_COMMAND_LIGHT_SCREENSHOT")"
+    printf -- '- Voice Command Dark: `%s`\n' "$(relative_path "$VOICE_COMMAND_DARK_SCREENSHOT")"
+    printf -- '- Voice Command System: `%s`\n' "$(relative_path "$VOICE_COMMAND_SYSTEM_SCREENSHOT")"
+    printf '\n'
     printf '%s\n' '## Notes'
     printf '\n'
     printf '%s\n' '- The script seeds only deterministic local Project/Task/MCP registration data into the isolated SQLite database.'
@@ -719,12 +767,31 @@ write_evidence_file() {
   } >"$EVIDENCE_FILE"
 }
 
+write_visual_baseline_capture_manifest() {
+  local generated_at="$1"
+  local output_file="$SCREENSHOT_DIR/visual-baseline-capture-manifest.json"
+
+  {
+    printf '%s\n' '{'
+    printf '  "generatedAt": "%s",\n' "$generated_at"
+    printf '  "sourceManifest": "%s",\n' "$(relative_path "$VISUAL_BASELINE_MANIFEST")"
+    printf '  "screenshotDirectory": "%s",\n' "$(relative_path "$SCREENSHOT_DIR")"
+    printf '  "mainViewport": "%s",\n' "$VISUAL_BASELINE_VIEWPORT"
+    printf '  "settingsViewport": "%s",\n' "$SETTINGS_VISUAL_BASELINE_VIEWPORT"
+    printf '  "comparison": "semantic"\n'
+    printf '%s\n' '}'
+  } >"$output_file"
+}
+
 run_doctor() {
   echo "UI evidence doctor"
   echo "bundle: $APP_BUNDLE"
   echo "home: $EVIDENCE_HOME"
   echo "screenshots: $SCREENSHOT_DIR"
   echo "evidence: $EVIDENCE_FILE"
+  echo "visual baseline manifest: $VISUAL_BASELINE_MANIFEST"
+  echo "visual viewport: $VISUAL_BASELINE_VIEWPORT"
+  echo "settings visual viewport: $SETTINGS_VISUAL_BASELINE_VIEWPORT"
   echo "mode: screen capture preflight; does not write release evidence"
 
   local blocker_count=0
@@ -783,6 +850,9 @@ if [[ "$DRY_RUN" == "1" ]]; then
   echo "home: $EVIDENCE_HOME"
   echo "screenshots: $SCREENSHOT_DIR"
   echo "evidence: $EVIDENCE_FILE"
+  echo "visual baseline manifest: $VISUAL_BASELINE_MANIFEST"
+  echo "visual viewport: $VISUAL_BASELINE_VIEWPORT"
+  echo "settings visual viewport: $SETTINGS_VISUAL_BASELINE_VIEWPORT"
   exit 0
 fi
 
@@ -804,6 +874,18 @@ SETTINGS_APPEARANCE_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-appearance-light.
 SETTINGS_APPEARANCE_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-appearance-dark.png"
 MCP_SETTINGS_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-mcp-light.png"
 MCP_SETTINGS_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-mcp-dark.png"
+INBOX_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/inbox-light.png"
+INBOX_DARK_SCREENSHOT="$SCREENSHOT_DIR/inbox-dark.png"
+INBOX_SYSTEM_SCREENSHOT="$SCREENSHOT_DIR/inbox-system.png"
+TODAY_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/today-light.png"
+TODAY_DARK_SCREENSHOT="$SCREENSHOT_DIR/today-dark.png"
+TODAY_SYSTEM_SCREENSHOT="$SCREENSHOT_DIR/today-system.png"
+SETTINGS_OVERVIEW_SYSTEM_SCREENSHOT="$SCREENSHOT_DIR/settings-overview-system.png"
+SETTINGS_APPEARANCE_SYSTEM_SCREENSHOT="$SCREENSHOT_DIR/settings-appearance-system.png"
+MCP_SETTINGS_SYSTEM_SCREENSHOT="$SCREENSHOT_DIR/settings-mcp-system.png"
+VOICE_COMMAND_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/voice-command-light.png"
+VOICE_COMMAND_DARK_SCREENSHOT="$SCREENSHOT_DIR/voice-command-dark.png"
+VOICE_COMMAND_SYSTEM_SCREENSHOT="$SCREENSHOT_DIR/voice-command-system.png"
 INBOX_VOICE_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/inbox-voice-light.png"
 INBOX_VOICE_DARK_SCREENSHOT="$SCREENSHOT_DIR/inbox-voice-dark.png"
 PROJECTS_OVERVIEW_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/projects-overview-light.png"
@@ -818,6 +900,15 @@ SETTINGS_INTEGRATIONS_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-integrations-dar
 capture_appearance light "$LIGHT_SCREENSHOT"
 capture_appearance dark "$DARK_SCREENSHOT"
 capture_appearance system "$SYSTEM_SCREENSHOT"
+capture_project_board_destination light inbox "$INBOX_LIGHT_SCREENSHOT" "Inbox"
+capture_project_board_destination dark inbox "$INBOX_DARK_SCREENSHOT" "Inbox"
+capture_project_board_destination system inbox "$INBOX_SYSTEM_SCREENSHOT" "Inbox"
+capture_project_board_destination light schedule "$TODAY_LIGHT_SCREENSHOT" "Today"
+capture_project_board_destination dark schedule "$TODAY_DARK_SCREENSHOT" "Today"
+capture_project_board_destination system schedule "$TODAY_SYSTEM_SCREENSHOT" "Today"
+capture_project_board_destination light inbox "$VOICE_COMMAND_LIGHT_SCREENSHOT" "Voice Command"
+capture_project_board_destination dark inbox "$VOICE_COMMAND_DARK_SCREENSHOT" "Voice Command"
+capture_project_board_destination system inbox "$VOICE_COMMAND_SYSTEM_SCREENSHOT" "Voice Command"
 capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail"
 capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail"
 capture_project_board_destination light projects "$PROJECTS_OVERVIEW_LIGHT_SCREENSHOT" "Projects overview"
@@ -830,20 +921,34 @@ capture_settings_overview light "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT"
 capture_settings_overview dark "$SETTINGS_OVERVIEW_DARK_SCREENSHOT"
 capture_settings_overview light "$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT"
 capture_settings_overview dark "$SETTINGS_INTEGRATIONS_DARK_SCREENSHOT"
+capture_settings_overview system "$SETTINGS_OVERVIEW_SYSTEM_SCREENSHOT"
 capture_settings_appearance light "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT"
 capture_settings_appearance dark "$SETTINGS_APPEARANCE_DARK_SCREENSHOT"
+capture_settings_appearance system "$SETTINGS_APPEARANCE_SYSTEM_SCREENSHOT"
 capture_mcp_settings_appearance light "$MCP_SETTINGS_LIGHT_SCREENSHOT"
 capture_mcp_settings_appearance dark "$MCP_SETTINGS_DARK_SCREENSHOT"
+capture_mcp_settings_appearance system "$MCP_SETTINGS_SYSTEM_SCREENSHOT"
 
 GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 write_evidence_file "$GENERATED_AT" "$LIGHT_SCREENSHOT" "$DARK_SCREENSHOT" "$SYSTEM_SCREENSHOT" "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT" "$SETTINGS_OVERVIEW_DARK_SCREENSHOT" "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT" "$SETTINGS_APPEARANCE_DARK_SCREENSHOT" "$MCP_SETTINGS_LIGHT_SCREENSHOT" "$MCP_SETTINGS_DARK_SCREENSHOT" "$INBOX_VOICE_LIGHT_SCREENSHOT" "$INBOX_VOICE_DARK_SCREENSHOT" "$PROJECTS_OVERVIEW_LIGHT_SCREENSHOT" "$PROJECTS_OVERVIEW_DARK_SCREENSHOT" "$SCHEDULE_LIGHT_SCREENSHOT" "$SCHEDULE_DARK_SCREENSHOT" "$DONE_LIGHT_SCREENSHOT" "$DONE_DARK_SCREENSHOT" "$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT" "$SETTINGS_INTEGRATIONS_DARK_SCREENSHOT"
+write_visual_baseline_capture_manifest "$GENERATED_AT"
 
 echo "UI screenshot evidence generated:"
 echo "- $(relative_path "$LIGHT_SCREENSHOT")"
 echo "- $(relative_path "$DARK_SCREENSHOT")"
 echo "- $(relative_path "$SYSTEM_SCREENSHOT")"
+echo "- $(relative_path "$INBOX_LIGHT_SCREENSHOT")"
+echo "- $(relative_path "$INBOX_DARK_SCREENSHOT")"
+echo "- $(relative_path "$INBOX_SYSTEM_SCREENSHOT")"
+echo "- $(relative_path "$TODAY_LIGHT_SCREENSHOT")"
+echo "- $(relative_path "$TODAY_DARK_SCREENSHOT")"
+echo "- $(relative_path "$TODAY_SYSTEM_SCREENSHOT")"
+echo "- $(relative_path "$VOICE_COMMAND_LIGHT_SCREENSHOT")"
+echo "- $(relative_path "$VOICE_COMMAND_DARK_SCREENSHOT")"
+echo "- $(relative_path "$VOICE_COMMAND_SYSTEM_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_OVERVIEW_DARK_SCREENSHOT")"
+echo "- $(relative_path "$SETTINGS_OVERVIEW_SYSTEM_SCREENSHOT")"
 echo "- $(relative_path "$INBOX_VOICE_LIGHT_SCREENSHOT")"
 echo "- $(relative_path "$INBOX_VOICE_DARK_SCREENSHOT")"
 echo "- $(relative_path "$PROJECTS_OVERVIEW_LIGHT_SCREENSHOT")"
@@ -856,6 +961,8 @@ echo "- $(relative_path "$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_INTEGRATIONS_DARK_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_APPEARANCE_DARK_SCREENSHOT")"
+echo "- $(relative_path "$SETTINGS_APPEARANCE_SYSTEM_SCREENSHOT")"
 echo "- $(relative_path "$MCP_SETTINGS_LIGHT_SCREENSHOT")"
 echo "- $(relative_path "$MCP_SETTINGS_DARK_SCREENSHOT")"
+echo "- $(relative_path "$MCP_SETTINGS_SYSTEM_SCREENSHOT")"
 echo "- $(relative_path "$EVIDENCE_FILE")"

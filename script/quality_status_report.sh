@@ -179,6 +179,7 @@ risk_manual="$(count_risk_coverage "manual-only")"
   printf -- '- `script/check_runtime_accessible_crud_smoke.sh`\n'
   printf -- '- `script/check_accessibility_preflight.sh --runtime`\n'
   printf -- '- `script/capture_ui_evidence.sh --doctor`\n'
+  printf -- '- `script/check_visual_regression_smoke.sh`\n'
   printf -- '- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-%s.md ./script/check_automated_release_preflight.sh`\n' "$source_commit"
   printf -- '- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-%s.md ./script/release_readiness_report.sh`\n\n' "$source_commit"
 

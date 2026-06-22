@@ -25,7 +25,7 @@ risk 行は次の 5 層のいずれかに必ず対応付ける。複数の層に
 | unit     | ドメインロジック・validation・永続化・secret boundary の速い固定化       | `swift test --filter <TestSuite>` (例: `ProjectBoardStoreTests`)                       |
 | source   | SwiftUI / AppKit / script の実装境界を静的に固定する                     | `swift test --filter AppExperienceSourceTests` (Phase 14 P14-001〜P14-006 の中核)       |
 | runtime  | 実アプリを起動し、AX frame とクリックパスを検証する                       | `script/check_project_board_header_layout_smoke.sh`, `script/check_runtime_accessible_crud_smoke.sh` |
-| visual   | Light / Dark / System の screenshot 証跡で見た目の退行を検出する         | `script/capture_ui_evidence.sh` (visual regression smoke は P14-004 follow-up)         |
+| visual   | Light / Dark / System の screenshot 証跡で見た目の退行を検出する         | `script/capture_ui_evidence.sh`, `script/check_visual_regression_smoke.sh`             |
 | manual   | VoiceOver / Gatekeeper / clean environment など自動化できない品質       | `script/create_voiceover_evidence.sh`, `script/create_release_evidence.sh`             |
 
 ## Coverage Status
@@ -58,8 +58,8 @@ runtime AX smoke で固定する。Phase 14 で加わった layout stability har
 | ---------- | ----------------------------------------------------------------------- | ------------------------------- | --------------------------- | ------------------------------------------------------------------------------ | ------------ |
 | header     | Header action group is detail-right aligned and stays trailing through inspector width change | `project-board-header-bar`     | source + runtime            | `AppExperienceSourceTests.testProjectBoardHeaderIsSharedAndColumnsUseSynchronizedBounds`, `script/check_project_board_header_layout_smoke.sh` | partial      |
 | sidebar    | Sidebar toggle mutates synchronously; frame stabilizes without delayed correction (no `DispatchQueue.main.asyncAfter`, no `Timer.scheduledTimer` retry for layout) | `project-board-sidebar`, `project-board-sidebar-toggle` | source + runtime            | `AppExperienceSourceTests.testProjectBoardHeaderLayoutBridgeAvoidsDelayedCorrectionDuringStateChanges`, `script/check_project_board_header_layout_smoke.sh` | partial      |
-| detail     | Toolbar display mode preserves primary action position; Board / List / Overview 切替で header height と top offset が変わらない | `project-board-detail`         | source + runtime + visual   | `AppExperienceSourceTests.testProjectBoardToolbarDisplayModeOnlyAllowsIconAndTextOrIconOnly`, `script/check_project_board_header_layout_smoke.sh`, `script/capture_ui_evidence.sh` | partial      |
-| inspector  | Light / Dark / System switch does not collapse or overlap; inspector open / close 後に header が潜らない | `project-inspector`           | source + runtime + visual   | `AppExperienceSourceTests`, `script/check_project_board_header_layout_smoke.sh`, `script/capture_ui_evidence.sh` | partial      |
+| detail     | Toolbar display mode preserves primary action position; Board / List / Overview 切替で header height と top offset が変わらない | `project-board-detail`         | source + runtime + visual   | `AppExperienceSourceTests.testProjectBoardToolbarDisplayModeOnlyAllowsIconAndTextOrIconOnly`, `script/check_project_board_header_layout_smoke.sh`, `script/capture_ui_evidence.sh`, `script/check_visual_regression_smoke.sh` | partial      |
+| inspector  | Light / Dark / System switch does not collapse or overlap; inspector open / close 後に header が潜らない | `project-inspector`           | source + runtime + visual   | `AppExperienceSourceTests`, `script/check_project_board_header_layout_smoke.sh`, `script/capture_ui_evidence.sh`, `script/check_visual_regression_smoke.sh` | partial      |
 | window     | Window resize preserves fixed dimension bounds; min / standard / wide で header / detail が押し潰されない | `project-board-header-bar`, `project-board-detail` | source + runtime            | `AppExperienceSourceTests`, `script/check_layout_stability_smoke.sh` | automated    |
 | layout     | Layout correction avoids delayed animation; `Transaction.disablesAnimations = true` または同期 layout policy を layout-sensitive mutation に必ず付ける | `project-board-header-bar`     | source                      | `AppExperienceSourceTests.testProjectBoardHeaderIsSharedAndColumnsUseSynchronizedBounds`, `AppExperienceSourceTests.testProjectBoardHeaderLayoutBridgeAvoidsDelayedCorrectionDuringStateChanges` | automated    |
 
@@ -88,11 +88,6 @@ runtime AX smoke で固定する。Phase 14 で加わった layout stability har
 
 ## Open risks (P14-001 baseline, not yet covered by tests)
 
-- Light / Dark / System 直後の project board card / sidebar selection / header /
-  inspector field の overlap 検出は visual regression smoke
-  (`script/check_visual_regression_smoke.sh` として P14-004 で新規作成予定。
-  本ファイル作成時点でリポジトリには未存在) と `script/capture_ui_evidence.sh`
-  の拡張が未着手。 Coverage: open。 Follow-up: P14-004, P14-008。
 - destructive confirmation (project archive, task delete) が confirmation なしで
   DB mutation に到達しないことの runtime smoke 拡張が未完了。 Coverage: open。
   Follow-up: P14-005, P14-009。

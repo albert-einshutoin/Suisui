@@ -6421,6 +6421,221 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("BLOCKER"))
     }
 
+    func testVisualBaselineManifestCoversProductScreensThemesAndSemanticTolerances() throws {
+        let manifestData = try Data(contentsOf: packageRoot().appendingPathComponent("docs/quality/visual-baseline-manifest.json"))
+        let manifest = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: manifestData) as? [String: Any],
+            "Visual baseline manifest must be parseable JSON so release scripts can consume it without ad hoc text parsing."
+        )
+        let artifactRoot = try XCTUnwrap(manifest["artifactRoot"] as? String)
+        let screens = try XCTUnwrap(manifest["screens"] as? [[String: Any]])
+        let tolerances = try XCTUnwrap(manifest["semanticTolerances"] as? [String: Any])
+
+        XCTAssertEqual((manifest["schemaVersion"] as? NSNumber)?.intValue, 1)
+        XCTAssertEqual(artifactRoot, "docs/release/evidence/ui-screenshots")
+        XCTAssertEqual(Set(screens.compactMap { $0["id"] as? String }), [
+            "project-board",
+            "inbox",
+            "today",
+            "settings-overview",
+            "settings-appearance",
+            "mcp-settings",
+            "voice-command"
+        ])
+
+        for screen in screens {
+            let screenID = try XCTUnwrap(screen["id"] as? String)
+            let themes = try XCTUnwrap(screen["themes"] as? [String], "missing themes for \(screenID)")
+            let artifacts = try XCTUnwrap(screen["artifacts"] as? [String: String], "missing artifacts for \(screenID)")
+            let viewport = try XCTUnwrap(screen["viewport"] as? [String: Any], "missing viewport for \(screenID)")
+
+            XCTAssertEqual(themes, ["light", "dark", "system"], "P14-004 requires Light/Dark/System coverage for \(screenID)")
+            XCTAssertGreaterThanOrEqual((viewport["width"] as? NSNumber)?.intValue ?? 0, 1_200, "viewport width too small for \(screenID)")
+            XCTAssertGreaterThanOrEqual((viewport["height"] as? NSNumber)?.intValue ?? 0, 720, "viewport height too small for \(screenID)")
+            XCTAssertTrue((screen["axFrameAudit"] as? Bool) == true, "visual-only comparison is not enough for \(screenID)")
+
+            for theme in themes {
+                let artifact = try XCTUnwrap(artifacts[theme], "missing \(theme) artifact for \(screenID)")
+                XCTAssertTrue(artifact.hasSuffix("-\(theme).png"), "artifact should encode theme in filename: \(artifact)")
+                XCTAssertFalse(artifact.contains(" "), "artifact paths must stay script-friendly: \(artifact)")
+            }
+        }
+
+        XCTAssertEqual(tolerances["comparisonMode"] as? String, "semantic")
+        XCTAssertEqual(tolerances["allowPixelPerfectOnly"] as? Bool, false)
+        XCTAssertGreaterThanOrEqual((tolerances["minimumBytes"] as? NSNumber)?.intValue ?? 0, 50_000)
+        XCTAssertGreaterThanOrEqual((tolerances["minimumWidth"] as? NSNumber)?.intValue ?? 0, 640)
+        XCTAssertGreaterThanOrEqual((tolerances["minimumHeight"] as? NSNumber)?.intValue ?? 0, 420)
+        XCTAssertGreaterThanOrEqual((tolerances["minimumLuminanceRange"] as? NSNumber)?.intValue ?? 0, 12)
+        XCTAssertGreaterThanOrEqual((tolerances["minimumColorBuckets"] as? NSNumber)?.intValue ?? 0, 8)
+        XCTAssertEqual(tolerances["requiresAXFrameAudit"] as? Bool, true)
+    }
+
+    func testVisualBaselineDocumentationAndCaptureScriptDescribeReviewableUpdates() throws {
+        let documentation = try readPackageFile("docs/quality/visual-baselines.md")
+        let captureScript = try readPackageFile("script/capture_ui_evidence.sh")
+        let visualSmokeScript = try readPackageFile("script/check_visual_regression_smoke.sh")
+
+        for screen in [
+            "Project Board",
+            "Inbox",
+            "Today",
+            "Settings Overview",
+            "Settings Appearance",
+            "MCP Settings",
+            "Voice Command"
+        ] {
+            XCTAssertTrue(documentation.contains(screen), "visual baseline docs must explain \(screen)")
+        }
+
+        XCTAssertTrue(documentation.contains("Light / Dark / System"))
+        XCTAssertTrue(documentation.contains("semantic tolerances"))
+        XCTAssertTrue(documentation.contains("AX frame"))
+        XCTAssertTrue(documentation.contains("before/after artifact"))
+        XCTAssertTrue(documentation.contains("`--update-baselines --allow-update`"))
+        XCTAssertTrue(documentation.contains("does not overwrite baselines"))
+
+        XCTAssertTrue(captureScript.contains("VISUAL_BASELINE_MANIFEST=\"$ROOT_DIR/docs/quality/visual-baseline-manifest.json\""))
+        XCTAssertTrue(captureScript.contains("SOLOPM_VISUAL_BASELINE_VIEWPORT"))
+        XCTAssertTrue(captureScript.contains("set bounds of front window"))
+        XCTAssertTrue(captureScript.contains("write_visual_baseline_capture_manifest"))
+        XCTAssertTrue(captureScript.contains("Light/Dark/System visual baseline manifest"))
+
+        XCTAssertTrue(visualSmokeScript.contains("visual_regression_smoke_check.swift"))
+        XCTAssertTrue(visualSmokeScript.contains("SOLOPM_VISUAL_BASELINE_MANIFEST"))
+        XCTAssertTrue(visualSmokeScript.contains("SOLOPM_VISUAL_SCREENSHOT_DIR"))
+        XCTAssertTrue(visualSmokeScript.contains("--update-baselines"))
+        XCTAssertTrue(visualSmokeScript.contains("--allow-update"))
+    }
+
+    func testVisualBaselineCaptureScriptTargetsManifestArtifacts() throws {
+        let manifestData = try Data(contentsOf: packageRoot().appendingPathComponent("docs/quality/visual-baseline-manifest.json"))
+        let manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: manifestData) as? [String: Any])
+        let screens = try XCTUnwrap(manifest["screens"] as? [[String: Any]])
+        let captureScript = try readPackageFile("script/capture_ui_evidence.sh")
+
+        for screen in screens {
+            let screenID = try XCTUnwrap(screen["id"] as? String)
+            let artifacts = try XCTUnwrap(screen["artifacts"] as? [String: String], "missing artifacts for \(screenID)")
+            for artifact in artifacts.values {
+                XCTAssertTrue(captureScript.contains(artifact), "capture script must produce manifest artifact \(artifact) for \(screenID)")
+            }
+        }
+
+        XCTAssertTrue(captureScript.contains("capture_project_board_destination system inbox"))
+        XCTAssertTrue(captureScript.contains("capture_project_board_destination system schedule"))
+        XCTAssertTrue(captureScript.contains("capture_settings_overview system"))
+        XCTAssertTrue(captureScript.contains("capture_settings_appearance system"))
+        XCTAssertTrue(captureScript.contains("capture_mcp_settings_appearance system"))
+        XCTAssertTrue(captureScript.contains("VOICE_COMMAND_SYSTEM_SCREENSHOT"))
+    }
+
+    func testVisualRegressionSmokeBlocksSmallBlackAndLowInformationImages() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-visual-regression-smoke-blockers", isDirectory: true)
+        let screenshotDirectory = fixtureRoot.appendingPathComponent("screenshots", isDirectory: true)
+        let manifestURL = fixtureRoot.appendingPathComponent("visual-baseline-manifest.json")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: screenshotDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        try writeVisiblePNG(
+            to: screenshotDirectory.appendingPathComponent("too-small-light.png"),
+            width: 220,
+            height: 120,
+            trailingBytes: 60_000
+        )
+        try writeSolidPNG(
+            to: screenshotDirectory.appendingPathComponent("black-dark.png"),
+            width: 800,
+            height: 600,
+            red: 0,
+            green: 0,
+            blue: 0,
+            trailingBytes: 60_000
+        )
+        try writeSolidPNG(
+            to: screenshotDirectory.appendingPathComponent("low-info-system.png"),
+            width: 800,
+            height: 600,
+            red: 128,
+            green: 128,
+            blue: 128,
+            trailingBytes: 60_000
+        )
+        try visualBaselineManifestFixture(
+            artifacts: [
+                "light": "too-small-light.png",
+                "dark": "black-dark.png",
+                "system": "low-info-system.png"
+            ]
+        ).write(to: manifestURL, atomically: true, encoding: .utf8)
+
+        let result = try runScript(
+            "script/check_visual_regression_smoke.sh",
+            arguments: [
+                "--manifest", manifestURL.path,
+                "--screenshot-dir", screenshotDirectory.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("BLOCKER: visual screenshot dimensions are too small"))
+        XCTAssertTrue(result.output.contains("BLOCKER: visual screenshot appears black"))
+        XCTAssertTrue(result.output.contains("BLOCKER: visual screenshot is low information"))
+    }
+
+    func testVisualRegressionSmokeRequiresExplicitBaselineUpdateAndNormalRunDoesNotOverwrite() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-visual-regression-smoke-update-guard", isDirectory: true)
+        let screenshotDirectory = fixtureRoot.appendingPathComponent("screenshots", isDirectory: true)
+        let baselineDirectory = fixtureRoot.appendingPathComponent("baselines", isDirectory: true)
+        let manifestURL = fixtureRoot.appendingPathComponent("visual-baseline-manifest.json")
+        let baselineURL = baselineDirectory.appendingPathComponent("project-board-light.png")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: screenshotDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: baselineDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        try writeVisiblePNG(
+            to: screenshotDirectory.appendingPathComponent("project-board-light.png"),
+            width: 800,
+            height: 600,
+            trailingBytes: 60_000
+        )
+        try "existing baseline\n".write(to: baselineURL, atomically: true, encoding: .utf8)
+        try visualBaselineManifestFixture(artifacts: ["light": "project-board-light.png"])
+            .write(to: manifestURL, atomically: true, encoding: .utf8)
+
+        let guardedUpdateResult = try runScript(
+            "script/check_visual_regression_smoke.sh",
+            arguments: [
+                "--manifest", manifestURL.path,
+                "--screenshot-dir", screenshotDirectory.path,
+                "--baseline-dir", baselineDirectory.path,
+                "--update-baselines"
+            ]
+        )
+
+        XCTAssertNotEqual(guardedUpdateResult.exitCode, 0)
+        XCTAssertTrue(guardedUpdateResult.output.contains("baseline update requires --allow-update"))
+
+        let normalResult = try runScript(
+            "script/check_visual_regression_smoke.sh",
+            arguments: [
+                "--manifest", manifestURL.path,
+                "--screenshot-dir", screenshotDirectory.path,
+                "--baseline-dir", baselineDirectory.path
+            ]
+        )
+
+        XCTAssertEqual(normalResult.exitCode, 0, normalResult.output)
+        XCTAssertEqual(try String(contentsOf: baselineURL, encoding: .utf8), "existing baseline\n")
+        XCTAssertTrue(normalResult.output.contains("OK: visual regression smoke passed"))
+    }
+
     func testReleaseReadinessReportCanWriteOperatorActionSummaryWithoutPassingManualGates() throws {
         let script = try readPackageFile("script/release_readiness_report.sh")
         let checklist = try readPackageFile("docs/release/checklist.md")
@@ -9827,6 +10042,51 @@ final class ReleasePipelineTests: XCTestCase {
             try handle.write(contentsOf: Data(repeating: 0, count: trailingBytes))
             try handle.close()
         }
+    }
+
+    private func visualBaselineManifestFixture(artifacts: [String: String]) -> String {
+        let artifactLines = artifacts
+            .sorted { $0.key < $1.key }
+            .map { "          \"\($0.key)\": \"\($0.value)\"" }
+            .joined(separator: ",\n")
+        let themeLines = artifacts.keys
+            .sorted()
+            .map { "\"\($0)\"" }
+            .joined(separator: ", ")
+
+        return """
+        {
+          "schemaVersion": 1,
+          "artifactRoot": "screenshots",
+          "baselineRoot": "baselines",
+          "semanticTolerances": {
+            "comparisonMode": "semantic",
+            "allowPixelPerfectOnly": false,
+            "minimumBytes": 50000,
+            "minimumWidth": 640,
+            "minimumHeight": 420,
+            "minimumLuminanceRange": 12,
+            "minimumColorBuckets": 2,
+            "blackScreenMaximumLuminance": 8,
+            "requiresAXFrameAudit": true
+          },
+          "screens": [
+            {
+              "id": "project-board",
+              "title": "Project Board",
+              "themes": [\(themeLines)],
+              "viewport": {
+                "width": 1200,
+                "height": 720
+              },
+              "axFrameAudit": true,
+              "artifacts": {
+        \(artifactLines)
+              }
+            }
+          ]
+        }
+        """
     }
 
     private func readPackageFile(_ relativePath: String) throws -> String {

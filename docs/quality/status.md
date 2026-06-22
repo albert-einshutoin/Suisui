@@ -1,30 +1,17 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T20:08:25Z
-Source commit: e3886c6
+Generated at: 2026-06-22T20:24:45Z
+Source commit: ac59306
 
 ## Summary
 
-- Phase14 completion: 51/183 checked, 132 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
-- Open risk items: 5 (`docs/quality/regression-risk-map.md`)
+- Phase14 completion: 64/183 checked, 119 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Open risk items: 4 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-e3886c6.md`
+- Automated preflight evidence: `missing .tmp/automated-release-preflight-ac59306.md`
 
 ## Unfinished Phase14 Items
 
-- [ ] tasks/Phase14-QualityRegressionHardening.md:196:- [ ] `ReleasePipelineTests` にvisual baseline manifestの存在と対象画面リストを確認するテストを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:197:- [ ] 画像が小さすぎる、黒画面、低情報量の場合にscriptが失敗するsource testを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:198:- [ ] baseline更新には明示フラグが必要で、通常実行では上書きしないことをテストする。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:202:- [ ] `docs/quality/visual-baselines.md` に対象画面、viewport、theme、許容差、更新手順を書く。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:203:- [ ] screenshot manifestをJSONまたはMarkdown tableで定義する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:204:- [ ] capture scriptでwindow sizeとthemeを固定する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:205:- [ ] perceptual hashまたは簡易histogramで黒画面/低情報量を検出する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:206:- [ ] 重なり検出はAX frameと併用し、画像比較だけにしない。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:207:- [ ] baseline update時はPRにbefore/after artifactを添付する運用にする。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:211:- [ ] Light/Dark/Systemで主要画面のスクリーンショット証跡が取れる。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:212:- [ ] 画像が空、黒、極端に小さい、対象windowでない場合に失敗する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:213:- [ ] baseline更新が意図的なデザイン変更としてレビューできる。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:214:- [ ] macOS rendering差で不必要にフレークしない許容差が文書化されている。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:236:- [ ] smoke scriptが isolated `SOLOPM_DATABASE_PATH` を必須にしていることをsource testで固定する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:237:- [ ] 実行後のSQLite stateを確認し、UI操作だけ成功してDB未反映の場合に失敗するテストを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:238:- [ ] click-pathごとに `PASS/FAIL/SKIP` ではなく、失敗理由と最後に見えたwindow情報を出すことをsource testで固定する。
@@ -42,20 +29,32 @@ Source commit: e3886c6
 - [ ] tasks/Phase14-QualityRegressionHardening.md:277:- [ ] layout-sensitive state mutationが `Transaction.disablesAnimations = true` または明示的な同期layout policyを持たない場合に検出するテストを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:278:- [ ] AppKit bridgeが `layoutSubtreeIfNeeded` / `displayIfNeeded` の同期passを持つことを固定するテストを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:282:- [ ] `docs/adr/NNNN-synchronous-ui-mutation-policy.md` を追加する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:283:- [ ] layout-sensitive operation一覧と禁止patternを定義する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:284:- [ ] SwiftUI state mutationは最小scopeのtransactionに閉じる。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:285:- [ ] AppKit interopは必要箇所だけに置き、View全体へ散らさない。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:286:- [ ] 遅延補正を使う場合はinitial attachmentなど例外理由をコメントとテストで固定する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:290:- [ ] 新しいUI PRが同期/非同期の判断基準を参照できる。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:291:- [ ] 遅延補正が便利な逃げ道として増えない。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:292:- [ ] Layout stability smokeとsource invariantが同じpolicyを守る。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:314:- [ ] 主要UI componentのmin/max frame指定が消えた場合に失敗するsource testを追加する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:315:- [ ] AX frameのoverlap検出をruntime smokeに追加する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:316:- [ ] 長い日本語/英語ラベル、空状態、エラー状態でbutton textがはみ出ないfixtureを追加する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:320:- [ ] `ProjectBoardLayoutMetrics` のような局所的metricsを作るか、既存DesignSystemへ追加する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:321:- [ ] magic numberを局所定数へ寄せ、なぜ固定するかコメントする。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:322:- [ ] ローカライズ文字列が長い場合はline limit、minimumScaleFactor、tooltip、label/hintのどれで処理するか決める。
 
 ## Open Risk Items
 
-- [ ] docs/quality/regression-risk-map.md:95:  の拡張が未着手。 Coverage: open。 Follow-up: P14-004, P14-008。
-- [ ] docs/quality/regression-risk-map.md:97:  DB mutation に到達しないことの runtime smoke 拡張が未完了。 Coverage: open。
-- [ ] docs/quality/regression-risk-map.md:100:  しないことの source test が未着手。 Coverage: open。 Follow-up: P14-010。
-- [ ] docs/quality/regression-risk-map.md:103:  未着手。 Coverage: open。 Follow-up: P14-011。
-- [ ] docs/quality/regression-risk-map.md:105:  `script/release_readiness_report.sh`) が未着手。 Coverage: open。
+- [ ] docs/quality/regression-risk-map.md:92:  DB mutation に到達しないことの runtime smoke 拡張が未完了。 Coverage: open。
+- [ ] docs/quality/regression-risk-map.md:95:  しないことの source test が未着手。 Coverage: open。 Follow-up: P14-010。
+- [ ] docs/quality/regression-risk-map.md:98:  未着手。 Coverage: open。 Follow-up: P14-011。
+- [ ] docs/quality/regression-risk-map.md:100:  `script/release_readiness_report.sh`) が未着手。 Coverage: open。
 
 ## Runtime / Visual / Manual Evidence
 
 | Evidence | Status | Source commit |
 | --- | --- | --- |
-| `docs/release/evidence/ui-screenshots.md` | present | db09ce0 |
+| `docs/release/evidence/ui-screenshots.md` | present | e3886c6 |
 | `docs/release/evidence/mcp-inspector.md` | present | 881b693 |
 | `docs/release/evidence/accessibility-voiceover.md` | passed | e488456 |
 | `docs/release/evidence/competitor-hands-on.md` | pending | unknown |
@@ -69,8 +68,9 @@ Source commit: e3886c6
 - `script/check_runtime_accessible_crud_smoke.sh`
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-e3886c6.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-e3886c6.md ./script/release_readiness_report.sh`
+- `script/check_visual_regression_smoke.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-ac59306.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-ac59306.md ./script/release_readiness_report.sh`
 
 ## Notes
 
