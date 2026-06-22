@@ -1,6 +1,6 @@
 # Regression Risk Map
 
-Status: P14-001 baseline
+Status: P14-001 source contract green
 Owner: Quality bar for SoloPM (Project Board, Inbox, Today, Settings, Voice Command, Menu Bar)
 Source of truth: `tasks/Phase14-QualityRegressionHardening.md`
 

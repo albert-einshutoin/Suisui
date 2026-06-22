@@ -1,27 +1,17 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-22T16:00:09Z
-Source commit: 69cdaf8
+Generated at: 2026-06-22T16:12:20Z
+Source commit: 8cc20f9
 
 ## Summary
 
-- Phase14 completion: 11/181 checked, 170 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 21/181 checked, 160 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 6 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `.tmp/automated-release-preflight-69cdaf8.md`
+- Automated preflight evidence: `.tmp/automated-release-preflight-8cc20f9.md`
 
 ## Unfinished Phase14 Items
 
-- [ ] tasks/Phase14-QualityRegressionHardening.md:70:- [ ] `AppExperienceSourceTests` に `docs/quality/regression-risk-map.md` の存在と主要画面の記載を確認するテストを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:71:- [ ] risk map に Project Board header / sidebar / detail / inspector のlayout stability項目がない場合に失敗するテストを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:72:- [ ] risk map に unit / source / runtime / visual / manual の検証層が対応付いていない場合に失敗するテストを追加する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:76:- [ ] `docs/quality/regression-risk-map.md` を作る。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:77:- [ ] 画面別に「主要操作」「状態変更」「壊れるとユーザーに見える症状」「検証層」「owner test」を記録する。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:78:- [ ] 既存の `AppExperienceSourceTests` / release scripts / smoke scripts をrisk mapへ対応付ける。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:79:- [ ] 残る未検証riskを P14-002 以降のタスクへリンクする。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:83:- [ ] 主要画面ごとのテストカバレッジの穴が1ファイルで分かる。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:84:- [ ] UI PRのレビュー時に、追加/変更した画面のrisk map更新漏れを検出できる。
-- [ ] tasks/Phase14-QualityRegressionHardening.md:85:- [ ] release前の残riskが自動化不足なのか、manual-only gateなのか分類されている。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:108:- [ ] `ReleasePipelineTests` にlayout stability scriptの存在、`t=0`即時サンプル、複数サンプル、frame delta thresholdをsource-levelで確認するテストを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:109:- [ ] scriptが対象AX identifier不足をskipではなく失敗扱いにするテストを追加する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:110:- [ ] scriptが差分artifactを `.tmp/layout-stability/` に保存することを確認するテストを追加する。
@@ -42,6 +32,16 @@ Source commit: 69cdaf8
 - [ ] tasks/Phase14-QualityRegressionHardening.md:161:- [ ] Project Boardの主要領域にAX identifierを追加または確認する。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:162:- [ ] smoke scriptの操作を小さな関数に分け、各遷移後に `assert_layout_stable` を呼ぶ。
 - [ ] tasks/Phase14-QualityRegressionHardening.md:163:- [ ] Header actionsがdetail column右端に収まることを、window右端ではなくdetail frame基準で判定する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:164:- [ ] Inspector表示時にheaderがinspector下へ潜らないことを確認する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:165:- [ ] Board/List/Overviewの切替でheader heightとtop offsetが変わらないことを確認する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:169:- [ ] Project Boardの主要状態遷移でheader / sidebar / detail / inspectorのframe jumpが検出される。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:170:- [ ] Header action controlsが常に同じ順序とAX identifierで取得できる。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:171:- [ ] Runtime smokeで失敗した時、どの遷移でどのframeがズレたか出力される。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:172:- [ ] Project Board UI変更PRはこのsuiteをfocused verifierとして使える。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:194:- [ ] `ReleasePipelineTests` にvisual baseline manifestの存在と対象画面リストを確認するテストを追加する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:195:- [ ] 画像が小さすぎる、黒画面、低情報量の場合にscriptが失敗するsource testを追加する。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:196:- [ ] baseline更新には明示フラグが必要で、通常実行では上書きしないことをテストする。
+- [ ] tasks/Phase14-QualityRegressionHardening.md:200:- [ ] `docs/quality/visual-baselines.md` に対象画面、viewport、theme、許容差、更新手順を書く。
 
 ## Open Risk Items
 
@@ -69,8 +69,8 @@ Source commit: 69cdaf8
 - `script/check_runtime_accessible_crud_smoke.sh`
 - `script/check_accessibility_preflight.sh --runtime`
 - `script/capture_ui_evidence.sh --doctor`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-69cdaf8.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-69cdaf8.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-8cc20f9.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-8cc20f9.md ./script/release_readiness_report.sh`
 
 ## Notes
 

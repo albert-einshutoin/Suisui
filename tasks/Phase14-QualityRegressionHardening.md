@@ -67,22 +67,22 @@ Priority: High
 
 ### Tests First
 
-- [ ] `AppExperienceSourceTests` に `docs/quality/regression-risk-map.md` の存在と主要画面の記載を確認するテストを追加する。
-- [ ] risk map に Project Board header / sidebar / detail / inspector のlayout stability項目がない場合に失敗するテストを追加する。
-- [ ] risk map に unit / source / runtime / visual / manual の検証層が対応付いていない場合に失敗するテストを追加する。
+- [x] `AppExperienceSourceTests` に `docs/quality/regression-risk-map.md` の存在と主要画面の記載を確認するテストを追加する。
+- [x] risk map に Project Board header / sidebar / detail / inspector のlayout stability項目がない場合に失敗するテストを追加する。
+- [x] risk map に unit / source / runtime / visual / manual の検証層が対応付いていない場合に失敗するテストを追加する。
 
 ### Implementation Steps
 
-- [ ] `docs/quality/regression-risk-map.md` を作る。
-- [ ] 画面別に「主要操作」「状態変更」「壊れるとユーザーに見える症状」「検証層」「owner test」を記録する。
-- [ ] 既存の `AppExperienceSourceTests` / release scripts / smoke scripts をrisk mapへ対応付ける。
-- [ ] 残る未検証riskを P14-002 以降のタスクへリンクする。
+- [x] `docs/quality/regression-risk-map.md` を作る。
+- [x] 画面別に「主要操作」「状態変更」「壊れるとユーザーに見える症状」「検証層」「owner test」を記録する。
+- [x] 既存の `AppExperienceSourceTests` / release scripts / smoke scripts をrisk mapへ対応付ける。
+- [x] 残る未検証riskを P14-002 以降のタスクへリンクする。
 
 ### Acceptance Criteria
 
-- [ ] 主要画面ごとのテストカバレッジの穴が1ファイルで分かる。
-- [ ] UI PRのレビュー時に、追加/変更した画面のrisk map更新漏れを検出できる。
-- [ ] release前の残riskが自動化不足なのか、manual-only gateなのか分類されている。
+- [x] 主要画面ごとのテストカバレッジの穴が1ファイルで分かる。
+- [x] UI PRのレビュー時に、追加/変更した画面のrisk map更新漏れを検出できる。
+- [x] release前の残riskが自動化不足なのか、manual-only gateなのか分類されている。
 
 ### Non-goals
 
