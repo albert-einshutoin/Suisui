@@ -232,6 +232,7 @@ struct ProjectBoardView: View {
                     .help("Google Calendar sync requires Pro and OAuth authorization.")
                 } label: {
                     Label("Integrations", systemImage: "arrow.left.arrow.right")
+                        .accessibilityIdentifier("project-board-integrations-menu")
                 }
                 .help("Import, export, and sync task data")
                 .accessibilityIdentifier("project-board-integrations-menu")

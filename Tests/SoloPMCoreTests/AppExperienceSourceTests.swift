@@ -443,6 +443,25 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(boardSource.contains("toolbar.allowsUserCustomization = false"))
     }
 
+    func testProjectBoardHeaderLayoutRuntimeSmokeCoversSidebarToggleAndActionPositions() throws {
+        let script = try readPackageFile("script/check_project_board_header_layout_smoke.sh")
+
+        XCTAssertTrue(script.contains("./script/build_and_run.sh --verify"))
+        XCTAssertTrue(script.contains("project-board-sidebar-toggle"))
+        XCTAssertTrue(script.contains("project-board-integrations-menu"))
+        XCTAssertTrue(script.contains("project-board-voice-command"))
+        XCTAssertTrue(script.contains("project-board-settings-link"))
+        XCTAssertTrue(script.contains("project-board-terminal-toggle"))
+        XCTAssertTrue(script.contains("assert_action_buttons_are_trailing"))
+        XCTAssertTrue(script.contains("click_sidebar_toggle"))
+        XCTAssertTrue(script.contains("capture_window \"sidebar-visible\""))
+        XCTAssertTrue(script.contains("capture_window \"sidebar-hidden\""))
+        XCTAssertTrue(script.contains("capture_window \"sidebar-restored\""))
+        XCTAssertTrue(script.contains("SOLOPM_HEADER_LAYOUT_SMOKE_TIMEOUT_SECONDS"))
+        XCTAssertTrue(script.contains("script/ui_evidence_window_metadata.swift"))
+        XCTAssertTrue(script.contains("BLOCKER: toolbar action buttons are not trailing"))
+    }
+
     func testMenuBarPanelHostsSettingsLinkWithoutThemeControls() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let panelStart = try XCTUnwrap(appSource.range(of: "private struct MenuBarPanel"))
