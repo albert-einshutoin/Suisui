@@ -843,6 +843,53 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelRejectsDoneAndBlockedTasksBeforeAutomationReview() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+
+        _ = viewModel.createTask(title: "Already shipped", status: .done, priority: .high)
+        viewModel.prepareAutomationReviewForSelectedTask()
+
+        XCTAssertNil(viewModel.taskAutomationReviewDecision)
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Only open unblocked tasks can be reviewed for automation.")
+
+        _ = viewModel.createTask(title: "Waiting on signing identity", status: .blocked, priority: .high)
+        viewModel.prepareAutomationReviewForSelectedTask()
+
+        XCTAssertNil(viewModel.taskAutomationReviewDecision)
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Only open unblocked tasks can be reviewed for automation.")
+    }
+
+    @MainActor
+    func testProjectBoardViewModelStopsApprovedAutomationWhenReviewedTaskBecomesBlocked() throws {
+        var changeCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Prepare release machine plan",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-22"
+        ))
+        viewModel.prepareAutomationReviewForSelectedTask()
+        XCTAssertEqual(viewModel.taskAutomationReviewDecision?.selectedTasks.map(\.id), [task.id])
+
+        viewModel.moveSelectedTask(to: .blocked)
+        changeCount = 0
+
+        viewModel.runApprovedAutomationForSelectedTask()
+
+        XCTAssertEqual(changeCount, 0)
+        XCTAssertEqual(viewModel.selectedTaskID, task.id)
+        XCTAssertEqual(viewModel.selectedTask?.status, .blocked)
+        XCTAssertNil(viewModel.taskAutomationReviewDecision)
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Task automation stopped because the task is blocked or complete.")
+    }
+
+    @MainActor
     func testProjectBoardViewModelCreatesProjectArtifactAndNotifies() throws {
         var changeCount = 0
         let viewModel = ProjectBoardViewModel(

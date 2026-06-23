@@ -620,6 +620,8 @@
 "Prepared review-only automation for \"%@\"." = "「%@」の確認専用自動化を準備しました。";
 "Select a task before running automation." = "自動化を実行する前にタスクを選択してください。";
 "Review the automation plan before running it." = "実行する前に自動化計画を確認してください。";
+"Only open unblocked tasks can be reviewed for automation." = "未完了かつブロックされていないタスクだけを自動化レビューできます。";
+"Task automation stopped because the task is blocked or complete." = "タスクがブロック済みまたは完了済みのため、自動化を停止しました。";
 "Started approved automation for \"%@\"." = "「%@」の承認済み自動化を開始しました。";
 "Builds a review-only LLM plan for the selected task" = "選択中タスクの確認専用LLM計画を作成します";
 "Builds a review-only LLM plan for the selected task." = "選択中タスクの確認専用LLM計画を作成します。";

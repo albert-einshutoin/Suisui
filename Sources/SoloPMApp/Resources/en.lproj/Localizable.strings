@@ -620,6 +620,8 @@
 "Prepared review-only automation for \"%@\"." = "Prepared review-only automation for \"%@\".";
 "Select a task before running automation." = "Select a task before running automation.";
 "Review the automation plan before running it." = "Review the automation plan before running it.";
+"Only open unblocked tasks can be reviewed for automation." = "Only open unblocked tasks can be reviewed for automation.";
+"Task automation stopped because the task is blocked or complete." = "Task automation stopped because the task is blocked or complete.";
 "Started approved automation for \"%@\"." = "Started approved automation for \"%@\".";
 "Builds a review-only LLM plan for the selected task" = "Builds a review-only LLM plan for the selected task";
 "Builds a review-only LLM plan for the selected task." = "Builds a review-only LLM plan for the selected task.";

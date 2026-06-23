@@ -1294,6 +1294,11 @@ public final class ProjectBoardViewModel: ObservableObject {
             todayCommandFeedback = String(localized: "Select a task before reviewing automation.")
             return
         }
+        guard isEligibleForTaskAutomation(selectedTask) else {
+            taskAutomationReviewDecision = nil
+            todayCommandFeedback = String(localized: "Only open unblocked tasks can be reviewed for automation.")
+            return
+        }
 
         taskAutomationReviewDecision = TaskAutoExecutionDecision(
             status: .readyForReview,
@@ -1316,6 +1321,11 @@ public final class ProjectBoardViewModel: ObservableObject {
             todayCommandFeedback = String(localized: "Review the automation plan before running it.")
             return
         }
+        guard isEligibleForTaskAutomation(selectedTask) else {
+            taskAutomationReviewDecision = nil
+            todayCommandFeedback = String(localized: "Task automation stopped because the task is blocked or complete.")
+            return
+        }
 
         // The first approved execution step is intentionally a local status
         // transition. External writes and destructive actions remain separate
@@ -1323,6 +1333,10 @@ public final class ProjectBoardViewModel: ObservableObject {
         moveTask(id: selectedTask.id, to: selectedTask.status == .done ? .done : .inProgress)
         integrationStatusMessage = String(format: String(localized: "Started approved automation for \"%@\"."), selectedTask.title)
         taskAutomationReviewDecision = nil
+    }
+
+    private func isEligibleForTaskAutomation(_ task: ProjectBoardTask) -> Bool {
+        task.status != .blocked && task.status != .done
     }
 
     @discardableResult
