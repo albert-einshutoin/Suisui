@@ -12,6 +12,7 @@ Use the `screen-area-action` shape for static controls:
 - `project-header-add-task`
 - `task-inspector-save`
 - `settings-task-auto-execution-toggle`
+- `settings-task-auto-execution-urgent-cooldown`
 
 Use a dynamic suffix only when multiple peer elements are rendered from data:
 

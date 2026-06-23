@@ -1227,6 +1227,19 @@ private struct SettingsView: View {
                 }
                 .accessibilityIdentifier("settings-task-auto-execution-lookahead")
 
+                Stepper(
+                    value: Binding(
+                        get: { settingsViewModel.settings.taskAutoExecution.urgentReviewCooldownMinutes },
+                        set: { settingsViewModel.setTaskAutoExecutionUrgentReviewCooldownMinutes($0) }
+                    ),
+                    in: 5...(24 * 60),
+                    step: 5
+                ) {
+                    LabeledContent("Urgent review cooldown", value: "\(settingsViewModel.settings.taskAutoExecution.urgentReviewCooldownMinutes)m")
+                }
+                .accessibilityIdentifier("settings-task-auto-execution-urgent-cooldown")
+                .accessibilityHint("Controls how soon overdue or due-today tasks may trigger another review before the regular frequency elapses.")
+
                 Label("Plans stay review-before-execution; deletion and completion are never run directly by automation.", systemImage: "checkmark.shield")
                     .font(.caption)
                     .foregroundStyle(.secondary)

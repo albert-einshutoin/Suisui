@@ -46,6 +46,17 @@ public struct TaskAutoExecutionSettings: Codable, Equatable, Sendable {
     public var maxTasksPerRun: Int
     public var dailyLLMCallLimit: Int
     public var lookaheadHours: Int
+    public var urgentReviewCooldownMinutes: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case isEnabled
+        case mode
+        case cadence
+        case maxTasksPerRun
+        case dailyLLMCallLimit
+        case lookaheadHours
+        case urgentReviewCooldownMinutes
+    }
 
     public init(
         isEnabled: Bool = false,
@@ -53,7 +64,8 @@ public struct TaskAutoExecutionSettings: Codable, Equatable, Sendable {
         cadence: TaskAutoExecutionCadence = .manual,
         maxTasksPerRun: Int = 3,
         dailyLLMCallLimit: Int = 6,
-        lookaheadHours: Int = 48
+        lookaheadHours: Int = 48,
+        urgentReviewCooldownMinutes: Int = 60
     ) {
         self.isEnabled = isEnabled
         self.mode = mode
@@ -61,6 +73,29 @@ public struct TaskAutoExecutionSettings: Codable, Equatable, Sendable {
         self.maxTasksPerRun = maxTasksPerRun
         self.dailyLLMCallLimit = dailyLLMCallLimit
         self.lookaheadHours = lookaheadHours
+        self.urgentReviewCooldownMinutes = urgentReviewCooldownMinutes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
+        self.mode = try container.decode(TaskAutoExecutionMode.self, forKey: .mode)
+        self.cadence = try container.decode(TaskAutoExecutionCadence.self, forKey: .cadence)
+        self.maxTasksPerRun = try container.decode(Int.self, forKey: .maxTasksPerRun)
+        self.dailyLLMCallLimit = try container.decode(Int.self, forKey: .dailyLLMCallLimit)
+        self.lookaheadHours = try container.decode(Int.self, forKey: .lookaheadHours)
+        self.urgentReviewCooldownMinutes = try container.decodeIfPresent(Int.self, forKey: .urgentReviewCooldownMinutes) ?? 60
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(isEnabled, forKey: .isEnabled)
+        try container.encode(mode, forKey: .mode)
+        try container.encode(cadence, forKey: .cadence)
+        try container.encode(maxTasksPerRun, forKey: .maxTasksPerRun)
+        try container.encode(dailyLLMCallLimit, forKey: .dailyLLMCallLimit)
+        try container.encode(lookaheadHours, forKey: .lookaheadHours)
+        try container.encode(urgentReviewCooldownMinutes, forKey: .urgentReviewCooldownMinutes)
     }
 
     public static let `default` = TaskAutoExecutionSettings()
@@ -70,6 +105,7 @@ public struct TaskAutoExecutionSettings: Codable, Equatable, Sendable {
         copy.maxTasksPerRun = min(max(copy.maxTasksPerRun, 1), 10)
         copy.dailyLLMCallLimit = min(max(copy.dailyLLMCallLimit, 1), 48)
         copy.lookaheadHours = min(max(copy.lookaheadHours, 1), 24 * 30)
+        copy.urgentReviewCooldownMinutes = min(max(copy.urgentReviewCooldownMinutes, 5), 24 * 60)
         return copy
     }
 
@@ -83,6 +119,9 @@ public struct TaskAutoExecutionSettings: Codable, Equatable, Sendable {
         }
         if lookaheadHours < 1 || lookaheadHours > 24 * 30 {
             issues.append(ValidationIssue(field: "taskAutoExecution.lookaheadHours", message: "Task automation lookahead must be between 1 hour and 30 days.", severity: .error))
+        }
+        if urgentReviewCooldownMinutes < 5 || urgentReviewCooldownMinutes > 24 * 60 {
+            issues.append(ValidationIssue(field: "taskAutoExecution.urgentReviewCooldownMinutes", message: "Urgent task automation cooldown must be between 5 minutes and 24 hours.", severity: .error))
         }
         return issues
     }
@@ -156,12 +195,6 @@ public struct TaskAutoExecutionPlanner: Sendable {
         guard remainingBudget > 0 else {
             return decision(.budgetExhausted, reason: "Daily LLM automation budget is exhausted.", remainingBudget: remainingBudget)
         }
-        if let minimumInterval = settings.cadence.minimumInterval,
-           let lastRunAt = history.lastRunAt,
-           referenceDate.timeIntervalSince(lastRunAt) < minimumInterval {
-            return decision(.throttled, reason: "Task automation cadence has not elapsed.", remainingBudget: remainingBudget)
-        }
-
         let candidates = rankedCandidates(
             from: snapshot,
             settings: settings,
@@ -171,10 +204,32 @@ public struct TaskAutoExecutionPlanner: Sendable {
         guard !candidates.isEmpty else {
             return decision(.noCandidates, reason: "No eligible tasks match the current priority and due-date window.", remainingBudget: remainingBudget)
         }
+        let selectedCandidates: [ProjectBoardTask]
+        if let minimumInterval = settings.cadence.minimumInterval,
+           let lastRunAt = history.lastRunAt,
+           referenceDate.timeIntervalSince(lastRunAt) < minimumInterval {
+            let urgentCooldown = TimeInterval(settings.urgentReviewCooldownMinutes) * 60
+            let urgentCandidates = candidates.filter {
+                isUrgent(task: $0, referenceDate: referenceDate, calendar: calendar)
+            }
+            if urgentCooldown < minimumInterval, !urgentCandidates.isEmpty {
+                guard referenceDate.timeIntervalSince(lastRunAt) >= urgentCooldown else {
+                    return decision(.throttled, reason: "Urgent task automation cooldown has not elapsed.", remainingBudget: remainingBudget)
+                }
+                // Urgency override is intentionally narrow: it spends an extra
+                // provider call only on overdue or due-today work instead of
+                // dragging routine future tasks into the same LLM review.
+                selectedCandidates = urgentCandidates
+            } else {
+                return decision(.throttled, reason: "Task automation cadence has not elapsed.", remainingBudget: remainingBudget)
+            }
+        } else {
+            selectedCandidates = candidates
+        }
 
         return TaskAutoExecutionDecision(
             status: .readyForReview,
-            selectedTasks: Array(candidates.prefix(settings.maxTasksPerRun)),
+            selectedTasks: Array(selectedCandidates.prefix(settings.maxTasksPerRun)),
             reason: "Eligible tasks are ready for review-only LLM planning.",
             llmCallBudgetRemaining: remainingBudget,
             requiresUserApproval: true,
@@ -249,6 +304,13 @@ public struct TaskAutoExecutionPlanner: Sendable {
         }
         let dueTimestamp = dueDate.map { Int($0.timeIntervalSince1970) } ?? Int.max
         return [dueBucket, task.priority.executionSortRank, dueTimestamp]
+    }
+
+    private func isUrgent(task: ProjectBoardTask, referenceDate: Date, calendar: Calendar) -> Bool {
+        guard let dueDate = parsedDueDate(task.dueAt, calendar: calendar) else {
+            return false
+        }
+        return dueDate < endOfDay(for: referenceDate, calendar: calendar)
     }
 
     private func isRank(_ lhs: [Int], orderedBefore rhs: [Int]) -> Bool {

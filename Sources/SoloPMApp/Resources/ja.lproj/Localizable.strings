@@ -608,7 +608,9 @@
 "Tasks per run" = "1回あたりのタスク数";
 "Daily LLM limit" = "1日のLLM上限";
 "Due lookahead" = "期限の先読み";
+"Urgent review cooldown" = "緊急レビュー間隔";
 "Enables review-only LLM planning for due and high-priority tasks." = "期限付きタスクと高優先度タスクに対して、確認専用のLLM計画を有効にします。";
+"Controls how soon overdue or due-today tasks may trigger another review before the regular frequency elapses." = "期限切れまたは今日期限のタスクが、通常頻度を待たずに次のレビューを開始できるまでの間隔を制御します。";
 "Plans stay review-before-execution; deletion and completion are never run directly by automation." = "計画は実行前レビューに留め、削除と完了は自動化で直接実行しません。";
 "Automation" = "自動化";
 "Review-only task automation" = "確認専用タスク自動化";

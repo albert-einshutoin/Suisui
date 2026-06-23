@@ -608,7 +608,9 @@
 "Tasks per run" = "Tasks per run";
 "Daily LLM limit" = "Daily LLM limit";
 "Due lookahead" = "Due lookahead";
+"Urgent review cooldown" = "Urgent review cooldown";
 "Enables review-only LLM planning for due and high-priority tasks." = "Enables review-only LLM planning for due and high-priority tasks.";
+"Controls how soon overdue or due-today tasks may trigger another review before the regular frequency elapses." = "Controls how soon overdue or due-today tasks may trigger another review before the regular frequency elapses.";
 "Plans stay review-before-execution; deletion and completion are never run directly by automation." = "Plans stay review-before-execution; deletion and completion are never run directly by automation.";
 "Automation" = "Automation";
 "Review-only task automation" = "Review-only task automation";

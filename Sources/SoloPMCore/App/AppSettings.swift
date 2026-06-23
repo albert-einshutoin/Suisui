@@ -685,6 +685,11 @@ public final class AppSettingsViewModel: ObservableObject {
         clearMessages()
     }
 
+    public func setTaskAutoExecutionUrgentReviewCooldownMinutes(_ value: Int) {
+        settings.taskAutoExecution.urgentReviewCooldownMinutes = value
+        clearMessages()
+    }
+
     public func updateOpenAIAPIKeyInput(_ value: String) {
         openAIAPIKeyInput = value
         clearMessages()

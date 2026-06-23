@@ -96,6 +96,7 @@ final class QualitySourceContractTests: XCTestCase {
             "sidebar-destination-<destination>",
             "workflow-task-row-<taskID>",
             "settings-task-auto-execution-toggle",
+            "settings-task-auto-execution-urgent-cooldown",
             "Required for new interactive components",
             "Do not encode user-provided content, secrets, or filesystem paths"
         ] {

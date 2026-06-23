@@ -98,6 +98,73 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertFalse(decision.shouldCallLLM)
     }
 
+    func testPlannerAllowsUrgentOverdueWorkAfterUrgentCooldownEvenWhenDailyCadenceHasNotElapsed() throws {
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        let snapshot = ProjectBoardSnapshot(projects: [
+            makeProject(tasks: [
+                makeTask(id: 1, title: "High overdue release fix", priority: .high, dueAt: "2026-06-21T18:00:00Z"),
+                makeTask(id: 2, title: "Medium future cleanup", priority: .medium, dueAt: "2026-06-24T18:00:00Z")
+            ])
+        ])
+        let history = TaskAutoExecutionHistory(
+            lastRunAt: try isoDate("2026-06-22T07:00:00Z"),
+            llmCallsToday: 1
+        )
+
+        let decision = TaskAutoExecutionPlanner().makeDecision(
+            snapshot: snapshot,
+            settings: .init(
+                isEnabled: true,
+                mode: .reviewOnly,
+                cadence: .daily,
+                maxTasksPerRun: 3,
+                dailyLLMCallLimit: 4,
+                lookaheadHours: 72,
+                urgentReviewCooldownMinutes: 30
+            ),
+            history: history,
+            referenceDate: referenceDate,
+            calendar: utcCalendar()
+        )
+
+        XCTAssertEqual(decision.status, .readyForReview)
+        XCTAssertEqual(decision.selectedTasks.map(\.title), ["High overdue release fix"])
+        XCTAssertTrue(decision.shouldCallLLM)
+        XCTAssertEqual(decision.llmCallBudgetRemaining, 3)
+    }
+
+    func testPlannerKeepsUrgentWorkThrottledInsideUrgentCooldown() throws {
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        let snapshot = ProjectBoardSnapshot(projects: [
+            makeProject(tasks: [
+                makeTask(id: 1, title: "High overdue release fix", priority: .high, dueAt: "2026-06-21T18:00:00Z")
+            ])
+        ])
+        let history = TaskAutoExecutionHistory(
+            lastRunAt: try isoDate("2026-06-22T08:45:00Z"),
+            llmCallsToday: 1
+        )
+
+        let decision = TaskAutoExecutionPlanner().makeDecision(
+            snapshot: snapshot,
+            settings: .init(
+                isEnabled: true,
+                mode: .reviewOnly,
+                cadence: .daily,
+                dailyLLMCallLimit: 4,
+                urgentReviewCooldownMinutes: 30
+            ),
+            history: history,
+            referenceDate: referenceDate,
+            calendar: utcCalendar()
+        )
+
+        XCTAssertEqual(decision.status, .throttled)
+        XCTAssertEqual(decision.selectedTasks, [])
+        XCTAssertEqual(decision.reason, "Urgent task automation cooldown has not elapsed.")
+        XCTAssertFalse(decision.shouldCallLLM)
+    }
+
     func testPlannerStopsWhenDailyLLMBudgetIsExhausted() throws {
         let referenceDate = try isoDate("2026-06-22T09:00:00Z")
         let snapshot = ProjectBoardSnapshot(projects: [
@@ -203,6 +270,27 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
 
         XCTAssertEqual(try store.load().taskAutoExecution, settings.taskAutoExecution)
         XCTAssertTrue(try store.load().validate().isEmpty)
+    }
+
+    func testTaskAutoExecutionSettingsDecodeLegacyPayloadWithDefaultUrgentCooldown() throws {
+        let data = Data(
+            """
+            {
+              "isEnabled": true,
+              "mode": "reviewOnly",
+              "cadence": "daily",
+              "maxTasksPerRun": 3,
+              "dailyLLMCallLimit": 6,
+              "lookaheadHours": 48
+            }
+            """.utf8
+        )
+
+        let settings = try JSONDecoder().decode(TaskAutoExecutionSettings.self, from: data)
+
+        XCTAssertEqual(settings.urgentReviewCooldownMinutes, 60)
+        XCTAssertEqual(settings.normalized.urgentReviewCooldownMinutes, 60)
+        XCTAssertTrue(settings.validationIssues().isEmpty)
     }
 
     private func makeProject(tasks: [ProjectBoardTask]) -> ProjectBoardProject {
