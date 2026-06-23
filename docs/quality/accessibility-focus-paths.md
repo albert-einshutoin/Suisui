@@ -49,9 +49,11 @@ The task path covers create, content entry, edit, status execution, automation r
 
 `SoloPMHarnessAccessibilityAuditRunner` exposes this focus path as the `mcp-pseudo-voiceover-focus-path` harness scenario.
 
-The harness emits one step per required AX identifier so create, edit, automation review, approved execution, and destructive delete confirmation cannot pass as a single aggregate smoke result when one control is missing.
+The harness emits one step per required AX identifier so create, edit, automation review, approved execution, and destructive delete confirmation cannot pass as a single aggregate smoke result when one control is missing. When the approved execution control is required, the harness also emits an `approved-execution-receipt` step so a visible Run approved plan button cannot pass unless the task execution leaves a redacted receipt.
 
 `SoloPMHarnessScenario.requiredTaskLifecycleOperations` is the MCP/E2E lifecycle contract for this path. `task-mutation-flow` and `mcp-pseudo-voiceover-focus-path` must both cover `create`, `editContent`, `statusMove`, `automationReview`, `executeContent`, `approvedExecution`, and `deleteConfirmation`. Delete confirmation and approved execution stay out of hosted-MCP mutation payloads because the external relay is review-only; the harness still fails when those user-visible UI/AX paths are not represented.
+
+Approved execution evidence must be a redacted `ApprovedAutomationExecutionReceipt` with task identity, project identity, reviewed title, before/after status, priority, due date, and review reason. Missing receipts or receipt fields that still contain secret-like content fail the pseudo VoiceOver run before manual evidence can be reused.
 
 ## Source Owners
 

@@ -156,16 +156,53 @@ final class SoloPMHarnessTests: XCTestCase {
             trigger: .cloudTriggered,
             startedAt: "2026-06-23T00:00:00Z",
             finishedAt: "2026-06-23T00:00:01Z",
-            nodes: completeAccessibilityNodes()
+            nodes: completeAccessibilityNodes(),
+            approvedExecutionReceipt: approvedExecutionReceipt()
         )
 
         XCTAssertEqual(run.status, .passed)
         XCTAssertEqual(run.scenario.kind, .accessibilityFocusPath)
         XCTAssertEqual(run.resultEnvelope.scenarioKind, .accessibilityFocusPath)
         let requiredNodeCount = AccessibilityFocusPathRequirement.taskLifecycleAndExecution.requiredNodeIDs.count
-        XCTAssertEqual(run.steps.count, requiredNodeCount)
+        XCTAssertEqual(run.steps.count, requiredNodeCount + 1)
+        XCTAssertEqual(run.steps.last?.id, "approved-execution-receipt")
         XCTAssertNil(run.diff)
         XCTAssertTrue(run.redactedLogs.contains { $0.message.contains("covered=\(requiredNodeCount)/\(requiredNodeCount)") })
+        XCTAssertTrue(run.redactedLogs.contains { $0.message.contains("approved execution receipt covered=1/1") })
+    }
+
+    func testAccessibilityHarnessRunRequiresApprovedExecutionReceiptForCompletePseudoVoiceOverPath() {
+        let run = SoloPMHarnessAccessibilityAuditRunner().run(
+            id: "run-ax-missing-receipt",
+            trigger: .cloudTriggered,
+            startedAt: "2026-06-23T00:00:00Z",
+            finishedAt: "2026-06-23T00:00:01Z",
+            nodes: completeAccessibilityNodes()
+        )
+
+        XCTAssertEqual(run.status, .failed)
+        XCTAssertEqual(run.diff?.stepID, "approved-execution-receipt")
+        XCTAssertEqual(run.diff?.expected, "redacted approved automation execution receipt present")
+        XCTAssertTrue(run.diff?.actual.contains("missingApprovedExecutionReceipt") ?? false)
+    }
+
+    func testAccessibilityHarnessRunRejectsUnredactedApprovedExecutionReceipt() {
+        let run = SoloPMHarnessAccessibilityAuditRunner().run(
+            id: "run-ax-unredacted-receipt",
+            trigger: .cloudTriggered,
+            startedAt: "2026-06-23T00:00:00Z",
+            finishedAt: "2026-06-23T00:00:01Z",
+            nodes: completeAccessibilityNodes(),
+            approvedExecutionReceipt: approvedExecutionReceipt(
+                title: "Run provider handoff token=secret-title",
+                detail: "Use sk-proj-live-secret for release notes."
+            )
+        )
+
+        XCTAssertEqual(run.status, .failed)
+        XCTAssertEqual(run.diff?.stepID, "approved-execution-receipt")
+        XCTAssertTrue(run.diff?.actual.contains("unredactedSecret") ?? false)
+        XCTAssertFalse(run.diff?.actual.contains("sk-proj-live-secret") ?? false)
     }
 
     func testAccessibilityHarnessRunFailsWithConcreteMissingFocusPathDiff() {
@@ -388,6 +425,23 @@ final class SoloPMHarnessTests: XCTestCase {
             help: help,
             isDestructive: isDestructive,
             confirmsDestructiveAction: confirmsDestructiveAction
+        )
+    }
+
+    private func approvedExecutionReceipt(
+        title: String = "Run release-note task",
+        detail: String = "Use selected docs to draft the operator note."
+    ) -> ApprovedAutomationExecutionReceipt {
+        ApprovedAutomationExecutionReceipt(
+            taskID: 42,
+            projectID: 7,
+            redactedTaskTitle: title,
+            redactedTaskDetail: detail,
+            statusBefore: .planned,
+            statusAfter: .inProgress,
+            priority: .high,
+            dueAt: "2026-06-22",
+            reviewReason: "Selected task is ready for review-only automation."
         )
     }
 }

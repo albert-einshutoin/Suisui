@@ -42,6 +42,7 @@ automation-backlog:
 - Runtime CRUD and destructive confirmation regressions belong in `script/check_runtime_accessible_crud_smoke.sh`.
 - Pseudo VoiceOver focus-path coverage belongs in `Tests/SoloPMCoreTests/SoloPMHarnessTests.swift` and `docs/quality/accessibility-focus-paths.md`.
 - Task lifecycle omissions across create, content edit, status movement, automation review, content execution, approved execution, or delete confirmation belong in `SoloPMHarnessScenario.requiredTaskLifecycleOperations` so MCP/E2E harness coverage fails before manual evidence is reused.
+- Approved execution regressions that only expose the Run approved plan control but do not persist a redacted `ApprovedAutomationExecutionReceipt` belong in `SoloPMHarnessAccessibilityAuditRunner`; the pseudo VoiceOver run must fail on `approved-execution-receipt` rather than relying on a manual reviewer to catch the missing task execution trail.
 
 Close rule:
 - If the VoiceOver pass records a blocker, it must link a source/runtime regression test or a follow-up issue before the evidence lane is considered closed.

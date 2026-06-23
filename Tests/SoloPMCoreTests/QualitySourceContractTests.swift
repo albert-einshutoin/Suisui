@@ -33,6 +33,9 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(docs.contains("mcp-pseudo-voiceover-focus-path"))
         XCTAssertTrue(docs.contains("requiredTaskLifecycleOperations"))
         XCTAssertTrue(docs.contains("approvedExecution"))
+        XCTAssertTrue(docs.contains("approved-execution-receipt"))
+        XCTAssertTrue(docs.contains("ApprovedAutomationExecutionReceipt"))
+        XCTAssertTrue(docs.contains("secret-like content"))
         XCTAssertTrue(script.contains("SoloPMHarnessTaskLifecycleOperation"))
         XCTAssertTrue(script.contains("completeTaskLifecycleOperations"))
         XCTAssertTrue(script.contains("AccessibilityFocusPathAudit"))
@@ -90,6 +93,9 @@ final class QualitySourceContractTests: XCTestCase {
             "Tests/SoloPMCoreTests/ReleasePipelineTests.swift",
             "SoloPMHarnessScenario.requiredDocumentDeliverableKinds",
             "SoloPMHarnessDocumentAutomationRunner",
+            "SoloPMHarnessAccessibilityAuditRunner",
+            "ApprovedAutomationExecutionReceipt",
+            "approved-execution-receipt",
             "tasks/Phase14-QualityRegressionHardening.md"
         ] {
             XCTAssertTrue(doc.contains(requiredMarker), "manual bridge doc must route \(requiredMarker)")

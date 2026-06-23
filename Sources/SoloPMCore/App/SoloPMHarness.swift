@@ -593,6 +593,7 @@ public struct SoloPMHarnessAccessibilityAuditRunner: Sendable {
         startedAt: String,
         finishedAt: String,
         nodes: [AccessibilityNodeSnapshot],
+        approvedExecutionReceipt: ApprovedAutomationExecutionReceipt? = nil,
         requirements: AccessibilityFocusPathRequirement = .taskLifecycleAndExecution
     ) -> SoloPMHarnessRun {
         let scenario = Self.accessibilityScenario()
@@ -602,16 +603,30 @@ public struct SoloPMHarnessAccessibilityAuditRunner: Sendable {
         // Emit one harness step per required focus node so a broad MCP smoke
         // cannot hide one missing create/edit/execute/delete control behind a
         // single aggregate "accessibility passed" line.
-        let steps = requirements.requiredNodeIDs.map { nodeID in
+        let focusSteps = requirements.requiredNodeIDs.map { nodeID in
             step(for: nodeID, findings: findingsByNodeID[nodeID] ?? [], coveredNodeIDs: result.coveredRequiredNodeIDs)
         }
+        let receiptSteps = requirements.requiredNodeIDs.contains("task-auto-execution-run-plan")
+            ? [approvedExecutionReceiptStep(approvedExecutionReceipt)]
+            : []
+        let steps = focusSteps + receiptSteps
+        let receiptCoveredCount = receiptSteps.filter { $0.status == .passed }.count
         let logs = [
             SoloPMHarnessLogEntry(
                 level: result.findings.isEmpty ? .info : .error,
                 message: "MCP pseudo VoiceOver focus path covered=\(result.coveredRequiredNodeIDs.count)/\(requirements.requiredNodeIDs.count) findings=\(result.findings.count)"
             )
-        ] + result.findings.map {
+        ] + (receiptSteps.isEmpty ? [] : [
+            SoloPMHarnessLogEntry(
+                level: receiptCoveredCount == receiptSteps.count ? .info : .error,
+                message: "MCP pseudo VoiceOver approved execution receipt covered=\(receiptCoveredCount)/\(receiptSteps.count)"
+            )
+        ]) + result.findings.map {
             SoloPMHarnessLogEntry(level: .warning, message: "\($0.kind.rawValue): \($0.message)")
+        } + receiptSteps.compactMap { step in
+            step.failureReason.map {
+                SoloPMHarnessLogEntry(level: .warning, message: $0)
+            }
         }
 
         return SoloPMHarnessRun.completed(
@@ -669,6 +684,79 @@ public struct SoloPMHarnessAccessibilityAuditRunner: Sendable {
             failureReason: failureReason,
             durationMilliseconds: 0
         )
+    }
+
+    private func approvedExecutionReceiptStep(
+        _ receipt: ApprovedAutomationExecutionReceipt?
+    ) -> SoloPMHarnessStepResult {
+        let expected = "redacted approved automation execution receipt present"
+        let status: SoloPMHarnessRunStatus
+        let actual: String
+        let failureReason: String?
+
+        if let receipt {
+            let problems = approvedExecutionReceiptProblems(receipt)
+            if problems.isEmpty {
+                status = .passed
+                actual = expected
+                failureReason = nil
+            } else {
+                status = .failed
+                actual = problems.joined(separator: " | ")
+                failureReason = actual
+            }
+        } else {
+            status = .failed
+            actual = "missingApprovedExecutionReceipt: Run approved plan must emit a redacted execution receipt."
+            failureReason = actual
+        }
+
+        return SoloPMHarnessStepResult(
+            id: "approved-execution-receipt",
+            status: status,
+            expected: expected,
+            actual: actual,
+            failureReason: failureReason,
+            durationMilliseconds: 0
+        )
+    }
+
+    private func approvedExecutionReceiptProblems(
+        _ receipt: ApprovedAutomationExecutionReceipt
+    ) -> [String] {
+        var problems: [String] = []
+        if receipt.taskID <= 0 {
+            problems.append("missingTaskID: approved execution receipt must include the local task id.")
+        }
+        if receipt.projectID <= 0 {
+            problems.append("missingProjectID: approved execution receipt must include the local project id.")
+        }
+        if receipt.statusBefore == receipt.statusAfter {
+            problems.append("statusDidNotChange: approved execution receipt must record a before/after task status transition.")
+        }
+        if receipt.statusAfter != .inProgress {
+            problems.append("unexpectedStatusAfter: first approved local execution should move the task into active work.")
+        }
+        if receipt.redactedTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            problems.append("missingTaskTitle: approved execution receipt must include the reviewed task title.")
+        }
+        if receipt.reviewReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            problems.append("missingReviewReason: approved execution receipt must include the review reason.")
+        }
+
+        let redactor = DeveloperSecretRedactor()
+        let remainingSecretCount = [
+            receipt.redactedTaskTitle,
+            receipt.redactedTaskDetail,
+            receipt.reviewReason
+        ].reduce(0) { count, value in
+            count + redactor.redact(value).report.replacementCount
+        }
+        if remainingSecretCount > 0 {
+            problems.append("unredactedSecret: approved execution receipt still contains secret-like content.")
+        }
+
+        return problems
     }
 }
 
