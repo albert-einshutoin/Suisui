@@ -234,6 +234,52 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertFalse(decision.shouldCallLLM)
     }
 
+    func testPlannerSupportsWeeklyCadenceForLowFrequencyLLMReviews() throws {
+        let referenceDate = try isoDate("2026-06-29T09:00:00Z")
+        let snapshot = ProjectBoardSnapshot(projects: [
+            makeProject(tasks: [
+                makeTask(id: 1, title: "Weekly planning review", priority: .medium, dueAt: "2026-07-01T09:00:00Z")
+            ])
+        ])
+        let settings = TaskAutoExecutionSettings(
+            isEnabled: true,
+            mode: .reviewOnly,
+            cadence: .weekly,
+            maxTasksPerRun: 3,
+            dailyLLMCallLimit: 6,
+            lookaheadHours: 168
+        )
+
+        let throttled = TaskAutoExecutionPlanner().makeDecision(
+            snapshot: snapshot,
+            settings: settings,
+            history: .init(lastRunAt: try isoDate("2026-06-23T09:00:00Z"), llmCallsToday: 0),
+            referenceDate: referenceDate,
+            calendar: utcCalendar()
+        )
+        let ready = TaskAutoExecutionPlanner().makeDecision(
+            snapshot: snapshot,
+            settings: settings,
+            history: .init(lastRunAt: try isoDate("2026-06-22T09:00:00Z"), llmCallsToday: 0),
+            referenceDate: referenceDate,
+            calendar: utcCalendar()
+        )
+        let request = try TaskAutoExecutionPlanningRequestBuilder().makePlanningRequest(
+            decision: ready,
+            settings: settings,
+            referenceDate: referenceDate,
+            timeZoneIdentifier: "UTC"
+        )
+
+        XCTAssertEqual(throttled.status, .throttled)
+        XCTAssertEqual(throttled.reason, "Task automation cadence has not elapsed.")
+        XCTAssertFalse(throttled.shouldCallLLM)
+        XCTAssertEqual(ready.status, .readyForReview)
+        XCTAssertEqual(ready.selectedTasks.map(\.title), ["Weekly planning review"])
+        XCTAssertTrue(request.userInput.contains("cadence: weekly"))
+        XCTAssertTrue(request.userInput.contains(#""cadence" : "weekly""#))
+    }
+
     func testPlannerStopsWhenDailyLLMBudgetIsExhausted() throws {
         let referenceDate = try isoDate("2026-06-22T09:00:00Z")
         let snapshot = ProjectBoardSnapshot(projects: [

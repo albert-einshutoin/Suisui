@@ -622,6 +622,7 @@
 "Manual review" = "手動レビュー";
 "Hourly review" = "1時間ごとにレビュー";
 "Daily review" = "1日ごとにレビュー";
+"Weekly review" = "1週間ごとにレビュー";
 "Hourly" = "1時間ごと";
 "Daily" = "1日ごと";
 "Frequency" = "頻度";

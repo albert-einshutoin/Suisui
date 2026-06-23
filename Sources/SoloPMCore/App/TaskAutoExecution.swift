@@ -15,6 +15,7 @@ public enum TaskAutoExecutionCadence: String, Codable, CaseIterable, Equatable, 
     case manual
     case hourly
     case daily
+    case weekly
 
     public var label: String {
         switch self {
@@ -24,6 +25,8 @@ public enum TaskAutoExecutionCadence: String, Codable, CaseIterable, Equatable, 
             "Hourly review"
         case .daily:
             "Daily review"
+        case .weekly:
+            "Weekly review"
         }
     }
 
@@ -35,6 +38,8 @@ public enum TaskAutoExecutionCadence: String, Codable, CaseIterable, Equatable, 
             60 * 60
         case .daily:
             24 * 60 * 60
+        case .weekly:
+            7 * 24 * 60 * 60
         }
     }
 }
