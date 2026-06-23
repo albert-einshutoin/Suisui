@@ -245,10 +245,12 @@ public struct DocumentAutomationArtifactPlanner: Sendable {
         var kinds: [DocumentAutomationOutputKind] = []
 
         append(.taskDraft, to: &kinds, when: searchable.containsAny(["task", "todo", "phase", "implementation", "実装", "タスク"]))
+        append(.statusChange, to: &kinds, when: searchable.containsAny(["status", "state", "in progress", "complete", "completed", "done", "move to", "ステータス", "状態", "完了"]))
+        append(.dueDateChange, to: &kinds, when: searchable.containsAny(["due date", "due-date", "due at", "deadline", "reschedule", "schedule", "期日", "期限", "締切"]))
         append(.preparationChecklist, to: &kinds, when: searchable.containsAny(["checklist", "gate", "signing", "notarization", "voiceover", "release", "準備"]))
         append(.draftArtifact, to: &kinds, when: searchable.containsAny(["artifact", ".md", "draft", "readme", "article", "成果物", "下書き"]))
         append(.releaseNotes, to: &kinds, when: searchable.containsAny(["release note", "release notes", "changelog", "public alpha", "リリース"]))
-        append(.pullRequestPlan, to: &kinds, when: searchable.containsAny(["pull request", "pr plan", "pr", "implementation", "phase", "regression", "実装"]))
+        append(.pullRequestPlan, to: &kinds, when: searchable.containsAny(["pull request", "pr plan", "implementation", "phase", "regression", "実装"]))
 
         if kinds.isEmpty {
             kinds = [.preparationChecklist]

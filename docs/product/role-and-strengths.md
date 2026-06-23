@@ -8,7 +8,7 @@ SoloPM is a Local-first personal AI PM for macOS. Its role is to turn captured w
 - review-before-execution: AI and MCP flows propose task changes, schedule blocks, artifacts, and plans before write actions run.
 - MCP-ready extensibility: external tools can be connected through explicit registration, audit history, structured content validation, and paid execution boundaries.
 - VoiceOver-aware workflow: source anchors, pseudo VoiceOver focus-path checks, runtime AX smoke, and manual VoiceOver evidence are separated so accessibility regressions are caught early without pretending automation replaces assistive-technology review.
-- document-scoped automation: selected docs can produce task drafts, release notes, PR plans, and draft artifacts with document reasons and approval gates.
+- document-scoped automation: selected docs can produce task drafts, status/due-date proposals, release notes, PR plans, and draft artifacts with document reasons and approval gates.
 - Practical solo operator cockpit: Today, Inbox, Project Board, Done analytics, Settings, and local assistant affordances stay close to daily execution rather than becoming a generic chat surface.
 
 ## Product Boundary

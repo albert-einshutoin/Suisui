@@ -38,6 +38,7 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(doc.contains("MCP"))
         XCTAssertTrue(doc.contains("VoiceOver"))
         XCTAssertTrue(doc.contains("document-scoped automation"))
+        XCTAssertTrue(doc.contains("status/due-date proposals"))
         XCTAssertNil(doc.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
     }
 

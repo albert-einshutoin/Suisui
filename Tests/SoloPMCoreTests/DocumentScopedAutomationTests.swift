@@ -94,13 +94,37 @@ final class DocumentScopedAutomationTests: XCTestCase {
 
         XCTAssertEqual(
             plan.proposedOutputs.map(\.kind),
-            [.taskDraft, .preparationChecklist, .draftArtifact, .releaseNotes, .pullRequestPlan]
+            [.taskDraft, .dueDateChange, .preparationChecklist, .draftArtifact, .releaseNotes, .pullRequestPlan]
         )
         XCTAssertTrue(plan.requiresApproval)
         XCTAssertEqual(plan.highestRisk, .write)
         XCTAssertTrue(plan.documentReasons.map(\.documentID).contains("phase14"))
         XCTAssertTrue(plan.documentReasons.map(\.documentID).contains("release"))
         XCTAssertFalse(plan.documentsConsidered.map(\.redactedSummary).joined().contains("sk-test-secret"))
+    }
+
+    func testDocumentArtifactPlannerProposesStatusAndDueDateChangesFromTaskDocs() {
+        let documents = [
+            ScopedAutomationDocument(
+                id: "standup",
+                title: "Daily execution notes",
+                scope: .projectDocs,
+                redactedSummary: "Move the release audit task to in progress, mark the old inbox triage task complete, and shift the notarization follow-up due date to Friday.",
+                inclusionReason: "The user selected the current execution notes."
+            )
+        ]
+
+        let plan = DocumentAutomationArtifactPlanner().plan(
+            userRequest: "Turn these notes into the right task updates.",
+            documents: documents
+        )
+
+        XCTAssertEqual(
+            plan.proposedOutputs.map(\.kind),
+            [.taskDraft, .statusChange, .dueDateChange, .preparationChecklist]
+        )
+        XCTAssertEqual(plan.highestRisk, .write)
+        XCTAssertTrue(plan.proposedOutputs.allSatisfy(\.requiresApproval))
     }
 
     func testDocumentArtifactPlannerKeepsProviderContextBehindApproval() {
