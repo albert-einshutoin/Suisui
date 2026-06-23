@@ -1,7 +1,7 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-23T17:36:10Z
-Source commit: 76b4e33
+Generated at: 2026-06-23T17:52:10Z
+Source commit: 81b5fe2
 
 ## Summary
 
@@ -22,7 +22,7 @@ Source commit: 76b4e33
 
 | Evidence | Status | Source commit |
 | --- | --- | --- |
-| `docs/release/evidence/ui-screenshots.md` | present | a2b4742 |
+| `docs/release/evidence/ui-screenshots.md` | present | 76b4e33 |
 | `docs/release/evidence/mcp-inspector.md` | present | 7298e51 |
 | `docs/release/evidence/accessibility-voiceover.md` | stale (passed; expected 76b4e33) | e488456 |
 | `docs/release/evidence/competitor-hands-on.md` | pending | unknown |
