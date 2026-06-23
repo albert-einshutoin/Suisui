@@ -170,6 +170,7 @@ write_voiceover_review_worksheet() {
     printf '%s\n' '| `unlabeledButtons=0` | No unlabeled primary CRUD controls | Confirm focused primary buttons are not announced as empty. |'
     printf '%s\n' '| `genericButtons=0` | No unlabeled primary CRUD controls | Confirm primary actions are not announced as generic unlabeled buttons. |'
     printf '%s\n' '| `crudSignals=8/8` | Save Changes, Delete Task confirmation, No unlabeled primary CRUD controls | Confirm Add Task, Open task, status movement, local suggestion apply, task Save, automation review, approved execution, and Delete Task entry points are understandable. |'
+    printf '%s\n' '| `approved-execution-receipt` | Task content execution | Confirm VoiceOver announces the redacted receipt with reviewed task title and detail after approved execution. |'
     printf '%s\n' '| `buttonA11ySignals=8/8` | No unlabeled primary CRUD controls | Confirm primary task lifecycle buttons retain useful label or help text. |'
     printf '%s\n' '| `screenSignals=4/4` | Project navigation | Confirm Inbox, Today, Settings, and Voice Command entry points are announced and navigable. |'
     printf '%s\n' '| `focusPathSignals=6/6` | Project navigation, Project board detail, Open task, Inline Task Composer, Status controls, Task inspector | Confirm the announced order and keyboard traversal match the automated anchors. |'
