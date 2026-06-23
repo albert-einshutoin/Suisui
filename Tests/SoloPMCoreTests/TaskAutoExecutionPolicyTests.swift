@@ -73,6 +73,43 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertFalse(decision.selectedTasks.contains { $0.title == "High outside lookahead" })
     }
 
+    func testPlannerIgnoresCompletedAndArchivedProjectsEvenWhenTasksLookUrgent() throws {
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        let snapshot = ProjectBoardSnapshot(projects: [
+            makeProject(
+                title: "Completed project",
+                status: "completed",
+                tasks: [
+                    makeTask(id: 1, title: "Completed project overdue", priority: .high, dueAt: "2026-06-20T18:00:00Z")
+                ]
+            ),
+            makeProject(
+                title: "Archived project",
+                status: "archived",
+                tasks: [
+                    makeTask(id: 2, title: "Archived project overdue", priority: .high, dueAt: "2026-06-20T18:00:00Z")
+                ]
+            ),
+            makeProject(
+                title: "Active project",
+                tasks: [
+                    makeTask(id: 3, title: "Active project review", priority: .medium, dueAt: "2026-06-22T18:00:00Z")
+                ]
+            )
+        ])
+
+        let decision = TaskAutoExecutionPlanner().makeDecision(
+            snapshot: snapshot,
+            settings: .init(isEnabled: true, mode: .reviewOnly, cadence: .hourly, maxTasksPerRun: 10),
+            history: .empty,
+            referenceDate: referenceDate,
+            calendar: utcCalendar()
+        )
+
+        XCTAssertEqual(decision.status, .readyForReview)
+        XCTAssertEqual(decision.selectedTasks.map(\.title), ["Active project review"])
+    }
+
     func testPlannerThrottlesByCadenceBeforeCallingLLM() throws {
         let referenceDate = try isoDate("2026-06-22T09:00:00Z")
         let snapshot = ProjectBoardSnapshot(projects: [
@@ -293,10 +330,15 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertTrue(settings.validationIssues().isEmpty)
     }
 
-    private func makeProject(tasks: [ProjectBoardTask]) -> ProjectBoardProject {
+    private func makeProject(
+        title: String = "Launch",
+        status: String = "active",
+        tasks: [ProjectBoardTask]
+    ) -> ProjectBoardProject {
         ProjectBoardProject(
             id: 1,
-            title: "Launch",
+            title: title,
+            status: status,
             subtitle: "\(tasks.count) tasks",
             columns: ProjectTaskStatus.allCases.map { status in
                 ProjectBoardColumn(status: status, tasks: tasks.filter { $0.status == status })

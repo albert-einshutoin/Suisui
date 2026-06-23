@@ -261,7 +261,10 @@ public struct TaskAutoExecutionPlanner: Sendable {
         let lookaheadEnd = referenceDate.addingTimeInterval(TimeInterval(settings.lookaheadHours) * 60 * 60)
 
         return snapshot.projects
-            .filter { !$0.isArchived }
+            // Review-only automation should never resurrect closed project work.
+            // Stores normally provide active snapshots, but the pure policy stays
+            // fail-closed for imported, synced, or test-built snapshots.
+            .filter { !$0.isArchived && !$0.isCompleted }
             .flatMap(\.tasks)
             .filter { task in
                 guard task.status != .done, task.status != .blocked else {
