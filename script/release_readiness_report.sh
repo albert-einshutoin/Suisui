@@ -955,7 +955,8 @@ write_automated_proof_gate_actions() {
     local default_evidence_relative
     default_evidence_relative="$(automated_preflight_default_relative_path)"
     printf -- "- Run: \`SOLOPM_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh\`\n"
-    printf -- "- Or produce clean-tree evidence: \`SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=%s ./script/check_automated_release_preflight.sh\`\n" "$default_evidence_relative"
+    printf -- "- Or produce clean-tree evidence: \`./script/check_automated_release_preflight.sh\` (writes \`%s\` by default).\n" "$default_evidence_relative"
+    printf -- "- Optional override for non-standard evidence paths: \`SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=%s ./script/check_automated_release_preflight.sh\`\n" "$default_evidence_relative"
     printf -- "- Then rerun: \`./script/release_readiness_report.sh\` to auto-discover \`%s\` for the current source commit.\n" "$default_evidence_relative"
     printf -- "- Explicit reuse also works: \`SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=%s ./script/release_readiness_report.sh\`\n" "$default_evidence_relative"
   fi

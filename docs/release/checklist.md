@@ -328,11 +328,9 @@ Manual VoiceOver and competitor hands-on evidence record the current release-can
 
 ```bash
 ./script/check_automated_release_preflight.sh
-export SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=".tmp/automated-release-preflight-$(git rev-parse --short HEAD).md"
-./script/check_automated_release_preflight.sh
 ```
 
-Evidence-file mode requires a clean tracked source tree, so commit or discard tracked changes before producing release proof. The release readiness report auto-discovers `.tmp/automated-release-preflight-<commit>.md` for the current source commit when the environment variable is omitted.
+A standard run writes `.tmp/automated-release-preflight-$(git rev-parse --short HEAD).md` and requires a clean tracked source tree, so commit or discard tracked changes before producing release proof. Override `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE` only when a release operator needs to write or reuse a non-standard evidence path. The release readiness report auto-discovers `.tmp/automated-release-preflight-<commit>.md` for the current source commit when the environment variable is omitted.
 When the final report reuses this evidence, it verifies the generator identity, UTC timestamp, source commit, clean-tree marker, app name, Xcode workspace/scheme/configuration/destination, every automated proof gate, the runtime AX smoke OK line with `unlabeledButtons=0`, `genericButtons=0`, `crudSignals=8/8`, and `focusPathSignals=6/6`, and the manual-evidence boundary text.
 
 ```bash

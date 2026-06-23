@@ -23,11 +23,29 @@ if [[ -f "$METADATA_FILE" ]]; then
 fi
 
 APP_NAME="${APP_NAME:-SoloPM}"
+cd "$ROOT_DIR"
+
+default_automated_preflight_evidence_file() {
+  local commit
+  commit="$(git rev-parse --short HEAD 2>/dev/null || true)"
+
+  if [[ -z "${commit//[[:space:]]/}" ]]; then
+    printf ".tmp/automated-release-preflight.md"
+  else
+    printf ".tmp/automated-release-preflight-${commit}.md"
+  fi
+}
+
+if [[ -z "$AUTOMATED_PREFLIGHT_EVIDENCE_FILE" ]]; then
+  # Release readiness auto-discovers this exact path, so the standard sweep
+  # writes reusable proof instead of forcing operators to run the heavy gates
+  # a second time just to produce evidence.
+  AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$(default_automated_preflight_evidence_file)"
+fi
+
 mkdir -p "$TMP_ROOT"
 TMP_DIR="$(mktemp -d "$TMP_ROOT/solopm-automated-release-preflight.XXXXXX")"
 MCP_EVIDENCE_FILE="$TMP_DIR/mcp-inspector.md"
-
-cd "$ROOT_DIR"
 
 section() {
   printf "\n== %s ==\n" "$1"
