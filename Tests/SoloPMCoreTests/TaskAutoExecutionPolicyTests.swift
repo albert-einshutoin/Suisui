@@ -460,6 +460,84 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertFalse(request.userInput.contains("Third future"))
     }
 
+    func testPlanningRequestCarriesDocumentDeliverableDraftsAsApprovalGatedDraftOutputs() throws {
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        let decision = TaskAutoExecutionDecision(
+            status: .readyForReview,
+            selectedTasks: [
+                makeTask(
+                    id: 61,
+                    title: "Create release docs from selected evidence",
+                    detail: "Use the selected docs to draft release notes and PR plan.",
+                    priority: .high,
+                    dueAt: "2026-06-22T18:00:00Z"
+                )
+            ],
+            reason: "High priority documentation task is due today.",
+            llmCallBudgetRemaining: 2,
+            requiresUserApproval: true,
+            allowsDirectExecution: false
+        )
+        let documents = [
+            ScopedAutomationDocument(
+                id: "release",
+                title: "Release checklist",
+                scope: .appDocs,
+                redactedSummary: "Release notes, public alpha checklist, signing, and notarization evidence.",
+                inclusionReason: "Release checklist was explicitly selected."
+            ),
+            ScopedAutomationDocument(
+                id: "phase14",
+                title: "Phase14 implementation plan",
+                scope: .projectDocs,
+                redactedSummary: "PR plan, implementation tests, regression risk, and verification commands.",
+                inclusionReason: "Phase plan was selected for PR planning."
+            ),
+            ScopedAutomationDocument(
+                id: "artifact",
+                title: "Draft artifact notes",
+                scope: .taskArtifacts,
+                redactedSummary: "Draft README.md from local notes without leaking sk-proj-doc-secret123.",
+                inclusionReason: "Task artifact notes were selected."
+            ),
+            ScopedAutomationDocument(
+                id: "external-issue",
+                title: "GitHub issue mirror",
+                scope: .externalSources,
+                redactedSummary: "Release notes and PR plan from external connector context.",
+                inclusionReason: "External source preview is visible but not approved."
+            )
+        ]
+        let drafts = DocumentAutomationArtifactPlanner().deliverableDrafts(
+            userRequest: "Create release notes, a PR plan, and draft artifacts from selected docs.",
+            documents: documents
+        )
+
+        let request = try TaskAutoExecutionPlanningRequestBuilder().makePlanningRequest(
+            decision: decision,
+            settings: .init(isEnabled: true, mode: .reviewOnly, cadence: .hourly),
+            referenceDate: referenceDate,
+            timeZoneIdentifier: "UTC",
+            documentDeliverableDrafts: drafts
+        )
+        let payload = try jsonPayload(from: request.userInput)
+        let deliverables = try XCTUnwrap(payload["documentDeliverables"] as? [[String: Any]])
+
+        XCTAssertEqual(deliverables.map { $0["kind"] as? String }, ["preparationChecklist", "draftArtifact", "releaseNotes", "pullRequestPlan"])
+        XCTAssertEqual(deliverables.map { $0["requiresApproval"] as? Bool }, [true, true, true, true])
+        XCTAssertEqual(Set(deliverables.compactMap { $0["riskLevel"] as? String }), ["draft"])
+        let releaseNotesSourceIDs = deliverables
+            .first { $0["kind"] as? String == "releaseNotes" }?["sourceDocumentIDs"] as? [String]
+        let pullRequestPlanSourceIDs = deliverables
+            .first { $0["kind"] as? String == "pullRequestPlan" }?["sourceDocumentIDs"] as? [String]
+        XCTAssertEqual(releaseNotesSourceIDs, ["release"])
+        XCTAssertEqual(pullRequestPlanSourceIDs, ["phase14"])
+        XCTAssertFalse(deliverables.flatMap { ($0["sourceDocumentIDs"] as? [String]) ?? [] }.contains("external-issue"))
+        XCTAssertTrue(request.userInput.contains("Document deliverables are draft-only"))
+        XCTAssertTrue(request.availableTools.contains(ActionTool.filesystemCreateMarkdownFile))
+        XCTAssertFalse(request.userInput.contains("sk-proj-doc-secret123"))
+    }
+
     func testAppSettingsPersistTaskAutoExecutionControls() throws {
         let suiteName = "SoloPM.TaskAutoExecutionSettings.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

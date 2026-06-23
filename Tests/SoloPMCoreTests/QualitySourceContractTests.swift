@@ -60,6 +60,9 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(doc.contains("external-source-only"))
         XCTAssertTrue(doc.contains("task automation selection reasons"))
         XCTAssertTrue(doc.contains("priority and due-date tradeoffs"))
+        XCTAssertTrue(doc.contains("source-bound document deliverables"))
+        XCTAssertTrue(doc.contains("draft-only approval-gated outputs"))
+        XCTAssertTrue(doc.contains("document deliverables are sent as fenced redacted JSON"))
         XCTAssertNil(doc.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
     }
 
