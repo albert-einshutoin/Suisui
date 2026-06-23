@@ -503,7 +503,7 @@ write_pending_evidence() {
     printf '%s\n' '- [ ] Save Changes: confirm keyboard activation reaches the local task save action.'
     printf '%s\n' '- [ ] Delete Task confirmation: confirm destructive action opens an inline inspector confirmation panel before local deletion.'
     printf '%s\n' '- [ ] No keyboard trap: confirm focus can leave sidebar, board, card controls, inspector fields, and inline confirmation panels.'
-    printf '%s\n' '- [ ] No unlabeled primary CRUD controls: confirm create, update, status move, complete/archive, and delete actions have labels or help.'
+    printf '%s\n' '- [ ] No unlabeled primary CRUD controls: confirm create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.'
     printf '\n'
     printf '%s\n' '## Failure Notes'
     printf '\n'

@@ -252,7 +252,7 @@ Each focus-path note must name the concrete VoiceOver observation, control, or f
   --save-changes-note "Concrete VoiceOver observation for local task save activation." \
   --delete-confirmation-note "Concrete VoiceOver observation for destructive confirmation and cancel." \
   --no-keyboard-trap-note "Concrete VoiceOver observation that focus can leave every primary region." \
-  --no-unlabeled-crud-note "Concrete VoiceOver observation that primary CRUD controls have labels or help." \
+  --no-unlabeled-crud-note "Concrete VoiceOver observation that create, update, status move, local suggestion apply, automation review, approved execution, and delete controls have labels or help." \
   --confirm-manual-voiceover-pass
 ./script/create_voiceover_evidence.sh --passed \
   --checked-by "Reviewer Name" \
@@ -267,7 +267,7 @@ Each focus-path note must name the concrete VoiceOver observation, control, or f
   --save-changes-note "Concrete VoiceOver observation for local task save activation." \
   --delete-confirmation-note "Concrete VoiceOver observation for destructive confirmation and cancel." \
   --no-keyboard-trap-note "Concrete VoiceOver observation that focus can leave every primary region." \
-  --no-unlabeled-crud-note "Concrete VoiceOver observation that primary CRUD controls have labels or help." \
+  --no-unlabeled-crud-note "Concrete VoiceOver observation that create, update, status move, local suggestion apply, automation review, approved execution, and delete controls have labels or help." \
   --confirm-manual-voiceover-pass
 ```
 

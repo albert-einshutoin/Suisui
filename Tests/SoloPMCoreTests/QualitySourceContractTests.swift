@@ -150,6 +150,9 @@ final class QualitySourceContractTests: XCTestCase {
         }
 
         XCTAssertTrue(phase.contains("- [x] Manual VoiceOver worksheetとruntime AX smokeの項目を対応付ける。"))
+        XCTAssertTrue(candidateScript.contains("local suggestion apply, automation review, approved execution"))
+        XCTAssertTrue(doc.contains("approved execution"))
+        XCTAssertFalse(candidateScript.contains("complete/archive"))
     }
 
     func testPhase14AccessibilityAcceptanceIsBackedByAutomatedContracts() throws {

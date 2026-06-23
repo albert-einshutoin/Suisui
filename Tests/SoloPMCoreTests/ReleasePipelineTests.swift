@@ -3668,7 +3668,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(pendingEvidence.contains("- [ ] Inline Task Composer"))
         XCTAssertTrue(pendingEvidence.contains("- [ ] Delete Task confirmation: confirm destructive action opens an inline inspector confirmation panel before local deletion."))
         XCTAssertTrue(pendingEvidence.contains("- [ ] No keyboard trap: confirm focus can leave sidebar, board, card controls, inspector fields, and inline confirmation panels."))
+        XCTAssertTrue(pendingEvidence.contains("- [ ] No unlabeled primary CRUD controls: confirm create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help."))
         XCTAssertFalse(pendingEvidence.contains("confirmation dialogs"))
+        XCTAssertFalse(pendingEvidence.contains("complete/archive"))
         XCTAssertTrue(pendingEvidence.contains("Do not set `Status: passed` until every item below is verified"))
 
         let unsafePassedResult = try runScript(
@@ -3712,7 +3714,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
-                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
                 "--output", passedURL.path,
                 "--confirm-manual-voiceover-pass"
             ]
@@ -3739,7 +3741,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
-                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
                 "--output", passedURL.path,
                 "--confirm-manual-voiceover-pass"
             ]
@@ -3766,7 +3768,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
-                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
                 "--output", passedURL.path,
                 "--confirm-manual-voiceover-pass"
             ]
@@ -3793,7 +3795,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
-                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
                 "--output", passedURL.path,
                 "--confirm-manual-voiceover-pass"
             ]
@@ -3819,7 +3821,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
-                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
                 "--output", passedURL.path,
                 "--confirm-manual-voiceover-pass"
             ]
@@ -3845,7 +3847,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
-                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
                 "--output", passedURL.path,
                 "--confirm-manual-voiceover-pass"
             ]
@@ -3871,7 +3873,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
-                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
                 "--output", passedURL.path,
                 "--confirm-manual-voiceover-pass"
             ]
@@ -3897,7 +3899,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
-                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
                 "--output", passedURL.path,
                 "--confirm-manual-voiceover-pass"
             ]
@@ -3923,7 +3925,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
-                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
                 "--output", passedURL.path,
                 "--confirm-manual-voiceover-pass"
             ]
@@ -3950,7 +3952,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
-                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
                 "--output", passedURL.path,
                 "--confirm-manual-voiceover-pass"
             ]
@@ -3977,7 +3979,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
-                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
                 "--output", passedURL.path,
                 "--confirm-manual-voiceover-pass"
             ]
@@ -4016,7 +4018,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
-                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
                 "--output", passedURL.path,
                 "--confirm-manual-voiceover-pass"
             ],
@@ -4047,7 +4049,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
-                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
                 "--output", passedURL.path
             ],
             environment: ["SOLOPM_ACCESSIBILITY_PREFLIGHT_SCRIPT": runtimeAXSmokeScriptURL.path]
@@ -4074,7 +4076,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
-                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
                 "--output", validateOnlyURL.path,
                 "--confirm-manual-voiceover-pass"
             ]
@@ -4101,7 +4103,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
-                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
                 "--output", validateOnlyURL.path,
                 "--confirm-manual-voiceover-pass"
             ]
@@ -4128,7 +4130,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
-                "--no-unlabeled-crud-note", "Create, update, status move, complete, archive, and delete actions have labels or help.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
                 "--output", passedURL.path,
                 "--confirm-manual-voiceover-pass"
             ]
@@ -4154,7 +4156,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(passedEvidence.contains("- Save Changes: passed - Keyboard activation reaches the local task save action and returns without a trap."))
         XCTAssertTrue(passedEvidence.contains("- Delete Task confirmation: passed - Delete opens confirmation before local deletion and exposes cancel."))
         XCTAssertTrue(passedEvidence.contains("- No keyboard trap: passed - Focus can leave sidebar, board, card controls, inspector fields, and dialogs."))
-        XCTAssertTrue(passedEvidence.contains("- No unlabeled primary CRUD controls: passed - Create, update, status move, complete, archive, and delete actions have labels or help."))
+        XCTAssertTrue(passedEvidence.contains("- No unlabeled primary CRUD controls: passed - Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help."))
+        XCTAssertFalse(passedEvidence.contains("complete/archive"))
         XCTAssertFalse(passedEvidence.localizedCaseInsensitiveContains("pending"))
         XCTAssertFalse(passedEvidence.contains("- [ ]"))
         XCTAssertFalse(passedEvidence.localizedCaseInsensitiveContains("placeholder"))
@@ -7004,7 +7007,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("--status-controls-note \"<VoiceOver observation for previous/next status controls and target status labels>\""))
         XCTAssertFalse(script.contains("--project-navigation-note \"<VoiceOver observation for sidebar project navigation>\""))
         XCTAssertFalse(script.contains("--inline-task-composer-note \"<VoiceOver observation for title/detail/priority/due create flow>\""))
-        XCTAssertTrue(script.contains("--no-unlabeled-crud-note \"<VoiceOver observation proving primary CRUD controls have labels or help>\""))
+        XCTAssertTrue(script.contains("--no-unlabeled-crud-note \"<VoiceOver observation proving create, update, status move, local suggestion apply, automation review, approved execution, and delete controls have labels or help>\""))
         XCTAssertTrue(script.contains("## Competitor Hands-On"))
         XCTAssertTrue(script.contains("Run \\`./script/prepare_release_manual_helpers.sh\\` first if you want release-candidate pending helper files for review."))
         XCTAssertTrue(script.contains("The competitor helper files include \\`.tmp/competitor-hands-on/hands-on-worksheet.md\\`, \\`.tmp/competitor-hands-on/competitor-benchmark-pending-%s.md\\`, and \\`.tmp/competitor-hands-on/create-evidence-command.sh\\`."))
@@ -9353,7 +9356,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Save Changes: passed - Keyboard activation saved the local task edit and left focus in the inspector without trapping it.
         - Delete Task confirmation: passed - Delete opened the inline confirmation panel, announced cancel and confirm, and did not delete until confirmation.
         - No keyboard trap: passed - Focus moved out of sidebar, board, card controls, inspector fields, and inline confirmation panels.
-        - No unlabeled primary CRUD controls: passed - Create, update, status move, complete, archive, and delete controls exposed labels or help.
+        - No unlabeled primary CRUD controls: passed - Create, update, status move, local suggestion apply, automation review, approved execution, and delete controls exposed labels or help.
         """.write(to: evidenceDirectory.appendingPathComponent("accessibility-voiceover.md"), atomically: true, encoding: .utf8)
         try """
         # Competitor Hands-On Evidence

@@ -979,7 +979,7 @@ write_voiceover_manual_evidence_invocation() {
   printf '%s\n' '  --save-changes-note "<VoiceOver observation proving keyboard activation saves local task changes>" \'
   printf '%s\n' '  --delete-confirmation-note "<VoiceOver observation proving Delete Task opens an inline inspector confirmation panel before deletion>" \'
   printf '%s\n' '  --no-keyboard-trap-note "<VoiceOver observation proving focus leaves sidebar, board, inspector, and inline confirmation panels>" \'
-  printf '%s\n' '  --no-unlabeled-crud-note "<VoiceOver observation proving primary CRUD controls have labels or help>" \'
+  printf '%s\n' '  --no-unlabeled-crud-note "<VoiceOver observation proving create, update, status move, local suggestion apply, automation review, approved execution, and delete controls have labels or help>" \'
   printf '%s\n' '  --confirm-manual-voiceover-pass'
 }
 
