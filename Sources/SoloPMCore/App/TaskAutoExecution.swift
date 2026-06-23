@@ -373,6 +373,7 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
             throw TaskAutoExecutionPlanningRequestError.noReviewableTasks
         }
 
+        let normalizedSettings = settings.normalized
         let calendar = reviewCalendar(timeZoneIdentifier: timeZoneIdentifier)
         let taskLines = decision.selectedTasks.map { task in
             let reason = selectionReason(for: task, referenceDate: referenceDate, calendar: calendar)
@@ -382,11 +383,16 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
         // Selection reasons make review-only automation auditable: the model can
         // explain priority/due-date tradeoffs without gaining direct mutation
         // authority over the user's local task database.
+        // The normalized policy line is duplicated into the prompt because the
+        // provider only sees this request, not the Settings UI that constrained
+        // cadence, budget, and approval boundaries before the call.
         let userInput = """
         Build a review-only SoloPM action plan for the selected tasks.
-        Automation mode: \(settings.mode.rawValue); cadence: \(settings.cadence.rawValue); generatedAt: \(ISO8601DateFormatter().string(from: referenceDate)).
+        Automation mode: \(normalizedSettings.mode.rawValue); cadence: \(normalizedSettings.cadence.rawValue); generatedAt: \(ISO8601DateFormatter().string(from: referenceDate)).
+        Automation policy: maxTasksPerRun: \(normalizedSettings.maxTasksPerRun); dailyLLMCallLimit: \(normalizedSettings.dailyLLMCallLimit); llmCallBudgetRemaining: \(decision.llmCallBudgetRemaining); lookaheadHours: \(normalizedSettings.lookaheadHours); urgentReviewCooldownMinutes: \(normalizedSettings.urgentReviewCooldownMinutes); requiresUserApproval: \(decision.requiresUserApproval); allowsDirectExecution: \(decision.allowsDirectExecution).
         Decision reason: \(decision.reason)
         Do not delete projects or tasks. Do not mark work completed unless the user approves the reviewed plan.
+        Do not propose extra provider calls beyond the remaining budget.
         Review these reasons before proposing any task update.
         Selected tasks:
         \(taskLines)

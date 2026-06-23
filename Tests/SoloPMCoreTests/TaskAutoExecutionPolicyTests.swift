@@ -287,6 +287,45 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertTrue(request.userInput.contains("Review these reasons before proposing any task update."))
     }
 
+    func testPlanningRequestCarriesAutomationFrequencyBudgetAndApprovalBoundaries() throws {
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        let decision = TaskAutoExecutionDecision(
+            status: .readyForReview,
+            selectedTasks: [
+                makeTask(id: 21, title: "Review overdue launch task", priority: .high, dueAt: "2026-06-21T18:00:00Z")
+            ],
+            reason: "Priority and due date policy selected review candidates.",
+            llmCallBudgetRemaining: 2,
+            requiresUserApproval: true,
+            allowsDirectExecution: false
+        )
+
+        let request = try TaskAutoExecutionPlanningRequestBuilder().makePlanningRequest(
+            decision: decision,
+            settings: .init(
+                isEnabled: true,
+                mode: .reviewOnly,
+                cadence: .daily,
+                maxTasksPerRun: 4,
+                dailyLLMCallLimit: 6,
+                lookaheadHours: 72,
+                urgentReviewCooldownMinutes: 30
+            ),
+            referenceDate: referenceDate,
+            timeZoneIdentifier: "UTC"
+        )
+
+        XCTAssertTrue(request.userInput.contains("cadence: daily"))
+        XCTAssertTrue(request.userInput.contains("maxTasksPerRun: 4"))
+        XCTAssertTrue(request.userInput.contains("dailyLLMCallLimit: 6"))
+        XCTAssertTrue(request.userInput.contains("llmCallBudgetRemaining: 2"))
+        XCTAssertTrue(request.userInput.contains("lookaheadHours: 72"))
+        XCTAssertTrue(request.userInput.contains("urgentReviewCooldownMinutes: 30"))
+        XCTAssertTrue(request.userInput.contains("requiresUserApproval: true"))
+        XCTAssertTrue(request.userInput.contains("allowsDirectExecution: false"))
+        XCTAssertTrue(request.userInput.contains("Do not propose extra provider calls beyond the remaining budget."))
+    }
+
     func testAppSettingsPersistTaskAutoExecutionControls() throws {
         let suiteName = "SoloPM.TaskAutoExecutionSettings.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
