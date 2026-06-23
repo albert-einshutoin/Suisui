@@ -30,6 +30,7 @@ private enum ProjectBoardLayoutMetrics {
 struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
     @StateObject private var viewModel: ProjectBoardViewModel
+    private let taskAutomationSettings: () -> TaskAutoExecutionSettings
     @AppStorage(ProjectBoardSelectionPersistence.storageKey) private var persistedSelectedDestinationRawValue = ProjectBoardSelectionPersistence.defaultRawValue
     @State private var displayMode: ProjectBoardDisplayMode = .board
     @State private var selectedDestination: ProjectBoardSidebarDestination? = .today
@@ -41,8 +42,12 @@ struct ProjectBoardView: View {
     @State private var isImportingTaskInterop = false
     @State private var taskInteropExportDocument = TaskInteropFileDocument(data: Data())
 
-    init(viewModel: ProjectBoardViewModel) {
+    init(
+        viewModel: ProjectBoardViewModel,
+        taskAutomationSettings: @escaping () -> TaskAutoExecutionSettings = { .default }
+    ) {
         _viewModel = StateObject(wrappedValue: viewModel)
+        self.taskAutomationSettings = taskAutomationSettings
     }
 
     var body: some View {
@@ -343,6 +348,18 @@ struct ProjectBoardView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Integrations")
             .accessibilityIdentifier("project-board-integrations-menu")
+
+            Button {
+                viewModel.prepareTaskAutomationReview(settings: taskAutomationSettings())
+            } label: {
+                Label("Review Task Automation", systemImage: "sparkles")
+                    .labelStyle(.titleAndIcon)
+            }
+            .help("Builds a review-only LLM plan from the configured task automation settings")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Review Task Automation")
+            .accessibilityIdentifier("project-board-task-auto-execution-review")
+            .accessibilityHint("Builds a review-only LLM plan from the configured task automation settings.")
 
             Button {
                 openWindow(id: "voice-capture")

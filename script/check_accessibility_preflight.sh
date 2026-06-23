@@ -79,6 +79,8 @@ REQUIRED_SOURCE_ANCHORS=(
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::inline-task-cancel"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::.help(\"Creates the task in the local SoloPM database\")"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::.help(\"Cancels task creation and returns focus to the board column\")"
+  "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-task-auto-execution-review"
+  "Sources/SoloPMApp/Views/ProjectBoardView.swift::.help(\"Builds a review-only LLM plan from the configured task automation settings\")"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-title"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-detail"

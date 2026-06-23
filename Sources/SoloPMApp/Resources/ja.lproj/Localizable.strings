@@ -612,6 +612,7 @@
 "Plans stay review-before-execution; deletion and completion are never run directly by automation." = "計画は実行前レビューに留め、削除と完了は自動化で直接実行しません。";
 "Automation" = "自動化";
 "Review-only task automation" = "確認専用タスク自動化";
+"Review Task Automation" = "タスク自動化を確認";
 "Review automation plan" = "自動化計画を確認";
 "Run approved plan" = "承認済み計画を実行";
 "Review draft is ready. Running it only starts local task execution." = "レビュードラフトを準備しました。実行しても開始するのはローカルのタスク手順のみです。";
@@ -622,8 +623,11 @@
 "Review the automation plan before running it." = "実行する前に自動化計画を確認してください。";
 "Only open unblocked tasks can be reviewed for automation." = "未完了かつブロックされていないタスクだけを自動化レビューできます。";
 "Task automation stopped because the task is blocked or complete." = "タスクがブロック済みまたは完了済みのため、自動化を停止しました。";
+"Prepared review-only automation for %d tasks." = "%d件のタスクについて確認専用の自動化を準備しました。";
 "Started approved automation for \"%@\"." = "「%@」の承認済み自動化を開始しました。";
 "Builds a review-only LLM plan for the selected task" = "選択中タスクの確認専用LLM計画を作成します";
 "Builds a review-only LLM plan for the selected task." = "選択中タスクの確認専用LLM計画を作成します。";
+"Builds a review-only LLM plan from the configured task automation settings" = "設定済みのタスク自動化設定から確認専用LLM計画を作成します";
+"Builds a review-only LLM plan from the configured task automation settings." = "設定済みのタスク自動化設定から確認専用LLM計画を作成します。";
 "Runs the reviewed local task step after explicit user approval" = "明示的なユーザー承認後、確認済みのローカルタスク手順を実行します";
 "Runs the reviewed local task step after explicit user approval." = "明示的なユーザー承認後、確認済みのローカルタスク手順を実行します。";

@@ -9,6 +9,7 @@ REQUIRED_MARKERS=(
   "project-board-detail"
   "project-header-add-task"
   "inline-task-create"
+  "project-board-task-auto-execution-review"
   "task-card-open-details"
   "task-inspector-save"
   "task-status-move-controls"

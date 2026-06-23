@@ -378,6 +378,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(headerSource.contains("HStack(spacing: 8)"))
         XCTAssertTrue(headerSource.contains("Spacer(minLength: 16)"))
         XCTAssertTrue(headerSource.contains("Label(\"Integrations\", systemImage: \"arrow.left.arrow.right\")"))
+        XCTAssertTrue(headerSource.contains("Label(\"Review Task Automation\", systemImage: \"sparkles\")"))
         XCTAssertTrue(headerSource.contains("Label(\"Voice Command\", systemImage: \"mic\")"))
         XCTAssertTrue(headerSource.contains("Label(\"Settings\", systemImage: \"gearshape\")"))
         XCTAssertTrue(headerSource.contains("Label(\"Terminal\", systemImage: \"terminal\")"))
@@ -394,6 +395,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(toolbarSource.contains("project-board-terminal-toggle"))
         XCTAssertTrue(boardSource.contains("performSynchronousProjectBoardToolbarLayoutPass(allowRetryIfToolbarMissing:"))
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-integrations-menu\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-task-auto-execution-review\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-voice-command\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-settings-link\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-terminal-toggle\")"))
@@ -403,6 +405,20 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(boardSource.contains("private struct ProjectBoardToolbarIcon: View"))
         XCTAssertFalse(boardSource.contains("toolbar.displayMode = .iconOnly"))
         XCTAssertFalse(boardSource.contains("toolbar.allowsUserCustomization = false"))
+    }
+
+    func testProjectBoardHeaderPreparesConfiguredTaskAutomationReview() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(boardSource.contains("let taskAutomationSettings: () -> TaskAutoExecutionSettings"))
+        XCTAssertTrue(boardSource.contains("taskAutomationSettings: @escaping () -> TaskAutoExecutionSettings"))
+        XCTAssertTrue(boardSource.contains("viewModel.prepareTaskAutomationReview(settings: taskAutomationSettings())"))
+        XCTAssertTrue(boardSource.contains(".help(\"Builds a review-only LLM plan from the configured task automation settings\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Builds a review-only LLM plan from the configured task automation settings.\")"))
+        XCTAssertTrue(appSource.contains("@StateObject private var settingsViewModel: AppSettingsViewModel"))
+        XCTAssertTrue(appSource.contains("_settingsViewModel = StateObject(wrappedValue: AppRuntimeFactory.makeAppSettingsViewModel())"))
+        XCTAssertTrue(appSource.contains("taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution }"))
     }
 
     func testProjectBoardLayoutMetricsGuardPrimaryDimensionsAndLongLabels() throws {

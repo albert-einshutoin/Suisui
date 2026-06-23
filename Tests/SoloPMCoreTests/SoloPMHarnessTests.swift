@@ -49,7 +49,7 @@ final class SoloPMHarnessTests: XCTestCase {
         XCTAssertEqual(run.resultEnvelope.scenarioKind, .accessibilityFocusPath)
         XCTAssertEqual(run.steps.count, AccessibilityFocusPathRequirement.taskLifecycleAndExecution.requiredNodeIDs.count)
         XCTAssertNil(run.diff)
-        XCTAssertTrue(run.redactedLogs.contains { $0.message.contains("covered=12/12") })
+        XCTAssertTrue(run.redactedLogs.contains { $0.message.contains("covered=13/13") })
     }
 
     func testAccessibilityHarnessRunFailsWithConcreteMissingFocusPathDiff() {
@@ -210,6 +210,7 @@ final class SoloPMHarnessTests: XCTestCase {
             node("project-header-add-task", role: .button, label: "Add Task", help: "Opens inline task composer."),
             node("inline-task-title", role: .textField, label: "Task title"),
             node("inline-task-create", role: .button, label: "Create Task", help: "Creates the task in the local SoloPM database."),
+            node("project-board-task-auto-execution-review", role: .button, label: "Review Task Automation", help: "Builds a review-only LLM plan from configured settings."),
             node("task-card-open-details", role: .button, label: "Open task details", help: "Opens the task inspector."),
             node("task-inspector-save", role: .button, label: "Save Changes", help: "Saves edits to the selected task."),
             node("task-status-move-controls", role: .group, label: "Task status controls"),

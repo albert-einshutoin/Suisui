@@ -15,6 +15,7 @@ struct SoloPM: App {
 #endif
     @StateObject private var menuBarController: MenuBarSummaryController
     @StateObject private var menuBarQuickCaptureViewModel: ProjectBoardViewModel
+    @StateObject private var settingsViewModel: AppSettingsViewModel
     @AppStorage(SoloPMAppearancePreference.storageKey) private var appearancePreference: SoloPMAppearancePreference = .system
     @AppStorage(AppLanguagePreference.storageKey) private var languagePreference: AppLanguagePreference = .system
 
@@ -22,6 +23,7 @@ struct SoloPM: App {
     init() {
         _menuBarController = StateObject(wrappedValue: AppRuntimeFactory.makeMenuBarSummaryController())
         _menuBarQuickCaptureViewModel = StateObject(wrappedValue: AppRuntimeFactory.makeProjectBoardViewModel())
+        _settingsViewModel = StateObject(wrappedValue: AppRuntimeFactory.makeAppSettingsViewModel())
 #if canImport(AppKit)
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -31,7 +33,10 @@ struct SoloPM: App {
 
     var body: some Scene {
         WindowGroup("SoloPM", id: "project-board") {
-            ProjectBoardView(viewModel: AppRuntimeFactory.makeProjectBoardViewModel())
+            ProjectBoardView(
+                viewModel: AppRuntimeFactory.makeProjectBoardViewModel(),
+                taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution }
+            )
                 .preferredColorScheme(effectiveAppearancePreference.colorScheme)
                 .environment(\.locale, effectiveLanguagePreference.locale)
         }
@@ -61,7 +66,7 @@ struct SoloPM: App {
 
         Settings {
             SettingsView(
-                settingsViewModel: AppRuntimeFactory.makeAppSettingsViewModel(),
+                settingsViewModel: settingsViewModel,
                 launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
                 watcherDiagnosticsSnapshot: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot(),
                 integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot(),
@@ -101,7 +106,12 @@ private final class SoloPMProjectBoardWindowFallback {
         }
 
         // Debug app bundles can reach launch verification before SwiftUI's WindowGroup creates a window; keep a direct fallback so launch smoke tests prove a real board is visible.
-        let hostingController = NSHostingController(rootView: ProjectBoardView(viewModel: AppRuntimeFactory.makeProjectBoardViewModel()))
+        let hostingController = NSHostingController(
+            rootView: ProjectBoardView(
+                viewModel: AppRuntimeFactory.makeProjectBoardViewModel(),
+                taskAutomationSettings: AppRuntimeFactory.loadTaskAutoExecutionSettings
+            )
+        )
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1_180, height: 760),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -2844,6 +2854,13 @@ private enum AppRuntimeFactory {
             settingsStore: UserDefaultsAppSettingsStore(),
             secretStore: makeSecretStore()
         )
+    }
+
+    static func loadTaskAutoExecutionSettings() -> TaskAutoExecutionSettings {
+        // Fallback AppKit windows are created outside the SwiftUI App state,
+        // so they read only the persisted non-secret automation settings here.
+        // Provider secrets stay in Keychain and are never materialized for this UI decision.
+        (try? UserDefaultsAppSettingsStore().load().normalizedForRuntime.taskAutoExecution) ?? .default
     }
 
     @MainActor

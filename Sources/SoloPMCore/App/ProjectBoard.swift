@@ -1032,6 +1032,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     private let scheduleCalendarClient: (any CalendarClient)?
     private let onChange: () -> Void
     private var lastInboxClassificationUndo: InboxClassificationUndo?
+    private var taskAutomationSessionHistory: TaskAutoExecutionHistory
 
     public init(
         store: any ProjectBoardStore,
@@ -1059,6 +1060,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.projectAssistantAnswer = nil
         self.projectAssistantReviewDraft = nil
         self.taskAutomationReviewDecision = nil
+        self.taskAutomationSessionHistory = .empty
     }
 
     public var selectedProject: ProjectBoardProject? {
@@ -1287,6 +1289,86 @@ public final class ProjectBoardViewModel: ObservableObject {
             return
         }
         startFocus(taskID: task.id)
+    }
+
+    @discardableResult
+    public func prepareTaskAutomationReview(
+        settings: TaskAutoExecutionSettings,
+        referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> TaskAutoExecutionDecision {
+        let history = sessionAutomationHistory(for: referenceDate, calendar: calendar)
+        let decision = prepareTaskAutomationReview(
+            settings: settings,
+            history: history,
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+
+        if decision.shouldCallLLM {
+            // This is intentionally session-scoped until a persisted automation
+            // run ledger exists. It still prevents rapid repeated UI-triggered
+            // reviews from bypassing cadence and daily LLM call limits.
+            taskAutomationSessionHistory = TaskAutoExecutionHistory(
+                lastRunAt: referenceDate,
+                llmCallsToday: history.llmCallsToday + 1
+            )
+        } else {
+            taskAutomationSessionHistory = history
+        }
+        return decision
+    }
+
+    @discardableResult
+    public func prepareTaskAutomationReview(
+        settings: TaskAutoExecutionSettings,
+        history: TaskAutoExecutionHistory,
+        referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> TaskAutoExecutionDecision {
+        // Whole-board automation must reuse the deterministic planner before
+        // any provider request so cadence, lookahead, and LLM budget settings
+        // cannot be bypassed by a UI entry point.
+        let decision = TaskAutoExecutionPlanner().makeDecision(
+            snapshot: snapshot,
+            settings: settings,
+            history: history,
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+
+        guard decision.status == .readyForReview else {
+            taskAutomationReviewDecision = nil
+            todayCommandFeedback = decision.reason
+            return decision
+        }
+
+        taskAutomationReviewDecision = decision
+        if let firstTask = decision.selectedTasks.first {
+            selectedProjectID = firstTask.projectID
+            selectedTaskID = firstTask.id
+        }
+        todayCommandFeedback = String(
+            format: String(localized: "Prepared review-only automation for %d tasks."),
+            decision.selectedTasks.count
+        )
+        integrationStatusMessage = String(
+            format: String(localized: "Prepared review-only automation for %d tasks."),
+            decision.selectedTasks.count
+        )
+        errorMessage = nil
+        return decision
+    }
+
+    private func sessionAutomationHistory(
+        for referenceDate: Date,
+        calendar: Calendar
+    ) -> TaskAutoExecutionHistory {
+        guard let lastRunAt = taskAutomationSessionHistory.lastRunAt,
+              calendar.isDate(lastRunAt, inSameDayAs: referenceDate) else {
+            return TaskAutoExecutionHistory(lastRunAt: taskAutomationSessionHistory.lastRunAt, llmCallsToday: 0)
+        }
+        return taskAutomationSessionHistory
     }
 
     public func prepareAutomationReviewForSelectedTask() {

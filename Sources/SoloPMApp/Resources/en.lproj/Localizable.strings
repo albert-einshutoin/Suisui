@@ -612,6 +612,7 @@
 "Plans stay review-before-execution; deletion and completion are never run directly by automation." = "Plans stay review-before-execution; deletion and completion are never run directly by automation.";
 "Automation" = "Automation";
 "Review-only task automation" = "Review-only task automation";
+"Review Task Automation" = "Review Task Automation";
 "Review automation plan" = "Review automation plan";
 "Run approved plan" = "Run approved plan";
 "Review draft is ready. Running it only starts local task execution." = "Review draft is ready. Running it only starts local task execution.";
@@ -622,8 +623,11 @@
 "Review the automation plan before running it." = "Review the automation plan before running it.";
 "Only open unblocked tasks can be reviewed for automation." = "Only open unblocked tasks can be reviewed for automation.";
 "Task automation stopped because the task is blocked or complete." = "Task automation stopped because the task is blocked or complete.";
+"Prepared review-only automation for %d tasks." = "Prepared review-only automation for %d tasks.";
 "Started approved automation for \"%@\"." = "Started approved automation for \"%@\".";
 "Builds a review-only LLM plan for the selected task" = "Builds a review-only LLM plan for the selected task";
 "Builds a review-only LLM plan for the selected task." = "Builds a review-only LLM plan for the selected task.";
+"Builds a review-only LLM plan from the configured task automation settings" = "Builds a review-only LLM plan from the configured task automation settings";
+"Builds a review-only LLM plan from the configured task automation settings." = "Builds a review-only LLM plan from the configured task automation settings.";
 "Runs the reviewed local task step after explicit user approval" = "Runs the reviewed local task step after explicit user approval";
 "Runs the reviewed local task step after explicit user approval." = "Runs the reviewed local task step after explicit user approval.";

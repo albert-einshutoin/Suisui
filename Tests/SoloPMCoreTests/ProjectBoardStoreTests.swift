@@ -890,6 +890,90 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelPreparesTaskAutomationReviewFromConfiguredTaskList() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        _ = viewModel.createTask(title: "Low future", status: .planned, priority: .low, dueAt: "2026-06-24T08:00:00Z")
+        _ = viewModel.createTask(title: "Done overdue", status: .done, priority: .high, dueAt: "2026-06-21T08:00:00Z")
+        _ = viewModel.createTask(title: "High without due date", status: .planned, priority: .high)
+        _ = viewModel.createTask(title: "Medium due today", status: .planned, priority: .medium, dueAt: "2026-06-22T18:00:00Z")
+        _ = viewModel.createTask(title: "High overdue", status: .planned, priority: .high, dueAt: "2026-06-21T08:00:00Z")
+
+        let decision = viewModel.prepareTaskAutomationReview(
+            settings: .init(
+                isEnabled: true,
+                mode: .reviewOnly,
+                cadence: .hourly,
+                maxTasksPerRun: 3,
+                dailyLLMCallLimit: 4,
+                lookaheadHours: 48
+            ),
+            history: .empty,
+            referenceDate: try isoDate("2026-06-22T09:00:00Z"),
+            calendar: utcCalendar()
+        )
+
+        XCTAssertEqual(decision.status, .readyForReview)
+        XCTAssertEqual(viewModel.taskAutomationReviewDecision?.selectedTasks.map(\.title), [
+            "High overdue",
+            "Medium due today",
+            "High without due date"
+        ])
+        XCTAssertEqual(viewModel.taskAutomationReviewDecision?.llmCallBudgetRemaining, 4)
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Prepared review-only automation for 3 tasks.")
+        XCTAssertEqual(viewModel.selectedTask?.title, "High overdue")
+    }
+
+    @MainActor
+    func testProjectBoardViewModelClearsTaskAutomationReviewWhenCadenceThrottles() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        _ = viewModel.createTask(title: "High due today", status: .planned, priority: .high, dueAt: "2026-06-22T18:00:00Z")
+        _ = viewModel.prepareTaskAutomationReview(
+            settings: .init(isEnabled: true, mode: .reviewOnly, cadence: .hourly),
+            history: .empty,
+            referenceDate: try isoDate("2026-06-22T09:00:00Z"),
+            calendar: utcCalendar()
+        )
+        XCTAssertNotNil(viewModel.taskAutomationReviewDecision)
+
+        let throttled = viewModel.prepareTaskAutomationReview(
+            settings: .init(isEnabled: true, mode: .reviewOnly, cadence: .hourly),
+            history: .init(lastRunAt: try isoDate("2026-06-22T08:30:00Z"), llmCallsToday: 0),
+            referenceDate: try isoDate("2026-06-22T09:00:00Z"),
+            calendar: utcCalendar()
+        )
+
+        XCTAssertEqual(throttled.status, .throttled)
+        XCTAssertNil(viewModel.taskAutomationReviewDecision)
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Task automation cadence has not elapsed.")
+    }
+
+    @MainActor
+    func testProjectBoardViewModelSessionHistoryThrottlesRepeatedTaskAutomationReview() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        _ = viewModel.createTask(title: "High due today", status: .planned, priority: .high, dueAt: "2026-06-22T18:00:00Z")
+
+        let settings = TaskAutoExecutionSettings(isEnabled: true, mode: .reviewOnly, cadence: .hourly)
+        let first = viewModel.prepareTaskAutomationReview(
+            settings: settings,
+            referenceDate: try isoDate("2026-06-22T09:00:00Z"),
+            calendar: utcCalendar()
+        )
+        let second = viewModel.prepareTaskAutomationReview(
+            settings: settings,
+            referenceDate: try isoDate("2026-06-22T09:30:00Z"),
+            calendar: utcCalendar()
+        )
+
+        XCTAssertEqual(first.status, .readyForReview)
+        XCTAssertEqual(second.status, .throttled)
+        XCTAssertNil(viewModel.taskAutomationReviewDecision)
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Task automation cadence has not elapsed.")
+    }
+
+    @MainActor
     func testProjectBoardViewModelCreatesProjectArtifactAndNotifies() throws {
         var changeCount = 0
         let viewModel = ProjectBoardViewModel(
@@ -1994,6 +2078,12 @@ final class ProjectBoardStoreTests: XCTestCase {
     private func isoDate(_ value: String) throws -> Date {
         let formatter = ISO8601DateFormatter()
         return try XCTUnwrap(formatter.date(from: value))
+    }
+
+    private func utcCalendar() -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
     }
 
     private func makeStoreBundle() throws -> (

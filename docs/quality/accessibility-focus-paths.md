@@ -15,6 +15,7 @@ The task path covers create, edit, status execution, automation review, approved
 | Add task | `project-header-add-task` | button | Opens the inline task composer. |
 | Task title | `inline-task-title` | text field | Accepts the task title. |
 | Create task | `inline-task-create` | button | Creates the task in the local SoloPM database. |
+| Review task automation | `project-board-task-auto-execution-review` | button | Builds a review-only LLM plan from the configured priority, due-date, cadence, and daily budget settings. |
 | Open task | `task-card-open-details` | button | Opens the task inspector without requiring pointer drag. |
 | Save edit | `task-inspector-save` | button | Saves task title, detail, status, priority, and due date. |
 | Status controls | `task-status-move-controls` | group | Exposes status movement controls such as `task-status-move-in_progress`. |

@@ -89,7 +89,8 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("performActionForItem(at: itemIndex)"))
         XCTAssertTrue(source.contains("visibleProjectBoardWindows"))
         XCTAssertTrue(source.contains("fallbackProjectBoardWindow"))
-        XCTAssertTrue(source.contains("NSHostingController(rootView: ProjectBoardView"))
+        XCTAssertTrue(source.contains("rootView: ProjectBoardView("))
+        XCTAssertTrue(source.contains("taskAutomationSettings: AppRuntimeFactory.loadTaskAutoExecutionSettings"))
         XCTAssertTrue(source.contains("makeKeyAndOrderFront(nil)"))
         XCTAssertTrue(source.contains("#selector(NSWindow.newWindowForTab(_:))"))
         XCTAssertTrue(source.contains("return false"))
@@ -110,10 +111,11 @@ final class LaunchExperienceTests: XCTestCase {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
         XCTAssertTrue(appSource.contains("WindowGroup(\"SoloPM\", id: \"project-board\")"))
-        XCTAssertTrue(appSource.contains("ProjectBoardView(viewModel: AppRuntimeFactory.makeProjectBoardViewModel())"))
+        XCTAssertTrue(appSource.contains("taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution }"))
         XCTAssertTrue(appSource.contains("#selector(NSWindow.newWindowForTab(_:))"))
         XCTAssertTrue(appSource.contains("New SoloPM Window"))
         XCTAssertTrue(boardSource.contains("@StateObject private var viewModel: ProjectBoardViewModel"))
+        XCTAssertTrue(boardSource.contains("let taskAutomationSettings: () -> TaskAutoExecutionSettings"))
         XCTAssertTrue(boardSource.contains("@AppStorage(ProjectBoardSelectionPersistence.storageKey)"))
         XCTAssertTrue(boardSource.contains("@State private var selectedDestination: ProjectBoardSidebarDestination? = .today"))
     }

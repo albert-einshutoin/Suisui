@@ -10,6 +10,7 @@ final class QualitySourceContractTests: XCTestCase {
             "project-board-sidebar",
             "project-header-add-task",
             "inline-task-create",
+            "project-board-task-auto-execution-review",
             "task-card-open-details",
             "task-inspector-save",
             "task-status-move-controls",
@@ -22,6 +23,7 @@ final class QualitySourceContractTests: XCTestCase {
             XCTAssertTrue(script.contains(marker), "script must check \(marker)")
         }
 
+        XCTAssertTrue(preflight.contains("project-board-task-auto-execution-review"))
         XCTAssertTrue(preflight.contains("task-auto-execution-review"))
         XCTAssertTrue(preflight.contains("task-auto-execution-run-plan"))
         XCTAssertTrue(docs.contains("Manual VoiceOver is still required"))
