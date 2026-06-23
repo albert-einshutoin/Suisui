@@ -205,6 +205,21 @@ final class SoloPMHarnessTests: XCTestCase {
         XCTAssertFalse(run.diff?.actual.contains("sk-proj-live-secret") ?? false)
     }
 
+    func testAccessibilityHarnessRunRequiresApprovedExecutionReceiptTaskDetail() {
+        let run = SoloPMHarnessAccessibilityAuditRunner().run(
+            id: "run-ax-missing-receipt-detail",
+            trigger: .cloudTriggered,
+            startedAt: "2026-06-23T00:00:00Z",
+            finishedAt: "2026-06-23T00:00:01Z",
+            nodes: completeAccessibilityNodes(),
+            approvedExecutionReceipt: approvedExecutionReceipt(detail: "   ")
+        )
+
+        XCTAssertEqual(run.status, .failed)
+        XCTAssertEqual(run.diff?.stepID, "approved-execution-receipt")
+        XCTAssertTrue(run.diff?.actual.contains("missingTaskDetail") ?? false)
+    }
+
     func testAccessibilityHarnessRunFailsWithConcreteMissingFocusPathDiff() {
         let incompleteNodes = completeAccessibilityNodes()
             .filter { $0.id != "task-auto-execution-run-plan" }

@@ -740,6 +740,10 @@ public struct SoloPMHarnessAccessibilityAuditRunner: Sendable {
         if receipt.redactedTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             problems.append("missingTaskTitle: approved execution receipt must include the reviewed task title.")
         }
+        // A title-only receipt cannot prove the reviewed task content was executed.
+        if receipt.redactedTaskDetail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            problems.append("missingTaskDetail: approved execution receipt must include the reviewed task detail.")
+        }
         if receipt.reviewReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             problems.append("missingReviewReason: approved execution receipt must include the review reason.")
         }

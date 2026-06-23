@@ -392,6 +392,7 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 - [x] 主要buttonがAX labelまたはhelpを失ったら失敗するruntime smokeを追加する。
 - [x] Keyboard shortcutがmenu commandまたはfocused actionに接続されていることをsource testで固定する。
 - [x] destructive confirmationが確認なしに実行できないことをruntime smokeで確認する。
+- [x] 擬似VoiceOver harnessで、承認済みtask execution receiptにreviewed titleだけでなくreviewed detailが残らない場合は失敗するテストを追加する。
 
 ### Implementation Steps
 
@@ -399,12 +400,14 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 - [x] `check_accessibility_preflight.sh --runtime` の対象画面をInbox/Today/Settingsへ広げる。
 - [x] UI component追加時のAX identifier命名規則を定義する。
 - [x] Manual VoiceOver worksheetとruntime AX smokeの項目を対応付ける。
+- [x] `approved-execution-receipt` stepでreviewed task contentの欠落を検出し、タイトルだけの実行証跡ではmanual evidenceを再利用できないようにする。
 
 ### Acceptance Criteria
 
 - [x] Mouse、keyboard、VoiceOver前提のAX pathで主要CRUD入口が検出できる。
 - [x] destructive actionはconfirmationを経由しないとDB mutationしない。
 - [x] 手動VoiceOver前に明らかなlabel/focus漏れを自動検出できる。
+- [x] 承認済み実行は、対象タスクのタイトルと本文の両方がredacted receiptに残る場合だけ擬似VoiceOver gateを通過する。
 
 ### Non-goals
 
