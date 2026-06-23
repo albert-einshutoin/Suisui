@@ -3473,16 +3473,102 @@ private struct TaskInspectorAutomationSection: View {
                     .foregroundStyle(.secondary)
             }
 
+            if hasReviewDraft && !documentDeliverableReviews.isEmpty {
+                documentDeliverableReviewView(documentDeliverableReviews)
+            }
+
             if let receipt = latestApprovedExecutionReceipt {
                 approvedExecutionReceiptView(receipt)
             }
         }
     }
 
+    private var documentDeliverableReviews: [TaskAutomationDocumentDeliverableReview] {
+        viewModel.taskAutomationDocumentDeliverableReviews
+    }
+
     private var latestApprovedExecutionReceipt: ApprovedAutomationExecutionReceipt? {
         // Show the persisted redacted receipt, not current task text, so the audit trail
         // stays tied to what the user approved.
         viewModel.approvedAutomationExecutionReceipts.last { $0.taskID == task.id }
+    }
+
+    private func documentDeliverableReviewView(_ reviews: [TaskAutomationDocumentDeliverableReview]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Document deliverables", systemImage: "doc.text.magnifyingglass")
+                .font(.caption.weight(.semibold))
+
+            ForEach(reviews) { deliverable in
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(deliverable.title)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(2)
+
+                    HStack(spacing: 6) {
+                        Text(localizedDisplay(deliverable.riskLevel.rawValue.capitalized))
+                        Text(deliverable.suggestedPath)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                    Text(deliverable.rationale)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+
+                    if !deliverable.sourceDocuments.isEmpty {
+                        Text("Source documents")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        ForEach(deliverable.sourceDocuments) { source in
+                            documentSourceRow(source)
+                        }
+                    }
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("task-auto-execution-document-deliverables")
+        .accessibilityLabel("Document deliverables")
+        .accessibilityHint("Shows the draft-only document outputs and redacted source documents for the reviewed automation plan.")
+    }
+
+    private func documentSourceRow(_ source: TaskAutomationDocumentSourceReview) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(source.title)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(2)
+            Text(source.redactedSummary)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+            Text(source.inclusionReason)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        .padding(.leading, 8)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("task-auto-execution-document-source-\(source.id)")
+        .accessibilityLabel("Automation document source")
+        .accessibilityValue(documentSourceAccessibilityValue(source))
+        .accessibilityHint("Shows the redacted document source preview used for the reviewed automation draft.")
+    }
+
+    private func documentSourceAccessibilityValue(_ source: TaskAutomationDocumentSourceReview) -> String {
+        [
+            "Title \(source.title)",
+            "Summary \(source.redactedSummary)",
+            "Reason \(source.inclusionReason)"
+        ].joined(separator: ", ")
     }
 
     private func approvedExecutionReceiptView(_ receipt: ApprovedAutomationExecutionReceipt) -> some View {

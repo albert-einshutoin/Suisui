@@ -437,6 +437,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("\"Reviewed detail \\(receipt.redactedTaskDetail)\""))
     }
 
+    func testTaskInspectorShowsDocumentSourceReviewForAutomationDrafts() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(boardSource.contains("viewModel.taskAutomationDocumentDeliverableReviews"))
+        XCTAssertTrue(boardSource.contains("documentDeliverableReviewView"))
+        XCTAssertTrue(boardSource.contains("Document deliverables"))
+        XCTAssertTrue(boardSource.contains("Source documents"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"task-auto-execution-document-deliverables\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"task-auto-execution-document-source-\\(source.id)\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Automation document source\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityValue(documentSourceAccessibilityValue(source))"))
+    }
+
     func testProjectBoardLayoutMetricsGuardPrimaryDimensionsAndLongLabels() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 

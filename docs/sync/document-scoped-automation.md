@@ -43,6 +43,8 @@ External sources are excluded from source document IDs and source previews until
 
 Deliverable source binding is output-specific. Release notes cite release-note or changelog sources, PR plans cite implementation / regression / pull request sources, and draft artifacts cite artifact or Markdown draft sources. User request text can describe the desired work, but it is not treated as source evidence for a specific deliverable. If approved selected documents do not carry a direct deliverable signal, SoloPM falls back to a preparation checklist only. This keeps review evidence useful instead of over-citing unrelated background docs. The LLM review request keeps these source previews inside fenced redacted JSON, so the model has enough approved document context to draft useful artifacts while copied secrets and unapproved external connector previews stay out of provider context.
 
+Project Board also keeps the same source-bound deliverables in review state after a planning request is assembled. The Task inspector can show the draft output title, suggested path, rationale, and redacted source document previews before the user runs any approved task automation. This makes the provider payload auditable in the product UI instead of leaving source evidence only inside logs or test fixtures.
+
 ## Proposed Output Kinds
 
 The Pro tool flow can propose:

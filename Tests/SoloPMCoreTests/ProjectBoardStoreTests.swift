@@ -1149,6 +1149,67 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelExposesDocumentDeliverableSourcesForAutomationReviewUI() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        _ = viewModel.createTask(
+            title: "High release documentation task",
+            detail: "Prepare the reviewed release artifact.",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-21T08:00:00Z"
+        )
+        let drafts = DocumentAutomationArtifactPlanner().deliverableDrafts(
+            userRequest: "Prepare release notes and the PR plan from selected docs.",
+            documents: [
+                ScopedAutomationDocument(
+                    id: "phase14",
+                    title: "Phase14 release notes source",
+                    scope: .appDocs,
+                    redactedSummary: "Release notes and pull request plan use sk-proj-ui-secret123.",
+                    inclusionReason: "Selected by the user for review."
+                ),
+                ScopedAutomationDocument(
+                    id: "external-issue",
+                    title: "External issue",
+                    scope: .externalSources,
+                    redactedSummary: "External preview must not be rendered.",
+                    inclusionReason: "Needs connector-specific approval."
+                )
+            ]
+        )
+
+        _ = try viewModel.makeTaskAutomationPlanningRequest(
+            settings: .init(
+                isEnabled: true,
+                mode: .reviewOnly,
+                cadence: .hourly,
+                maxTasksPerRun: 1,
+                dailyLLMCallLimit: 3,
+                lookaheadHours: 72
+            ),
+            history: .empty,
+            referenceDate: try isoDate("2026-06-22T09:00:00Z"),
+            calendar: utcCalendar(),
+            timeZoneIdentifier: "UTC",
+            documentDeliverableDrafts: drafts
+        )
+
+        XCTAssertEqual(
+            viewModel.taskAutomationDocumentDeliverableReviews.map(\.title).sorted(),
+            ["Preparation checklist", "Pull request plan", "Release notes draft"]
+        )
+        XCTAssertTrue(viewModel.taskAutomationDocumentDeliverableReviews.allSatisfy(\.requiresApproval))
+        let sourcePreviews = viewModel.taskAutomationDocumentDeliverableReviews.flatMap(\.sourceDocuments)
+        XCTAssertFalse(sourcePreviews.isEmpty)
+        XCTAssertTrue(sourcePreviews.allSatisfy { $0.id == "phase14" })
+        XCTAssertTrue(sourcePreviews.allSatisfy { $0.title == "Phase14 release notes source" })
+        XCTAssertTrue(sourcePreviews.allSatisfy { $0.redactedSummary.contains("[REDACTED_SECRET]") })
+        XCTAssertFalse(sourcePreviews.contains { $0.id == "external-issue" })
+        XCTAssertFalse(sourcePreviews.contains { $0.redactedSummary.contains("sk-proj-ui-secret123") })
+    }
+
+    @MainActor
     func testProjectBoardViewModelClearsTaskAutomationReviewWhenCadenceThrottles() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()

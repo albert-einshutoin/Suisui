@@ -213,6 +213,52 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct TaskAutomationDocumentSourceReview: Identifiable, Equatable, Sendable {
+    public var id: String
+    public var title: String
+    public var redactedSummary: String
+    public var inclusionReason: String
+
+    public init(id: String, title: String, redactedSummary: String, inclusionReason: String) {
+        let redactor = DeveloperSecretRedactor()
+        self.id = redactor.redact(id).text
+        self.title = redactor.redact(title).text
+        self.redactedSummary = redactor.redact(redactedSummary).text
+        self.inclusionReason = redactor.redact(inclusionReason).text
+    }
+}
+
+public struct TaskAutomationDocumentDeliverableReview: Identifiable, Equatable, Sendable {
+    public var id: String
+    public var kind: DocumentAutomationOutputKind
+    public var title: String
+    public var suggestedPath: String
+    public var sourceDocuments: [TaskAutomationDocumentSourceReview]
+    public var rationale: String
+    public var riskLevel: RiskLevel
+    public var requiresApproval: Bool
+
+    public init(
+        kind: DocumentAutomationOutputKind,
+        title: String,
+        suggestedPath: String,
+        sourceDocuments: [TaskAutomationDocumentSourceReview],
+        rationale: String,
+        riskLevel: RiskLevel,
+        requiresApproval: Bool
+    ) {
+        let redactor = DeveloperSecretRedactor()
+        self.kind = kind
+        self.title = redactor.redact(title).text
+        self.suggestedPath = redactor.redact(suggestedPath).text
+        self.sourceDocuments = sourceDocuments
+        self.rationale = redactor.redact(rationale).text
+        self.riskLevel = riskLevel
+        self.requiresApproval = requiresApproval
+        self.id = [kind.rawValue, self.suggestedPath].joined(separator: ":")
+    }
+}
+
 public struct TodayTimeBlock: Identifiable, Equatable, Sendable {
     public var id: String { "\(task.id)-\(label)" }
     public var label: String
@@ -1025,6 +1071,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var projectAssistantAnswer: ProjectAssistantAnswer?
     @Published public private(set) var projectAssistantReviewDraft: ProjectAssistantReviewDraft?
     @Published public private(set) var taskAutomationReviewDecision: TaskAutoExecutionDecision?
+    @Published public private(set) var taskAutomationDocumentDeliverableReviews: [TaskAutomationDocumentDeliverableReview]
     @Published public private(set) var lastApprovedAutomationExecutionReceipt: ApprovedAutomationExecutionReceipt?
     @Published public private(set) var approvedAutomationExecutionReceipts: [ApprovedAutomationExecutionReceipt]
 
@@ -1062,6 +1109,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.projectAssistantAnswer = nil
         self.projectAssistantReviewDraft = nil
         self.taskAutomationReviewDecision = nil
+        self.taskAutomationDocumentDeliverableReviews = []
         self.lastApprovedAutomationExecutionReceipt = nil
         self.approvedAutomationExecutionReceipts = []
         self.taskAutomationSessionHistory = .empty
@@ -1343,11 +1391,13 @@ public final class ProjectBoardViewModel: ObservableObject {
 
         guard decision.status == .readyForReview else {
             taskAutomationReviewDecision = nil
+            taskAutomationDocumentDeliverableReviews = []
             todayCommandFeedback = decision.reason
             return decision
         }
 
         taskAutomationReviewDecision = decision
+        taskAutomationDocumentDeliverableReviews = []
         if let firstTask = decision.selectedTasks.first {
             selectedProjectID = firstTask.projectID
             selectedTaskID = firstTask.id
@@ -1385,6 +1435,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             timeZoneIdentifier: timeZoneIdentifier,
             documentDeliverableDrafts: documentDeliverableDrafts
         )
+        taskAutomationDocumentDeliverableReviews = documentDeliverableReviews(from: documentDeliverableDrafts)
 
         // The session budget is charged only after the provider request is
         // successfully assembled. Throttled or invalid review attempts still
@@ -1410,13 +1461,15 @@ public final class ProjectBoardViewModel: ObservableObject {
             referenceDate: referenceDate,
             calendar: calendar
         )
-        return try buildTaskAutomationPlanningRequest(
+        let request = try buildTaskAutomationPlanningRequest(
             decision: decision,
             settings: settings,
             referenceDate: referenceDate,
             timeZoneIdentifier: timeZoneIdentifier,
             documentDeliverableDrafts: documentDeliverableDrafts
         )
+        taskAutomationDocumentDeliverableReviews = documentDeliverableReviews(from: documentDeliverableDrafts)
+        return request
     }
 
     private func buildTaskAutomationPlanningRequest(
@@ -1453,6 +1506,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
         guard isEligibleForTaskAutomation(selectedTask) else {
             taskAutomationReviewDecision = nil
+            taskAutomationDocumentDeliverableReviews = []
             todayCommandFeedback = String(localized: "Only open unblocked tasks can be reviewed for automation.")
             return
         }
@@ -1465,6 +1519,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             requiresUserApproval: true,
             allowsDirectExecution: false
         )
+        taskAutomationDocumentDeliverableReviews = []
         integrationStatusMessage = String(format: String(localized: "Prepared review-only automation for \"%@\"."), selectedTask.title)
         errorMessage = nil
     }
@@ -1481,11 +1536,13 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
         guard isEligibleForTaskAutomation(selectedTask) else {
             taskAutomationReviewDecision = nil
+            taskAutomationDocumentDeliverableReviews = []
             todayCommandFeedback = String(localized: "Task automation stopped because the task is blocked or complete.")
             return
         }
         guard matchesReviewedAutomationTask(reviewedTask, current: selectedTask) else {
             taskAutomationReviewDecision = nil
+            taskAutomationDocumentDeliverableReviews = []
             todayCommandFeedback = String(localized: "Review the automation plan again because the task changed after review.")
             return
         }
@@ -1553,6 +1610,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         let remainingTasks = reviewDecision.selectedTasks.filter { $0.id != executedTaskID }
         guard !remainingTasks.isEmpty else {
             taskAutomationReviewDecision = nil
+            taskAutomationDocumentDeliverableReviews = []
             return
         }
         // A configured review can contain several priority/due-date selected
@@ -1567,6 +1625,34 @@ public final class ProjectBoardViewModel: ObservableObject {
             requiresUserApproval: reviewDecision.requiresUserApproval,
             allowsDirectExecution: reviewDecision.allowsDirectExecution
         )
+    }
+
+    private func documentDeliverableReviews(
+        from drafts: [DocumentAutomationDeliverableDraft]
+    ) -> [TaskAutomationDocumentDeliverableReview] {
+        // Keep the review UI bound to the same approval-gated draft set that
+        // enters provider planning. Rendering only redacted previews lets users
+        // audit source evidence without exposing raw document bodies in the UI.
+        drafts
+            .filter { $0.requiresApproval && !$0.sourceDocuments.isEmpty }
+            .map { draft in
+                TaskAutomationDocumentDeliverableReview(
+                    kind: draft.kind,
+                    title: draft.title,
+                    suggestedPath: draft.suggestedPath,
+                    sourceDocuments: draft.sourceDocuments.map {
+                        TaskAutomationDocumentSourceReview(
+                            id: $0.id,
+                            title: $0.title,
+                            redactedSummary: $0.redactedSummary,
+                            inclusionReason: $0.inclusionReason
+                        )
+                    },
+                    rationale: draft.rationale,
+                    riskLevel: draft.riskLevel,
+                    requiresApproval: draft.requiresApproval
+                )
+            }
     }
 
     private func matchesReviewedAutomationTask(_ reviewedTask: ProjectBoardTask, current: ProjectBoardTask) -> Bool {
