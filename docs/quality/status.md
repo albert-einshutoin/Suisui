@@ -1,14 +1,14 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-23T06:13:31Z
-Source commit: fe164fd
+Generated at: 2026-06-23T07:20:36Z
+Source commit: aea0384
 
 ## Summary
 
 - Phase14 completion: 183/183 checked, 0 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 0 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `.tmp/automated-release-preflight-fe164fd.md`
+- Automated preflight evidence: `.tmp/automated-release-preflight-aea0384.md`
 
 ## Unfinished Phase14 Items
 
@@ -62,7 +62,7 @@ Source commit: fe164fd
 - `docs/quality/test-triage.md`
 - `docs/quality/flake-quarantine.md`
 - `./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-fe164fd.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-aea0384.md ./script/release_readiness_report.sh`
 
 ## Notes
 
