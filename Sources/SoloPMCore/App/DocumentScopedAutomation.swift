@@ -38,11 +38,15 @@ public struct ScopedAutomationDocument: Codable, Equatable, Sendable {
         redactedSummary: String,
         inclusionReason: String
     ) {
-        self.id = id
-        self.title = title
+        let redactor = DeveloperSecretRedactor()
+        // Document IDs, titles, and reasons can originate from filenames,
+        // connectors, or user notes, so redact at the scope boundary before
+        // review summaries or provider prompts can reuse them.
+        self.id = redactor.redact(id).text
+        self.title = redactor.redact(title).text
         self.scope = scope
-        self.redactedSummary = DeveloperSecretRedactor().redact(redactedSummary).text
-        self.inclusionReason = inclusionReason
+        self.redactedSummary = redactor.redact(redactedSummary).text
+        self.inclusionReason = redactor.redact(inclusionReason).text
     }
 }
 

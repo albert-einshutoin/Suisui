@@ -49,6 +49,36 @@ final class DocumentScopedAutomationTests: XCTestCase {
         XCTAssertTrue(review.requiresApproval)
     }
 
+    func testScopedAutomationDocumentRedactsTitleAndReasonBeforeReviewOrProviderContext() {
+        let document = ScopedAutomationDocument(
+            id: "secret-doc",
+            title: "Release checklist sk-proj-title-secret",
+            scope: .appDocs,
+            redactedSummary: "Use token=summary-secret for notarization notes.",
+            inclusionReason: "Selected after token=reason-secret appeared in the note title."
+        )
+        let request = DocumentAutomationArtifactPlanner().makeRequest(
+            id: "doc-redaction",
+            userRequest: "Create release notes from selected docs",
+            documents: [document],
+            contextStrategy: .providerPromptContext
+        )
+
+        let review = request.reviewSummary
+        let serializedContext = [
+            request.documents.map(\.title).joined(separator: "\n"),
+            request.documents.map(\.redactedSummary).joined(separator: "\n"),
+            request.documents.map(\.inclusionReason).joined(separator: "\n"),
+            review.documentsConsidered.map(\.title).joined(separator: "\n"),
+            review.documentReasons.map(\.reason).joined(separator: "\n")
+        ].joined(separator: "\n")
+
+        XCTAssertTrue(serializedContext.contains("[REDACTED_SECRET]"))
+        XCTAssertFalse(serializedContext.contains("sk-proj-title-secret"))
+        XCTAssertFalse(serializedContext.contains("summary-secret"))
+        XCTAssertFalse(serializedContext.contains("reason-secret"))
+    }
+
     func testDocumentAutomationToolFlowCoversPrepArtifactsAndSelectableContextAdapters() {
         let flow = DocumentAutomationToolFlow.defaultPro
 

@@ -77,6 +77,7 @@ automation-backlog:
 - Missing preparation checklists, draft artifacts, release notes, or PR plans belong in `SoloPMHarnessScenario.requiredDocumentDeliverableKinds`.
 - Missing approval gates, source document IDs, or draft risk classification belong in `SoloPMHarnessDocumentAutomationRunner`.
 - Missing Project Board review-state or Task inspector visibility for redacted source document previews belongs in `Tests/SoloPMCoreTests/ProjectBoardStoreTests.swift` and `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift`.
+- Secret-like values leaking through document IDs, titles, summaries, or inclusion reasons belong in `Tests/SoloPMCoreTests/DocumentScopedAutomationTests.swift` before provider-backed document drafting is allowed.
 - Planner output selection belongs in `Tests/SoloPMCoreTests/DocumentScopedAutomationTests.swift` before any provider-backed drafting is allowed.
 
 Close rule:
