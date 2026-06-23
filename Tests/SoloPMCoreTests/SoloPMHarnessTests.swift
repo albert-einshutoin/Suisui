@@ -116,6 +116,51 @@ final class SoloPMHarnessTests: XCTestCase {
         XCTAssertTrue(run.failureReason?.contains("releaseNotes") ?? false)
     }
 
+    func testDocumentAutomationHarnessRunRequiresRedactedSourcePreviewsForEachDeliverable() throws {
+        var drafts = DocumentAutomationArtifactPlanner().deliverableDrafts(
+            userRequest: "Create release notes, a PR plan, and the right draft artifacts from these docs.",
+            documents: documentAutomationHarnessDocuments()
+        )
+        let releaseNotesIndex = try XCTUnwrap(drafts.firstIndex { $0.kind == .releaseNotes })
+        drafts[releaseNotesIndex].sourceDocuments = []
+
+        let run = SoloPMHarnessDocumentAutomationRunner().run(
+            id: "run-document-missing-source-previews",
+            trigger: .cloudTriggered,
+            startedAt: "2026-06-23T00:00:00Z",
+            finishedAt: "2026-06-23T00:00:01Z",
+            drafts: drafts
+        )
+
+        XCTAssertEqual(run.status, .failed)
+        XCTAssertEqual(run.diff?.stepID, "document-deliverable-releaseNotes")
+        XCTAssertEqual(run.diff?.expected, "reviewable document deliverable draft present")
+        XCTAssertTrue(run.diff?.actual.contains("missingSourcePreviews") ?? false)
+        XCTAssertTrue(run.failureReason?.contains("source preview") ?? false)
+    }
+
+    func testDocumentAutomationHarnessRunRequiresSourcePreviewsToMatchCitedDocuments() throws {
+        var drafts = DocumentAutomationArtifactPlanner().deliverableDrafts(
+            userRequest: "Create release notes, a PR plan, and the right draft artifacts from these docs.",
+            documents: documentAutomationHarnessDocuments()
+        )
+        let releaseNotesIndex = try XCTUnwrap(drafts.firstIndex { $0.kind == .releaseNotes })
+        let artifactPreview = try XCTUnwrap(drafts.first { $0.kind == .draftArtifact }?.sourceDocuments.first)
+        drafts[releaseNotesIndex].sourceDocuments = [artifactPreview]
+
+        let run = SoloPMHarnessDocumentAutomationRunner().run(
+            id: "run-document-mismatched-source-preview",
+            trigger: .cloudTriggered,
+            startedAt: "2026-06-23T00:00:00Z",
+            finishedAt: "2026-06-23T00:00:01Z",
+            drafts: drafts
+        )
+
+        XCTAssertEqual(run.status, .failed)
+        XCTAssertEqual(run.diff?.stepID, "document-deliverable-releaseNotes")
+        XCTAssertTrue(run.diff?.actual.contains("missingSourcePreviews") ?? false)
+    }
+
     func testTaskLifecycleCoverageReportsMissingExecuteAndDeleteRequirements() {
         let scenario = SoloPMHarnessScenario(
             id: "partial-task-lifecycle",

@@ -577,10 +577,60 @@ public struct SoloPMHarnessDocumentAutomationRunner: Sendable {
         if draft.sourceDocumentIDs.isEmpty {
             problems.append("missingSourceDocuments: \(draft.kind.rawValue) must cite selected documents.")
         }
+        // IDs alone do not prove that the reviewer or provider saw the right
+        // source evidence; every deliverable must carry matching redacted
+        // previews so document-backed artifacts stay auditable.
+        problems.append(contentsOf: sourcePreviewProblems(for: draft))
         if draft.riskLevel < .draft {
             problems.append("riskTooLow: \(draft.kind.rawValue) must be at least draft risk.")
         }
         return problems
+    }
+
+    private func sourcePreviewProblems(for draft: DocumentAutomationDeliverableDraft) -> [String] {
+        guard !draft.sourceDocumentIDs.isEmpty else {
+            return []
+        }
+
+        var problems: [String] = []
+        if draft.sourceDocuments.isEmpty {
+            problems.append("missingSourcePreviews: \(draft.kind.rawValue) must include a redacted source preview for every cited source document.")
+            return problems
+        }
+
+        let requiredIDs = Set(draft.sourceDocumentIDs.map(trimmed))
+        let previewIDs = Set(draft.sourceDocuments.map(\.id).map(trimmed).filter { !$0.isEmpty })
+        if !requiredIDs.isSubset(of: previewIDs) {
+            problems.append("missingSourcePreviews: \(draft.kind.rawValue) must include a redacted source preview for every cited source document.")
+        }
+
+        if draft.sourceDocuments.contains(where: hasIncompleteSourcePreview) {
+            problems.append("incompleteSourcePreview: \(draft.kind.rawValue) source previews must include title, redacted summary, and inclusion reason.")
+        }
+
+        let redactor = DeveloperSecretRedactor()
+        let remainingSecretCount = draft.sourceDocuments.reduce(0) { count, source in
+            count
+                + redactor.redact(source.id).report.replacementCount
+                + redactor.redact(source.title).report.replacementCount
+                + redactor.redact(source.redactedSummary).report.replacementCount
+                + redactor.redact(source.inclusionReason).report.replacementCount
+        }
+        if remainingSecretCount > 0 {
+            problems.append("unredactedSourcePreviewSecret: \(draft.kind.rawValue) source previews still contain secret-like content.")
+        }
+
+        return problems
+    }
+
+    private func hasIncompleteSourcePreview(_ source: DocumentAutomationDeliverableSource) -> Bool {
+        trimmed(source.title).isEmpty ||
+            trimmed(source.redactedSummary).isEmpty ||
+            trimmed(source.inclusionReason).isEmpty
+    }
+
+    private func trimmed(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

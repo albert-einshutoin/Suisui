@@ -1,11 +1,11 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-23T20:49:59Z
-Source commit: 017e3f9
+Generated at: 2026-06-23T21:06:35Z
+Source commit: 81d36da
 
 ## Summary
 
-- Phase14 completion: 214/214 checked, 0 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
+- Phase14 completion: 215/215 checked, 0 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 0 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
 - Automated preflight evidence: current HEAD after a clean `./script/check_automated_release_preflight.sh` run (`.tmp/automated-release-preflight-$(git rev-parse --short HEAD).md`)

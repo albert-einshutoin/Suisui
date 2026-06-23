@@ -467,6 +467,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] LLM review対象のタスク内容がprompt injection風の本文を含んでも、選択理由・承認境界・削除禁止の契約が保持される。
 - [x] ドキュメント群から作る成果物候補は、source document ID、suggested path、rationale、risk、approval requirementを持つreview-only payloadとして保持される。
 - [x] ドキュメント群から作る成果物候補は、source document title / inclusion reasonにsecret-like値が混ざってもreview summaryとprovider contextでredactedされる。
+- [x] Document automation harnessはsource document IDだけでなく、成果物ごとのredacted source previewが欠ける/別文書にずれる場合もfailし、release notes / PR plan / draft artifactが正しい文書根拠に紐づくことを検証する。
 - [x] ProjectBoardから生成するLLM review requestでも、未承認external sourceとsecret-like値をprovider境界へ出さず、filesystem draft outputはapproval-gatedのまま保持される。
 - [x] future connectorやtestがunsafe decisionを渡しても、providerへ出るpayloadとpromptは `requiresUserApproval=true` / `allowsDirectExecution=false` のままになる。
 - [x] Daily LLM budgetは前日分の履歴で恒久的に枯渇せず、翌日の最初のreviewでは当日予算を使ってpriority/due-date選定へ進める。

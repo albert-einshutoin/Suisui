@@ -47,6 +47,8 @@ Source document identifiers, titles, summaries, and inclusion reasons are redact
 
 Project Board also keeps the same source-bound deliverables in review state after a planning request is assembled. The Task inspector can show the draft output title, suggested path, rationale, and redacted source document previews before the user runs any approved task automation. This makes the provider payload auditable in the product UI instead of leaving source evidence only inside logs or test fixtures.
 
+The document automation harness treats these source previews as part of the deliverable contract. A draft that only lists source document IDs, or attaches a preview from a different document, fails the `document-scoped-automation` scenario. This keeps "release notes from release docs" and "PR plan from implementation docs" from collapsing into a generic docs-present smoke test.
+
 ## Proposed Output Kinds
 
 The Pro tool flow can propose:
