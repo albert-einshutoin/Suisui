@@ -40,6 +40,8 @@ When selected documents imply file-like deliverables, SoloPM creates reviewable 
 
 External sources are excluded from source document IDs until their connector-specific approval flow is implemented. If only external sources are selected, no deliverable draft is created. This keeps GitHub, calendar, SaaS docs, and other remote connector state from silently becoming the basis for local deliverables.
 
+Deliverable source binding is output-specific. Release notes cite release-note or changelog sources, PR plans cite implementation / regression / pull request sources, and draft artifacts cite artifact or Markdown draft sources. SoloPM only falls back to every approved selected document when an output was inferred from the overall request but no individual document carries a direct signal. This keeps review evidence useful instead of over-citing unrelated background docs.
+
 ## Proposed Output Kinds
 
 The Pro tool flow can propose:

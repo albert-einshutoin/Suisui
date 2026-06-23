@@ -174,9 +174,63 @@ final class DocumentScopedAutomationTests: XCTestCase {
         XCTAssertTrue(drafts.allSatisfy(\.requiresApproval))
         XCTAssertTrue(drafts.allSatisfy { $0.riskLevel == .draft })
         XCTAssertTrue(drafts.allSatisfy { !$0.sourceDocumentIDs.contains("github-issue") })
-        XCTAssertEqual(drafts.first { $0.kind == .releaseNotes }?.sourceDocumentIDs, ["release", "phase14", "artifact-notes"])
+        XCTAssertEqual(drafts.first { $0.kind == .releaseNotes }?.sourceDocumentIDs, ["release"])
+        XCTAssertEqual(drafts.first { $0.kind == .pullRequestPlan }?.sourceDocumentIDs, ["phase14"])
+        XCTAssertEqual(drafts.first { $0.kind == .draftArtifact }?.sourceDocumentIDs, ["artifact-notes"])
         XCTAssertTrue(drafts.first { $0.kind == .pullRequestPlan }?.rationale.contains("PR plan") == true)
         XCTAssertFalse(drafts.map(\.rationale).joined().contains("sk-test-secret"))
+    }
+
+    func testDocumentArtifactPlannerBindsEachDeliverableToRelevantSourceDocuments() {
+        let documents = [
+            ScopedAutomationDocument(
+                id: "release-notes",
+                title: "Release notes source",
+                scope: .appDocs,
+                redactedSummary: "Public alpha release notes and changelog highlights.",
+                inclusionReason: "Selected for release communication."
+            ),
+            ScopedAutomationDocument(
+                id: "pr-plan",
+                title: "Implementation regression plan",
+                scope: .projectDocs,
+                redactedSummary: "Implementation plan, pull request checklist, regression tests, and verification commands.",
+                inclusionReason: "Selected for PR planning."
+            ),
+            ScopedAutomationDocument(
+                id: "artifact-draft",
+                title: "README artifact notes",
+                scope: .taskArtifacts,
+                redactedSummary: "Draft README.md and article.md artifact content.",
+                inclusionReason: "Selected for draft artifact output."
+            ),
+            ScopedAutomationDocument(
+                id: "general-context",
+                title: "General project context",
+                scope: .projectDocs,
+                redactedSummary: "Background information that should not be cited for specific deliverables.",
+                inclusionReason: "Selected for orientation."
+            )
+        ]
+
+        let drafts = DocumentAutomationArtifactPlanner().deliverableDrafts(
+            userRequest: "Create release notes, a PR plan, and draft artifacts from the relevant docs.",
+            documents: documents
+        )
+
+        XCTAssertEqual(
+            drafts.first { $0.kind == .releaseNotes }?.sourceDocumentIDs,
+            ["release-notes"]
+        )
+        XCTAssertEqual(
+            drafts.first { $0.kind == .pullRequestPlan }?.sourceDocumentIDs,
+            ["pr-plan"]
+        )
+        XCTAssertEqual(
+            drafts.first { $0.kind == .draftArtifact }?.sourceDocumentIDs,
+            ["artifact-draft"]
+        )
+        XCTAssertFalse(drafts.map(\.sourceDocumentIDs).joined().contains("general-context"))
     }
 
     func testDocumentArtifactPlannerDoesNotCreateDeliverableDraftsFromExternalSourcesOnly() {

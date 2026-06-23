@@ -273,19 +273,20 @@ public struct DocumentAutomationArtifactPlanner: Sendable {
         guard !approvedDocuments.isEmpty else {
             return []
         }
-        let approvedDocumentIDs = approvedDocuments.map(\.id)
-        let approvedDocumentTitles = approvedDocuments.map(\.title)
         let deliverableKinds = proposedOutputs(userRequest: userRequest, documents: approvedDocuments)
             .map(\.kind)
             .filter(isDeliverableDraft)
 
         return deliverableKinds.map { kind in
-            DocumentAutomationDeliverableDraft(
+            let sourceDocuments = relevantDocuments(for: kind, documents: approvedDocuments)
+            let sourceDocumentIDs = sourceDocuments.map(\.id)
+            let sourceDocumentTitles = sourceDocuments.map(\.title)
+            return DocumentAutomationDeliverableDraft(
                 kind: kind,
                 title: title(for: kind),
                 suggestedPath: suggestedPath(for: kind),
-                sourceDocumentIDs: approvedDocumentIDs,
-                rationale: rationale(for: kind, sourceTitles: approvedDocumentTitles),
+                sourceDocumentIDs: sourceDocumentIDs,
+                rationale: rationale(for: kind, sourceTitles: sourceDocumentTitles),
                 riskLevel: riskLevel(for: kind),
                 requiresApproval: true
             )
@@ -309,13 +310,9 @@ public struct DocumentAutomationArtifactPlanner: Sendable {
             .lowercased()
         var kinds: [DocumentAutomationOutputKind] = []
 
-        append(.taskDraft, to: &kinds, when: searchable.containsAny(["task", "todo", "phase", "implementation", "実装", "タスク"]))
-        append(.statusChange, to: &kinds, when: searchable.containsAny(["status", "state", "in progress", "complete", "completed", "done", "move to", "ステータス", "状態", "完了"]))
-        append(.dueDateChange, to: &kinds, when: searchable.containsAny(["due date", "due-date", "due at", "deadline", "reschedule", "schedule", "期日", "期限", "締切"]))
-        append(.preparationChecklist, to: &kinds, when: searchable.containsAny(["checklist", "gate", "signing", "notarization", "voiceover", "release", "準備"]))
-        append(.draftArtifact, to: &kinds, when: searchable.containsAny(["artifact", ".md", "draft", "readme", "article", "成果物", "下書き"]))
-        append(.releaseNotes, to: &kinds, when: searchable.containsAny(["release note", "release notes", "changelog", "public alpha", "リリース"]))
-        append(.pullRequestPlan, to: &kinds, when: searchable.containsAny(["pull request", "pr plan", "implementation", "phase", "regression", "実装"]))
+        for kind in DocumentAutomationOutputKind.allCases {
+            append(kind, to: &kinds, when: searchable.containsAny(sourceNeedles(for: kind)))
+        }
 
         if kinds.isEmpty {
             kinds = [.preparationChecklist]
@@ -339,6 +336,40 @@ public struct DocumentAutomationArtifactPlanner: Sendable {
             true
         case .taskDraft, .statusChange, .dueDateChange:
             false
+        }
+    }
+
+    private func relevantDocuments(
+        for kind: DocumentAutomationOutputKind,
+        documents: [ScopedAutomationDocument]
+    ) -> [ScopedAutomationDocument] {
+        let matched = documents.filter { document in
+            document.searchableText.containsAny(sourceNeedles(for: kind))
+        }
+
+        // Fall back to all approved documents only when the planner could infer
+        // an output from the overall request but no individual document carries
+        // a direct signal. This preserves a reviewable source trail without
+        // over-citing unrelated documents when specific evidence exists.
+        return matched.isEmpty ? documents : matched
+    }
+
+    private func sourceNeedles(for kind: DocumentAutomationOutputKind) -> [String] {
+        switch kind {
+        case .preparationChecklist:
+            ["checklist", "gate", "signing", "notarization", "voiceover", "release", "準備"]
+        case .draftArtifact:
+            ["artifact", ".md", "draft", "readme", "article", "成果物", "下書き"]
+        case .releaseNotes:
+            ["release note", "release notes", "changelog", "public alpha", "リリース"]
+        case .pullRequestPlan:
+            ["pull request", "pr plan", "implementation", "phase", "regression", "実装"]
+        case .taskDraft:
+            ["task", "todo", "phase", "implementation", "実装", "タスク"]
+        case .statusChange:
+            ["status", "state", "in progress", "complete", "completed", "done", "move to", "ステータス", "状態", "完了"]
+        case .dueDateChange:
+            ["due date", "due-date", "due at", "deadline", "reschedule", "schedule", "期日", "期限", "締切"]
         }
     }
 
@@ -437,5 +468,13 @@ public struct DocumentAutomationArtifactPlanner: Sendable {
 private extension String {
     func containsAny(_ needles: [String]) -> Bool {
         needles.contains { contains($0) }
+    }
+}
+
+private extension ScopedAutomationDocument {
+    var searchableText: String {
+        [title, redactedSummary, inclusionReason]
+            .joined(separator: "\n")
+            .lowercased()
     }
 }
