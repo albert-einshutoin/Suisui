@@ -26,14 +26,14 @@ MIN_AX_BUTTONS=5
 MIN_AX_TEXT_FIELDS=1
 MIN_AX_STATIC_TEXTS=5
 REQUIRED_RUNTIME_CRUD_MARKERS=(
-  "project-board-show-archived"
-  "project-board-add-project"
   "project-header-add-task"
   "task-card-open-details"
-  "project-inspector-save"
-  "project-inspector-complete"
-  "project-inspector-archive"
-  "project-inspector-delete"
+  "task-status-move-"
+  "task-inspector-apply-suggestion"
+  "task-inspector-save"
+  "task-auto-execution-review"
+  "task-auto-execution-run-plan"
+  "task-inspector-delete"
 )
 REQUIRED_RUNTIME_FOCUS_MARKERS=(
   "Project navigation=>project-board-sidebar"
@@ -41,17 +41,17 @@ REQUIRED_RUNTIME_FOCUS_MARKERS=(
   "Open task=>task-card-open-details"
   "Inline Task Composer=>project-header-add-task"
   "Status controls=>task-status-move-controls"
-  "Task inspector=>project-inspector"
+  "Task inspector=>task-inspector"
 )
 REQUIRED_RUNTIME_BUTTON_A11Y_MARKERS=(
-  "project-board-show-archived=>Show archived"
-  "project-board-add-project=>Add Project"
   "project-header-add-task=>Add task"
   "task-card-open-details=>Open task"
-  "project-inspector-save=>Saves edits"
-  "project-inspector-complete=>Completes the selected project"
-  "project-inspector-archive=>Archives the selected project"
-  "project-inspector-delete=>Deletes the selected project"
+  "task-status-move-=>Move"
+  "task-inspector-apply-suggestion=>Applies the local next-step suggestion"
+  "task-inspector-save=>Saves edits"
+  "task-auto-execution-review=>Builds a review-only LLM plan"
+  "task-auto-execution-run-plan=>Runs the reviewed local task step"
+  "task-inspector-delete=>Deletes the selected task"
 )
 REQUIRED_RUNTIME_SCREEN_MARKERS=(
   "Inbox sidebar=>sidebar-destination-inbox"
@@ -305,6 +305,106 @@ APPLESCRIPT
   wait "$osascript_pid" >/dev/null 2>&1 || true
 }
 
+# The seeded review candidate opens the project inspector first. Press the
+# task detail control before scanning so focusPathSignals proves task edit and
+# delete controls, not only the project-level inspector.
+open_task_inspector_for_runtime_focus_path() {
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local output=""
+  while true; do
+    set +e
+    output="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' 2>&1
+on run argv
+  set appName to item 1 of argv
+  tell application "System Events"
+    if not (exists process appName) then error appName & " process is not visible to System Events"
+    tell process appName
+      set frontmost to true
+      set windowCount to count of windows
+      if windowCount < 1 then error appName & " has no visible windows"
+      repeat with windowIndex from 1 to windowCount
+        set currentWindow to window windowIndex
+        try
+          perform action "AXRaise" of currentWindow
+        end try
+        set axItems to entire contents of currentWindow
+        repeat with axItem in axItems
+          set itemIdentifier to ""
+          set itemName to ""
+          set itemTitle to ""
+          set itemDescription to ""
+          set itemHelp to ""
+          try
+            set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
+          end try
+          try
+            set itemName to name of axItem as text
+          end try
+          try
+            set itemTitle to value of attribute "AXTitle" of axItem as text
+          end try
+          try
+            set itemDescription to description of axItem as text
+          end try
+          try
+            set itemHelp to value of attribute "AXHelp" of axItem as text
+          end try
+          set itemSignal to itemIdentifier & " " & itemName & " " & itemTitle & " " & itemDescription & " " & itemHelp
+          if itemSignal contains "task-inspector" then return "task inspector already visible"
+        end repeat
+        repeat with axItem in axItems
+          set itemRole to ""
+          set itemIdentifier to ""
+          set itemName to ""
+          set itemTitle to ""
+          set itemDescription to ""
+          set itemHelp to ""
+          try
+            set itemRole to role of axItem as text
+          end try
+          try
+            set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
+          end try
+          try
+            set itemName to name of axItem as text
+          end try
+          try
+            set itemTitle to value of attribute "AXTitle" of axItem as text
+          end try
+          try
+            set itemDescription to description of axItem as text
+          end try
+          try
+            set itemHelp to value of attribute "AXHelp" of axItem as text
+          end try
+          set itemSignal to itemIdentifier & " " & itemName & " " & itemTitle & " " & itemDescription & " " & itemHelp
+          if itemRole is "AXButton" and itemSignal contains "task-card-open-details" then
+            perform action "AXPress" of axItem
+            delay 0.4
+            return "opened task inspector"
+          end if
+        end repeat
+      end repeat
+    end tell
+  end tell
+  error "task-card-open-details button not found"
+end run
+APPLESCRIPT
+)"
+    local status=$?
+    set -e
+    if [[ "$status" -eq 0 ]]; then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: runtime AX smoke could not open task inspector from task-card-open-details: $output" >&2
+      return 1
+    fi
+    activate_app
+    sleep 1
+  done
+}
+
 if [[ "$LAUNCH_APP" -eq 1 ]]; then
   pkill -x "$APP_NAME" >/dev/null 2>&1 || true
   if [[ -n "$LAUNCH_ENV_FILE" ]]; then
@@ -328,6 +428,8 @@ while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do
   fi
   sleep 1
 done
+
+open_task_inspector_for_runtime_focus_path
 
 ax_deadline=$((SECONDS + TIMEOUT_SECONDS))
 ax_output=""

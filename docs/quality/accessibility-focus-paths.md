@@ -37,8 +37,8 @@ The task path covers create, edit, status execution, automation review, approved
 | --- | --- | --- |
 | `unlabeledButtons=0` | No unlabeled primary CRUD controls | No focused primary button is announced as empty or ambiguous. |
 | `genericButtons=0` | No unlabeled primary CRUD controls | No primary action is exposed only as a generic button without help or child text. |
-| `crudSignals=8/8` | Save Changes, Delete Task confirmation, No unlabeled primary CRUD controls | Create, update, complete/archive/delete, and confirmation entry points are visible to AX. |
-| `buttonA11ySignals=8/8` | No unlabeled primary CRUD controls | Primary Project Board buttons retain a concrete label, visible text, help, or child text. |
+| `crudSignals=8/8` | Save Changes, Delete Task confirmation, No unlabeled primary CRUD controls | Add Task, Open task, status movement, local suggestion apply, task Save, selected-task automation review, approved execution, and Delete Task entry points are visible to AX. |
+| `buttonA11ySignals=8/8` | No unlabeled primary CRUD controls | Primary task lifecycle buttons retain a concrete label, visible text, help, or child text. |
 | `screenSignals=4/4` | Project navigation | Inbox, Today, Settings, and Voice Command entry points are present before manual navigation starts. |
 | `focusPathSignals=6/6` | Project navigation, Project board detail, Open task, Inline Task Composer, Status controls, Task inspector | The automated focus anchors exist; manual VoiceOver still verifies announcement order and keyboard traversal. |
 
