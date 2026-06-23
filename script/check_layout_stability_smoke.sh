@@ -242,18 +242,40 @@ launch_layout_candidate() {
 
 read_window_metadata() {
   local output
+  local metadata_status
+  set +e
   output="$(
     SOLOPM_WINDOW_OWNER="$APP_NAME" \
     SOLOPM_WINDOW_NAME="$WINDOW_NAME" \
     /usr/bin/swift "$ROOT_DIR/script/ui_evidence_window_metadata.swift"
   )"
+  metadata_status=$?
+  set -e
+  if [[ "$metadata_status" -ne 0 ]]; then
+    : >"$WINDOW_METADATA_FILE"
+    return "$metadata_status"
+  fi
   printf '%s\n' "$output" >"$WINDOW_METADATA_FILE"
+  window_metadata_has_positive_bounds
+}
+
+window_metadata_has_positive_bounds() {
+  local window_id window_x window_y window_width window_height
+  [[ -s "$WINDOW_METADATA_FILE" ]] || return 1
+  read -r window_id window_x window_y window_width window_height <"$WINDOW_METADATA_FILE" || return 1
+  [[ "$window_id" =~ ^[0-9]+$ ]] &&
+    [[ "$window_x" =~ ^-?[0-9]+$ ]] &&
+    [[ "$window_y" =~ ^-?[0-9]+$ ]] &&
+    [[ "$window_width" =~ ^[0-9]+$ ]] &&
+    [[ "$window_height" =~ ^[0-9]+$ ]] &&
+    [[ "$window_width" -gt 0 ]] &&
+    [[ "$window_height" -gt 0 ]]
 }
 
 wait_for_window_metadata() {
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if read_window_metadata >/dev/null 2>&1; then
+    if read_window_metadata >/dev/null 2>&1 && window_metadata_has_positive_bounds; then
       return 0
     fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then

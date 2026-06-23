@@ -5674,6 +5674,18 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("BLOCKER: layout baseline sample missing"))
     }
 
+    func testLayoutStabilitySmokeScriptDoesNotUseEmptyWindowMetadataAsStructuralBounds() throws {
+        let script = try readPackageFile("script/check_layout_stability_smoke.sh")
+
+        XCTAssertTrue(script.contains("window_metadata_has_positive_bounds()"))
+        XCTAssertTrue(script.contains("local metadata_status"))
+        XCTAssertTrue(script.contains("return \"$metadata_status\""))
+        XCTAssertTrue(script.contains(": >\"$WINDOW_METADATA_FILE\""))
+        XCTAssertTrue(script.contains("\"$window_width\" -gt 0"))
+        XCTAssertTrue(script.contains("\"$window_height\" -gt 0"))
+        XCTAssertTrue(script.contains("if read_window_metadata >/dev/null 2>&1 && window_metadata_has_positive_bounds; then"))
+    }
+
     func testProjectBoardStateRestorationSmokeScriptLaunchesEmptyNormalAndManyDatabases() throws {
         let script = try readPackageFile("script/check_project_board_state_restoration_smoke.sh")
         let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
