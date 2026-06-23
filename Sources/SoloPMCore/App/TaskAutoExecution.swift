@@ -237,6 +237,11 @@ public struct TaskAutoExecutionPlanner: Sendable {
             dueBucket = 0
         } else if let dueDate, dueDate < endOfDay(for: referenceDate, calendar: calendar) {
             dueBucket = 1
+        } else if dueDate == nil && task.priority == .high {
+            // High-priority undated work is intentionally kept with the future
+            // review queue. Otherwise a low-priority task merely inside the
+            // lookahead window can consume the LLM review budget first.
+            dueBucket = 2
         } else if dueDate != nil {
             dueBucket = 2
         } else {

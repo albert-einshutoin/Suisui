@@ -37,6 +37,42 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertEqual(decision.llmCallBudgetRemaining, 6)
     }
 
+    func testPlannerKeepsHighPriorityNoDueWorkAheadOfLowerPriorityFutureWork() throws {
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        let snapshot = ProjectBoardSnapshot(projects: [
+            makeProject(tasks: [
+                makeTask(id: 1, title: "Low within lookahead", priority: .low, dueAt: "2026-06-23T08:00:00Z"),
+                makeTask(id: 2, title: "High without due date", priority: .high),
+                makeTask(id: 3, title: "Medium within lookahead", priority: .medium, dueAt: "2026-06-23T08:00:00Z"),
+                makeTask(id: 4, title: "High within lookahead", priority: .high, dueAt: "2026-06-23T08:00:00Z"),
+                makeTask(id: 5, title: "High outside lookahead", priority: .high, dueAt: "2026-06-25T09:01:00Z")
+            ])
+        ])
+
+        let decision = TaskAutoExecutionPlanner().makeDecision(
+            snapshot: snapshot,
+            settings: .init(
+                isEnabled: true,
+                mode: .reviewOnly,
+                cadence: .hourly,
+                maxTasksPerRun: 10,
+                lookaheadHours: 48
+            ),
+            history: .empty,
+            referenceDate: referenceDate,
+            calendar: utcCalendar()
+        )
+
+        XCTAssertEqual(decision.status, .readyForReview)
+        XCTAssertEqual(decision.selectedTasks.map(\.title), [
+            "High within lookahead",
+            "High without due date",
+            "Medium within lookahead",
+            "Low within lookahead"
+        ])
+        XCTAssertFalse(decision.selectedTasks.contains { $0.title == "High outside lookahead" })
+    }
+
     func testPlannerThrottlesByCadenceBeforeCallingLLM() throws {
         let referenceDate = try isoDate("2026-06-22T09:00:00Z")
         let snapshot = ProjectBoardSnapshot(projects: [
