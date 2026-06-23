@@ -600,7 +600,22 @@ waitForTextFieldContaining() {
   local fragment="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$fragment" <<'APPLESCRIPT' >/dev/null 2>&1
+    if textFieldContainingExists "$fragment"; then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: text field did not appear in AX tree: $fragment" >&2
+      return 1
+    fi
+    activate_app
+    wait_for_visible_windows >/dev/null 2>&1 || true
+    sleep 1
+  done
+}
+
+textFieldContainingExists() {
+  local fragment="$1"
+  /usr/bin/osascript - "$APP_NAME" "$fragment" <<'APPLESCRIPT' >/dev/null 2>&1
 on run argv
   set appName to item 1 of argv
   set fragment to item 2 of argv
@@ -658,13 +673,34 @@ on run argv
   error "text field signal not found: " & fragment
 end run
 APPLESCRIPT
-    then
-      return 0
-    fi
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: text field did not appear in AX tree: $fragment" >&2
-      return 1
-    fi
+}
+
+pressButtonUntilTextFieldContaining() {
+  local button_fragment="$1"
+  local field_fragment="$2"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+
+  while true; do
+    pressButtonContaining "$button_fragment"
+
+    local postcondition_deadline=$((SECONDS + 3))
+    while true; do
+      if textFieldContainingExists "$field_fragment"; then
+        return 0
+      fi
+      if [[ "$SECONDS" -ge "$deadline" ]]; then
+        echo "BLOCKER: text field did not appear after pressing '$button_fragment': $field_fragment" >&2
+        return 1
+      fi
+      if [[ "$SECONDS" -ge "$postcondition_deadline" ]]; then
+        break
+      fi
+      activate_app
+      wait_for_visible_windows >/dev/null 2>&1 || true
+      sleep 1
+    done
+
+    printf "INFO: text field '%s' did not appear after pressing '%s'; retrying AX press.\n" "$field_fragment" "$button_fragment" >&2
     sleep 1
   done
 }
@@ -710,7 +746,7 @@ waitForTextFieldContaining "AX Runtime CRUD Project"
 pressButtonContaining "project-inspector-save"
 verify_single_value "renamed project" "SELECT title FROM projects WHERE id=$created_project_id;" "AX Runtime CRUD Project"
 
-pressButtonContaining "project-header-add-task"
+pressButtonUntilTextFieldContaining "project-header-add-task" "inline-task-title"
 waitForTextFieldContaining "inline-task-title"
 setTextFieldContaining "inline-task-title" "AX Runtime CRUD Task"
 waitForTextFieldContaining "AX Runtime CRUD Task"
@@ -731,7 +767,7 @@ launch_app_for_seed_project "$created_project_id"
 pressButtonContaining "task-card-open-details"
 pressDestructiveButtonUntilSQLiteValue "deleted task" "task-inspector-delete" "task-inspector-delete-confirmation-confirm" "Confirm Delete Task" "" "SELECT count(*) FROM tasks WHERE id=$created_task_id;" "0" "1"
 
-pressButtonContaining "project-header-add-task"
+pressButtonUntilTextFieldContaining "project-header-add-task" "inline-task-title"
 waitForTextFieldContaining "inline-task-title"
 setTextFieldContaining "inline-task-title" "AX Runtime Cascade Task"
 waitForTextFieldContaining "AX Runtime Cascade Task"
