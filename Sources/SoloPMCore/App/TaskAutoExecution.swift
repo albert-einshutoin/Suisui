@@ -374,8 +374,13 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
         }
 
         let normalizedSettings = settings.normalized
+        let cappedTasks = Array(decision.selectedTasks.prefix(normalizedSettings.maxTasksPerRun))
+        let cappedRemainingBudget = min(
+            max(decision.llmCallBudgetRemaining, 0),
+            normalizedSettings.dailyLLMCallLimit
+        )
         let calendar = reviewCalendar(timeZoneIdentifier: timeZoneIdentifier)
-        let selectedTasks = decision.selectedTasks.map { task in
+        let selectedTasks = cappedTasks.map { task in
             let reason = selectionReason(for: task, referenceDate: referenceDate, calendar: calendar)
             return TaskAutoExecutionPromptTask(
                 taskId: task.id,
@@ -404,7 +409,7 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
             policy: TaskAutoExecutionPromptPolicy(
                 maxTasksPerRun: normalizedSettings.maxTasksPerRun,
                 dailyLLMCallLimit: normalizedSettings.dailyLLMCallLimit,
-                llmCallBudgetRemaining: decision.llmCallBudgetRemaining,
+                llmCallBudgetRemaining: cappedRemainingBudget,
                 lookaheadHours: normalizedSettings.lookaheadHours,
                 urgentReviewCooldownMinutes: normalizedSettings.urgentReviewCooldownMinutes,
                 requiresUserApproval: decision.requiresUserApproval,
@@ -423,12 +428,15 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
         // The normalized policy line is duplicated into the prompt because the
         // provider only sees this request, not the Settings UI that constrained
         // cadence, budget, and approval boundaries before the call.
+        // The provider request also reapplies the task and budget caps at the
+        // API boundary. That keeps future non-planner entry points from sending
+        // more user content or spending more review budget than Settings allow.
         // The selected tasks are fenced JSON so user-authored title/detail text
         // cannot invent extra task rows or override the approval-only policy.
         let userInput = """
         Build a review-only SoloPM action plan for the selected tasks.
         Automation mode: \(normalizedSettings.mode.rawValue); cadence: \(normalizedSettings.cadence.rawValue); generatedAt: \(ISO8601DateFormatter().string(from: referenceDate)).
-        Automation policy: maxTasksPerRun: \(normalizedSettings.maxTasksPerRun); dailyLLMCallLimit: \(normalizedSettings.dailyLLMCallLimit); llmCallBudgetRemaining: \(decision.llmCallBudgetRemaining); lookaheadHours: \(normalizedSettings.lookaheadHours); urgentReviewCooldownMinutes: \(normalizedSettings.urgentReviewCooldownMinutes); requiresUserApproval: \(decision.requiresUserApproval); allowsDirectExecution: \(decision.allowsDirectExecution).
+        Automation policy: maxTasksPerRun: \(normalizedSettings.maxTasksPerRun); dailyLLMCallLimit: \(normalizedSettings.dailyLLMCallLimit); llmCallBudgetRemaining: \(cappedRemainingBudget); lookaheadHours: \(normalizedSettings.lookaheadHours); urgentReviewCooldownMinutes: \(normalizedSettings.urgentReviewCooldownMinutes); requiresUserApproval: \(decision.requiresUserApproval); allowsDirectExecution: \(decision.allowsDirectExecution).
         Decision reason: \(decision.reason)
         Do not delete projects or tasks. Do not mark work completed unless the user approves the reviewed plan.
         Do not propose extra provider calls beyond the remaining budget.

@@ -275,7 +275,13 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
 
         let request = try TaskAutoExecutionPlanningRequestBuilder().makePlanningRequest(
             decision: decision,
-            settings: .init(isEnabled: true, mode: .reviewOnly, cadence: .hourly, lookaheadHours: 72),
+            settings: .init(
+                isEnabled: true,
+                mode: .reviewOnly,
+                cadence: .hourly,
+                maxTasksPerRun: 4,
+                lookaheadHours: 72
+            ),
             referenceDate: referenceDate,
             timeZoneIdentifier: "UTC"
         )
@@ -374,6 +380,46 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertTrue(request.userInput.contains("requiresUserApproval: true"))
         XCTAssertTrue(request.userInput.contains("allowsDirectExecution: false"))
         XCTAssertTrue(request.userInput.contains("Do not propose extra provider calls beyond the remaining budget."))
+    }
+
+    func testPlanningRequestAppliesTaskAndBudgetCapsAsFinalProviderGuard() throws {
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        let decision = TaskAutoExecutionDecision(
+            status: .readyForReview,
+            selectedTasks: [
+                makeTask(id: 41, title: "First overdue", priority: .high, dueAt: "2026-06-21T18:00:00Z"),
+                makeTask(id: 42, title: "Second due today", priority: .medium, dueAt: "2026-06-22T18:00:00Z"),
+                makeTask(id: 43, title: "Third future", priority: .low, dueAt: "2026-06-23T18:00:00Z")
+            ],
+            reason: "External review source selected more tasks than the current provider policy allows.",
+            llmCallBudgetRemaining: 99,
+            requiresUserApproval: true,
+            allowsDirectExecution: false
+        )
+
+        let request = try TaskAutoExecutionPlanningRequestBuilder().makePlanningRequest(
+            decision: decision,
+            settings: .init(
+                isEnabled: true,
+                mode: .reviewOnly,
+                cadence: .daily,
+                maxTasksPerRun: 2,
+                dailyLLMCallLimit: 4,
+                lookaheadHours: 48
+            ),
+            referenceDate: referenceDate,
+            timeZoneIdentifier: "UTC"
+        )
+        let payload = try jsonPayload(from: request.userInput)
+        let selectedTasks = try XCTUnwrap(payload["selectedTasks"] as? [[String: Any]])
+        let policy = try XCTUnwrap(payload["policy"] as? [String: Any])
+
+        XCTAssertEqual(selectedTasks.map { $0["taskId"] as? Int }, [41, 42])
+        XCTAssertEqual(policy["maxTasksPerRun"] as? Int, 2)
+        XCTAssertEqual(policy["dailyLLMCallLimit"] as? Int, 4)
+        XCTAssertEqual(policy["llmCallBudgetRemaining"] as? Int, 4)
+        XCTAssertTrue(request.userInput.contains("llmCallBudgetRemaining: 4"))
+        XCTAssertFalse(request.userInput.contains("Third future"))
     }
 
     func testAppSettingsPersistTaskAutoExecutionControls() throws {
