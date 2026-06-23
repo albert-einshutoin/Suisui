@@ -443,6 +443,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] 複数タスクのautomation reviewで1件目をapproved executionしても、残りのreview候補とredacted execution receipt historyが消えないことをテストする。
 - [x] stale sync / future connector由来のdecisionがdirect execution可能だと主張しても、LLM provider境界ではreview-only / approval-requiredへ強制されることをテストする。
 - [x] 前日のLLM call countが残ったhistoryでも、設定されたcalendar dayが変わればdaily LLM budgetが復帰し、当日期限タスクのreviewを誤って止めないことをテストする。
+- [x] MCP擬似VoiceOverの軽量source-marker gateは、Swift側の `AccessibilityFocusPathRequirement.taskLifecycleAndExecution.requiredNodeIDs` と同じ必須nodeを確認し、inline composer / task inspectorのtitle/detail fieldをbuttonだけの検査で取りこぼさない。
 
 ### Implementation Steps
 

@@ -1,4 +1,5 @@
 import XCTest
+@testable import SoloPMCore
 
 final class QualitySourceContractTests: XCTestCase {
     func testPseudoVoiceOverFocusPathDocumentationAndScriptCoverTaskLifecycle() throws {
@@ -8,20 +9,7 @@ final class QualitySourceContractTests: XCTestCase {
         let projectBoard = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let projectBoardView = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
-        for marker in [
-            "project-board-sidebar",
-            "project-header-add-task",
-            "inline-task-create",
-            "project-board-task-auto-execution-review",
-            "task-card-open-details",
-            "task-inspector-save",
-            "task-status-move-controls",
-            "task-auto-execution-review",
-            "task-auto-execution-run-plan",
-            "approved-execution-receipt",
-            "task-inspector-delete",
-            "task-inspector-delete-confirmation-confirm"
-        ] {
+        for marker in AccessibilityFocusPathRequirement.taskLifecycleAndExecution.requiredNodeIDs {
             XCTAssertTrue(docs.contains(marker), "docs must cover \(marker)")
             XCTAssertTrue(script.contains(marker), "script must check \(marker)")
         }
