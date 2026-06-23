@@ -7459,6 +7459,134 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(report.contains("super-secret-token"))
     }
 
+    func testQualityStatusReportMarksPassedManualEvidenceStaleWhenSourceCommitMoved() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-quality-status-report-stale-manual", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let outputURL = fixtureRoot.appendingPathComponent("quality-status.md")
+        let reportURL = scriptDirectory.appendingPathComponent("quality_status_report.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: fixtureRoot.appendingPathComponent("tasks", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: fixtureRoot.appendingPathComponent("docs/quality", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: fixtureRoot.appendingPathComponent("docs/release/evidence", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: fixtureRoot.appendingPathComponent("Sources/SoloPMApp", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: fixtureRoot.appendingPathComponent("Sources/SoloPMCore", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: fixtureRoot.appendingPathComponent("Sources/SoloPMCLI", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: fixtureRoot.appendingPathComponent("Sources/SoloPMExternalConnectors", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: fixtureRoot.appendingPathComponent("packaging", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        try readPackageFile("script/quality_status_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+
+        try "- [x] `swift test`\n".write(
+            to: fixtureRoot.appendingPathComponent("tasks/Phase14-QualityRegressionHardening.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "## Risks\n\n## How to use\n".write(
+            to: fixtureRoot.appendingPathComponent("docs/quality/regression-risk-map.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        for relativePath in [
+            "Sources/SoloPMApp/App.swift",
+            "Sources/SoloPMCore/Core.swift",
+            "Sources/SoloPMCLI/CLI.swift",
+            "Sources/SoloPMExternalConnectors/Connector.swift"
+        ] {
+            try "public enum Fixture {}\n".write(
+                to: fixtureRoot.appendingPathComponent(relativePath),
+                atomically: true,
+                encoding: .utf8
+            )
+        }
+        try "// fixture package\n".write(
+            to: fixtureRoot.appendingPathComponent("Package.swift"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "APP_NAME=SoloPM\n".write(
+            to: fixtureRoot.appendingPathComponent("packaging/app_metadata.env"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "init"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "config", "user.email", "quality-tests@example.invalid"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "config", "user.name", "Quality Tests"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "."]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "initial quality fixture"]).exitCode, 0)
+        let currentShortCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+            .output
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        try "- Source commit: `\(currentShortCommit)`\n".write(
+            to: fixtureRoot.appendingPathComponent("docs/release/evidence/ui-screenshots.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "- Source commit: `\(currentShortCommit)`\n".write(
+            to: fixtureRoot.appendingPathComponent("docs/release/evidence/mcp-inspector.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try """
+        Status: passed
+        - Source commit: `oldcafe`
+        """.write(
+            to: fixtureRoot.appendingPathComponent("docs/release/evidence/accessibility-voiceover.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try """
+        Status: passed
+        - Source commit: `\(currentShortCommit)`
+        """.write(
+            to: fixtureRoot.appendingPathComponent("docs/release/evidence/competitor-hands-on.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let result = try runTool(
+            ["bash", reportURL.path],
+            environment: ["SOLOPM_QUALITY_STATUS_FILE": outputURL.path]
+        )
+        let report = try String(contentsOf: outputURL, encoding: .utf8)
+
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(report.contains("| `docs/release/evidence/accessibility-voiceover.md` | stale (passed; expected \(currentShortCommit)) | oldcafe |"))
+        XCTAssertTrue(report.contains("Manual evidence | manual | VoiceOver: stale (passed; expected \(currentShortCommit)); Competitor: passed"))
+        XCTAssertTrue(report.contains("Manual evidence status is VoiceOver=stale (passed; expected \(currentShortCommit)), Competitor=passed"))
+    }
+
     func testSecurityRegressionScriptPassesCurrentArtifactsAndFailsTmpLeaksWhenEnabled() throws {
         let passing = try runScript("script/check_security_regressions.sh")
 

@@ -1,14 +1,14 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-23T00:29:52Z
-Source commit: 8a16c67
+Generated at: 2026-06-23T01:53:08Z
+Source commit: f127860
 
 ## Summary
 
 - Phase14 completion: 183/183 checked, 0 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 0 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: `missing .tmp/automated-release-preflight-8a16c67.md`
+- Automated preflight evidence: `.tmp/automated-release-preflight-f127860.md`
 
 ## Unfinished Phase14 Items
 
@@ -22,9 +22,9 @@ Source commit: 8a16c67
 
 | Evidence | Status | Source commit |
 | --- | --- | --- |
-| `docs/release/evidence/ui-screenshots.md` | present | e3886c6 |
-| `docs/release/evidence/mcp-inspector.md` | present | 881b693 |
-| `docs/release/evidence/accessibility-voiceover.md` | passed | e488456 |
+| `docs/release/evidence/ui-screenshots.md` | present | e7b16f1 |
+| `docs/release/evidence/mcp-inspector.md` | present | 07e7ec2 |
+| `docs/release/evidence/accessibility-voiceover.md` | stale (passed; expected e7b16f1) | e488456 |
 | `docs/release/evidence/competitor-hands-on.md` | pending | unknown |
 
 ## Gate Classification
@@ -36,12 +36,12 @@ Source commit: 8a16c67
 | Full test suite | unit + integration | passed | `swift test` | Run before closing the Phase14 exit gate. |
 | Runtime smoke | runtime AX | passed | `script/check_runtime_accessible_crud_smoke.sh` | Run on a visible macOS session to cover CRUD, Inbox, Today, Settings, Voice Command, and layout stability. |
 | Visual smoke | visual | passed | `script/check_visual_regression_smoke.sh` | Use screenshot doctor first, then compare Light/Dark/System evidence. |
-| Manual evidence | manual | VoiceOver: passed; Competitor: pending | `docs/release/evidence/accessibility-voiceover.md` | Manual findings must link back through docs/quality/manual-to-automated-regression.md. |
+| Manual evidence | manual | VoiceOver: stale (passed; expected e7b16f1); Competitor: pending | `docs/release/evidence/accessibility-voiceover.md` | Manual findings must link back through docs/quality/manual-to-automated-regression.md. |
 | Release readiness handoff | release | available | `script/release_readiness_report.sh` | Run after quality gaps are classified; readiness remains the release gate, not this dashboard. |
 
 ## Next Quality Gaps
 
-- [ ] Manual evidence status is VoiceOver=passed, Competitor=pending. Next: use `script/release_readiness_report.sh` for release evidence blockers and link any findings to regression coverage.
+- [ ] Manual evidence status is VoiceOver=stale (passed; expected e7b16f1), Competitor=pending. Next: use `script/release_readiness_report.sh` for release evidence blockers and link any findings to regression coverage.
 
 ## Verification Commands
 
@@ -61,8 +61,8 @@ Source commit: 8a16c67
 - `script/quality_status_report.sh`
 - `docs/quality/test-triage.md`
 - `docs/quality/flake-quarantine.md`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-8a16c67.md ./script/check_automated_release_preflight.sh`
-- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-8a16c67.md ./script/release_readiness_report.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-f127860.md ./script/check_automated_release_preflight.sh`
+- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-f127860.md ./script/release_readiness_report.sh`
 
 ## Notes
 

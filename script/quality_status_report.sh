@@ -49,6 +49,48 @@ first_commit_line() {
   awk -F'`' '/Source commit:/ { if (NF >= 2) { print $2; found=1; exit } } END { if (!found) print "unknown" }' "$file" | redact
 }
 
+manual_release_evidence_source_commit() {
+  local commit
+  # Manual evidence is committed after a review pass, so HEAD would make a
+  # fresh evidence commit invalidate itself. Use the product/runtime inputs that
+  # define the release candidate and flag stale manual observations after those
+  # inputs move.
+  commit="$(
+    git -C "$ROOT_DIR" log -1 --format=%h -- \
+      Sources/SoloPMApp \
+      Sources/SoloPMCore \
+      Sources/SoloPMCLI \
+      Sources/SoloPMExternalConnectors \
+      Package.swift \
+      packaging/app_metadata.env 2>/dev/null || true
+  )"
+  if [[ -n "$commit" ]]; then
+    printf "%s" "$commit"
+  else
+    git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown"
+  fi
+}
+
+manual_evidence_status() {
+  local file="$1"
+  local expected_commit="$2"
+  local status
+  local evidence_commit
+
+  status="$(first_status_line "$file")"
+  evidence_commit="$(first_commit_line "$file")"
+
+  if [[ "$status" == "passed" &&
+    -n "$(tr -d '[:space:]' <<<"$expected_commit")" &&
+    "$expected_commit" != "unknown" &&
+    "$evidence_commit" != "$expected_commit" ]]; then
+    printf "stale (passed; expected %s)" "$expected_commit"
+    return 0
+  fi
+
+  printf "%s" "$status"
+}
+
 count_pattern() {
   local file="$1"
   local pattern="$2"
@@ -195,9 +237,11 @@ write_gate_row() {
 write_gate_classification() {
   local voiceover_status
   local competitor_status
+  local expected_manual_commit
 
-  voiceover_status="$(first_status_line "$VOICEOVER_EVIDENCE_FILE")"
-  competitor_status="$(first_status_line "$COMPETITOR_EVIDENCE_FILE")"
+  expected_manual_commit="$(manual_release_evidence_source_commit)"
+  voiceover_status="$(manual_evidence_status "$VOICEOVER_EVIDENCE_FILE" "$expected_manual_commit")"
+  competitor_status="$(manual_evidence_status "$COMPETITOR_EVIDENCE_FILE" "$expected_manual_commit")"
 
   printf "## Gate Classification\n\n"
   printf "| Gate | Layer | Status | Evidence / command | Next action |\n"
@@ -252,9 +296,11 @@ write_next_quality_gaps() {
   local voiceover_status
   local competitor_status
   local full_suite_status
+  local expected_manual_commit
 
-  voiceover_status="$(first_status_line "$VOICEOVER_EVIDENCE_FILE")"
-  competitor_status="$(first_status_line "$COMPETITOR_EVIDENCE_FILE")"
+  expected_manual_commit="$(manual_release_evidence_source_commit)"
+  voiceover_status="$(manual_evidence_status "$VOICEOVER_EVIDENCE_FILE" "$expected_manual_commit")"
+  competitor_status="$(manual_evidence_status "$COMPETITOR_EVIDENCE_FILE" "$expected_manual_commit")"
   full_suite_status="$(phase_item_status '`swift test`')"
 
   printf "## Next Quality Gaps\n\n"
@@ -299,6 +345,7 @@ phase_done="$(count_pattern "$PHASE14_FILE" '^- \[x\]')"
 phase_open=$((phase_total - phase_done))
 risk_open="$(count_risk_coverage "open")"
 risk_manual="$(count_risk_coverage "manual-only")"
+expected_manual_commit="$(manual_release_evidence_source_commit)"
 
 {
   printf "# SoloPM Quality Status\n\n"
@@ -324,8 +371,8 @@ risk_manual="$(count_risk_coverage "manual-only")"
   printf "| --- | --- | --- |\n"
   printf '| `docs/release/evidence/ui-screenshots.md` | %s | %s |\n' "$(first_status_line "$UI_EVIDENCE_FILE")" "$(first_commit_line "$UI_EVIDENCE_FILE")"
   printf '| `docs/release/evidence/mcp-inspector.md` | %s | %s |\n' "$(first_status_line "$MCP_EVIDENCE_FILE")" "$(first_commit_line "$MCP_EVIDENCE_FILE")"
-  printf '| `docs/release/evidence/accessibility-voiceover.md` | %s | %s |\n' "$(first_status_line "$VOICEOVER_EVIDENCE_FILE")" "$(first_commit_line "$VOICEOVER_EVIDENCE_FILE")"
-  printf '| `docs/release/evidence/competitor-hands-on.md` | %s | %s |\n\n' "$(first_status_line "$COMPETITOR_EVIDENCE_FILE")" "$(first_commit_line "$COMPETITOR_EVIDENCE_FILE")"
+  printf '| `docs/release/evidence/accessibility-voiceover.md` | %s | %s |\n' "$(manual_evidence_status "$VOICEOVER_EVIDENCE_FILE" "$expected_manual_commit")" "$(first_commit_line "$VOICEOVER_EVIDENCE_FILE")"
+  printf '| `docs/release/evidence/competitor-hands-on.md` | %s | %s |\n\n' "$(manual_evidence_status "$COMPETITOR_EVIDENCE_FILE" "$expected_manual_commit")" "$(first_commit_line "$COMPETITOR_EVIDENCE_FILE")"
 
   write_gate_classification
 
