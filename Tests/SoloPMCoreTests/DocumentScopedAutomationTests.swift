@@ -233,6 +233,33 @@ final class DocumentScopedAutomationTests: XCTestCase {
         XCTAssertFalse(drafts.map(\.sourceDocumentIDs).joined().contains("general-context"))
     }
 
+    func testDocumentArtifactPlannerDoesNotCreateSpecificDeliverablesFromUserRequestAlone() {
+        let documents = [
+            ScopedAutomationDocument(
+                id: "background",
+                title: "General project background",
+                scope: .projectDocs,
+                redactedSummary: "Product positioning, user interview themes, and current operating constraints.",
+                inclusionReason: "Selected as general context for the automation review."
+            )
+        ]
+
+        let plan = DocumentAutomationArtifactPlanner().plan(
+            userRequest: "Create release notes and a PR plan from these docs.",
+            documents: documents
+        )
+        let drafts = DocumentAutomationArtifactPlanner().deliverableDrafts(
+            userRequest: "Create release notes and a PR plan from these docs.",
+            documents: documents
+        )
+
+        XCTAssertEqual(plan.proposedOutputs.map(\.kind), [.preparationChecklist])
+        XCTAssertEqual(drafts.map(\.kind), [.preparationChecklist])
+        XCTAssertEqual(drafts.first?.sourceDocumentIDs, ["background"])
+        XCTAssertFalse(drafts.contains { $0.kind == .releaseNotes })
+        XCTAssertFalse(drafts.contains { $0.kind == .pullRequestPlan })
+    }
+
     func testDocumentArtifactPlannerDoesNotCreateDeliverableDraftsFromExternalSourcesOnly() {
         let drafts = DocumentAutomationArtifactPlanner().deliverableDrafts(
             userRequest: "Create release notes from the GitHub issue mirror.",
@@ -305,7 +332,7 @@ final class DocumentScopedAutomationTests: XCTestCase {
                     id: "release",
                     title: "Release checklist",
                     scope: .appDocs,
-                    redactedSummary: "release notes, Gatekeeper, notarization",
+                    redactedSummary: "release notes, PR plan, Gatekeeper, notarization",
                     inclusionReason: "Selected by the user."
                 )
             ],

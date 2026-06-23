@@ -277,8 +277,11 @@ public struct DocumentAutomationArtifactPlanner: Sendable {
             .map(\.kind)
             .filter(isDeliverableDraft)
 
-        return deliverableKinds.map { kind in
+        return deliverableKinds.compactMap { kind in
             let sourceDocuments = relevantDocuments(for: kind, documents: approvedDocuments)
+            guard !sourceDocuments.isEmpty else {
+                return nil
+            }
             let sourceDocumentIDs = sourceDocuments.map(\.id)
             let sourceDocumentTitles = sourceDocuments.map(\.title)
             return DocumentAutomationDeliverableDraft(
@@ -294,7 +297,7 @@ public struct DocumentAutomationArtifactPlanner: Sendable {
     }
 
     private func proposedOutputs(
-        userRequest: String,
+        userRequest _: String,
         documents: [ScopedAutomationDocument]
     ) -> [DocumentAutomationProposedOutput] {
         // External connector previews can contain actionable release or task
@@ -305,7 +308,7 @@ public struct DocumentAutomationArtifactPlanner: Sendable {
             return []
         }
 
-        let searchable = ([userRequest] + approvedDocuments.flatMap { [$0.title, $0.redactedSummary, $0.inclusionReason] })
+        let searchable = approvedDocuments.flatMap { [$0.title, $0.redactedSummary, $0.inclusionReason] }
             .joined(separator: "\n")
             .lowercased()
         var kinds: [DocumentAutomationOutputKind] = []
@@ -347,11 +350,15 @@ public struct DocumentAutomationArtifactPlanner: Sendable {
             document.searchableText.containsAny(sourceNeedles(for: kind))
         }
 
-        // Fall back to all approved documents only when the planner could infer
-        // an output from the overall request but no individual document carries
-        // a direct signal. This preserves a reviewable source trail without
-        // over-citing unrelated documents when specific evidence exists.
-        return matched.isEmpty ? documents : matched
+        // Only the generic preparation checklist can fall back to all approved
+        // documents. Specific deliverables must cite documents carrying their
+        // own release note, PR plan, or artifact signal instead of relying on
+        // the user's request text as source evidence.
+        if !matched.isEmpty {
+            return matched
+        }
+
+        return kind == .preparationChecklist ? documents : []
     }
 
     private func sourceNeedles(for kind: DocumentAutomationOutputKind) -> [String] {
