@@ -23,7 +23,7 @@ The task path covers create, content entry, edit, status execution, automation r
 | Save edit | `task-inspector-save` | button | Saves task title, detail, status, priority, and due date. |
 | Status controls | `task-status-move-controls` | group | Exposes status movement controls such as `task-status-move-in_progress`. |
 | Review automation | `task-auto-execution-review` | button | Builds a review-only LLM plan for the selected task. |
-| Run approved plan | `task-auto-execution-run-plan` | button | Starts only the reviewed local task step after explicit user activation and leaves a task-detail execution note. |
+| Run approved plan | `task-auto-execution-run-plan` | button | Starts only the reviewed local task step after explicit user activation and leaves a task-detail execution note plus a redacted execution receipt. |
 | Delete task | `task-inspector-delete` | button | Opens a destructive confirmation instead of deleting immediately. |
 | Confirm delete | `task-inspector-delete-confirmation-confirm` | button | Confirms the destructive delete path. |
 
@@ -31,7 +31,7 @@ The task path covers create, content entry, edit, status execution, automation r
 
 - Task automation ranks tasks by priority and due date, but defaults to disabled.
 - When enabled, the LLM request is review-only and excludes project/task delete tools.
-- The first approved local execution step may move a task into active work. External writes, completion, and destructive actions remain separate reviewed actions.
+- The first approved local execution step may move a task into active work and records a redacted receipt with task identity, priority, due date, review reason, and before/after status. External writes, completion, and destructive actions remain separate reviewed actions.
 - Runtime AX checks can verify labels, help text, and confirmation anchors, but the real VoiceOver pass still records concrete observations in `docs/release/evidence/accessibility-voiceover.md`.
 
 ## Runtime Smoke To Manual Worksheet Mapping
