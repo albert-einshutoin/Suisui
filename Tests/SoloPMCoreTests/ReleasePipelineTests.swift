@@ -5657,6 +5657,23 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("- [x] Window resize直後のoverlap / clipping / frame jumpを検出できる。"))
     }
 
+    func testLayoutStabilitySmokeScriptDoesNotUseEmptyAXSamplesAsBaseline() throws {
+        let script = try readPackageFile("script/check_layout_stability_smoke.sh")
+
+        XCTAssertTrue(script.contains("collect_layout_sample_frames()"))
+        XCTAssertTrue(script.contains("collect_ax_frames_with_timeout()"))
+        XCTAssertTrue(script.contains("wait_for_visible_windows"))
+        XCTAssertTrue(script.contains("if ! collect_ax_frames_with_timeout \"$frame_file\" \"$frame_file.err\"; then"))
+        XCTAssertTrue(script.contains("BLOCKER: layout AX frame collection timed out"))
+        XCTAssertTrue(script.contains("BLOCKER: failed to collect layout AX frames"))
+        XCTAssertTrue(script.contains("if ! require_ax_identifiers \"$frame_file\" \"${required_identifiers[@]}\"; then"))
+        XCTAssertTrue(script.contains("if ! capture_layout_screenshot \"$label\" \"t=${offset_ms}ms\"; then"))
+        XCTAssertTrue(script.contains("if ! assert_no_negative_or_overlapping_frames \"$label\" \"$frame_file\" \"${required_identifiers[@]}\"; then"))
+        XCTAssertTrue(script.contains("baseSeen[key] = 1"))
+        XCTAssertTrue(script.contains("if (!(key in baseSeen))"))
+        XCTAssertTrue(script.contains("BLOCKER: layout baseline sample missing"))
+    }
+
     func testProjectBoardStateRestorationSmokeScriptLaunchesEmptyNormalAndManyDatabases() throws {
         let script = try readPackageFile("script/check_project_board_state_restoration_smoke.sh")
         let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")

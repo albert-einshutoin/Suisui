@@ -29,6 +29,7 @@ LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_STANDAR
 LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT="${SOLOPM_LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT:-760}"
 LAYOUT_STABILITY_WINDOW_WIDE_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_WIDE_WIDTH:-1420}"
 LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT="${SOLOPM_LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT:-860}"
+LAYOUT_STABILITY_AX_COLLECTION_TIMEOUT_SECONDS="${SOLOPM_LAYOUT_STABILITY_AX_COLLECTION_TIMEOUT_SECONDS:-8}"
 SQLITE3="${SQLITE3:-sqlite3}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
@@ -38,6 +39,11 @@ fi
 
 if [[ ! "$LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX" =~ ^[0-9]+$ ]]; then
   echo "LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX must be a non-negative integer" >&2
+  exit 2
+fi
+
+if [[ ! "$LAYOUT_STABILITY_AX_COLLECTION_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$LAYOUT_STABILITY_AX_COLLECTION_TIMEOUT_SECONDS" -lt 1 ]]; then
+  echo "SOLOPM_LAYOUT_STABILITY_AX_COLLECTION_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 
@@ -337,6 +343,45 @@ end run
 APPLESCRIPT
 }
 
+collect_ax_frames_with_timeout() {
+  local frame_file="$1"
+  local err_file="$2"
+  local timeout_marker="$err_file.timeout"
+  local collect_pid watchdog_pid status
+  rm -f "$timeout_marker"
+
+  collect_ax_frames >"$frame_file" 2>"$err_file" &
+  collect_pid=$!
+  # Some macOS AX traversals hang instead of returning an error when SwiftUI is
+  # rebuilding a large subtree. The watchdog preserves a bounded smoke test and
+  # leaves the timeout cause in the per-sample artifact for triage.
+  (
+    sleep "$LAYOUT_STABILITY_AX_COLLECTION_TIMEOUT_SECONDS"
+    if kill -0 "$collect_pid" >/dev/null 2>&1; then
+      printf 'BLOCKER: layout AX frame collection timed out after %ss\n' "$LAYOUT_STABILITY_AX_COLLECTION_TIMEOUT_SECONDS" >>"$err_file"
+      : >"$timeout_marker"
+      kill "$collect_pid" >/dev/null 2>&1 || true
+      sleep 1
+      kill -9 "$collect_pid" >/dev/null 2>&1 || true
+    fi
+  ) &
+  watchdog_pid=$!
+
+  set +e
+  wait "$collect_pid" 2>/dev/null
+  status=$?
+  set -e
+
+  kill "$watchdog_pid" >/dev/null 2>&1 || true
+  wait "$watchdog_pid" >/dev/null 2>&1 || true
+
+  if [[ -f "$timeout_marker" ]]; then
+    rm -f "$timeout_marker"
+    return 124
+  fi
+  return "$status"
+}
+
 ensure_project_detail_visible() {
   /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 || true
 on clickFirstMatching(uiElement)
@@ -529,6 +574,41 @@ assert_no_negative_or_overlapping_frames() {
     ' "$frame_file"
 }
 
+collect_layout_sample_frames() {
+  local label="$1"
+  local offset_ms="$2"
+  local frame_file="$3"
+  shift 3 || true
+  local required_identifiers=("$@")
+  if [[ "${#required_identifiers[@]}" -eq 0 ]]; then
+    required_identifiers=("${REQUIRED_AX_IDENTIFIERS[@]}")
+  fi
+
+  # AX can briefly report zero windows immediately after toolbar-driven layout
+  # mutations. We wait only for the real app window to be visible; there is no
+  # fixed delay before t=0 frame collection, so layout jumps are still exposed.
+  if ! wait_for_visible_windows; then
+    printf 'BLOCKER: failed to collect layout AX frames after %s at t=%sms because the app window was not visible\n' "$label" "$offset_ms" >&2
+    return 1
+  fi
+  if ! collect_ax_frames_with_timeout "$frame_file" "$frame_file.err"; then
+    activate_app
+    if ! wait_for_visible_windows; then
+      printf 'BLOCKER: failed to collect layout AX frames after %s at t=%sms because the app window did not recover\n' "$label" "$offset_ms" >&2
+      sed -n '1,20p' "$frame_file.err" >&2 || true
+      return 1
+    fi
+    if ! collect_ax_frames_with_timeout "$frame_file" "$frame_file.err"; then
+      printf 'BLOCKER: failed to collect layout AX frames after %s at t=%sms\n' "$label" "$offset_ms" >&2
+      sed -n '1,20p' "$frame_file.err" >&2 || true
+      return 1
+    fi
+  fi
+  if ! require_ax_identifiers "$frame_file" "${required_identifiers[@]}"; then
+    return 1
+  fi
+}
+
 sample_layout_frames() {
   local label="$1"
   shift || true
@@ -547,9 +627,12 @@ sample_layout_frames() {
     fi
 
     frame_file="$LAYOUT_STABILITY_OUTPUT_DIR/${label}-t=${offset_ms}ms.tsv"
-    collect_ax_frames >"$frame_file"
-    require_ax_identifiers "$frame_file" "${required_identifiers[@]}"
-    capture_layout_screenshot "$label" "t=${offset_ms}ms"
+    if ! collect_layout_sample_frames "$label" "$offset_ms" "$frame_file" "${required_identifiers[@]}"; then
+      return 1
+    fi
+    if ! capture_layout_screenshot "$label" "t=${offset_ms}ms"; then
+      return 1
+    fi
 
     # The first sample is intentionally taken at t=0ms so transient layout
     # correction cannot be hidden behind a delayed runloop retry.
@@ -562,7 +645,9 @@ sample_layout_frames() {
       }
     ' "$frame_file" >>"$SAMPLES_FILE"
 
-    assert_no_negative_or_overlapping_frames "$label" "$frame_file" "${required_identifiers[@]}"
+    if ! assert_no_negative_or_overlapping_frames "$label" "$frame_file" "${required_identifiers[@]}"; then
+      return 1
+    fi
 
     printf -- '- `%s` sample %s (`t=%sms`) -> `%s`\n' "$label" "$sample_index" "$offset_ms" "$frame_file" >>"$SUMMARY_FILE"
     sample_index=$((sample_index + 1))
@@ -595,6 +680,13 @@ assert_layout_stable() {
           baseY[key] = $6
           baseW[key] = $7
           baseH[key] = $8
+          baseSeen[key] = 1
+          next
+        }
+        if (!(key in baseSeen)) {
+          printf "BLOCKER: layout baseline sample missing after %s for %s before %s\n",
+            label, key, $3 > "/dev/stderr"
+          failed = 1
           next
         }
         dx = abs($5 - baseX[key])

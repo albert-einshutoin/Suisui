@@ -108,6 +108,7 @@ Priority: High
 - [x] `ReleasePipelineTests` にlayout stability scriptの存在、`t=0`即時サンプル、複数サンプル、frame delta thresholdをsource-levelで確認するテストを追加する。
 - [x] scriptが対象AX identifier不足をskipではなく失敗扱いにするテストを追加する。
 - [x] scriptが差分artifactを `.tmp/layout-stability/` に保存することを確認するテストを追加する。
+- [x] AX window一時欠落やAX traversalハングで空の `t=0` サンプルをbaselineにしないsource-levelテストを追加する。
 
 ### Implementation Steps
 
@@ -117,6 +118,7 @@ Priority: High
 - [x] thresholdは基本 `0px`、OS差が出る箇所だけ `1px` tolerance を明示する。
 - [x] 失敗時は before / immediate / after のJSONとPNGを保存する。
 - [x] scriptの終了メッセージに、検証した遷移名と最大deltaを出す。
+- [x] AX frame採取にtimeout付きwatchdogを入れ、詰まったサンプルはerr artifactへ分類し、window復帰後に一度だけ再試行する。
 
 ### Acceptance Criteria
 
@@ -124,6 +126,7 @@ Priority: High
 - [x] Toolbar display mode切替直後のheader action frame deltaを検出できる。
 - [x] Window resize直後のoverlap / clipping / frame jumpを検出できる。
 - [x] 失敗時にPR reviewerが再現コマンドとartifact pathを見て判断できる。
+- [x] AX採取が一時的に空/ハングしてもdiff計算のbaselineを汚さず、再試行または明示blockerとして終了できる。
 
 ### Non-goals
 
