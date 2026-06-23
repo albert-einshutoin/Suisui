@@ -87,6 +87,34 @@ public struct DocumentAutomationProposedOutput: Codable, Equatable, Sendable {
     }
 }
 
+public struct DocumentAutomationDeliverableDraft: Codable, Equatable, Sendable {
+    public var kind: DocumentAutomationOutputKind
+    public var title: String
+    public var suggestedPath: String
+    public var sourceDocumentIDs: [String]
+    public var rationale: String
+    public var riskLevel: RiskLevel
+    public var requiresApproval: Bool
+
+    public init(
+        kind: DocumentAutomationOutputKind,
+        title: String,
+        suggestedPath: String,
+        sourceDocumentIDs: [String],
+        rationale: String,
+        riskLevel: RiskLevel,
+        requiresApproval: Bool
+    ) {
+        self.kind = kind
+        self.title = title
+        self.suggestedPath = suggestedPath
+        self.sourceDocumentIDs = sourceDocumentIDs
+        self.rationale = DeveloperSecretRedactor().redact(rationale).text
+        self.riskLevel = riskLevel
+        self.requiresApproval = requiresApproval
+    }
+}
+
 public struct DocumentAutomationDocumentReason: Codable, Equatable, Sendable {
     public var documentID: String
     public var title: String
@@ -235,6 +263,35 @@ public struct DocumentAutomationArtifactPlanner: Sendable {
         )
     }
 
+    public func deliverableDrafts(
+        userRequest: String,
+        documents: [ScopedAutomationDocument]
+    ) -> [DocumentAutomationDeliverableDraft] {
+        // External sources stay out of draft source binding until their
+        // connector-specific approval flow exists.
+        let approvedDocuments = documents.filter { $0.scope != .externalSources }
+        guard !approvedDocuments.isEmpty else {
+            return []
+        }
+        let approvedDocumentIDs = approvedDocuments.map(\.id)
+        let approvedDocumentTitles = approvedDocuments.map(\.title)
+        let deliverableKinds = proposedOutputs(userRequest: userRequest, documents: approvedDocuments)
+            .map(\.kind)
+            .filter(isDeliverableDraft)
+
+        return deliverableKinds.map { kind in
+            DocumentAutomationDeliverableDraft(
+                kind: kind,
+                title: title(for: kind),
+                suggestedPath: suggestedPath(for: kind),
+                sourceDocumentIDs: approvedDocumentIDs,
+                rationale: rationale(for: kind, sourceTitles: approvedDocumentTitles),
+                riskLevel: riskLevel(for: kind),
+                requiresApproval: true
+            )
+        }
+    }
+
     private func proposedOutputs(
         userRequest: String,
         documents: [ScopedAutomationDocument]
@@ -268,6 +325,15 @@ public struct DocumentAutomationArtifactPlanner: Sendable {
         }
     }
 
+    private func isDeliverableDraft(_ kind: DocumentAutomationOutputKind) -> Bool {
+        switch kind {
+        case .preparationChecklist, .draftArtifact, .releaseNotes, .pullRequestPlan:
+            true
+        case .taskDraft, .statusChange, .dueDateChange:
+            false
+        }
+    }
+
     private func artifactReason(for document: ScopedAutomationDocument) -> String {
         switch document.scope {
         case .appDocs:
@@ -278,6 +344,45 @@ public struct DocumentAutomationArtifactPlanner: Sendable {
             "Task artifacts can provide draftable output paths and acceptance criteria."
         case .externalSources:
             "External sources require connector-specific review before use."
+        }
+    }
+
+    private func suggestedPath(for kind: DocumentAutomationOutputKind) -> String {
+        switch kind {
+        case .preparationChecklist:
+            ".tmp/document-automation/preparation-checklist.md"
+        case .draftArtifact:
+            ".tmp/document-automation/draft-artifact.md"
+        case .releaseNotes:
+            "docs/release/notes-draft.md"
+        case .pullRequestPlan:
+            ".tmp/document-automation/pr-plan.md"
+        case .taskDraft:
+            ".tmp/document-automation/task-draft.md"
+        case .statusChange:
+            ".tmp/document-automation/status-change-proposal.md"
+        case .dueDateChange:
+            ".tmp/document-automation/due-date-change-proposal.md"
+        }
+    }
+
+    private func rationale(for kind: DocumentAutomationOutputKind, sourceTitles: [String]) -> String {
+        let sourceList = sourceTitles.isEmpty ? "the selected documents" : sourceTitles.joined(separator: ", ")
+        switch kind {
+        case .preparationChecklist:
+            return "Prepare a checklist from \(sourceList) before any task or release action is executed."
+        case .draftArtifact:
+            return "Create a draft artifact from \(sourceList) as preview-only output before writing files."
+        case .releaseNotes:
+            return "Create release notes from \(sourceList) so the user can review changes before publishing."
+        case .pullRequestPlan:
+            return "Create a PR plan from \(sourceList) so implementation, verification, and risk can be reviewed together."
+        case .taskDraft:
+            return "Create task drafts from \(sourceList) for review before task mutation."
+        case .statusChange:
+            return "Create status proposals from \(sourceList) for review before task mutation."
+        case .dueDateChange:
+            return "Create due-date proposals from \(sourceList) for review before task mutation."
         }
     }
 

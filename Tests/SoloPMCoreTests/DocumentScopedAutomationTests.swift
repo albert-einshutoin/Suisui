@@ -127,6 +127,75 @@ final class DocumentScopedAutomationTests: XCTestCase {
         XCTAssertTrue(plan.proposedOutputs.allSatisfy(\.requiresApproval))
     }
 
+    func testDocumentArtifactPlannerBuildsReviewableDeliverableDraftsFromSelectedDocs() {
+        let documents = [
+            ScopedAutomationDocument(
+                id: "release",
+                title: "Release checklist",
+                scope: .appDocs,
+                redactedSummary: "Manual VoiceOver evidence, release notes, Gatekeeper, and notarization checks.",
+                inclusionReason: "The app release checklist was selected."
+            ),
+            ScopedAutomationDocument(
+                id: "phase14",
+                title: "Phase14 quality plan",
+                scope: .projectDocs,
+                redactedSummary: "Implementation tasks, regression tests, and PR plan requirements.",
+                inclusionReason: "The phase plan was selected."
+            ),
+            ScopedAutomationDocument(
+                id: "artifact-notes",
+                title: "Draft artifact notes",
+                scope: .taskArtifacts,
+                redactedSummary: "Draft README.md and article.md from local notes without leaking sk-test-secret.",
+                inclusionReason: "The task artifact notes were selected."
+            ),
+            ScopedAutomationDocument(
+                id: "github-issue",
+                title: "GitHub issue mirror",
+                scope: .externalSources,
+                redactedSummary: "External connector context is present but not approved for this release.",
+                inclusionReason: "External source preview is visible."
+            )
+        ]
+
+        let drafts = DocumentAutomationArtifactPlanner().deliverableDrafts(
+            userRequest: "Create release notes, a PR plan, and the right draft artifacts from these docs.",
+            documents: documents
+        )
+
+        XCTAssertEqual(drafts.map(\.kind), [.preparationChecklist, .draftArtifact, .releaseNotes, .pullRequestPlan])
+        XCTAssertEqual(drafts.map(\.suggestedPath), [
+            ".tmp/document-automation/preparation-checklist.md",
+            ".tmp/document-automation/draft-artifact.md",
+            "docs/release/notes-draft.md",
+            ".tmp/document-automation/pr-plan.md"
+        ])
+        XCTAssertTrue(drafts.allSatisfy(\.requiresApproval))
+        XCTAssertTrue(drafts.allSatisfy { $0.riskLevel == .draft })
+        XCTAssertTrue(drafts.allSatisfy { !$0.sourceDocumentIDs.contains("github-issue") })
+        XCTAssertEqual(drafts.first { $0.kind == .releaseNotes }?.sourceDocumentIDs, ["release", "phase14", "artifact-notes"])
+        XCTAssertTrue(drafts.first { $0.kind == .pullRequestPlan }?.rationale.contains("PR plan") == true)
+        XCTAssertFalse(drafts.map(\.rationale).joined().contains("sk-test-secret"))
+    }
+
+    func testDocumentArtifactPlannerDoesNotCreateDeliverableDraftsFromExternalSourcesOnly() {
+        let drafts = DocumentAutomationArtifactPlanner().deliverableDrafts(
+            userRequest: "Create release notes from the GitHub issue mirror.",
+            documents: [
+                ScopedAutomationDocument(
+                    id: "github-issue",
+                    title: "GitHub issue mirror",
+                    scope: .externalSources,
+                    redactedSummary: "Release notes and PR plan from remote connector state.",
+                    inclusionReason: "External source preview is visible but not approved."
+                )
+            ]
+        )
+
+        XCTAssertTrue(drafts.isEmpty)
+    }
+
     func testDocumentArtifactPlannerKeepsProviderContextBehindApproval() {
         let request = DocumentAutomationArtifactPlanner().makeRequest(
             id: "doc-planner-1",

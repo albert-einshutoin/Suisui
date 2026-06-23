@@ -1,6 +1,6 @@
 # Document-Scoped Automation Contract
 
-Verified: 2026-06-21
+Verified: 2026-06-23
 
 ## Purpose
 
@@ -26,6 +26,19 @@ Every request should produce a review summary with:
 - Whether approval is required.
 
 The current default requires review for draft-or-higher outputs. This keeps the first implementation conservative until project-level auto-apply policies are explicit.
+
+## Deliverable Drafts
+
+When selected documents imply file-like deliverables, SoloPM creates reviewable draft specs before any file write. Each draft records:
+
+- Output kind.
+- Suggested path.
+- Source document IDs.
+- Rationale.
+- Risk level.
+- Approval requirement.
+
+External sources are excluded from source document IDs until their connector-specific approval flow is implemented. If only external sources are selected, no deliverable draft is created. This keeps GitHub, calendar, SaaS docs, and other remote connector state from silently becoming the basis for local deliverables.
 
 ## Proposed Output Kinds
 
