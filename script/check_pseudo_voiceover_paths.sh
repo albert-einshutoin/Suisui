@@ -5,6 +5,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 REQUIRED_MARKERS=(
   "AccessibilityFocusPathAudit"
+  "SoloPMHarnessTaskLifecycleOperation"
+  "requiredTaskLifecycleOperations"
+  "completeTaskLifecycleOperations"
   "project-board-sidebar"
   "project-board-detail"
   "project-header-add-task"
@@ -21,6 +24,7 @@ REQUIRED_MARKERS=(
 
 SOURCES=(
   "$ROOT_DIR/Sources/SoloPMCore/App/AccessibilityFocusPathAudit.swift"
+  "$ROOT_DIR/Sources/SoloPMCore/App/SoloPMHarness.swift"
   "$ROOT_DIR/Sources/SoloPMApp/Views/ProjectBoardView.swift"
   "$ROOT_DIR/docs/quality/accessibility-focus-paths.md"
 )
@@ -44,4 +48,4 @@ if [[ "$missing" -gt 0 ]]; then
   exit 1
 fi
 
-echo "OK: pseudo VoiceOver focus path contract covers task create/edit/status/automation/delete markers"
+echo "OK: pseudo VoiceOver focus path contract covers task create/edit/status/automation/approved execution/delete markers"

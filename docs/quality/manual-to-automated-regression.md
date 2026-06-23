@@ -41,6 +41,7 @@ automation-backlog:
 - SwiftUI source anchors and keyboard paths belong in `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift`.
 - Runtime CRUD and destructive confirmation regressions belong in `script/check_runtime_accessible_crud_smoke.sh`.
 - Pseudo VoiceOver focus-path coverage belongs in `Tests/SoloPMCoreTests/SoloPMHarnessTests.swift` and `docs/quality/accessibility-focus-paths.md`.
+- Task lifecycle omissions across create, edit, status movement, automation review, approved execution, or delete confirmation belong in `SoloPMHarnessScenario.requiredTaskLifecycleOperations` so MCP/E2E harness coverage fails before manual evidence is reused.
 
 Close rule:
 - If the VoiceOver pass records a blocker, it must link a source/runtime regression test or a follow-up issue before the evidence lane is considered closed.

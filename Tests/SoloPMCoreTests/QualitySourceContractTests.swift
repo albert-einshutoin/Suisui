@@ -29,6 +29,10 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(docs.contains("Manual VoiceOver is still required"))
         XCTAssertTrue(docs.contains("SoloPMHarnessAccessibilityAuditRunner"))
         XCTAssertTrue(docs.contains("mcp-pseudo-voiceover-focus-path"))
+        XCTAssertTrue(docs.contains("requiredTaskLifecycleOperations"))
+        XCTAssertTrue(docs.contains("approvedExecution"))
+        XCTAssertTrue(script.contains("SoloPMHarnessTaskLifecycleOperation"))
+        XCTAssertTrue(script.contains("completeTaskLifecycleOperations"))
         XCTAssertTrue(script.contains("AccessibilityFocusPathAudit"))
     }
 
@@ -40,6 +44,8 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(doc.contains("MCP"))
         XCTAssertTrue(doc.contains("VoiceOver"))
         XCTAssertTrue(doc.contains("document-scoped automation"))
+        XCTAssertTrue(doc.contains("complete task lifecycle harness"))
+        XCTAssertTrue(doc.contains("approved local execution"))
         XCTAssertTrue(doc.contains("status/due-date proposals"))
         XCTAssertTrue(doc.contains("task automation selection reasons"))
         XCTAssertTrue(doc.contains("priority and due-date tradeoffs"))

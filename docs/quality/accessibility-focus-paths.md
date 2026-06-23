@@ -48,6 +48,8 @@ The task path covers create, edit, status execution, automation review, approved
 
 The harness emits one step per required AX identifier so create, edit, automation review, approved execution, and destructive delete confirmation cannot pass as a single aggregate smoke result when one control is missing.
 
+`SoloPMHarnessScenario.requiredTaskLifecycleOperations` is the MCP/E2E lifecycle contract for this path. `task-mutation-flow` and `mcp-pseudo-voiceover-focus-path` must both cover `create`, `editContent`, `statusMove`, `automationReview`, `approvedExecution`, and `deleteConfirmation`. Delete confirmation and approved execution stay out of hosted-MCP mutation payloads because the external relay is review-only; the harness still fails when those user-visible UI/AX paths are not represented.
+
 ## Source Owners
 
 - Pure logic: `AccessibilityFocusPathAudit`

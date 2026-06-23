@@ -35,6 +35,58 @@ final class SoloPMHarnessTests: XCTestCase {
         XCTAssertTrue(accessibility.assertions.contains(.accessibilityFocusPathCovered))
     }
 
+    func testTaskLifecycleHarnessRequiresCreateEditExecuteAndDeleteCoverage() throws {
+        let catalog = SoloPMHarnessScenario.templateCatalog()
+        let requiredLifecycle: [SoloPMHarnessTaskLifecycleOperation] = [
+            .create,
+            .editContent,
+            .statusMove,
+            .automationReview,
+            .approvedExecution,
+            .deleteConfirmation
+        ]
+
+        let taskMutation = try XCTUnwrap(catalog.first { $0.kind == .taskMutationFlow })
+        XCTAssertEqual(taskMutation.requiredTaskLifecycleOperations, requiredLifecycle)
+        XCTAssertTrue(taskMutation.missingTaskLifecycleOperations().isEmpty)
+
+        let accessibility = try XCTUnwrap(catalog.first { $0.kind == .accessibilityFocusPath })
+        XCTAssertEqual(accessibility.requiredTaskLifecycleOperations, requiredLifecycle)
+        XCTAssertTrue(accessibility.missingTaskLifecycleOperations().isEmpty)
+    }
+
+    func testTaskLifecycleCoverageReportsMissingExecuteAndDeleteRequirements() {
+        let scenario = SoloPMHarnessScenario(
+            id: "partial-task-lifecycle",
+            name: "Partial task lifecycle",
+            kind: .taskMutationFlow,
+            requiredCapabilities: [.taskMutation],
+            expectedMutations: [],
+            assertions: [.approvalBoundary],
+            requiredTaskLifecycleOperations: [.create, .editContent, .statusMove, .automationReview]
+        )
+
+        XCTAssertEqual(scenario.missingTaskLifecycleOperations(), [.approvedExecution, .deleteConfirmation])
+    }
+
+    func testScenarioDecodesLegacyPayloadWithoutLifecycleCoverage() throws {
+        let legacyJSON = """
+        {
+          "id": "legacy",
+          "name": "Legacy harness",
+          "kind": "taskMutationFlow",
+          "requiredCapabilities": ["taskMutation"],
+          "expectedMutations": [],
+          "assertions": ["approvalBoundary"]
+        }
+        """
+
+        let scenario = try JSONDecoder().decode(SoloPMHarnessScenario.self, from: Data(legacyJSON.utf8))
+
+        XCTAssertEqual(scenario.requiredTaskLifecycleOperations, [])
+        XCTAssertEqual(scenario.missingTaskLifecycleOperations(), SoloPMHarnessScenario.completeTaskLifecycleOperations)
+    }
+
     func testAccessibilityHarnessRunPassesCompletePseudoVoiceOverFocusPath() {
         let run = SoloPMHarnessAccessibilityAuditRunner().run(
             id: "run-ax-pass",

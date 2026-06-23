@@ -25,6 +25,15 @@ public enum SoloPMHarnessAssertion: String, Codable, CaseIterable, Equatable, Ha
     case accessibilityFocusPathCovered
 }
 
+public enum SoloPMHarnessTaskLifecycleOperation: String, Codable, CaseIterable, Equatable, Hashable, Sendable {
+    case create
+    case editContent
+    case statusMove
+    case automationReview
+    case approvedExecution
+    case deleteConfirmation
+}
+
 public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
     public var id: String
     public var name: String
@@ -32,6 +41,7 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
     public var requiredCapabilities: [SoloPMHarnessCapability]
     public var expectedMutations: [SyncTaskMutationPayload]
     public var assertions: [SoloPMHarnessAssertion]
+    public var requiredTaskLifecycleOperations: [SoloPMHarnessTaskLifecycleOperation]
 
     public init(
         id: String,
@@ -39,7 +49,8 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
         kind: SoloPMHarnessScenarioKind,
         requiredCapabilities: [SoloPMHarnessCapability],
         expectedMutations: [SyncTaskMutationPayload],
-        assertions: [SoloPMHarnessAssertion]
+        assertions: [SoloPMHarnessAssertion],
+        requiredTaskLifecycleOperations: [SoloPMHarnessTaskLifecycleOperation] = []
     ) {
         self.id = id
         self.name = name
@@ -47,6 +58,23 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
         self.requiredCapabilities = requiredCapabilities
         self.expectedMutations = expectedMutations
         self.assertions = assertions
+        self.requiredTaskLifecycleOperations = requiredTaskLifecycleOperations
+    }
+
+    public static let completeTaskLifecycleOperations: [SoloPMHarnessTaskLifecycleOperation] = [
+        .create,
+        .editContent,
+        .statusMove,
+        .automationReview,
+        .approvedExecution,
+        .deleteConfirmation
+    ]
+
+    public func missingTaskLifecycleOperations(
+        required: [SoloPMHarnessTaskLifecycleOperation] = SoloPMHarnessScenario.completeTaskLifecycleOperations
+    ) -> [SoloPMHarnessTaskLifecycleOperation] {
+        let covered = Set(requiredTaskLifecycleOperations)
+        return required.filter { !covered.contains($0) }
     }
 
     public static func templateCatalog() -> [SoloPMHarnessScenario] {
@@ -107,7 +135,11 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
                         approvalState: .pendingApproval
                     )
                 ],
-                assertions: [.approvalBoundary, .auditLogRecorded, .resultDiffRecorded]
+                assertions: [.approvalBoundary, .auditLogRecorded, .resultDiffRecorded],
+                // Delete confirmation and approved execution are lifecycle
+                // requirements, not hosted-MCP mutations: external automation
+                // stays review-only while the UI/AX path must still prove them.
+                requiredTaskLifecycleOperations: Self.completeTaskLifecycleOperations
             ),
             SoloPMHarnessScenario(
                 id: "document-scoped-automation",
@@ -131,9 +163,45 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
                 kind: .accessibilityFocusPath,
                 requiredCapabilities: [.mcpToolCall, .accessibilityAudit],
                 expectedMutations: [],
-                assertions: [.outputMatchesExpected, .approvalBoundary, .auditLogRecorded, .redactedLogs, .resultDiffRecorded, .accessibilityFocusPathCovered]
+                assertions: [.outputMatchesExpected, .approvalBoundary, .auditLogRecorded, .redactedLogs, .resultDiffRecorded, .accessibilityFocusPathCovered],
+                requiredTaskLifecycleOperations: Self.completeTaskLifecycleOperations
             )
         ]
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case kind
+        case requiredCapabilities
+        case expectedMutations
+        case assertions
+        case requiredTaskLifecycleOperations
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        kind = try container.decode(SoloPMHarnessScenarioKind.self, forKey: .kind)
+        requiredCapabilities = try container.decode([SoloPMHarnessCapability].self, forKey: .requiredCapabilities)
+        expectedMutations = try container.decode([SyncTaskMutationPayload].self, forKey: .expectedMutations)
+        assertions = try container.decode([SoloPMHarnessAssertion].self, forKey: .assertions)
+        requiredTaskLifecycleOperations = try container.decodeIfPresent(
+            [SoloPMHarnessTaskLifecycleOperation].self,
+            forKey: .requiredTaskLifecycleOperations
+        ) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(requiredCapabilities, forKey: .requiredCapabilities)
+        try container.encode(expectedMutations, forKey: .expectedMutations)
+        try container.encode(assertions, forKey: .assertions)
+        try container.encode(requiredTaskLifecycleOperations, forKey: .requiredTaskLifecycleOperations)
     }
 }
 
@@ -432,7 +500,8 @@ public struct SoloPMHarnessAccessibilityAuditRunner: Sendable {
                 kind: .accessibilityFocusPath,
                 requiredCapabilities: [.mcpToolCall, .accessibilityAudit],
                 expectedMutations: [],
-                assertions: [.accessibilityFocusPathCovered]
+                assertions: [.accessibilityFocusPathCovered],
+                requiredTaskLifecycleOperations: SoloPMHarnessScenario.completeTaskLifecycleOperations
             )
     }
 
