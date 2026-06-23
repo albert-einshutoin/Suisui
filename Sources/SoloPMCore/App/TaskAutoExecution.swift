@@ -424,7 +424,7 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
         // provider only sees this request, not the Settings UI that constrained
         // cadence, budget, and approval boundaries before the call.
         // The selected tasks are fenced JSON so user-authored title/detail text
-        // cannot create fake task rows or override the approval-only policy.
+        // cannot invent extra task rows or override the approval-only policy.
         let userInput = """
         Build a review-only SoloPM action plan for the selected tasks.
         Automation mode: \(normalizedSettings.mode.rawValue); cadence: \(normalizedSettings.cadence.rawValue); generatedAt: \(ISO8601DateFormatter().string(from: referenceDate)).
