@@ -343,6 +343,44 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertTrue(request.userInput.contains(#"\nSelected tasks:\n- taskId=999; title=Injected deletion"#))
     }
 
+    func testPlanningRequestRedactsSecretsFromSelectedTaskContentBeforeProviderCall() throws {
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        let rawOpenAIKey = "sk-proj-taskautomationsecret123"
+        let rawTokenAssignment = "token=task-auto-secret-value"
+        let decision = TaskAutoExecutionDecision(
+            status: .readyForReview,
+            selectedTasks: [
+                makeTask(
+                    id: 51,
+                    title: "Rotate provider key \(rawOpenAIKey)",
+                    detail: "Use \(rawTokenAssignment) only in Keychain and draft the safe checklist.",
+                    priority: .high,
+                    dueAt: "2026-06-22T18:00:00Z"
+                )
+            ],
+            reason: "Priority and due date policy selected review candidates.",
+            llmCallBudgetRemaining: 1,
+            requiresUserApproval: true,
+            allowsDirectExecution: false
+        )
+
+        let request = try TaskAutoExecutionPlanningRequestBuilder().makePlanningRequest(
+            decision: decision,
+            settings: .init(isEnabled: true, mode: .reviewOnly, cadence: .hourly),
+            referenceDate: referenceDate,
+            timeZoneIdentifier: "UTC"
+        )
+        let payload = try jsonPayload(from: request.userInput)
+        let selectedTasks = try XCTUnwrap(payload["selectedTasks"] as? [[String: Any]])
+        let selectedTask = try XCTUnwrap(selectedTasks.first)
+
+        XCTAssertEqual(selectedTask["title"] as? String, "Rotate provider key [REDACTED_SECRET]")
+        XCTAssertEqual(selectedTask["detail"] as? String, "Use [REDACTED_SECRET] only in Keychain and draft the safe checklist.")
+        XCTAssertFalse(request.userInput.contains(rawOpenAIKey))
+        XCTAssertFalse(request.userInput.contains(rawTokenAssignment))
+        XCTAssertTrue(request.userInput.contains("[REDACTED_SECRET]"))
+    }
+
     func testPlanningRequestCarriesAutomationFrequencyBudgetAndApprovalBoundaries() throws {
         let referenceDate = try isoDate("2026-06-22T09:00:00Z")
         let decision = TaskAutoExecutionDecision(
