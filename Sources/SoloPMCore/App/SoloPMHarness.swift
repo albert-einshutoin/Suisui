@@ -42,6 +42,7 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
     public var expectedMutations: [SyncTaskMutationPayload]
     public var assertions: [SoloPMHarnessAssertion]
     public var requiredTaskLifecycleOperations: [SoloPMHarnessTaskLifecycleOperation]
+    public var requiredDocumentDeliverableKinds: [DocumentAutomationOutputKind]
 
     public init(
         id: String,
@@ -50,7 +51,8 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
         requiredCapabilities: [SoloPMHarnessCapability],
         expectedMutations: [SyncTaskMutationPayload],
         assertions: [SoloPMHarnessAssertion],
-        requiredTaskLifecycleOperations: [SoloPMHarnessTaskLifecycleOperation] = []
+        requiredTaskLifecycleOperations: [SoloPMHarnessTaskLifecycleOperation] = [],
+        requiredDocumentDeliverableKinds: [DocumentAutomationOutputKind] = []
     ) {
         self.id = id
         self.name = name
@@ -59,6 +61,7 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
         self.expectedMutations = expectedMutations
         self.assertions = assertions
         self.requiredTaskLifecycleOperations = requiredTaskLifecycleOperations
+        self.requiredDocumentDeliverableKinds = requiredDocumentDeliverableKinds
     }
 
     public static let completeTaskLifecycleOperations: [SoloPMHarnessTaskLifecycleOperation] = [
@@ -70,11 +73,24 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
         .deleteConfirmation
     ]
 
+    public static let completeDocumentDeliverableKinds: [DocumentAutomationOutputKind] = [
+        .preparationChecklist,
+        .draftArtifact,
+        .releaseNotes,
+        .pullRequestPlan
+    ]
+
     public func missingTaskLifecycleOperations(
         required: [SoloPMHarnessTaskLifecycleOperation] = SoloPMHarnessScenario.completeTaskLifecycleOperations
     ) -> [SoloPMHarnessTaskLifecycleOperation] {
         let covered = Set(requiredTaskLifecycleOperations)
         return required.filter { !covered.contains($0) }
+    }
+
+    public func missingDocumentDeliverableKinds(
+        required: [DocumentAutomationOutputKind] = SoloPMHarnessScenario.completeDocumentDeliverableKinds
+    ) -> [DocumentAutomationOutputKind] {
+        required.filter { !requiredDocumentDeliverableKinds.contains($0) }
     }
 
     public static func templateCatalog() -> [SoloPMHarnessScenario] {
@@ -147,7 +163,11 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
                 kind: .documentScopedAutomation,
                 requiredCapabilities: [.documentAutomation],
                 expectedMutations: [],
-                assertions: [.approvalBoundary, .auditLogRecorded, .redactedLogs]
+                assertions: [.approvalBoundary, .auditLogRecorded, .redactedLogs],
+                // Document automation creates review artifacts, not only task
+                // mutations; the harness requires every public-alpha deliverable
+                // so a planner change cannot silently drop release/PR output.
+                requiredDocumentDeliverableKinds: Self.completeDocumentDeliverableKinds
             ),
             SoloPMHarnessScenario(
                 id: "mcp-compatibility",
@@ -177,6 +197,7 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
         case expectedMutations
         case assertions
         case requiredTaskLifecycleOperations
+        case requiredDocumentDeliverableKinds
     }
 
     public init(from decoder: Decoder) throws {
@@ -191,6 +212,10 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
             [SoloPMHarnessTaskLifecycleOperation].self,
             forKey: .requiredTaskLifecycleOperations
         ) ?? []
+        requiredDocumentDeliverableKinds = try container.decodeIfPresent(
+            [DocumentAutomationOutputKind].self,
+            forKey: .requiredDocumentDeliverableKinds
+        ) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -202,6 +227,7 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
         try container.encode(expectedMutations, forKey: .expectedMutations)
         try container.encode(assertions, forKey: .assertions)
         try container.encode(requiredTaskLifecycleOperations, forKey: .requiredTaskLifecycleOperations)
+        try container.encode(requiredDocumentDeliverableKinds, forKey: .requiredDocumentDeliverableKinds)
     }
 }
 
@@ -447,6 +473,111 @@ public struct SoloPMHarnessRun: Codable, Equatable, Sendable {
             diffSummary: diff.map { "\($0.stepID): \($0.expected) -> \($0.actual)" },
             redactedLogCount: redactedLogs.count
         )
+    }
+}
+
+public struct SoloPMHarnessDocumentAutomationRunner: Sendable {
+    public init() {}
+
+    public func run(
+        id: String,
+        trigger: SoloPMHarnessRunTrigger,
+        startedAt: String,
+        finishedAt: String,
+        drafts: [DocumentAutomationDeliverableDraft],
+        requiredKinds: [DocumentAutomationOutputKind] = SoloPMHarnessScenario.completeDocumentDeliverableKinds
+    ) -> SoloPMHarnessRun {
+        let scenario = Self.documentAutomationScenario()
+        // Emit one step per deliverable kind so a broad "docs automation passed"
+        // smoke cannot hide a missing release note, PR plan, or draft artifact.
+        let steps = requiredKinds.map { kind in
+            step(for: kind, drafts: drafts.filter { $0.kind == kind })
+        }
+        let coveredCount = steps.filter { $0.status == .passed }.count
+        let logs = [
+            SoloPMHarnessLogEntry(
+                level: coveredCount == requiredKinds.count ? .info : .error,
+                message: "Document automation deliverables covered=\(coveredCount)/\(requiredKinds.count)"
+            )
+        ] + steps.compactMap { step in
+            step.failureReason.map {
+                SoloPMHarnessLogEntry(level: .warning, message: $0)
+            }
+        }
+
+        return SoloPMHarnessRun.completed(
+            id: id,
+            scenario: scenario,
+            trigger: trigger,
+            startedAt: startedAt,
+            finishedAt: finishedAt,
+            steps: steps,
+            logs: logs
+        )
+    }
+
+    private static func documentAutomationScenario() -> SoloPMHarnessScenario {
+        SoloPMHarnessScenario.templateCatalog()
+            .first(where: { $0.kind == .documentScopedAutomation })
+            ?? SoloPMHarnessScenario(
+                id: "document-scoped-automation",
+                name: "Document-scoped automation",
+                kind: .documentScopedAutomation,
+                requiredCapabilities: [.documentAutomation],
+                expectedMutations: [],
+                assertions: [.approvalBoundary, .auditLogRecorded, .redactedLogs],
+                requiredDocumentDeliverableKinds: SoloPMHarnessScenario.completeDocumentDeliverableKinds
+            )
+    }
+
+    private func step(
+        for kind: DocumentAutomationOutputKind,
+        drafts: [DocumentAutomationDeliverableDraft]
+    ) -> SoloPMHarnessStepResult {
+        let expected = "reviewable document deliverable draft present"
+        let actual: String
+        let status: SoloPMHarnessRunStatus
+        let failureReason: String?
+
+        if let draft = drafts.first {
+            let problems = reviewProblems(for: draft)
+            if problems.isEmpty {
+                actual = expected
+                status = .passed
+                failureReason = nil
+            } else {
+                actual = problems.joined(separator: " | ")
+                status = .failed
+                failureReason = actual
+            }
+        } else {
+            actual = "missingDocumentDeliverable: Missing required document deliverable \(kind.rawValue)."
+            status = .failed
+            failureReason = actual
+        }
+
+        return SoloPMHarnessStepResult(
+            id: "document-deliverable-\(kind.rawValue)",
+            status: status,
+            expected: expected,
+            actual: actual,
+            failureReason: failureReason,
+            durationMilliseconds: 0
+        )
+    }
+
+    private func reviewProblems(for draft: DocumentAutomationDeliverableDraft) -> [String] {
+        var problems: [String] = []
+        if !draft.requiresApproval {
+            problems.append("missingApprovalGate: \(draft.kind.rawValue) must require review before write.")
+        }
+        if draft.sourceDocumentIDs.isEmpty {
+            problems.append("missingSourceDocuments: \(draft.kind.rawValue) must cite selected documents.")
+        }
+        if draft.riskLevel < .draft {
+            problems.append("riskTooLow: \(draft.kind.rawValue) must be at least draft risk.")
+        }
+        return problems
     }
 }
 

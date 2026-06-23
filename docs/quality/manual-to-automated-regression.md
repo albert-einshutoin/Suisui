@@ -63,6 +63,21 @@ automation-backlog:
 Close rule:
 - Every hands-on finding must land as a benchmark decision, a Phase task, or a focused regression test reference.
 
+## Document Automation
+
+Evidence source: `Tests/SoloPMCoreTests/SoloPMHarnessTests.swift`
+
+Manual-only:
+- Product judgment on whether a generated preparation checklist, draft artifact, release notes draft, or PR plan is useful enough to ship.
+
+automation-backlog:
+- Missing preparation checklists, draft artifacts, release notes, or PR plans belong in `SoloPMHarnessScenario.requiredDocumentDeliverableKinds`.
+- Missing approval gates, source document IDs, or draft risk classification belong in `SoloPMHarnessDocumentAutomationRunner`.
+- Planner output selection belongs in `Tests/SoloPMCoreTests/DocumentScopedAutomationTests.swift` before any provider-backed drafting is allowed.
+
+Close rule:
+- A document automation finding can be closed only when the selected docs, proposed deliverable kind, approval gate, and harness failure mode are all represented in a focused test.
+
 ## Release Machine
 
 Evidence source: `packaging/release-evidence.json`

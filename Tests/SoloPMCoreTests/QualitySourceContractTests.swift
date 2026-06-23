@@ -45,8 +45,14 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(doc.contains("VoiceOver"))
         XCTAssertTrue(doc.contains("document-scoped automation"))
         XCTAssertTrue(doc.contains("complete task lifecycle harness"))
+        XCTAssertTrue(doc.contains("complete document deliverable harness"))
         XCTAssertTrue(doc.contains("approved local execution"))
         XCTAssertTrue(doc.contains("status/due-date proposals"))
+        XCTAssertTrue(doc.contains("preparation checklists"))
+        XCTAssertTrue(doc.contains("draft artifacts"))
+        XCTAssertTrue(doc.contains("release notes"))
+        XCTAssertTrue(doc.contains("PR plans"))
+        XCTAssertTrue(doc.contains("external-source-only"))
         XCTAssertTrue(doc.contains("task automation selection reasons"))
         XCTAssertTrue(doc.contains("priority and due-date tradeoffs"))
         XCTAssertNil(doc.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
@@ -58,6 +64,7 @@ final class QualitySourceContractTests: XCTestCase {
         for requiredSection in [
             "## Manual VoiceOver",
             "## Competitor Hands-On",
+            "## Document Automation",
             "## Release Machine",
             "## Manual Finding Intake",
             "## Failure Note Contract"
@@ -77,7 +84,10 @@ final class QualitySourceContractTests: XCTestCase {
             "script/check_runtime_accessible_crud_smoke.sh",
             "script/verify_release_environment.sh",
             "Tests/SoloPMCoreTests/AppExperienceSourceTests.swift",
+            "Tests/SoloPMCoreTests/DocumentScopedAutomationTests.swift",
             "Tests/SoloPMCoreTests/ReleasePipelineTests.swift",
+            "SoloPMHarnessScenario.requiredDocumentDeliverableKinds",
+            "SoloPMHarnessDocumentAutomationRunner",
             "tasks/Phase14-QualityRegressionHardening.md"
         ] {
             XCTAssertTrue(doc.contains(requiredMarker), "manual bridge doc must route \(requiredMarker)")

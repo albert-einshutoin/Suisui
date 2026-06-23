@@ -55,6 +55,66 @@ final class SoloPMHarnessTests: XCTestCase {
         XCTAssertTrue(accessibility.missingTaskLifecycleOperations().isEmpty)
     }
 
+    func testDocumentAutomationHarnessRequiresReviewableDeliverableCoverage() throws {
+        let catalog = SoloPMHarnessScenario.templateCatalog()
+        let scenario = try XCTUnwrap(catalog.first { $0.kind == .documentScopedAutomation })
+
+        XCTAssertEqual(
+            scenario.requiredDocumentDeliverableKinds,
+            [.preparationChecklist, .draftArtifact, .releaseNotes, .pullRequestPlan]
+        )
+        XCTAssertTrue(scenario.missingDocumentDeliverableKinds().isEmpty)
+    }
+
+    func testDocumentAutomationHarnessRunPassesSelectedDocDeliverableDrafts() {
+        let drafts = DocumentAutomationArtifactPlanner().deliverableDrafts(
+            userRequest: "Create release notes, a PR plan, and the right draft artifacts from these docs.",
+            documents: documentAutomationHarnessDocuments()
+        )
+
+        let run = SoloPMHarnessDocumentAutomationRunner().run(
+            id: "run-document-pass",
+            trigger: .cloudTriggered,
+            startedAt: "2026-06-23T00:00:00Z",
+            finishedAt: "2026-06-23T00:00:01Z",
+            drafts: drafts
+        )
+
+        XCTAssertEqual(run.status, .passed)
+        XCTAssertEqual(run.scenario.kind, .documentScopedAutomation)
+        XCTAssertEqual(run.resultEnvelope.scenarioKind, .documentScopedAutomation)
+        XCTAssertEqual(run.steps.map(\.id), [
+            "document-deliverable-preparationChecklist",
+            "document-deliverable-draftArtifact",
+            "document-deliverable-releaseNotes",
+            "document-deliverable-pullRequestPlan"
+        ])
+        XCTAssertNil(run.diff)
+        XCTAssertTrue(run.redactedLogs.contains { $0.message.contains("deliverables covered=4/4") })
+    }
+
+    func testDocumentAutomationHarnessRunFailsWithConcreteMissingDeliverableDiff() {
+        let drafts = DocumentAutomationArtifactPlanner().deliverableDrafts(
+            userRequest: "Create release notes, a PR plan, and the right draft artifacts from these docs.",
+            documents: documentAutomationHarnessDocuments()
+        )
+        .filter { $0.kind != .releaseNotes }
+
+        let run = SoloPMHarnessDocumentAutomationRunner().run(
+            id: "run-document-fail",
+            trigger: .cloudTriggered,
+            startedAt: "2026-06-23T00:00:00Z",
+            finishedAt: "2026-06-23T00:00:01Z",
+            drafts: drafts
+        )
+
+        XCTAssertEqual(run.status, .failed)
+        XCTAssertEqual(run.diff?.stepID, "document-deliverable-releaseNotes")
+        XCTAssertEqual(run.diff?.expected, "reviewable document deliverable draft present")
+        XCTAssertTrue(run.diff?.actual.contains("missingDocumentDeliverable") ?? false)
+        XCTAssertTrue(run.failureReason?.contains("releaseNotes") ?? false)
+    }
+
     func testTaskLifecycleCoverageReportsMissingExecuteAndDeleteRequirements() {
         let scenario = SoloPMHarnessScenario(
             id: "partial-task-lifecycle",
@@ -84,7 +144,9 @@ final class SoloPMHarnessTests: XCTestCase {
         let scenario = try JSONDecoder().decode(SoloPMHarnessScenario.self, from: Data(legacyJSON.utf8))
 
         XCTAssertEqual(scenario.requiredTaskLifecycleOperations, [])
+        XCTAssertEqual(scenario.requiredDocumentDeliverableKinds, [])
         XCTAssertEqual(scenario.missingTaskLifecycleOperations(), SoloPMHarnessScenario.completeTaskLifecycleOperations)
+        XCTAssertEqual(scenario.missingDocumentDeliverableKinds(), SoloPMHarnessScenario.completeDocumentDeliverableKinds)
     }
 
     func testAccessibilityHarnessRunPassesCompletePseudoVoiceOverFocusPath() {
@@ -253,6 +315,39 @@ final class SoloPMHarnessTests: XCTestCase {
         XCTAssertEqual(founderPolicy.historyStorage, .extendedCloudBacked)
         XCTAssertGreaterThan(founderPolicy.maxRuns, proPolicy.maxRuns)
         XCTAssertGreaterThan(founderPolicy.retentionDays, proPolicy.retentionDays)
+    }
+
+    private func documentAutomationHarnessDocuments() -> [ScopedAutomationDocument] {
+        [
+            ScopedAutomationDocument(
+                id: "release",
+                title: "Release checklist",
+                scope: .appDocs,
+                redactedSummary: "Manual VoiceOver evidence, release notes, Gatekeeper, and notarization checks.",
+                inclusionReason: "The app release checklist was selected."
+            ),
+            ScopedAutomationDocument(
+                id: "phase14",
+                title: "Phase14 quality plan",
+                scope: .projectDocs,
+                redactedSummary: "Implementation tasks, regression tests, and PR plan requirements.",
+                inclusionReason: "The phase plan was selected."
+            ),
+            ScopedAutomationDocument(
+                id: "artifact-notes",
+                title: "Draft artifact notes",
+                scope: .taskArtifacts,
+                redactedSummary: "Draft README.md and article.md from local notes without leaking sk-test-secret.",
+                inclusionReason: "The task artifact notes were selected."
+            ),
+            ScopedAutomationDocument(
+                id: "github-issue",
+                title: "GitHub issue mirror",
+                scope: .externalSources,
+                redactedSummary: "External connector context is present but not approved for this release.",
+                inclusionReason: "External source preview is visible."
+            )
+        ]
     }
 
     private func completeAccessibilityNodes() -> [AccessibilityNodeSnapshot] {
