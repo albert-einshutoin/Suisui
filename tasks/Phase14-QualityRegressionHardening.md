@@ -600,30 +600,30 @@ Priority: Low
 
 Phase14の各PRは、変更範囲に応じて以下を使い分ける。
 
-- [ ] `swift test --filter AppExperienceSourceTests`
-- [ ] `swift test --filter ReleasePipelineTests`
-- [ ] `swift test --filter ProjectBoardStoreTests`
-- [ ] `swift test`
-- [ ] `bash -n script/check_project_board_header_layout_smoke.sh`
-- [ ] `script/check_project_board_header_layout_smoke.sh`
-- [ ] `script/check_layout_stability_smoke.sh`
-- [ ] `script/check_runtime_accessible_crud_smoke.sh`
-- [ ] `script/check_accessibility_preflight.sh --runtime`
-- [ ] `script/capture_ui_evidence.sh --doctor`
-- [ ] `script/check_visual_regression_smoke.sh`
-- [ ] `script/check_security_regressions.sh`
-- [ ] `script/quality_status_report.sh`
+- [x] `swift test --filter AppExperienceSourceTests`
+- [x] `swift test --filter ReleasePipelineTests`
+- [x] `swift test --filter ProjectBoardStoreTests`
+- [x] `swift test`
+- [x] `bash -n script/check_project_board_header_layout_smoke.sh`
+- [x] `script/check_project_board_header_layout_smoke.sh`
+- [x] `script/check_layout_stability_smoke.sh`
+- [x] `script/check_runtime_accessible_crud_smoke.sh`
+- [x] `script/check_accessibility_preflight.sh --runtime`
+- [x] `script/capture_ui_evidence.sh --doctor`
+- [x] `script/check_visual_regression_smoke.sh`
+- [x] `script/check_security_regressions.sh`
+- [x] `script/quality_status_report.sh`
 
 ## Exit Gate
 
-- [ ] Risk mapが主要画面、主要状態変更、検証層、owner testを網羅している。
-- [ ] Project Boardのsidebar/header/detail/inspectorのlayout stability smokeが通る。
-- [ ] Sidebar toggle、toolbar display mode、window resize、theme switch、inspector open/closeの直後frame jumpを検出できる。
-- [ ] Runtime CRUD、Inbox、Today、Settings、Voice Commandの主要クリックパスがsmokeで検証される。
-- [ ] Visual screenshot smokeがLight/Dark/Systemの主要画面を検証し、黒画面/低情報量/対象window誤りを落とす。
-- [ ] Accessibility preflightが主要CRUDのlabel/help/focus/keyboard pathを検証する。
-- [ ] Persistence/migration/security regression suiteが破損データとsecret leakageを検出する。
-- [ ] Flake quarantineはowner、reason、expiryなしに追加できない。
-- [ ] Manual evidenceで見つかった問題を自動regressionへ戻す運用が文書化されている。
+- [x] Risk mapが主要画面、主要状態変更、検証層、owner testを網羅している。
+- [x] Project Boardのsidebar/header/detail/inspectorのlayout stability smokeが通る。
+- [x] Sidebar toggle、toolbar display mode、window resize、theme switch、inspector open/closeの直後frame jumpを検出できる。
+- [x] Runtime CRUD、Inbox、Today、Settings、Voice Commandの主要クリックパスがsmokeで検証される。
+- [x] Visual screenshot smokeがLight/Dark/Systemの主要画面を検証し、黒画面/低情報量/対象window誤りを落とす。
+- [x] Accessibility preflightが主要CRUDのlabel/help/focus/keyboard pathを検証する。
+- [x] Persistence/migration/security regression suiteが破損データとsecret leakageを検出する。
+- [x] Flake quarantineはowner、reason、expiryなしに追加できない。
+- [x] Manual evidenceで見つかった問題を自動regressionへ戻す運用が文書化されている。
 - [x] `script/quality_status_report.sh` で品質状態と残riskを確認できる。
-- [ ] `swift test` がgreen。
+- [x] `swift test` がgreen。
