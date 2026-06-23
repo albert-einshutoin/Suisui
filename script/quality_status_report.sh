@@ -395,7 +395,7 @@ expected_manual_commit="$(manual_release_evidence_source_commit)"
   printf -- '- `script/quality_status_report.sh`\n'
   printf -- '- `docs/quality/test-triage.md`\n'
   printf -- '- `docs/quality/flake-quarantine.md`\n'
-  printf -- '- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-%s.md ./script/check_automated_release_preflight.sh`\n' "$source_commit"
+  printf -- '- `./script/check_automated_release_preflight.sh`\n'
   printf -- '- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-%s.md ./script/release_readiness_report.sh`\n\n' "$source_commit"
 
   printf "## Notes\n\n"

@@ -216,6 +216,9 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(status.contains("## Unfinished Phase14 Items"))
         XCTAssertTrue(status.contains("## Open Risk Items"))
         XCTAssertTrue(status.contains("## Verification Commands"))
+        XCTAssertTrue(status.contains("`./script/check_automated_release_preflight.sh`"))
+        XCTAssertTrue(status.range(of: #"SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.* ./script/release_readiness_report\.sh"#, options: .regularExpression) != nil)
+        XCTAssertNil(status.range(of: #"SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.* ./script/check_automated_release_preflight\.sh"#, options: .regularExpression))
         XCTAssertFalse(riskMap.contains("Coverage: open。"))
         XCTAssertNil(status.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
     }
