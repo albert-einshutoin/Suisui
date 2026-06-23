@@ -208,6 +208,7 @@ AUTOMATED_PREFLIGHT_REQUIRED_GATES=(
   "Release CI"
   "Local CRUD smoke"
   "Runtime accessible CRUD smoke"
+  "Layout stability smoke"
   "Xcode build preflight"
   "Launch preflight"
   "Runtime accessibility preflight"
@@ -2262,8 +2263,11 @@ elif [[ "$LAYOUT_STABILITY_SMOKE" == "1" ]]; then
       printf "OK: layout stability smoke passed\n"
     fi
   fi
+elif automated_preflight_evidence_covers "Layout stability smoke"; then
+  printf "OK: layout stability smoke covered by automated preflight evidence (%s)\n" "${AUTOMATED_PREFLIGHT_EVIDENCE_PATH#"$ROOT_DIR/"}"
 else
   printf "INFO: layout stability smoke skipped; set SOLOPM_LAYOUT_STABILITY_SMOKE=1 to run %s against the Project Board frame stability harness.\n" "$LAYOUT_STABILITY_SMOKE_RELATIVE"
+  blocker "layout stability smoke was not run"
 fi
 
 section "Release Xcode preflight"

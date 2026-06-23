@@ -3004,7 +3004,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("rerun `./script/prepare_release_manual_helpers.sh` and then repeat the affected manual passes after product source changes instead of reusing evidence from an older release candidate"))
         XCTAssertTrue(checklist.contains("This automated sweep does not replace manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper evidence."))
         XCTAssertTrue(checklist.contains("The final readiness report treats skipped automated proof gates as blockers by default."))
-        XCTAssertTrue(checklist.contains("Do not claim release readiness from the default report output if CI, SQLite CRUD, runtime accessible CRUD, Xcode build, visible launch, or runtime AX were skipped."))
+        XCTAssertTrue(checklist.contains("Do not claim release readiness from the default report output if CI, SQLite CRUD, runtime accessible CRUD, layout stability, Xcode build, visible launch, or runtime AX were skipped."))
         XCTAssertTrue(checklist.contains("then writes the captured `Runtime AX smoke: OK: runtime AX smoke visible...` line into the automated preflight evidence"))
         XCTAssertTrue(checklist.contains("./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("./script/release_readiness_report.sh # auto-discovers .tmp/automated-release-preflight-<commit>.md"))
@@ -3025,6 +3025,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("./scripts/ci.sh"))
         XCTAssertTrue(script.contains("./script/check_local_crud_smoke.sh"))
         XCTAssertTrue(script.contains("./script/check_runtime_accessible_crud_smoke.sh"))
+        XCTAssertTrue(script.contains("./script/check_layout_stability_smoke.sh"))
         XCTAssertTrue(script.contains("xcodebuild"))
         XCTAssertTrue(script.contains(".swiftpm/xcode/package.xcworkspace"))
         XCTAssertTrue(script.contains("-scheme \"$XCODE_SCHEME\""))
@@ -3066,6 +3067,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Release CI: passed"))
         XCTAssertTrue(script.contains("Local CRUD smoke: passed"))
         XCTAssertTrue(script.contains("Runtime accessible CRUD smoke: passed"))
+        XCTAssertTrue(script.contains("Layout stability smoke: passed"))
         XCTAssertTrue(script.contains("Xcode build preflight: passed"))
         XCTAssertTrue(script.contains("Launch preflight: passed"))
         XCTAssertTrue(script.contains("Runtime accessibility preflight: passed"))
@@ -3091,6 +3093,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("./script/check_automated_release_preflight.sh"))
         XCTAssertTrue(checklist.contains("After automated preflight passes, it refreshes the release-candidate manual helper files without writing passed evidence."))
         XCTAssertTrue(checklist.contains("The automated preflight evidence also records the seeded VoiceOver candidate source commit, project ID, database path, and selected destination used for runtime AX smoke."))
+        XCTAssertTrue(phase.contains("[x] `script/check_automated_release_preflight.sh` で CI、SQLite CRUD、runtime accessible CRUD、layout stability、Xcode build、visible-window launch、seeded VoiceOver review candidate 上の runtime AX、MCP compliance を一括検証できる。"))
         XCTAssertTrue(phase.contains("[x] 自動proof証跡は seeded runtime AX smoke の `OK: runtime AX smoke visible` 行を保存し、`unlabeledButtons=0`、`genericButtons=0`、`crudSignals=8/8`、`focusPathSignals=6/6` が欠ける証跡を release readiness で拒否する。"))
         XCTAssertTrue(phase.contains("[x] 自動proof証跡は runtime AX smoke 対象の VoiceOver candidate source commit / project ID / database / selected destination を保存し、どのseeded candidateで検証したか追跡できる。"))
         XCTAssertTrue(phase.contains("[x] `check_automated_release_preflight.sh` は runtime AX smoke を `.tmp/voiceover-review/launch.env` から直接起動し、既存プロセスの選択状態に依存しない。"))
@@ -5842,6 +5845,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Release CI: passed
         - Local CRUD smoke: passed
         - Runtime accessible CRUD smoke: passed
+        - Layout stability smoke: passed
         - Xcode build preflight: passed
         - Launch preflight: passed
         - Runtime accessibility preflight: passed
@@ -5976,12 +5980,14 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("OK: release CI preflight covered by automated preflight evidence"))
         XCTAssertTrue(result.output.contains("OK: local CRUD smoke covered by automated preflight evidence"))
         XCTAssertTrue(result.output.contains("OK: runtime accessible CRUD smoke covered by automated preflight evidence"))
+        XCTAssertTrue(result.output.contains("OK: layout stability smoke covered by automated preflight evidence"))
         XCTAssertTrue(result.output.contains("OK: release Xcode preflight covered by automated preflight evidence"))
         XCTAssertTrue(result.output.contains("OK: release launch preflight covered by automated preflight evidence"))
         XCTAssertTrue(result.output.contains("OK: accessibility runtime preflight covered by automated preflight evidence"))
         XCTAssertFalse(result.output.contains("release CI preflight was not run"))
         XCTAssertFalse(result.output.contains("local CRUD smoke was not run"))
         XCTAssertFalse(result.output.contains("runtime accessible CRUD smoke was not run"))
+        XCTAssertFalse(result.output.contains("layout stability smoke was not run"))
         XCTAssertFalse(result.output.contains("release Xcode preflight was not run"))
         XCTAssertFalse(result.output.contains("release launch preflight was not run"))
         XCTAssertFalse(result.output.contains("accessibility runtime preflight was not run"))
@@ -5996,6 +6002,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("- [x] Release CI: passed"))
         XCTAssertTrue(actionSummary.contains("- [x] Local CRUD smoke: passed"))
         XCTAssertTrue(actionSummary.contains("- [x] Runtime accessible CRUD smoke: passed"))
+        XCTAssertTrue(actionSummary.contains("- [x] Layout stability smoke: passed"))
         XCTAssertTrue(actionSummary.contains("- [x] Xcode build preflight: passed"))
         XCTAssertTrue(actionSummary.contains("- [x] Launch preflight: passed"))
         XCTAssertTrue(actionSummary.contains("- [x] Runtime accessibility preflight: passed"))
@@ -6065,6 +6072,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Release CI: passed
         - Local CRUD smoke: passed
         - Runtime accessible CRUD smoke: passed
+        - Layout stability smoke: passed
         - Xcode build preflight: passed
         - Launch preflight: passed
         - Runtime accessibility preflight: passed
@@ -6109,12 +6117,14 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("OK: release CI preflight covered by automated preflight evidence"))
         XCTAssertTrue(result.output.contains("OK: local CRUD smoke covered by automated preflight evidence"))
         XCTAssertTrue(result.output.contains("OK: runtime accessible CRUD smoke covered by automated preflight evidence"))
+        XCTAssertTrue(result.output.contains("OK: layout stability smoke covered by automated preflight evidence"))
         XCTAssertTrue(result.output.contains("OK: release Xcode preflight covered by automated preflight evidence"))
         XCTAssertTrue(result.output.contains("OK: release launch preflight covered by automated preflight evidence"))
         XCTAssertTrue(result.output.contains("OK: accessibility runtime preflight covered by automated preflight evidence"))
         XCTAssertFalse(result.output.contains("release CI preflight was not run"))
         XCTAssertFalse(result.output.contains("local CRUD smoke was not run"))
         XCTAssertFalse(result.output.contains("runtime accessible CRUD smoke was not run"))
+        XCTAssertFalse(result.output.contains("layout stability smoke was not run"))
         XCTAssertFalse(result.output.contains("release Xcode preflight was not run"))
         XCTAssertFalse(result.output.contains("release launch preflight was not run"))
         XCTAssertFalse(result.output.contains("accessibility runtime preflight was not run"))
@@ -6173,6 +6183,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Release CI: passed
         - Local CRUD smoke: passed
         - Runtime accessible CRUD smoke: passed
+        - Layout stability smoke: passed
         - Xcode build preflight: passed
         - Launch preflight: passed
         - Runtime accessibility preflight: passed
@@ -6247,6 +6258,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Release CI: passed
         - Local CRUD smoke: passed
         - Runtime accessible CRUD smoke: passed
+        - Layout stability smoke: passed
         - Xcode build preflight: passed
         - Launch preflight: passed
         - Runtime accessibility preflight: passed
@@ -6325,6 +6337,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Release CI: passed
         - Local CRUD smoke: passed
         - Runtime accessible CRUD smoke: passed
+        - Layout stability smoke: passed
         - Xcode build preflight: passed
         - Launch preflight: passed
         - Runtime accessibility preflight: passed

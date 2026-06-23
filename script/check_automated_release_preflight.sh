@@ -126,6 +126,7 @@ VoiceOver candidate selected destination: $VOICEOVER_CANDIDATE_SELECTED_DESTINAT
 - Release CI: passed
 - Local CRUD smoke: passed
 - Runtime accessible CRUD smoke: passed
+- Layout stability smoke: passed
 - Xcode build preflight: passed
 - Launch preflight: passed
 - Runtime accessibility preflight: passed
@@ -210,6 +211,9 @@ section "Local CRUD smoke"
 
 section "Runtime accessible CRUD smoke"
 ./script/check_runtime_accessible_crud_smoke.sh
+
+section "Layout stability smoke"
+./script/check_layout_stability_smoke.sh
 
 section "Xcode build preflight"
 if ! command -v xcodebuild >/dev/null 2>&1; then
