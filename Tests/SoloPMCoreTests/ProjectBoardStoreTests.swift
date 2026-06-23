@@ -1015,6 +1015,66 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelPreservesBatchReviewAndReceiptHistoryAcrossApprovedTaskExecution() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        _ = viewModel.createTask(title: "Low future", status: .planned, priority: .low, dueAt: "2026-06-24T08:00:00Z")
+        let first = try XCTUnwrap(viewModel.createTask(
+            title: "High overdue token=secret-first",
+            detail: "Use sk-proj-first-secret before drafting.",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-21T08:00:00Z"
+        ))
+        let second = try XCTUnwrap(viewModel.createTask(
+            title: "Medium due today",
+            detail: "Prepare the second reviewed task.",
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-22T18:00:00Z"
+        ))
+
+        let decision = viewModel.prepareTaskAutomationReview(
+            settings: .init(
+                isEnabled: true,
+                mode: .reviewOnly,
+                cadence: .hourly,
+                maxTasksPerRun: 2,
+                dailyLLMCallLimit: 4,
+                lookaheadHours: 48
+            ),
+            history: .empty,
+            referenceDate: try isoDate("2026-06-22T09:00:00Z"),
+            calendar: utcCalendar()
+        )
+
+        XCTAssertEqual(decision.selectedTasks.map(\.id), [first.id, second.id])
+        XCTAssertEqual(viewModel.approvedAutomationExecutionReceipts, [])
+
+        viewModel.runApprovedAutomationForSelectedTask()
+
+        XCTAssertEqual(viewModel.selectedTask?.id, first.id)
+        XCTAssertEqual(viewModel.selectedTask?.status, .inProgress)
+        XCTAssertEqual(viewModel.taskAutomationReviewDecision?.selectedTasks.map(\.id), [second.id])
+        XCTAssertEqual(viewModel.approvedAutomationExecutionReceipts.map(\.taskID), [first.id])
+        XCTAssertEqual(viewModel.lastApprovedAutomationExecutionReceipt?.taskID, first.id)
+        XCTAssertEqual(viewModel.approvedAutomationExecutionReceipts.first?.statusBefore, .planned)
+        XCTAssertEqual(viewModel.approvedAutomationExecutionReceipts.first?.statusAfter, .inProgress)
+        XCTAssertTrue(viewModel.approvedAutomationExecutionReceipts.first?.redactedTaskTitle.contains("[REDACTED_SECRET]") ?? false)
+        XCTAssertFalse(viewModel.approvedAutomationExecutionReceipts.first?.redactedTaskTitle.contains("secret-first") ?? true)
+        XCTAssertFalse(viewModel.approvedAutomationExecutionReceipts.first?.redactedTaskDetail.contains("sk-proj-first-secret") ?? true)
+
+        viewModel.selectedTaskID = second.id
+        viewModel.runApprovedAutomationForSelectedTask()
+
+        XCTAssertEqual(viewModel.selectedTask?.id, second.id)
+        XCTAssertEqual(viewModel.selectedTask?.status, .inProgress)
+        XCTAssertNil(viewModel.taskAutomationReviewDecision)
+        XCTAssertEqual(viewModel.approvedAutomationExecutionReceipts.map(\.taskID), [first.id, second.id])
+        XCTAssertEqual(viewModel.lastApprovedAutomationExecutionReceipt?.taskID, second.id)
+    }
+
+    @MainActor
     func testProjectBoardViewModelBuildsTaskAutomationPlanningRequestWithDocumentDeliverables() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()

@@ -1026,6 +1026,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var projectAssistantReviewDraft: ProjectAssistantReviewDraft?
     @Published public private(set) var taskAutomationReviewDecision: TaskAutoExecutionDecision?
     @Published public private(set) var lastApprovedAutomationExecutionReceipt: ApprovedAutomationExecutionReceipt?
+    @Published public private(set) var approvedAutomationExecutionReceipts: [ApprovedAutomationExecutionReceipt]
 
     private let store: any ProjectBoardStore
     private let inboxCaptureStore: (any InboxCaptureStore)?
@@ -1062,6 +1063,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.projectAssistantReviewDraft = nil
         self.taskAutomationReviewDecision = nil
         self.lastApprovedAutomationExecutionReceipt = nil
+        self.approvedAutomationExecutionReceipts = []
         self.taskAutomationSessionHistory = .empty
     }
 
@@ -1504,17 +1506,19 @@ public final class ProjectBoardViewModel: ObservableObject {
             load()
             selectedProjectID = updatedTask.projectID
             selectedTaskID = selectedTask.id
-            lastApprovedAutomationExecutionReceipt = ApprovedAutomationExecutionReceipt(
+            let receipt = ApprovedAutomationExecutionReceipt(
                 task: selectedTask,
                 statusAfter: updatedTask.status,
                 reviewReason: reviewDecision.reason
             )
+            lastApprovedAutomationExecutionReceipt = receipt
+            approvedAutomationExecutionReceipts.append(receipt)
             // Approved automation is still local and review-gated, but it must
             // leave a visible content-execution trail so a status move cannot
             // masquerade as executing the reviewed task body.
             todayCommandFeedback = String(format: String(localized: "Executed approved automation for \"%@\"."), selectedTask.title)
             integrationStatusMessage = String(format: String(localized: "Executed approved automation for \"%@\"."), selectedTask.title)
-            taskAutomationReviewDecision = nil
+            retainUnexecutedReviewedTasks(from: reviewDecision, excludingTaskID: selectedTask.id)
             onChange()
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
             errorMessage = "Restore the project before running automation."
@@ -1540,6 +1544,29 @@ public final class ProjectBoardViewModel: ObservableObject {
             return note
         }
         return "\(trimmedDetail)\n\n\(note)"
+    }
+
+    private func retainUnexecutedReviewedTasks(
+        from reviewDecision: TaskAutoExecutionDecision,
+        excludingTaskID executedTaskID: Int64
+    ) {
+        let remainingTasks = reviewDecision.selectedTasks.filter { $0.id != executedTaskID }
+        guard !remainingTasks.isEmpty else {
+            taskAutomationReviewDecision = nil
+            return
+        }
+        // A configured review can contain several priority/due-date selected
+        // tasks. Keep the still-unexecuted snapshots so one approved task run
+        // cannot erase the user's review queue or hide missing execution
+        // receipts for the rest of the batch.
+        taskAutomationReviewDecision = TaskAutoExecutionDecision(
+            status: reviewDecision.status,
+            selectedTasks: remainingTasks,
+            reason: reviewDecision.reason,
+            llmCallBudgetRemaining: reviewDecision.llmCallBudgetRemaining,
+            requiresUserApproval: reviewDecision.requiresUserApproval,
+            allowsDirectExecution: reviewDecision.allowsDirectExecution
+        )
     }
 
     private func matchesReviewedAutomationTask(_ reviewedTask: ProjectBoardTask, current: ProjectBoardTask) -> Bool {
