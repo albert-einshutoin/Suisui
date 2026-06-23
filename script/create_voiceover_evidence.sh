@@ -37,6 +37,7 @@ INLINE_TASK_COMPOSER_NOTE=""
 STATUS_CONTROLS_NOTE=""
 TASK_INSPECTOR_NOTE=""
 SAVE_CHANGES_NOTE=""
+TASK_CONTENT_EXECUTION_NOTE=""
 DELETE_CONFIRMATION_NOTE=""
 NO_KEYBOARD_TRAP_NOTE=""
 NO_UNLABELED_CRUD_NOTE=""
@@ -64,7 +65,7 @@ release_candidate_source_commit() {
 SOURCE_COMMIT="$(release_candidate_source_commit)"
 
 usage() {
-  printf '%s\n' "usage: $0 (--pending|--passed|--validate-only) [--output PATH] [--checked-by NAME] [--macos-version VERSION] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--accessibility-environment TEXT] [--runtime-ax-smoke-note TEXT|--capture-runtime-ax-smoke] [--project-navigation-note TEXT] [--project-board-detail-note TEXT] [--open-task-note TEXT] [--inline-task-composer-note TEXT] [--status-controls-note TEXT] [--task-inspector-note TEXT] [--save-changes-note TEXT] [--delete-confirmation-note TEXT] [--no-keyboard-trap-note TEXT] [--no-unlabeled-crud-note TEXT] [--confirm-manual-voiceover-pass]"
+  printf '%s\n' "usage: $0 (--pending|--passed|--validate-only) [--output PATH] [--checked-by NAME] [--macos-version VERSION] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--accessibility-environment TEXT] [--runtime-ax-smoke-note TEXT|--capture-runtime-ax-smoke] [--project-navigation-note TEXT] [--project-board-detail-note TEXT] [--open-task-note TEXT] [--inline-task-composer-note TEXT] [--status-controls-note TEXT] [--task-inspector-note TEXT] [--save-changes-note TEXT] [--task-content-execution-note TEXT] [--delete-confirmation-note TEXT] [--no-keyboard-trap-note TEXT] [--no-unlabeled-crud-note TEXT] [--confirm-manual-voiceover-pass]"
   printf '%s\n' ""
   printf '%s\n' "Use --pending to write a safe worksheet that release readiness will reject."
   printf '%s\n' "Without --output, --pending writes .tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md."
@@ -342,6 +343,10 @@ while [[ "$#" -gt 0 ]]; do
       SAVE_CHANGES_NOTE="${2:-}"
       shift 2
       ;;
+    --task-content-execution-note)
+      TASK_CONTENT_EXECUTION_NOTE="${2:-}"
+      shift 2
+      ;;
     --delete-confirmation-note)
       DELETE_CONFIRMATION_NOTE="${2:-}"
       shift 2
@@ -429,6 +434,8 @@ if [[ "$VOICEOVER_STATUS" == "passed" ]]; then
   require_concrete_voiceover_note "--status-controls-note" "$STATUS_CONTROLS_NOTE"
   require_concrete_voiceover_note "--task-inspector-note" "$TASK_INSPECTOR_NOTE"
   require_concrete_voiceover_note "--save-changes-note" "$SAVE_CHANGES_NOTE"
+  # Manual evidence must prove the reviewed task body reached the approved execution receipt, not just that the Run control was reachable.
+  require_concrete_voiceover_note "--task-content-execution-note" "$TASK_CONTENT_EXECUTION_NOTE"
   require_concrete_voiceover_note "--delete-confirmation-note" "$DELETE_CONFIRMATION_NOTE"
   require_concrete_voiceover_note "--no-keyboard-trap-note" "$NO_KEYBOARD_TRAP_NOTE"
   require_concrete_voiceover_note "--no-unlabeled-crud-note" "$NO_UNLABELED_CRUD_NOTE"
@@ -501,6 +508,7 @@ write_pending_evidence() {
     printf '%s\n' '- [ ] Status controls: move focus to previous/next status controls and confirm button labels include target status.'
     printf '%s\n' '- [ ] Task inspector: focus title, detail, status, priority, due, summary, save, suggestion, and danger actions.'
     printf '%s\n' '- [ ] Save Changes: confirm keyboard activation reaches the local task save action.'
+    printf '%s\n' '- [ ] Task content execution: run the approved plan and confirm the redacted execution receipt includes reviewed title and detail.'
     printf '%s\n' '- [ ] Delete Task confirmation: confirm destructive action opens an inline inspector confirmation panel before local deletion.'
     printf '%s\n' '- [ ] No keyboard trap: confirm focus can leave sidebar, board, card controls, inspector fields, and inline confirmation panels.'
     printf '%s\n' '- [ ] No unlabeled primary CRUD controls: confirm create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.'
@@ -538,6 +546,7 @@ write_passed_evidence() {
     printf -- '- Status controls: passed - %s\n' "$STATUS_CONTROLS_NOTE"
     printf -- '- Task inspector: passed - %s\n' "$TASK_INSPECTOR_NOTE"
     printf -- '- Save Changes: passed - %s\n' "$SAVE_CHANGES_NOTE"
+    printf -- '- Task content execution: passed - %s\n' "$TASK_CONTENT_EXECUTION_NOTE"
     printf -- '- Delete Task confirmation: passed - %s\n' "$DELETE_CONFIRMATION_NOTE"
     printf -- '- No keyboard trap: passed - %s\n' "$NO_KEYBOARD_TRAP_NOTE"
     printf -- '- No unlabeled primary CRUD controls: passed - %s\n' "$NO_UNLABELED_CRUD_NOTE"

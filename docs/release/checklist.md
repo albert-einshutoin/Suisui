@@ -250,6 +250,7 @@ Each focus-path note must name the concrete VoiceOver observation, control, or f
   --status-controls-note "Concrete VoiceOver observation for previous/next status move controls." \
   --task-inspector-note "Concrete VoiceOver observation for task inspector fields and actions." \
   --save-changes-note "Concrete VoiceOver observation for local task save activation." \
+  --task-content-execution-note "Concrete VoiceOver observation that approved execution recorded the reviewed task title and detail in the redacted receipt." \
   --delete-confirmation-note "Concrete VoiceOver observation for destructive confirmation and cancel." \
   --no-keyboard-trap-note "Concrete VoiceOver observation that focus can leave every primary region." \
   --no-unlabeled-crud-note "Concrete VoiceOver observation that create, update, status move, local suggestion apply, automation review, approved execution, and delete controls have labels or help." \
@@ -265,6 +266,7 @@ Each focus-path note must name the concrete VoiceOver observation, control, or f
   --status-controls-note "Concrete VoiceOver observation for previous/next status move controls." \
   --task-inspector-note "Concrete VoiceOver observation for task inspector fields and actions." \
   --save-changes-note "Concrete VoiceOver observation for local task save activation." \
+  --task-content-execution-note "Concrete VoiceOver observation that approved execution recorded the reviewed task title and detail in the redacted receipt." \
   --delete-confirmation-note "Concrete VoiceOver observation for destructive confirmation and cancel." \
   --no-keyboard-trap-note "Concrete VoiceOver observation that focus can leave every primary region." \
   --no-unlabeled-crud-note "Concrete VoiceOver observation that create, update, status move, local suggestion apply, automation review, approved execution, and delete controls have labels or help." \

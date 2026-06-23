@@ -84,6 +84,7 @@ VOICEOVER_REQUIRED_MARKERS=(
   "Status controls"
   "Task inspector"
   "Save Changes"
+  "Task content execution"
   "Delete Task confirmation"
   "No keyboard trap"
   "No unlabeled primary CRUD controls"
@@ -107,6 +108,7 @@ VOICEOVER_REQUIRED_NOTE_LABELS=(
   "Status controls"
   "Task inspector"
   "Save Changes"
+  "Task content execution"
   "Delete Task confirmation"
   "No keyboard trap"
   "No unlabeled primary CRUD controls"
@@ -978,6 +980,7 @@ write_voiceover_manual_evidence_invocation() {
   printf '%s\n' '  --status-controls-note "<VoiceOver observation for previous/next status controls and target status labels>" \'
   printf '%s\n' '  --task-inspector-note "<VoiceOver observation for inspector fields, summary, suggestion, save, and danger actions>" \'
   printf '%s\n' '  --save-changes-note "<VoiceOver observation proving keyboard activation saves local task changes>" \'
+  printf '%s\n' '  --task-content-execution-note "<VoiceOver observation proving approved execution records reviewed task title and detail in the redacted receipt>" \'
   printf '%s\n' '  --delete-confirmation-note "<VoiceOver observation proving Delete Task opens an inline inspector confirmation panel before deletion>" \'
   printf '%s\n' '  --no-keyboard-trap-note "<VoiceOver observation proving focus leaves sidebar, board, inspector, and inline confirmation panels>" \'
   printf '%s\n' '  --no-unlabeled-crud-note "<VoiceOver observation proving create, update, status move, local suggestion apply, automation review, approved execution, and delete controls have labels or help>" \'

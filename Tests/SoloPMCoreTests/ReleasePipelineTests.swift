@@ -2977,6 +2977,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("--project-navigation-note"))
         XCTAssertTrue(checklist.contains("--project-board-detail-note"))
         XCTAssertTrue(checklist.contains("--inline-task-composer-note"))
+        XCTAssertTrue(checklist.contains("--task-content-execution-note"))
         XCTAssertTrue(checklist.contains("--no-unlabeled-crud-note"))
         XCTAssertTrue(checklist.contains("--confirm-manual-voiceover-pass"))
         XCTAssertTrue(checklist.contains("Project navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector"))
@@ -3653,6 +3654,7 @@ final class ReleasePipelineTests: XCTestCase {
             try? FileManager.default.removeItem(at: runtimeAXSmokeScriptURL)
         }
         let currentShortCommit = try manualReleaseEvidenceSourceCommit()
+        let taskContentExecutionNote = "Approved execution announced the reviewed task title and detail, then left a redacted receipt with task identity, reviewed detail, and before/after status."
 
         let pendingResult = try runScript(
             "script/create_voiceover_evidence.sh",
@@ -3669,6 +3671,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(pendingEvidence.contains("- Runtime AX smoke:"))
         XCTAssertTrue(pendingEvidence.contains("- [ ] Project navigation"))
         XCTAssertTrue(pendingEvidence.contains("- [ ] Inline Task Composer"))
+        XCTAssertTrue(pendingEvidence.contains("- [ ] Task content execution: run the approved plan and confirm the redacted execution receipt includes reviewed title and detail."))
         XCTAssertTrue(pendingEvidence.contains("- [ ] Delete Task confirmation: confirm destructive action opens an inline inspector confirmation panel before local deletion."))
         XCTAssertTrue(pendingEvidence.contains("- [ ] No keyboard trap: confirm focus can leave sidebar, board, card controls, inspector fields, and inline confirmation panels."))
         XCTAssertTrue(pendingEvidence.contains("- [ ] No unlabeled primary CRUD controls: confirm create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help."))
@@ -3715,6 +3718,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
                 "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
@@ -3742,6 +3746,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
                 "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
@@ -3769,6 +3774,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
                 "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
@@ -3796,6 +3802,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
                 "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
@@ -3822,6 +3829,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
                 "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
@@ -3848,6 +3856,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
                 "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
@@ -3980,6 +3989,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
                 "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
@@ -3989,6 +3999,33 @@ final class ReleasePipelineTests: XCTestCase {
         )
         XCTAssertNotEqual(missingFocusPathRuntimeAXResult.exitCode, 0)
         XCTAssertTrue(missingFocusPathRuntimeAXResult.output.contains("--runtime-ax-smoke-note must include focusPathSignals=6/6"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
+
+        let missingTaskContentExecutionResult = try runScript(
+            "script/create_voiceover_evidence.sh",
+            arguments: [
+                "--passed",
+                "--checked-by", "SoloPM Release Owner",
+                "--macos-version", "macOS 15.5",
+                "--check-date", "2026-06-19",
+                "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
+                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6",
+                "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
+                "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
+                "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
+                "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
+                "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
+                "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
+                "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
+                "--output", passedURL.path,
+                "--confirm-manual-voiceover-pass"
+            ]
+        )
+        XCTAssertNotEqual(missingTaskContentExecutionResult.exitCode, 0)
+        XCTAssertTrue(missingTaskContentExecutionResult.output.contains("--task-content-execution-note is required with --passed"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
 
         try """
@@ -4019,6 +4056,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
                 "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
@@ -4077,6 +4115,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
                 "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
@@ -4131,6 +4170,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
                 "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
                 "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
@@ -4157,6 +4197,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(passedEvidence.contains("- Status controls: passed - Previous and next status buttons announce the target status before moving the task."))
         XCTAssertTrue(passedEvidence.contains("- Task inspector: passed - Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable."))
         XCTAssertTrue(passedEvidence.contains("- Save Changes: passed - Keyboard activation reaches the local task save action and returns without a trap."))
+        XCTAssertTrue(passedEvidence.contains("- Task content execution: passed - \(taskContentExecutionNote)"))
         XCTAssertTrue(passedEvidence.contains("- Delete Task confirmation: passed - Delete opens confirmation before local deletion and exposes cancel."))
         XCTAssertTrue(passedEvidence.contains("- No keyboard trap: passed - Focus can leave sidebar, board, card controls, inspector fields, and dialogs."))
         XCTAssertTrue(passedEvidence.contains("- No unlabeled primary CRUD controls: passed - Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help."))
@@ -5771,6 +5812,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("fill %s with concrete VoiceOver observation."))
         XCTAssertTrue(script.contains("VoiceOver worksheet is missing, stale, or incomplete"))
         XCTAssertTrue(script.contains("Project navigation"))
+        XCTAssertTrue(script.contains("Task content execution"))
         XCTAssertTrue(script.contains("No unlabeled primary CRUD controls"))
         XCTAssertTrue(script.contains("launch_voiceover_candidate_for_evidence()"))
         XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \\"))
@@ -5789,6 +5831,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Validate the filled VoiceOver evidence command before writing tracked evidence."))
         XCTAssertTrue(script.contains("--capture-runtime-ax-smoke"))
         XCTAssertTrue(script.contains("--project-navigation-note"))
+        XCTAssertTrue(script.contains("--task-content-execution-note"))
+        XCTAssertTrue(script.contains("approved execution records reviewed task title and detail in the redacted receipt"))
         XCTAssertTrue(script.contains("Delete Task opens an inline inspector confirmation panel before deletion"))
         XCTAssertTrue(script.contains("focus leaves sidebar, board, inspector, and inline confirmation panels"))
         XCTAssertFalse(script.contains("focus leaves sidebar, board, inspector, and dialogs"))
@@ -5810,6 +5854,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(releaseChecklist.contains("The generated evidence command reloads that `launch.env`, verifies the seeded candidate database and project id, launches the same candidate before runtime AX smoke capture, and blocks if the helper context is stale."))
         XCTAssertTrue(releaseChecklist.contains("The generated VoiceOver evidence command also verifies `.tmp/voiceover-review/voiceover-worksheet.md` is marked completed, pinned to the same source commit and candidate database, free of unchecked/pending/template markers, and filled before validate-only or passed evidence can run."))
         XCTAssertTrue(releaseChecklist.contains("The generated VoiceOver evidence command also rejects boilerplate worksheet values such as `TBD`, `Verified`, `OK`, or `No issues`; each required worksheet field must contain concrete VoiceOver observations."))
+        XCTAssertTrue(releaseChecklist.contains("--task-content-execution-note"))
         let phase11 = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
         XCTAssertTrue(phase11.contains("[x] `script/prepare_voiceover_review_candidate.sh` pins `.tmp/voiceover-review/create-evidence-command.sh` to a clean tracked source tree and the release-candidate source commit it was generated for"))
         XCTAssertTrue(phase11.contains("[x] `script/prepare_voiceover_review_candidate.sh` writes `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` with the current release-candidate `Source commit` without modifying tracked evidence."))
@@ -5818,6 +5863,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase11.contains("[x] Generated VoiceOver evidence command reloads `.tmp/voiceover-review/launch.env`, verifies the seeded candidate database/project id, and launches the same candidate before runtime AX smoke capture."))
         XCTAssertTrue(phase11.contains("[x] Generated VoiceOver evidence command verifies `.tmp/voiceover-review/voiceover-worksheet.md` is current, marked completed, filled, and free of pending/unchecked markers before validate-only or passed evidence."))
         XCTAssertTrue(phase11.contains("[x] Generated VoiceOver evidence command rejects boilerplate worksheet values such as `TBD`, `Verified`, `OK`, or `No issues`; each required worksheet field must contain concrete VoiceOver observations."))
+        XCTAssertTrue(phase11.contains("[x] VoiceOver evidence generator and generated worksheet command require a Task content execution observation proving approved execution records the reviewed task title and detail in the redacted receipt."))
         XCTAssertTrue(phase11.contains("[x] `script/create_voiceover_evidence.sh --validate-only` validates the filled manual command without writing tracked evidence."))
     }
 
@@ -6623,6 +6669,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Project navigation"))
         XCTAssertTrue(script.contains("Inline Task Composer"))
         XCTAssertTrue(script.contains("Task inspector"))
+        XCTAssertTrue(script.contains("Task content execution"))
         XCTAssertTrue(script.contains("missing VoiceOver accessibility evidence file"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence is not marked passed"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence still contains pending/template/placeholder text"))
@@ -6654,6 +6701,7 @@ final class ReleasePipelineTests: XCTestCase {
         let voiceOverPassedSourceRange = try XCTUnwrap(script.range(of: "write_voiceover_manual_evidence_invocation \"--passed\""))
         XCTAssertLessThan(voiceOverValidateSourceRange.lowerBound, voiceOverPassedSourceRange.lowerBound)
         XCTAssertTrue(script.contains("--capture-runtime-ax-smoke"))
+        XCTAssertTrue(script.contains("--task-content-execution-note"))
         XCTAssertTrue(script.contains("runtime AX smoke OK line with unlabeledButtons=0, genericButtons=0, crudSignals=8/8, and focusPathSignals=6/6"))
         XCTAssertTrue(script.contains("complete release-candidate context"))
         XCTAssertTrue(script.contains("section \"Competitor hands-on evidence\""))
@@ -7051,6 +7099,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("--project-navigation-note \"<VoiceOver observation for sidebar Inbox, Today, Projects, and selected review project navigation>\""))
         XCTAssertTrue(script.contains("--inline-task-composer-note \"<VoiceOver observation for title/detail/priority/due create flow, Command+Return, and Escape>\""))
         XCTAssertTrue(script.contains("--status-controls-note \"<VoiceOver observation for previous/next status controls and target status labels>\""))
+        XCTAssertTrue(script.contains("--task-content-execution-note \"<VoiceOver observation proving approved execution records reviewed task title and detail in the redacted receipt>\""))
         XCTAssertFalse(script.contains("--project-navigation-note \"<VoiceOver observation for sidebar project navigation>\""))
         XCTAssertFalse(script.contains("--inline-task-composer-note \"<VoiceOver observation for title/detail/priority/due create flow>\""))
         XCTAssertTrue(script.contains("--no-unlabeled-crud-note \"<VoiceOver observation proving create, update, status move, local suggestion apply, automation review, approved execution, and delete controls have labels or help>\""))
@@ -7453,6 +7502,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(actionSummary.contains("--project-navigation-note \"<VoiceOver observation for sidebar project navigation>\""))
         XCTAssertFalse(actionSummary.contains("--inline-task-composer-note \"<VoiceOver observation for title/detail/priority/due create flow>\""))
         XCTAssertTrue(actionSummary.contains("--save-changes-note \"<VoiceOver observation proving keyboard activation saves local task changes>\""))
+        XCTAssertTrue(actionSummary.contains("--task-content-execution-note \"<VoiceOver observation proving approved execution records reviewed task title and detail in the redacted receipt>\""))
         XCTAssertTrue(actionSummary.contains("--delete-confirmation-note \"<VoiceOver observation proving Delete Task opens an inline inspector confirmation panel before deletion>\""))
         XCTAssertTrue(actionSummary.contains("--confirm-manual-voiceover-pass"))
         XCTAssertTrue(actionSummary.contains("- [ ] VoiceOver accessibility evidence is not marked passed"))
@@ -8893,6 +8943,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Status controls"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Task inspector"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Save Changes"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Task content execution"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Delete Task confirmation"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: No keyboard trap"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: No unlabeled primary CRUD controls"))
@@ -8975,6 +9026,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Status controls: passed - Status move buttons announced target status.
         - Task inspector: passed - Inspector fields and actions were reachable.
         - Save Changes: passed - Save activated from keyboard.
+        - Task content execution: passed - Approved execution recorded the reviewed task title and detail in the redacted receipt.
         - Delete Task confirmation: passed - Destructive confirmation was announced.
         - No keyboard trap: passed - Focus left every primary region.
         - No unlabeled primary CRUD controls: passed - Primary CRUD controls had labels.
@@ -9145,6 +9197,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Status controls: passed - Status move buttons announced target status.
         - Task inspector: passed - Inspector fields and actions were reachable.
         - Save Changes: passed - Save activated from keyboard.
+        - Task content execution: passed - Approved execution recorded the reviewed task title and detail in the redacted receipt.
         - Delete Task confirmation: passed - Destructive confirmation was announced.
         - No keyboard trap: passed - Focus left every primary region.
         - No unlabeled primary CRUD controls: passed - Primary CRUD controls had labels.
@@ -9271,6 +9324,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Status controls: passed - Status move buttons announced target status.
         - Task inspector: passed - Inspector fields and actions were reachable.
         - Save Changes: passed - Save activated from keyboard.
+        - Task content execution: passed - Approved execution recorded the reviewed task title and detail in the redacted receipt.
         - Delete Task confirmation: passed - Destructive confirmation was announced.
         - No keyboard trap: passed - Focus left every primary region.
         - No unlabeled primary CRUD controls: passed - Primary CRUD controls had labels.
@@ -9402,6 +9456,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Status controls: passed - Previous and next status controls announced the target status before moving the selected local task.
         - Task inspector: passed - Focus reached title, detail, status, priority, due, summary, save, suggestion, and destructive actions.
         - Save Changes: passed - Keyboard activation saved the local task edit and left focus in the inspector without trapping it.
+        - Task content execution: passed - Approved execution recorded the reviewed task title and detail in the redacted receipt for the selected local task.
         - Delete Task confirmation: passed - Delete opened the inline confirmation panel, announced cancel and confirm, and did not delete until confirmation.
         - No keyboard trap: passed - Focus moved out of sidebar, board, card controls, inspector fields, and inline confirmation panels.
         - No unlabeled primary CRUD controls: passed - Create, update, status move, local suggestion apply, automation review, approved execution, and delete controls exposed labels or help.
@@ -9547,6 +9602,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Status controls: passed - Move controls announced target status.
         - Task inspector: passed - Inspector fields and actions were reachable.
         - Save Changes: passed - Save activated from keyboard.
+        - Task content execution: passed - Approved execution recorded the reviewed task title and detail in the redacted receipt.
         - Delete Task confirmation: passed - Delete confirmation was announced.
         - No keyboard trap: passed - Focus left all primary regions.
         - No unlabeled primary CRUD controls: passed - Primary CRUD labels were present.

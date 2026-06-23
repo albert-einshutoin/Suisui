@@ -39,9 +39,10 @@ Required manual work:
 
 1. Open the candidate from `.tmp/voiceover-review/launch.env` or rerun the launch command printed by `./script/prepare_release_manual_helpers.sh`.
 2. With actual VoiceOver enabled, verify Project board -> card -> Inline Task Composer -> inspector focus order.
-3. Fill `.tmp/voiceover-review/voiceover-worksheet.md` with concrete observations. Do not use placeholders such as `TBD`, `Verified`, `OK`, or `No issues`.
-4. Run the generated command in validate-only mode first.
-5. Run the generated command in write mode only after validation succeeds.
+3. Run the approved execution path for the reviewed task and confirm the redacted execution receipt records the reviewed task title and detail.
+4. Fill `.tmp/voiceover-review/voiceover-worksheet.md` with concrete observations. Do not use placeholders such as `TBD`, `Verified`, `OK`, or `No issues`.
+5. Run the generated command in validate-only mode first.
+6. Run the generated command in write mode only after validation succeeds.
 
 Release-ready evidence requirements:
 
@@ -50,7 +51,7 @@ Release-ready evidence requirements:
 - release-candidate `Source commit` matching the latest action summary and generated helper command
 - real macOS version, app build, reviewer, check date, evidence source, and accessibility environment
 - runtime AX smoke line with `unlabeledButtons=0`, `genericButtons=0`, `crudSignals=8/8`, and `focusPathSignals=6/6`
-- concrete notes for project navigation, project board detail, open task, Inline Task Composer, status controls, task inspector, save changes, delete confirmation, no keyboard trap, and no unlabeled CRUD controls
+- concrete notes for project navigation, project board detail, open task, Inline Task Composer, status controls, task inspector, save changes, task content execution, delete confirmation, no keyboard trap, and no unlabeled CRUD controls
 
 Verification:
 
