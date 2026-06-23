@@ -296,7 +296,15 @@ public struct DocumentAutomationArtifactPlanner: Sendable {
         userRequest: String,
         documents: [ScopedAutomationDocument]
     ) -> [DocumentAutomationProposedOutput] {
-        let searchable = ([userRequest] + documents.flatMap { [$0.title, $0.redactedSummary, $0.inclusionReason] })
+        // External connector previews can contain actionable release or task
+        // wording, but they are not trusted automation context until their
+        // connector-specific approval flow exists.
+        let approvedDocuments = documents.filter { $0.scope != .externalSources }
+        guard !approvedDocuments.isEmpty else {
+            return []
+        }
+
+        let searchable = ([userRequest] + approvedDocuments.flatMap { [$0.title, $0.redactedSummary, $0.inclusionReason] })
             .joined(separator: "\n")
             .lowercased()
         var kinds: [DocumentAutomationOutputKind] = []

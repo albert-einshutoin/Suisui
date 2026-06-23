@@ -196,6 +196,52 @@ final class DocumentScopedAutomationTests: XCTestCase {
         XCTAssertTrue(drafts.isEmpty)
     }
 
+    func testDocumentArtifactPlannerDoesNotPlanOutputsFromExternalSourcesOnly() {
+        let plan = DocumentAutomationArtifactPlanner().plan(
+            userRequest: "Create release notes and a PR plan from the GitHub issue mirror.",
+            documents: [
+                ScopedAutomationDocument(
+                    id: "github-issue",
+                    title: "GitHub issue mirror",
+                    scope: .externalSources,
+                    redactedSummary: "Release notes, PR plan, task drafts, and due-date changes from remote connector state.",
+                    inclusionReason: "External source preview is visible but not approved."
+                )
+            ]
+        )
+
+        XCTAssertEqual(plan.proposedOutputs, [])
+        XCTAssertEqual(plan.highestRisk, .read)
+        XCTAssertFalse(plan.requiresApproval)
+        XCTAssertEqual(plan.documentsConsidered.map(\.id), ["github-issue"])
+        XCTAssertEqual(plan.documentReasons.map(\.reason), ["External sources require connector-specific review before use."])
+    }
+
+    func testDocumentArtifactPlannerIgnoresExternalSourceSignalsWhenApprovedDocsDoNotSupportDeliverable() {
+        let plan = DocumentAutomationArtifactPlanner().plan(
+            userRequest: "Create the appropriate outputs from the selected documents.",
+            documents: [
+                ScopedAutomationDocument(
+                    id: "local-note",
+                    title: "Local project memo",
+                    scope: .projectDocs,
+                    redactedSummary: "General project background without release or PR instructions.",
+                    inclusionReason: "Local project note was selected."
+                ),
+                ScopedAutomationDocument(
+                    id: "github-issue",
+                    title: "GitHub issue mirror",
+                    scope: .externalSources,
+                    redactedSummary: "Release notes, PR plan, task drafts, and due-date changes from remote connector state.",
+                    inclusionReason: "External source preview is visible but not approved."
+                )
+            ]
+        )
+
+        XCTAssertEqual(plan.proposedOutputs.map(\.kind), [.preparationChecklist])
+        XCTAssertEqual(plan.documentReasons.map(\.documentID), ["local-note", "github-issue"])
+    }
+
     func testDocumentArtifactPlannerKeepsProviderContextBehindApproval() {
         let request = DocumentAutomationArtifactPlanner().makeRequest(
             id: "doc-planner-1",
