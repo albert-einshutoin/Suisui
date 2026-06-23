@@ -111,6 +111,7 @@ private final class SoloPMProjectBoardWindowFallback {
                 viewModel: AppRuntimeFactory.makeProjectBoardViewModel(),
                 taskAutomationSettings: AppRuntimeFactory.loadTaskAutoExecutionSettings
             )
+            .preferredColorScheme(Self.effectiveAppearancePreference.colorScheme)
         )
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1_180, height: 760),
@@ -132,6 +133,18 @@ private final class SoloPMProjectBoardWindowFallback {
         NSApplication.shared.windows.filter { window in
             window.isVisible && !window.isMiniaturized && window.title == "SoloPM"
         }
+    }
+
+    private static var effectiveAppearancePreference: SoloPMAppearancePreference {
+        SoloPMAppearancePreference.environmentOverride ?? persistedAppearancePreference
+    }
+
+    private static var persistedAppearancePreference: SoloPMAppearancePreference {
+        guard let rawValue = UserDefaults.standard.string(forKey: SoloPMAppearancePreference.storageKey),
+              let preference = SoloPMAppearancePreference(rawValue: rawValue) else {
+            return .system
+        }
+        return preference
     }
 }
 

@@ -391,7 +391,7 @@ VALUES
   ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
    'Unscheduled schedule draft input', 'planned', 'Appears in Schedule cockpit as an unscheduled task.', NULL, NULL, 'medium', 'ui-evidence'),
   ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Completed Evidence Project' ORDER BY id DESC LIMIT 1),
-   'Done analytics sample', 'done', 'Completed history appears in Done analytics evidence.', '$tomorrow', '$yesterday', 'medium', 'ui-evidence');
+   'Done analytics sample', 'completed', 'Completed history appears in Done analytics evidence.', '$tomorrow', '$yesterday', 'medium', 'ui-evidence');
 
 INSERT INTO inbox_capture_records (
   task_id,
@@ -495,6 +495,26 @@ assert_phase12_seed_data() {
   fi
   if [[ "$completed_project_count" -lt 1 ]]; then
     echo "missing Phase 12 UI evidence seed: Completed Evidence Project" >&2
+    exit 1
+  fi
+}
+
+assert_valid_seed_task_statuses() {
+  local database_path="$1"
+  local invalid_statuses
+
+  # The app maps persisted "completed" tasks to the UI's Done column; writing
+  # the UI label into SQLite makes the screenshot evidence capture an error page.
+  invalid_statuses="$(sqlite3 "$database_path" "
+SELECT DISTINCT status
+FROM tasks
+WHERE source_command = 'ui-evidence'
+  AND status NOT IN ('open', 'backlog', 'planned', 'in_progress', 'blocked', 'completed')
+ORDER BY status;
+")"
+
+  if [[ -n "$invalid_statuses" ]]; then
+    echo "unsupported Phase 12 UI evidence task status: $invalid_statuses" >&2
     exit 1
   fi
 }
@@ -865,6 +885,7 @@ initialize_database "$DATABASE_PATH"
 seed_database "$DATABASE_PATH"
 seed_mcp_registrations "$DATABASE_PATH"
 assert_phase12_seed_data "$DATABASE_PATH"
+assert_valid_seed_task_statuses "$DATABASE_PATH"
 persist_project_board_selection "$DATABASE_PATH"
 
 LIGHT_SCREENSHOT="$SCREENSHOT_DIR/project-board-light.png"

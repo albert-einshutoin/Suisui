@@ -856,6 +856,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("private var effectiveAppearancePreference: SoloPMAppearancePreference"))
         XCTAssertTrue(appSource.contains("SoloPMAppearancePreference.environmentOverride ?? appearancePreference"))
         XCTAssertTrue(appSource.contains(".preferredColorScheme(effectiveAppearancePreference.colorScheme)"))
+        XCTAssertTrue(appSource.contains("private static var effectiveAppearancePreference: SoloPMAppearancePreference"))
+        XCTAssertTrue(appSource.contains("SoloPMAppearancePreference.environmentOverride ?? persistedAppearancePreference"))
+        XCTAssertTrue(appSource.contains(".preferredColorScheme(Self.effectiveAppearancePreference.colorScheme)"))
         XCTAssertTrue(appSource.contains("SettingsView("))
         XCTAssertTrue(appSource.contains("appearancePreference: $appearancePreference, languagePreference: $languagePreference"))
         XCTAssertTrue(appSource.contains("@Binding private var appearancePreference: SoloPMAppearancePreference"))
@@ -2843,6 +2846,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("SELECT COUNT(*) FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Done analytics sample'"))
         XCTAssertTrue(script.contains("SELECT COUNT(*) FROM projects WHERE source_command = 'ui-evidence' AND title = 'Completed Evidence Project'"))
         XCTAssertTrue(script.contains("assert_phase12_seed_data \"$DATABASE_PATH\""))
+    }
+
+    func testPhase12UICaptureSeedUsesPersistedTaskStatusContract() throws {
+        let script = try readPackageFile("script/capture_ui_evidence.sh")
+
+        XCTAssertTrue(script.contains("assert_valid_seed_task_statuses"))
+        XCTAssertTrue(script.contains("unsupported Phase 12 UI evidence task status"))
+        XCTAssertTrue(script.contains("status NOT IN ('open', 'backlog', 'planned', 'in_progress', 'blocked', 'completed')"))
+        XCTAssertTrue(script.contains("'Done analytics sample', 'completed'"))
+        XCTAssertFalse(script.contains("'Done analytics sample', 'done'"))
+        XCTAssertTrue(script.contains("assert_valid_seed_task_statuses \"$DATABASE_PATH\""))
     }
 
     func testUIScreenshotCaptureFailureExplainsScreenRecordingAndWindowDiagnostics() throws {
