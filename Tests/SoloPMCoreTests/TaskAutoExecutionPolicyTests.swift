@@ -678,6 +678,90 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertFalse(request.userInput.contains("sk-proj-doc-secret123"))
     }
 
+    func testPlanningRequestDropsUnboundOrNonDeliverableDocumentDraftsAtProviderBoundary() throws {
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        let decision = TaskAutoExecutionDecision(
+            status: .readyForReview,
+            selectedTasks: [
+                makeTask(
+                    id: 71,
+                    title: "Review selected document outputs",
+                    detail: "Use only source-bound draft outputs.",
+                    priority: .high,
+                    dueAt: "2026-06-22T18:00:00Z"
+                )
+            ],
+            reason: "High priority document task is due today.",
+            llmCallBudgetRemaining: 2,
+            requiresUserApproval: true,
+            allowsDirectExecution: false
+        )
+        let source = DocumentAutomationDeliverableSource(
+            id: "release",
+            title: "Release checklist",
+            redactedSummary: "Release checklist evidence.",
+            inclusionReason: "Explicitly selected local document."
+        )
+        let drafts = [
+            DocumentAutomationDeliverableDraft(
+                kind: .preparationChecklist,
+                title: "Bound checklist",
+                suggestedPath: ".tmp/document-automation/preparation-checklist.md",
+                sourceDocumentIDs: ["release"],
+                sourceDocuments: [source],
+                rationale: "Create checklist from selected release evidence.",
+                riskLevel: .draft,
+                requiresApproval: true
+            ),
+            DocumentAutomationDeliverableDraft(
+                kind: .releaseNotes,
+                title: "Unbound release notes",
+                suggestedPath: "docs/release/notes-draft.md",
+                sourceDocumentIDs: ["release"],
+                sourceDocuments: [],
+                rationale: "This has IDs but no reviewable source preview.",
+                riskLevel: .draft,
+                requiresApproval: true
+            ),
+            DocumentAutomationDeliverableDraft(
+                kind: .taskDraft,
+                title: "Non-deliverable task draft",
+                suggestedPath: ".tmp/document-automation/task-draft.md",
+                sourceDocumentIDs: ["release"],
+                sourceDocuments: [source],
+                rationale: "Task mutations do not belong in document deliverable files.",
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            DocumentAutomationDeliverableDraft(
+                kind: .pullRequestPlan,
+                title: "Unapproved PR plan",
+                suggestedPath: ".tmp/document-automation/pr-plan.md",
+                sourceDocumentIDs: ["release"],
+                sourceDocuments: [source],
+                rationale: "This draft was not approval-gated.",
+                riskLevel: .draft,
+                requiresApproval: false
+            )
+        ]
+
+        let request = try TaskAutoExecutionPlanningRequestBuilder().makePlanningRequest(
+            decision: decision,
+            settings: .init(isEnabled: true, mode: .reviewOnly, cadence: .hourly),
+            referenceDate: referenceDate,
+            timeZoneIdentifier: "UTC",
+            documentDeliverableDrafts: drafts
+        )
+        let payload = try jsonPayload(from: request.userInput)
+        let deliverables = try XCTUnwrap(payload["documentDeliverables"] as? [[String: Any]])
+
+        XCTAssertEqual(deliverables.map { $0["kind"] as? String }, ["preparationChecklist"])
+        XCTAssertEqual(deliverables.first?["title"] as? String, "Bound checklist")
+        XCTAssertFalse(request.userInput.contains("Unbound release notes"))
+        XCTAssertFalse(request.userInput.contains("Non-deliverable task draft"))
+        XCTAssertFalse(request.userInput.contains("Unapproved PR plan"))
+    }
+
     func testAppSettingsPersistTaskAutoExecutionControls() throws {
         let suiteName = "SoloPM.TaskAutoExecutionSettings.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

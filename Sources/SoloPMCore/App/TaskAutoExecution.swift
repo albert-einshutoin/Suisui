@@ -568,20 +568,23 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
     private func reviewableDocumentDeliverables(
         from drafts: [DocumentAutomationDeliverableDraft]
     ) -> [TaskAutoExecutionPromptDocumentDeliverable] {
-        // The document planner already excludes unapproved external context,
-        // but this provider boundary still sends only approval-gated draft
-        // outputs and redacts every string again before it can leave the Mac.
-        // Source previews are included so document-backed artifacts remain
-        // evidence-based without letting unapproved connector context through.
+        // Future callers may bypass the local document planner, so the provider
+        // boundary repeats the product contract: only file-like, approval-gated
+        // drafts with concrete source previews may leave the Mac. Task/status
+        // mutations stay in the selected task review flow, not document output.
         drafts
-            .filter { $0.requiresApproval }
-            .map { draft in
-                TaskAutoExecutionPromptDocumentDeliverable(
+            .filter(isProviderReviewableDocumentDeliverable)
+            .compactMap { draft in
+                let sourceDocuments = sourceDocumentsBoundToDeclaredIDs(for: draft)
+                guard !sourceDocuments.isEmpty else {
+                    return nil
+                }
+                return TaskAutoExecutionPromptDocumentDeliverable(
                     kind: draft.kind.rawValue,
                     title: redactedProviderContent(draft.title),
                     suggestedPath: redactedProviderContent(draft.suggestedPath),
-                    sourceDocumentIDs: draft.sourceDocumentIDs.map(redactedProviderContent),
-                    sourceDocuments: draft.sourceDocuments.map { source in
+                    sourceDocumentIDs: sourceDocuments.map { redactedProviderContent($0.id) },
+                    sourceDocuments: sourceDocuments.map { source in
                         TaskAutoExecutionPromptDocumentSource(
                             id: redactedProviderContent(source.id),
                             title: redactedProviderContent(source.title),
@@ -594,6 +597,28 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
                     requiresApproval: draft.requiresApproval
                 )
             }
+    }
+
+    private func isProviderReviewableDocumentDeliverable(_ draft: DocumentAutomationDeliverableDraft) -> Bool {
+        guard draft.requiresApproval else {
+            return false
+        }
+        switch draft.kind {
+        case .preparationChecklist, .draftArtifact, .releaseNotes, .pullRequestPlan:
+            return true
+        case .taskDraft, .statusChange, .dueDateChange:
+            return false
+        }
+    }
+
+    private func sourceDocumentsBoundToDeclaredIDs(
+        for draft: DocumentAutomationDeliverableDraft
+    ) -> [DocumentAutomationDeliverableSource] {
+        let declaredIDs = Set(draft.sourceDocumentIDs)
+        if declaredIDs.isEmpty {
+            return draft.sourceDocuments
+        }
+        return draft.sourceDocuments.filter { declaredIDs.contains($0.id) }
     }
 
     private func selectionReason(for task: ProjectBoardTask, referenceDate: Date, calendar: Calendar) -> String {

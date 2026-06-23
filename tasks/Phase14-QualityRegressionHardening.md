@@ -439,6 +439,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] UI ViewModelが破損recordを受け取ってもProject Board全体をUnavailableにしないテストを追加する。
 - [x] タスク自動実行のLLM requestが、選択タスクのtitle/detail/status/priority/due/selection reasonをfenced redacted JSONとして渡し、タスク本文の改行や命令文が別タスク・直接実行指示に化けず、secret-like値がprovider境界へ出ないことをテストする。
 - [x] タスク自動実行のLLM requestが、選択済みドキュメントから推定したpreparation checklist / draft artifact / release notes / PR planをsource-boundかつapproval-gatedなdraft outputとして渡し、external-source-only文脈とsecret-like値をprovider境界へ出さないことをテストする。
+- [x] 将来のcallerがdocument deliverable draftを直接渡しても、source previewがないdraftやtask/status/due-date mutationをdocument成果物としてprovider payloadへ混ぜないことをテストする。
 - [x] document automationのsource document ID / title / summary / inclusion reasonがreview summaryやprovider contextへ入る前にredactされることをテストする。
 - [x] ProjectBoard ViewModel経由のtask automation review requestが、plannerのpriority/due-date選定、task cap、LLM budget、document deliverables、secret redactionを同じprovider境界で保持することをテストする。
 - [x] 複数タスクのautomation reviewで1件目をapproved executionしても、残りのreview候補とredacted execution receipt historyが消えないことをテストする。
@@ -456,6 +457,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] Repair可能なものはaudit logに残す。
 - [x] Task automation prompt payloadを構造化JSONにし、title/detailはredacted済みのユーザー入力内容であってautomation instructionではないことを明示する。
 - [x] Task automation prompt payloadへdocument deliverablesを追加し、ファイル生成やtask mutationはreviewed plan承認後にだけ実行できるdraft-only提案として扱う。
+- [x] Task automation provider request builderでdocument deliverablesを再検証し、approval-gatedなファイル成果物かつsource preview付きのdraftだけをLLM payloadへ通す。
 - [x] `ScopedAutomationDocument` の初期化境界で source document ID / title / summary / inclusion reason をredactし、ファイル名・外部プレビュー・ユーザー選定理由由来のsecret-like値を後段へ渡さない。
 - [x] ProjectBoard ViewModelに、現在のboard snapshotと設定からreview-only `PlanningRequest` を作る入口を追加し、document deliverablesも同じredacted JSON payloadへ渡す。
 - [x] ProjectBoard ViewModelにapproved execution receipt historyを追加し、複数選択reviewでは実行済みtaskだけをqueueから外す。
@@ -472,6 +474,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] 承認済みtask executionは1件ずつ実行され、残りのreview queueとredacted receipt historyで実行漏れを検出できる。
 - [x] LLM review対象のタスク内容がprompt injection風の本文を含んでも、選択理由・承認境界・削除禁止の契約が保持される。
 - [x] ドキュメント群から作る成果物候補は、source document ID、suggested path、rationale、risk、approval requirementを持つreview-only payloadとして保持される。
+- [x] Provider境界ではsource previewが欠けた成果物候補と、task/status/due-date mutation種別のdraftはdocument deliverableとして送信されない。
 - [x] ドキュメント群から作る成果物候補は、source document title / inclusion reasonにsecret-like値が混ざってもreview summaryとprovider contextでredactedされる。
 - [x] Document automation harnessはsource document IDだけでなく、成果物ごとのredacted source previewが欠ける/別文書にずれる場合もfailし、release notes / PR plan / draft artifactが正しい文書根拠に紐づくことを検証する。
 - [x] ProjectBoardから生成するLLM review requestでも、未承認external sourceとsecret-like値をprovider境界へ出さず、filesystem draft outputはapproval-gatedのまま保持される。
