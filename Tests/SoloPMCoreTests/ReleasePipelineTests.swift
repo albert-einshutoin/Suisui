@@ -6901,7 +6901,9 @@ final class ReleasePipelineTests: XCTestCase {
         }
 
         XCTAssertTrue(captureScript.contains("capture_project_board_destination system inbox"))
-        XCTAssertTrue(captureScript.contains("capture_project_board_destination system schedule"))
+        XCTAssertTrue(captureScript.contains("capture_project_board_destination system today"))
+        XCTAssertTrue(captureScript.contains("capture_project_board_destination light schedule"))
+        XCTAssertTrue(captureScript.contains("capture_project_board_destination dark schedule"))
         XCTAssertTrue(captureScript.contains("capture_settings_overview system"))
         XCTAssertTrue(captureScript.contains("capture_settings_appearance system"))
         XCTAssertTrue(captureScript.contains("capture_mcp_settings_appearance system"))

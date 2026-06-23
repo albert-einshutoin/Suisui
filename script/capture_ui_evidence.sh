@@ -361,8 +361,10 @@ ON inbox_capture_records(task_id);
 
 seed_database() {
   local database_path="$1"
+  local today
   local tomorrow
   local yesterday
+  today="$(date +%Y-%m-%d)"
   tomorrow="$(date -v+1d +%Y-%m-%d)"
   yesterday="$(date -v-1d -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -383,7 +385,7 @@ VALUES
   ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
    'Capture launch screenshots', 'planned', 'Verify board card density, sidebar, and inspector in each theme.', '$tomorrow', NULL, 'high', 'ui-evidence'),
   ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
-   'Review VoiceOver focus path', 'in_progress', 'Confirm project board to task card to inspector path before public alpha.', '$tomorrow', NULL, 'medium', 'ui-evidence'),
+   'Review VoiceOver focus path', 'in_progress', 'Confirm project board to task card to inspector path before public alpha.', '$today', NULL, 'high', 'ui-evidence'),
   ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
    'Document remaining release blockers', 'blocked', 'Keep signing, notarization, and manual accessibility gates visible.', NULL, NULL, 'medium', 'ui-evidence'),
   ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
@@ -726,9 +728,9 @@ write_evidence_file() {
     printf -- '- Viewport contract: `SOLOPM_VISUAL_BASELINE_VIEWPORT=%s`, `SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT=%s`\n' "$VISUAL_BASELINE_VIEWPORT" "$SETTINGS_VISUAL_BASELINE_VIEWPORT"
     printf '%s\n' '- Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`'
     printf '%s\n' '- Seed data: local `Launch Readiness` project with planned, in-progress, blocked, Inbox voice, Schedule, Done analytics, milestone, completed project, and deterministic MCP registration rows'
-    printf '%s\n' '- Scope: Project board sidebar, task cards, Inbox voice detail, Projects overview, Schedule cockpit, Done analytics, Settings integrations, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System'
+    printf '%s\n' '- Scope: Project board sidebar, task cards, Inbox voice detail, Today cockpit, Projects overview, Schedule cockpit, Done analytics, Settings integrations, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System'
     printf '%s\n' '- Capture contract: Light/Dark/System visual baseline manifest fixes product screen targets, viewport, semantic tolerances, and AX frame audit requirements.'
-    printf '%s\n' '- Manual review: passed for Project Board sidebar/cards/inspector, Inbox voice detail, Projects overview, Schedule cockpit, Done analytics, Settings integrations, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast'
+    printf '%s\n' '- Manual review: passed for Project Board sidebar/cards/inspector, Inbox voice detail, Today cockpit, Projects overview, Schedule cockpit, Done analytics, Settings integrations, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast'
     printf '\n'
     printf '%s\n' '## Screenshots'
     printf '\n'
@@ -926,9 +928,9 @@ capture_appearance system "$SYSTEM_SCREENSHOT"
 capture_project_board_destination light inbox "$INBOX_LIGHT_SCREENSHOT" "Inbox"
 capture_project_board_destination dark inbox "$INBOX_DARK_SCREENSHOT" "Inbox"
 capture_project_board_destination system inbox "$INBOX_SYSTEM_SCREENSHOT" "Inbox"
-capture_project_board_destination light schedule "$TODAY_LIGHT_SCREENSHOT" "Today"
-capture_project_board_destination dark schedule "$TODAY_DARK_SCREENSHOT" "Today"
-capture_project_board_destination system schedule "$TODAY_SYSTEM_SCREENSHOT" "Today"
+capture_project_board_destination light today "$TODAY_LIGHT_SCREENSHOT" "Today"
+capture_project_board_destination dark today "$TODAY_DARK_SCREENSHOT" "Today"
+capture_project_board_destination system today "$TODAY_SYSTEM_SCREENSHOT" "Today"
 capture_project_board_destination light inbox "$VOICE_COMMAND_LIGHT_SCREENSHOT" "Voice Command"
 capture_project_board_destination dark inbox "$VOICE_COMMAND_DARK_SCREENSHOT" "Voice Command"
 capture_project_board_destination system inbox "$VOICE_COMMAND_SYSTEM_SCREENSHOT" "Voice Command"

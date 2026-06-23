@@ -342,52 +342,99 @@ private struct TodayCommandPanel: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: 8) {
+        TodayBriefingPanel(commandTitle: $commandTitle, plan: plan, viewModel: viewModel)
+    }
+}
+
+private struct TodayBriefingPanel: View {
+    @Binding var commandTitle: String
+    let plan: TodayWorkflowPlan
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                WorkflowDoneToggle(viewModel: viewModel)
-                TextField("Add work to Inbox", text: $commandTitle)
-                    .textFieldStyle(.roundedBorder)
+                Image(systemName: "mic.circle")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                TextField("What should move next?", text: $commandTitle)
+                    .textFieldStyle(.plain)
                     .onSubmit(addInboxItem)
-                    .accessibilityIdentifier("today-command-title")
+                    .accessibilityIdentifier("today-command-capture-field")
                     .accessibilityLabel("Today command title")
                     .accessibilityHint("Adds a local Inbox item without changing today's existing task statuses.")
                 Button(action: addInboxItem) {
-                    Label("Add to Inbox", systemImage: "plus")
+                    Label("Add to Inbox", systemImage: "plus.circle.fill")
                 }
                 .disabled(commandTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .help("Add this command to Inbox")
                 .accessibilityIdentifier("today-command-add")
                 .accessibilityHint("Creates a local Inbox item from the command text.")
             }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
+            .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.secondary.opacity(0.16), lineWidth: 1)
+            }
 
-            HStack(spacing: 8) {
-                ForEach(viewModel.todayRecommendationChips()) { chip in
-                    Button {
-                        viewModel.selectedTaskID = chip.taskID
-                    } label: {
-                        Label(chip.title, systemImage: chip.systemImage)
-                    }
-                    .controlSize(.small)
-                    .help(chip.reason)
-                    .accessibilityIdentifier("today-suggestion-chip-\(chip.kind.rawValue)")
-                    .accessibilityLabel(chip.title)
-                    .accessibilityHint(chip.reason)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 8) {
+                    WorkflowDoneToggle(viewModel: viewModel)
+                    suggestionRail
+                    startFocusButton
                 }
 
+                VStack(alignment: .leading, spacing: 8) {
+                    WorkflowDoneToggle(viewModel: viewModel)
+                    suggestionRail
+                    startFocusButton
+                }
+            }
+
+            TodayFlowStrip(plan: plan, viewModel: viewModel)
+        }
+        .frame(minWidth: 360, maxWidth: 540, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("today-briefing-panel")
+        .accessibilityLabel("Today briefing")
+        .accessibilityHint("Captures work into Inbox and offers the next reviewed Today action.")
+    }
+
+    private var suggestionRail: some View {
+        HStack(spacing: 6) {
+            ForEach(viewModel.todayRecommendationChips()) { chip in
                 Button {
-                    if let task = plan.recommendedTask {
-                        viewModel.startFocus(taskID: task.id)
-                    }
+                    viewModel.startFocus(taskID: chip.taskID)
                 } label: {
-                    Label("Start Focus", systemImage: "play.circle")
+                    Label(chip.title, systemImage: chip.systemImage)
                 }
                 .controlSize(.small)
-                .disabled(plan.recommendedTask == nil)
-                .help("Start focusing without changing task status")
-                .accessibilityIdentifier("today-start-focus")
-                .accessibilityHint("Marks the recommended task as the current local focus without writing Calendar or task status changes.")
+                .help(chip.reason)
+                .accessibilityIdentifier("today-suggestion-chip-\(chip.kind.rawValue)")
+                .accessibilityLabel(chip.title)
+                .accessibilityHint("Starts this recommended task as local focus without changing task status.")
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("today-suggestion-rail")
+        .accessibilityLabel("Quick focus suggestions")
+    }
+
+    private var startFocusButton: some View {
+        Button {
+            if let task = plan.recommendedTask {
+                viewModel.startFocus(taskID: task.id)
+            }
+        } label: {
+            Label("Start Focus", systemImage: "play.circle")
+        }
+        .controlSize(.small)
+        .disabled(plan.recommendedTask == nil)
+        .help("Start focusing without changing task status")
+        .accessibilityIdentifier("today-start-focus")
+        .accessibilityHint("Marks the recommended task as the current local focus without writing Calendar or task status changes.")
     }
 
     private func addInboxItem() {
@@ -868,7 +915,7 @@ private struct TodaySuggestionPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            TodayPlanSummary(plan: plan, viewModel: viewModel)
+            TodayAISuggestionCard(plan: plan, viewModel: viewModel)
             TodayTimeBlockList(plan: plan)
             HStack(spacing: 8) {
                 Button {
@@ -899,11 +946,43 @@ private struct TodaySuggestionPanel: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-suggestion-panel")
         .accessibilityLabel("Today planning")
         .accessibilityHint("Shows the recommended focus task, due counts, and local time blocks.")
+    }
+}
+
+private struct TodayAISuggestionCard: View {
+    let plan: TodayWorkflowPlan
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Label("AI suggestion", systemImage: "sparkles")
+                    .font(.subheadline.weight(.semibold))
+                Spacer(minLength: 8)
+                Button {
+                    if let task = plan.recommendedTask {
+                        viewModel.startFocus(taskID: task.id)
+                    }
+                } label: {
+                    Label("Start Focus", systemImage: "play.circle")
+                }
+                .controlSize(.small)
+                .disabled(plan.recommendedTask == nil)
+                .help("Start focus from recommendation")
+                .accessibilityIdentifier("today-ai-suggestion-start-focus")
+                .accessibilityHint("Marks the recommended task as the current local focus without writing Calendar or task status changes.")
+            }
+
+            TodayPlanSummary(plan: plan, viewModel: viewModel)
+        }
+        .padding(10)
+        .background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("today-ai-suggestion-card")
     }
 }
 
@@ -992,6 +1071,74 @@ private struct TodayCountBadge: View {
         .accessibilityIdentifier("today-count-badge-\(label.lowercased())")
         .accessibilityLabel("\(label) tasks")
         .accessibilityValue("\(value)")
+    }
+}
+
+private struct TodayFlowStrip: View {
+    let plan: TodayWorkflowPlan
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    private var visibleBlocks: [TodayTimeBlock] {
+        Array(plan.timeBlocks.prefix(3))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                Label("Today Flow", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
+                    .font(.caption.weight(.semibold))
+                Spacer(minLength: 8)
+                Button {
+                    _ = viewModel.prepareTodayScheduleDraft()
+                } label: {
+                    Label("Optimize Flow", systemImage: "wand.and.stars")
+                }
+                .controlSize(.small)
+                .disabled(plan.timeBlocks.isEmpty)
+                .accessibilityIdentifier("today-flow-optimize")
+                .accessibilityHint("Generates a local schedule draft from the visible Today flow without writing Calendar.")
+            }
+
+            if visibleBlocks.isEmpty {
+                Text("No flow blocks yet")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                HStack(spacing: 6) {
+                    ForEach(visibleBlocks) { block in
+                        Button {
+                            viewModel.startFocus(taskID: block.task.id)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(block.label)
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                Text(block.task.title)
+                                    .font(.caption.weight(.medium))
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 8)
+                        .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+                        .help(block.task.title)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("today-flow-chip-\(block.id)")
+                        .accessibilityLabel("Focus block")
+                        .accessibilityValue(block.task.title)
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("today-flow-strip")
+        .accessibilityLabel("Today Flow")
+        .accessibilityHint("Shows a compact route through the first local Today time blocks.")
     }
 }
 

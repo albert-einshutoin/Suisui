@@ -1691,7 +1691,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
 
         XCTAssertTrue(workflowSource.contains("TodayCommandPanel"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-command-title\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-command-capture-field\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-command-add\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-suggestion-chip-"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-start-focus\")"))
@@ -1711,6 +1711,22 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("public func startFocus"))
         XCTAssertTrue(coreSource.contains("public func prepareTodayScheduleDraft"))
         XCTAssertTrue(coreSource.contains("public func todayPlan("))
+    }
+
+    func testTodayWorkflowUsesSampleInspiredBriefingAndFlowRail() throws {
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+
+        XCTAssertTrue(workflowSource.contains("TodayBriefingPanel"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-briefing-panel\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-command-capture-field\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-suggestion-rail\")"))
+        XCTAssertTrue(workflowSource.contains("viewModel.startFocus(taskID: chip.taskID)"))
+        XCTAssertTrue(workflowSource.contains("TodayFlowStrip(plan: plan, viewModel: viewModel)"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-flow-strip\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-flow-chip-\\(block.id)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-flow-optimize\")"))
+        XCTAssertTrue(workflowSource.contains("TodayAISuggestionCard(plan: plan, viewModel: viewModel)"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-ai-suggestion-card\")"))
     }
 
     func testScheduleWorkflowIsReachableAndApprovalFirst() throws {
@@ -2825,7 +2841,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(evidence.contains("settings-overview-dark.png"))
         XCTAssertTrue(evidence.contains("settings-mcp-light.png"))
         XCTAssertTrue(evidence.contains("settings-mcp-dark.png"))
-        XCTAssertTrue(evidence.contains("Manual review: passed for Project Board sidebar/cards/inspector, Inbox voice detail, Projects overview, Schedule cockpit, Done analytics, Settings integrations, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast"))
+        XCTAssertTrue(evidence.contains("Manual review: passed for Project Board sidebar/cards/inspector, Inbox voice detail, Today cockpit, Projects overview, Schedule cockpit, Done analytics, Settings integrations, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast"))
         XCTAssertTrue(audit.contains("Task card screenshot証跡は生成・目視確認済み"))
         XCTAssertTrue(audit.contains("Settings Overview Pro Value rowのスクリーンショット証跡は生成・目視確認済み"))
         XCTAssertTrue(audit.contains("MCP server別の接続状態証跡は生成・目視確認済み"))
@@ -2865,6 +2881,14 @@ final class AppExperienceSourceTests: XCTestCase {
             XCTAssertTrue(releaseReport.contains(screenshot), "release report missing \(screenshot)")
             XCTAssertTrue(evidence.contains(screenshot), "evidence missing \(screenshot)")
         }
+
+        XCTAssertTrue(script.contains("capture_project_board_destination light today \"$TODAY_LIGHT_SCREENSHOT\" \"Today\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination dark today \"$TODAY_DARK_SCREENSHOT\" \"Today\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination system today \"$TODAY_SYSTEM_SCREENSHOT\" \"Today\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination light schedule \"$SCHEDULE_LIGHT_SCREENSHOT\" \"Schedule cockpit\""))
+        XCTAssertFalse(script.contains("capture_project_board_destination light schedule \"$TODAY_LIGHT_SCREENSHOT\""))
+        XCTAssertTrue(script.contains("today=\"$(date +%Y-%m-%d)\""))
+        XCTAssertTrue(script.contains("'Review VoiceOver focus path', 'in_progress', 'Confirm project board to task card to inspector path before public alpha.', '$today'"))
 
         XCTAssertTrue(script.contains("capture_project_board_destination"))
         XCTAssertTrue(script.contains("SOLOPM_OPEN_SETTINGS_ON_LAUNCH=1"))
