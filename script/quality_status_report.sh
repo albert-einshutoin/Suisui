@@ -166,14 +166,12 @@ write_risk_coverage_lines() {
   done <<<"$matches"
 }
 
-latest_automated_preflight() {
-  local head_commit="$1"
-  local expected="$ROOT_DIR/.tmp/automated-release-preflight-$head_commit.md"
-  if [[ -f "$expected" ]]; then
-    printf "%s" "$(relative_path "$expected")"
-    return 0
-  fi
-  printf "missing .tmp/automated-release-preflight-%s.md" "$head_commit"
+automated_preflight_guidance() {
+  # docs/quality/status.md is a committed snapshot. If it records a concrete
+  # HEAD-specific evidence filename, the act of committing the snapshot makes
+  # that filename stale. Keep the command derived from the reader's current
+  # release candidate instead.
+  printf 'current HEAD after a clean `./script/check_automated_release_preflight.sh` run (`.tmp/automated-release-preflight-$(git rev-parse --short HEAD).md`)'
 }
 
 phase_item_status() {
@@ -356,7 +354,7 @@ expected_manual_commit="$(manual_release_evidence_source_commit)"
   printf -- '- Phase14 completion: %s/%s checked, %s remaining (`tasks/Phase14-QualityRegressionHardening.md`)\n' "$phase_done" "$phase_total" "$phase_open"
   printf -- '- Open risk items: %s (`docs/quality/regression-risk-map.md`)\n' "$risk_open"
   printf -- '- Manual-only risk items: %s (`docs/quality/regression-risk-map.md`)\n' "$risk_manual"
-  printf -- '- Automated preflight evidence: `%s`\n\n' "$(latest_automated_preflight "$source_commit")"
+  printf -- '- Automated preflight evidence: %s\n\n' "$(automated_preflight_guidance)"
 
   printf "## Unfinished Phase14 Items\n\n"
   write_matching_lines "$PHASE14_FILE" '^- \[ \]' 30 "No unchecked Phase14 items found."
@@ -396,7 +394,7 @@ expected_manual_commit="$(manual_release_evidence_source_commit)"
   printf -- '- `docs/quality/test-triage.md`\n'
   printf -- '- `docs/quality/flake-quarantine.md`\n'
   printf -- '- `./script/check_automated_release_preflight.sh`\n'
-  printf -- '- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-%s.md ./script/release_readiness_report.sh`\n\n' "$source_commit"
+  printf -- '- `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-$(git rev-parse --short HEAD).md ./script/release_readiness_report.sh`\n\n'
 
   printf "## Notes\n\n"
   printf -- "- This dashboard is a quality triage aid, not release evidence.\n"

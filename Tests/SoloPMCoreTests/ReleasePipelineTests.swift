@@ -7514,6 +7514,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(report.contains("script/capture_ui_evidence.sh --doctor"))
         XCTAssertTrue(report.contains("script/release_readiness_report.sh"))
         XCTAssertTrue(report.contains("`./script/check_automated_release_preflight.sh`"))
+        XCTAssertTrue(report.contains("git rev-parse --short HEAD"))
+        XCTAssertNil(report.range(of: #"automated-release-preflight-[[:xdigit:]]{7,}\.md"#, options: .regularExpression))
         XCTAssertTrue(report.range(of: #"SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.* ./script/release_readiness_report\.sh"#, options: .regularExpression) != nil)
         XCTAssertNil(report.range(of: #"SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.* ./script/check_automated_release_preflight\.sh"#, options: .regularExpression))
         XCTAssertNil(report.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
