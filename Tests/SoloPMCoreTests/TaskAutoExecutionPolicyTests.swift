@@ -420,6 +420,36 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertTrue(request.userInput.contains("Do not propose extra provider calls beyond the remaining budget."))
     }
 
+    func testPlanningRequestForcesReviewOnlyBoundaryEvenWhenDecisionClaimsDirectExecution() throws {
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        let decision = TaskAutoExecutionDecision(
+            status: .readyForReview,
+            selectedTasks: [
+                makeTask(id: 22, title: "Review unsafe direct execution claim", priority: .high, dueAt: "2026-06-22T18:00:00Z")
+            ],
+            reason: "External caller supplied a stale unsafe decision.",
+            llmCallBudgetRemaining: 1,
+            requiresUserApproval: false,
+            allowsDirectExecution: true
+        )
+
+        let request = try TaskAutoExecutionPlanningRequestBuilder().makePlanningRequest(
+            decision: decision,
+            settings: .init(isEnabled: true, mode: .reviewOnly, cadence: .hourly),
+            referenceDate: referenceDate,
+            timeZoneIdentifier: "UTC"
+        )
+        let payload = try jsonPayload(from: request.userInput)
+        let policy = try XCTUnwrap(payload["policy"] as? [String: Any])
+
+        XCTAssertEqual(policy["requiresUserApproval"] as? Bool, true)
+        XCTAssertEqual(policy["allowsDirectExecution"] as? Bool, false)
+        XCTAssertTrue(request.userInput.contains("requiresUserApproval: true"))
+        XCTAssertTrue(request.userInput.contains("allowsDirectExecution: false"))
+        XCTAssertTrue(request.userInput.contains("Do not delete projects or tasks."))
+        XCTAssertEqual(payload["prohibitedActions"] as? [String], ["directExecution", "taskDelete", "projectDelete"])
+    }
+
     func testPlanningRequestAppliesTaskAndBudgetCapsAsFinalProviderGuard() throws {
         let referenceDate = try isoDate("2026-06-22T09:00:00Z")
         let decision = TaskAutoExecutionDecision(

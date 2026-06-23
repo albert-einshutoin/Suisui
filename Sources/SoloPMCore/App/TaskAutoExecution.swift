@@ -460,6 +460,11 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
             .remindersCreate,
             .filesystemCreateMarkdownFile
         ]
+        // The decision can be constructed by test, sync, or future connector
+        // code, so the provider boundary must reassert the product contract:
+        // task automation is review-only and never grants direct execution.
+        let providerRequiresUserApproval = true
+        let providerAllowsDirectExecution = false
         let payload = TaskAutoExecutionPromptPayload(
             generatedAt: ISO8601DateFormatter().string(from: referenceDate),
             timeZoneIdentifier: timeZoneIdentifier,
@@ -471,8 +476,8 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
                 llmCallBudgetRemaining: cappedRemainingBudget,
                 lookaheadHours: normalizedSettings.lookaheadHours,
                 urgentReviewCooldownMinutes: normalizedSettings.urgentReviewCooldownMinutes,
-                requiresUserApproval: decision.requiresUserApproval,
-                allowsDirectExecution: decision.allowsDirectExecution
+                requiresUserApproval: providerRequiresUserApproval,
+                allowsDirectExecution: providerAllowsDirectExecution
             ),
             decisionReason: redactedProviderContent(decision.reason),
             selectedTasks: selectedTasks,
@@ -497,7 +502,7 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
         let userInput = """
         Build a review-only SoloPM action plan for the selected tasks.
         Automation mode: \(normalizedSettings.mode.rawValue); cadence: \(normalizedSettings.cadence.rawValue); generatedAt: \(ISO8601DateFormatter().string(from: referenceDate)).
-        Automation policy: maxTasksPerRun: \(normalizedSettings.maxTasksPerRun); dailyLLMCallLimit: \(normalizedSettings.dailyLLMCallLimit); llmCallBudgetRemaining: \(cappedRemainingBudget); lookaheadHours: \(normalizedSettings.lookaheadHours); urgentReviewCooldownMinutes: \(normalizedSettings.urgentReviewCooldownMinutes); requiresUserApproval: \(decision.requiresUserApproval); allowsDirectExecution: \(decision.allowsDirectExecution).
+        Automation policy: maxTasksPerRun: \(normalizedSettings.maxTasksPerRun); dailyLLMCallLimit: \(normalizedSettings.dailyLLMCallLimit); llmCallBudgetRemaining: \(cappedRemainingBudget); lookaheadHours: \(normalizedSettings.lookaheadHours); urgentReviewCooldownMinutes: \(normalizedSettings.urgentReviewCooldownMinutes); requiresUserApproval: \(providerRequiresUserApproval); allowsDirectExecution: \(providerAllowsDirectExecution).
         Decision reason: \(redactedDecisionReason)
         Do not delete projects or tasks. Do not mark work completed unless the user approves the reviewed plan.
         Do not propose extra provider calls beyond the remaining budget.

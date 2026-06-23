@@ -433,6 +433,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] タスク自動実行のLLM requestが、選択済みドキュメントから推定したpreparation checklist / draft artifact / release notes / PR planをsource-boundかつapproval-gatedなdraft outputとして渡し、external-source-only文脈とsecret-like値をprovider境界へ出さないことをテストする。
 - [x] ProjectBoard ViewModel経由のtask automation review requestが、plannerのpriority/due-date選定、task cap、LLM budget、document deliverables、secret redactionを同じprovider境界で保持することをテストする。
 - [x] 複数タスクのautomation reviewで1件目をapproved executionしても、残りのreview候補とredacted execution receipt historyが消えないことをテストする。
+- [x] stale sync / future connector由来のdecisionがdirect execution可能だと主張しても、LLM provider境界ではreview-only / approval-requiredへ強制されることをテストする。
 
 ### Implementation Steps
 
@@ -444,6 +445,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] Task automation prompt payloadへdocument deliverablesを追加し、ファイル生成やtask mutationはreviewed plan承認後にだけ実行できるdraft-only提案として扱う。
 - [x] ProjectBoard ViewModelに、現在のboard snapshotと設定からreview-only `PlanningRequest` を作る入口を追加し、document deliverablesも同じredacted JSON payloadへ渡す。
 - [x] ProjectBoard ViewModelにapproved execution receipt historyを追加し、複数選択reviewでは実行済みtaskだけをqueueから外す。
+- [x] Task automation provider request builderでdecisionのapproval/direct-execution flagsを再信頼せず、API境界でreview-only契約を再固定する。
 
 ### Acceptance Criteria
 
@@ -454,6 +456,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] LLM review対象のタスク内容がprompt injection風の本文を含んでも、選択理由・承認境界・削除禁止の契約が保持される。
 - [x] ドキュメント群から作る成果物候補は、source document ID、suggested path、rationale、risk、approval requirementを持つreview-only payloadとして保持される。
 - [x] ProjectBoardから生成するLLM review requestでも、未承認external sourceとsecret-like値をprovider境界へ出さず、filesystem draft outputはapproval-gatedのまま保持される。
+- [x] future connectorやtestがunsafe decisionを渡しても、providerへ出るpayloadとpromptは `requiresUserApproval=true` / `allowsDirectExecution=false` のままになる。
 
 ### Non-goals
 
