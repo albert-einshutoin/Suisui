@@ -6793,7 +6793,8 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertEqual((manifest["schemaVersion"] as? NSNumber)?.intValue, 1)
         XCTAssertEqual(artifactRoot, "docs/release/evidence/ui-screenshots")
-        XCTAssertEqual(Set(screens.compactMap { $0["id"] as? String }), [
+        let screenIDs = Set(screens.compactMap { $0["id"] as? String })
+        let coreSystemScreens: Set<String> = [
             "project-board",
             "inbox",
             "today",
@@ -6801,7 +6802,15 @@ final class ReleasePipelineTests: XCTestCase {
             "settings-appearance",
             "mcp-settings",
             "voice-command"
-        ])
+        ]
+        let sampleDerivedScreens: Set<String> = [
+            "inbox-voice",
+            "projects-overview",
+            "schedule",
+            "done",
+            "settings-integrations"
+        ]
+        XCTAssertEqual(screenIDs, coreSystemScreens.union(sampleDerivedScreens))
 
         for screen in screens {
             let screenID = try XCTUnwrap(screen["id"] as? String)
@@ -6809,7 +6818,11 @@ final class ReleasePipelineTests: XCTestCase {
             let artifacts = try XCTUnwrap(screen["artifacts"] as? [String: String], "missing artifacts for \(screenID)")
             let viewport = try XCTUnwrap(screen["viewport"] as? [String: Any], "missing viewport for \(screenID)")
 
-            XCTAssertEqual(themes, ["light", "dark", "system"], "P14-004 requires Light/Dark/System coverage for \(screenID)")
+            XCTAssertTrue(themes.contains("light"), "visual baseline must cover Light theme for \(screenID)")
+            XCTAssertTrue(themes.contains("dark"), "visual baseline must cover Dark theme for \(screenID)")
+            if coreSystemScreens.contains(screenID) {
+                XCTAssertTrue(themes.contains("system"), "core visual baseline must cover System appearance for \(screenID)")
+            }
             XCTAssertGreaterThanOrEqual((viewport["width"] as? NSNumber)?.intValue ?? 0, 1_200, "viewport width too small for \(screenID)")
             XCTAssertGreaterThanOrEqual((viewport["height"] as? NSNumber)?.intValue ?? 0, 720, "viewport height too small for \(screenID)")
             XCTAssertTrue((screen["axFrameAudit"] as? Bool) == true, "visual-only comparison is not enough for \(screenID)")
@@ -6843,7 +6856,12 @@ final class ReleasePipelineTests: XCTestCase {
             "Settings Overview",
             "Settings Appearance",
             "MCP Settings",
-            "Voice Command"
+            "Voice Command",
+            "Inbox Voice",
+            "Projects Overview",
+            "Schedule",
+            "Done",
+            "Settings Integrations"
         ] {
             XCTAssertTrue(documentation.contains(screen), "visual baseline docs must explain \(screen)")
         }

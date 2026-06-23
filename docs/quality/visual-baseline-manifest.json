@@ -60,6 +60,62 @@
       }
     },
     {
+      "id": "inbox-voice",
+      "title": "Inbox Voice",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1560,
+        "height": 860
+      },
+      "axFrameAudit": true,
+      "artifacts": {
+        "light": "inbox-voice-light.png",
+        "dark": "inbox-voice-dark.png"
+      }
+    },
+    {
+      "id": "projects-overview",
+      "title": "Projects Overview",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1560,
+        "height": 860
+      },
+      "axFrameAudit": true,
+      "artifacts": {
+        "light": "projects-overview-light.png",
+        "dark": "projects-overview-dark.png"
+      }
+    },
+    {
+      "id": "schedule",
+      "title": "Schedule",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1560,
+        "height": 860
+      },
+      "axFrameAudit": true,
+      "artifacts": {
+        "light": "schedule-light.png",
+        "dark": "schedule-dark.png"
+      }
+    },
+    {
+      "id": "done",
+      "title": "Done",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1560,
+        "height": 860
+      },
+      "axFrameAudit": true,
+      "artifacts": {
+        "light": "done-light.png",
+        "dark": "done-dark.png"
+      }
+    },
+    {
       "id": "settings-overview",
       "title": "Settings Overview",
       "themes": ["light", "dark", "system"],
@@ -72,6 +128,20 @@
         "light": "settings-overview-light.png",
         "dark": "settings-overview-dark.png",
         "system": "settings-overview-system.png"
+      }
+    },
+    {
+      "id": "settings-integrations",
+      "title": "Settings Integrations",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1200,
+        "height": 720
+      },
+      "axFrameAudit": true,
+      "artifacts": {
+        "light": "settings-integrations-light.png",
+        "dark": "settings-integrations-dark.png"
       }
     },
     {

@@ -11,7 +11,12 @@ The source of truth is `docs/quality/visual-baseline-manifest.json`.
 | Project Board | Light / Dark / System | 1560x860 | sidebar, task cards, project header, inspector |
 | Inbox | Light / Dark / System | 1560x860 | inbox list and selected intake context |
 | Today | Light / Dark / System | 1560x860 | due work, schedule blocks, recommended next step |
+| Inbox Voice | Light / Dark | 1560x860 | voice capture metadata, transcript context, interpretation state |
+| Projects Overview | Light / Dark | 1560x860 | portfolio cards, progress, risk, next due, selected summary |
+| Schedule | Light / Dark | 1560x860 | schedule cockpit, unscheduled tasks, review-only calendar draft |
+| Done | Light / Dark | 1560x860 | completion analytics, history, reopen affordance |
 | Settings Overview | Light / Dark / System | 1200x720 | overview navigation and account-free local state |
+| Settings Integrations | Light / Dark | 1200x720 | provider, TTS/STT, Calendar/Reminder, Sync, Privacy, Data Location status |
 | Settings Appearance | Light / Dark / System | 1200x720 | theme picker and contrast controls |
 | MCP Settings | Light / Dark / System | 1200x720 | registered MCP rows without secrets |
 | Voice Command | Light / Dark / System | 1560x860 | command entry, local interpretation, approval boundary |

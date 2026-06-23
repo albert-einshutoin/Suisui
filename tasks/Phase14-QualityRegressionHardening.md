@@ -192,11 +192,12 @@ Priority: Middle
 ### Scope
 
 - 対象: `script/capture_ui_evidence.sh`, `script/check_visual_regression_smoke.sh`, `docs/quality/visual-baselines.md`
-- Project Board、Inbox、Today、Settings Overview、Settings Appearance、MCP Settings、Voice Command のLight/Dark/System baselineを扱う。
+- Project Board、Inbox、Today、Settings Overview、Settings Appearance、MCP Settings、Voice Command のLight/Dark/System baselineと、ui-samples由来のInbox Voice、Projects Overview、Schedule、Done、Settings IntegrationsのLight/Dark baselineを扱う。
 
 ### Tests First
 
 - [x] `ReleasePipelineTests` にvisual baseline manifestの存在と対象画面リストを確認するテストを追加する。
+- [x] `ui-samples/01.png` から `07.png` 由来の主要cockpit画面がvisual baseline manifestから漏れないことをテストする。
 - [x] 画像が小さすぎる、黒画面、低情報量の場合にscriptが失敗するsource testを追加する。
 - [x] baseline更新には明示フラグが必要で、通常実行では上書きしないことをテストする。
 
@@ -204,6 +205,7 @@ Priority: Middle
 
 - [x] `docs/quality/visual-baselines.md` に対象画面、viewport、theme、許容差、更新手順を書く。
 - [x] screenshot manifestをJSONまたはMarkdown tableで定義する。
+- [x] `docs/release/evidence/ui-screenshots.md` に存在するPhase12 cockpit screenshotをmanifestへ追加し、`check_visual_regression_smoke.sh` の直接検査対象にする。
 - [x] capture scriptでwindow sizeとthemeを固定する。
 - [x] perceptual hashまたは簡易histogramで黒画面/低情報量を検出する。
 - [x] 重なり検出はAX frameと併用し、画像比較だけにしない。
@@ -212,6 +214,7 @@ Priority: Middle
 ### Acceptance Criteria
 
 - [x] Light/Dark/Systemで主要画面のスクリーンショット証跡が取れる。
+- [x] Inbox Voice、Projects Overview、Schedule、Done、Settings Integrationsの既存Light/Dark証跡もsemantic visual smokeで検査される。
 - [x] 画像が空、黒、極端に小さい、対象windowでない場合に失敗する。
 - [x] baseline更新が意図的なデザイン変更としてレビューできる。
 - [x] macOS rendering差で不必要にフレークしない許容差が文書化されている。
