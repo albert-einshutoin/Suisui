@@ -6,7 +6,7 @@ Manual VoiceOver is still required for release evidence. This file defines the s
 
 ## Task Lifecycle And Execution
 
-The task path covers create, edit, status execution, automation review, approved local execution, and delete confirmation.
+The task path covers create, content entry, edit, status execution, automation review, approved local content execution, and delete confirmation.
 
 | Step | AX identifier | Expected role | Required behavior |
 | --- | --- | --- | --- |
@@ -14,9 +14,12 @@ The task path covers create, edit, status execution, automation review, approved
 | Project detail | `project-board-detail` | group | The selected project board or workflow region is reachable after navigation. |
 | Add task | `project-header-add-task` | button | Opens the inline task composer. |
 | Task title | `inline-task-title` | text field | Accepts the task title. |
+| Task detail | `inline-task-detail` | text area | Accepts the task body/detail that later becomes execution context. |
 | Create task | `inline-task-create` | button | Creates the task in the local SoloPM database. |
 | Review task automation | `project-board-task-auto-execution-review` | button | Builds a review-only LLM plan from the configured priority, due-date, cadence, and daily budget settings. |
 | Open task | `task-card-open-details` | button | Opens the task inspector without requiring pointer drag. |
+| Inspector title | `task-inspector-title` | text field | Edits the selected task title before execution review. |
+| Inspector detail | `task-inspector-detail` | text area | Edits the selected task detail/body before execution review. |
 | Save edit | `task-inspector-save` | button | Saves task title, detail, status, priority, and due date. |
 | Status controls | `task-status-move-controls` | group | Exposes status movement controls such as `task-status-move-in_progress`. |
 | Review automation | `task-auto-execution-review` | button | Builds a review-only LLM plan for the selected task. |
@@ -48,7 +51,7 @@ The task path covers create, edit, status execution, automation review, approved
 
 The harness emits one step per required AX identifier so create, edit, automation review, approved execution, and destructive delete confirmation cannot pass as a single aggregate smoke result when one control is missing.
 
-`SoloPMHarnessScenario.requiredTaskLifecycleOperations` is the MCP/E2E lifecycle contract for this path. `task-mutation-flow` and `mcp-pseudo-voiceover-focus-path` must both cover `create`, `editContent`, `statusMove`, `automationReview`, `approvedExecution`, and `deleteConfirmation`. Delete confirmation and approved execution stay out of hosted-MCP mutation payloads because the external relay is review-only; the harness still fails when those user-visible UI/AX paths are not represented.
+`SoloPMHarnessScenario.requiredTaskLifecycleOperations` is the MCP/E2E lifecycle contract for this path. `task-mutation-flow` and `mcp-pseudo-voiceover-focus-path` must both cover `create`, `editContent`, `statusMove`, `automationReview`, `executeContent`, `approvedExecution`, and `deleteConfirmation`. Delete confirmation and approved execution stay out of hosted-MCP mutation payloads because the external relay is review-only; the harness still fails when those user-visible UI/AX paths are not represented.
 
 ## Source Owners
 

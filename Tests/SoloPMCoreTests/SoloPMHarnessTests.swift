@@ -42,6 +42,7 @@ final class SoloPMHarnessTests: XCTestCase {
             .editContent,
             .statusMove,
             .automationReview,
+            .executeContent,
             .approvedExecution,
             .deleteConfirmation
         ]
@@ -126,7 +127,7 @@ final class SoloPMHarnessTests: XCTestCase {
             requiredTaskLifecycleOperations: [.create, .editContent, .statusMove, .automationReview]
         )
 
-        XCTAssertEqual(scenario.missingTaskLifecycleOperations(), [.approvedExecution, .deleteConfirmation])
+        XCTAssertEqual(scenario.missingTaskLifecycleOperations(), [.executeContent, .approvedExecution, .deleteConfirmation])
     }
 
     func testScenarioDecodesLegacyPayloadWithoutLifecycleCoverage() throws {
@@ -161,9 +162,10 @@ final class SoloPMHarnessTests: XCTestCase {
         XCTAssertEqual(run.status, .passed)
         XCTAssertEqual(run.scenario.kind, .accessibilityFocusPath)
         XCTAssertEqual(run.resultEnvelope.scenarioKind, .accessibilityFocusPath)
-        XCTAssertEqual(run.steps.count, AccessibilityFocusPathRequirement.taskLifecycleAndExecution.requiredNodeIDs.count)
+        let requiredNodeCount = AccessibilityFocusPathRequirement.taskLifecycleAndExecution.requiredNodeIDs.count
+        XCTAssertEqual(run.steps.count, requiredNodeCount)
         XCTAssertNil(run.diff)
-        XCTAssertTrue(run.redactedLogs.contains { $0.message.contains("covered=13/13") })
+        XCTAssertTrue(run.redactedLogs.contains { $0.message.contains("covered=\(requiredNodeCount)/\(requiredNodeCount)") })
     }
 
     func testAccessibilityHarnessRunFailsWithConcreteMissingFocusPathDiff() {
@@ -356,9 +358,12 @@ final class SoloPMHarnessTests: XCTestCase {
             node("project-board-detail", role: .group, label: "Project board detail"),
             node("project-header-add-task", role: .button, label: "Add Task", help: "Opens inline task composer."),
             node("inline-task-title", role: .textField, label: "Task title"),
+            node("inline-task-detail", role: .textArea, label: "Task detail"),
             node("inline-task-create", role: .button, label: "Create Task", help: "Creates the task in the local SoloPM database."),
             node("project-board-task-auto-execution-review", role: .button, label: "Review Task Automation", help: "Builds a review-only LLM plan from configured settings."),
             node("task-card-open-details", role: .button, label: "Open task details", help: "Opens the task inspector."),
+            node("task-inspector-title", role: .textField, label: "Task title"),
+            node("task-inspector-detail", role: .textArea, label: "Task detail"),
             node("task-inspector-save", role: .button, label: "Save Changes", help: "Saves edits to the selected task."),
             node("task-status-move-controls", role: .group, label: "Task status controls"),
             node("task-auto-execution-review", role: .button, label: "Review automation plan", help: "Builds a review-only LLM plan."),

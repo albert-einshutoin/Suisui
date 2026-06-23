@@ -30,6 +30,7 @@ public enum SoloPMHarnessTaskLifecycleOperation: String, Codable, CaseIterable, 
     case editContent
     case statusMove
     case automationReview
+    case executeContent
     case approvedExecution
     case deleteConfirmation
 }
@@ -69,6 +70,8 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
         .editContent,
         .statusMove,
         .automationReview,
+        // Keep content execution distinct so review-only MCP coverage cannot hide a missing user-visible run path.
+        .executeContent,
         .approvedExecution,
         .deleteConfirmation
     ]
