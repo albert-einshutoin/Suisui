@@ -10771,26 +10771,22 @@ final class ReleasePipelineTests: XCTestCase {
         arguments: [String] = [],
         environment: [String: String] = [:]
     ) throws -> (exitCode: Int32, output: String) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["bash", packageRoot().appendingPathComponent(relativePath).path] + arguments
-        process.currentDirectoryURL = packageRoot()
-        process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
-
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = output
-
-        try process.run()
-        process.waitUntilExit()
-
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
+        try runProcess(
+            arguments: ["bash", packageRoot().appendingPathComponent(relativePath).path] + arguments,
+            environment: environment
+        )
     }
 
     private func runTool(
         _ arguments: [String],
         environment: [String: String] = [:]
+    ) throws -> (exitCode: Int32, output: String) {
+        try runProcess(arguments: arguments, environment: environment)
+    }
+
+    private func runProcess(
+        arguments: [String],
+        environment: [String: String]
     ) throws -> (exitCode: Int32, output: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
@@ -10802,11 +10798,47 @@ final class ReleasePipelineTests: XCTestCase {
         process.standardOutput = output
         process.standardError = output
 
-        try process.run()
-        process.waitUntilExit()
+        let outputQueue = DispatchQueue(label: "SoloPM.ReleasePipelineTests.output-drain")
+        let outputGroup = DispatchGroup()
+        let outputBuffer = ProcessOutputBuffer()
+        outputGroup.enter()
+        outputQueue.async {
+            outputBuffer.replace(with: output.fileHandleForReading.readDataToEndOfFile())
+            outputGroup.leave()
+        }
 
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
+        do {
+            try process.run()
+        } catch {
+            output.fileHandleForWriting.closeFile()
+            outputGroup.wait()
+            throw error
+        }
+        process.waitUntilExit()
+        output.fileHandleForWriting.closeFile()
+        outputGroup.wait()
+
+        // Several release-readiness tests intentionally exercise verbose shell
+        // reports. Draining while the child is running prevents the child bash
+        // process from blocking on a full stdout/stderr pipe.
+        return (process.terminationStatus, String(data: outputBuffer.data, encoding: .utf8) ?? "")
+    }
+
+    private final class ProcessOutputBuffer: @unchecked Sendable {
+        private let lock = NSLock()
+        private var storage = Data()
+
+        var data: Data {
+            lock.lock()
+            defer { lock.unlock() }
+            return storage
+        }
+
+        func replace(with data: Data) {
+            lock.lock()
+            storage = data
+            lock.unlock()
+        }
     }
 
     private func packageRoot() -> URL {
