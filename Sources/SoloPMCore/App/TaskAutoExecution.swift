@@ -303,18 +303,21 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
             throw TaskAutoExecutionPlanningRequestError.noReviewableTasks
         }
 
+        let calendar = reviewCalendar(timeZoneIdentifier: timeZoneIdentifier)
         let taskLines = decision.selectedTasks.map { task in
-            "- taskId=\(task.id); title=\(task.title); priority=\(task.priority.rawValue); status=\(task.status.rawValue); dueAt=\(task.dueAt ?? "none"); detail=\(task.detail)"
+            let reason = selectionReason(for: task, referenceDate: referenceDate, calendar: calendar)
+            return "- taskId=\(task.id); title=\(task.title); selectionReason=\(reason); priority=\(task.priority.rawValue); status=\(task.status.rawValue); dueAt=\(task.dueAt ?? "none"); detail=\(task.detail)"
         }.joined(separator: "\n")
 
-        // The LLM is allowed to draft the next reviewed action plan, not to run
-        // local mutations. That keeps automatic prioritization useful while
-        // preserving SoloPM's review-before-execution product contract.
+        // Selection reasons make review-only automation auditable: the model can
+        // explain priority/due-date tradeoffs without gaining direct mutation
+        // authority over the user's local task database.
         let userInput = """
         Build a review-only SoloPM action plan for the selected tasks.
         Automation mode: \(settings.mode.rawValue); cadence: \(settings.cadence.rawValue); generatedAt: \(ISO8601DateFormatter().string(from: referenceDate)).
         Decision reason: \(decision.reason)
         Do not delete projects or tasks. Do not mark work completed unless the user approves the reviewed plan.
+        Review these reasons before proposing any task update.
         Selected tasks:
         \(taskLines)
         """
@@ -326,6 +329,72 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
             availableTools: [.taskGet, .taskList, .taskUpdate, .calendarCreateWorkBlock, .remindersCreate, .filesystemCreateMarkdownFile],
             knowledgeFrameCandidates: []
         )
+    }
+
+    private func selectionReason(for task: ProjectBoardTask, referenceDate: Date, calendar: Calendar) -> String {
+        guard let dueDate = parsedDueDate(task.dueAt, calendar: calendar) else {
+            if task.priority == .high {
+                return "high priority without due date"
+            }
+            return "priority review candidate"
+        }
+
+        if dueDate < startOfDay(for: referenceDate, calendar: calendar) {
+            let overdueDays = max(
+                calendar.dateComponents(
+                    [.day],
+                    from: startOfDay(for: dueDate, calendar: calendar),
+                    to: startOfDay(for: referenceDate, calendar: calendar)
+                ).day ?? 1,
+                1
+            )
+            let unit = overdueDays == 1 ? "day" : "days"
+            return "overdue by \(overdueDays) \(unit)"
+        }
+
+        if dueDate < endOfDay(for: referenceDate, calendar: calendar) {
+            return "due today"
+        }
+
+        let hoursUntilDue = max(Int(ceil(dueDate.timeIntervalSince(referenceDate) / 3_600)), 1)
+        let unit = hoursUntilDue == 1 ? "hour" : "hours"
+        return "due within \(hoursUntilDue) \(unit)"
+    }
+
+    private func reviewCalendar(timeZoneIdentifier: String) -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: timeZoneIdentifier) ?? .current
+        return calendar
+    }
+
+    private func parsedDueDate(_ value: String?, calendar: Calendar) -> Date? {
+        guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: value) {
+            return date
+        }
+        formatter.formatOptions = [.withInternetDateTime]
+        if let date = formatter.date(from: value) {
+            return date
+        }
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.calendar = calendar
+        dateFormatter.timeZone = calendar.timeZone
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        return dateFormatter.date(from: value)
+    }
+
+    private func startOfDay(for date: Date, calendar: Calendar) -> Date {
+        calendar.dateInterval(of: .day, for: date)?.start ?? date
+    }
+
+    private func endOfDay(for date: Date, calendar: Calendar) -> Date {
+        calendar.dateInterval(of: .day, for: date)?.end ?? date
     }
 }
 

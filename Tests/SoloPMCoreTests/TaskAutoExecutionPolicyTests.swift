@@ -118,6 +118,35 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertFalse(request.availableTools.contains(.taskDelete))
     }
 
+    func testPlanningRequestExplainsWhyEachTaskWasSelected() throws {
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        let overdue = makeTask(id: 11, title: "Patch stale release evidence", priority: .high, dueAt: "2026-06-21T18:00:00Z")
+        let dueToday = makeTask(id: 12, title: "Review VoiceOver notes", priority: .medium, dueAt: "2026-06-22T18:00:00Z")
+        let future = makeTask(id: 13, title: "Prepare benchmark worksheet", priority: .low, dueAt: "2026-06-24T09:00:00Z")
+        let highNoDue = makeTask(id: 14, title: "Investigate blocked packaging", priority: .high)
+        let decision = TaskAutoExecutionDecision(
+            status: .readyForReview,
+            selectedTasks: [overdue, dueToday, future, highNoDue],
+            reason: "Priority and due date policy selected review candidates.",
+            llmCallBudgetRemaining: 4,
+            requiresUserApproval: true,
+            allowsDirectExecution: false
+        )
+
+        let request = try TaskAutoExecutionPlanningRequestBuilder().makePlanningRequest(
+            decision: decision,
+            settings: .init(isEnabled: true, mode: .reviewOnly, cadence: .hourly, lookaheadHours: 72),
+            referenceDate: referenceDate,
+            timeZoneIdentifier: "UTC"
+        )
+
+        XCTAssertTrue(request.userInput.contains("selectionReason=overdue by 1 day; priority=high"))
+        XCTAssertTrue(request.userInput.contains("selectionReason=due today; priority=medium"))
+        XCTAssertTrue(request.userInput.contains("selectionReason=due within 48 hours; priority=low"))
+        XCTAssertTrue(request.userInput.contains("selectionReason=high priority without due date; priority=high"))
+        XCTAssertTrue(request.userInput.contains("Review these reasons before proposing any task update."))
+    }
+
     func testAppSettingsPersistTaskAutoExecutionControls() throws {
         let suiteName = "SoloPM.TaskAutoExecutionSettings.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
