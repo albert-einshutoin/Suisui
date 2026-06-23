@@ -890,6 +890,43 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelRequiresFreshAutomationReviewAfterTaskContentChanges() throws {
+        var changeCount = 0
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Draft launch notes",
+            detail: "Use the initial document set.",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-22"
+        ))
+        viewModel.prepareAutomationReviewForSelectedTask()
+        XCTAssertEqual(viewModel.taskAutomationReviewDecision?.selectedTasks.map(\.id), [task.id])
+
+        viewModel.updateSelectedTask(
+            title: "Draft launch notes",
+            detail: "Use the revised document set.",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-22"
+        )
+        changeCount = 0
+
+        viewModel.runApprovedAutomationForSelectedTask()
+
+        XCTAssertEqual(changeCount, 0)
+        XCTAssertEqual(viewModel.selectedTaskID, task.id)
+        XCTAssertEqual(viewModel.selectedTask?.status, .planned)
+        XCTAssertEqual(viewModel.selectedTask?.detail, "Use the revised document set.")
+        XCTAssertNil(viewModel.taskAutomationReviewDecision)
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Review the automation plan again because the task changed after review.")
+    }
+
+    @MainActor
     func testProjectBoardViewModelPreparesTaskAutomationReviewFromConfiguredTaskList() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()

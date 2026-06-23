@@ -1399,13 +1399,18 @@ public final class ProjectBoardViewModel: ObservableObject {
             todayCommandFeedback = String(localized: "Select a task before running automation.")
             return
         }
-        guard taskAutomationReviewDecision?.selectedTasks.contains(where: { $0.id == selectedTask.id }) == true else {
+        guard let reviewedTask = taskAutomationReviewDecision?.selectedTasks.first(where: { $0.id == selectedTask.id }) else {
             todayCommandFeedback = String(localized: "Review the automation plan before running it.")
             return
         }
         guard isEligibleForTaskAutomation(selectedTask) else {
             taskAutomationReviewDecision = nil
             todayCommandFeedback = String(localized: "Task automation stopped because the task is blocked or complete.")
+            return
+        }
+        guard matchesReviewedAutomationTask(reviewedTask, current: selectedTask) else {
+            taskAutomationReviewDecision = nil
+            todayCommandFeedback = String(localized: "Review the automation plan again because the task changed after review.")
             return
         }
 
@@ -1419,6 +1424,19 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     private func isEligibleForTaskAutomation(_ task: ProjectBoardTask) -> Bool {
         task.status != .blocked && task.status != .done
+    }
+
+    private func matchesReviewedAutomationTask(_ reviewedTask: ProjectBoardTask, current: ProjectBoardTask) -> Bool {
+        // The LLM plan is based on a point-in-time task snapshot. Requiring the
+        // same content and scheduling fields keeps a reviewed plan from being
+        // reused after the user edits the work it was meant to describe.
+        reviewedTask.id == current.id
+            && reviewedTask.projectID == current.projectID
+            && reviewedTask.title == current.title
+            && reviewedTask.detail == current.detail
+            && reviewedTask.status == current.status
+            && reviewedTask.priority == current.priority
+            && reviewedTask.dueAt == current.dueAt
     }
 
     @discardableResult
