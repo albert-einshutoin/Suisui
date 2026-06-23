@@ -1153,6 +1153,42 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(phase.contains("- [x] Keyboard shortcutがmenu commandまたはfocused actionに接続されていることをsource testで固定する。"))
     }
 
+    func testInspectorSaveControlsStayAdjacentToEditableFieldsBeforeLongSuggestionSections() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        let projectInspector = try sourceBlock(
+            in: boardSource,
+            from: "private struct ProjectInspectorView",
+            to: "private struct ProjectInspectorSuggestionSection"
+        )
+        let projectEdit = try XCTUnwrap(projectInspector.range(of: "Section(\"Edit\")"))
+        let projectSave = try XCTUnwrap(projectInspector.range(of: ".accessibilityIdentifier(\"project-inspector-save\")"))
+        let projectSuggestion = try XCTUnwrap(projectInspector.range(of: "Section(\"Suggestion\")"))
+        XCTAssertLessThan(projectEdit.lowerBound, projectSave.lowerBound)
+        XCTAssertLessThan(
+            projectSave.lowerBound,
+            projectSuggestion.lowerBound,
+            "Project save must stay before long suggestion content so compact-window AX and VoiceOver paths can save immediately after editing."
+        )
+
+        let taskInspector = try sourceBlock(
+            in: boardSource,
+            from: "private struct TaskInspectorView",
+            to: "private struct TaskInspectorSuggestionSection"
+        )
+        let taskFields = try XCTUnwrap(taskInspector.range(of: "Section(\"Fields\")"))
+        let taskSave = try XCTUnwrap(taskInspector.range(of: ".accessibilityIdentifier(\"task-inspector-save\")"))
+        let taskSuggestion = try XCTUnwrap(taskInspector.range(of: "Section(\"Suggestion\")"))
+        let taskAutomation = try XCTUnwrap(taskInspector.range(of: "Section(\"Automation\")"))
+        XCTAssertLessThan(taskFields.lowerBound, taskSave.lowerBound)
+        XCTAssertLessThan(
+            taskSave.lowerBound,
+            taskSuggestion.lowerBound,
+            "Task save must stay before suggestion and automation content so edit/save remains reachable without scrolling."
+        )
+        XCTAssertLessThan(taskSave.lowerBound, taskAutomation.lowerBound)
+    }
+
     func testInspectorsExposeVisibleCloseButtonsThatDismissTheSidebar() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 

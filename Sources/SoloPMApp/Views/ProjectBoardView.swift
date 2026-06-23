@@ -2810,10 +2810,6 @@ private struct ProjectInspectorView: View {
                 LabeledContent("Artifacts", value: "\(project.artifacts.count)")
             }
 
-            Section("Suggestion") {
-                ProjectInspectorSuggestionSection(project: project, viewModel: viewModel)
-            }
-
             Section("Save") {
                 Button {
                     viewModel.updateSelectedProject(title: title)
@@ -2826,6 +2822,10 @@ private struct ProjectInspectorView: View {
                 .help("Saves edits to the selected project in the local SoloPM database")
                 .accessibilityIdentifier("project-inspector-save")
                 .accessibilityHint("Saves edits to the selected project in the local SoloPM database.")
+            }
+
+            Section("Suggestion") {
+                ProjectInspectorSuggestionSection(project: project, viewModel: viewModel)
             }
 
             Section("Actions") {
@@ -3175,14 +3175,6 @@ private struct TaskInspectorView: View {
                     .accessibilityIdentifier("task-inspector-due")
             }
 
-            Section("Suggestion") {
-                TaskInspectorSuggestionSection(task: task, viewModel: viewModel)
-            }
-
-            Section("Automation") {
-                TaskInspectorAutomationSection(task: task, viewModel: viewModel)
-            }
-
             Section("Save") {
                 Button {
                     viewModel.updateSelectedTask(
@@ -3201,6 +3193,14 @@ private struct TaskInspectorView: View {
                 .help("Saves edits to the selected task in the local SoloPM database")
                 .accessibilityIdentifier("task-inspector-save")
                 .accessibilityHint("Saves edits to the selected task in the local SoloPM database.")
+            }
+
+            Section("Suggestion") {
+                TaskInspectorSuggestionSection(task: task, viewModel: viewModel)
+            }
+
+            Section("Automation") {
+                TaskInspectorAutomationSection(task: task, viewModel: viewModel)
             }
 
             Section("Danger Zone") {

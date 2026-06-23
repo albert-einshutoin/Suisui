@@ -396,6 +396,7 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 - [x] Keyboard shortcutがmenu commandまたはfocused actionに接続されていることをsource testで固定する。
 - [x] destructive confirmationが確認なしに実行できないことをruntime smokeで確認する。
 - [x] 擬似VoiceOver harnessで、承認済みtask execution receiptにreviewed titleだけでなくreviewed detailが残らない場合は失敗するテストを追加する。
+- [x] Project / Task inspectorのSave controlが長いSuggestion / Automation sectionより前にあり、編集後にcompact windowのAX/VoiceOver pathで即保存できることをsource testで固定する。
 
 ### Implementation Steps
 
