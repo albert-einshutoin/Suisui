@@ -406,6 +406,8 @@ APPLESCRIPT
       echo "BLOCKER: failed to press button in AX tree: $fragment" >&2
       return 1
     fi
+    activate_app
+    wait_for_visible_windows >/dev/null 2>&1 || true
     sleep 1
   done
 }
