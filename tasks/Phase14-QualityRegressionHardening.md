@@ -431,6 +431,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] UI ViewModelが破損recordを受け取ってもProject Board全体をUnavailableにしないテストを追加する。
 - [x] タスク自動実行のLLM requestが、選択タスクのtitle/detail/status/priority/due/selection reasonをfenced redacted JSONとして渡し、タスク本文の改行や命令文が別タスク・直接実行指示に化けず、secret-like値がprovider境界へ出ないことをテストする。
 - [x] タスク自動実行のLLM requestが、選択済みドキュメントから推定したpreparation checklist / draft artifact / release notes / PR planをsource-boundかつapproval-gatedなdraft outputとして渡し、external-source-only文脈とsecret-like値をprovider境界へ出さないことをテストする。
+- [x] ProjectBoard ViewModel経由のtask automation review requestが、plannerのpriority/due-date選定、task cap、LLM budget、document deliverables、secret redactionを同じprovider境界で保持することをテストする。
 
 ### Implementation Steps
 
@@ -440,6 +441,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] Repair可能なものはaudit logに残す。
 - [x] Task automation prompt payloadを構造化JSONにし、title/detailはredacted済みのユーザー入力内容であってautomation instructionではないことを明示する。
 - [x] Task automation prompt payloadへdocument deliverablesを追加し、ファイル生成やtask mutationはreviewed plan承認後にだけ実行できるdraft-only提案として扱う。
+- [x] ProjectBoard ViewModelに、現在のboard snapshotと設定からreview-only `PlanningRequest` を作る入口を追加し、document deliverablesも同じredacted JSON payloadへ渡す。
 
 ### Acceptance Criteria
 
@@ -448,6 +450,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] 秘密情報やraw DB contentをerror messageへ出さない。
 - [x] LLM review対象のタスク内容がprompt injection風の本文を含んでも、選択理由・承認境界・削除禁止の契約が保持される。
 - [x] ドキュメント群から作る成果物候補は、source document ID、suggested path、rationale、risk、approval requirementを持つreview-only payloadとして保持される。
+- [x] ProjectBoardから生成するLLM review requestでも、未承認external sourceとsecret-like値をprovider境界へ出さず、filesystem draft outputはapproval-gatedのまま保持される。
 
 ### Non-goals
 

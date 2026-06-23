@@ -1015,6 +1015,75 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelBuildsTaskAutomationPlanningRequestWithDocumentDeliverables() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        _ = viewModel.createTask(title: "Low future", status: .planned, priority: .low, dueAt: "2026-06-24T08:00:00Z")
+        _ = viewModel.createTask(
+            title: "High release note task",
+            detail: "Use selected release docs before writing anything. sk-proj-task-secret123",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-21T08:00:00Z"
+        )
+        let documents = [
+            ScopedAutomationDocument(
+                id: "phase14",
+                title: "Phase14 release notes and PR plan",
+                scope: .appDocs,
+                redactedSummary: "Release notes, pull request plan, implementation risk, and sk-proj-doc-secret123.",
+                inclusionReason: "Selected by the user for release automation review."
+            ),
+            ScopedAutomationDocument(
+                id: "external-issue",
+                title: "External issue with release notes",
+                scope: .externalSources,
+                redactedSummary: "External connector preview should not be sent yet.",
+                inclusionReason: "External source without connector-specific approval."
+            )
+        ]
+        let drafts = DocumentAutomationArtifactPlanner().deliverableDrafts(
+            userRequest: "Prepare release notes and a pull request plan from selected docs.",
+            documents: documents
+        )
+
+        let request = try viewModel.makeTaskAutomationPlanningRequest(
+            settings: .init(
+                isEnabled: true,
+                mode: .reviewOnly,
+                cadence: .hourly,
+                maxTasksPerRun: 1,
+                dailyLLMCallLimit: 3,
+                lookaheadHours: 72
+            ),
+            history: .empty,
+            referenceDate: try isoDate("2026-06-22T09:00:00Z"),
+            calendar: utcCalendar(),
+            timeZoneIdentifier: "UTC",
+            documentDeliverableDrafts: drafts
+        )
+
+        let payload = try jsonPayload(from: request.userInput)
+        let selectedTasks = try XCTUnwrap(payload["selectedTasks"] as? [[String: Any]])
+        let deliverables = try XCTUnwrap(payload["documentDeliverables"] as? [[String: Any]])
+
+        XCTAssertEqual(viewModel.taskAutomationReviewDecision?.selectedTasks.map(\.title), ["High release note task"])
+        XCTAssertEqual(selectedTasks.map { $0["title"] as? String }, ["High release note task"])
+        XCTAssertEqual(
+            deliverables.compactMap { $0["kind"] as? String }.sorted(),
+            ["preparationChecklist", "pullRequestPlan", "releaseNotes"]
+        )
+        XCTAssertTrue(deliverables.allSatisfy { $0["requiresApproval"] as? Bool == true })
+        XCTAssertEqual(Set(deliverables.compactMap { $0["riskLevel"] as? String }), ["draft"])
+        XCTAssertTrue(deliverables.allSatisfy { ($0["sourceDocumentIDs"] as? [String]) == ["phase14"] })
+        XCTAssertTrue(request.availableTools.contains(.filesystemCreateMarkdownFile))
+        XCTAssertTrue(request.userInput.contains("Document deliverables are draft-only"))
+        XCTAssertFalse(request.userInput.contains("sk-proj-task-secret123"))
+        XCTAssertFalse(request.userInput.contains("sk-proj-doc-secret123"))
+        XCTAssertFalse(request.userInput.contains("external-issue"))
+    }
+
+    @MainActor
     func testProjectBoardViewModelClearsTaskAutomationReviewWhenCadenceThrottles() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()
@@ -2174,6 +2243,19 @@ final class ProjectBoardStoreTests: XCTestCase {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         return calendar
+    }
+
+    private func jsonPayload(from userInput: String) throws -> [String: Any] {
+        let opening = "```json\n"
+        let closing = "\n```"
+        guard let start = userInput.range(of: opening)?.upperBound,
+              let end = userInput[start...].range(of: closing)?.lowerBound else {
+            XCTFail("Planning request did not include a fenced JSON payload.")
+            return [:]
+        }
+        let json = String(userInput[start..<end])
+        let data = Data(json.utf8)
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
     private func makeStoreBundle() throws -> (

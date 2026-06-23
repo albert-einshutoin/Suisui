@@ -1362,6 +1362,77 @@ public final class ProjectBoardViewModel: ObservableObject {
         return decision
     }
 
+    public func makeTaskAutomationPlanningRequest(
+        settings: TaskAutoExecutionSettings,
+        referenceDate: Date = Date(),
+        calendar: Calendar = .current,
+        timeZoneIdentifier: String = TimeZone.current.identifier,
+        documentDeliverableDrafts: [DocumentAutomationDeliverableDraft] = []
+    ) throws -> PlanningRequest {
+        let history = sessionAutomationHistory(for: referenceDate, calendar: calendar)
+        let decision = prepareTaskAutomationReview(
+            settings: settings,
+            history: history,
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        let request = try buildTaskAutomationPlanningRequest(
+            decision: decision,
+            settings: settings,
+            referenceDate: referenceDate,
+            timeZoneIdentifier: timeZoneIdentifier,
+            documentDeliverableDrafts: documentDeliverableDrafts
+        )
+
+        // The session budget is charged only after the provider request is
+        // successfully assembled. Throttled or invalid review attempts still
+        // update feedback but do not consume the daily LLM review allowance.
+        taskAutomationSessionHistory = TaskAutoExecutionHistory(
+            lastRunAt: referenceDate,
+            llmCallsToday: history.llmCallsToday + 1
+        )
+        return request
+    }
+
+    public func makeTaskAutomationPlanningRequest(
+        settings: TaskAutoExecutionSettings,
+        history: TaskAutoExecutionHistory,
+        referenceDate: Date = Date(),
+        calendar: Calendar = .current,
+        timeZoneIdentifier: String = TimeZone.current.identifier,
+        documentDeliverableDrafts: [DocumentAutomationDeliverableDraft] = []
+    ) throws -> PlanningRequest {
+        let decision = prepareTaskAutomationReview(
+            settings: settings,
+            history: history,
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        return try buildTaskAutomationPlanningRequest(
+            decision: decision,
+            settings: settings,
+            referenceDate: referenceDate,
+            timeZoneIdentifier: timeZoneIdentifier,
+            documentDeliverableDrafts: documentDeliverableDrafts
+        )
+    }
+
+    private func buildTaskAutomationPlanningRequest(
+        decision: TaskAutoExecutionDecision,
+        settings: TaskAutoExecutionSettings,
+        referenceDate: Date,
+        timeZoneIdentifier: String,
+        documentDeliverableDrafts: [DocumentAutomationDeliverableDraft]
+    ) throws -> PlanningRequest {
+        try TaskAutoExecutionPlanningRequestBuilder().makePlanningRequest(
+            decision: decision,
+            settings: settings,
+            referenceDate: referenceDate,
+            timeZoneIdentifier: timeZoneIdentifier,
+            documentDeliverableDrafts: documentDeliverableDrafts
+        )
+    }
+
     private func sessionAutomationHistory(
         for referenceDate: Date,
         calendar: Calendar
