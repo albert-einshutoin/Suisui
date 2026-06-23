@@ -434,6 +434,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] ProjectBoard ViewModel経由のtask automation review requestが、plannerのpriority/due-date選定、task cap、LLM budget、document deliverables、secret redactionを同じprovider境界で保持することをテストする。
 - [x] 複数タスクのautomation reviewで1件目をapproved executionしても、残りのreview候補とredacted execution receipt historyが消えないことをテストする。
 - [x] stale sync / future connector由来のdecisionがdirect execution可能だと主張しても、LLM provider境界ではreview-only / approval-requiredへ強制されることをテストする。
+- [x] 前日のLLM call countが残ったhistoryでも、設定されたcalendar dayが変わればdaily LLM budgetが復帰し、当日期限タスクのreviewを誤って止めないことをテストする。
 
 ### Implementation Steps
 
@@ -446,6 +447,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] ProjectBoard ViewModelに、現在のboard snapshotと設定からreview-only `PlanningRequest` を作る入口を追加し、document deliverablesも同じredacted JSON payloadへ渡す。
 - [x] ProjectBoard ViewModelにapproved execution receipt historyを追加し、複数選択reviewでは実行済みtaskだけをqueueから外す。
 - [x] Task automation provider request builderでdecisionのapproval/direct-execution flagsを再信頼せず、API境界でreview-only契約を再固定する。
+- [x] Task automation plannerで `lastRunAt` とreference dateのcalendar dayを比較し、日を跨いだsession/persisted historyはdaily LLM usageだけを0へ戻す。
 
 ### Acceptance Criteria
 
@@ -457,6 +459,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] ドキュメント群から作る成果物候補は、source document ID、suggested path、rationale、risk、approval requirementを持つreview-only payloadとして保持される。
 - [x] ProjectBoardから生成するLLM review requestでも、未承認external sourceとsecret-like値をprovider境界へ出さず、filesystem draft outputはapproval-gatedのまま保持される。
 - [x] future connectorやtestがunsafe decisionを渡しても、providerへ出るpayloadとpromptは `requiresUserApproval=true` / `allowsDirectExecution=false` のままになる。
+- [x] Daily LLM budgetは前日分の履歴で恒久的に枯渇せず、翌日の最初のreviewでは当日予算を使ってpriority/due-date選定へ進める。
 
 ### Non-goals
 

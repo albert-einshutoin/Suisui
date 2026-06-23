@@ -223,6 +223,28 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertEqual(decision.reason, "Daily LLM automation budget is exhausted.")
     }
 
+    func testPlannerResetsDailyLLMBudgetWhenLastRunWasOnPreviousCalendarDay() throws {
+        let referenceDate = try isoDate("2026-06-23T09:00:00Z")
+        let snapshot = ProjectBoardSnapshot(projects: [
+            makeProject(tasks: [
+                makeTask(id: 1, title: "High due today after yesterday budget", priority: .high, dueAt: "2026-06-23T18:00:00Z")
+            ])
+        ])
+
+        let decision = TaskAutoExecutionPlanner().makeDecision(
+            snapshot: snapshot,
+            settings: .init(isEnabled: true, mode: .reviewOnly, cadence: .hourly, dailyLLMCallLimit: 2),
+            history: .init(lastRunAt: try isoDate("2026-06-22T23:30:00Z"), llmCallsToday: 2),
+            referenceDate: referenceDate,
+            calendar: utcCalendar()
+        )
+
+        XCTAssertEqual(decision.status, .readyForReview)
+        XCTAssertEqual(decision.llmCallBudgetRemaining, 2)
+        XCTAssertEqual(decision.selectedTasks.map(\.title), ["High due today after yesterday budget"])
+        XCTAssertTrue(decision.shouldCallLLM)
+    }
+
     func testPlanningRequestIsReviewOnlyAndCarriesTaskPriorityDueDateAndDetail() throws {
         let referenceDate = try isoDate("2026-06-22T09:00:00Z")
         let task = makeTask(

@@ -240,7 +240,12 @@ public struct TaskAutoExecutionPlanner: Sendable {
         calendar: Calendar = .current
     ) -> TaskAutoExecutionDecision {
         let settings = rawSettings.normalized
-        let remainingBudget = max(settings.dailyLLMCallLimit - history.llmCallsToday, 0)
+        let llmCallsUsedToday = llmCallsUsedForReferenceDay(
+            history: history,
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        let remainingBudget = max(settings.dailyLLMCallLimit - llmCallsUsedToday, 0)
 
         guard settings.isEnabled else {
             return decision(.disabled, reason: "Task automation is disabled.", remainingBudget: remainingBudget)
@@ -303,6 +308,20 @@ public struct TaskAutoExecutionPlanner: Sendable {
             requiresUserApproval: true,
             allowsDirectExecution: false
         )
+    }
+
+    private func llmCallsUsedForReferenceDay(
+        history: TaskAutoExecutionHistory,
+        referenceDate: Date,
+        calendar: Calendar
+    ) -> Int {
+        guard let lastRunAt = history.lastRunAt else {
+            return history.llmCallsToday
+        }
+        // The LLM budget is daily. Persisted or session-scoped histories may
+        // keep yesterday's count until the next review, so the planner resets
+        // usage when the recorded run is outside the configured calendar day.
+        return calendar.isDate(lastRunAt, inSameDayAs: referenceDate) ? history.llmCallsToday : 0
     }
 
     private func rankedCandidates(
