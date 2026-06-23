@@ -55,10 +55,12 @@ The harness emits one step per required AX identifier so create, edit, automatio
 
 Approved execution evidence must be a redacted `ApprovedAutomationExecutionReceipt` with task identity, project identity, reviewed title, reviewed detail, before/after status, priority, due date, and review reason. `ProjectBoardViewModel.approvedAutomationExecutionReceipts` keeps a receipt history across a configured multi-task review so running one approved task cannot erase the remaining reviewed queue or leave later executions unproven. Missing receipts, missing receipt history, missing reviewed task content, or receipt fields that still contain secret-like content fail the pseudo VoiceOver run before manual evidence can be reused.
 
+`script/check_pseudo_voiceover_paths.sh` is the cheap source-marker gate. Run `script/check_pseudo_voiceover_paths.sh --swift-test` before reusing this gate as release evidence support; the option also runs `swift test --filter AccessibilityFocusPathAuditTests` and `swift test --filter SoloPMHarnessTests` so the real focus-path audit and approved execution receipt logic are proven, not only present as strings.
+
 ## Source Owners
 
 - Pure logic: `AccessibilityFocusPathAudit`
 - MCP pseudo VoiceOver harness: `SoloPMHarnessAccessibilityAuditRunner`
 - Runtime AX smoke: `script/check_accessibility_preflight.sh --runtime`
-- Pseudo VoiceOver source contract: `script/check_pseudo_voiceover_paths.sh`
+- Pseudo VoiceOver source contract: `script/check_pseudo_voiceover_paths.sh --swift-test`
 - Manual release evidence: `script/create_voiceover_evidence.sh`

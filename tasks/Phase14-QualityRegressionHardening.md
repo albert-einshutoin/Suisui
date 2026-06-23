@@ -401,6 +401,7 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 - [x] UI component追加時のAX identifier命名規則を定義する。
 - [x] Manual VoiceOver worksheetとruntime AX smokeの項目を対応付ける。
 - [x] `approved-execution-receipt` stepでreviewed task contentの欠落を検出し、タイトルだけの実行証跡ではmanual evidenceを再利用できないようにする。
+- [x] `script/check_pseudo_voiceover_paths.sh --swift-test` をPR gateへ接続し、source markerだけでなく `AccessibilityFocusPathAuditTests` / `SoloPMHarnessTests` でMCP擬似VoiceOverロジックも検証する。
 
 ### Acceptance Criteria
 

@@ -48,6 +48,7 @@ run_pr_gate() {
   # the same command without requiring Screen Recording, a visible app, or visual baselines.
   swift test --filter AppExperienceSourceTests
   swift test --filter QualitySourceContractTests
+  script/check_pseudo_voiceover_paths.sh --swift-test
   swift test --filter ProjectBoardStoreTests
   swift build
   swift build --product solopm-cli

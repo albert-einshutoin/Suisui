@@ -58,6 +58,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("run_pr_gate()"))
         XCTAssertTrue(script.contains("swift test --filter AppExperienceSourceTests"))
         XCTAssertTrue(script.contains("swift test --filter QualitySourceContractTests"))
+        XCTAssertTrue(script.contains("script/check_pseudo_voiceover_paths.sh --swift-test"))
         XCTAssertTrue(script.contains("swift test --filter ProjectBoardStoreTests"))
         XCTAssertTrue(script.contains("run_runtime_gates()"))
         XCTAssertTrue(script.contains("script/check_runtime_accessible_crud_smoke.sh"))
