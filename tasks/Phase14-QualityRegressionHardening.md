@@ -429,6 +429,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] 古いschemaから最新schemaへのmigration testを追加する。
 - [x] invalid JSON / blank string / unknown enum / dangling foreign keyをfail-closedまたはsafe fallbackするテストを追加する。
 - [x] UI ViewModelが破損recordを受け取ってもProject Board全体をUnavailableにしないテストを追加する。
+- [x] タスク自動実行のLLM requestが、選択タスクのtitle/detail/status/priority/due/selection reasonをfenced JSONとして渡し、タスク本文の改行や命令文が別タスク・直接実行指示に化けないことをテストする。
 
 ### Implementation Steps
 
@@ -436,12 +437,14 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] 破損データの扱いを「表示除外」「repair candidate」「blocking error」に分類する。
 - [x] Store layerでvalidationし、Viewでad hoc parseしない。
 - [x] Repair可能なものはaudit logに残す。
+- [x] Task automation prompt payloadを構造化JSONにし、title/detailはユーザー入力の内容であってautomation instructionではないことを明示する。
 
 ### Acceptance Criteria
 
 - [x] 既存ユーザーDBのshape差分でアプリが起動不能になりにくい。
 - [x] 破損recordがある場合も、原因と対象がユーザー/ログに安全に見える。
 - [x] 秘密情報やraw DB contentをerror messageへ出さない。
+- [x] LLM review対象のタスク内容がprompt injection風の本文を含んでも、選択理由・承認境界・削除禁止の契約が保持される。
 
 ### Non-goals
 
