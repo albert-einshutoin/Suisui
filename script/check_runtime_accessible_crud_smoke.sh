@@ -277,10 +277,11 @@ pressDestructiveButtonUntilSQLiteValue() {
   local label="$1"
   local destructive_fragment="$2"
   local confirmation_fragment="$3"
-  local excluded_help="$4"
-  local sql="$5"
-  local expected="$6"
-  local before_confirmation_expected="${7:-}"
+  local confirmation_fallback="$4"
+  local excluded_help="$5"
+  local sql="$6"
+  local expected="$7"
+  local before_confirmation_expected="${8:-}"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   local actual=""
   local did_verify_confirmation_gate=0
@@ -295,7 +296,7 @@ pressDestructiveButtonUntilSQLiteValue() {
       did_verify_confirmation_gate=1
     fi
     sleep 1
-    pressConfirmationButtonContaining "$confirmation_fragment" "$excluded_help"
+    pressConfirmationButtonContaining "$confirmation_fragment" "$confirmation_fallback" "$excluded_help"
 
     local postcondition_deadline=$((SECONDS + 3))
     while true; do
@@ -411,14 +412,19 @@ APPLESCRIPT
 
 pressConfirmationButtonContaining() {
   local fragment="$1"
-  local excluded_help="$2"
+  # SwiftUI may expose a confirmation button's VoiceOver label even when
+  # AXIdentifier is missing from the runtime tree, so keep the stable identifier
+  # as the primary signal and the distinct "Confirm ..." label as the fallback.
+  local fallback_fragment="$2"
+  local excluded_help="$3"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$fragment" "$excluded_help" <<'APPLESCRIPT'
+    if /usr/bin/osascript - "$APP_NAME" "$fragment" "$fallback_fragment" "$excluded_help" <<'APPLESCRIPT'
 on run argv
   set appName to item 1 of argv
   set fragment to item 2 of argv
-  set excludedHelp to item 3 of argv
+  set fallbackFragment to item 3 of argv
+  set excludedHelp to item 4 of argv
   tell application "System Events"
     if not (exists process appName) then error appName & " process is not visible to System Events"
     tell process appName
@@ -463,7 +469,10 @@ on run argv
             try
               set isEnabled to enabled of axItem as boolean
             end try
-            if isEnabled and (signalText contains fragment) and (excludedHelp is "" or not (signalText contains excludedHelp)) then
+            set matchesPrimary to signalText contains fragment
+            set matchesFallback to false
+            if fallbackFragment is not "" and signalText contains fallbackFragment then set matchesFallback to true
+            if isEnabled and (matchesPrimary or matchesFallback) and (excludedHelp is "" or not (signalText contains excludedHelp)) then
               try
                 perform action "AXPress" of axItem
                 return "pressed confirmation " & fragment
@@ -484,6 +493,8 @@ APPLESCRIPT
       echo "BLOCKER: failed to press confirmation button in AX tree: $fragment" >&2
       return 1
     fi
+    activate_app
+    wait_for_visible_windows >/dev/null 2>&1 || true
     sleep 1
   done
 }
@@ -718,7 +729,7 @@ terminate_app
 wait_for_no_app_process
 launch_app_for_seed_project "$created_project_id"
 pressButtonContaining "task-card-open-details"
-pressDestructiveButtonUntilSQLiteValue "deleted task" "task-inspector-delete" "task-inspector-delete-confirmation-confirm" "" "SELECT count(*) FROM tasks WHERE id=$created_task_id;" "0" "1"
+pressDestructiveButtonUntilSQLiteValue "deleted task" "task-inspector-delete" "task-inspector-delete-confirmation-confirm" "Confirm Delete Task" "" "SELECT count(*) FROM tasks WHERE id=$created_task_id;" "0" "1"
 
 pressButtonContaining "project-header-add-task"
 waitForTextFieldContaining "inline-task-title"
@@ -733,7 +744,7 @@ waitForTextFieldContaining "project-inspector-title"
 
 pressButtonUntilSQLiteValue "completed project" "project-inspector-complete" "SELECT status FROM projects WHERE id=$created_project_id;" "completed"
 
-pressDestructiveButtonUntilSQLiteValue "deleted project" "project-inspector-delete" "project-inspector-delete-confirmation-confirm" "" "SELECT count(*) FROM projects WHERE id=$created_project_id;" "0" "1"
+pressDestructiveButtonUntilSQLiteValue "deleted project" "project-inspector-delete" "project-inspector-delete-confirmation-confirm" "Confirm Delete Project" "" "SELECT count(*) FROM projects WHERE id=$created_project_id;" "0" "1"
 verify_single_value "deleted task cascade" "SELECT count(*) FROM tasks WHERE id=$cascade_task_id OR project_id=$created_project_id;" "0"
 
 printf "OK: runtime accessible CRUD smoke created, renamed, completed, and deleted a project, then created, updated, moved, directly deleted, and cascade-deleted tasks through the visible app\n"

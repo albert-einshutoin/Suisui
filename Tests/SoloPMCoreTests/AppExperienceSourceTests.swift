@@ -1144,7 +1144,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(projectInspectorSource.contains("DispatchQueue.main.async"))
         XCTAssertTrue(taskInspectorSource.contains("DispatchQueue.main.async"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"\\(accessibilityIdentifier)-confirm\")"))
-        XCTAssertTrue(source.contains(".accessibilityLabel(confirmTitle)"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Confirm \\(confirmTitle)\")"))
         XCTAssertTrue(source.contains(".accessibilityHint(\"Confirms \\(confirmTitle).\")"))
         XCTAssertFalse(projectInspectorSource.contains(".confirmationDialog("))
         XCTAssertFalse(taskInspectorSource.contains(".confirmationDialog("))

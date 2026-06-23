@@ -3264,7 +3264,7 @@ private struct InspectorDestructiveConfirmation: View {
                     Label(confirmTitle, systemImage: confirmSystemImage)
                 }
                 .accessibilityIdentifier("\(accessibilityIdentifier)-confirm")
-                .accessibilityLabel(confirmTitle)
+                .accessibilityLabel("Confirm \(confirmTitle)")
                 .accessibilityHint("Confirms \(confirmTitle).")
             }
         }
