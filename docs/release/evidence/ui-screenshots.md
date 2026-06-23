@@ -2,8 +2,8 @@
 
 Generated with `script/capture_ui_evidence.sh`.
 
-- Generated at: `2026-06-23T15:36:21Z`
-- Source commit: `b1f154c`
+- Generated at: `2026-06-23T15:58:44Z`
+- Source commit: `cd326e4`
 - App bundle: `dist/SoloPM.app`
 - Visual baseline manifest: `docs/quality/visual-baseline-manifest.json`
 - Viewport contract: `SOLOPM_VISUAL_BASELINE_VIEWPORT=1560x860`, `SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT=1200x720`
