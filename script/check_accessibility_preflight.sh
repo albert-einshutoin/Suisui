@@ -20,6 +20,7 @@ RUN_RUNTIME=0
 LAUNCH_APP=1
 SKIP_SOURCE_ANCHORS=0
 LAUNCH_ENV_FILE=""
+DEFAULT_VOICEOVER_LAUNCH_ENV_FILE="$ROOT_DIR/.tmp/voiceover-review/launch.env"
 TIMEOUT_SECONDS=12
 MIN_AX_BUTTONS=5
 MIN_AX_TEXT_FIELDS=1
@@ -237,6 +238,22 @@ if [[ ! -d "$APP_BUNDLE" ]]; then
   echo "BLOCKER: app bundle not found: $APP_BUNDLE" >&2
   echo "NEXT: run ./script/build_and_run.sh --verify before --runtime accessibility preflight." >&2
   exit 2
+fi
+
+if [[ "$LAUNCH_APP" -eq 1 && -z "$LAUNCH_ENV_FILE" ]]; then
+  if [[ ! -x "$ROOT_DIR/script/prepare_voiceover_review_candidate.sh" ]]; then
+    echo "BLOCKER: missing VoiceOver candidate preparation script: script/prepare_voiceover_review_candidate.sh" >&2
+    exit 2
+  fi
+
+  # Runtime AX needs a deterministic Project Board with task cards and inspector fields;
+  # LaunchServices can start the debug app without a useful window, so default to the same
+  # seeded candidate used by automated release preflight when no explicit env is provided.
+  (
+    cd "$ROOT_DIR"
+    ./script/prepare_voiceover_review_candidate.sh --skip-build --no-launch >/dev/null
+  )
+  LAUNCH_ENV_FILE="$DEFAULT_VOICEOVER_LAUNCH_ENV_FILE"
 fi
 
 if [[ -n "$LAUNCH_ENV_FILE" ]]; then
