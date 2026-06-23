@@ -563,6 +563,8 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
         // The document planner already excludes unapproved external context,
         // but this provider boundary still sends only approval-gated draft
         // outputs and redacts every string again before it can leave the Mac.
+        // Source previews are included so document-backed artifacts remain
+        // evidence-based without letting unapproved connector context through.
         drafts
             .filter { $0.requiresApproval }
             .map { draft in
@@ -571,6 +573,14 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
                     title: redactedProviderContent(draft.title),
                     suggestedPath: redactedProviderContent(draft.suggestedPath),
                     sourceDocumentIDs: draft.sourceDocumentIDs.map(redactedProviderContent),
+                    sourceDocuments: draft.sourceDocuments.map { source in
+                        TaskAutoExecutionPromptDocumentSource(
+                            id: redactedProviderContent(source.id),
+                            title: redactedProviderContent(source.title),
+                            redactedSummary: redactedProviderContent(source.redactedSummary),
+                            inclusionReason: redactedProviderContent(source.inclusionReason)
+                        )
+                    },
                     rationale: redactedProviderContent(draft.rationale),
                     riskLevel: draft.riskLevel.rawValue,
                     requiresApproval: draft.requiresApproval
@@ -697,7 +707,15 @@ private struct TaskAutoExecutionPromptDocumentDeliverable: Encodable {
     var title: String
     var suggestedPath: String
     var sourceDocumentIDs: [String]
+    var sourceDocuments: [TaskAutoExecutionPromptDocumentSource]
     var rationale: String
     var riskLevel: String
     var requiresApproval: Bool
+}
+
+private struct TaskAutoExecutionPromptDocumentSource: Encodable {
+    var id: String
+    var title: String
+    var redactedSummary: String
+    var inclusionReason: String
 }

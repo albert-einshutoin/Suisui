@@ -582,9 +582,19 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
             .first { $0["kind"] as? String == "releaseNotes" }?["sourceDocumentIDs"] as? [String]
         let pullRequestPlanSourceIDs = deliverables
             .first { $0["kind"] as? String == "pullRequestPlan" }?["sourceDocumentIDs"] as? [String]
+        let releaseNotesSources = deliverables
+            .first { $0["kind"] as? String == "releaseNotes" }?["sourceDocuments"] as? [[String: Any]]
+        let draftArtifactSources = deliverables
+            .first { $0["kind"] as? String == "draftArtifact" }?["sourceDocuments"] as? [[String: Any]]
         XCTAssertEqual(releaseNotesSourceIDs, ["release"])
         XCTAssertEqual(pullRequestPlanSourceIDs, ["phase14"])
+        XCTAssertEqual(releaseNotesSources?.map { $0["id"] as? String }, ["release"])
+        XCTAssertEqual(releaseNotesSources?.first?["title"] as? String, "Release checklist")
+        XCTAssertTrue((releaseNotesSources?.first?["redactedSummary"] as? String)?.contains("Release notes") == true)
+        XCTAssertEqual(draftArtifactSources?.map { $0["id"] as? String }, ["artifact"])
+        XCTAssertTrue((draftArtifactSources?.first?["redactedSummary"] as? String)?.contains("[REDACTED_SECRET]") == true)
         XCTAssertFalse(deliverables.flatMap { ($0["sourceDocumentIDs"] as? [String]) ?? [] }.contains("external-issue"))
+        XCTAssertFalse(deliverables.flatMap { ($0["sourceDocuments"] as? [[String: Any]]) ?? [] }.contains { $0["id"] as? String == "external-issue" })
         XCTAssertTrue(request.userInput.contains("Document deliverables are draft-only"))
         XCTAssertTrue(request.availableTools.contains(ActionTool.filesystemCreateMarkdownFile))
         XCTAssertFalse(request.userInput.contains("sk-proj-doc-secret123"))

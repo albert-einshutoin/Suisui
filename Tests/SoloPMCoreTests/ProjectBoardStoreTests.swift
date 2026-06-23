@@ -1136,6 +1136,11 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertTrue(deliverables.allSatisfy { $0["requiresApproval"] as? Bool == true })
         XCTAssertEqual(Set(deliverables.compactMap { $0["riskLevel"] as? String }), ["draft"])
         XCTAssertTrue(deliverables.allSatisfy { ($0["sourceDocumentIDs"] as? [String]) == ["phase14"] })
+        let sourceDocuments = deliverables.flatMap { ($0["sourceDocuments"] as? [[String: Any]]) ?? [] }
+        XCTAssertFalse(sourceDocuments.isEmpty)
+        XCTAssertTrue(sourceDocuments.allSatisfy { $0["id"] as? String == "phase14" })
+        XCTAssertTrue(sourceDocuments.allSatisfy { $0["title"] as? String == "Phase14 release notes and PR plan" })
+        XCTAssertTrue(sourceDocuments.allSatisfy { ($0["redactedSummary"] as? String)?.contains("[REDACTED_SECRET]") == true })
         XCTAssertTrue(request.availableTools.contains(.filesystemCreateMarkdownFile))
         XCTAssertTrue(request.userInput.contains("Document deliverables are draft-only"))
         XCTAssertFalse(request.userInput.contains("sk-proj-task-secret123"))

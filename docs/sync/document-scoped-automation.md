@@ -34,13 +34,14 @@ When selected documents imply file-like deliverables, SoloPM creates reviewable 
 - Output kind.
 - Suggested path.
 - Source document IDs.
+- Redacted source document previews with title, summary, and inclusion reason.
 - Rationale.
 - Risk level.
 - Approval requirement.
 
-External sources are excluded from source document IDs until their connector-specific approval flow is implemented. If only external sources are selected, no deliverable draft is created. This keeps GitHub, calendar, SaaS docs, and other remote connector state from silently becoming the basis for local deliverables.
+External sources are excluded from source document IDs and source previews until their connector-specific approval flow is implemented. If only external sources are selected, no deliverable draft is created. This keeps GitHub, calendar, SaaS docs, and other remote connector state from silently becoming the basis for local deliverables.
 
-Deliverable source binding is output-specific. Release notes cite release-note or changelog sources, PR plans cite implementation / regression / pull request sources, and draft artifacts cite artifact or Markdown draft sources. User request text can describe the desired work, but it is not treated as source evidence for a specific deliverable. If approved selected documents do not carry a direct deliverable signal, SoloPM falls back to a preparation checklist only. This keeps review evidence useful instead of over-citing unrelated background docs.
+Deliverable source binding is output-specific. Release notes cite release-note or changelog sources, PR plans cite implementation / regression / pull request sources, and draft artifacts cite artifact or Markdown draft sources. User request text can describe the desired work, but it is not treated as source evidence for a specific deliverable. If approved selected documents do not carry a direct deliverable signal, SoloPM falls back to a preparation checklist only. This keeps review evidence useful instead of over-citing unrelated background docs. The LLM review request keeps these source previews inside fenced redacted JSON, so the model has enough approved document context to draft useful artifacts while copied secrets and unapproved external connector previews stay out of provider context.
 
 ## Proposed Output Kinds
 

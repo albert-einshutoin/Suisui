@@ -92,6 +92,9 @@ public struct DocumentAutomationDeliverableDraft: Codable, Equatable, Sendable {
     public var title: String
     public var suggestedPath: String
     public var sourceDocumentIDs: [String]
+    // Keep approved source previews with each draft so provider planning can
+    // draft from selected document evidence instead of inventing from IDs alone.
+    public var sourceDocuments: [DocumentAutomationDeliverableSource]
     public var rationale: String
     public var riskLevel: RiskLevel
     public var requiresApproval: Bool
@@ -101,6 +104,7 @@ public struct DocumentAutomationDeliverableDraft: Codable, Equatable, Sendable {
         title: String,
         suggestedPath: String,
         sourceDocumentIDs: [String],
+        sourceDocuments: [DocumentAutomationDeliverableSource] = [],
         rationale: String,
         riskLevel: RiskLevel,
         requiresApproval: Bool
@@ -109,9 +113,25 @@ public struct DocumentAutomationDeliverableDraft: Codable, Equatable, Sendable {
         self.title = title
         self.suggestedPath = suggestedPath
         self.sourceDocumentIDs = sourceDocumentIDs
+        self.sourceDocuments = sourceDocuments
         self.rationale = DeveloperSecretRedactor().redact(rationale).text
         self.riskLevel = riskLevel
         self.requiresApproval = requiresApproval
+    }
+}
+
+public struct DocumentAutomationDeliverableSource: Codable, Equatable, Sendable {
+    public var id: String
+    public var title: String
+    public var redactedSummary: String
+    public var inclusionReason: String
+
+    public init(id: String, title: String, redactedSummary: String, inclusionReason: String) {
+        let redactor = DeveloperSecretRedactor()
+        self.id = id
+        self.title = redactor.redact(title).text
+        self.redactedSummary = redactor.redact(redactedSummary).text
+        self.inclusionReason = redactor.redact(inclusionReason).text
     }
 }
 
@@ -284,11 +304,20 @@ public struct DocumentAutomationArtifactPlanner: Sendable {
             }
             let sourceDocumentIDs = sourceDocuments.map(\.id)
             let sourceDocumentTitles = sourceDocuments.map(\.title)
+            let sourceDocumentPreviews = sourceDocuments.map {
+                DocumentAutomationDeliverableSource(
+                    id: $0.id,
+                    title: $0.title,
+                    redactedSummary: $0.redactedSummary,
+                    inclusionReason: $0.inclusionReason
+                )
+            }
             return DocumentAutomationDeliverableDraft(
                 kind: kind,
                 title: title(for: kind),
                 suggestedPath: suggestedPath(for: kind),
                 sourceDocumentIDs: sourceDocumentIDs,
+                sourceDocuments: sourceDocumentPreviews,
                 rationale: rationale(for: kind, sourceTitles: sourceDocumentTitles),
                 riskLevel: riskLevel(for: kind),
                 requiresApproval: true
