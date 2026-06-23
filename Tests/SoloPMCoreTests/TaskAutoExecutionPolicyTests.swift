@@ -73,6 +73,38 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertFalse(decision.selectedTasks.contains { $0.title == "High outside lookahead" })
     }
 
+    func testPlannerKeepsOlderEqualRankTasksAheadOfNewerTasks() throws {
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        let snapshot = ProjectBoardSnapshot(projects: [
+            makeProject(tasks: [
+                makeTask(id: 30, title: "Newer high due today", priority: .high, dueAt: "2026-06-22T18:00:00Z"),
+                makeTask(id: 10, title: "Older high due today", priority: .high, dueAt: "2026-06-22T18:00:00Z"),
+                makeTask(id: 20, title: "Middle high due today", priority: .high, dueAt: "2026-06-22T18:00:00Z")
+            ])
+        ])
+
+        let decision = TaskAutoExecutionPlanner().makeDecision(
+            snapshot: snapshot,
+            settings: .init(
+                isEnabled: true,
+                mode: .reviewOnly,
+                cadence: .hourly,
+                maxTasksPerRun: 3,
+                lookaheadHours: 48
+            ),
+            history: .empty,
+            referenceDate: referenceDate,
+            calendar: utcCalendar()
+        )
+
+        XCTAssertEqual(decision.status, .readyForReview)
+        XCTAssertEqual(decision.selectedTasks.map(\.title), [
+            "Older high due today",
+            "Middle high due today",
+            "Newer high due today"
+        ])
+    }
+
     func testPlannerIgnoresCompletedAndArchivedProjectsEvenWhenTasksLookUrgent() throws {
         let referenceDate = try isoDate("2026-06-22T09:00:00Z")
         let snapshot = ProjectBoardSnapshot(projects: [

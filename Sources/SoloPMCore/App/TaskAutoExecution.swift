@@ -356,7 +356,10 @@ public struct TaskAutoExecutionPlanner: Sendable {
                 if lhsRank != rhsRank {
                     return isRank(lhsRank, orderedBefore: rhsRank)
                 }
-                return lhs.id > rhs.id
+                // LLM review budget is finite. When urgency and priority are
+                // equal, keep older local work ahead so newly added tasks do
+                // not starve already-reviewed release or project work.
+                return lhs.id < rhs.id
             }
     }
 
