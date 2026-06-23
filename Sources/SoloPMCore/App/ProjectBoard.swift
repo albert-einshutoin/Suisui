@@ -1414,16 +1414,53 @@ public final class ProjectBoardViewModel: ObservableObject {
             return
         }
 
-        // The first approved execution step is intentionally a local status
-        // transition. External writes and destructive actions remain separate
-        // reviewed plan actions so LLM prioritization cannot bypass approval.
-        moveTask(id: selectedTask.id, to: selectedTask.status == .done ? .done : .inProgress)
-        integrationStatusMessage = String(format: String(localized: "Started approved automation for \"%@\"."), selectedTask.title)
-        taskAutomationReviewDecision = nil
+        do {
+            let updatedTask = try store.updateTask(
+                id: selectedTask.id,
+                ProjectBoardTaskDraft(
+                    projectID: selectedTask.projectID,
+                    title: selectedTask.title,
+                    detail: approvedAutomationExecutionDetail(for: selectedTask),
+                    status: .inProgress,
+                    priority: selectedTask.priority,
+                    dueAt: selectedTask.dueAt
+                )
+            )
+            selectedProjectID = updatedTask.projectID
+            load()
+            selectedProjectID = updatedTask.projectID
+            selectedTaskID = selectedTask.id
+            // Approved automation is still local and review-gated, but it must
+            // leave a visible content-execution trail so a status move cannot
+            // masquerade as executing the reviewed task body.
+            todayCommandFeedback = String(format: String(localized: "Executed approved automation for \"%@\"."), selectedTask.title)
+            integrationStatusMessage = String(format: String(localized: "Executed approved automation for \"%@\"."), selectedTask.title)
+            taskAutomationReviewDecision = nil
+            onChange()
+        } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
+            errorMessage = "Restore the project before running automation."
+        } catch ProjectBoardStoreError.emptyTitle {
+            errorMessage = "Task title is required."
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+        }
     }
 
     private func isEligibleForTaskAutomation(_ task: ProjectBoardTask) -> Bool {
         task.status != .blocked && task.status != .done
+    }
+
+    private func approvedAutomationExecutionDetail(for task: ProjectBoardTask) -> String {
+        let marker = "SoloPM approved automation execution"
+        let note = "\(marker): Run approved plan moved this task into active work after reviewing its current title, detail, priority, and due date."
+        let trimmedDetail = task.detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedDetail.contains(marker) else {
+            return task.detail
+        }
+        guard !trimmedDetail.isEmpty else {
+            return note
+        }
+        return "\(trimmedDetail)\n\n\(note)"
     }
 
     private func matchesReviewedAutomationTask(_ reviewedTask: ProjectBoardTask, current: ProjectBoardTask) -> Bool {

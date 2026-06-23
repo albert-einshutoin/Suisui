@@ -23,7 +23,7 @@ The task path covers create, content entry, edit, status execution, automation r
 | Save edit | `task-inspector-save` | button | Saves task title, detail, status, priority, and due date. |
 | Status controls | `task-status-move-controls` | group | Exposes status movement controls such as `task-status-move-in_progress`. |
 | Review automation | `task-auto-execution-review` | button | Builds a review-only LLM plan for the selected task. |
-| Run approved plan | `task-auto-execution-run-plan` | button | Starts only the reviewed local task step after explicit user activation. |
+| Run approved plan | `task-auto-execution-run-plan` | button | Starts only the reviewed local task step after explicit user activation and leaves a task-detail execution note. |
 | Delete task | `task-inspector-delete` | button | Opens a destructive confirmation instead of deleting immediately. |
 | Confirm delete | `task-inspector-delete-confirmation-confirm` | button | Confirms the destructive delete path. |
 

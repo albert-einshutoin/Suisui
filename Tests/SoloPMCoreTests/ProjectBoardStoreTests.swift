@@ -843,6 +843,29 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelRecordsTaskContentExecutionWhenApprovedAutomationRuns() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Run release note task",
+            detail: "Use docs/release/checklist.md to draft the operator note.",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-22"
+        ))
+        viewModel.prepareAutomationReviewForSelectedTask()
+
+        viewModel.runApprovedAutomationForSelectedTask()
+
+        let executedTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+        XCTAssertEqual(executedTask.status, .inProgress)
+        XCTAssertTrue(executedTask.detail.contains("Use docs/release/checklist.md to draft the operator note."))
+        XCTAssertTrue(executedTask.detail.contains("SoloPM approved automation execution"))
+        XCTAssertTrue(executedTask.detail.contains("Run approved plan"))
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Executed approved automation for \"Run release note task\".")
+    }
+
+    @MainActor
     func testProjectBoardViewModelRejectsDoneAndBlockedTasksBeforeAutomationReview() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()
