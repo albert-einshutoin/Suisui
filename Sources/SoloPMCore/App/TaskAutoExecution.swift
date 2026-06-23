@@ -176,6 +176,59 @@ public struct TaskAutoExecutionDecision: Equatable, Sendable {
     }
 }
 
+public struct ApprovedAutomationExecutionReceipt: Equatable, Sendable {
+    public var taskID: Int64
+    public var projectID: Int64
+    public var redactedTaskTitle: String
+    public var redactedTaskDetail: String
+    public var statusBefore: ProjectTaskStatus
+    public var statusAfter: ProjectTaskStatus
+    public var priority: ProjectTaskPriority
+    public var dueAt: String?
+    public var reviewReason: String
+
+    public init(
+        taskID: Int64,
+        projectID: Int64,
+        redactedTaskTitle: String,
+        redactedTaskDetail: String,
+        statusBefore: ProjectTaskStatus,
+        statusAfter: ProjectTaskStatus,
+        priority: ProjectTaskPriority,
+        dueAt: String?,
+        reviewReason: String
+    ) {
+        self.taskID = taskID
+        self.projectID = projectID
+        self.redactedTaskTitle = redactedTaskTitle
+        self.redactedTaskDetail = redactedTaskDetail
+        self.statusBefore = statusBefore
+        self.statusAfter = statusAfter
+        self.priority = priority
+        self.dueAt = dueAt
+        self.reviewReason = reviewReason
+    }
+
+    public init(
+        task: ProjectBoardTask,
+        statusAfter: ProjectTaskStatus,
+        reviewReason: String,
+        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()
+    ) {
+        self.init(
+            taskID: task.id,
+            projectID: task.projectID,
+            redactedTaskTitle: redactor.redact(task.title).text,
+            redactedTaskDetail: redactor.redact(task.detail).text,
+            statusBefore: task.status,
+            statusAfter: statusAfter,
+            priority: task.priority,
+            dueAt: task.dueAt,
+            reviewReason: redactor.redact(reviewReason).text
+        )
+    }
+}
+
 public struct TaskAutoExecutionPlanner: Sendable {
     public init() {}
 

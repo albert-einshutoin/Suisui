@@ -1025,6 +1025,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var projectAssistantAnswer: ProjectAssistantAnswer?
     @Published public private(set) var projectAssistantReviewDraft: ProjectAssistantReviewDraft?
     @Published public private(set) var taskAutomationReviewDecision: TaskAutoExecutionDecision?
+    @Published public private(set) var lastApprovedAutomationExecutionReceipt: ApprovedAutomationExecutionReceipt?
 
     private let store: any ProjectBoardStore
     private let inboxCaptureStore: (any InboxCaptureStore)?
@@ -1060,6 +1061,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.projectAssistantAnswer = nil
         self.projectAssistantReviewDraft = nil
         self.taskAutomationReviewDecision = nil
+        self.lastApprovedAutomationExecutionReceipt = nil
         self.taskAutomationSessionHistory = .empty
     }
 
@@ -1399,7 +1401,8 @@ public final class ProjectBoardViewModel: ObservableObject {
             todayCommandFeedback = String(localized: "Select a task before running automation.")
             return
         }
-        guard let reviewedTask = taskAutomationReviewDecision?.selectedTasks.first(where: { $0.id == selectedTask.id }) else {
+        guard let reviewDecision = taskAutomationReviewDecision,
+              let reviewedTask = reviewDecision.selectedTasks.first(where: { $0.id == selectedTask.id }) else {
             todayCommandFeedback = String(localized: "Review the automation plan before running it.")
             return
         }
@@ -1430,6 +1433,11 @@ public final class ProjectBoardViewModel: ObservableObject {
             load()
             selectedProjectID = updatedTask.projectID
             selectedTaskID = selectedTask.id
+            lastApprovedAutomationExecutionReceipt = ApprovedAutomationExecutionReceipt(
+                task: selectedTask,
+                statusAfter: updatedTask.status,
+                reviewReason: reviewDecision.reason
+            )
             // Approved automation is still local and review-gated, but it must
             // leave a visible content-execution trail so a status move cannot
             // masquerade as executing the reviewed task body.

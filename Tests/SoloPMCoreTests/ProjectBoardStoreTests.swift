@@ -866,6 +866,36 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelRecordsRedactedApprovedAutomationExecutionReceipt() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Run provider handoff token=secret-title",
+            detail: "Create docs from sk-proj-live-secret and api_key=do-not-leak.",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-22"
+        ))
+        viewModel.prepareAutomationReviewForSelectedTask()
+
+        viewModel.runApprovedAutomationForSelectedTask()
+
+        let receipt = try XCTUnwrap(viewModel.lastApprovedAutomationExecutionReceipt)
+        XCTAssertEqual(receipt.taskID, task.id)
+        XCTAssertEqual(receipt.projectID, task.projectID)
+        XCTAssertEqual(receipt.statusBefore, .planned)
+        XCTAssertEqual(receipt.statusAfter, .inProgress)
+        XCTAssertEqual(receipt.priority, .high)
+        XCTAssertEqual(receipt.dueAt, "2026-06-22")
+        XCTAssertEqual(receipt.reviewReason, "Selected task is ready for review-only automation.")
+        XCTAssertTrue(receipt.redactedTaskTitle.contains("[REDACTED_SECRET]"))
+        XCTAssertTrue(receipt.redactedTaskDetail.contains("[REDACTED_SECRET]"))
+        XCTAssertFalse(receipt.redactedTaskTitle.contains("secret-title"))
+        XCTAssertFalse(receipt.redactedTaskDetail.contains("sk-proj-live-secret"))
+        XCTAssertFalse(receipt.redactedTaskDetail.contains("do-not-leak"))
+    }
+
+    @MainActor
     func testProjectBoardViewModelRejectsDoneAndBlockedTasksBeforeAutomationReview() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()
