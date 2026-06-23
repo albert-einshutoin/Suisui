@@ -19,6 +19,7 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
             node("task-status-move-in_progress", role: .button, label: "Move to In Progress", help: "Moves the selected task to In Progress."),
             node("task-auto-execution-review", role: .button, label: "Review automation plan", help: "Builds a review-only LLM plan for the selected task."),
             node("task-auto-execution-run-plan", role: .button, label: "Run approved plan", help: "Runs only after explicit user approval."),
+            node("approved-execution-receipt", role: .group, label: "Approved execution receipt"),
             node("task-inspector-delete", role: .button, label: "Delete Task", help: "Deletes the selected task after confirmation.", isDestructive: true),
             node("task-inspector-delete-confirmation-confirm", role: .button, label: "Confirm Delete Task", help: "Confirms permanent deletion.", confirmsDestructiveAction: true)
         ]
@@ -51,6 +52,7 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
 
         XCTAssertTrue(result.findings.contains { $0.nodeID == "task-auto-execution-review" && $0.kind == .missingRequiredNode })
         XCTAssertTrue(result.findings.contains { $0.nodeID == "project-board-task-auto-execution-review" && $0.kind == .missingRequiredNode })
+        XCTAssertTrue(result.findings.contains { $0.nodeID == "approved-execution-receipt" && $0.kind == .missingRequiredNode })
         XCTAssertTrue(result.findings.contains { $0.nodeID == "task-inspector-delete-confirmation-confirm" && $0.kind == .missingRequiredNode })
         XCTAssertTrue(result.findings.contains { $0.nodeID == "task-inspector-delete" && $0.kind == .missingDestructiveConfirmation })
     }

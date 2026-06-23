@@ -6,6 +6,7 @@ final class QualitySourceContractTests: XCTestCase {
         let script = try readPackageFile("script/check_pseudo_voiceover_paths.sh")
         let preflight = try readPackageFile("script/check_accessibility_preflight.sh")
         let projectBoard = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let projectBoardView = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 
         for marker in [
             "project-board-sidebar",
@@ -17,6 +18,7 @@ final class QualitySourceContractTests: XCTestCase {
             "task-status-move-controls",
             "task-auto-execution-review",
             "task-auto-execution-run-plan",
+            "approved-execution-receipt",
             "task-inspector-delete",
             "task-inspector-delete-confirmation-confirm"
         ] {
@@ -44,6 +46,8 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(script.contains("AccessibilityFocusPathAudit"))
         XCTAssertTrue(projectBoard.contains("@Published public private(set) var approvedAutomationExecutionReceipts"))
         XCTAssertTrue(projectBoard.contains("retainUnexecutedReviewedTasks"))
+        XCTAssertTrue(projectBoardView.contains("approved-execution-receipt"))
+        XCTAssertTrue(projectBoardView.contains("latestApprovedExecutionReceipt"))
     }
 
     func testProductRoleDocumentationStatesLocalFirstReviewBeforeExecutionStrength() throws {

@@ -421,6 +421,22 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution }"))
     }
 
+    func testTaskInspectorApprovedExecutionReceiptIsAccessibleAndRedacted() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(boardSource.contains("private var latestApprovedExecutionReceipt: ApprovedAutomationExecutionReceipt?"))
+        XCTAssertTrue(boardSource.contains("viewModel.approvedAutomationExecutionReceipts.last { $0.taskID == task.id }"))
+        XCTAssertTrue(boardSource.contains("approvedExecutionReceiptView(receipt)"))
+        XCTAssertTrue(boardSource.contains("Text(\"Task: \\(receipt.redactedTaskTitle)\")"))
+        XCTAssertTrue(boardSource.contains("Text(\"Reviewed detail: \\(receipt.redactedTaskDetail)\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"approved-execution-receipt\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Approved execution receipt\")"))
+        XCTAssertTrue(boardSource.contains(".accessibilityValue(approvedExecutionReceiptAccessibilityValue(receipt))"))
+        XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Shows the redacted task title and detail that were approved and executed.\")"))
+        XCTAssertTrue(boardSource.contains("\"Task \\(receipt.redactedTaskTitle)\""))
+        XCTAssertTrue(boardSource.contains("\"Reviewed detail \\(receipt.redactedTaskDetail)\""))
+    }
+
     func testProjectBoardLayoutMetricsGuardPrimaryDimensionsAndLongLabels() throws {
         let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 

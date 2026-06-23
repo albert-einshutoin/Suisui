@@ -6,6 +6,7 @@
 "Appearance" = "表示";
 "Apply Suggestion" = "提案を適用";
 "Approve" = "承認";
+"Approved execution receipt" = "承認済み実行レシート";
 "Approve Local Shell Execution" = "ローカルシェル実行を承認";
 "Approve OpenCode Local Execution" = "OpenCodeローカル実行を承認";
 "Backlog" = "バックログ";
@@ -86,6 +87,7 @@
 "Persists non-secret settings to local UserDefaults." = "シークレットではない設定をローカルのUserDefaultsに保存します。";
 "Server Enabled" = "サーバー有効";
 "Servers" = "サーバー";
+"Shows the redacted task title and detail that were approved and executed." = "承認され実行されたタスクのタイトルと詳細を、秘密値を伏せた形で表示します。";
 "Settings..." = "設定...";
 "Hide Sidebar" = "サイドバーを非表示";
 "Sidebar" = "サイドバー";

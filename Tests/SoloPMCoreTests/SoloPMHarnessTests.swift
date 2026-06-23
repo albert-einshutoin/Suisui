@@ -420,6 +420,7 @@ final class SoloPMHarnessTests: XCTestCase {
             node("task-status-move-controls", role: .group, label: "Task status controls"),
             node("task-auto-execution-review", role: .button, label: "Review automation plan", help: "Builds a review-only LLM plan."),
             node("task-auto-execution-run-plan", role: .button, label: "Run approved plan", help: "Runs after explicit approval."),
+            node("approved-execution-receipt", role: .group, label: "Approved execution receipt"),
             node("task-inspector-delete", role: .button, label: "Delete Task", help: "Deletes after confirmation.", isDestructive: true),
             node("task-inspector-delete-confirmation-confirm", role: .button, label: "Confirm Delete Task", help: "Confirms deletion.", confirmsDestructiveAction: true)
         ]

@@ -59,6 +59,7 @@ public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
         "task-status-move-controls",
         "task-auto-execution-review",
         "task-auto-execution-run-plan",
+        "approved-execution-receipt",
         "task-inspector-delete",
         "task-inspector-delete-confirmation-confirm"
     ])

@@ -3472,7 +3472,56 @@ private struct TaskInspectorAutomationSection: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            if let receipt = latestApprovedExecutionReceipt {
+                approvedExecutionReceiptView(receipt)
+            }
         }
+    }
+
+    private var latestApprovedExecutionReceipt: ApprovedAutomationExecutionReceipt? {
+        // Show the persisted redacted receipt, not current task text, so the audit trail
+        // stays tied to what the user approved.
+        viewModel.approvedAutomationExecutionReceipts.last { $0.taskID == task.id }
+    }
+
+    private func approvedExecutionReceiptView(_ receipt: ApprovedAutomationExecutionReceipt) -> some View {
+        let statusText = [
+            "Status: \(localizedDisplay(receipt.statusBefore.title))",
+            "to \(localizedDisplay(receipt.statusAfter.title))"
+        ].joined(separator: " ")
+
+        return VStack(alignment: .leading, spacing: 6) {
+            Label("Approved execution receipt", systemImage: "checkmark.seal")
+                .font(.caption.weight(.semibold))
+
+            Text("Task: \(receipt.redactedTaskTitle)")
+                .lineLimit(2)
+            Text("Reviewed detail: \(receipt.redactedTaskDetail)")
+                .lineLimit(3)
+            Text(statusText)
+            Text("Reason: \(receipt.reviewReason)")
+                .lineLimit(2)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("approved-execution-receipt")
+        .accessibilityLabel("Approved execution receipt")
+        .accessibilityValue(approvedExecutionReceiptAccessibilityValue(receipt))
+        .accessibilityHint("Shows the redacted task title and detail that were approved and executed.")
+    }
+
+    private func approvedExecutionReceiptAccessibilityValue(_ receipt: ApprovedAutomationExecutionReceipt) -> String {
+        [
+            "Task \(receipt.redactedTaskTitle)",
+            "Reviewed detail \(receipt.redactedTaskDetail)",
+            "Status \(localizedDisplay(receipt.statusBefore.title)) to \(localizedDisplay(receipt.statusAfter.title))",
+            "Reason \(receipt.reviewReason)"
+        ].joined(separator: ", ")
     }
 }
 
