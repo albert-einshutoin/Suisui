@@ -30,6 +30,8 @@ LAYOUT_STABILITY_WINDOW_STANDARD_HEIGHT="${SOLOPM_LAYOUT_STABILITY_WINDOW_STANDA
 LAYOUT_STABILITY_WINDOW_WIDE_WIDTH="${SOLOPM_LAYOUT_STABILITY_WINDOW_WIDE_WIDTH:-1420}"
 LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT="${SOLOPM_LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT:-860}"
 LAYOUT_STABILITY_AX_COLLECTION_TIMEOUT_SECONDS="${SOLOPM_LAYOUT_STABILITY_AX_COLLECTION_TIMEOUT_SECONDS:-8}"
+LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_COUNT="${SOLOPM_LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_COUNT:-3}"
+LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_DELAY_MS="${SOLOPM_LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_DELAY_MS:-50}"
 SQLITE3="${SQLITE3:-sqlite3}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
@@ -44,6 +46,16 @@ fi
 
 if [[ ! "$LAYOUT_STABILITY_AX_COLLECTION_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$LAYOUT_STABILITY_AX_COLLECTION_TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_LAYOUT_STABILITY_AX_COLLECTION_TIMEOUT_SECONDS must be a positive integer" >&2
+  exit 2
+fi
+
+if [[ ! "$LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_COUNT" =~ ^[0-9]+$ ]]; then
+  echo "SOLOPM_LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_COUNT must be a non-negative integer" >&2
+  exit 2
+fi
+
+if [[ ! "$LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_DELAY_MS" =~ ^[0-9]+$ ]]; then
+  echo "SOLOPM_LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_DELAY_MS must be a non-negative integer" >&2
   exit 2
 fi
 
@@ -602,33 +614,51 @@ collect_layout_sample_frames() {
   local frame_file="$3"
   shift 3 || true
   local required_identifiers=("$@")
+  local attempt=0
   if [[ "${#required_identifiers[@]}" -eq 0 ]]; then
     required_identifiers=("${REQUIRED_AX_IDENTIFIERS[@]}")
   fi
 
-  # AX can briefly report zero windows immediately after toolbar-driven layout
-  # mutations. We wait only for the real app window to be visible; there is no
-  # fixed delay before t=0 frame collection, so layout jumps are still exposed.
-  if ! wait_for_visible_windows; then
-    printf 'BLOCKER: failed to collect layout AX frames after %s at t=%sms because the app window was not visible\n' "$label" "$offset_ms" >&2
-    return 1
-  fi
-  if ! collect_ax_frames_with_timeout "$frame_file" "$frame_file.err"; then
-    activate_app
+  while true; do
+    # AX can briefly report zero windows immediately after toolbar-driven layout
+    # mutations. We wait only for the real app window to be visible; there is no
+    # fixed delay before t=0 frame collection, so layout jumps are still exposed.
     if ! wait_for_visible_windows; then
-      printf 'BLOCKER: failed to collect layout AX frames after %s at t=%sms because the app window did not recover\n' "$label" "$offset_ms" >&2
-      sed -n '1,20p' "$frame_file.err" >&2 || true
+      printf 'BLOCKER: failed to collect layout AX frames after %s at t=%sms because the app window was not visible\n' "$label" "$offset_ms" >&2
       return 1
     fi
     if ! collect_ax_frames_with_timeout "$frame_file" "$frame_file.err"; then
-      printf 'BLOCKER: failed to collect layout AX frames after %s at t=%sms\n' "$label" "$offset_ms" >&2
-      sed -n '1,20p' "$frame_file.err" >&2 || true
+      activate_app
+      if ! wait_for_visible_windows; then
+        printf 'BLOCKER: failed to collect layout AX frames after %s at t=%sms because the app window did not recover\n' "$label" "$offset_ms" >&2
+        sed -n '1,20p' "$frame_file.err" >&2 || true
+        return 1
+      fi
+      if ! collect_ax_frames_with_timeout "$frame_file" "$frame_file.err"; then
+        printf 'BLOCKER: failed to collect layout AX frames after %s at t=%sms\n' "$label" "$offset_ms" >&2
+        sed -n '1,20p' "$frame_file.err" >&2 || true
+        return 1
+      fi
+    fi
+
+    if has_required_ax_identifiers "$frame_file" "${required_identifiers[@]}"; then
+      return 0
+    fi
+
+    if (( attempt >= LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_COUNT )); then
+      require_ax_identifiers "$frame_file" "${required_identifiers[@]}"
       return 1
     fi
-  fi
-  if ! require_ax_identifiers "$frame_file" "${required_identifiers[@]}"; then
-    return 1
-  fi
+
+    # SwiftUI can momentarily expose child controls while omitting the parent
+    # container AXIdentifier even though the visible layout is stable. Retry the
+    # AX traversal itself, not the window mutation, so real frame jumps still
+    # fail through the subsequent delta and clipping checks.
+    attempt=$((attempt + 1))
+    printf 'INFO: required AX identifiers missing after %s at t=%sms; retrying AX collection (%d/%d)\n' \
+      "$label" "$offset_ms" "$attempt" "$LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_COUNT" >&2
+    sleep "$(awk -v ms="$LAYOUT_STABILITY_AX_IDENTIFIER_RETRY_DELAY_MS" 'BEGIN { printf "%.3f", ms / 1000 }')"
+  done
 }
 
 sample_layout_frames() {
