@@ -655,3 +655,4 @@
 "Builds a review-only LLM plan from the configured task automation settings." = "設定済みのタスク自動化設定から確認専用LLM計画を作成します。";
 "Runs the reviewed local task step after explicit user approval" = "明示的なユーザー承認後、確認済みのローカルタスク手順を実行します";
 "Runs the reviewed local task step after explicit user approval." = "明示的なユーザー承認後、確認済みのローカルタスク手順を実行します。";
+"Summarizes the selected Inbox capture metadata for review." = "選択中のInboxキャプチャメタデータをレビュー用に要約します。";

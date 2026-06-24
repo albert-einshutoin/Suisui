@@ -23,6 +23,7 @@ VISUAL_BASELINE_MANIFEST="$ROOT_DIR/docs/quality/visual-baseline-manifest.json"
 VISUAL_BASELINE_VIEWPORT="${SOLOPM_VISUAL_BASELINE_VIEWPORT:-1560x860}"
 SETTINGS_VISUAL_BASELINE_VIEWPORT="${SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT:-1200x720}"
 TARGET_TIMEOUT_SECONDS="${SOLOPM_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS:-30}"
+AX_MARKER_MAX_NODES="${SOLOPM_UI_EVIDENCE_AX_MAX_NODES:-6000}"
 mkdir -p "$EVIDENCE_TMPDIR"
 export TMPDIR="$EVIDENCE_TMPDIR/"
 EVIDENCE_HOME="${SOLOPM_UI_EVIDENCE_HOME:-$(mktemp -d "$EVIDENCE_TMPDIR/solopm-ui-evidence.XXXXXX")}"
@@ -61,6 +62,10 @@ fi
 
 if [[ ! "$TARGET_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TARGET_TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS must be a positive integer" >&2
+  exit 2
+fi
+if [[ ! "$AX_MARKER_MAX_NODES" =~ ^[0-9]+$ || "$AX_MARKER_MAX_NODES" -lt 1 ]]; then
+  echo "SOLOPM_UI_EVIDENCE_AX_MAX_NODES must be a positive integer" >&2
   exit 2
 fi
 
@@ -117,6 +122,9 @@ app_env_args() {
   fi
   if [[ -n "$PROJECT_BOARD_SELECTION_OVERRIDE" ]]; then
     args+=("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$PROJECT_BOARD_SELECTION_OVERRIDE")
+  fi
+  if [[ -n "$PROJECT_BOARD_SELECTED_TASK_OVERRIDE" ]]; then
+    args+=("SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID=$PROJECT_BOARD_SELECTED_TASK_OVERRIDE")
   fi
   if [[ -n "$APPEARANCE_OVERRIDE" ]]; then
     args+=("SOLOPM_APPEARANCE_PREFERENCE=$APPEARANCE_OVERRIDE")
@@ -229,104 +237,23 @@ target_marker_present() {
   local identifier="$1"
   local text="$2"
   local error_file
-  local osascript_pid
+  local checker_pid
   local watchdog_pid
   local status
   error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-ui-target-marker-error.XXXXXX")"
 
-  /usr/bin/osascript - "$APP_NAME" "$identifier" "$text" <<'APPLESCRIPT' >/dev/null 2>"$error_file" &
-on elementSignalParts(uiElement)
-  set itemIdentifier to ""
-  set itemName to ""
-  set itemTitle to ""
-  set itemDescription to ""
-  set itemHelp to ""
-  set itemValue to ""
-  tell application "System Events"
-    try
-      set itemIdentifier to value of attribute "AXIdentifier" of uiElement as text
-    end try
-    try
-      set itemName to name of uiElement as text
-    end try
-    try
-      set itemTitle to value of attribute "AXTitle" of uiElement as text
-    end try
-    try
-      set itemDescription to description of uiElement as text
-    end try
-    try
-      set itemHelp to value of attribute "AXHelp" of uiElement as text
-    end try
-    try
-      set itemValue to value of uiElement as text
-    end try
-  end tell
-  return {itemIdentifier, itemIdentifier & " " & itemName & " " & itemTitle & " " & itemDescription & " " & itemHelp & " " & itemValue}
-end elementSignalParts
-
-on scanElementTree(uiElement, identifierNeedle, textNeedle)
-  set signalParts to my elementSignalParts(uiElement)
-  set itemIdentifier to item 1 of signalParts
-  set itemSignal to item 2 of signalParts
-  set foundIdentifier to false
-  set foundText to false
-
-  if itemIdentifier contains identifierNeedle then set foundIdentifier to true
-  if itemSignal contains textNeedle then set foundText to true
-  if foundIdentifier and foundText then return {true, true}
-
-  tell application "System Events"
-    try
-      repeat with childElement in UI elements of uiElement
-        set childResult to my scanElementTree(childElement, identifierNeedle, textNeedle)
-        if item 1 of childResult then set foundIdentifier to true
-        if item 2 of childResult then set foundText to true
-        if foundIdentifier and foundText then return {true, true}
-      end repeat
-    end try
-  end tell
-  return {foundIdentifier, foundText}
-end scanElementTree
-
-on run argv
-  set appName to item 1 of argv
-  set identifierNeedle to item 2 of argv
-  set textNeedle to item 3 of argv
-  set foundIdentifier to false
-  set foundText to false
-  tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
-      set frontmost to true
-      set windowCount to count of windows
-      if windowCount < 1 then error appName & " has no visible AX windows"
-      repeat with windowIndex from 1 to windowCount
-        set currentWindow to window windowIndex
-        try
-          if (name of currentWindow as text) contains textNeedle then set foundText to true
-        end try
-        -- AX marker scans are bounded to one traversal per visible window because
-        -- SwiftUI's generated tree can be large enough for separate identifier/text
-        -- scans to stall release screenshot evidence on detail-heavy screens.
-        set windowResult to my scanElementTree(currentWindow, identifierNeedle, textNeedle)
-        if item 1 of windowResult then set foundIdentifier to true
-        if item 2 of windowResult then set foundText to true
-        if foundIdentifier and foundText then return "present"
-      end repeat
-    end tell
-  end tell
-  if not foundIdentifier then error "missing AX identifier marker: " & identifierNeedle
-  if not foundText then error "missing AX text marker: " & textNeedle
-end run
-APPLESCRIPT
-  osascript_pid=$!
+  # AX marker scans use a bounded Swift AX traversal because SwiftUI's generated
+  # accessibility tree can make AppleScript recursion stall on detail-heavy screens.
+  SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MARKER_MAX_NODES" \
+    /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_marker_check.swift" "$APP_NAME" "$identifier" "$text" \
+    >/dev/null 2>"$error_file" &
+  checker_pid=$!
   (
     sleep "$TARGET_TIMEOUT_SECONDS"
-    kill "$osascript_pid" >/dev/null 2>&1 || true
+    kill "$checker_pid" >/dev/null 2>&1 || true
   ) &
   watchdog_pid=$!
-  wait "$osascript_pid"
+  wait "$checker_pid"
   status=$?
   kill "$watchdog_pid" >/dev/null 2>&1 || true
   wait "$watchdog_pid" >/dev/null 2>&1 || true
@@ -752,6 +679,7 @@ persist_project_board_selection() {
 
   PROJECT_BOARD_SELECTION_OVERRIDE="project:$project_id"
   PROJECT_BOARD_TARGET_MARKERS="project-board-detail=>Launch Readiness|task-card-open-details=>Capture launch screenshots"
+  INBOX_VOICE_TASK_OVERRIDE="$inbox_voice_task_id"
   INBOX_VOICE_TARGET_MARKERS="sidebar-destination-inbox=>Inbox|inbox-capture-metadata=>Scheduled manual capture"
   write_app_preference solopm.projectBoard.selectedDestination "$PROJECT_BOARD_SELECTION_OVERRIDE"
 }
@@ -904,9 +832,11 @@ capture_project_board_destination() {
   local output_path="$3"
   local label="$4"
   local target_markers="${5:-}"
+  local selected_task_id="${6:-}"
 
   APPEARANCE_OVERRIDE="$appearance"
   PROJECT_BOARD_SELECTION_OVERRIDE="$selected_destination"
+  PROJECT_BOARD_SELECTED_TASK_OVERRIDE="$selected_task_id"
   SETTINGS_WINDOW_OVERRIDE=""
   SETTINGS_TAB_OVERRIDE=""
   VOICE_COMMAND_WINDOW_OVERRIDE=""
@@ -1191,8 +1121,8 @@ capture_project_board_destination system today "$TODAY_SYSTEM_SCREENSHOT" "Today
 capture_voice_command_appearance light "$VOICE_COMMAND_LIGHT_SCREENSHOT"
 capture_voice_command_appearance dark "$VOICE_COMMAND_DARK_SCREENSHOT"
 capture_voice_command_appearance system "$VOICE_COMMAND_SYSTEM_SCREENSHOT"
-capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_TARGET_MARKERS"
-capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_TARGET_MARKERS"
+capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE"
+capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE"
 capture_project_board_destination light projects "$PROJECTS_OVERVIEW_LIGHT_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS"
 capture_project_board_destination dark projects "$PROJECTS_OVERVIEW_DARK_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS"
 capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS"

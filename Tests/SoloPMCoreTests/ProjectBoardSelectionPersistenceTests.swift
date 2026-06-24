@@ -5,6 +5,7 @@ import XCTest
 final class ProjectBoardSelectionPersistenceTests: XCTestCase {
     override func tearDown() {
         unsetenv(ProjectBoardSelectionPersistence.environmentOverrideKey)
+        unsetenv(ProjectBoardTaskSelectionPersistence.environmentOverrideKey)
         super.tearDown()
     }
 
@@ -89,6 +90,22 @@ final class ProjectBoardSelectionPersistenceTests: XCTestCase {
 
         setenv(ProjectBoardSelectionPersistence.environmentOverrideKey, "   ", 1)
         XCTAssertNil(ProjectBoardSelectionPersistence.environmentOverrideRawValue)
+    }
+
+    func testTaskEnvironmentOverrideAcceptsPositiveTaskIDOnly() {
+        XCTAssertEqual(ProjectBoardTaskSelectionPersistence.environmentOverrideKey, "SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID")
+
+        setenv(ProjectBoardTaskSelectionPersistence.environmentOverrideKey, "  42  ", 1)
+        XCTAssertEqual(ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID, 42)
+
+        setenv(ProjectBoardTaskSelectionPersistence.environmentOverrideKey, "0", 1)
+        XCTAssertNil(ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID)
+
+        setenv(ProjectBoardTaskSelectionPersistence.environmentOverrideKey, "not-a-task", 1)
+        XCTAssertNil(ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID)
+
+        setenv(ProjectBoardTaskSelectionPersistence.environmentOverrideKey, "   ", 1)
+        XCTAssertNil(ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID)
     }
 
     private func makeProject(id: Int64) -> ProjectBoardProject {

@@ -786,7 +786,10 @@ private struct InboxActionPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Classify Selected Item")
                 .font(.headline)
-            InboxCaptureMetadataPanel(captures: viewModel.selectedInboxCaptureRecords)
+            InboxCaptureMetadataPanel(
+                captures: viewModel.selectedInboxCaptureRecords,
+                taskTitle: task?.title ?? "Selected Inbox item"
+            )
             if let feedback = viewModel.inboxClassificationFeedback {
                 HStack(spacing: 8) {
                     Label(feedback.message, systemImage: feedback.systemImage)
@@ -875,6 +878,7 @@ private struct InboxActionPanel: View {
 
 private struct InboxCaptureMetadataPanel: View {
     let captures: [InboxCaptureRecord]
+    let taskTitle: String
 
     var body: some View {
         if let capture = captures.first {
@@ -897,9 +901,31 @@ private struct InboxCaptureMetadataPanel: View {
             }
             .padding(8)
             .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
-            .accessibilityElement(children: .combine)
             .accessibilityIdentifier("inbox-capture-metadata")
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Voice capture metadata for \(taskTitle)")
+            .accessibilityValue(captureAccessibilityValue(capture))
+            .accessibilityHint("Summarizes the selected Inbox capture metadata for review.")
         }
+    }
+
+    private func captureAccessibilityValue(_ capture: InboxCaptureRecord) -> String {
+        // Keep the combined AX node self-contained so release marker scans and
+        // screen readers do not depend on SwiftUI child traversal order.
+        var values = [
+            "Source: \(capture.sourceKind.rawValue)",
+            "Duration: \(capture.durationLabel)",
+            "Classification: \(capture.classificationStatus.rawValue)",
+            "Transcription: \(capture.transcriptionStatus.rawValue)",
+            "Transcript: \(capture.transcript ?? "No transcript yet")"
+        ]
+        if let interpretationSummary = capture.interpretationSummary {
+            values.append("Interpretation: \(interpretationSummary)")
+        }
+        if let memo = capture.memo {
+            values.append("Memo: \(memo)")
+        }
+        return values.joined(separator: ", ")
     }
 
     private func metadataRow(title: LocalizedStringKey, value: String) -> some View {

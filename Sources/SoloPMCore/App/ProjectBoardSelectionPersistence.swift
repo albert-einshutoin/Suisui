@@ -127,3 +127,16 @@ public enum ProjectBoardSelectionPersistence {
         }
     }
 }
+
+public enum ProjectBoardTaskSelectionPersistence {
+    public static let environmentOverrideKey = "SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID"
+
+    public static var environmentOverrideTaskID: Int64? {
+        let rawValue = ProcessInfo.processInfo.environment[environmentOverrideKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let rawValue, !rawValue.isEmpty, let taskID = Int64(rawValue), taskID > 0 else {
+            return nil
+        }
+        return taskID
+    }
+}

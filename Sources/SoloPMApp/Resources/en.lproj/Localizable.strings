@@ -655,3 +655,4 @@
 "Builds a review-only LLM plan from the configured task automation settings." = "Builds a review-only LLM plan from the configured task automation settings.";
 "Runs the reviewed local task step after explicit user approval" = "Runs the reviewed local task step after explicit user approval";
 "Runs the reviewed local task step after explicit user approval." = "Runs the reviewed local task step after explicit user approval.";
+"Summarizes the selected Inbox capture metadata for review." = "Summarizes the selected Inbox capture metadata for review.";

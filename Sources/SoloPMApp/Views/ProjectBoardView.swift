@@ -455,6 +455,7 @@ struct ProjectBoardView: View {
         selectedDestination = destination
         persistSelectedDestination(destination)
         applySelectedDestination(destination)
+        applySelectedTaskOverrideIfNeeded()
     }
 
     private func persistSelectedDestination(_ destination: ProjectBoardSidebarDestination?) {
@@ -477,6 +478,18 @@ struct ProjectBoardView: View {
             viewModel.selectedTaskID = nil
             isInspectorPresented = false
         }
+    }
+
+    private func applySelectedTaskOverrideIfNeeded() {
+        guard let taskID = ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID,
+              let task = viewModel.snapshot.projects.flatMap(\.tasks).first(where: { $0.id == taskID }) else {
+            return
+        }
+        // The override is env-only because release evidence needs deterministic
+        // first selection without changing the user's persisted Project Board state.
+        viewModel.selectedProjectID = task.projectID
+        viewModel.selectedTaskID = task.id
+        isInspectorPresented = true
     }
 
     private var taskInteropDefaultExportFilename: String {
