@@ -46,6 +46,7 @@ REQUIRED_MARKERS=(
   "task-inspector-detail"
   "task-inspector-save"
   "task-status-move-controls"
+  "task-status-move-in_progress"
   "task-auto-execution-review"
   "task-auto-execution-run-plan"
   "approved-execution-receipt"
