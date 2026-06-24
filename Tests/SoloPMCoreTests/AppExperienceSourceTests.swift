@@ -2846,6 +2846,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(persistenceSource.contains("static let environmentOverrideKey = \"SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID\""))
         XCTAssertTrue(boardSource.contains("ProjectBoardSelectionPersistence.environmentOverrideRawValue"))
         XCTAssertTrue(boardSource.contains("applySelectedTaskOverrideIfNeeded()"))
+        let destinationChangeStart = try XCTUnwrap(boardSource.range(of: ".onChange(of: selectedDestination)"))
+        let destinationChangeEnd = try XCTUnwrap(boardSource.range(
+            of: ".fileExporter",
+            range: destinationChangeStart.upperBound..<boardSource.endIndex
+        ))
+        let destinationChangeSource = String(boardSource[destinationChangeStart.lowerBound..<destinationChangeEnd.lowerBound])
+        let destinationApply = try XCTUnwrap(destinationChangeSource.range(of: "applySelectedDestination(destination)"))
+        let taskOverrideApply = try XCTUnwrap(destinationChangeSource.range(of: "applySelectedTaskOverrideIfNeeded()"))
+        XCTAssertLessThan(destinationApply.lowerBound, taskOverrideApply.lowerBound)
         XCTAssertTrue(boardSource.contains("ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID"))
         XCTAssertTrue(persistenceSource.contains("case \"project\""))
 

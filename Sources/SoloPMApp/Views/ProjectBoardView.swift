@@ -268,6 +268,10 @@ struct ProjectBoardView: View {
         .onChange(of: selectedDestination) { _, destination in
             persistSelectedDestination(destination)
             applySelectedDestination(destination)
+            // Destination changes intentionally clear normal user selection; the
+            // env-only override is reapplied so deterministic release evidence
+            // can open Inbox with a seeded capture selected.
+            applySelectedTaskOverrideIfNeeded()
         }
         .onChange(of: viewModel.selectedTaskID) { _, selectedTaskID in
             if selectedTaskID != nil {
