@@ -84,7 +84,7 @@ final class MCPInspectorEvidenceTests: XCTestCase {
             XCTAssertTrue(content.contains("Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release."))
             XCTAssertTrue(content.contains("Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"))
             XCTAssertTrue(content.contains("Official versioning assertion: current protocol version is `2025-11-25`"))
-            XCTAssertTrue(content.contains("Official latest checked: 2026-06-20"))
+            XCTAssertTrue(content.contains("Official latest checked: 2026-06-24"))
             XCTAssertTrue(content.contains("Official stable source: https://modelcontextprotocol.io/specification/2025-11-25"))
             XCTAssertTrue(content.contains("Draft watchlist: `2026-07-28`"))
             XCTAssertTrue(content.contains("Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog"))
@@ -105,7 +105,7 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertTrue(script.contains("Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release."))
         XCTAssertTrue(script.contains("Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"))
         XCTAssertTrue(script.contains("Official versioning assertion: current protocol version is \\`2025-11-25\\`"))
-        XCTAssertTrue(script.contains("Official latest checked: 2026-06-20"))
+        XCTAssertTrue(script.contains("Official latest checked: 2026-06-24"))
         XCTAssertTrue(script.contains("Official stable source: https://modelcontextprotocol.io/specification/2025-11-25"))
         XCTAssertTrue(script.contains("Draft watchlist:"))
         XCTAssertTrue(script.contains("2026-07-28"))
@@ -158,9 +158,9 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         let complianceReview = try readPackageFile("docs/mcp-compliance.md")
         let releaseReport = try readPackageFile("script/release_readiness_report.sh")
 
-        XCTAssertTrue(complianceReview.contains("Last reviewed: 2026-06-20"))
-        XCTAssertTrue(complianceReview.contains("Official latest checked: 2026-06-20"))
-        XCTAssertTrue(releaseReport.contains("Last reviewed: 2026-06-20"))
+        XCTAssertTrue(complianceReview.contains("Last reviewed: 2026-06-24"))
+        XCTAssertTrue(complianceReview.contains("Official latest checked: 2026-06-24"))
+        XCTAssertTrue(releaseReport.contains("Last reviewed: 2026-06-24"))
     }
 
     func testInspectorVerificationScriptRunsWithFakeInspectorWithoutNetwork() throws {

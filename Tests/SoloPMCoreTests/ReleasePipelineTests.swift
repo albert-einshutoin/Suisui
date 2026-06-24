@@ -2954,7 +2954,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("Official latest source: https://modelcontextprotocol.io/specification"))
         XCTAssertTrue(checklist.contains("Official GitHub releases source: https://github.com/modelcontextprotocol/modelcontextprotocol/releases"))
         XCTAssertTrue(checklist.contains("Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release."))
-        XCTAssertTrue(checklist.contains("Official latest checked: 2026-06-20"))
+        XCTAssertTrue(checklist.contains("Official latest checked: 2026-06-24"))
         XCTAssertTrue(checklist.contains("Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"))
         XCTAssertTrue(checklist.contains("Official versioning assertion: current protocol version is `2025-11-25`"))
         XCTAssertTrue(checklist.contains("Official stable source: https://modelcontextprotocol.io/specification/2025-11-25"))
@@ -6193,7 +6193,7 @@ final class ReleasePipelineTests: XCTestCase {
         Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release.
         Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning
         Official versioning assertion: current protocol version is `2025-11-25`
-        Official latest checked: 2026-06-20
+        Official latest checked: 2026-06-24
         Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
         Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/
         EMA remote authorization is not a SoloPM public-alpha release target
@@ -6944,12 +6944,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("OK: MCP compliance review covers stable baseline, draft boundary, release subset, and non-host positioning"))
         XCTAssertTrue(script.contains("docs/release/evidence/mcp-inspector.md"))
         XCTAssertTrue(script.contains("mcp_evidence_source_commit()"))
-        XCTAssertTrue(script.contains("Last reviewed: 2026-06-20"))
+        XCTAssertTrue(script.contains("Last reviewed: 2026-06-24"))
         XCTAssertTrue(script.contains("Stable baseline: `2025-11-25`"))
         XCTAssertTrue(script.contains("Official latest source: https://modelcontextprotocol.io/specification"))
         XCTAssertTrue(script.contains("Official GitHub releases source: https://github.com/modelcontextprotocol/modelcontextprotocol/releases"))
         XCTAssertTrue(script.contains("Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release."))
-        XCTAssertTrue(script.contains("Official latest checked: 2026-06-20"))
+        XCTAssertTrue(script.contains("Official latest checked: 2026-06-24"))
         XCTAssertTrue(script.contains("Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"))
         XCTAssertTrue(script.contains("Official versioning assertion: current protocol version is `2025-11-25`"))
         XCTAssertTrue(script.contains("Official stable source: https://modelcontextprotocol.io/specification/2025-11-25"))
@@ -7581,7 +7581,7 @@ final class ReleasePipelineTests: XCTestCase {
         Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release.
         Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning
         Official versioning assertion: current protocol version is `2025-11-25`
-        Official latest checked: 2026-06-20
+        Official latest checked: 2026-06-24
         Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
         Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/
         EMA remote authorization is not a SoloPM public-alpha release target
@@ -10412,7 +10412,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Official GitHub releases source: https://github.com/modelcontextprotocol/modelcontextprotocol/releases"))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release."))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"))
-        XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Official latest checked: 2026-06-20"))
+        XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: Official latest checked: 2026-06-24"))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: 2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28."))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: MCP Inspector CLI tools/call"))
         XCTAssertTrue(result.output.contains("MCP Inspector evidence is missing marker: malformed-json"))
@@ -10470,7 +10470,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         Official versioning assertion: current protocol version is `2025-11-25`
 
-        Official latest checked: 2026-06-20
+        Official latest checked: 2026-06-24
 
         Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
 
@@ -10605,7 +10605,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         Official versioning assertion: current protocol version is `2025-11-25`
 
-        Official latest checked: 2026-06-20
+        Official latest checked: 2026-06-24
 
         Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
 
@@ -10687,14 +10687,14 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("== MCP Inspector evidence =="))
-        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Last reviewed: 2026-06-20"))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Last reviewed: 2026-06-24"))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official stable latest: `2025-11-25`"))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official latest source: https://modelcontextprotocol.io/specification"))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official GitHub releases source: https://github.com/modelcontextprotocol/modelcontextprotocol/releases"))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release."))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning"))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official versioning assertion: current protocol version is `2025-11-25`"))
-        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official latest checked: 2026-06-20"))
+        XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Official latest checked: 2026-06-24"))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Draft watchlist: `2026-07-28`"))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog"))
         XCTAssertTrue(result.output.contains("MCP compliance review is missing marker: Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline."))

@@ -1,8 +1,8 @@
 # MCP Inspector Evidence
 
-Generated: 2026-06-24T08:23:49Z
+Generated: 2026-06-24T14:45:19Z
 
-- Source commit: `0af61cb`
+- Source commit: `0af61cbc`
 
 Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and SoloPM's local JSON-RPC smoke checks.
 
@@ -20,7 +20,7 @@ Official versioning source: https://modelcontextprotocol.io/docs/learn/versionin
 
 Official versioning assertion: current protocol version is `2025-11-25`
 
-Official latest checked: 2026-06-20
+Official latest checked: 2026-06-24
 
 Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
 

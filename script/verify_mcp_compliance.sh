@@ -99,7 +99,7 @@ Official versioning source: https://modelcontextprotocol.io/docs/learn/versionin
 
 Official versioning assertion: current protocol version is \`2025-11-25\`
 
-Official latest checked: 2026-06-20
+Official latest checked: 2026-06-24
 
 Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
 

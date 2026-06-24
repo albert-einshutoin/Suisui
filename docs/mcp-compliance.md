@@ -1,6 +1,6 @@
 # SoloPM MCP Compliance Review
 
-Last reviewed: 2026-06-20
+Last reviewed: 2026-06-24
 
 ## Baseline
 
@@ -13,7 +13,7 @@ SoloPM の外部MCP実装は、MCP specification `2025-11-25` を基準にする
 - Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release.
 - Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning
 - Official versioning assertion: current protocol version is `2025-11-25`
-- Official latest checked: 2026-06-20
+- Official latest checked: 2026-06-24
 - Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
 - Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
 - Draft watchlist: `2026-07-28`
