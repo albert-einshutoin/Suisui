@@ -69,6 +69,7 @@ public enum AccessibilityFocusPathFindingKind: String, Codable, Equatable, Senda
     case missingRequiredNode
     case disabledRequiredNode
     case outOfOrderRequiredNode
+    case duplicateNodeID
     case unlabeledInteractiveNode
     case genericButtonWithoutHelp
     case missingDestructiveConfirmation
@@ -103,11 +104,29 @@ public struct AccessibilityFocusPathAudit: Sendable {
         nodes: [AccessibilityNodeSnapshot],
         requirements: AccessibilityFocusPathRequirement
     ) -> AccessibilityFocusPathAuditResult {
-        let nodesByID = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0) })
-        let firstNodeIndexesByID = nodes.enumerated().reduce(into: [String: Int]()) { indexes, pair in
-            indexes[pair.element.id] = indexes[pair.element.id] ?? pair.offset
+        var nodesByID: [String: AccessibilityNodeSnapshot] = [:]
+        var firstNodeIndexesByID: [String: Int] = [:]
+        var duplicateNodeIDs: [String] = []
+        var seenDuplicateNodeIDs = Set<String>()
+
+        for (index, node) in nodes.enumerated() {
+            if nodesByID[node.id] == nil {
+                nodesByID[node.id] = node
+                firstNodeIndexesByID[node.id] = index
+            } else if seenDuplicateNodeIDs.insert(node.id).inserted {
+                duplicateNodeIDs.append(node.id)
+            }
         }
-        var findings: [AccessibilityFocusPathFinding] = []
+        var findings = duplicateNodeIDs.map { nodeID in
+            // Duplicate AX identifiers make UI automation and VoiceOver
+            // evidence ambiguous. Keep auditing with the first node so one
+            // duplicate does not hide later release-gate findings.
+            AccessibilityFocusPathFinding(
+                kind: .duplicateNodeID,
+                nodeID: nodeID,
+                message: "Accessibility node id \(nodeID) must be unique in the focus path snapshot."
+            )
+        }
         var coveredNodeIDs: [String] = []
         var lastRequiredNodeIndex = -1
 
