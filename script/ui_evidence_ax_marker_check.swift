@@ -76,6 +76,15 @@ func signalParts(for element: AXUIElement) -> (identifier: String, signal: Strin
     return (identifier, signal)
 }
 
+let childAttributes = [
+    kAXChildrenAttribute as String,
+    "AXVisibleChildren",
+    "AXContents",
+    "AXRows",
+    "AXColumns",
+    "AXDisclosedRows"
+]
+
 guard let windowsValue = copyAttribute(appElement, kAXWindowsAttribute as CFString) else {
     fputs("\(appName) has no visible AX windows.\n", stderr)
     exit(2)
@@ -110,7 +119,9 @@ while cursor < queue.count && visitedCount < maxNodes {
         exit(0)
     }
 
-    let children = elements(from: copyAttribute(element, kAXChildrenAttribute as CFString))
+    let children = childAttributes.flatMap { attribute in
+        elements(from: copyAttribute(element, attribute as CFString))
+    }
     if !children.isEmpty {
         queue.append(contentsOf: children)
     }

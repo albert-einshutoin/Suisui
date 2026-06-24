@@ -2893,6 +2893,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(axMarkerScript.contains("AXUIElementSetMessagingTimeout"))
         XCTAssertTrue(axMarkerScript.contains("SOLOPM_UI_EVIDENCE_AX_MAX_NODES"))
         XCTAssertTrue(axMarkerScript.contains(#""AXIdentifier""#))
+        XCTAssertTrue(axMarkerScript.contains(#""AXVisibleChildren""#))
+        XCTAssertTrue(axMarkerScript.contains(#""AXContents""#))
         XCTAssertTrue(axMarkerScript.contains("missing AX identifier marker"))
         XCTAssertTrue(script.contains("project-board-detail=>Launch Readiness"))
         XCTAssertTrue(script.contains("sidebar-destination-today=>Today"))
