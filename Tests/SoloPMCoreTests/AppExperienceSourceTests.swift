@@ -2926,6 +2926,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] `capture_ui_evidence.sh` は撮影前にAX identifierとseed固有テキストで対象画面を検証し、Today等の誤画面スクショをrelease evidenceとして保存しない。"))
     }
 
+    func testUIScreenshotCaptureWaitsForPreviousSoloPMProcessBeforeRelaunching() throws {
+        let script = try readPackageFile("script/capture_ui_evidence.sh")
+
+        XCTAssertTrue(script.contains("PROJECT_BOARD_SELECTED_TASK_OVERRIDE=\"\""))
+        XCTAssertTrue(script.contains("wait_for_app_process_exit"))
+        XCTAssertTrue(script.contains("$APP_NAME did not terminate before next evidence capture."))
+        XCTAssertTrue(script.contains("wait_for_app_process_exit"))
+        XCTAssertTrue(script.contains("kill -0 \"$EVIDENCE_APP_PID\""))
+        XCTAssertTrue(script.contains("$APP_NAME did not launch as expected pid $EVIDENCE_APP_PID."))
+    }
+
     func testPhase12UIScreenshotEvidenceCoversNewCockpitScreens() throws {
         let script = try readPackageFile("script/capture_ui_evidence.sh")
         let releaseReport = try readPackageFile("script/release_readiness_report.sh")

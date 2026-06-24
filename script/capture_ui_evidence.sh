@@ -31,6 +31,7 @@ KEEP_HOME="${SOLOPM_UI_EVIDENCE_KEEP_HOME:-0}"
 DRY_RUN=0
 DOCTOR=0
 PROJECT_BOARD_SELECTION_OVERRIDE=""
+PROJECT_BOARD_SELECTED_TASK_OVERRIDE=""
 PROJECT_BOARD_TARGET_MARKERS=""
 INBOX_VOICE_TARGET_MARKERS=""
 APPEARANCE_OVERRIDE=""
@@ -146,8 +147,20 @@ open_evidence_app() {
   while IFS= read -r -d '' env_arg; do
     env_args+=("$env_arg")
   done < <(app_env_args)
+  wait_for_app_process_exit
   /usr/bin/env "${env_args[@]}" "$APP_BINARY" >/dev/null 2>&1 &
   EVIDENCE_APP_PID=$!
+}
+
+wait_for_app_process_exit() {
+  for _ in {1..40}; do
+    if ! pgrep -x "$APP_NAME" >/dev/null; then
+      return
+    fi
+    sleep 0.25
+  done
+  echo "$APP_NAME did not terminate before next evidence capture." >&2
+  exit 1
 }
 
 stop_evidence_app() {
@@ -156,6 +169,7 @@ stop_evidence_app() {
     wait "$EVIDENCE_APP_PID" >/dev/null 2>&1 || true
     EVIDENCE_APP_PID=""
   fi
+  wait_for_app_process_exit
 }
 
 activate_evidence_app() {
@@ -191,6 +205,17 @@ APPLESCRIPT
 }
 
 wait_for_process() {
+  if [[ -n "$EVIDENCE_APP_PID" ]]; then
+    for _ in {1..40}; do
+      if kill -0 "$EVIDENCE_APP_PID" >/dev/null 2>&1; then
+        return 0
+      fi
+      sleep 0.25
+    done
+    echo "$APP_NAME did not launch as expected pid $EVIDENCE_APP_PID." >&2
+    exit 1
+  fi
+
   for _ in {1..40}; do
     if pgrep -x "$APP_NAME" >/dev/null; then
       return 0
