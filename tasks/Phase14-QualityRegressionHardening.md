@@ -642,6 +642,32 @@ Priority: Low
 - Web dashboardを作らない。
 - テスト結果を外部サービスへ送信しない。
 
+## P14-015: Xcode preflight watchdog
+
+Priority: High
+
+### Context
+
+`check_automated_release_preflight.sh` は release proof を1本で作るため、Xcode/SwiftBuildが外部ツール検出で返らない場合も無限待ちではなく、明示blockerとして止まる必要がある。
+
+### Tests First
+
+- [x] `ReleasePipelineTests` で automated preflight script が `SOLOPM_XCODE_PREFLIGHT_TIMEOUT_SECONDS` と `run_xcodebuild_with_timeout()` を持つことを固定する。
+- [x] timeout時に `BLOCKER: Xcode build preflight timed out ...` を出すことをsource-levelで固定する。
+
+### Implementation Steps
+
+- [x] Xcode build preflightをwatchdog付き関数に分離する。
+- [x] timeout値を正の整数として検証する。
+- [x] timeout時は `xcodebuild` を終了させ、証跡を書かずにfail closedにする。
+- [x] release checklistにtimeout調整envを記載する。
+
+### Acceptance Criteria
+
+- [x] Xcode buildが返らない場合でもrelease proof生成が無限停止しない。
+- [x] timeoutは運用者が `SOLOPM_XCODE_PREFLIGHT_TIMEOUT_SECONDS` で調整できる。
+- [x] timeoutした実行は automated preflight evidence を成功扱いにしない。
+
 ## Verification
 
 Phase14の各PRは、変更範囲に応じて以下を使い分ける。

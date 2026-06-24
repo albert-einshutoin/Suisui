@@ -8,6 +8,7 @@ XCODE_WORKSPACE_RELATIVE=".swiftpm/xcode/package.xcworkspace"
 XCODE_SCHEME="${SOLOPM_XCODE_SCHEME:-SoloPM}"
 XCODE_DESTINATION="${SOLOPM_XCODE_DESTINATION:-platform=macOS}"
 XCODE_CONFIGURATION="${SOLOPM_XCODE_CONFIGURATION:-Debug}"
+XCODE_PREFLIGHT_TIMEOUT_SECONDS="${SOLOPM_XCODE_PREFLIGHT_TIMEOUT_SECONDS:-600}"
 AUTOMATED_PREFLIGHT_EVIDENCE_FILE="${SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE:-}"
 REFRESH_MANUAL_HELPERS="${SOLOPM_REFRESH_MANUAL_HELPERS:-1}"
 APP_NAME="SoloPM"
@@ -195,6 +196,48 @@ terminate_app() {
   pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 }
 
+run_xcodebuild_with_timeout() {
+  local timeout_marker="$TMP_DIR/xcodebuild-timeout"
+  rm -f "$timeout_marker"
+
+  # Xcode/SwiftBuild can hang before returning an actionable failure; fail closed
+  # so release automation never records stale local proof as reusable evidence.
+  xcodebuild \
+    -workspace "$ROOT_DIR/$XCODE_WORKSPACE_RELATIVE" \
+    -scheme "$XCODE_SCHEME" \
+    -configuration "$XCODE_CONFIGURATION" \
+    -destination "$XCODE_DESTINATION" \
+    build &
+  local xcode_pid=$!
+
+  (
+    sleep "$XCODE_PREFLIGHT_TIMEOUT_SECONDS"
+    if kill -0 "$xcode_pid" >/dev/null 2>&1; then
+      : >"$timeout_marker"
+      echo "BLOCKER: Xcode build preflight timed out after ${XCODE_PREFLIGHT_TIMEOUT_SECONDS}s" >&2
+      kill "$xcode_pid" >/dev/null 2>&1 || true
+      sleep 2
+      kill -KILL "$xcode_pid" >/dev/null 2>&1 || true
+    fi
+  ) &
+  local watchdog_pid=$!
+
+  set +e
+  wait "$xcode_pid"
+  local xcode_status=$?
+  set -e
+
+  kill "$watchdog_pid" >/dev/null 2>&1 || true
+  wait "$watchdog_pid" >/dev/null 2>&1 || true
+
+  if [[ -f "$timeout_marker" ]]; then
+    rm -f "$timeout_marker"
+    return 2
+  fi
+
+  return "$xcode_status"
+}
+
 cleanup() {
   terminate_app
   rm -rf "$TMP_DIR"
@@ -202,6 +245,11 @@ cleanup() {
 trap cleanup EXIT
 
 require_clean_source_tree_for_evidence
+
+if ! [[ "$XCODE_PREFLIGHT_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || [[ "$XCODE_PREFLIGHT_TIMEOUT_SECONDS" -le 0 ]]; then
+  echo "BLOCKER: SOLOPM_XCODE_PREFLIGHT_TIMEOUT_SECONDS must be a positive integer" >&2
+  exit 2
+fi
 
 section "Release CI"
 SOLOPM_CI_RELEASE_GATES=1 ./scripts/ci.sh
@@ -224,12 +272,7 @@ if [[ ! -d "$ROOT_DIR/$XCODE_WORKSPACE_RELATIVE" ]]; then
   echo "BLOCKER: missing SwiftPM Xcode workspace: $XCODE_WORKSPACE_RELATIVE" >&2
   exit 2
 fi
-xcodebuild \
-  -workspace "$ROOT_DIR/$XCODE_WORKSPACE_RELATIVE" \
-  -scheme "$XCODE_SCHEME" \
-  -configuration "$XCODE_CONFIGURATION" \
-  -destination "$XCODE_DESTINATION" \
-  build
+run_xcodebuild_with_timeout
 
 section "Launch preflight"
 ./script/build_and_run.sh --verify

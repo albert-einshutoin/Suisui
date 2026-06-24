@@ -3102,6 +3102,20 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] `check_automated_release_preflight.sh` は通過後に current commit の manual helper を再生成し、VoiceOver / competitor / release-machine の helper freshness を片寄らせない。"))
     }
 
+    func testAutomatedReleasePreflightBoundsXcodeBuildHang() throws {
+        let script = try readPackageFile("script/check_automated_release_preflight.sh")
+
+        XCTAssertTrue(script.contains("XCODE_PREFLIGHT_TIMEOUT_SECONDS=\"${SOLOPM_XCODE_PREFLIGHT_TIMEOUT_SECONDS:-600}\""))
+        XCTAssertTrue(script.contains("run_xcodebuild_with_timeout()"))
+        XCTAssertTrue(script.contains("BLOCKER: Xcode build preflight timed out after ${XCODE_PREFLIGHT_TIMEOUT_SECONDS}s"))
+        XCTAssertTrue(script.contains("kill \"$xcode_pid\""))
+        XCTAssertTrue(script.contains("run_xcodebuild_with_timeout"))
+        XCTAssertLessThan(
+            try XCTUnwrap(script.range(of: "run_xcodebuild_with_timeout()")).lowerBound,
+            try XCTUnwrap(script.range(of: "section \"Xcode build preflight\"")).lowerBound
+        )
+    }
+
     func testReleaseActionSummaryReportsManualHelperFreshnessForCurrentCommit() throws {
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-release-readiness-manual-helper-freshness", isDirectory: true)
