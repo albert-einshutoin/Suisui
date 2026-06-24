@@ -5936,8 +5936,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Confirm destructive confirmation labels"))
         XCTAssertTrue(script.contains("Delete Task announces an inline inspector confirmation panel before deletion"))
         XCTAssertTrue(script.contains("Save release accessibility notes"))
+        XCTAssertTrue(script.contains("Run approved execution receipt review"))
+        XCTAssertTrue(script.contains("Confirm the approved execution receipt announces the reviewed task title and detail after the plan runs."))
         XCTAssertTrue(script.contains("VoiceOver review artifact"))
-        XCTAssertTrue(script.contains("SELECT CASE WHEN count(*) = 5 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"))
+        XCTAssertTrue(script.contains("SELECT CASE WHEN count(*) = 6 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$seed_project_id\""))
         XCTAssertTrue(script.contains("printf 'SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1\\n'"))
         XCTAssertTrue(script.contains("evidence_command_file=\"$ROOT_DIR/.tmp/voiceover-review/create-evidence-command.sh\""))
@@ -6021,6 +6023,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(releaseChecklist.contains("The generated VoiceOver evidence command also verifies `.tmp/voiceover-review/voiceover-worksheet.md` is marked completed, pinned to the same source commit and candidate database, free of unchecked/pending/template markers, and filled before validate-only or passed evidence can run."))
         XCTAssertTrue(releaseChecklist.contains("The generated VoiceOver evidence command also rejects boilerplate worksheet values such as `TBD`, `Verified`, `OK`, or `No issues`; each required worksheet field must contain concrete VoiceOver observations."))
         XCTAssertTrue(releaseChecklist.contains("The worksheet maps `approved-execution-receipt` to the Task content execution note so manual reviewers confirm the approved execution receipt, not only the Run approved plan button."))
+        XCTAssertTrue(releaseChecklist.contains("The seeded VoiceOver candidate includes a dedicated approved execution receipt task so the manual pass has a concrete task title/detail pair to run and hear back from `approved-execution-receipt`."))
         XCTAssertTrue(releaseChecklist.contains("The Task content execution observation must explicitly mention the redacted receipt, reviewed title, and reviewed detail"))
         XCTAssertTrue(releaseChecklist.contains("--task-content-execution-note"))
         let phase11 = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
@@ -6032,6 +6035,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase11.contains("[x] Generated VoiceOver evidence command verifies `.tmp/voiceover-review/voiceover-worksheet.md` is current, marked completed, filled, and free of pending/unchecked markers before validate-only or passed evidence."))
         XCTAssertTrue(phase11.contains("[x] Generated VoiceOver evidence command rejects boilerplate worksheet values such as `TBD`, `Verified`, `OK`, or `No issues`; each required worksheet field must contain concrete VoiceOver observations."))
         XCTAssertTrue(phase11.contains("[x] VoiceOver evidence generator and generated worksheet command require a Task content execution observation proving approved execution records the reviewed task title and detail in the redacted receipt, and reject notes that only prove the Run approved plan control was reachable."))
+        XCTAssertTrue(phase11.contains("[x] VoiceOver review candidate seeds a dedicated approved execution receipt task so manual reviewers can prove the reviewed title/detail is announced from `approved-execution-receipt`."))
         XCTAssertTrue(phase11.contains("[x] `script/create_voiceover_evidence.sh --validate-only` validates the filled manual command without writing tracked evidence."))
     }
 

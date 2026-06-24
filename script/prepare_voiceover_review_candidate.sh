@@ -272,7 +272,7 @@ write_voiceover_evidence_command() {
     printf '%s\n' '  exit 2'
     printf '%s\n' 'fi'
     printf '%s\n' 'SEEDED_TASK_COUNT="$("$SQLITE3" -batch -noheader "$EXPECTED_DATABASE_PATH" "SELECT count(*) FROM tasks WHERE project_id=$EXPECTED_PROJECT_ID AND source_command='"'"'voiceover-review-seed'"'"';" | tail -n 1 || true)"'
-    printf '%s\n' 'if [[ "$SEEDED_TASK_COUNT" != "5" ]]; then'
+    printf '%s\n' 'if [[ "$SEEDED_TASK_COUNT" != "6" ]]; then'
     printf '%s\n' '  printf "BLOCKER: VoiceOver evidence command database is missing the seeded review tasks for project %s: got %s\n" "$EXPECTED_PROJECT_ID" "${SEEDED_TASK_COUNT:-<empty>}" >&2'
     printf '%s\n' '  exit 2'
     printf '%s\n' 'fi'
@@ -683,6 +683,23 @@ VALUES (
   CURRENT_TIMESTAMP
 );
 
+-- The manual VoiceOver pass needs one concrete task whose title/detail can be
+-- run through approved execution and then heard back from approved-execution-receipt.
+-- Keeping it separate from the column-spread tasks prevents status-board
+-- coverage from accidentally replacing task-content execution coverage.
+INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command, created_at, updated_at)
+VALUES (
+  $seeded_project_id,
+  'Run approved execution receipt review',
+  'planned',
+  'Confirm the approved execution receipt announces the reviewed task title and detail after the plan runs.',
+  strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+6 days'),
+  'high',
+  'voiceover-review-seed',
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+);
+
 INSERT INTO artifacts (project_id, task_id, workspace_path, expected_path, created_state, created_at, updated_at)
 VALUES (
   $seeded_project_id,
@@ -740,10 +757,11 @@ if [[ -z "${seed_project_id//[[:space:]]/}" ]]; then
   exit 1
 fi
 
-verify_seed "5" "seed task count" "SELECT count(*) FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"
+verify_seed "6" "seed task count" "SELECT count(*) FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"
 verify_seed "1" "seed artifact count" "SELECT count(*) FROM artifacts WHERE project_id=$seed_project_id AND expected_path='$(sql_escape "$VOICEOVER_REVIEW_ARTIFACT_PATH")';"
 verify_seed "1" "seed task spread" "SELECT CASE WHEN count(DISTINCT status) = 5 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"
-verify_seed "1" "VoiceOver release project selection" "SELECT CASE WHEN count(*) = 5 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"
+verify_seed "1" "approved execution receipt seed task" "SELECT count(*) FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed' AND title='Run approved execution receipt review' AND detail='Confirm the approved execution receipt announces the reviewed task title and detail after the plan runs.';"
+verify_seed "1" "VoiceOver release project selection" "SELECT CASE WHEN count(*) = 6 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"
 
 launch_env_file="$ROOT_DIR/.tmp/voiceover-review/launch.env"
 evidence_command_file="$ROOT_DIR/.tmp/voiceover-review/create-evidence-command.sh"
