@@ -255,7 +255,7 @@
 - [x] 自動proof証跡は clean tracked source tree でのみ生成し、未コミット差分を含む曖昧な証跡を拒否する。
 - [x] `./script/release_readiness_report.sh` は、`.tmp/automated-release-preflight-<commit>.md` が存在する場合に同一commitのclean-tree自動proof証跡を自動検出し、CI / SQLite CRUD / runtime accessible CRUD / layout stability / Xcode / launch / runtime AXのskip blockerを解除できる。
 - [x] 自動proof証跡の再利用時は generator、UTC timestamp、source commit、App名、Xcode workspace / scheme / configuration / destination、manual evidence境界文言を検証し、別appや別build文脈の証跡流用を拒否する。
-- [x] 自動proof証跡は seeded runtime AX smoke の `OK: runtime AX smoke visible` 行を保存し、`unlabeledButtons=0`、`genericButtons=0`、`crudSignals=8/8`、`focusPathSignals=6/6` が欠ける証跡を release readiness で拒否する。
+- [x] 自動proof証跡は seeded runtime AX smoke の `OK: runtime AX smoke visible` 行を保存し、`unlabeledButtons=0`、`genericButtons=0`、`crudSignals=8/8`、`focusPathSignals=6/6`、`destructiveCancelSignals=1/1` が欠ける証跡を release readiness で拒否する。
 - [x] 自動proof証跡は runtime AX smoke 対象の VoiceOver candidate source commit / project ID / database / selected destination を保存し、どのseeded candidateで検証したか追跡できる。
 - [x] `check_automated_release_preflight.sh` は runtime AX smoke を `.tmp/voiceover-review/launch.env` から直接起動し、既存プロセスの選択状態に依存しない。
 - [x] VoiceOver / competitor hands-on の手動証跡は `Source commit` を記録し、`Status: passed` の場合は現在のrelease-candidate product source commitと一致しない証跡をrelease blockerにする。

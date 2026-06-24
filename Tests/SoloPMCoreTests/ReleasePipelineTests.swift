@@ -3002,7 +3002,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("Override `SOLOPM_AUTOMATED_PREFLIGHT_EVIDENCE_FILE` only when a release operator needs to write or reuse a non-standard evidence path."))
         XCTAssertTrue(checklist.contains("The release readiness report auto-discovers `.tmp/automated-release-preflight-<commit>.md` for the current source commit when the environment variable is omitted."))
         XCTAssertTrue(checklist.contains("requires a clean tracked source tree"))
-        XCTAssertTrue(checklist.contains("When the final report reuses this evidence, it verifies the generator identity, UTC timestamp, source commit, clean-tree marker, app name, Xcode workspace/scheme/configuration/destination, every automated proof gate, the runtime AX smoke OK line with `unlabeledButtons=0`, `genericButtons=0`, `crudSignals=8/8`, and `focusPathSignals=6/6`, and the manual-evidence boundary text."))
+        XCTAssertTrue(checklist.contains("When the final report reuses this evidence, it verifies the generator identity, UTC timestamp, source commit, clean-tree marker, app name, Xcode workspace/scheme/configuration/destination, every automated proof gate, the runtime AX smoke OK line with `unlabeledButtons=0`, `genericButtons=0`, `crudSignals=8/8`, `focusPathSignals=6/6`, and `destructiveCancelSignals=1/1`, and the manual-evidence boundary text."))
         XCTAssertTrue(checklist.contains("Manual VoiceOver and competitor hands-on evidence record the current release-candidate product `Source commit`"))
         XCTAssertTrue(checklist.contains("rerun `./script/prepare_release_manual_helpers.sh` and then repeat the affected manual passes after product source changes instead of reusing evidence from an older release candidate"))
         XCTAssertTrue(checklist.contains("This automated sweep does not replace manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper evidence."))
@@ -3097,7 +3097,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("After automated preflight passes, it refreshes VoiceOver and competitor helper files for the release-candidate product source commit and release-machine helper files for the current release evidence source commit without writing passed evidence."))
         XCTAssertTrue(checklist.contains("The automated preflight evidence also records the seeded VoiceOver candidate source commit, project ID, database path, and selected destination used for runtime AX smoke."))
         XCTAssertTrue(phase.contains("[x] `script/check_automated_release_preflight.sh` で CI、SQLite CRUD、runtime accessible CRUD、layout stability、Xcode build、visible-window launch、seeded VoiceOver review candidate 上の runtime AX、MCP compliance を一括検証できる。"))
-        XCTAssertTrue(phase.contains("[x] 自動proof証跡は seeded runtime AX smoke の `OK: runtime AX smoke visible` 行を保存し、`unlabeledButtons=0`、`genericButtons=0`、`crudSignals=8/8`、`focusPathSignals=6/6` が欠ける証跡を release readiness で拒否する。"))
+        XCTAssertTrue(phase.contains("[x] 自動proof証跡は seeded runtime AX smoke の `OK: runtime AX smoke visible` 行を保存し、`unlabeledButtons=0`、`genericButtons=0`、`crudSignals=8/8`、`focusPathSignals=6/6`、`destructiveCancelSignals=1/1` が欠ける証跡を release readiness で拒否する。"))
         XCTAssertTrue(phase.contains("[x] 自動proof証跡は runtime AX smoke 対象の VoiceOver candidate source commit / project ID / database / selected destination を保存し、どのseeded candidateで検証したか追跡できる。"))
         XCTAssertTrue(phase.contains("[x] `check_automated_release_preflight.sh` は runtime AX smoke を `.tmp/voiceover-review/launch.env` から直接起動し、既存プロセスの選択状態に依存しない。"))
         XCTAssertTrue(phase.contains("[x] `check_automated_release_preflight.sh` は通過後に VoiceOver / competitor helper を release-candidate product source commit、release-machine helper を current release evidence source commit で再生成し、helper freshness を片寄らせない。"))
@@ -3865,7 +3865,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
-                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6",
+                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1",
                 "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
                 "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
                 "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
@@ -3893,7 +3893,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--macos-version", "macOS unknown",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
-                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6",
+                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1",
                 "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
                 "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
                 "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
@@ -3921,7 +3921,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
-                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6",
+                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1",
                 "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
                 "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
                 "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
@@ -4081,7 +4081,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
-                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6",
+                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1",
                 "--project-navigation-note", "<VoiceOver observation for sidebar Inbox, Today, Projects, and selected review project navigation>",
                 "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
                 "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
@@ -4136,7 +4136,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
-                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6",
+                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1",
                 "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
                 "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
                 "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
@@ -4163,7 +4163,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
-                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6",
+                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1",
                 "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
                 "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
                 "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
@@ -4191,7 +4191,7 @@ final class ReleasePipelineTests: XCTestCase {
           exit 2
         fi
         echo "OK: accessibility source anchors are present (47 anchors)"
-        echo "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6"
+        echo "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1"
         echo "This is not a substitute for the manual VoiceOver pass."
         """.write(to: runtimeAXSmokeScriptURL, atomically: true, encoding: .utf8)
 
@@ -4222,7 +4222,7 @@ final class ReleasePipelineTests: XCTestCase {
         )
         XCTAssertEqual(capturedRuntimeAXSmokeResult.exitCode, 0, capturedRuntimeAXSmokeResult.output)
         let capturedRuntimeAXSmokeEvidence = try String(contentsOf: passedURL, encoding: .utf8)
-        XCTAssertTrue(capturedRuntimeAXSmokeEvidence.contains("- Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6"))
+        XCTAssertTrue(capturedRuntimeAXSmokeEvidence.contains("- Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1"))
         XCTAssertFalse(capturedRuntimeAXSmokeEvidence.contains("This is not a substitute for the manual VoiceOver pass."))
         XCTAssertFalse(capturedRuntimeAXSmokeEvidence.localizedCaseInsensitiveContains("pending"))
         try? FileManager.default.removeItem(at: passedURL)
@@ -4262,7 +4262,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
-                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6",
+                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1",
                 "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
                 "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
                 "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
@@ -4290,7 +4290,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
-                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6",
+                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1",
                 "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
                 "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
                 "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
@@ -4317,7 +4317,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--macos-version", "macOS 15.5",
                 "--check-date", "2026-06-19",
                 "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
-                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6",
+                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1",
                 "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
                 "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
                 "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
@@ -4344,7 +4344,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(passedEvidence.contains("- Checked by: SoloPM Release Owner"))
         XCTAssertTrue(passedEvidence.contains("- Check date: 2026-06-19"))
         XCTAssertTrue(passedEvidence.contains("- Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display"))
-        XCTAssertTrue(passedEvidence.contains("- Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6"))
+        XCTAssertTrue(passedEvidence.contains("- Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1"))
         XCTAssertTrue(passedEvidence.contains("- Project navigation: passed - Sidebar Inbox, Today, and selected project rows announce destination and counts in order."))
         XCTAssertTrue(passedEvidence.contains("- Project board detail: passed - Selected project board announces project title before card navigation begins."))
         XCTAssertTrue(passedEvidence.contains("- Open task: passed - Task card details open from keyboard focus without relying on drag."))
@@ -4417,6 +4417,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-apply-suggestion"))
         XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-save"))
         XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-delete"))
+        XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-delete-confirmation-cancel"))
         XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-inspector-title"))
         XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-inspector-apply-suggestion"))
         XCTAssertTrue(script.contains("Sources/SoloPMApp/Views/ProjectBoardView.swift::project-inspector-save"))
@@ -4465,6 +4466,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("REQUIRED_RUNTIME_FOCUS_MARKERS"))
         XCTAssertTrue(script.contains("REQUIRED_RUNTIME_BUTTON_A11Y_MARKERS"))
         XCTAssertTrue(script.contains("REQUIRED_RUNTIME_SCREEN_MARKERS"))
+        XCTAssertTrue(script.contains("REQUIRED_RUNTIME_DESTRUCTIVE_CANCEL_MARKERS"))
         XCTAssertTrue(script.contains("project-board-add-project"))
         XCTAssertTrue(script.contains("project-header-add-task"))
         XCTAssertTrue(script.contains("task-status-move-"))
@@ -4480,6 +4482,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("task-auto-execution-review=>Builds a review-only LLM plan"))
         XCTAssertTrue(script.contains("task-auto-execution-run-plan=>Runs the reviewed local task step"))
         XCTAssertTrue(script.contains("task-inspector-delete=>Deletes the selected task"))
+        XCTAssertTrue(script.contains("Delete task cancel=>task-inspector-delete-confirmation-cancel"))
         XCTAssertFalse(script.contains("project-inspector-save=>Saves edits"))
         XCTAssertFalse(script.contains("project-inspector-delete=>Deletes the selected project"))
         XCTAssertTrue(script.contains("Inbox sidebar=>sidebar-destination-inbox"))
@@ -4511,6 +4514,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("runtime AX smoke is missing primary CRUD button labels or help"))
         XCTAssertTrue(script.contains("focusPathSignals="))
         XCTAssertTrue(script.contains("runtime AX smoke is missing VoiceOver focus path labels or help"))
+        XCTAssertTrue(script.contains("destructiveCancelSignals="))
+        XCTAssertTrue(script.contains("runtime AX smoke is missing destructive cancellation labels or help"))
+        XCTAssertTrue(script.contains("open_task_delete_confirmation_for_runtime_focus_path"))
         XCTAssertTrue(script.contains("buttonA11ySignals="))
         XCTAssertTrue(script.contains("runtime AX smoke is missing primary button label or help"))
         XCTAssertTrue(script.contains("screenSignals="))
@@ -4530,6 +4536,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("generic `button` label without help or child text"))
         XCTAssertTrue(checklist.contains("task lifecycle AX identifier/help signals as `crudSignals=8/8`"))
         XCTAssertTrue(checklist.contains("VoiceOver focus path AX identifier/help signals as `focusPathSignals=6/6`"))
+        XCTAssertTrue(checklist.contains("destructive delete cancellation signals as `destructiveCancelSignals=1/1`"))
         XCTAssertTrue(checklist.contains("primary task button label/help signals as `buttonA11ySignals=8/8`"))
         XCTAssertTrue(checklist.contains("Inbox, Today, Settings, and Voice Command entry signals as `screenSignals=4/4`"))
         XCTAssertTrue(checklist.contains("scans visible windows by AX role"))
@@ -4541,7 +4548,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] `script/check_accessibility_preflight.sh --runtime` は見えているrelease候補windowのunlabeled AX buttonsとhelp/child textなしgeneric `button` labelをblockerにする。"))
         XCTAssertTrue(phase.contains("[x] `script/check_accessibility_preflight.sh --runtime` はProject Board上のAdd Task、タスク詳細オープン、ステータス移動、ローカル提案適用、自動化レビュー、承認済み実行、Save、DeleteのAX identifier/help signalsを `crudSignals=8/8` としてblocker化する。"))
         XCTAssertTrue(phase.contains("[x] `script/check_accessibility_preflight.sh --runtime` はProject navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector のAX identifier/help signalsを `focusPathSignals=6/6` としてblocker化する。"))
-        XCTAssertTrue(phase.contains("[x] VoiceOver passed evidence は同じrelease候補で実行したruntime AX smoke OK行、`unlabeledButtons=0`、`genericButtons=0`、`crudSignals=8/8`、`focusPathSignals=6/6` を含まない場合release readyにしない。"))
+        XCTAssertTrue(phase.contains("[x] `script/check_accessibility_preflight.sh --runtime` はDelete Task確認を開き、Cancel Delete TaskのAX identifier/help signalを `destructiveCancelSignals=1/1` としてblocker化する。"))
+        XCTAssertTrue(phase.contains("[x] VoiceOver passed evidence は同じrelease候補で実行したruntime AX smoke OK行、`unlabeledButtons=0`、`genericButtons=0`、`crudSignals=8/8`、`focusPathSignals=6/6`、`destructiveCancelSignals=1/1` を含まない場合release readyにしない。"))
         XCTAssertTrue(phase.contains("[x] `script/prepare_voiceover_review_candidate.sh` は `.tmp/voiceover-review/create-evidence-command.sh` を生成し、同じ候補DB/Project IDを使った手動VoiceOver証跡コマンドをoperatorがplaceholder置換して実行できる。"))
         XCTAssertTrue(phase.contains("[ ] 実機VoiceOverでProject board -> card -> Inline Task Composer -> inspectorのfocus orderを確認する。"))
     }
@@ -6120,7 +6128,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         ## Runtime AX Smoke
 
-        Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6
+        Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1
 
         ## Boundaries
 
@@ -6265,7 +6273,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("- Source commit: `\(currentShortCommit)`"))
         XCTAssertTrue(actionSummary.contains("- Release candidate product source commit: `\(currentShortCommit)`"))
         XCTAssertTrue(actionSummary.contains("- Generated at: `2026-06-19T12:30:44Z`"))
-        XCTAssertTrue(actionSummary.contains("- Runtime AX smoke: `OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6`"))
+        XCTAssertTrue(actionSummary.contains("- Runtime AX smoke: `OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1`"))
         XCTAssertTrue(actionSummary.contains("- [x] Release CI: passed"))
         XCTAssertTrue(actionSummary.contains("- [x] Local CRUD smoke: passed"))
         XCTAssertTrue(actionSummary.contains("- [x] Runtime accessible CRUD smoke: passed"))
@@ -6347,7 +6355,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         ## Runtime AX Smoke
 
-        Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6
+        Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1
 
         ## Boundaries
 
@@ -6396,7 +6404,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(result.output.contains("release launch preflight was not run"))
         XCTAssertFalse(result.output.contains("accessibility runtime preflight was not run"))
         XCTAssertTrue(actionSummary.contains("- [x] Automated preflight evidence accepted: `.tmp/automated-release-preflight-\(currentShortCommit).md`"))
-        XCTAssertTrue(actionSummary.contains("- Runtime AX smoke: `OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6`"))
+        XCTAssertTrue(actionSummary.contains("- Runtime AX smoke: `OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1`"))
         XCTAssertTrue(actionSummary.contains("- Release candidate product source commit: `\(currentShortCommit)`"))
         XCTAssertTrue(actionSummary.contains("- VoiceOver candidate: source `\(currentShortCommit)`, project `42`, destination `project:42`"))
         XCTAssertTrue(actionSummary.contains("- VoiceOver candidate database: `/tmp/SoloPM-voiceover-review.sqlite`"))
@@ -6533,7 +6541,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         ## Runtime AX Smoke
 
-        Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6
+        Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1
 
         ## Boundaries
 
@@ -6612,7 +6620,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         ## Runtime AX Smoke
 
-        Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6
+        Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1
 
         ## Boundaries
 
@@ -6871,6 +6879,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("genericButtons=0"))
         XCTAssertTrue(script.contains("crudSignals=8/8"))
         XCTAssertTrue(script.contains("focusPathSignals=6/6"))
+        XCTAssertTrue(script.contains("destructiveCancelSignals=1/1"))
         XCTAssertTrue(script.contains("Generated by: script/create_voiceover_evidence.sh"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence was not generated by script/create_voiceover_evidence.sh"))
         XCTAssertTrue(script.contains("VoiceOver accessibility evidence source commit does not match current release-candidate source commit"))
@@ -6890,7 +6899,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertLessThan(voiceOverValidateSourceRange.lowerBound, voiceOverPassedSourceRange.lowerBound)
         XCTAssertTrue(script.contains("--capture-runtime-ax-smoke"))
         XCTAssertTrue(script.contains("--task-content-execution-note"))
-        XCTAssertTrue(script.contains("runtime AX smoke OK line with unlabeledButtons=0, genericButtons=0, crudSignals=8/8, and focusPathSignals=6/6"))
+        XCTAssertTrue(script.contains("runtime AX smoke OK line with unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, and destructiveCancelSignals=1/1"))
         XCTAssertTrue(script.contains("Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail"))
         XCTAssertTrue(script.contains("complete release-candidate context"))
         XCTAssertTrue(script.contains("section \"Competitor hands-on evidence\""))
@@ -7552,7 +7561,7 @@ final class ReleasePipelineTests: XCTestCase {
         #!/usr/bin/env bash
         set -euo pipefail
         if [[ "$*" == *"--runtime"* ]]; then
-          printf "OK: runtime AX smoke visible, windows=1, buttons=29, textFields=1, staticTexts=25, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6\\n"
+          printf "OK: runtime AX smoke visible, windows=1, buttons=29, textFields=1, staticTexts=25, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1\\n"
         else
           printf "OK: accessibility source anchors are present (fixture)\\n"
         fi
@@ -9032,7 +9041,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Check date: 2026-06-19
         - Evidence source: `dist/SoloPM.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
-        - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6
+        - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1
 
         - Project navigation: passed
         - Project board detail: passed
@@ -9119,7 +9128,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Check date: 2026-02-31
         - Evidence source: `dist/SoloPM.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
-        - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6
+        - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1
 
         ## Verified Focus Path
 
@@ -9225,7 +9234,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Check date: 2026-06-19
         - Evidence source: `dist/SoloPM.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
-        - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6
+        - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1
 
         ## Verified Focus Path
 
@@ -9325,7 +9334,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Check date: 2026-06-01
         - Evidence source: `dist/SoloPM.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
-        - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6
+        - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1
 
         ## Verified Focus Path
 
@@ -9496,7 +9505,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Check date: 2099-01-01
         - Evidence source: `dist/SoloPM.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
-        - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6
+        - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1
 
         ## Verified Focus Path
 
@@ -9623,7 +9632,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Check date: 2026-06-19
         - Evidence source: `dist/SoloPM.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
-        - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6
+        - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1
 
         ## Verified Focus Path
 
@@ -9755,7 +9764,7 @@ final class ReleasePipelineTests: XCTestCase {
         - Check date: 2026-06-19
         - Evidence source: `dist/SoloPM.app` manual pass
         - Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display
-        - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6
+        - Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1
 
         ## Verified Focus Path
 

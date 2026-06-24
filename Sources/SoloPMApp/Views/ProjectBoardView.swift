@@ -3210,6 +3210,9 @@ private struct TaskInspectorView: View {
                         message: "This removes the task from the local SoloPM database.",
                         confirmTitle: "Delete Task",
                         confirmSystemImage: "trash",
+                        // The runtime AX preflight tracks this generated cancel
+                        // identifier after opening the destructive confirmation:
+                        // task-inspector-delete-confirmation-cancel.
                         accessibilityIdentifier: "task-inspector-delete-confirmation",
                         confirmAction: deleteSelectedTaskAfterConfirmationDismissal,
                         cancelAction: { isConfirmingDelete = false }

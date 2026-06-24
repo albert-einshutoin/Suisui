@@ -50,7 +50,7 @@ Release-ready evidence requirements:
 - `Status: passed`
 - release-candidate `Source commit` matching the latest action summary and generated helper command
 - real macOS version, app build, reviewer, check date, evidence source, and accessibility environment
-- runtime AX smoke line with `unlabeledButtons=0`, `genericButtons=0`, `crudSignals=8/8`, and `focusPathSignals=6/6`
+- runtime AX smoke line with `unlabeledButtons=0`, `genericButtons=0`, `crudSignals=8/8`, `focusPathSignals=6/6`, and `destructiveCancelSignals=1/1`
 - concrete notes for project navigation, project board detail, open task, Inline Task Composer, status controls, task inspector, save changes, task content execution, delete confirmation, no keyboard trap, and no unlabeled CRUD controls
 
 Verification:

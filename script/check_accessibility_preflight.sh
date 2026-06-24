@@ -59,6 +59,9 @@ REQUIRED_RUNTIME_SCREEN_MARKERS=(
   "Settings toolbar=>project-board-settings-link"
   "Voice Command toolbar=>project-board-voice-command"
 )
+REQUIRED_RUNTIME_DESTRUCTIVE_CANCEL_MARKERS=(
+  "Delete task cancel=>task-inspector-delete-confirmation-cancel"
+)
 
 REQUIRED_SOURCE_ANCHORS=(
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::project-board-sidebar"
@@ -92,6 +95,7 @@ REQUIRED_SOURCE_ANCHORS=(
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-auto-execution-review"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-auto-execution-run-plan"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-delete"
+  "Sources/SoloPMApp/Views/ProjectBoardView.swift::task-inspector-delete-confirmation-cancel"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::.help(\"Applies the local next-step suggestion to the selected task\")"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::.help(\"Saves edits to the selected task in the local SoloPM database\")"
   "Sources/SoloPMApp/Views/ProjectBoardView.swift::.help(\"Builds a review-only LLM plan for the selected task\")"
@@ -143,7 +147,7 @@ usage() {
   printf '%s\n' ""
   printf '%s\n' "Checks accessibility anchors before the manual VoiceOver release pass."
   printf '%s\n' "This is not a substitute for the manual VoiceOver pass."
-  printf '%s\n' "Runtime smoke fails when the visible window has fewer than $MIN_AX_BUTTONS buttons, $MIN_AX_TEXT_FIELDS text field, $MIN_AX_STATIC_TEXTS static texts, unlabeled buttons, generic button labels without help or child text, missing primary CRUD button help signals, missing primary button label/help signals, missing workflow screen entry signals, or missing VoiceOver focus path signals."
+  printf '%s\n' "Runtime smoke fails when the visible window has fewer than $MIN_AX_BUTTONS buttons, $MIN_AX_TEXT_FIELDS text field, $MIN_AX_STATIC_TEXTS static texts, unlabeled buttons, generic button labels without help or child text, missing primary CRUD button help signals, missing primary button label/help signals, missing workflow screen entry signals, missing destructive cancellation signals, or missing VoiceOver focus path signals."
 }
 
 while [[ "$#" -gt 0 ]]; do
@@ -398,6 +402,166 @@ APPLESCRIPT
     fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       echo "BLOCKER: runtime AX smoke could not open task inspector from task-card-open-details: $output" >&2
+      return 1
+    fi
+    activate_app
+    sleep 1
+  done
+}
+
+open_task_delete_confirmation_for_runtime_focus_path() {
+  local required_runtime_destructive_cancel_markers_joined=""
+  for required_runtime_destructive_cancel_marker in "${REQUIRED_RUNTIME_DESTRUCTIVE_CANCEL_MARKERS[@]}"; do
+    if [[ -z "$required_runtime_destructive_cancel_markers_joined" ]]; then
+      required_runtime_destructive_cancel_markers_joined="$required_runtime_destructive_cancel_marker"
+    else
+      required_runtime_destructive_cancel_markers_joined="${required_runtime_destructive_cancel_markers_joined}|||${required_runtime_destructive_cancel_marker}"
+    fi
+  done
+
+  local required_runtime_destructive_cancel_marker_count="${#REQUIRED_RUNTIME_DESTRUCTIVE_CANCEL_MARKERS[@]}"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local output=""
+  local status=1
+  while true; do
+    set +e
+    output="$(/usr/bin/osascript - "$APP_NAME" "$required_runtime_destructive_cancel_markers_joined" "$required_runtime_destructive_cancel_marker_count" <<'APPLESCRIPT' 2>&1
+on run argv
+  set appName to item 1 of argv
+  set requiredDestructiveCancelMarkersRaw to item 2 of argv
+  set requiredDestructiveCancelMarkerCount to (item 3 of argv) as integer
+  set previousTextItemDelimiters to text item delimiters of AppleScript
+  set text item delimiters of AppleScript to "|||"
+  set requiredDestructiveCancelMarkers to text items of requiredDestructiveCancelMarkersRaw
+  set text item delimiters of AppleScript to previousTextItemDelimiters
+  set bestSummary to ""
+  set bestDestructiveCancelSignalCount to 0
+  set bestMissingDestructiveCancelSignals to ""
+  tell application "System Events"
+    if not (exists process appName) then error appName & " process is not visible to System Events"
+    tell process appName
+      set frontmost to true
+      set windowCount to count of windows
+      if windowCount < 1 then error appName & " has no visible windows"
+      repeat with windowIndex from 1 to windowCount
+        set currentWindow to window windowIndex
+        try
+          perform action "AXRaise" of currentWindow
+        end try
+        set axItems to entire contents of currentWindow
+        set deleteButton to missing value
+        set deleteConfirmationAlreadyVisible to false
+        repeat with axItem in axItems
+          set itemRole to ""
+          set itemIdentifier to ""
+          set itemName to ""
+          set itemTitle to ""
+          set itemDescription to ""
+          set itemHelp to ""
+          try
+            set itemRole to role of axItem as text
+          end try
+          try
+            set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
+          end try
+          try
+            set itemName to name of axItem as text
+          end try
+          try
+            set itemTitle to value of attribute "AXTitle" of axItem as text
+          end try
+          try
+            set itemDescription to description of axItem as text
+          end try
+          try
+            set itemHelp to value of attribute "AXHelp" of axItem as text
+          end try
+          set itemSignal to itemIdentifier & " " & itemName & " " & itemTitle & " " & itemDescription & " " & itemHelp
+          if itemSignal contains "task-inspector-delete-confirmation-cancel" then set deleteConfirmationAlreadyVisible to true
+          if itemRole is "AXButton" and itemIdentifier is "task-inspector-delete" then set deleteButton to axItem
+        end repeat
+        if deleteConfirmationAlreadyVisible is false and deleteButton is not missing value then
+          perform action "AXPress" of deleteButton
+          delay 0.4
+          set axItems to entire contents of currentWindow
+        end if
+        set destructiveCancelSignalText to ""
+        repeat with axItem in axItems
+          set itemIdentifier to ""
+          set itemName to ""
+          set itemTitle to ""
+          set itemValue to ""
+          set itemDescription to ""
+          set itemHelp to ""
+          try
+            set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
+          end try
+          try
+            set itemName to name of axItem as text
+          end try
+          try
+            set itemTitle to value of attribute "AXTitle" of axItem as text
+          end try
+          try
+            set itemValue to value of axItem as text
+          end try
+          try
+            set itemDescription to description of axItem as text
+          end try
+          try
+            set itemHelp to value of attribute "AXHelp" of axItem as text
+          end try
+          set destructiveCancelSignalText to destructiveCancelSignalText & " " & itemIdentifier & " " & itemName & " " & itemTitle & " " & itemValue & " " & itemDescription & " " & itemHelp
+        end repeat
+        set destructiveCancelSignalCount to 0
+        set missingDestructiveCancelSignals to ""
+        repeat with requiredDestructiveCancelMarker in requiredDestructiveCancelMarkers
+          set requiredDestructiveCancelMarkerText to requiredDestructiveCancelMarker as text
+          if requiredDestructiveCancelMarkerText is not "" then
+            set requiredDestructiveCancelMarkerLabel to requiredDestructiveCancelMarkerText
+            set requiredDestructiveCancelMarkerNeedle to requiredDestructiveCancelMarkerText
+            set destructiveCancelMarkerSeparatorOffset to offset of "=>" in requiredDestructiveCancelMarkerText
+            if destructiveCancelMarkerSeparatorOffset > 0 then
+              set requiredDestructiveCancelMarkerLabel to text 1 thru (destructiveCancelMarkerSeparatorOffset - 1) of requiredDestructiveCancelMarkerText
+              set requiredDestructiveCancelMarkerNeedle to text (destructiveCancelMarkerSeparatorOffset + 2) thru -1 of requiredDestructiveCancelMarkerText
+            end if
+            if destructiveCancelSignalText contains requiredDestructiveCancelMarkerNeedle then
+              set destructiveCancelSignalCount to destructiveCancelSignalCount + 1
+            else
+              if missingDestructiveCancelSignals is "" then
+                set missingDestructiveCancelSignals to requiredDestructiveCancelMarkerLabel
+              else
+                set missingDestructiveCancelSignals to missingDestructiveCancelSignals & "; " & requiredDestructiveCancelMarkerLabel
+              end if
+            end if
+          end if
+        end repeat
+        set currentSummary to "destructiveCancelSignals=" & destructiveCancelSignalCount & "/" & requiredDestructiveCancelMarkerCount
+        if bestSummary is "" or destructiveCancelSignalCount > bestDestructiveCancelSignalCount then
+          set bestSummary to currentSummary
+          set bestDestructiveCancelSignalCount to destructiveCancelSignalCount
+          set bestMissingDestructiveCancelSignals to missingDestructiveCancelSignals
+        end if
+        if destructiveCancelSignalCount is requiredDestructiveCancelMarkerCount then
+          return "OK: runtime AX destructive cancellation visible, " & currentSummary
+        end if
+      end repeat
+      if bestSummary is "" then set bestSummary to "destructiveCancelSignals=0/" & requiredDestructiveCancelMarkerCount
+      if bestDestructiveCancelSignalCount < requiredDestructiveCancelMarkerCount then error "runtime AX smoke is missing destructive cancellation labels or help: " & bestMissingDestructiveCancelSignals & " (" & bestSummary & ")"
+      error "runtime AX smoke did not find destructive cancellation controls: " & bestSummary
+    end tell
+  end tell
+end run
+APPLESCRIPT
+)"
+    status=$?
+    set -e
+    if [[ "$status" -eq 0 ]]; then
+      printf '%s\n' "$output"
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      printf '%s\n' "$output" >&2
       return 1
     fi
     activate_app
@@ -809,5 +973,12 @@ if [[ "$ax_status" -ne 0 ]]; then
   exit 1
 fi
 
-printf '%s\n' "$ax_output"
+if ! destructive_cancel_output="$(open_task_delete_confirmation_for_runtime_focus_path)"; then
+  echo "BLOCKER: runtime AX smoke did not pass destructive cancellation verification within ${TIMEOUT_SECONDS}s" >&2
+  echo "BLOCKER: runtime AX smoke failed; grant Accessibility permission to Terminal/Codex and keep the Task inspector visible." >&2
+  exit 1
+fi
+
+destructive_cancel_summary="${destructive_cancel_output#OK: runtime AX destructive cancellation visible, }"
+printf '%s, %s\n' "$ax_output" "$destructive_cancel_summary"
 printf '%s\n' 'This is not a substitute for the manual VoiceOver pass.'

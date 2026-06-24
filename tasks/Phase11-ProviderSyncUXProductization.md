@@ -218,8 +218,9 @@
   - [x] `script/check_accessibility_preflight.sh --runtime` は見えているrelease候補windowのunlabeled AX buttonsとhelp/child textなしgeneric `button` labelをblockerにする。
   - [x] `script/check_accessibility_preflight.sh --runtime` はProject Board上のAdd Task、タスク詳細オープン、ステータス移動、ローカル提案適用、自動化レビュー、承認済み実行、Save、DeleteのAX identifier/help signalsを `crudSignals=8/8` としてblocker化する。
   - [x] `script/check_accessibility_preflight.sh --runtime` はProject navigation -> Project board detail -> Open task -> Inline Task Composer -> Status controls -> Task inspector のAX identifier/help signalsを `focusPathSignals=6/6` としてblocker化する。
+  - [x] `script/check_accessibility_preflight.sh --runtime` はDelete Task確認を開き、Cancel Delete TaskのAX identifier/help signalを `destructiveCancelSignals=1/1` としてblocker化する。
   - [x] `script/check_runtime_accessible_crud_smoke.sh` は隔離 `SOLOPM_DATABASE_PATH` と `SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION` を使い、実アプリのAccessibility操作でProjectの作成、リネーム保存、完了、削除、Task作成、Task更新、Task status移動、Task直接削除、Project削除時のTask cascade削除がSQLiteに反映されることを検証する。
-  - [x] VoiceOver passed evidence は同じrelease候補で実行したruntime AX smoke OK行、`unlabeledButtons=0`、`genericButtons=0`、`crudSignals=8/8`、`focusPathSignals=6/6` を含まない場合release readyにしない。
+  - [x] VoiceOver passed evidence は同じrelease候補で実行したruntime AX smoke OK行、`unlabeledButtons=0`、`genericButtons=0`、`crudSignals=8/8`、`focusPathSignals=6/6`、`destructiveCancelSignals=1/1` を含まない場合release readyにしない。
   - [x] `script/create_voiceover_evidence.sh --capture-runtime-ax-smoke` は手動VoiceOver証跡の作成時に同じrelease候補のruntime AX smoke OK行を自動取得し、古いコピー済みcountsでrelease readyを偽らない。
   - [x] `script/prepare_voiceover_review_candidate.sh` は隔離DBにVoiceOver確認用Project/各StatusのTask/Artifactをseedし、`SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION` 付きで同じrelease候補を開ける。
   - [x] `script/prepare_voiceover_review_candidate.sh` は `.tmp/voiceover-review/create-evidence-command.sh` を生成し、同じ候補DB/Project IDを使った手動VoiceOver証跡コマンドをoperatorがplaceholder置換して実行できる。

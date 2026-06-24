@@ -174,6 +174,7 @@ write_voiceover_review_worksheet() {
     printf '%s\n' '| `buttonA11ySignals=8/8` | No unlabeled primary CRUD controls | Confirm primary task lifecycle buttons retain useful label or help text. |'
     printf '%s\n' '| `screenSignals=4/4` | Project navigation | Confirm Inbox, Today, Settings, and Voice Command entry points are announced and navigable. |'
     printf '%s\n' '| `focusPathSignals=6/6` | Project navigation, Project board detail, Open task, Inline Task Composer, Status controls, Task inspector | Confirm the announced order and keyboard traversal match the automated anchors. |'
+    printf '%s\n' '| `destructiveCancelSignals=1/1` | Delete Task confirmation, No keyboard trap | Confirm Cancel Delete Task is announced and returns focus from the destructive confirmation without mutating the task. |'
     printf '\n'
     printf '%s\n' '## VoiceOver Observations To Fill'
     printf '\n'

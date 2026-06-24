@@ -46,6 +46,7 @@ The task path covers create, content entry, edit, status execution, automation r
 | `buttonA11ySignals=8/8` | No unlabeled primary CRUD controls | Primary task lifecycle buttons retain a concrete label, visible text, help, or child text. |
 | `screenSignals=4/4` | Project navigation | Inbox, Today, Settings, and Voice Command entry points are present before manual navigation starts. |
 | `focusPathSignals=6/6` | Project navigation, Project board detail, Open task, Inline Task Composer, Status controls, Task inspector | The automated focus anchors exist in lifecycle order; manual VoiceOver still verifies final spoken announcements and keyboard traversal. |
+| `destructiveCancelSignals=1/1` | Delete Task confirmation, No keyboard trap | Cancel Delete Task is present after opening the destructive confirmation, and the manual pass still verifies it returns to the inspector without mutating local data. |
 
 ## MCP Pseudo VoiceOver Harness
 

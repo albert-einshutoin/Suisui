@@ -2028,7 +2028,8 @@ validate_automated_preflight_evidence() {
     "unlabeledButtons=0" \
     "genericButtons=0" \
     "crudSignals=8/8" \
-    "focusPathSignals=6/6"; do
+    "focusPathSignals=6/6" \
+    "destructiveCancelSignals=1/1"; do
     if [[ "$runtime_ax_smoke" != *"$runtime_ax_marker"* ]]; then
       set_automated_preflight_evidence_reason "automated preflight runtime AX smoke missing marker: $runtime_ax_marker"
       return 1
@@ -2713,7 +2714,7 @@ else
     fi
 
     if [[ "$context_label" == "Runtime AX smoke" ]]; then
-      for runtime_marker in "OK: runtime AX smoke visible" "buttons=" "textFields=" "staticTexts=" "unlabeledButtons=0" "genericButtons=0" "crudSignals=8/8" "focusPathSignals=6/6"; do
+      for runtime_marker in "OK: runtime AX smoke visible" "buttons=" "textFields=" "staticTexts=" "unlabeledButtons=0" "genericButtons=0" "crudSignals=8/8" "focusPathSignals=6/6" "destructiveCancelSignals=1/1"; do
         if ! grep -F "$runtime_marker" <<<"$context_value" >/dev/null; then
           voiceover_blocker "VoiceOver accessibility evidence runtime AX smoke missing marker: $runtime_marker"
         fi
@@ -2773,7 +2774,7 @@ else
   fi
 fi
 if [[ "$voiceover_evidence_blocker_count" -gt 0 ]]; then
-  printf "NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass by running ./script/create_voiceover_evidence.sh --passed with complete release-candidate context, --capture-runtime-ax-smoke, complete focus-path notes, and no pending/template/unchecked markers; the generated evidence must include the runtime AX smoke OK line with unlabeledButtons=0, genericButtons=0, crudSignals=8/8, and focusPathSignals=6/6. Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail.\n"
+  printf "NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass by running ./script/create_voiceover_evidence.sh --passed with complete release-candidate context, --capture-runtime-ax-smoke, complete focus-path notes, and no pending/template/unchecked markers; the generated evidence must include the runtime AX smoke OK line with unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, and destructiveCancelSignals=1/1. Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail.\n"
 fi
 
 section "Competitor hands-on evidence"
