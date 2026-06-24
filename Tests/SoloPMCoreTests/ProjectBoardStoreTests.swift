@@ -1373,6 +1373,67 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelScheduledAutomationHonorsManualFrequency() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        _ = viewModel.createTask(title: "Manual frequency due task", status: .planned, priority: .high, dueAt: "2026-06-22T18:00:00Z")
+        let settings = TaskAutoExecutionSettings(isEnabled: true, mode: .reviewOnly, cadence: .manual)
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+
+        let scheduled = viewModel.prepareTaskAutomationReview(
+            settings: settings,
+            trigger: .scheduled,
+            referenceDate: referenceDate,
+            calendar: utcCalendar()
+        )
+        let manual = viewModel.prepareTaskAutomationReview(
+            settings: settings,
+            trigger: .manual,
+            referenceDate: referenceDate,
+            calendar: utcCalendar()
+        )
+
+        XCTAssertEqual(scheduled.status, .throttled)
+        XCTAssertEqual(scheduled.reason, "Task automation frequency is manual; scheduled review will not call the LLM.")
+        XCTAssertFalse(scheduled.shouldCallLLM)
+        XCTAssertEqual(manual.status, .readyForReview)
+        XCTAssertEqual(manual.selectedTasks.map(\.title), ["Manual frequency due task"])
+        XCTAssertTrue(manual.shouldCallLLM)
+    }
+
+    @MainActor
+    func testProjectBoardPlanningRequestDoesNotSpendManualCadenceBudgetForScheduledRun() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        _ = viewModel.createTask(title: "Manual request due task", status: .planned, priority: .high, dueAt: "2026-06-22T18:00:00Z")
+        let settings = TaskAutoExecutionSettings(isEnabled: true, mode: .reviewOnly, cadence: .manual)
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+
+        XCTAssertThrowsError(
+            try viewModel.makeTaskAutomationPlanningRequest(
+                settings: settings,
+                trigger: .scheduled,
+                referenceDate: referenceDate,
+                calendar: utcCalendar(),
+                timeZoneIdentifier: "UTC"
+            )
+        ) { error in
+            XCTAssertEqual(error as? TaskAutoExecutionPlanningRequestError, .noReviewableTasks)
+        }
+
+        let request = try viewModel.makeTaskAutomationPlanningRequest(
+            settings: settings,
+            trigger: .manual,
+            referenceDate: referenceDate,
+            calendar: utcCalendar(),
+            timeZoneIdentifier: "UTC"
+        )
+
+        XCTAssertTrue(request.userInput.contains("cadence: manual"))
+        XCTAssertTrue(request.userInput.contains("Manual request due task"))
+    }
+
+    @MainActor
     func testProjectBoardViewModelCreatesProjectArtifactAndNotifies() throws {
         var changeCount = 0
         let viewModel = ProjectBoardViewModel(

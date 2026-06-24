@@ -475,6 +475,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] 同じ期日/優先度/rankのタスクが複数ある場合、後から追加されたタスクが古い未処理タスクをLLM review queueから押し出さないことをテストする。
 - [x] 週次cadenceでは7日未満の通常reviewを止め、7日経過後はpriority/due-date候補をLLM reviewへ出し、provider payloadにも `weekly` を保持することをテストする。
 - [x] manual cadenceはユーザー操作時だけreview候補をLLMへ出し、scheduled triggerからはprovider callを消費しないことをテストする。
+- [x] ProjectBoard ViewModelのtask automation入口もmanual/scheduled triggerを受け取り、manual frequencyのscheduled runではreview queueもLLM budgetも消費しないことをテストする。
 - [x] MCP擬似VoiceOverの軽量source-marker gateは、Swift側の `AccessibilityFocusPathRequirement.taskLifecycleAndExecution.requiredNodeIDs` と同じ必須nodeを確認し、inline composer / task inspectorのtitle/detail fieldをbuttonだけの検査で取りこぼさない。
 
 ### Implementation Steps
@@ -500,6 +501,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] Task automation plannerでrankが完全に同じ候補はlocal task ID昇順にし、有限のLLM review budgetが新しい同順位タスクだけに消費されないようにする。
 - [x] Task automation cadenceに `weekly` を追加し、Settingsの頻度picker、英日表示、review-only provider promptへ同じ値を通す。
 - [x] Task automation plannerにmanual/scheduled trigger境界を追加し、manual頻度ではbackground scheduleがLLM providerを呼ばないようにする。
+- [x] ProjectBoard ViewModelのreview/planning request入口へ `TaskAutoExecutionTrigger` を通し、UI手動操作は既定manualのまま、将来のscheduled runnerは明示的にscheduledとして評価できるようにする。
 
 ### Acceptance Criteria
 
@@ -522,6 +524,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] 同じ緊急度のタスクでは古い未処理タスクが先にreview対象となり、LLM予算とmax task capで後から入った同順位タスクが既存作業を飢餓状態にしない。
 - [x] 低頻度運用ではweekly cadenceを選べ、7日未満の通常LLM reviewはthrottleされ、urgent cooldown以外で余分なprovider callを消費しない。
 - [x] manual frequencyは明示的なユーザー操作でのみreviewを準備し、scheduled runではLLM budgetを消費しない。
+- [x] ProjectBoardから呼ばれる将来のscheduled automationでもmanual frequencyが手動reviewとして扱われず、provider requestを作れない。
 
 ### Non-goals
 

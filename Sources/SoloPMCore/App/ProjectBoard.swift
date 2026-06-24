@@ -1353,6 +1353,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     @discardableResult
     public func prepareTaskAutomationReview(
         settings: TaskAutoExecutionSettings,
+        trigger: TaskAutoExecutionTrigger = .manual,
         referenceDate: Date = Date(),
         calendar: Calendar = .current
     ) -> TaskAutoExecutionDecision {
@@ -1360,6 +1361,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         let decision = prepareTaskAutomationReview(
             settings: settings,
             history: history,
+            trigger: trigger,
             referenceDate: referenceDate,
             calendar: calendar
         )
@@ -1382,16 +1384,18 @@ public final class ProjectBoardViewModel: ObservableObject {
     public func prepareTaskAutomationReview(
         settings: TaskAutoExecutionSettings,
         history: TaskAutoExecutionHistory,
+        trigger: TaskAutoExecutionTrigger = .manual,
         referenceDate: Date = Date(),
         calendar: Calendar = .current
     ) -> TaskAutoExecutionDecision {
         // Whole-board automation must reuse the deterministic planner before
-        // any provider request so cadence, lookahead, and LLM budget settings
-        // cannot be bypassed by a UI entry point.
+        // any provider request so cadence, lookahead, trigger, and LLM budget
+        // settings cannot be bypassed by a UI or future scheduled entry point.
         let decision = TaskAutoExecutionPlanner().makeDecision(
             snapshot: snapshot,
             settings: settings,
             history: history,
+            trigger: trigger,
             referenceDate: referenceDate,
             calendar: calendar
         )
@@ -1423,6 +1427,7 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     public func makeTaskAutomationPlanningRequest(
         settings: TaskAutoExecutionSettings,
+        trigger: TaskAutoExecutionTrigger = .manual,
         referenceDate: Date = Date(),
         calendar: Calendar = .current,
         timeZoneIdentifier: String = TimeZone.current.identifier,
@@ -1432,6 +1437,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         let decision = prepareTaskAutomationReview(
             settings: settings,
             history: history,
+            trigger: trigger,
             referenceDate: referenceDate,
             calendar: calendar
         )
@@ -1457,6 +1463,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     public func makeTaskAutomationPlanningRequest(
         settings: TaskAutoExecutionSettings,
         history: TaskAutoExecutionHistory,
+        trigger: TaskAutoExecutionTrigger = .manual,
         referenceDate: Date = Date(),
         calendar: Calendar = .current,
         timeZoneIdentifier: String = TimeZone.current.identifier,
@@ -1465,6 +1472,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         let decision = prepareTaskAutomationReview(
             settings: settings,
             history: history,
+            trigger: trigger,
             referenceDate: referenceDate,
             calendar: calendar
         )
