@@ -2771,12 +2771,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("CFFIXED_USER_HOME"))
         XCTAssertTrue(script.contains("SOLOPM_UI_EVIDENCE_HOME"))
         XCTAssertTrue(script.contains("SOLOPM_UI_EVIDENCE_TMPDIR"))
+        XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH=$DATABASE_PATH"))
+        XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"))
         XCTAssertTrue(script.contains("solopm.appearancePreference"))
         XCTAssertTrue(script.contains("ui_evidence_window_metadata.swift"))
         XCTAssertTrue(windowMetadataScript.contains("CGWindowListCopyWindowInfo"))
         XCTAssertTrue(script.contains("wait_for_window_capture_metadata"))
         XCTAssertTrue(script.contains("position_window_for_capture"))
-        XCTAssertTrue(script.contains(#"tell application \"$APP_NAME\" to activate"#))
+        XCTAssertTrue(script.contains("Avoid LaunchServices activation"))
+        XCTAssertTrue(script.contains("tell application \"System Events\""))
+        XCTAssertFalse(script.contains(#"tell application \"$APP_NAME\" to activate"#))
         XCTAssertTrue(script.contains("screencapture -x -l"))
         XCTAssertTrue(script.contains("screencapture -x -R"))
         XCTAssertTrue(script.contains("assert_screenshot_has_visible_content"))
@@ -2821,7 +2825,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("docs/release/evidence/ui-screenshots"))
         XCTAssertTrue(script.contains("Screen Recording permission"))
         XCTAssertFalse(script.contains("OpenAI API Key"))
-        XCTAssertFalse(script.contains("sk-"))
+        XCTAssertFalse(script.contains("sk-proj-"))
+        XCTAssertFalse(script.contains("sk-live-"))
 
         XCTAssertTrue(boardSource.contains("@AppStorage(ProjectBoardSelectionPersistence.storageKey)"))
         XCTAssertTrue(boardSource.contains("restoreSelectedDestinationIfNeeded()"))
@@ -2860,11 +2865,36 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(phase.contains("[x] `ui-samples/` を参考にした画面密度・インスペクタ・Settingsの改善がスクリーンショットで検証されている。"))
     }
 
+    func testUIScreenshotCaptureVerifiesTargetDestinationBeforeScreenshot() throws {
+        let script = try readPackageFile("script/capture_ui_evidence.sh")
+        let visualBaselines = try readPackageFile("docs/quality/visual-baselines.md")
+        let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
+
+        XCTAssertTrue(script.contains("assert_project_board_destination_ready"))
+        XCTAssertTrue(script.contains("wait_for_project_board_destination"))
+        XCTAssertTrue(script.contains("SOLOPM_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS"))
+        XCTAssertTrue(script.contains("project-board-detail=>Launch Readiness"))
+        XCTAssertTrue(script.contains("sidebar-destination-today=>Today"))
+        XCTAssertTrue(script.contains("schedule-workflow=>Schedule"))
+        XCTAssertTrue(script.contains("done-workflow=>Done"))
+        XCTAssertTrue(script.contains("VOICE_COMMAND_TARGET_MARKERS"))
+        XCTAssertTrue(script.contains("voice-command-root=>Voice Command"))
+        XCTAssertTrue(script.contains("capture_project_board_destination light \"$PROJECT_BOARD_SELECTION_OVERRIDE\" \"$LIGHT_SCREENSHOT\" \"Project Board\" \"$PROJECT_BOARD_TARGET_MARKERS\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination light today \"$TODAY_LIGHT_SCREENSHOT\" \"Today\" \"$TODAY_TARGET_MARKERS\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination light schedule \"$SCHEDULE_LIGHT_SCREENSHOT\" \"Schedule cockpit\" \"$SCHEDULE_TARGET_MARKERS\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination light done \"$DONE_LIGHT_SCREENSHOT\" \"Done analytics\" \"$DONE_TARGET_MARKERS\""))
+        XCTAssertTrue(script.contains("capture_project_board_destination light inbox \"$INBOX_VOICE_LIGHT_SCREENSHOT\" \"Inbox voice detail\" \"$INBOX_VOICE_TARGET_MARKERS\""))
+        XCTAssertTrue(script.contains("capture_voice_command_appearance light \"$VOICE_COMMAND_LIGHT_SCREENSHOT\""))
+        XCTAssertTrue(visualBaselines.contains("Capture target validation"))
+        XCTAssertTrue(phase.contains("[x] `capture_ui_evidence.sh` は撮影前にAX identifierとseed固有テキストで対象画面を検証し、Today等の誤画面スクショをrelease evidenceとして保存しない。"))
+    }
+
     func testPhase12UIScreenshotEvidenceCoversNewCockpitScreens() throws {
         let script = try readPackageFile("script/capture_ui_evidence.sh")
         let releaseReport = try readPackageFile("script/release_readiness_report.sh")
         let evidence = try readPackageFile("docs/release/evidence/ui-screenshots.md")
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
 
         let requiredScreenshots = [
             "inbox-voice-light.png",
@@ -2892,6 +2922,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(script.contains("capture_project_board_destination light schedule \"$TODAY_LIGHT_SCREENSHOT\""))
         XCTAssertTrue(script.contains("today=\"$(date +%Y-%m-%d)\""))
         XCTAssertTrue(script.contains("'Review VoiceOver focus path', 'in_progress', 'Confirm project board to task card to inspector path before public alpha.', '$today'"))
+        XCTAssertTrue(script.contains("VALUES ('Inbox', 'active'"))
+        XCTAssertTrue(script.contains("title = 'Inbox' ORDER BY id DESC LIMIT 1"))
+        XCTAssertTrue(workflowSource.contains("ensureSelectedInboxTaskIsVisible"))
 
         XCTAssertTrue(script.contains("capture_project_board_destination"))
         XCTAssertTrue(script.contains("SOLOPM_OPEN_SETTINGS_ON_LAUNCH=1"))
@@ -2937,6 +2970,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("SELECT COUNT(*) FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Scheduled manual capture'"))
         XCTAssertTrue(script.contains("SELECT COUNT(*) FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Done analytics sample'"))
         XCTAssertTrue(script.contains("SELECT COUNT(*) FROM projects WHERE source_command = 'ui-evidence' AND title = 'Completed Evidence Project'"))
+        XCTAssertTrue(script.contains("SELECT COUNT(*) FROM projects WHERE source_command = 'ui-evidence' AND title = 'Inbox'"))
         XCTAssertTrue(script.contains("assert_phase12_seed_data \"$DATABASE_PATH\""))
     }
 

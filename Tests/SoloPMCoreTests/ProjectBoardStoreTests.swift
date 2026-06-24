@@ -1759,6 +1759,23 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelSelectsFirstVisibleInboxTaskWhenInboxAppears() throws {
+        let bundle = try makeStoreBundle()
+        let captures = SQLiteInboxCaptureStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(store: bundle.board, inboxCaptureStore: captures)
+        viewModel.load()
+
+        _ = try XCTUnwrap(viewModel.createInboxTask(title: "Older manual capture"))
+        let latest = try XCTUnwrap(viewModel.createInboxTask(title: "Scheduled manual capture"))
+        viewModel.selectedTaskID = nil
+
+        viewModel.ensureSelectedInboxTaskIsVisible()
+
+        XCTAssertEqual(viewModel.selectedTaskID, latest.id)
+        XCTAssertEqual(viewModel.filteredInboxTasks.first?.id, latest.id)
+    }
+
+    @MainActor
     func testProjectBoardViewModelClassifiesVoiceInboxItemWithoutAISuggestion() throws {
         let bundle = try makeStoreBundle()
         let captures = SQLiteInboxCaptureStore(connection: bundle.connection)

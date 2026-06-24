@@ -1175,6 +1175,13 @@ public final class ProjectBoardViewModel: ObservableObject {
         ensureSelectedTaskIsVisibleInInboxFilter()
     }
 
+    public func ensureSelectedInboxTaskIsVisible() {
+        // Inbox actions and voice metadata are contextual; auto-selecting the
+        // first visible item prevents a loaded Inbox from presenting disabled
+        // classification controls with available work hidden in the list.
+        ensureSelectedTaskIsVisibleInInboxFilter()
+    }
+
     public func todayTasks(on referenceDate: Date = Date(), calendar: Calendar = .current) -> [ProjectBoardTask] {
         guard let endOfToday = calendar.dateInterval(of: .day, for: referenceDate)?.end else {
             return []

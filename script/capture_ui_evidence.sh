@@ -22,6 +22,7 @@ EVIDENCE_TMPDIR="${SOLOPM_UI_EVIDENCE_TMPDIR:-$ROOT_DIR/.tmp}"
 VISUAL_BASELINE_MANIFEST="$ROOT_DIR/docs/quality/visual-baseline-manifest.json"
 VISUAL_BASELINE_VIEWPORT="${SOLOPM_VISUAL_BASELINE_VIEWPORT:-1560x860}"
 SETTINGS_VISUAL_BASELINE_VIEWPORT="${SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT:-1200x720}"
+TARGET_TIMEOUT_SECONDS="${SOLOPM_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS:-30}"
 mkdir -p "$EVIDENCE_TMPDIR"
 export TMPDIR="$EVIDENCE_TMPDIR/"
 EVIDENCE_HOME="${SOLOPM_UI_EVIDENCE_HOME:-$(mktemp -d "$EVIDENCE_TMPDIR/solopm-ui-evidence.XXXXXX")}"
@@ -29,10 +30,14 @@ KEEP_HOME="${SOLOPM_UI_EVIDENCE_KEEP_HOME:-0}"
 DRY_RUN=0
 DOCTOR=0
 PROJECT_BOARD_SELECTION_OVERRIDE=""
+PROJECT_BOARD_TARGET_MARKERS=""
+INBOX_VOICE_TARGET_MARKERS=""
 APPEARANCE_OVERRIDE=""
 SETTINGS_WINDOW_OVERRIDE=""
 SETTINGS_TAB_OVERRIDE=""
+VOICE_COMMAND_WINDOW_OVERRIDE=""
 EVIDENCE_APP_PID=""
+DATABASE_PATH=""
 
 for arg in "$@"; do
   case "$arg" in
@@ -51,6 +56,11 @@ done
 
 if [[ "$DRY_RUN" == "1" && "$DOCTOR" == "1" ]]; then
   echo "usage: $0 [--dry-run|--doctor]" >&2
+  exit 2
+fi
+
+if [[ ! "$TARGET_TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TARGET_TIMEOUT_SECONDS" -lt 1 ]]; then
+  echo "SOLOPM_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 2
 fi
 
@@ -98,7 +108,13 @@ app_env_args() {
   local args=(
     "HOME=$EVIDENCE_HOME"
     "CFFIXED_USER_HOME=$EVIDENCE_HOME"
+    "SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"
   )
+  if [[ -n "$DATABASE_PATH" ]]; then
+    # Screenshot evidence must open the exact SQLite file seeded below; relying
+    # on HOME-derived defaults can silently fall back to another database.
+    args+=("SOLOPM_DATABASE_PATH=$DATABASE_PATH")
+  fi
   if [[ -n "$PROJECT_BOARD_SELECTION_OVERRIDE" ]]; then
     args+=("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$PROJECT_BOARD_SELECTION_OVERRIDE")
   fi
@@ -110,6 +126,9 @@ app_env_args() {
   fi
   if [[ -n "$SETTINGS_TAB_OVERRIDE" ]]; then
     args+=("SOLOPM_SETTINGS_EVIDENCE_TAB=$SETTINGS_TAB_OVERRIDE")
+  fi
+  if [[ "$VOICE_COMMAND_WINDOW_OVERRIDE" == "1" ]]; then
+    args+=("SOLOPM_OPEN_VOICE_COMMAND_ON_LAUNCH=1")
   fi
   printf '%s\0' "${args[@]}"
 }
@@ -132,7 +151,25 @@ stop_evidence_app() {
 }
 
 activate_evidence_app() {
-  /usr/bin/osascript -e "tell application \"$APP_NAME\" to activate" >/dev/null 2>&1 &
+  # Avoid LaunchServices activation; it can start a second app instance without
+  # the isolated screenshot database, target selection, or appearance env.
+  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 &
+on run argv
+  set appName to item 1 of argv
+  tell application "System Events"
+    if not (exists process appName) then return "missing"
+    tell process appName
+      set frontmost to true
+      if (count of windows) > 0 then
+        try
+          perform action "AXRaise" of window 1
+        end try
+      end if
+    end tell
+  end tell
+  return "activated"
+end run
+APPLESCRIPT
   local osascript_pid=$!
   for _ in {1..20}; do
     if ! kill -0 "$osascript_pid" >/dev/null 2>&1; then
@@ -186,6 +223,157 @@ wait_for_window_capture_metadata() {
     sleep 0.25
   done
   find_window_capture_metadata "$window_name"
+}
+
+target_marker_present() {
+  local identifier="$1"
+  local text="$2"
+  local error_file
+  local osascript_pid
+  local watchdog_pid
+  local status
+  error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-ui-target-marker-error.XXXXXX")"
+
+  /usr/bin/osascript - "$APP_NAME" "$identifier" "$text" <<'APPLESCRIPT' >/dev/null 2>"$error_file" &
+on elementSignal(uiElement)
+  set itemIdentifier to ""
+  set itemName to ""
+  set itemTitle to ""
+  set itemDescription to ""
+  set itemHelp to ""
+  set itemValue to ""
+  tell application "System Events"
+    try
+      set itemIdentifier to value of attribute "AXIdentifier" of uiElement as text
+    end try
+    try
+      set itemName to name of uiElement as text
+    end try
+    try
+      set itemTitle to value of attribute "AXTitle" of uiElement as text
+    end try
+    try
+      set itemDescription to description of uiElement as text
+    end try
+    try
+      set itemHelp to value of attribute "AXHelp" of uiElement as text
+    end try
+    try
+      set itemValue to value of uiElement as text
+    end try
+  end tell
+  return itemIdentifier & " " & itemName & " " & itemTitle & " " & itemDescription & " " & itemHelp & " " & itemValue
+end elementSignal
+
+on elementTreeContains(uiElement, needle)
+  if my elementSignal(uiElement) contains needle then return true
+  tell application "System Events"
+    try
+      repeat with childElement in UI elements of uiElement
+        if my elementTreeContains(childElement, needle) then return true
+      end repeat
+    end try
+  end tell
+  return false
+end elementTreeContains
+
+on run argv
+  set appName to item 1 of argv
+  set identifierNeedle to item 2 of argv
+  set textNeedle to item 3 of argv
+  set foundIdentifier to false
+  set foundText to false
+  tell application "System Events"
+    if not (exists process appName) then error appName & " process is not visible to System Events"
+    tell process appName
+      set frontmost to true
+      set windowCount to count of windows
+      if windowCount < 1 then error appName & " has no visible AX windows"
+      repeat with windowIndex from 1 to windowCount
+        set currentWindow to window windowIndex
+        try
+          if (name of currentWindow as text) contains textNeedle then set foundText to true
+        end try
+        if not foundIdentifier and my elementTreeContains(currentWindow, identifierNeedle) then set foundIdentifier to true
+        if not foundText and my elementTreeContains(currentWindow, textNeedle) then set foundText to true
+        if foundIdentifier and foundText then return "present"
+      end repeat
+    end tell
+  end tell
+  if not foundIdentifier then error "missing AX identifier marker: " & identifierNeedle
+  if not foundText then error "missing AX text marker: " & textNeedle
+end run
+APPLESCRIPT
+  osascript_pid=$!
+  (
+    sleep "$TARGET_TIMEOUT_SECONDS"
+    kill "$osascript_pid" >/dev/null 2>&1 || true
+  ) &
+  watchdog_pid=$!
+  wait "$osascript_pid"
+  status=$?
+  kill "$watchdog_pid" >/dev/null 2>&1 || true
+  wait "$watchdog_pid" >/dev/null 2>&1 || true
+  if [[ "$status" -ne 0 ]]; then
+    cat "$error_file" >&2
+    if [[ "$status" -eq 143 || "$status" -eq 137 ]]; then
+      echo "AX target marker scan timed out after ${TARGET_TIMEOUT_SECONDS}s: $identifier => $text" >&2
+    fi
+  fi
+  rm -f "$error_file"
+  return "$status"
+}
+
+assert_project_board_destination_ready() {
+  local label="$1"
+  local marker_spec="$2"
+  local markers=()
+  local marker
+  local identifier
+  local text
+  local missing=()
+
+  if [[ -z "$marker_spec" ]]; then
+    return 0
+  fi
+
+  IFS='|' read -r -a markers <<<"$marker_spec"
+  for marker in "${markers[@]}"; do
+    [[ -z "$marker" ]] && continue
+    if [[ "$marker" != *"=>"* ]]; then
+      echo "invalid UI evidence target marker for $label: $marker" >&2
+      return 2
+    fi
+    identifier="${marker%%=>*}"
+    text="${marker#*=>}"
+    if ! target_marker_present "$identifier" "$text"; then
+      missing+=("$marker")
+    fi
+  done
+
+  if [[ "${#missing[@]}" -gt 0 ]]; then
+    printf 'UI evidence target not ready for %s; missing marker(s): %s\n' "$label" "${missing[*]}" >&2
+    return 1
+  fi
+}
+
+wait_for_project_board_destination() {
+  local label="$1"
+  local marker_spec="$2"
+  local deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
+
+  while true; do
+    if assert_project_board_destination_ready "$label" "$marker_spec" >/dev/null 2>&1; then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      assert_project_board_destination_ready "$label" "$marker_spec"
+      echo "BLOCKER: UI evidence target did not become ready for $label within ${TARGET_TIMEOUT_SECONDS}s" >&2
+      echo "NEXT: keep the intended SoloPM window visible, verify Accessibility permission for Terminal/Codex, and rerun script/capture_ui_evidence.sh." >&2
+      return 1
+    fi
+    sleep 0.25
+  done
 }
 
 visual_baseline_bounds() {
@@ -378,6 +566,9 @@ INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_js
 VALUES ('Launch Readiness', 'active', 'high', '$tomorrow', NULL, '["ui-evidence","local"]', 'ui-evidence');
 
 INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command)
+VALUES ('Inbox', 'active', NULL, NULL, NULL, '["ui-evidence","inbox"]', 'ui-evidence');
+
+INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command)
 VALUES ('Completed Evidence Project', 'completed', 'medium', '$tomorrow', NULL, '["ui-evidence","done"]', 'ui-evidence');
 
 INSERT INTO tasks (project_id, title, status, detail, due_at, completed_at, priority, source_command)
@@ -388,7 +579,7 @@ VALUES
    'Review VoiceOver focus path', 'in_progress', 'Confirm project board to task card to inspector path before public alpha.', '$today', NULL, 'high', 'ui-evidence'),
   ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
    'Document remaining release blockers', 'blocked', 'Keep signing, notarization, and manual accessibility gates visible.', NULL, NULL, 'medium', 'ui-evidence'),
-  ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
+  ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Inbox' ORDER BY id DESC LIMIT 1),
    'Scheduled manual capture', 'planned', 'Voice memo capture with transcript and local interpretation metadata.', NULL, NULL, 'high', 'ui-evidence'),
   ((SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1),
    'Unscheduled schedule draft input', 'planned', 'Appears in Schedule cockpit as an unscheduled task.', NULL, NULL, 'medium', 'ui-evidence'),
@@ -482,10 +673,12 @@ assert_phase12_seed_data() {
   local scheduled_manual_capture_count
   local done_analytics_sample_count
   local completed_project_count
+  local inbox_project_count
 
   scheduled_manual_capture_count="$(sqlite3 "$database_path" "SELECT COUNT(*) FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Scheduled manual capture';")"
   done_analytics_sample_count="$(sqlite3 "$database_path" "SELECT COUNT(*) FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Done analytics sample';")"
   completed_project_count="$(sqlite3 "$database_path" "SELECT COUNT(*) FROM projects WHERE source_command = 'ui-evidence' AND title = 'Completed Evidence Project';")"
+  inbox_project_count="$(sqlite3 "$database_path" "SELECT COUNT(*) FROM projects WHERE source_command = 'ui-evidence' AND title = 'Inbox';")"
 
   if [[ "$scheduled_manual_capture_count" -lt 1 ]]; then
     echo "missing Phase 12 UI evidence seed: Scheduled manual capture" >&2
@@ -497,6 +690,10 @@ assert_phase12_seed_data() {
   fi
   if [[ "$completed_project_count" -lt 1 ]]; then
     echo "missing Phase 12 UI evidence seed: Completed Evidence Project" >&2
+    exit 1
+  fi
+  if [[ "$inbox_project_count" -lt 1 ]]; then
+    echo "missing Phase 12 UI evidence seed: Inbox" >&2
     exit 1
   fi
 }
@@ -524,14 +721,22 @@ ORDER BY status;
 persist_project_board_selection() {
   local database_path="$1"
   local project_id
+  local inbox_voice_task_id
   project_id="$(sqlite3 "$database_path" "SELECT id FROM projects WHERE source_command = 'ui-evidence' AND title = 'Launch Readiness' ORDER BY id DESC LIMIT 1;")"
 
   if [[ -z "$project_id" ]]; then
     echo "seeded Launch Readiness project was not found." >&2
     exit 1
   fi
+  inbox_voice_task_id="$(sqlite3 "$database_path" "SELECT id FROM tasks WHERE source_command = 'ui-evidence' AND title = 'Scheduled manual capture' ORDER BY id DESC LIMIT 1;")"
+  if [[ -z "$inbox_voice_task_id" ]]; then
+    echo "seeded Scheduled manual capture task was not found." >&2
+    exit 1
+  fi
 
   PROJECT_BOARD_SELECTION_OVERRIDE="project:$project_id"
+  PROJECT_BOARD_TARGET_MARKERS="project-board-detail=>Launch Readiness|task-card-open-details=>Capture launch screenshots"
+  INBOX_VOICE_TARGET_MARKERS="sidebar-destination-inbox=>Inbox|inbox-capture-metadata=>Scheduled manual capture"
   write_app_preference solopm.projectBoard.selectedDestination "$PROJECT_BOARD_SELECTION_OVERRIDE"
 }
 
@@ -606,6 +811,7 @@ capture_settings_overview() {
   APPEARANCE_OVERRIDE="$appearance"
   SETTINGS_WINDOW_OVERRIDE=1
   SETTINGS_TAB_OVERRIDE="Overview"
+  VOICE_COMMAND_WINDOW_OVERRIDE=""
   stop_evidence_app
   write_appearance_preference "$appearance"
   open_evidence_app
@@ -625,6 +831,7 @@ capture_settings_appearance() {
   APPEARANCE_OVERRIDE="$appearance"
   SETTINGS_WINDOW_OVERRIDE=1
   SETTINGS_TAB_OVERRIDE="Appearance"
+  VOICE_COMMAND_WINDOW_OVERRIDE=""
   stop_evidence_app
   write_appearance_preference "$appearance"
   open_evidence_app
@@ -644,6 +851,7 @@ capture_mcp_settings_appearance() {
   APPEARANCE_OVERRIDE="$appearance"
   SETTINGS_WINDOW_OVERRIDE=1
   SETTINGS_TAB_OVERRIDE="MCP"
+  VOICE_COMMAND_WINDOW_OVERRIDE=""
   stop_evidence_app
   write_appearance_preference "$appearance"
   open_evidence_app
@@ -663,6 +871,7 @@ capture_appearance() {
   APPEARANCE_OVERRIDE="$appearance"
   SETTINGS_WINDOW_OVERRIDE=""
   SETTINGS_TAB_OVERRIDE=""
+  VOICE_COMMAND_WINDOW_OVERRIDE=""
   stop_evidence_app
   write_appearance_preference "$appearance"
   open_evidence_app
@@ -678,11 +887,13 @@ capture_project_board_destination() {
   local selected_destination="$2"
   local output_path="$3"
   local label="$4"
+  local target_markers="${5:-}"
 
   APPEARANCE_OVERRIDE="$appearance"
   PROJECT_BOARD_SELECTION_OVERRIDE="$selected_destination"
   SETTINGS_WINDOW_OVERRIDE=""
   SETTINGS_TAB_OVERRIDE=""
+  VOICE_COMMAND_WINDOW_OVERRIDE=""
   stop_evidence_app
   write_appearance_preference "$appearance"
   write_app_preference solopm.projectBoard.selectedDestination "$selected_destination"
@@ -690,8 +901,31 @@ capture_project_board_destination() {
   wait_for_process
   activate_evidence_app
   sleep 1.5
+  wait_for_window_capture_metadata >/dev/null
+  wait_for_project_board_destination "$label" "$target_markers"
 
   capture_visible_window "$appearance $label" "$output_path"
+}
+
+capture_voice_command_appearance() {
+  local appearance="$1"
+  local output_path="$2"
+
+  APPEARANCE_OVERRIDE="$appearance"
+  PROJECT_BOARD_SELECTION_OVERRIDE=""
+  SETTINGS_WINDOW_OVERRIDE=""
+  SETTINGS_TAB_OVERRIDE=""
+  VOICE_COMMAND_WINDOW_OVERRIDE=1
+  stop_evidence_app
+  write_appearance_preference "$appearance"
+  open_evidence_app
+  wait_for_process
+  activate_evidence_app
+  sleep 1.0
+  wait_for_window_capture_metadata "Voice Command" >/dev/null
+  wait_for_project_board_destination "Voice Command" "$VOICE_COMMAND_TARGET_MARKERS"
+
+  capture_visible_window "$appearance Voice Command" "$output_path" "Voice Command"
 }
 
 write_evidence_file() {
@@ -922,26 +1156,33 @@ DONE_DARK_SCREENSHOT="$SCREENSHOT_DIR/done-dark.png"
 SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-integrations-light.png"
 SETTINGS_INTEGRATIONS_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-integrations-dark.png"
 
-capture_project_board_destination light "$PROJECT_BOARD_SELECTION_OVERRIDE" "$LIGHT_SCREENSHOT" "Project Board"
-capture_project_board_destination dark "$PROJECT_BOARD_SELECTION_OVERRIDE" "$DARK_SCREENSHOT" "Project Board"
-capture_project_board_destination system "$PROJECT_BOARD_SELECTION_OVERRIDE" "$SYSTEM_SCREENSHOT" "Project Board"
-capture_project_board_destination light inbox "$INBOX_LIGHT_SCREENSHOT" "Inbox"
-capture_project_board_destination dark inbox "$INBOX_DARK_SCREENSHOT" "Inbox"
-capture_project_board_destination system inbox "$INBOX_SYSTEM_SCREENSHOT" "Inbox"
-capture_project_board_destination light today "$TODAY_LIGHT_SCREENSHOT" "Today"
-capture_project_board_destination dark today "$TODAY_DARK_SCREENSHOT" "Today"
-capture_project_board_destination system today "$TODAY_SYSTEM_SCREENSHOT" "Today"
-capture_project_board_destination light inbox "$VOICE_COMMAND_LIGHT_SCREENSHOT" "Voice Command"
-capture_project_board_destination dark inbox "$VOICE_COMMAND_DARK_SCREENSHOT" "Voice Command"
-capture_project_board_destination system inbox "$VOICE_COMMAND_SYSTEM_SCREENSHOT" "Voice Command"
-capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail"
-capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail"
-capture_project_board_destination light projects "$PROJECTS_OVERVIEW_LIGHT_SCREENSHOT" "Projects overview"
-capture_project_board_destination dark projects "$PROJECTS_OVERVIEW_DARK_SCREENSHOT" "Projects overview"
-capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit"
-capture_project_board_destination dark schedule "$SCHEDULE_DARK_SCREENSHOT" "Schedule cockpit"
-capture_project_board_destination light done "$DONE_LIGHT_SCREENSHOT" "Done analytics"
-capture_project_board_destination dark done "$DONE_DARK_SCREENSHOT" "Done analytics"
+INBOX_TARGET_MARKERS="sidebar-destination-inbox=>Inbox|inbox-action-panel=>Inbox"
+TODAY_TARGET_MARKERS="sidebar-destination-today=>Today|today-briefing-panel=>Today"
+PROJECTS_TARGET_MARKERS="sidebar-destination-projects=>Projects|projects-portfolio-overview=>Projects"
+SCHEDULE_TARGET_MARKERS="sidebar-destination-schedule=>Schedule|schedule-workflow=>Schedule"
+DONE_TARGET_MARKERS="sidebar-destination-done=>Done|done-workflow=>Done"
+VOICE_COMMAND_TARGET_MARKERS="voice-command-root=>Voice Command|voice-command-input=>Voice Command"
+
+capture_project_board_destination light "$PROJECT_BOARD_SELECTION_OVERRIDE" "$LIGHT_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS"
+capture_project_board_destination dark "$PROJECT_BOARD_SELECTION_OVERRIDE" "$DARK_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS"
+capture_project_board_destination system "$PROJECT_BOARD_SELECTION_OVERRIDE" "$SYSTEM_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS"
+capture_project_board_destination light inbox "$INBOX_LIGHT_SCREENSHOT" "Inbox" "$INBOX_TARGET_MARKERS"
+capture_project_board_destination dark inbox "$INBOX_DARK_SCREENSHOT" "Inbox" "$INBOX_TARGET_MARKERS"
+capture_project_board_destination system inbox "$INBOX_SYSTEM_SCREENSHOT" "Inbox" "$INBOX_TARGET_MARKERS"
+capture_project_board_destination light today "$TODAY_LIGHT_SCREENSHOT" "Today" "$TODAY_TARGET_MARKERS"
+capture_project_board_destination dark today "$TODAY_DARK_SCREENSHOT" "Today" "$TODAY_TARGET_MARKERS"
+capture_project_board_destination system today "$TODAY_SYSTEM_SCREENSHOT" "Today" "$TODAY_TARGET_MARKERS"
+capture_voice_command_appearance light "$VOICE_COMMAND_LIGHT_SCREENSHOT"
+capture_voice_command_appearance dark "$VOICE_COMMAND_DARK_SCREENSHOT"
+capture_voice_command_appearance system "$VOICE_COMMAND_SYSTEM_SCREENSHOT"
+capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_TARGET_MARKERS"
+capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_TARGET_MARKERS"
+capture_project_board_destination light projects "$PROJECTS_OVERVIEW_LIGHT_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS"
+capture_project_board_destination dark projects "$PROJECTS_OVERVIEW_DARK_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS"
+capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS"
+capture_project_board_destination dark schedule "$SCHEDULE_DARK_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS"
+capture_project_board_destination light done "$DONE_LIGHT_SCREENSHOT" "Done analytics" "$DONE_TARGET_MARKERS"
+capture_project_board_destination dark done "$DONE_DARK_SCREENSHOT" "Done analytics" "$DONE_TARGET_MARKERS"
 capture_settings_overview light "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT"
 capture_settings_overview dark "$SETTINGS_OVERVIEW_DARK_SCREENSHOT"
 capture_settings_overview light "$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT"

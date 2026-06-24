@@ -482,6 +482,12 @@ struct InboxWorkflowView: View {
                 InboxActionPanel(task: viewModel.selectedTask, viewModel: viewModel)
             }
         )
+        .onAppear {
+            viewModel.ensureSelectedInboxTaskIsVisible()
+        }
+        .onChange(of: tasks.map(\.id)) { _, _ in
+            viewModel.ensureSelectedInboxTaskIsVisible()
+        }
     }
 
     private func addInboxTask() {

@@ -34,6 +34,8 @@ The gate uses semantic tolerances:
 
 Run `script/capture_ui_evidence.sh --doctor` before writing release evidence. Normal capture fixes the main app viewport with `SOLOPM_VISUAL_BASELINE_VIEWPORT` and settings windows with `SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT`, then writes screenshot evidence under `docs/release/evidence/ui-screenshots`.
 
+Capture target validation runs before every product screenshot. The script waits for the destination-specific AX identifier and seeded screen text, such as `project-board-detail` plus `Launch Readiness` for Project Board or `voice-command-root` plus `Voice Command` for Voice Command, before it calls `screencapture`. This keeps a visually valid but semantically wrong screen, such as Today saved as Project Board, from becoming release evidence.
+
 The capture script also records the Light/Dark/System visual baseline manifest path and viewport contract in generated evidence so reviewers know which product screens were targeted.
 
 Secret input screens are excluded from the default visual baseline manifest. Only masked SecureField state may be captured if a future release needs a secret-entry screenshot. API keys and provider tokens are not read, written, logged, rendered, or captured unmasked.
