@@ -3277,6 +3277,9 @@ private struct InspectorDestructiveConfirmation: View {
 
             HStack(spacing: 8) {
                 Button("Cancel", role: .cancel, action: cancelAction)
+                    .accessibilityIdentifier("\(accessibilityIdentifier)-cancel")
+                    .accessibilityLabel("Cancel \(confirmTitle)")
+                    .accessibilityHint("Cancels \(confirmTitle) and returns to the inspector.")
                 Button(role: .destructive, action: confirmAction) {
                     Label(confirmTitle, systemImage: confirmSystemImage)
                 }

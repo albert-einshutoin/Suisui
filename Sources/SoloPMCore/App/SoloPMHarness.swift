@@ -74,6 +74,7 @@ public enum SoloPMHarnessTaskLifecycleOperation: String, Codable, CaseIterable, 
         case .deleteConfirmation:
             [
                 "task-inspector-delete",
+                "task-inspector-delete-confirmation-cancel",
                 "task-inspector-delete-confirmation-confirm"
             ]
         }

@@ -53,6 +53,7 @@ REQUIRED_MARKERS=(
   "task-auto-execution-run-plan"
   "approved-execution-receipt"
   "task-inspector-delete"
+  "task-inspector-delete-confirmation-cancel"
   "task-inspector-delete-confirmation-confirm"
 )
 
