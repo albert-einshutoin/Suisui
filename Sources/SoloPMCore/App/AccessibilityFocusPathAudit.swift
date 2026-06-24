@@ -70,6 +70,7 @@ public enum AccessibilityFocusPathFindingKind: String, Codable, Equatable, Senda
     case disabledRequiredNode
     case outOfOrderRequiredNode
     case duplicateNodeID
+    case blankNodeID
     case unlabeledInteractiveNode
     case genericButtonWithoutHelp
     case missingDestructiveConfirmation
@@ -108,8 +109,13 @@ public struct AccessibilityFocusPathAudit: Sendable {
         var firstNodeIndexesByID: [String: Int] = [:]
         var duplicateNodeIDs: [String] = []
         var seenDuplicateNodeIDs = Set<String>()
+        var blankNodeIDs: [String] = []
 
         for (index, node) in nodes.enumerated() {
+            if node.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                blankNodeIDs.append(node.id)
+                continue
+            }
             if nodesByID[node.id] == nil {
                 nodesByID[node.id] = node
                 firstNodeIndexesByID[node.id] = index
@@ -117,7 +123,17 @@ public struct AccessibilityFocusPathAudit: Sendable {
                 duplicateNodeIDs.append(node.id)
             }
         }
-        var findings = duplicateNodeIDs.map { nodeID in
+        var findings = blankNodeIDs.map { nodeID in
+            // Blank AX identifiers are impossible to target reliably from
+            // MCP/E2E automation, so they cannot be treated as harmless
+            // decoration in a release focus-path snapshot.
+            AccessibilityFocusPathFinding(
+                kind: .blankNodeID,
+                nodeID: nodeID,
+                message: "Accessibility node id must not be blank in the focus path snapshot."
+            )
+        }
+        findings.append(contentsOf: duplicateNodeIDs.map { nodeID in
             // Duplicate AX identifiers make UI automation and VoiceOver
             // evidence ambiguous. Keep auditing with the first node so one
             // duplicate does not hide later release-gate findings.
@@ -126,7 +142,7 @@ public struct AccessibilityFocusPathAudit: Sendable {
                 nodeID: nodeID,
                 message: "Accessibility node id \(nodeID) must be unique in the focus path snapshot."
             )
-        }
+        })
         var coveredNodeIDs: [String] = []
         var lastRequiredNodeIndex = -1
 

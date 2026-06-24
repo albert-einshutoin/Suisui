@@ -116,6 +116,20 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
         XCTAssertEqual(result.coveredRequiredNodeIDs, ["task-inspector-save"])
     }
 
+    func testPseudoVoiceOverAuditRejectsBlankNodeIDsBecauseAutomationCannotTargetThem() {
+        let result = AccessibilityFocusPathAudit().audit(
+            nodes: [
+                node("   ", role: .button, label: "Save Changes", help: "Saves edits to the selected task."),
+                node("task-inspector-save", role: .button, label: "Save Changes", help: "Saves edits to the selected task.")
+            ],
+            requirements: AccessibilityFocusPathRequirement(requiredNodeIDs: ["task-inspector-save"])
+        )
+
+        XCTAssertEqual(result.findings.map(\.kind), [.blankNodeID])
+        XCTAssertEqual(result.findings.first?.nodeID, "   ")
+        XCTAssertEqual(result.coveredRequiredNodeIDs, ["task-inspector-save"])
+    }
+
     private func node(
         _ id: String,
         role: AccessibilityNodeRole,
