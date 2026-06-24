@@ -1699,6 +1699,14 @@ is_boilerplate_voiceover_note() {
   esac
 }
 
+voiceover_task_content_execution_note_covers_receipt() {
+  local normalized
+  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  grep -Eiq 'receipt' <<<"$normalized" &&
+    grep -Eiq 'title' <<<"$normalized" &&
+    grep -Eiq 'detail|body' <<<"$normalized"
+}
+
 is_boilerplate_competitor_value() {
   local normalized
   normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[[:punct:]]+/ /g; s/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
@@ -2725,6 +2733,11 @@ else
       voiceover_blocker "VoiceOver accessibility evidence has template focus note: $note_label"
     elif is_boilerplate_voiceover_note "$note_value"; then
       voiceover_blocker "VoiceOver accessibility evidence has boilerplate focus note: $note_label"
+    fi
+
+    if [[ "$note_label" == "Task content execution" ]] &&
+      ! voiceover_task_content_execution_note_covers_receipt "$note_value"; then
+      voiceover_blocker "VoiceOver accessibility evidence Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail"
     fi
   done
 
