@@ -873,6 +873,11 @@ capture_project_board_destination() {
   activate_evidence_app
   sleep 1.5
   wait_for_window_capture_metadata >/dev/null
+  # Dense workflow footers may not enter the AX visible subtree until the
+  # evidence window is widened, so target validation uses the same bounds as
+  # the screenshot instead of checking a smaller launch-default window.
+  position_window_for_capture
+  sleep 0.25
   wait_for_project_board_destination "$label" "$target_markers"
 
   capture_visible_window "$appearance $label" "$output_path"

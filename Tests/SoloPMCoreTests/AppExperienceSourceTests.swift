@@ -2922,6 +2922,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("inbox-action-panel=>Voice capture metadata available for Scheduled manual capture"))
         XCTAssertTrue(script.contains("capture_project_board_destination light inbox \"$INBOX_VOICE_LIGHT_SCREENSHOT\" \"Inbox voice detail\" \"$INBOX_VOICE_TARGET_MARKERS\" \"$INBOX_VOICE_TASK_OVERRIDE\""))
         XCTAssertTrue(script.contains("capture_voice_command_appearance light \"$VOICE_COMMAND_LIGHT_SCREENSHOT\""))
+        let captureDestinationStart = try XCTUnwrap(script.range(of: "capture_project_board_destination()"))
+        let captureDestinationEnd = try XCTUnwrap(script.range(
+            of: "capture_voice_command_appearance()",
+            range: captureDestinationStart.upperBound..<script.endIndex
+        ))
+        let captureDestinationSource = String(script[captureDestinationStart.lowerBound..<captureDestinationEnd.lowerBound])
+        let destinationPosition = try XCTUnwrap(captureDestinationSource.range(of: "position_window_for_capture"))
+        let destinationMarkerWait = try XCTUnwrap(captureDestinationSource.range(of: "wait_for_project_board_destination"))
+        XCTAssertLessThan(destinationPosition.lowerBound, destinationMarkerWait.lowerBound)
         XCTAssertTrue(visualBaselines.contains("Capture target validation"))
         XCTAssertTrue(phase.contains("[x] `capture_ui_evidence.sh` は撮影前にAX identifierとseed固有テキストで対象画面を検証し、Today等の誤画面スクショをrelease evidenceとして保存しない。"))
     }
