@@ -416,6 +416,7 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 - [x] `AccessibilityFocusPathAudit` は重複したAX identifierを `duplicateNodeID` として返し、最初のnodeで監査を継続して後続findingも隠さない。
 - [x] `AccessibilityFocusPathAudit` は空または空白だけのAX identifierを `blankNodeID` として返し、MCP/E2E automationがtargetを特定できないsnapshotをfailする。
 - [x] `AccessibilityFocusPathAudit` は必須group/outline nodeのlabelが空の場合、存在だけでは通さず `unlabeledRequiredNode` として返す。
+- [x] `SoloPMHarnessTaskLifecycleOperation.requiredFocusNodeIDs` と `SoloPMHarnessScenario.requiredFocusNodeIDs(for:)` で lifecycle operation と AX required node の対応をコード化し、operation list と pseudo VoiceOver focus path が将来ズレた場合にテストで落ちるようにする。
 
 ### Acceptance Criteria
 
@@ -428,6 +429,7 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 - [x] 必須focus landmarkは、button/text field以外のgroup/outlineでも非空labelを持つ場合だけ擬似VoiceOver gateを通過する。
 - [x] 必須CRUD/実行controlのAX identifierは一意な場合だけ擬似VoiceOver gateを通過する。
 - [x] 必須CRUD/実行controlのAX identifierは空白ではない場合だけ擬似VoiceOver gateを通過する。
+- [x] lifecycle operationを増減したとき、対応するAX required nodeを明示しないと `SoloPMHarnessTests` が失敗する。
 
 ### Non-goals
 

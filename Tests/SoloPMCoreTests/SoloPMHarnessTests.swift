@@ -56,6 +56,30 @@ final class SoloPMHarnessTests: XCTestCase {
         XCTAssertTrue(accessibility.missingTaskLifecycleOperations().isEmpty)
     }
 
+    func testTaskLifecycleOperationsMapToCompletePseudoVoiceOverFocusNodes() {
+        let mappedNodeIDs = SoloPMHarnessScenario.requiredFocusNodeIDs(
+            for: SoloPMHarnessScenario.completeTaskLifecycleOperations
+        )
+
+        XCTAssertEqual(
+            mappedNodeIDs,
+            AccessibilityFocusPathRequirement.taskLifecycleAndExecution.requiredNodeIDs
+        )
+        for operation in SoloPMHarnessTaskLifecycleOperation.allCases {
+            XCTAssertFalse(
+                operation.requiredFocusNodeIDs.isEmpty,
+                "\(operation.rawValue) must map to at least one AX focus node"
+            )
+        }
+        XCTAssertEqual(
+            SoloPMHarnessTaskLifecycleOperation.executeContent.requiredFocusNodeIDs,
+            ["task-auto-execution-run-plan", "approved-execution-receipt"]
+        )
+        XCTAssertTrue(
+            SoloPMHarnessTaskLifecycleOperation.approvedExecution.requiredFocusNodeIDs.contains("approved-execution-receipt")
+        )
+    }
+
     func testDocumentAutomationHarnessRequiresReviewableDeliverableCoverage() throws {
         let catalog = SoloPMHarnessScenario.templateCatalog()
         let scenario = try XCTUnwrap(catalog.first { $0.kind == .documentScopedAutomation })

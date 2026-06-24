@@ -34,6 +34,7 @@ REQUIRED_MARKERS=(
   "dynamicRequiredNodeIDPrefixes"
   "SoloPMHarnessTaskLifecycleOperation"
   "requiredTaskLifecycleOperations"
+  "requiredFocusNodeIDs"
   "completeTaskLifecycleOperations"
   "project-board-sidebar"
   "project-board-detail"

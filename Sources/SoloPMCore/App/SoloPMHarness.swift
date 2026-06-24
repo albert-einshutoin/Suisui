@@ -33,6 +33,51 @@ public enum SoloPMHarnessTaskLifecycleOperation: String, Codable, CaseIterable, 
     case executeContent
     case approvedExecution
     case deleteConfirmation
+
+    public var requiredFocusNodeIDs: [String] {
+        switch self {
+        case .create:
+            [
+                "project-board-sidebar",
+                "project-board-detail",
+                "project-header-add-task",
+                "inline-task-title",
+                "inline-task-detail",
+                "inline-task-create"
+            ]
+        case .editContent:
+            [
+                "task-card-open-details",
+                "task-inspector-title",
+                "task-inspector-detail",
+                "task-inspector-save"
+            ]
+        case .statusMove:
+            [
+                "task-status-move-controls",
+                "task-status-move-in_progress"
+            ]
+        case .automationReview:
+            [
+                "project-board-task-auto-execution-review",
+                "task-auto-execution-review"
+            ]
+        case .executeContent:
+            [
+                "task-auto-execution-run-plan",
+                "approved-execution-receipt"
+            ]
+        case .approvedExecution:
+            [
+                "approved-execution-receipt"
+            ]
+        case .deleteConfirmation:
+            [
+                "task-inspector-delete",
+                "task-inspector-delete-confirmation-confirm"
+            ]
+        }
+    }
 }
 
 public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
@@ -82,6 +127,17 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
         .releaseNotes,
         .pullRequestPlan
     ]
+
+    public static func requiredFocusNodeIDs(
+        for operations: [SoloPMHarnessTaskLifecycleOperation]
+    ) -> [String] {
+        let operationNodeIDs = Set(operations.flatMap(\.requiredFocusNodeIDs))
+        // Operation order is not always VoiceOver traversal order. Keep the
+        // canonical AX path as the final ordering source so the harness can
+        // prove create/edit/review/run/delete without reordering focus steps.
+        return AccessibilityFocusPathRequirement.taskLifecycleAndExecution.requiredNodeIDs
+            .filter { operationNodeIDs.contains($0) }
+    }
 
     public func missingTaskLifecycleOperations(
         required: [SoloPMHarnessTaskLifecycleOperation] = SoloPMHarnessScenario.completeTaskLifecycleOperations
