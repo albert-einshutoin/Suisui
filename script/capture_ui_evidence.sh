@@ -680,7 +680,7 @@ persist_project_board_selection() {
   PROJECT_BOARD_SELECTION_OVERRIDE="project:$project_id"
   PROJECT_BOARD_TARGET_MARKERS="project-board-detail=>Launch Readiness|task-card-open-details=>Capture launch screenshots"
   INBOX_VOICE_TASK_OVERRIDE="$inbox_voice_task_id"
-  INBOX_VOICE_TARGET_MARKERS="sidebar-destination-inbox=>Inbox|inbox-capture-metadata=>Scheduled manual capture"
+  INBOX_VOICE_TARGET_MARKERS="sidebar-destination-inbox=>Inbox|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture"
   write_app_preference solopm.projectBoard.selectedDestination "$PROJECT_BOARD_SELECTION_OVERRIDE"
 }
 

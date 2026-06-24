@@ -832,7 +832,26 @@ private struct InboxActionPanel: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inbox-action-panel")
         .accessibilityLabel("Inbox classification actions")
+        .accessibilityValue(panelAccessibilityValue)
         .accessibilityHint("Choose how to classify the selected Inbox item.")
+    }
+
+    private var panelAccessibilityValue: String {
+        guard let task else {
+            return "No Inbox item selected"
+        }
+        var values = ["Selected Inbox item: \(task.title)"]
+        if let capture = viewModel.selectedInboxCaptureRecords.first {
+            // The release screenshot marker needs one stable AX node that proves
+            // both selection and capture metadata; child metadata panels can be
+            // omitted from macOS AX traversal when the workflow footer is dense.
+            values.append("Voice capture metadata available for \(task.title)")
+            values.append("Transcript: \(capture.transcript ?? "No transcript yet")")
+            if let interpretationSummary = capture.interpretationSummary {
+                values.append("Interpretation: \(interpretationSummary)")
+            }
+        }
+        return values.joined(separator: ", ")
     }
 
     @ViewBuilder
