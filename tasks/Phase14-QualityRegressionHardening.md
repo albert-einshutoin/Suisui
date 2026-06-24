@@ -718,6 +718,7 @@ Phase14の各PRは、変更範囲に応じて以下を使い分ける。
 - [x] `script/check_layout_stability_smoke.sh`
 - [x] `script/check_runtime_accessible_crud_smoke.sh`
 - [x] `script/check_accessibility_preflight.sh --runtime`
+- [x] `check_automated_release_preflight.sh` は seeded runtime AX smoke を30秒timeoutで実行し、起動直後のAX tree更新遅延でrelease proofがflakyに落ちないようにする。
 - [x] `script/capture_ui_evidence.sh --doctor`
 - [x] `script/check_visual_regression_smoke.sh`
 - [x] `script/check_security_regressions.sh`

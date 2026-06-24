@@ -286,7 +286,9 @@ capture_voiceover_candidate_context
 
 section "Runtime accessibility preflight"
 set +e
-runtime_accessibility_output="$(./script/check_accessibility_preflight.sh --runtime --launch-env .tmp/voiceover-review/launch.env 2>&1)"
+# macOS can expose the visible Project Board before the accessibility tree settles.
+# Keep this gate deterministic by giving the seeded AX smoke a longer bounded wait.
+runtime_accessibility_output="$(./script/check_accessibility_preflight.sh --runtime --launch-env .tmp/voiceover-review/launch.env --timeout 30 2>&1)"
 runtime_accessibility_status=$?
 set -e
 if [[ -n "$runtime_accessibility_output" ]]; then

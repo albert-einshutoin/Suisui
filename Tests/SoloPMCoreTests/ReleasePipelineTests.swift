@@ -3034,7 +3034,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("-scheme \"$XCODE_SCHEME\""))
         XCTAssertTrue(script.contains("./script/build_and_run.sh --verify"))
         XCTAssertTrue(script.contains("./script/prepare_voiceover_review_candidate.sh --skip-build --no-launch"))
-        XCTAssertTrue(script.contains("./script/check_accessibility_preflight.sh --runtime --launch-env .tmp/voiceover-review/launch.env"))
+        XCTAssertTrue(script.contains("./script/check_accessibility_preflight.sh --runtime --launch-env .tmp/voiceover-review/launch.env --timeout 30"))
         let launchPreflightRange = try XCTUnwrap(script.range(of: "section \"Launch preflight\""))
         let voiceOverCandidateRange = try XCTUnwrap(script.range(of: "./script/prepare_voiceover_review_candidate.sh --skip-build --no-launch"))
         let runtimeAccessibilityRange = try XCTUnwrap(script.range(of: "section \"Runtime accessibility preflight\""))
@@ -3096,10 +3096,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("./script/check_automated_release_preflight.sh"))
         XCTAssertTrue(checklist.contains("After automated preflight passes, it refreshes VoiceOver and competitor helper files for the release-candidate product source commit and release-machine helper files for the current release evidence source commit without writing passed evidence."))
         XCTAssertTrue(checklist.contains("The automated preflight evidence also records the seeded VoiceOver candidate source commit, project ID, database path, and selected destination used for runtime AX smoke."))
+        XCTAssertTrue(checklist.contains("The seeded runtime AX gate uses `--timeout 30` because macOS accessibility tree updates can lag behind the visible Project Board window after launch."))
         XCTAssertTrue(phase.contains("[x] `script/check_automated_release_preflight.sh` で CI、SQLite CRUD、runtime accessible CRUD、layout stability、Xcode build、visible-window launch、seeded VoiceOver review candidate 上の runtime AX、MCP compliance を一括検証できる。"))
         XCTAssertTrue(phase.contains("[x] 自動proof証跡は seeded runtime AX smoke の `OK: runtime AX smoke visible` 行を保存し、`unlabeledButtons=0`、`genericButtons=0`、`crudSignals=8/8`、`focusPathSignals=6/6`、`destructiveCancelSignals=1/1` が欠ける証跡を release readiness で拒否する。"))
         XCTAssertTrue(phase.contains("[x] 自動proof証跡は runtime AX smoke 対象の VoiceOver candidate source commit / project ID / database / selected destination を保存し、どのseeded candidateで検証したか追跡できる。"))
         XCTAssertTrue(phase.contains("[x] `check_automated_release_preflight.sh` は runtime AX smoke を `.tmp/voiceover-review/launch.env` から直接起動し、既存プロセスの選択状態に依存しない。"))
+        XCTAssertTrue(phase.contains("[x] `check_automated_release_preflight.sh` は seeded runtime AX smoke を30秒timeoutで実行し、起動直後のAX tree更新遅延でrelease proofがflakyに落ちないようにする。"))
         XCTAssertTrue(phase.contains("[x] `check_automated_release_preflight.sh` は通過後に VoiceOver / competitor helper を release-candidate product source commit、release-machine helper を current release evidence source commit で再生成し、helper freshness を片寄らせない。"))
     }
 
