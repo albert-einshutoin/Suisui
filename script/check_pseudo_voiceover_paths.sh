@@ -31,6 +31,7 @@ done
 
 REQUIRED_MARKERS=(
   "AccessibilityFocusPathAudit"
+  "dynamicRequiredNodeIDPrefixes"
   "SoloPMHarnessTaskLifecycleOperation"
   "requiredTaskLifecycleOperations"
   "completeTaskLifecycleOperations"

@@ -493,7 +493,7 @@ final class SoloPMHarnessTests: XCTestCase {
             node("task-inspector-detail", role: .textArea, label: "Task detail"),
             node("task-inspector-save", role: .button, label: "Save Changes", help: "Saves edits to the selected task."),
             node("task-status-move-controls", role: .group, label: "Task status controls"),
-            node("task-status-move-in_progress", role: .button, label: "Move to In Progress", help: "Moves the selected task to In Progress."),
+            node("task-status-move-in_progress-42", role: .button, label: "Move to In Progress", help: "Moves the selected task to In Progress."),
             node("task-auto-execution-review", role: .button, label: "Review automation plan", help: "Builds a review-only LLM plan."),
             node("task-auto-execution-run-plan", role: .button, label: "Run approved plan", help: "Runs after explicit approval."),
             node("approved-execution-receipt", role: .group, label: "Approved execution receipt"),

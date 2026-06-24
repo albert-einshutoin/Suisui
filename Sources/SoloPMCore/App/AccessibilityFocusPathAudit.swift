@@ -39,31 +39,41 @@ public struct AccessibilityNodeSnapshot: Codable, Equatable, Sendable {
 
 public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
     public var requiredNodeIDs: [String]
+    public var dynamicRequiredNodeIDPrefixes: Set<String>
 
-    public init(requiredNodeIDs: [String]) {
+    public init(
+        requiredNodeIDs: [String],
+        dynamicRequiredNodeIDPrefixes: Set<String> = []
+    ) {
         self.requiredNodeIDs = requiredNodeIDs
+        self.dynamicRequiredNodeIDPrefixes = dynamicRequiredNodeIDPrefixes
     }
 
-    public static let taskLifecycleAndExecution = AccessibilityFocusPathRequirement(requiredNodeIDs: [
-        "project-board-sidebar",
-        "project-board-detail",
-        "project-header-add-task",
-        "inline-task-title",
-        "inline-task-detail",
-        "inline-task-create",
-        "project-board-task-auto-execution-review",
-        "task-card-open-details",
-        "task-inspector-title",
-        "task-inspector-detail",
-        "task-inspector-save",
-        "task-status-move-controls",
-        "task-status-move-in_progress",
-        "task-auto-execution-review",
-        "task-auto-execution-run-plan",
-        "approved-execution-receipt",
-        "task-inspector-delete",
-        "task-inspector-delete-confirmation-confirm"
-    ])
+    public static let taskLifecycleAndExecution = AccessibilityFocusPathRequirement(
+        requiredNodeIDs: [
+            "project-board-sidebar",
+            "project-board-detail",
+            "project-header-add-task",
+            "inline-task-title",
+            "inline-task-detail",
+            "inline-task-create",
+            "project-board-task-auto-execution-review",
+            "task-card-open-details",
+            "task-inspector-title",
+            "task-inspector-detail",
+            "task-inspector-save",
+            "task-status-move-controls",
+            "task-status-move-in_progress",
+            "task-auto-execution-review",
+            "task-auto-execution-run-plan",
+            "approved-execution-receipt",
+            "task-inspector-delete",
+            "task-inspector-delete-confirmation-confirm"
+        ],
+        dynamicRequiredNodeIDPrefixes: [
+            "task-status-move-in_progress"
+        ]
+    )
 }
 
 public enum AccessibilityFocusPathFindingKind: String, Codable, Equatable, Sendable {
@@ -149,7 +159,12 @@ public struct AccessibilityFocusPathAudit: Sendable {
         var lastRequiredNodeIndex = -1
 
         for requiredNodeID in requirements.requiredNodeIDs {
-            guard let node = nodesByID[requiredNodeID] else {
+            guard let matchedNode = matchedRequiredNode(
+                requiredNodeID,
+                requirements: requirements,
+                nodesByID: nodesByID,
+                firstNodeIndexesByID: firstNodeIndexesByID
+            ) else {
                 findings.append(AccessibilityFocusPathFinding(
                     kind: .missingRequiredNode,
                     nodeID: requiredNodeID,
@@ -157,7 +172,8 @@ public struct AccessibilityFocusPathAudit: Sendable {
                 ))
                 continue
             }
-            coveredNodeIDs.append(node.id)
+            let node = matchedNode.node
+            coveredNodeIDs.append(requiredNodeID)
             if node.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 // Required group/outline nodes such as the project detail region
                 // and approved execution receipt are not "interactive", but a
@@ -169,19 +185,17 @@ public struct AccessibilityFocusPathAudit: Sendable {
                     message: "Required accessibility node \(requiredNodeID) needs a label."
                 ))
             }
-            if let currentIndex = firstNodeIndexesByID[requiredNodeID] {
-                if currentIndex < lastRequiredNodeIndex {
-                    // VoiceOver follows the AX traversal order, so a required
-                    // node that appears before an earlier lifecycle step cannot
-                    // prove the create/edit/execute/delete path is reachable.
-                    findings.append(AccessibilityFocusPathFinding(
-                        kind: .outOfOrderRequiredNode,
-                        nodeID: requiredNodeID,
-                        message: "Required accessibility node \(requiredNodeID) appears before an earlier lifecycle step."
-                    ))
-                }
-                lastRequiredNodeIndex = max(lastRequiredNodeIndex, currentIndex)
+            if matchedNode.index < lastRequiredNodeIndex {
+                // VoiceOver follows the AX traversal order, so a required
+                // node that appears before an earlier lifecycle step cannot
+                // prove the create/edit/execute/delete path is reachable.
+                findings.append(AccessibilityFocusPathFinding(
+                    kind: .outOfOrderRequiredNode,
+                    nodeID: requiredNodeID,
+                    message: "Required accessibility node \(requiredNodeID) appears before an earlier lifecycle step."
+                ))
             }
+            lastRequiredNodeIndex = max(lastRequiredNodeIndex, matchedNode.index)
             if !node.isEnabled {
                 // A disabled required node can still be visible to AX, but it
                 // cannot complete the keyboard/VoiceOver CRUD path the release
@@ -192,15 +206,42 @@ public struct AccessibilityFocusPathAudit: Sendable {
                     message: "Required accessibility node \(requiredNodeID) must be enabled for the lifecycle path."
                 ))
             }
-            findings.append(contentsOf: nodeFindings(for: node, allNodes: nodes))
+            findings.append(contentsOf: nodeFindings(for: node, allNodes: nodes, reportingNodeID: requiredNodeID))
         }
 
         return AccessibilityFocusPathAuditResult(findings: findings, coveredRequiredNodeIDs: coveredNodeIDs)
     }
 
+    private func matchedRequiredNode(
+        _ requiredNodeID: String,
+        requirements: AccessibilityFocusPathRequirement,
+        nodesByID: [String: AccessibilityNodeSnapshot],
+        firstNodeIndexesByID: [String: Int]
+    ) -> (node: AccessibilityNodeSnapshot, index: Int)? {
+        if let node = nodesByID[requiredNodeID],
+           let index = firstNodeIndexesByID[requiredNodeID] {
+            return (node, index)
+        }
+
+        guard requirements.dynamicRequiredNodeIDPrefixes.contains(requiredNodeID) else {
+            return nil
+        }
+
+        // Runtime SwiftUI AX identifiers include the task id for repeated peer
+        // controls. The release contract still names the stable prefix so one
+        // dynamic card cannot weaken exact matching for unrelated required ids.
+        return firstNodeIndexesByID
+            .filter { nodeID, _ in nodeID.hasPrefix("\(requiredNodeID)-") }
+            .min { lhs, rhs in lhs.value < rhs.value }
+            .flatMap { nodeID, index in
+                nodesByID[nodeID].map { ($0, index) }
+            }
+    }
+
     private func nodeFindings(
         for node: AccessibilityNodeSnapshot,
-        allNodes: [AccessibilityNodeSnapshot]
+        allNodes: [AccessibilityNodeSnapshot],
+        reportingNodeID: String
     ) -> [AccessibilityFocusPathFinding] {
         var findings: [AccessibilityFocusPathFinding] = []
         let normalizedLabel = node.label.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -210,7 +251,7 @@ public struct AccessibilityFocusPathAudit: Sendable {
             if normalizedLabel.isEmpty {
                 findings.append(AccessibilityFocusPathFinding(
                     kind: .unlabeledInteractiveNode,
-                    nodeID: node.id,
+                    nodeID: reportingNodeID,
                     message: "Interactive accessibility node \(node.id) needs a label."
                 ))
             }
@@ -221,7 +262,7 @@ public struct AccessibilityFocusPathAudit: Sendable {
            normalizedHelp.isEmpty {
             findings.append(AccessibilityFocusPathFinding(
                 kind: .genericButtonWithoutHelp,
-                nodeID: node.id,
+                nodeID: reportingNodeID,
                 message: "Button \(node.id) needs a descriptive label or help text."
             ))
         }
@@ -230,7 +271,7 @@ public struct AccessibilityFocusPathAudit: Sendable {
            !allNodes.contains(where: { $0.confirmsDestructiveAction && $0.id.hasPrefix(node.id) }) {
             findings.append(AccessibilityFocusPathFinding(
                 kind: .missingDestructiveConfirmation,
-                nodeID: node.id,
+                nodeID: reportingNodeID,
                 message: "Destructive control \(node.id) must expose a confirmation step."
             ))
         }
