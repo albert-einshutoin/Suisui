@@ -79,6 +79,125 @@ final class DocumentScopedAutomationTests: XCTestCase {
         XCTAssertFalse(serializedContext.contains("reason-secret"))
     }
 
+    func testDeliverableDraftRedactsSourceIdentityBeforeReviewOrProviderContext() {
+        let source = DocumentAutomationDeliverableSource(
+            id: "doc-sk-proj-sourceidentity123",
+            title: "Release notes source token=source-title-secret",
+            redactedSummary: "Use token=summary-secret before generating the draft.",
+            inclusionReason: "Selected because token=reason-secret matched the request."
+        )
+        let draft = DocumentAutomationDeliverableDraft(
+            kind: .releaseNotes,
+            title: "Release notes token=deliverable-title-secret",
+            suggestedPath: ".tmp/document-automation/token=path-secret/notes.md",
+            sourceDocumentIDs: ["doc-sk-proj-sourceidentity123"],
+            sourceDocuments: [source],
+            rationale: "Draft release notes from token=rationale-secret.",
+            riskLevel: .draft,
+            requiresApproval: true
+        )
+
+        let serializedDraft = [
+            draft.title,
+            draft.suggestedPath,
+            draft.sourceDocumentIDs.joined(separator: "\n"),
+            draft.sourceDocuments.map(\.id).joined(separator: "\n"),
+            draft.sourceDocuments.map(\.title).joined(separator: "\n"),
+            draft.sourceDocuments.map(\.redactedSummary).joined(separator: "\n"),
+            draft.sourceDocuments.map(\.inclusionReason).joined(separator: "\n"),
+            draft.rationale
+        ].joined(separator: "\n")
+
+        XCTAssertTrue(serializedDraft.contains("[REDACTED_SECRET]"))
+        XCTAssertFalse(serializedDraft.contains("sk-proj-sourceidentity123"))
+        XCTAssertFalse(serializedDraft.contains("source-title-secret"))
+        XCTAssertFalse(serializedDraft.contains("summary-secret"))
+        XCTAssertFalse(serializedDraft.contains("reason-secret"))
+        XCTAssertFalse(serializedDraft.contains("deliverable-title-secret"))
+        XCTAssertFalse(serializedDraft.contains("path-secret"))
+        XCTAssertFalse(serializedDraft.contains("rationale-secret"))
+    }
+
+    func testDocumentAutomationDecodeReappliesRedactionBoundaries() throws {
+        let documentData = Data(
+            """
+            {
+              "id": "doc-token=decoded-doc-id-secret",
+              "title": "Decoded release source token=decoded-title-secret",
+              "scope": "appDocs",
+              "redactedSummary": "Use token=decoded-summary-secret in notes.",
+              "inclusionReason": "Selected because token=decoded-reason-secret matched."
+            }
+            """.utf8
+        )
+        let sourceData = Data(
+            """
+            {
+              "id": "source-sk-proj-decodedsrc123",
+              "title": "Decoded source token=decoded-source-title-secret",
+              "redactedSummary": "Use token=decoded-source-summary-secret.",
+              "inclusionReason": "Selected because token=decoded-source-reason-secret matched."
+            }
+            """.utf8
+        )
+        let draftData = Data(
+            """
+            {
+              "kind": "releaseNotes",
+              "title": "Decoded draft token=decoded-draft-title-secret",
+              "suggestedPath": ".tmp/document-automation/token=decoded-path-secret/notes.md",
+              "sourceDocumentIDs": ["source-sk-proj-decodedsrc123"],
+              "sourceDocuments": [
+                {
+                  "id": "source-sk-proj-decodedsrc123",
+                  "title": "Decoded source token=decoded-source-title-secret",
+                  "redactedSummary": "Use token=decoded-source-summary-secret.",
+                  "inclusionReason": "Selected because token=decoded-source-reason-secret matched."
+                }
+              ],
+              "rationale": "Draft from token=decoded-rationale-secret.",
+              "riskLevel": "draft",
+              "requiresApproval": true
+            }
+            """.utf8
+        )
+
+        let document = try JSONDecoder().decode(ScopedAutomationDocument.self, from: documentData)
+        let source = try JSONDecoder().decode(DocumentAutomationDeliverableSource.self, from: sourceData)
+        let draft = try JSONDecoder().decode(DocumentAutomationDeliverableDraft.self, from: draftData)
+        let serializedDecodedValues = [
+            document.id,
+            document.title,
+            document.redactedSummary,
+            document.inclusionReason,
+            source.id,
+            source.title,
+            source.redactedSummary,
+            source.inclusionReason,
+            draft.title,
+            draft.suggestedPath,
+            draft.sourceDocumentIDs.joined(separator: "\n"),
+            draft.sourceDocuments.map(\.id).joined(separator: "\n"),
+            draft.sourceDocuments.map(\.title).joined(separator: "\n"),
+            draft.sourceDocuments.map(\.redactedSummary).joined(separator: "\n"),
+            draft.sourceDocuments.map(\.inclusionReason).joined(separator: "\n"),
+            draft.rationale
+        ].joined(separator: "\n")
+
+        XCTAssertTrue(serializedDecodedValues.contains("[REDACTED_SECRET]"))
+        XCTAssertFalse(serializedDecodedValues.contains("decoded-doc-id-secret"))
+        XCTAssertFalse(serializedDecodedValues.contains("decoded-title-secret"))
+        XCTAssertFalse(serializedDecodedValues.contains("decoded-summary-secret"))
+        XCTAssertFalse(serializedDecodedValues.contains("decoded-reason-secret"))
+        XCTAssertFalse(serializedDecodedValues.contains("sk-proj-decodedsrc123"))
+        XCTAssertFalse(serializedDecodedValues.contains("decoded-source-title-secret"))
+        XCTAssertFalse(serializedDecodedValues.contains("decoded-source-summary-secret"))
+        XCTAssertFalse(serializedDecodedValues.contains("decoded-source-reason-secret"))
+        XCTAssertFalse(serializedDecodedValues.contains("decoded-draft-title-secret"))
+        XCTAssertFalse(serializedDecodedValues.contains("decoded-path-secret"))
+        XCTAssertFalse(serializedDecodedValues.contains("decoded-rationale-secret"))
+    }
+
     func testDocumentAutomationToolFlowCoversPrepArtifactsAndSelectableContextAdapters() {
         let flow = DocumentAutomationToolFlow.defaultPro
 

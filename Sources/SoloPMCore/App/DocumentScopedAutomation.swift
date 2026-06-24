@@ -31,6 +31,14 @@ public struct ScopedAutomationDocument: Codable, Equatable, Sendable {
     public var redactedSummary: String
     public var inclusionReason: String
 
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case scope
+        case redactedSummary
+        case inclusionReason
+    }
+
     public init(
         id: String,
         title: String,
@@ -47,6 +55,17 @@ public struct ScopedAutomationDocument: Codable, Equatable, Sendable {
         self.scope = scope
         self.redactedSummary = redactor.redact(redactedSummary).text
         self.inclusionReason = redactor.redact(inclusionReason).text
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            id: container.decode(String.self, forKey: .id),
+            title: container.decode(String.self, forKey: .title),
+            scope: container.decode(DocumentAutomationScope.self, forKey: .scope),
+            redactedSummary: container.decode(String.self, forKey: .redactedSummary),
+            inclusionReason: container.decode(String.self, forKey: .inclusionReason)
+        )
     }
 }
 
@@ -103,6 +122,17 @@ public struct DocumentAutomationDeliverableDraft: Codable, Equatable, Sendable {
     public var riskLevel: RiskLevel
     public var requiresApproval: Bool
 
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case title
+        case suggestedPath
+        case sourceDocumentIDs
+        case sourceDocuments
+        case rationale
+        case riskLevel
+        case requiresApproval
+    }
+
     public init(
         kind: DocumentAutomationOutputKind,
         title: String,
@@ -113,14 +143,32 @@ public struct DocumentAutomationDeliverableDraft: Codable, Equatable, Sendable {
         riskLevel: RiskLevel,
         requiresApproval: Bool
     ) {
+        let redactor = DeveloperSecretRedactor()
         self.kind = kind
-        self.title = title
-        self.suggestedPath = suggestedPath
-        self.sourceDocumentIDs = sourceDocumentIDs
+        // Drafts can be shown in review UI or audit logs before the provider
+        // builder runs, so redact every user/connector-derived string at the
+        // draft boundary instead of relying on a later outbound-only pass.
+        self.title = redactor.redact(title).text
+        self.suggestedPath = redactor.redact(suggestedPath).text
+        self.sourceDocumentIDs = sourceDocumentIDs.map { redactor.redact($0).text }
         self.sourceDocuments = sourceDocuments
-        self.rationale = DeveloperSecretRedactor().redact(rationale).text
+        self.rationale = redactor.redact(rationale).text
         self.riskLevel = riskLevel
         self.requiresApproval = requiresApproval
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            kind: container.decode(DocumentAutomationOutputKind.self, forKey: .kind),
+            title: container.decode(String.self, forKey: .title),
+            suggestedPath: container.decode(String.self, forKey: .suggestedPath),
+            sourceDocumentIDs: container.decode([String].self, forKey: .sourceDocumentIDs),
+            sourceDocuments: container.decodeIfPresent([DocumentAutomationDeliverableSource].self, forKey: .sourceDocuments) ?? [],
+            rationale: container.decode(String.self, forKey: .rationale),
+            riskLevel: container.decode(RiskLevel.self, forKey: .riskLevel),
+            requiresApproval: container.decode(Bool.self, forKey: .requiresApproval)
+        )
     }
 }
 
@@ -130,12 +178,29 @@ public struct DocumentAutomationDeliverableSource: Codable, Equatable, Sendable 
     public var redactedSummary: String
     public var inclusionReason: String
 
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case redactedSummary
+        case inclusionReason
+    }
+
     public init(id: String, title: String, redactedSummary: String, inclusionReason: String) {
         let redactor = DeveloperSecretRedactor()
-        self.id = id
+        self.id = redactor.redact(id).text
         self.title = redactor.redact(title).text
         self.redactedSummary = redactor.redact(redactedSummary).text
         self.inclusionReason = redactor.redact(inclusionReason).text
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            id: container.decode(String.self, forKey: .id),
+            title: container.decode(String.self, forKey: .title),
+            redactedSummary: container.decode(String.self, forKey: .redactedSummary),
+            inclusionReason: container.decode(String.self, forKey: .inclusionReason)
+        )
     }
 }
 
