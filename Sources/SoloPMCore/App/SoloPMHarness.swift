@@ -33,6 +33,8 @@ public enum SoloPMHarnessTaskLifecycleOperation: String, Codable, CaseIterable, 
     case executeContent
     case approvedExecution
     case deleteConfirmation
+    case projectCompletion
+    case projectDeleteCascade
 
     public var requiredFocusNodeIDs: [String] {
         switch self {
@@ -77,6 +79,16 @@ public enum SoloPMHarnessTaskLifecycleOperation: String, Codable, CaseIterable, 
                 "task-inspector-delete-confirmation-cancel",
                 "task-inspector-delete-confirmation-confirm"
             ]
+        case .projectCompletion:
+            [
+                "project-inspector-complete"
+            ]
+        case .projectDeleteCascade:
+            [
+                "project-inspector-delete",
+                "project-inspector-delete-confirmation-cancel",
+                "project-inspector-delete-confirmation-confirm"
+            ]
         }
     }
 }
@@ -119,7 +131,12 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
         // Keep content execution distinct so review-only MCP coverage cannot hide a missing user-visible run path.
         .executeContent,
         .approvedExecution,
-        .deleteConfirmation
+        .deleteConfirmation,
+        // Project deletion cascades to local tasks, so the pseudo VoiceOver
+        // contract keeps the project-level completion/delete path explicit
+        // instead of inferring it from task CRUD coverage.
+        .projectCompletion,
+        .projectDeleteCascade
     ]
 
     public static let completeDocumentDeliverableKinds: [DocumentAutomationOutputKind] = [

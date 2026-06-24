@@ -6,7 +6,7 @@ Manual VoiceOver is still required for release evidence. This file defines the s
 
 ## Task Lifecycle And Execution
 
-The task path covers create, content entry, edit, status execution, automation review, approved local content execution, and delete confirmation.
+The task path covers create, content entry, edit, status execution, automation review, approved local content execution, task delete confirmation, project completion, and project delete cascade confirmation.
 
 | Step | AX identifier | Expected role | Required behavior |
 | --- | --- | --- | --- |
@@ -28,6 +28,10 @@ The task path covers create, content entry, edit, status execution, automation r
 | Delete task | `task-inspector-delete` | button | Opens a destructive confirmation instead of deleting immediately. |
 | Cancel delete | `task-inspector-delete-confirmation-cancel` | button | Cancels the destructive delete confirmation and returns to the inspector without mutating local data. |
 | Confirm delete | `task-inspector-delete-confirmation-confirm` | button | Confirms the destructive delete path. |
+| Complete project | `project-inspector-complete` | button | Completes the selected project through the inspector, matching the runtime CRUD smoke. |
+| Delete project | `project-inspector-delete` | button | Opens a destructive confirmation before removing the project and its local task records. |
+| Cancel project delete | `project-inspector-delete-confirmation-cancel` | button | Cancels the project delete confirmation and returns to the project inspector without mutating local data. |
+| Confirm project delete | `project-inspector-delete-confirmation-confirm` | button | Confirms the project delete path that runtime smoke verifies as a task cascade delete. |
 
 ## Automation Boundary
 
@@ -52,9 +56,9 @@ The task path covers create, content entry, edit, status execution, automation r
 
 `SoloPMHarnessAccessibilityAuditRunner` exposes this focus path as the `mcp-pseudo-voiceover-focus-path` harness scenario.
 
-The harness emits one step per required AX identifier so create, edit, concrete status movement, automation review, approved execution, and destructive delete confirmation/cancel cannot pass as a single aggregate smoke result when one control is missing. Required lifecycle nodes must also have nonblank identifiers, nonblank labels, be enabled, be unique, and appear in the required traversal order; a visible but blank-id, blank-label, disabled, duplicated, or out-of-order button, field, group, or outline is treated as a failed path because keyboard and VoiceOver users cannot complete or understand the CRUD or execution step in sequence. The `task-status-move-controls` group is not enough by itself: the pseudo VoiceOver contract also requires a concrete `task-status-move-in_progress-<taskID>` button and records it against the stable `task-status-move-in_progress` prefix via `dynamicRequiredNodeIDPrefixes`, so the lifecycle proves an actual status move path without pretending repeated task-card controls have globally static identifiers. When the approved execution control is required, the harness also emits an `approved-execution-receipt` step so a visible Run approved plan button cannot pass unless the task execution leaves a redacted receipt.
+The harness emits one step per required AX identifier so create, edit, concrete status movement, automation review, approved execution, destructive task delete confirmation/cancel, project completion, and project delete cascade confirmation/cancel cannot pass as a single aggregate smoke result when one control is missing. Required lifecycle nodes must also have nonblank identifiers, nonblank labels, be enabled, be unique, and appear in the required traversal order; a visible but blank-id, blank-label, disabled, duplicated, or out-of-order button, field, group, or outline is treated as a failed path because keyboard and VoiceOver users cannot complete or understand the CRUD or execution step in sequence. The `task-status-move-controls` group is not enough by itself: the pseudo VoiceOver contract also requires a concrete `task-status-move-in_progress-<taskID>` button and records it against the stable `task-status-move-in_progress` prefix via `dynamicRequiredNodeIDPrefixes`, so the lifecycle proves an actual status move path without pretending repeated task-card controls have globally static identifiers. When the approved execution control is required, the harness also emits an `approved-execution-receipt` step so a visible Run approved plan button cannot pass unless the task execution leaves a redacted receipt.
 
-`SoloPMHarnessScenario.requiredTaskLifecycleOperations` is the MCP/E2E lifecycle contract for this path. `task-mutation-flow` and `mcp-pseudo-voiceover-focus-path` must both cover `create`, `editContent`, `statusMove`, `automationReview`, `executeContent`, `approvedExecution`, and `deleteConfirmation`. Delete confirmation and approved execution stay out of hosted-MCP mutation payloads because the external relay is review-only; the harness still fails when those user-visible UI/AX paths are not represented.
+`SoloPMHarnessScenario.requiredTaskLifecycleOperations` is the MCP/E2E lifecycle contract for this path. `task-mutation-flow` and `mcp-pseudo-voiceover-focus-path` must both cover `create`, `editContent`, `statusMove`, `automationReview`, `executeContent`, `approvedExecution`, `deleteConfirmation`, `projectCompletion`, and `projectDeleteCascade`. Delete confirmation, project cascade deletion, and approved execution stay out of hosted-MCP mutation payloads because the external relay is review-only; the harness still fails when those user-visible UI/AX paths are not represented.
 
 `SoloPMHarnessTaskLifecycleOperation.requiredFocusNodeIDs` maps each lifecycle operation to the AX nodes that prove it, and `SoloPMHarnessScenario.requiredFocusNodeIDs(for:)` flattens those operation mappings back through the canonical VoiceOver traversal order from `AccessibilityFocusPathRequirement.taskLifecycleAndExecution`. This keeps the operation list, MCP/E2E harness, and pseudo VoiceOver path tied together: adding a lifecycle operation or AX node now requires an explicit mapping instead of relying on a prose checklist.
 

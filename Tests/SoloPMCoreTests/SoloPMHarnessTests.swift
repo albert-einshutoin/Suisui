@@ -44,7 +44,9 @@ final class SoloPMHarnessTests: XCTestCase {
             .automationReview,
             .executeContent,
             .approvedExecution,
-            .deleteConfirmation
+            .deleteConfirmation,
+            .projectCompletion,
+            .projectDeleteCascade
         ]
 
         let taskMutation = try XCTUnwrap(catalog.first { $0.kind == .taskMutationFlow })
@@ -77,6 +79,18 @@ final class SoloPMHarnessTests: XCTestCase {
         )
         XCTAssertTrue(
             SoloPMHarnessTaskLifecycleOperation.approvedExecution.requiredFocusNodeIDs.contains("approved-execution-receipt")
+        )
+        XCTAssertEqual(
+            SoloPMHarnessTaskLifecycleOperation.projectCompletion.requiredFocusNodeIDs,
+            ["project-inspector-complete"]
+        )
+        XCTAssertEqual(
+            SoloPMHarnessTaskLifecycleOperation.projectDeleteCascade.requiredFocusNodeIDs,
+            [
+                "project-inspector-delete",
+                "project-inspector-delete-confirmation-cancel",
+                "project-inspector-delete-confirmation-confirm"
+            ]
         )
     }
 
@@ -222,7 +236,10 @@ final class SoloPMHarnessTests: XCTestCase {
             requiredTaskLifecycleOperations: [.create, .editContent, .statusMove, .automationReview]
         )
 
-        XCTAssertEqual(scenario.missingTaskLifecycleOperations(), [.executeContent, .approvedExecution, .deleteConfirmation])
+        XCTAssertEqual(
+            scenario.missingTaskLifecycleOperations(),
+            [.executeContent, .approvedExecution, .deleteConfirmation, .projectCompletion, .projectDeleteCascade]
+        )
     }
 
     func testScenarioDecodesLegacyPayloadWithoutLifecycleCoverage() throws {
@@ -587,7 +604,11 @@ final class SoloPMHarnessTests: XCTestCase {
             node("approved-execution-receipt", role: .group, label: "Approved execution receipt"),
             node("task-inspector-delete", role: .button, label: "Delete Task", help: "Deletes after confirmation.", isDestructive: true),
             node("task-inspector-delete-confirmation-cancel", role: .button, label: "Cancel Delete Task", help: "Cancels deletion and returns to the inspector."),
-            node("task-inspector-delete-confirmation-confirm", role: .button, label: "Confirm Delete Task", help: "Confirms deletion.", confirmsDestructiveAction: true)
+            node("task-inspector-delete-confirmation-confirm", role: .button, label: "Confirm Delete Task", help: "Confirms deletion.", confirmsDestructiveAction: true),
+            node("project-inspector-complete", role: .button, label: "Complete Project", help: "Completes the selected project."),
+            node("project-inspector-delete", role: .button, label: "Delete Project", help: "Deletes after confirmation.", isDestructive: true),
+            node("project-inspector-delete-confirmation-cancel", role: .button, label: "Cancel Delete Project", help: "Cancels deletion and returns to the inspector."),
+            node("project-inspector-delete-confirmation-confirm", role: .button, label: "Confirm Delete Project", help: "Confirms deletion.", confirmsDestructiveAction: true)
         ]
     }
 

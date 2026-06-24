@@ -69,7 +69,11 @@ public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
             "approved-execution-receipt",
             "task-inspector-delete",
             "task-inspector-delete-confirmation-cancel",
-            "task-inspector-delete-confirmation-confirm"
+            "task-inspector-delete-confirmation-confirm",
+            "project-inspector-complete",
+            "project-inspector-delete",
+            "project-inspector-delete-confirmation-cancel",
+            "project-inspector-delete-confirmation-confirm"
         ],
         dynamicRequiredNodeIDPrefixes: [
             "task-status-move-in_progress"

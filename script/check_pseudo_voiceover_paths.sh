@@ -55,6 +55,10 @@ REQUIRED_MARKERS=(
   "task-inspector-delete"
   "task-inspector-delete-confirmation-cancel"
   "task-inspector-delete-confirmation-confirm"
+  "project-inspector-complete"
+  "project-inspector-delete"
+  "project-inspector-delete-confirmation-cancel"
+  "project-inspector-delete-confirmation-confirm"
 )
 
 SOURCES=(
@@ -92,4 +96,4 @@ if [[ "$RUN_SWIFT_TESTS" -eq 1 ]]; then
   swift test --filter SoloPMHarnessTests
 fi
 
-echo "OK: pseudo VoiceOver focus path contract covers task create/edit/status/automation/approved execution/delete markers"
+echo "OK: pseudo VoiceOver focus path contract covers task create/edit/status/automation/approved execution/delete and project complete/delete cascade markers"
