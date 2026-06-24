@@ -454,6 +454,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] 将来のcallerがdocument deliverable draftを直接渡しても、source previewがないdraftやtask/status/due-date mutationをdocument成果物としてprovider payloadへ混ぜないことをテストする。
 - [x] document automationのsource document ID / title / summary / inclusion reasonがreview summaryやprovider contextへ入る前にredactされることをテストする。
 - [x] ProjectBoard ViewModel経由のtask automation review requestが、plannerのpriority/due-date選定、task cap、LLM budget、document deliverables、secret redactionを同じprovider境界で保持することをテストする。
+- [x] future non-planner caller由来のdecisionがdone/blocked task、低優先度の期限なしtask、lookahead外taskを含んでも、LLM provider境界ではSettingsのpriority/due/status eligibilityで再フィルタされることをテストする。
 - [x] 複数タスクのautomation reviewで1件目をapproved executionしても、残りのreview候補とredacted execution receipt historyが消えないことをテストする。
 - [x] stale sync / future connector由来のdecisionがdirect execution可能だと主張しても、LLM provider境界ではreview-only / approval-requiredへ強制されることをテストする。
 - [x] 前日のLLM call countが残ったhistoryでも、設定されたcalendar dayが変わればdaily LLM budgetが復帰し、当日期限タスクのreviewを誤って止めないことをテストする。
@@ -472,6 +473,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] Task automation provider request builderでdocument deliverablesを再検証し、approval-gatedなファイル成果物かつsource preview付きのdraftだけをLLM payloadへ通す。
 - [x] `ScopedAutomationDocument` の初期化境界で source document ID / title / summary / inclusion reason をredactし、ファイル名・外部プレビュー・ユーザー選定理由由来のsecret-like値を後段へ渡さない。
 - [x] ProjectBoard ViewModelに、現在のboard snapshotと設定からreview-only `PlanningRequest` を作る入口を追加し、document deliverablesも同じredacted JSON payloadへ渡す。
+- [x] Task automation provider request builderで、plannerを通らないselected taskにもSettings由来のstatus / priority / due-date / lookahead eligibilityを再適用する。
 - [x] ProjectBoard ViewModelにapproved execution receipt historyを追加し、複数選択reviewでは実行済みtaskだけをqueueから外す。
 - [x] Task automation provider request builderでdecisionのapproval/direct-execution flagsを再信頼せず、API境界でreview-only契約を再固定する。
 - [x] Task automation plannerで `lastRunAt` とreference dateのcalendar dayを比較し、日を跨いだsession/persisted historyはdaily LLM usageだけを0へ戻す。
@@ -490,6 +492,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] ドキュメント群から作る成果物候補は、source document title / inclusion reasonにsecret-like値が混ざってもreview summaryとprovider contextでredactedされる。
 - [x] Document automation harnessはsource document IDだけでなく、成果物ごとのredacted source previewが欠ける/別文書にずれる場合もfailし、release notes / PR plan / draft artifactが正しい文書根拠に紐づくことを検証する。
 - [x] ProjectBoardから生成するLLM review requestでも、未承認external sourceとsecret-like値をprovider境界へ出さず、filesystem draft outputはapproval-gatedのまま保持される。
+- [x] Provider境界ではdone/blocked、低優先度の期限なし、lookahead外のtaskが混ざったdecisionを受け取っても、review-only LLM requestへ送られない。
 - [x] future connectorやtestがunsafe decisionを渡しても、providerへ出るpayloadとpromptは `requiresUserApproval=true` / `allowsDirectExecution=false` のままになる。
 - [x] Daily LLM budgetは前日分の履歴で恒久的に枯渇せず、翌日の最初のreviewでは当日予算を使ってpriority/due-date選定へ進める。
 - [x] 同じ緊急度のタスクでは古い未処理タスクが先にreview対象となり、LLM予算とmax task capで後から入った同順位タスクが既存作業を飢餓状態にしない。

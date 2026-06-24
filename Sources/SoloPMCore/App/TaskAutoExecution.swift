@@ -459,12 +459,23 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
         }
 
         let normalizedSettings = settings.normalized
-        let cappedTasks = Array(decision.selectedTasks.prefix(normalizedSettings.maxTasksPerRun))
+        let calendar = reviewCalendar(timeZoneIdentifier: timeZoneIdentifier)
+        let cappedTasks = Array(
+            providerReviewableTasks(
+                from: decision.selectedTasks,
+                settings: normalizedSettings,
+                referenceDate: referenceDate,
+                calendar: calendar
+            )
+            .prefix(normalizedSettings.maxTasksPerRun)
+        )
+        guard !cappedTasks.isEmpty else {
+            throw TaskAutoExecutionPlanningRequestError.noReviewableTasks
+        }
         let cappedRemainingBudget = min(
             max(decision.llmCallBudgetRemaining, 0),
             normalizedSettings.dailyLLMCallLimit
         )
-        let calendar = reviewCalendar(timeZoneIdentifier: timeZoneIdentifier)
         let selectedTasks = cappedTasks.map { task in
             let reason = selectionReason(for: task, referenceDate: referenceDate, calendar: calendar)
             return TaskAutoExecutionPromptTask(
@@ -549,6 +560,31 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
             availableTools: availableTools,
             knowledgeFrameCandidates: []
         )
+    }
+
+    private func providerReviewableTasks(
+        from tasks: [ProjectBoardTask],
+        settings: TaskAutoExecutionSettings,
+        referenceDate: Date,
+        calendar: Calendar
+    ) -> [ProjectBoardTask] {
+        let lookaheadEnd = referenceDate.addingTimeInterval(TimeInterval(settings.lookaheadHours) * 60 * 60)
+        return tasks.filter { task in
+            guard task.status != .done, task.status != .blocked else {
+                return false
+            }
+            if task.priority == .high, task.dueAt == nil {
+                return true
+            }
+            guard let dueDate = parsedDueDate(task.dueAt, calendar: calendar) else {
+                return false
+            }
+            // The provider boundary may be called by future sync or connector
+            // code that bypasses the local planner. Reapplying the due-window
+            // rule here prevents stale or broad external selections from
+            // spending LLM budget on work the user's Settings excluded.
+            return dueDate <= lookaheadEnd
+        }
     }
 
     private func redactedProviderContent(_ value: String) -> String {

@@ -590,6 +590,84 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertFalse(request.userInput.contains("Third future"))
     }
 
+    func testPlanningRequestReappliesPriorityDueAndStatusEligibilityAtProviderBoundary() throws {
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        let decision = TaskAutoExecutionDecision(
+            status: .readyForReview,
+            selectedTasks: [
+                makeTask(id: 81, title: "Eligible due today", priority: .medium, dueAt: "2026-06-22T18:00:00Z"),
+                makeTask(id: 82, title: "Done external selection", status: .done, priority: .high, dueAt: "2026-06-22T18:00:00Z"),
+                makeTask(id: 83, title: "Blocked external selection", status: .blocked, priority: .high, dueAt: "2026-06-22T18:00:00Z"),
+                makeTask(id: 84, title: "Low priority without due date", priority: .low),
+                makeTask(id: 85, title: "High outside lookahead", priority: .high, dueAt: "2026-06-25T09:01:00Z"),
+                makeTask(id: 86, title: "High without due date", priority: .high)
+            ],
+            reason: "External caller supplied an unfiltered task list.",
+            llmCallBudgetRemaining: 6,
+            requiresUserApproval: true,
+            allowsDirectExecution: false
+        )
+
+        let request = try TaskAutoExecutionPlanningRequestBuilder().makePlanningRequest(
+            decision: decision,
+            settings: .init(
+                isEnabled: true,
+                mode: .reviewOnly,
+                cadence: .hourly,
+                maxTasksPerRun: 10,
+                dailyLLMCallLimit: 6,
+                lookaheadHours: 48
+            ),
+            referenceDate: referenceDate,
+            timeZoneIdentifier: "UTC"
+        )
+        let payload = try jsonPayload(from: request.userInput)
+        let selectedTasks = try XCTUnwrap(payload["selectedTasks"] as? [[String: Any]])
+
+        XCTAssertEqual(selectedTasks.map { $0["title"] as? String }, [
+            "Eligible due today",
+            "High without due date"
+        ])
+        XCTAssertFalse(request.userInput.contains("Done external selection"))
+        XCTAssertFalse(request.userInput.contains("Blocked external selection"))
+        XCTAssertFalse(request.userInput.contains("Low priority without due date"))
+        XCTAssertFalse(request.userInput.contains("High outside lookahead"))
+    }
+
+    func testPlanningRequestStopsProviderCallWhenEligibilityFiltersEverySelectedTask() throws {
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        let decision = TaskAutoExecutionDecision(
+            status: .readyForReview,
+            selectedTasks: [
+                makeTask(id: 91, title: "Done external selection", status: .done, priority: .high, dueAt: "2026-06-22T18:00:00Z"),
+                makeTask(id: 92, title: "Low priority without due date", priority: .low),
+                makeTask(id: 93, title: "High outside lookahead", priority: .high, dueAt: "2026-06-25T09:01:00Z")
+            ],
+            reason: "External caller supplied only ineligible work.",
+            llmCallBudgetRemaining: 6,
+            requiresUserApproval: true,
+            allowsDirectExecution: false
+        )
+
+        XCTAssertThrowsError(
+            try TaskAutoExecutionPlanningRequestBuilder().makePlanningRequest(
+                decision: decision,
+                settings: .init(
+                    isEnabled: true,
+                    mode: .reviewOnly,
+                    cadence: .hourly,
+                    maxTasksPerRun: 10,
+                    dailyLLMCallLimit: 6,
+                    lookaheadHours: 48
+                ),
+                referenceDate: referenceDate,
+                timeZoneIdentifier: "UTC"
+            )
+        ) { error in
+            XCTAssertEqual(error as? TaskAutoExecutionPlanningRequestError, .noReviewableTasks)
+        }
+    }
+
     func testPlanningRequestCarriesDocumentDeliverableDraftsAsApprovalGatedDraftOutputs() throws {
         let referenceDate = try isoDate("2026-06-22T09:00:00Z")
         let decision = TaskAutoExecutionDecision(
