@@ -6871,6 +6871,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("--capture-runtime-ax-smoke"))
         XCTAssertTrue(script.contains("--task-content-execution-note"))
         XCTAssertTrue(script.contains("runtime AX smoke OK line with unlabeledButtons=0, genericButtons=0, crudSignals=8/8, and focusPathSignals=6/6"))
+        XCTAssertTrue(script.contains("Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail"))
         XCTAssertTrue(script.contains("complete release-candidate context"))
         XCTAssertTrue(script.contains("section \"Competitor hands-on evidence\""))
         XCTAssertTrue(script.contains("docs/release/evidence/competitor-hands-on.md"))
@@ -7360,7 +7361,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("Its generated command now refuses to run until the worksheet is `Status: completed`, source-pinned, filled, and free of pending/unchecked/template markers."))
         XCTAssertTrue(checklist.contains("The generated release-machine command refuses to run until its worksheet is `Status: completed`, source-pinned, filled, free of pending/unchecked/template markers, and free of boilerplate values such as `TBD`, `Verified`, `OK`, or `manual checks completed`."))
         XCTAssertTrue(checklist.contains("The Manual VoiceOver section includes `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md`, `.tmp/voiceover-review/voiceover-worksheet.md`, and `.tmp/voiceover-review/create-evidence-command.sh` before the final passed command"))
-        XCTAssertTrue(checklist.contains("Its generated command now refuses to run until the VoiceOver worksheet is `Status: completed`, source/database-pinned, filled, and free of pending/unchecked/template markers."))
+        XCTAssertTrue(checklist.contains("Its generated command now refuses to run until the VoiceOver worksheet is `Status: completed`, source/database-pinned, filled, and free of pending/unchecked/template markers, and the action summary repeats that the Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail."))
         XCTAssertTrue(checklist.contains("The action summary also expands those pending paths for the current release-candidate product source commit"))
         XCTAssertTrue(checklist.contains("The action summary includes a Manual Evidence Source Hygiene section explaining that direct passed evidence scripts also require a clean tracked source tree."))
         XCTAssertTrue(checklist.contains("It also reminds operators that release-machine evidence must include `generator.name: script/create_release_evidence.sh` and that hand-written `packaging/release-evidence.json` remains blocked."))
@@ -7691,6 +7692,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(actionSummary.contains("--inline-task-composer-note \"<VoiceOver observation for title/detail/priority/due create flow>\""))
         XCTAssertTrue(actionSummary.contains("--save-changes-note \"<VoiceOver observation proving keyboard activation saves local task changes>\""))
         XCTAssertTrue(actionSummary.contains("--task-content-execution-note \"<VoiceOver observation proving approved execution records reviewed task title and detail in the redacted receipt>\""))
+        XCTAssertTrue(actionSummary.contains("Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail"))
         XCTAssertTrue(actionSummary.contains("--delete-confirmation-note \"<VoiceOver observation proving Delete Task opens an inline inspector confirmation panel before deletion>\""))
         XCTAssertTrue(actionSummary.contains("--confirm-manual-voiceover-pass"))
         XCTAssertTrue(actionSummary.contains("- [ ] VoiceOver accessibility evidence is not marked passed"))
@@ -8870,6 +8872,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("./script/create_voiceover_evidence.sh --passed"))
         XCTAssertTrue(result.output.contains("--capture-runtime-ax-smoke"))
         XCTAssertTrue(result.output.contains("complete release-candidate context"))
+        XCTAssertTrue(result.output.contains("Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail"))
         XCTAssertFalse(result.output.contains("READY: runtime, task checklist, automated proof gates, and release environment gates passed."))
     }
 

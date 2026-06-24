@@ -1464,6 +1464,7 @@ write_release_actions() {
     printf -- "- The candidate writes \`.tmp/voiceover-review/create-evidence-command.sh\` with the same database/project context. Replace every placeholder in that generated command with concrete VoiceOver observations before running it.\n"
     printf -- "- The generated VoiceOver evidence command is pinned to a clean tracked source tree and the release-candidate source commit it was created for. Rerun \`./script/prepare_release_manual_helpers.sh\` after source changes instead of reusing an older command.\n"
     printf -- "- The generated VoiceOver evidence command also refuses to run until \`.tmp/voiceover-review/voiceover-worksheet.md\` is \`Status: completed\`, pinned to the same source commit and candidate database, free of pending/unchecked/template markers, and filled.\n"
+    printf -- "- Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail; a reachable Run approved plan control alone is not release evidence.\n"
     printf -- "- Run the generated \`--validate-only\` command first; it performs the same passed-evidence validation without writing \`docs/release/evidence/accessibility-voiceover.md\`.\n"
     printf -- "- Run the source/runtime accessibility preflight first, then perform a real VoiceOver pass.\n"
     printf -- "- If you do not use the generated command file, replace every placeholder below with concrete observations from the real release-candidate app before running it.\n\n"
@@ -2772,7 +2773,7 @@ else
   fi
 fi
 if [[ "$voiceover_evidence_blocker_count" -gt 0 ]]; then
-  printf "NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass by running ./script/create_voiceover_evidence.sh --passed with complete release-candidate context, --capture-runtime-ax-smoke, complete focus-path notes, and no pending/template/unchecked markers; the generated evidence must include the runtime AX smoke OK line with unlabeledButtons=0, genericButtons=0, crudSignals=8/8, and focusPathSignals=6/6.\n"
+  printf "NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass by running ./script/create_voiceover_evidence.sh --passed with complete release-candidate context, --capture-runtime-ax-smoke, complete focus-path notes, and no pending/template/unchecked markers; the generated evidence must include the runtime AX smoke OK line with unlabeledButtons=0, genericButtons=0, crudSignals=8/8, and focusPathSignals=6/6. Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail.\n"
 fi
 
 section "Competitor hands-on evidence"
