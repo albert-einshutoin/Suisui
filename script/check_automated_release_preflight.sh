@@ -215,6 +215,9 @@ run_xcodebuild_with_timeout() {
     if kill -0 "$xcode_pid" >/dev/null 2>&1; then
       : >"$timeout_marker"
       echo "BLOCKER: Xcode build preflight timed out after ${XCODE_PREFLIGHT_TIMEOUT_SECONDS}s" >&2
+      printf 'NEXT: reproduce with xcodebuild -workspace %q -scheme %q -configuration %q -destination %q build\n' \
+        "$ROOT_DIR/$XCODE_WORKSPACE_RELATIVE" "$XCODE_SCHEME" "$XCODE_CONFIGURATION" "$XCODE_DESTINATION" >&2
+      printf 'NEXT: this is separate from the SwiftPM native build; do not reuse automated preflight evidence until the Xcode build gate passes.\n' >&2
       kill "$xcode_pid" >/dev/null 2>&1 || true
       sleep 2
       kill -KILL "$xcode_pid" >/dev/null 2>&1 || true

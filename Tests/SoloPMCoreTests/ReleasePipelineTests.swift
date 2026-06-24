@@ -3109,12 +3109,18 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("XCODE_PREFLIGHT_TIMEOUT_SECONDS=\"${SOLOPM_XCODE_PREFLIGHT_TIMEOUT_SECONDS:-600}\""))
         XCTAssertTrue(script.contains("run_xcodebuild_with_timeout()"))
         XCTAssertTrue(script.contains("BLOCKER: Xcode build preflight timed out after ${XCODE_PREFLIGHT_TIMEOUT_SECONDS}s"))
+        XCTAssertTrue(script.contains("printf 'NEXT: reproduce with xcodebuild -workspace %q -scheme %q -configuration %q -destination %q build\\n'"))
+        XCTAssertTrue(script.contains("\"$ROOT_DIR/$XCODE_WORKSPACE_RELATIVE\" \"$XCODE_SCHEME\" \"$XCODE_CONFIGURATION\" \"$XCODE_DESTINATION\""))
+        XCTAssertTrue(script.contains("NEXT: this is separate from the SwiftPM native build; do not reuse automated preflight evidence until the Xcode build gate passes."))
         XCTAssertTrue(script.contains("kill \"$xcode_pid\""))
         XCTAssertTrue(script.contains("run_xcodebuild_with_timeout"))
         XCTAssertLessThan(
             try XCTUnwrap(script.range(of: "run_xcodebuild_with_timeout()")).lowerBound,
             try XCTUnwrap(script.range(of: "section \"Xcode build preflight\"")).lowerBound
         )
+
+        let checklist = try readPackageFile("docs/release/checklist.md")
+        XCTAssertTrue(checklist.contains("If the Xcode watchdog times out, reproduce the exact `xcodebuild -workspace ... -scheme ... -destination ... build` command from the blocker output and keep automated preflight evidence rejected until that Xcode build gate passes."))
     }
 
     func testReleaseActionSummaryReportsManualHelperFreshnessForCurrentCommit() throws {
