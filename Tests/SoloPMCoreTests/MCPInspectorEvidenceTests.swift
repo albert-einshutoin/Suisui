@@ -52,6 +52,25 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertFalse(evidence.contains("TBD"))
     }
 
+    func testTrackedInspectorEvidenceSourceCommitMatchesCurrentMCPSourceCommit() throws {
+        let evidence = try readPackageFile("docs/release/evidence/mcp-inspector.md")
+        let currentMCPSourceCommit = try gitOutput(
+            "log",
+            "-1",
+            "--format=%h",
+            "--",
+            "Sources/SoloPMCore/ExternalMCP",
+            "Sources/SoloPMApp/SoloPMApp.swift",
+            "fixtures/mcp",
+            "Package.swift"
+        )
+
+        XCTAssertTrue(
+            evidence.contains("- Source commit: `\(currentMCPSourceCommit)`"),
+            "Run ./script/verify_mcp_compliance.sh after MCP runtime, settings, fixture, or package changes."
+        )
+    }
+
     func testComplianceReviewAndEvidenceRecordStableSpecAndDraftBoundary() throws {
         let complianceReview = try readPackageFile("docs/mcp-compliance.md")
         let evidence = try readPackageFile("docs/release/evidence/mcp-inspector.md")
@@ -223,6 +242,27 @@ final class MCPInspectorEvidenceTests: XCTestCase {
 
         let data = output.fileHandleForReading.readDataToEndOfFile()
         return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
+    }
+
+    private func gitOutput(_ arguments: String...) throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["git"] + arguments
+        process.currentDirectoryURL = packageRoot()
+
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+
+        try process.run()
+        process.waitUntilExit()
+
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        let text = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        XCTAssertEqual(process.terminationStatus, 0, text)
+        return text
     }
 
     private func packageRoot() -> URL {
