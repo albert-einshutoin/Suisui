@@ -487,6 +487,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] Task automation prompt payloadへdocument deliverablesを追加し、ファイル生成やtask mutationはreviewed plan承認後にだけ実行できるdraft-only提案として扱う。
 - [x] Task automation provider request builderでdocument deliverablesを再検証し、approval-gatedなファイル成果物かつsource preview付きのdraftだけをLLM payloadへ通す。
 - [x] Task automation provider request builderでdocument deliverablesのsuggested output path衝突を正規化後に除外し、同一出力先へ複数draftを送らない。
+- [x] Task automation provider request builderでdocument deliverablesの `sourceDocumentIDs` が空の場合は、source previewが存在してもLLM payloadへ通さず、成果物draftが選択済みdocument IDへ束縛されていることをprovider境界で再検証する。
 - [x] SoloPMHarnessDocumentAutomationRunnerでdocument deliverableのsuggested output path一意性を独立stepとして検証し、E2E reportのdiffに衝突kindを出す。
 - [x] `ScopedAutomationDocument` の初期化境界で source document ID / title / summary / inclusion reason をredactし、ファイル名・外部プレビュー・ユーザー選定理由由来のsecret-like値を後段へ渡さない。
 - [x] `DocumentAutomationDeliverableDraft` と `DocumentAutomationDeliverableSource` の生成・復元境界で title / suggested path / source document ID / rationaleをredactし、保存済みJSONやfuture connector由来のdraftがprovider直前以外のreview面で漏れないようにする。

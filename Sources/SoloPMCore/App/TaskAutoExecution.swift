@@ -502,8 +502,11 @@ struct TaskAutomationDocumentDeliverableReviewPolicy: Sendable {
         for draft: DocumentAutomationDeliverableDraft
     ) -> [DocumentAutomationDeliverableSource] {
         let declaredIDs = Set(draft.sourceDocumentIDs)
-        if declaredIDs.isEmpty {
-            return draft.sourceDocuments
+        guard !declaredIDs.isEmpty else {
+            // Provider prompts need explicit source IDs, not just previews, so
+            // future connector or sync callers cannot smuggle unbound document
+            // context into a draft output by omitting the cited document set.
+            return []
         }
         return draft.sourceDocuments.filter { declaredIDs.contains($0.id) }
     }

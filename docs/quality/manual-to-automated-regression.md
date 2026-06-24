@@ -75,13 +75,13 @@ Manual-only:
 
 automation-backlog:
 - Missing preparation checklists, draft artifacts, release notes, or PR plans belong in `SoloPMHarnessScenario.requiredDocumentDeliverableKinds`.
-- Missing approval gates, source document IDs, matching redacted source previews, duplicate suggested output paths, or draft risk classification belong in `SoloPMHarnessDocumentAutomationRunner`.
+- Missing approval gates, non-empty source document IDs, matching redacted source previews, duplicate suggested output paths, or draft risk classification belong in `SoloPMHarnessDocumentAutomationRunner` and the task automation provider-boundary tests.
 - Missing Project Board review-state or Task inspector visibility for redacted source document previews belongs in `Tests/SoloPMCoreTests/ProjectBoardStoreTests.swift` and `Tests/SoloPMCoreTests/AppExperienceSourceTests.swift`.
 - Secret-like values leaking through document IDs, titles, summaries, or inclusion reasons belong in `Tests/SoloPMCoreTests/DocumentScopedAutomationTests.swift` before provider-backed document drafting is allowed.
 - Planner output selection belongs in `Tests/SoloPMCoreTests/DocumentScopedAutomationTests.swift` before any provider-backed drafting is allowed.
 
 Close rule:
-- A document automation finding can be closed only when the selected docs, proposed deliverable kind, approval gate, unique suggested output path, and harness failure mode are all represented in a focused test.
+- A document automation finding can be closed only when the selected docs, proposed deliverable kind, non-empty source document IDs, approval gate, unique suggested output path, and harness/provider-boundary failure mode are all represented in a focused test.
 
 ## Release Machine
 

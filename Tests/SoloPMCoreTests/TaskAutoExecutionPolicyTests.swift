@@ -930,6 +930,58 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertFalse(request.userInput.contains("Unapproved PR plan"))
     }
 
+    func testPlanningRequestDropsDocumentDraftsWithoutDeclaredSourceDocumentIDs() throws {
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        let decision = TaskAutoExecutionDecision(
+            status: .readyForReview,
+            selectedTasks: [
+                makeTask(
+                    id: 73,
+                    title: "Review document-generated release output",
+                    detail: "Only source-bound deliverables should reach the provider.",
+                    priority: .high,
+                    dueAt: "2026-06-22T18:00:00Z"
+                )
+            ],
+            reason: "High priority document review is due today.",
+            llmCallBudgetRemaining: 2,
+            requiresUserApproval: true,
+            allowsDirectExecution: false
+        )
+        let source = DocumentAutomationDeliverableSource(
+            id: "release",
+            title: "Release checklist",
+            redactedSummary: "Release notes and Gatekeeper evidence.",
+            inclusionReason: "Explicitly selected for release output."
+        )
+        let drafts = [
+            DocumentAutomationDeliverableDraft(
+                kind: .releaseNotes,
+                title: "No declared source IDs",
+                suggestedPath: "docs/release/notes-draft.md",
+                sourceDocumentIDs: [],
+                sourceDocuments: [source],
+                rationale: "This preview exists, but the draft does not cite the selected document IDs.",
+                riskLevel: .draft,
+                requiresApproval: true
+            )
+        ]
+
+        let request = try TaskAutoExecutionPlanningRequestBuilder().makePlanningRequest(
+            decision: decision,
+            settings: .init(isEnabled: true, mode: .reviewOnly, cadence: .hourly),
+            referenceDate: referenceDate,
+            timeZoneIdentifier: "UTC",
+            documentDeliverableDrafts: drafts
+        )
+        let payload = try jsonPayload(from: request.userInput)
+        let deliverables = try XCTUnwrap(payload["documentDeliverables"] as? [[String: Any]])
+
+        XCTAssertTrue(deliverables.isEmpty)
+        XCTAssertFalse(request.userInput.contains("No declared source IDs"))
+        XCTAssertFalse(request.userInput.contains("This preview exists"))
+    }
+
     func testPlanningRequestDropsDuplicateDocumentDeliverableSuggestedPathsAtProviderBoundary() throws {
         let referenceDate = try isoDate("2026-06-22T09:00:00Z")
         let decision = TaskAutoExecutionDecision(
