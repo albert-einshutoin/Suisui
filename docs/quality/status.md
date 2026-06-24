@@ -1,7 +1,7 @@
 # SoloPM Quality Status
 
-Generated at: 2026-06-24T02:02:36Z
-Source commit: 838fb03
+Generated at: 2026-06-24T02:20:39Z
+Source commit: a4b6611
 
 ## Summary
 
@@ -24,7 +24,7 @@ Source commit: 838fb03
 | --- | --- | --- |
 | `docs/release/evidence/ui-screenshots.md` | present | 838fb03 |
 | `docs/release/evidence/mcp-inspector.md` | present | 7298e51 |
-| `docs/release/evidence/accessibility-voiceover.md` | stale (passed; expected 838fb03) | e488456 |
+| `docs/release/evidence/accessibility-voiceover.md` | stale (passed; expected a4b6611) | e488456 |
 | `docs/release/evidence/competitor-hands-on.md` | pending | unknown |
 
 ## Gate Classification
@@ -36,12 +36,12 @@ Source commit: 838fb03
 | Full test suite | unit + integration | passed | `swift test` | Run before closing the Phase14 exit gate. |
 | Runtime smoke | runtime AX | passed | `script/check_runtime_accessible_crud_smoke.sh` | Run on a visible macOS session to cover CRUD, Inbox, Today, Settings, Voice Command, and layout stability. |
 | Visual smoke | visual | passed | `script/check_visual_regression_smoke.sh` | Use screenshot doctor first, then compare Light/Dark/System evidence. |
-| Manual evidence | manual | VoiceOver: stale (passed; expected 838fb03); Competitor: pending | `docs/release/evidence/accessibility-voiceover.md` | Manual findings must link back through docs/quality/manual-to-automated-regression.md. |
+| Manual evidence | manual | VoiceOver: stale (passed; expected a4b6611); Competitor: pending | `docs/release/evidence/accessibility-voiceover.md` | Manual findings must link back through docs/quality/manual-to-automated-regression.md. |
 | Release readiness handoff | release | available | `script/release_readiness_report.sh` | Run after quality gaps are classified; readiness remains the release gate, not this dashboard. |
 
 ## Next Quality Gaps
 
-- [ ] Manual evidence status is VoiceOver=stale (passed; expected 838fb03), Competitor=pending. Next: use `script/release_readiness_report.sh` for release evidence blockers and link any findings to regression coverage.
+- [ ] Manual evidence status is VoiceOver=stale (passed; expected a4b6611), Competitor=pending. Next: use `script/release_readiness_report.sh` for release evidence blockers and link any findings to regression coverage.
 
 ## Verification Commands
 
