@@ -112,7 +112,8 @@ final class SoloPMHarnessTests: XCTestCase {
             "document-deliverable-preparationChecklist",
             "document-deliverable-draftArtifact",
             "document-deliverable-releaseNotes",
-            "document-deliverable-pullRequestPlan"
+            "document-deliverable-pullRequestPlan",
+            "document-deliverable-unique-suggested-paths"
         ])
         XCTAssertNil(run.diff)
         XCTAssertTrue(run.redactedLogs.contains { $0.message.contains("deliverables covered=4/4") })
@@ -183,6 +184,31 @@ final class SoloPMHarnessTests: XCTestCase {
         XCTAssertEqual(run.status, .failed)
         XCTAssertEqual(run.diff?.stepID, "document-deliverable-releaseNotes")
         XCTAssertTrue(run.diff?.actual.contains("missingSourcePreviews") ?? false)
+    }
+
+    func testDocumentAutomationHarnessRunFailsWhenDeliverablesShareSuggestedOutputPath() throws {
+        var drafts = DocumentAutomationArtifactPlanner().deliverableDrafts(
+            userRequest: "Create release notes, a PR plan, and the right draft artifacts from these docs.",
+            documents: documentAutomationHarnessDocuments()
+        )
+        let releaseNotesPath = try XCTUnwrap(drafts.first { $0.kind == .releaseNotes }?.suggestedPath)
+        let pullRequestPlanIndex = try XCTUnwrap(drafts.firstIndex { $0.kind == .pullRequestPlan })
+        drafts[pullRequestPlanIndex].suggestedPath = "  \(releaseNotesPath)//  "
+
+        let run = SoloPMHarnessDocumentAutomationRunner().run(
+            id: "run-document-duplicate-path",
+            trigger: .cloudTriggered,
+            startedAt: "2026-06-23T00:00:00Z",
+            finishedAt: "2026-06-23T00:00:01Z",
+            drafts: drafts
+        )
+
+        XCTAssertEqual(run.status, .failed)
+        XCTAssertEqual(run.diff?.stepID, "document-deliverable-unique-suggested-paths")
+        XCTAssertEqual(run.diff?.expected, "one reviewable document deliverable per suggested output path")
+        XCTAssertTrue(run.diff?.actual.contains("duplicateSuggestedPath") ?? false)
+        XCTAssertTrue(run.failureReason?.contains("releaseNotes") ?? false)
+        XCTAssertTrue(run.failureReason?.contains("pullRequestPlan") ?? false)
     }
 
     func testTaskLifecycleCoverageReportsMissingExecuteAndDeleteRequirements() {

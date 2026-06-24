@@ -549,10 +549,11 @@ public struct SoloPMHarnessDocumentAutomationRunner: Sendable {
         let scenario = Self.documentAutomationScenario()
         // Emit one step per deliverable kind so a broad "docs automation passed"
         // smoke cannot hide a missing release note, PR plan, or draft artifact.
-        let steps = requiredKinds.map { kind in
+        let kindSteps = requiredKinds.map { kind in
             step(for: kind, drafts: drafts.filter { $0.kind == kind })
         }
-        let coveredCount = steps.filter { $0.status == .passed }.count
+        let steps = kindSteps + [uniqueSuggestedPathStep(for: drafts)]
+        let coveredCount = kindSteps.filter { $0.status == .passed }.count
         let logs = [
             SoloPMHarnessLogEntry(
                 level: coveredCount == requiredKinds.count ? .info : .error,
@@ -623,6 +624,73 @@ public struct SoloPMHarnessDocumentAutomationRunner: Sendable {
             failureReason: failureReason,
             durationMilliseconds: 0
         )
+    }
+
+    private func uniqueSuggestedPathStep(
+        for drafts: [DocumentAutomationDeliverableDraft]
+    ) -> SoloPMHarnessStepResult {
+        let expected = "one reviewable document deliverable per suggested output path"
+        let collisions = duplicateSuggestedPathDescriptions(in: drafts)
+        let actual: String
+        let status: SoloPMHarnessRunStatus
+        let failureReason: String?
+
+        if collisions.isEmpty {
+            actual = expected
+            status = .passed
+            failureReason = nil
+        } else {
+            actual = collisions.joined(separator: " | ")
+            status = .failed
+            failureReason = actual
+        }
+
+        return SoloPMHarnessStepResult(
+            id: "document-deliverable-unique-suggested-paths",
+            status: status,
+            expected: expected,
+            actual: actual,
+            failureReason: failureReason,
+            durationMilliseconds: 0
+        )
+    }
+
+    private func duplicateSuggestedPathDescriptions(
+        in drafts: [DocumentAutomationDeliverableDraft]
+    ) -> [String] {
+        var firstKindByPath: [String: DocumentAutomationOutputKind] = [:]
+        var descriptions: [String] = []
+
+        for draft in drafts {
+            let normalizedPath = normalizedSuggestedPath(draft.suggestedPath)
+            guard !normalizedPath.isEmpty else {
+                descriptions.append("missingSuggestedPath: \(draft.kind.rawValue) must name a reviewable draft output path.")
+                continue
+            }
+            if let firstKind = firstKindByPath[normalizedPath] {
+                descriptions.append(
+                    "duplicateSuggestedPath: \(firstKind.rawValue) and \(draft.kind.rawValue) target \(normalizedPath)."
+                )
+            } else {
+                firstKindByPath[normalizedPath] = draft.kind
+            }
+        }
+
+        return descriptions
+    }
+
+    private func normalizedSuggestedPath(_ path: String) -> String {
+        // A document automation run is not complete if two reviewed drafts can
+        // ask the downstream provider to write the same file. Normalize only
+        // enough to catch whitespace, repeated slash, trailing slash, and case
+        // drift while preserving absolute-vs-relative path intent.
+        let collapsed = path
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: #"/+"#, with: "/", options: .regularExpression)
+        guard collapsed != "/" else {
+            return collapsed
+        }
+        return (collapsed.hasSuffix("/") ? String(collapsed.dropLast()) : collapsed).lowercased()
     }
 
     private func reviewProblems(for draft: DocumentAutomationDeliverableDraft) -> [String] {

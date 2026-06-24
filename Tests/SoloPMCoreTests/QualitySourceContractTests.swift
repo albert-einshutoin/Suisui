@@ -106,6 +106,7 @@ final class QualitySourceContractTests: XCTestCase {
             "Tests/SoloPMCoreTests/ReleasePipelineTests.swift",
             "SoloPMHarnessScenario.requiredDocumentDeliverableKinds",
             "SoloPMHarnessDocumentAutomationRunner",
+            "duplicate suggested output paths",
             "SoloPMHarnessAccessibilityAuditRunner",
             "ApprovedAutomationExecutionReceipt",
             "approved-execution-receipt",
