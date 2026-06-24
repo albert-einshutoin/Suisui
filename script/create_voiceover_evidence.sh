@@ -141,6 +141,43 @@ require_concrete_voiceover_note() {
   fi
 }
 
+voiceover_note_contains_any_marker() {
+  local value="$1"
+  shift
+  local marker
+  local normalized
+
+  normalized="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+  for marker in "$@"; do
+    if grep -Eiq "$marker" <<<"$normalized"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+require_task_content_execution_note() {
+  local value="$1"
+
+  require_concrete_voiceover_note "--task-content-execution-note" "$value"
+
+  # This field is stricter than generic focus notes because release evidence
+  # must prove reviewed task content reached the receipt, not only that the Run
+  # approved plan control was reachable.
+  if ! voiceover_note_contains_any_marker "$value" "receipt"; then
+    echo "--task-content-execution-note must mention the redacted receipt, reviewed title, and reviewed detail" >&2
+    exit 2
+  fi
+  if ! voiceover_note_contains_any_marker "$value" "title"; then
+    echo "--task-content-execution-note must mention the redacted receipt, reviewed title, and reviewed detail" >&2
+    exit 2
+  fi
+  if ! voiceover_note_contains_any_marker "$value" "detail" "body"; then
+    echo "--task-content-execution-note must mention the redacted receipt, reviewed title, and reviewed detail" >&2
+    exit 2
+  fi
+}
+
 require_runtime_ax_smoke_note() {
   local value="$1"
 
@@ -434,8 +471,7 @@ if [[ "$VOICEOVER_STATUS" == "passed" ]]; then
   require_concrete_voiceover_note "--status-controls-note" "$STATUS_CONTROLS_NOTE"
   require_concrete_voiceover_note "--task-inspector-note" "$TASK_INSPECTOR_NOTE"
   require_concrete_voiceover_note "--save-changes-note" "$SAVE_CHANGES_NOTE"
-  # Manual evidence must prove the reviewed task body reached the approved execution receipt, not just that the Run control was reachable.
-  require_concrete_voiceover_note "--task-content-execution-note" "$TASK_CONTENT_EXECUTION_NOTE"
+  require_task_content_execution_note "$TASK_CONTENT_EXECUTION_NOTE"
   require_concrete_voiceover_note "--delete-confirmation-note" "$DELETE_CONFIRMATION_NOTE"
   require_concrete_voiceover_note "--no-keyboard-trap-note" "$NO_KEYBOARD_TRAP_NOTE"
   require_concrete_voiceover_note "--no-unlabeled-crud-note" "$NO_UNLABELED_CRUD_NOTE"

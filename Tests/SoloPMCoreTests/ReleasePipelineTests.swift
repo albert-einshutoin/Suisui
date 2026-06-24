@@ -4043,6 +4043,34 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(missingTaskContentExecutionResult.output.contains("--task-content-execution-note is required with --passed"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: passedURL.path))
 
+        let weakTaskContentExecutionResult = try runScript(
+            "script/create_voiceover_evidence.sh",
+            arguments: [
+                "--validate-only",
+                "--checked-by", "SoloPM Release Owner",
+                "--macos-version", "macOS 15.5",
+                "--check-date", "2026-06-19",
+                "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
+                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6",
+                "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
+                "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
+                "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
+                "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
+                "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
+                "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--task-content-execution-note", "VoiceOver announced Run approved plan and the selected task execution completed.",
+                "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
+                "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
+                "--output", validateOnlyURL.path,
+                "--confirm-manual-voiceover-pass"
+            ]
+        )
+        XCTAssertNotEqual(weakTaskContentExecutionResult.exitCode, 0)
+        XCTAssertTrue(weakTaskContentExecutionResult.output.contains("--task-content-execution-note must mention the redacted receipt, reviewed title, and reviewed detail"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: validateOnlyURL.path))
+
         try """
         #!/usr/bin/env bash
         set -euo pipefail
@@ -5829,6 +5857,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Selected destination: \\`$EXPECTED_SELECTED_DESTINATION\\`"))
         XCTAssertTrue(script.contains("grep -F -- \"- [ ]\" \"$VOICEOVER_WORKSHEET_FILE\""))
         XCTAssertTrue(script.contains("voiceover_worksheet_value_is_placeholder_or_boilerplate()"))
+        XCTAssertTrue(script.contains("voiceover_worksheet_value_covers_task_content_execution()"))
+        XCTAssertTrue(script.contains("Task content execution must mention the redacted receipt, reviewed title, and reviewed detail."))
         XCTAssertTrue(script.contains("fill %s with concrete VoiceOver observation."))
         XCTAssertTrue(script.contains("VoiceOver worksheet is missing, stale, or incomplete"))
         XCTAssertTrue(script.contains("Project navigation"))
@@ -5876,6 +5906,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(releaseChecklist.contains("The generated VoiceOver evidence command also verifies `.tmp/voiceover-review/voiceover-worksheet.md` is marked completed, pinned to the same source commit and candidate database, free of unchecked/pending/template markers, and filled before validate-only or passed evidence can run."))
         XCTAssertTrue(releaseChecklist.contains("The generated VoiceOver evidence command also rejects boilerplate worksheet values such as `TBD`, `Verified`, `OK`, or `No issues`; each required worksheet field must contain concrete VoiceOver observations."))
         XCTAssertTrue(releaseChecklist.contains("The worksheet maps `approved-execution-receipt` to the Task content execution note so manual reviewers confirm the approved execution receipt, not only the Run approved plan button."))
+        XCTAssertTrue(releaseChecklist.contains("The Task content execution observation must explicitly mention the redacted receipt, reviewed title, and reviewed detail"))
         XCTAssertTrue(releaseChecklist.contains("--task-content-execution-note"))
         let phase11 = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
         XCTAssertTrue(phase11.contains("[x] `script/prepare_voiceover_review_candidate.sh` pins `.tmp/voiceover-review/create-evidence-command.sh` to a clean tracked source tree and the release-candidate source commit it was generated for"))
@@ -5885,7 +5916,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase11.contains("[x] Generated VoiceOver evidence command reloads `.tmp/voiceover-review/launch.env`, verifies the seeded candidate database/project id, and launches the same candidate before runtime AX smoke capture."))
         XCTAssertTrue(phase11.contains("[x] Generated VoiceOver evidence command verifies `.tmp/voiceover-review/voiceover-worksheet.md` is current, marked completed, filled, and free of pending/unchecked markers before validate-only or passed evidence."))
         XCTAssertTrue(phase11.contains("[x] Generated VoiceOver evidence command rejects boilerplate worksheet values such as `TBD`, `Verified`, `OK`, or `No issues`; each required worksheet field must contain concrete VoiceOver observations."))
-        XCTAssertTrue(phase11.contains("[x] VoiceOver evidence generator and generated worksheet command require a Task content execution observation proving approved execution records the reviewed task title and detail in the redacted receipt."))
+        XCTAssertTrue(phase11.contains("[x] VoiceOver evidence generator and generated worksheet command require a Task content execution observation proving approved execution records the reviewed task title and detail in the redacted receipt, and reject notes that only prove the Run approved plan control was reachable."))
         XCTAssertTrue(phase11.contains("[x] `script/create_voiceover_evidence.sh --validate-only` validates the filled manual command without writing tracked evidence."))
     }
 
