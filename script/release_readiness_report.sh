@@ -517,9 +517,9 @@ release_machine_helpers_are_current() {
 
 voiceover_priority_next_action() {
   if voiceover_review_helpers_are_current; then
-    printf 'fill `.tmp/voiceover-review/voiceover-worksheet.md` during the manual pass, complete generated `.tmp/voiceover-review/create-evidence-command.sh`, run its validate-only path first, then rerun readiness.'
+    printf 'fill `.tmp/voiceover-review/voiceover-worksheet.md` during the manual pass, run generated `.tmp/voiceover-review/create-evidence-command.sh` validate-only first, then rerun readiness.'
   else
-    printf 'run `./script/prepare_release_manual_helpers.sh`, fill `.tmp/voiceover-review/voiceover-worksheet.md`, complete `.tmp/voiceover-review/create-evidence-command.sh`, then rerun readiness.'
+    printf 'run `./script/prepare_release_manual_helpers.sh`, fill `.tmp/voiceover-review/voiceover-worksheet.md`, run generated `.tmp/voiceover-review/create-evidence-command.sh` validate-only first, then rerun readiness.'
   fi
 }
 
@@ -1461,7 +1461,7 @@ write_release_actions() {
     printf -- "- For this action summary, the expected pending preview path is \`.tmp/voiceover-review/accessibility-voiceover-pending-%s.md\`.\n" "$(manual_release_evidence_source_commit)"
     printf -- "- The candidate writes \`.tmp/voiceover-review/launch.env\` with \`SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT\` and \`SOLOPM_VOICEOVER_REVIEW_PROJECT_ID\`; verify those values before launching the manual VoiceOver pass.\n"
     printf -- "- The candidate writes \`.tmp/voiceover-review/voiceover-worksheet.md\`; fill it during the real VoiceOver pass and mark it \`Status: completed\` before running the generated command.\n"
-    printf -- "- The candidate writes \`.tmp/voiceover-review/create-evidence-command.sh\` with the same database/project context. Replace every placeholder in that generated command with concrete VoiceOver observations before running it.\n"
+    printf -- "- The candidate writes \`.tmp/voiceover-review/create-evidence-command.sh\` with the same database/project context and reads reviewer, environment, and focus observations from the completed worksheet.\n"
     printf -- "- The generated VoiceOver evidence command is pinned to a clean tracked source tree and the release-candidate source commit it was created for. Rerun \`./script/prepare_release_manual_helpers.sh\` after source changes instead of reusing an older command.\n"
     printf -- "- The generated VoiceOver evidence command also refuses to run until \`.tmp/voiceover-review/voiceover-worksheet.md\` is \`Status: completed\`, pinned to the same source commit and candidate database, free of pending/unchecked/template markers, and filled.\n"
     printf -- "- Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail; a reachable Run approved plan control alone is not release evidence.\n"
