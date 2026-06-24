@@ -67,6 +67,7 @@ public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
 
 public enum AccessibilityFocusPathFindingKind: String, Codable, Equatable, Sendable {
     case missingRequiredNode
+    case disabledRequiredNode
     case unlabeledInteractiveNode
     case genericButtonWithoutHelp
     case missingDestructiveConfirmation
@@ -115,6 +116,16 @@ public struct AccessibilityFocusPathAudit: Sendable {
                 continue
             }
             coveredNodeIDs.append(node.id)
+            if !node.isEnabled {
+                // A disabled required node can still be visible to AX, but it
+                // cannot complete the keyboard/VoiceOver CRUD path the release
+                // checklist is trying to prove.
+                findings.append(AccessibilityFocusPathFinding(
+                    kind: .disabledRequiredNode,
+                    nodeID: requiredNodeID,
+                    message: "Required accessibility node \(requiredNodeID) must be enabled for the lifecycle path."
+                ))
+            }
             findings.append(contentsOf: nodeFindings(for: node, allNodes: nodes))
         }
 

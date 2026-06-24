@@ -68,11 +68,30 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
         XCTAssertEqual(result.findings.map(\.kind), [.genericButtonWithoutHelp])
     }
 
+    func testPseudoVoiceOverAuditRejectsDisabledRequiredLifecycleControls() {
+        let result = AccessibilityFocusPathAudit().audit(
+            nodes: [
+                node(
+                    "task-auto-execution-run-plan",
+                    role: .button,
+                    label: "Run approved plan",
+                    help: "Runs only after explicit user approval.",
+                    isEnabled: false
+                )
+            ],
+            requirements: AccessibilityFocusPathRequirement(requiredNodeIDs: ["task-auto-execution-run-plan"])
+        )
+
+        XCTAssertEqual(result.findings.map(\.kind), [.disabledRequiredNode])
+        XCTAssertEqual(result.findings.first?.nodeID, "task-auto-execution-run-plan")
+    }
+
     private func node(
         _ id: String,
         role: AccessibilityNodeRole,
         label: String,
         help: String = "",
+        isEnabled: Bool = true,
         isDestructive: Bool = false,
         confirmsDestructiveAction: Bool = false
     ) -> AccessibilityNodeSnapshot {
@@ -81,7 +100,7 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
             role: role,
             label: label,
             help: help,
-            isEnabled: true,
+            isEnabled: isEnabled,
             isDestructive: isDestructive,
             confirmsDestructiveAction: confirmsDestructiveAction
         )
