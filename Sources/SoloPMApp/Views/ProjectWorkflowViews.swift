@@ -833,7 +833,7 @@ private struct InboxActionPanel: View {
         .accessibilityIdentifier("inbox-action-panel")
         .accessibilityLabel("Inbox classification actions")
         .accessibilityValue(panelAccessibilityValue)
-        .accessibilityHint("Choose how to classify the selected Inbox item.")
+        .accessibilityHint(panelAccessibilityHint)
     }
 
     private var panelAccessibilityValue: String {
@@ -852,6 +852,14 @@ private struct InboxActionPanel: View {
             }
         }
         return values.joined(separator: ", ")
+    }
+
+    private var panelAccessibilityHint: String {
+        let base = "Choose how to classify the selected Inbox item."
+        guard let task, viewModel.selectedInboxCaptureRecords.first != nil else {
+            return base
+        }
+        return "\(base) Voice capture metadata available for \(task.title)."
     }
 
     @ViewBuilder

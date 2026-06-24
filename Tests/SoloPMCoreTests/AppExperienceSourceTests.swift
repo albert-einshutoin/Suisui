@@ -1378,6 +1378,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("InboxCaptureMetadataPanel("))
         XCTAssertTrue(workflowSource.contains("viewModel.selectedInboxCaptureRecords"))
         XCTAssertTrue(workflowSource.contains(".accessibilityValue(panelAccessibilityValue)"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityHint(panelAccessibilityHint)"))
         XCTAssertTrue(workflowSource.contains("Voice capture metadata available for \\(task.title)"))
         XCTAssertTrue(workflowSource.contains("taskTitle: task?.title ?? \"Selected Inbox item\""))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-capture-metadata\")"))
