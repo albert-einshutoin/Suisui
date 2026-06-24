@@ -167,6 +167,48 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertFalse(decision.shouldCallLLM)
     }
 
+    func testPlannerDoesNotCallLLMForScheduledManualCadence() throws {
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        let snapshot = ProjectBoardSnapshot(projects: [
+            makeProject(tasks: [
+                makeTask(id: 1, title: "Manual cadence due task", priority: .high, dueAt: "2026-06-22T18:00:00Z")
+            ])
+        ])
+        let settings = TaskAutoExecutionSettings(
+            isEnabled: true,
+            mode: .reviewOnly,
+            cadence: .manual,
+            maxTasksPerRun: 3,
+            dailyLLMCallLimit: 6,
+            lookaheadHours: 48
+        )
+
+        let scheduledDecision = TaskAutoExecutionPlanner().makeDecision(
+            snapshot: snapshot,
+            settings: settings,
+            history: .empty,
+            trigger: .scheduled,
+            referenceDate: referenceDate,
+            calendar: utcCalendar()
+        )
+        let manualDecision = TaskAutoExecutionPlanner().makeDecision(
+            snapshot: snapshot,
+            settings: settings,
+            history: .empty,
+            trigger: .manual,
+            referenceDate: referenceDate,
+            calendar: utcCalendar()
+        )
+
+        XCTAssertEqual(scheduledDecision.status, .throttled)
+        XCTAssertEqual(scheduledDecision.selectedTasks, [])
+        XCTAssertEqual(scheduledDecision.reason, "Task automation frequency is manual; scheduled review will not call the LLM.")
+        XCTAssertFalse(scheduledDecision.shouldCallLLM)
+        XCTAssertEqual(manualDecision.status, .readyForReview)
+        XCTAssertEqual(manualDecision.selectedTasks.map(\.title), ["Manual cadence due task"])
+        XCTAssertTrue(manualDecision.shouldCallLLM)
+    }
+
     func testPlannerAllowsUrgentOverdueWorkAfterUrgentCooldownEvenWhenDailyCadenceHasNotElapsed() throws {
         let referenceDate = try isoDate("2026-06-22T09:00:00Z")
         let snapshot = ProjectBoardSnapshot(projects: [
@@ -883,6 +925,14 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertTrue(settings.validationIssues().isEmpty)
     }
 
+    func testTaskAutomationFrequencyControlDocumentsManualScheduledBoundary() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let productDoc = try readPackageFile("docs/product/role-and-strengths.md")
+
+        XCTAssertTrue(appSource.contains("Manual frequency only prepares reviews after a user action"))
+        XCTAssertTrue(productDoc.contains("Manual cadence is explicit user-triggered review"))
+    }
+
     private func makeProject(
         title: String = "Launch",
         status: String = "active",
@@ -940,5 +990,21 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         let json = String(userInput[start..<end])
         let data = Data(json.utf8)
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    private func readPackageFile(_ relativePath: String) throws -> String {
+        let url = packageRoot().appendingPathComponent(relativePath)
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func packageRoot() -> URL {
+        var url = URL(fileURLWithPath: #filePath)
+        while url.pathComponents.count > 1 {
+            url.deleteLastPathComponent()
+            if FileManager.default.fileExists(atPath: url.appendingPathComponent("Package.swift").path) {
+                return url
+            }
+        }
+        return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     }
 }

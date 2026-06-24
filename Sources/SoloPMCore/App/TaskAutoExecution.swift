@@ -44,6 +44,11 @@ public enum TaskAutoExecutionCadence: String, Codable, CaseIterable, Equatable, 
     }
 }
 
+public enum TaskAutoExecutionTrigger: String, Codable, Equatable, Sendable {
+    case manual
+    case scheduled
+}
+
 public struct TaskAutoExecutionSettings: Codable, Equatable, Sendable {
     public var isEnabled: Bool
     public var mode: TaskAutoExecutionMode
@@ -241,6 +246,7 @@ public struct TaskAutoExecutionPlanner: Sendable {
         snapshot: ProjectBoardSnapshot,
         settings rawSettings: TaskAutoExecutionSettings,
         history: TaskAutoExecutionHistory,
+        trigger: TaskAutoExecutionTrigger = .manual,
         referenceDate: Date = Date(),
         calendar: Calendar = .current
     ) -> TaskAutoExecutionDecision {
@@ -254,6 +260,16 @@ public struct TaskAutoExecutionPlanner: Sendable {
 
         guard settings.isEnabled else {
             return decision(.disabled, reason: "Task automation is disabled.", remainingBudget: remainingBudget)
+        }
+        if settings.cadence == .manual, trigger == .scheduled {
+            // Manual cadence is opt-in review, not a background schedule. This
+            // keeps future launch/login automation from spending provider calls
+            // when the user explicitly chose manual frequency in Settings.
+            return decision(
+                .throttled,
+                reason: "Task automation frequency is manual; scheduled review will not call the LLM.",
+                remainingBudget: remainingBudget
+            )
         }
         guard remainingBudget > 0 else {
             return decision(.budgetExhausted, reason: "Daily LLM automation budget is exhausted.", remainingBudget: remainingBudget)

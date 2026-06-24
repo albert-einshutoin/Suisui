@@ -1205,6 +1205,7 @@ private struct SettingsView: View {
                     }
                 }
                 .accessibilityIdentifier("settings-task-auto-execution-frequency")
+                .accessibilityHint("Manual frequency only prepares reviews after a user action; scheduled reviews require hourly, daily, or weekly frequency.")
 
                 Stepper(
                     value: Binding(
