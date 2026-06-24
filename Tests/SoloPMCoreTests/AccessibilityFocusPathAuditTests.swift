@@ -86,6 +86,22 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
         XCTAssertEqual(result.findings.first?.nodeID, "task-auto-execution-run-plan")
     }
 
+    func testPseudoVoiceOverAuditRejectsOutOfOrderRequiredLifecycleNodes() {
+        let result = AccessibilityFocusPathAudit().audit(
+            nodes: [
+                node("task-inspector-delete-confirmation-confirm", role: .button, label: "Confirm Delete Task", help: "Confirms permanent deletion.", confirmsDestructiveAction: true),
+                node("task-inspector-save", role: .button, label: "Save Changes", help: "Saves edits to the selected task.")
+            ],
+            requirements: AccessibilityFocusPathRequirement(requiredNodeIDs: [
+                "task-inspector-save",
+                "task-inspector-delete-confirmation-confirm"
+            ])
+        )
+
+        XCTAssertEqual(result.findings.map(\.kind), [.outOfOrderRequiredNode])
+        XCTAssertEqual(result.findings.first?.nodeID, "task-inspector-delete-confirmation-confirm")
+    }
+
     private func node(
         _ id: String,
         role: AccessibilityNodeRole,

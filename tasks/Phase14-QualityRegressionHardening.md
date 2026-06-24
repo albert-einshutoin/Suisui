@@ -397,6 +397,7 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 - [x] destructive confirmationが確認なしに実行できないことをruntime smokeで確認する。
 - [x] 擬似VoiceOver harnessで、承認済みtask execution receiptにreviewed titleだけでなくreviewed detailが残らない場合は失敗するテストを追加する。
 - [x] 擬似VoiceOver auditは、必須lifecycle nodeが存在してもdisabledならcoverage扱いにせず、Run approved planなどの到達不能なCRUD/実行controlをfailさせる。
+- [x] 擬似VoiceOver auditは、必須lifecycle nodeがAX traversal上で逆順になった場合に失敗するテストを追加する。
 - [x] Project / Task inspectorのSave controlが長いSuggestion / Automation sectionより前にあり、編集後にcompact windowのAX/VoiceOver pathで即保存できることをsource testで固定する。
 
 ### Implementation Steps
@@ -408,6 +409,7 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 - [x] `approved-execution-receipt` stepでreviewed task contentの欠落を検出し、タイトルだけの実行証跡ではmanual evidenceを再利用できないようにする。
 - [x] `script/check_pseudo_voiceover_paths.sh --swift-test` をPR gateへ接続し、source markerだけでなく `AccessibilityFocusPathAuditTests` / `SoloPMHarnessTests` でMCP擬似VoiceOverロジックも検証する。
 - [x] `AccessibilityFocusPathAudit` は必須nodeがdisabledの場合、存在だけでは通さず `disabledRequiredNode` として返す。
+- [x] `AccessibilityFocusPathAudit` は必須nodeの相対順が崩れた場合、存在だけでは通さず `outOfOrderRequiredNode` として返す。
 
 ### Acceptance Criteria
 
@@ -416,6 +418,7 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 - [x] 手動VoiceOver前に明らかなlabel/focus漏れを自動検出できる。
 - [x] 承認済み実行は、対象タスクのタイトルと本文の両方がredacted receiptに残る場合だけ擬似VoiceOver gateを通過する。
 - [x] 必須CRUD/実行controlはenabled状態で検出された場合だけ擬似VoiceOver gateを通過する。
+- [x] 必須CRUD/実行controlはsource/runtimeから得たAX traversal順でも要求順に現れた場合だけ擬似VoiceOver gateを通過する。
 
 ### Non-goals
 

@@ -68,6 +68,7 @@ public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
 public enum AccessibilityFocusPathFindingKind: String, Codable, Equatable, Sendable {
     case missingRequiredNode
     case disabledRequiredNode
+    case outOfOrderRequiredNode
     case unlabeledInteractiveNode
     case genericButtonWithoutHelp
     case missingDestructiveConfirmation
@@ -103,8 +104,12 @@ public struct AccessibilityFocusPathAudit: Sendable {
         requirements: AccessibilityFocusPathRequirement
     ) -> AccessibilityFocusPathAuditResult {
         let nodesByID = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0) })
+        let firstNodeIndexesByID = nodes.enumerated().reduce(into: [String: Int]()) { indexes, pair in
+            indexes[pair.element.id] = indexes[pair.element.id] ?? pair.offset
+        }
         var findings: [AccessibilityFocusPathFinding] = []
         var coveredNodeIDs: [String] = []
+        var lastRequiredNodeIndex = -1
 
         for requiredNodeID in requirements.requiredNodeIDs {
             guard let node = nodesByID[requiredNodeID] else {
@@ -116,6 +121,19 @@ public struct AccessibilityFocusPathAudit: Sendable {
                 continue
             }
             coveredNodeIDs.append(node.id)
+            if let currentIndex = firstNodeIndexesByID[requiredNodeID] {
+                if currentIndex < lastRequiredNodeIndex {
+                    // VoiceOver follows the AX traversal order, so a required
+                    // node that appears before an earlier lifecycle step cannot
+                    // prove the create/edit/execute/delete path is reachable.
+                    findings.append(AccessibilityFocusPathFinding(
+                        kind: .outOfOrderRequiredNode,
+                        nodeID: requiredNodeID,
+                        message: "Required accessibility node \(requiredNodeID) appears before an earlier lifecycle step."
+                    ))
+                }
+                lastRequiredNodeIndex = max(lastRequiredNodeIndex, currentIndex)
+            }
             if !node.isEnabled {
                 // A disabled required node can still be visible to AX, but it
                 // cannot complete the keyboard/VoiceOver CRUD path the release
