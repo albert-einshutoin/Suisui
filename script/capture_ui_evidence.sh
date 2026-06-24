@@ -235,7 +235,7 @@ target_marker_present() {
   error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-ui-target-marker-error.XXXXXX")"
 
   /usr/bin/osascript - "$APP_NAME" "$identifier" "$text" <<'APPLESCRIPT' >/dev/null 2>"$error_file" &
-on elementSignal(uiElement)
+on elementSignalParts(uiElement)
   set itemIdentifier to ""
   set itemName to ""
   set itemTitle to ""
@@ -262,20 +262,32 @@ on elementSignal(uiElement)
       set itemValue to value of uiElement as text
     end try
   end tell
-  return itemIdentifier & " " & itemName & " " & itemTitle & " " & itemDescription & " " & itemHelp & " " & itemValue
-end elementSignal
+  return {itemIdentifier, itemIdentifier & " " & itemName & " " & itemTitle & " " & itemDescription & " " & itemHelp & " " & itemValue}
+end elementSignalParts
 
-on elementTreeContains(uiElement, needle)
-  if my elementSignal(uiElement) contains needle then return true
+on scanElementTree(uiElement, identifierNeedle, textNeedle)
+  set signalParts to my elementSignalParts(uiElement)
+  set itemIdentifier to item 1 of signalParts
+  set itemSignal to item 2 of signalParts
+  set foundIdentifier to false
+  set foundText to false
+
+  if itemIdentifier contains identifierNeedle then set foundIdentifier to true
+  if itemSignal contains textNeedle then set foundText to true
+  if foundIdentifier and foundText then return {true, true}
+
   tell application "System Events"
     try
       repeat with childElement in UI elements of uiElement
-        if my elementTreeContains(childElement, needle) then return true
+        set childResult to my scanElementTree(childElement, identifierNeedle, textNeedle)
+        if item 1 of childResult then set foundIdentifier to true
+        if item 2 of childResult then set foundText to true
+        if foundIdentifier and foundText then return {true, true}
       end repeat
     end try
   end tell
-  return false
-end elementTreeContains
+  return {foundIdentifier, foundText}
+end scanElementTree
 
 on run argv
   set appName to item 1 of argv
@@ -294,8 +306,12 @@ on run argv
         try
           if (name of currentWindow as text) contains textNeedle then set foundText to true
         end try
-        if not foundIdentifier and my elementTreeContains(currentWindow, identifierNeedle) then set foundIdentifier to true
-        if not foundText and my elementTreeContains(currentWindow, textNeedle) then set foundText to true
+        -- AX marker scans are bounded to one traversal per visible window because
+        -- SwiftUI's generated tree can be large enough for separate identifier/text
+        -- scans to stall release screenshot evidence on detail-heavy screens.
+        set windowResult to my scanElementTree(currentWindow, identifierNeedle, textNeedle)
+        if item 1 of windowResult then set foundIdentifier to true
+        if item 2 of windowResult then set foundText to true
         if foundIdentifier and foundText then return "present"
       end repeat
     end tell
