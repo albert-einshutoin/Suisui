@@ -466,6 +466,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] document deliverable draftを直接構築またはCodable復元しても、title / suggested path / source document ID / source preview / rationaleのsecret-like値がreviewやprovider contextへ残らないことをテストする。
 - [x] ProjectBoard ViewModel経由のtask automation review requestが、plannerのpriority/due-date選定、task cap、LLM budget、document deliverables、secret redactionを同じprovider境界で保持することをテストする。
 - [x] future non-planner caller由来のdecisionがdone/blocked task、低優先度の期限なしtask、lookahead外taskを含んでも、LLM provider境界ではSettingsのpriority/due/status eligibilityで再フィルタされることをテストする。
+- [x] future non-planner caller由来のdecisionがeligible taskを安全でない順序で渡しても、LLM provider境界ではplannerと同じpriority/due/id順へ再ソートしてからtask capを適用することをテストする。
 - [x] 複数タスクのautomation reviewで1件目をapproved executionしても、残りのreview候補とredacted execution receipt historyが消えないことをテストする。
 - [x] stale sync / future connector由来のdecisionがdirect execution可能だと主張しても、LLM provider境界ではreview-only / approval-requiredへ強制されることをテストする。
 - [x] 前日のLLM call countが残ったhistoryでも、設定されたcalendar dayが変わればdaily LLM budgetが復帰し、当日期限タスクのreviewを誤って止めないことをテストする。
@@ -487,6 +488,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] `DocumentAutomationDeliverableDraft` と `DocumentAutomationDeliverableSource` の生成・復元境界で title / suggested path / source document ID / rationaleをredactし、保存済みJSONやfuture connector由来のdraftがprovider直前以外のreview面で漏れないようにする。
 - [x] ProjectBoard ViewModelに、現在のboard snapshotと設定からreview-only `PlanningRequest` を作る入口を追加し、document deliverablesも同じredacted JSON payloadへ渡す。
 - [x] Task automation provider request builderで、plannerを通らないselected taskにもSettings由来のstatus / priority / due-date / lookahead eligibilityを再適用する。
+- [x] Task automation provider request builderで、plannerを通らないeligible selected taskにもpriority / due-date / local task IDの安定順序を再適用し、task capの前にurgent workが残るようにする。
 - [x] ProjectBoard ViewModelにapproved execution receipt historyを追加し、複数選択reviewでは実行済みtaskだけをqueueから外す。
 - [x] Task automation provider request builderでdecisionのapproval/direct-execution flagsを再信頼せず、API境界でreview-only契約を再固定する。
 - [x] Task automation plannerで `lastRunAt` とreference dateのcalendar dayを比較し、日を跨いだsession/persisted historyはdaily LLM usageだけを0へ戻す。

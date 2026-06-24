@@ -69,6 +69,8 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(doc.contains("source-bound document deliverables"))
         XCTAssertTrue(doc.contains("draft-only approval-gated outputs"))
         XCTAssertTrue(doc.contains("ProjectBoard review request"))
+        XCTAssertTrue(doc.contains("priority/due/id ordering"))
+        XCTAssertTrue(doc.contains("lower-priority future work ahead of urgent work"))
         XCTAssertTrue(doc.contains("document deliverables are sent as fenced redacted JSON"))
         XCTAssertNil(doc.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
     }

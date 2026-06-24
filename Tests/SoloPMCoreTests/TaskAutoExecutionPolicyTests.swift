@@ -676,6 +676,54 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertFalse(request.userInput.contains("High outside lookahead"))
     }
 
+    func testPlanningRequestReranksExternalSelectedTasksByPriorityAndDueDateAtProviderBoundary() throws {
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        let decision = TaskAutoExecutionDecision(
+            status: .readyForReview,
+            selectedTasks: [
+                makeTask(id: 104, title: "Low future external selection", priority: .low, dueAt: "2026-06-23T18:00:00Z"),
+                makeTask(id: 102, title: "Medium overdue external selection", priority: .medium, dueAt: "2026-06-21T18:00:00Z"),
+                makeTask(id: 103, title: "High due today external selection", priority: .high, dueAt: "2026-06-22T18:00:00Z"),
+                makeTask(id: 101, title: "High overdue external selection", priority: .high, dueAt: "2026-06-20T18:00:00Z"),
+                makeTask(id: 105, title: "High undated external selection", priority: .high)
+            ],
+            reason: "External caller supplied eligible tasks in an unsafe order.",
+            llmCallBudgetRemaining: 6,
+            requiresUserApproval: true,
+            allowsDirectExecution: false
+        )
+
+        let request = try TaskAutoExecutionPlanningRequestBuilder().makePlanningRequest(
+            decision: decision,
+            settings: .init(
+                isEnabled: true,
+                mode: .reviewOnly,
+                cadence: .hourly,
+                maxTasksPerRun: 4,
+                dailyLLMCallLimit: 6,
+                lookaheadHours: 72
+            ),
+            referenceDate: referenceDate,
+            timeZoneIdentifier: "UTC"
+        )
+        let payload = try jsonPayload(from: request.userInput)
+        let selectedTasks = try XCTUnwrap(payload["selectedTasks"] as? [[String: Any]])
+
+        XCTAssertEqual(selectedTasks.map { $0["title"] as? String }, [
+            "High overdue external selection",
+            "Medium overdue external selection",
+            "High due today external selection",
+            "High undated external selection"
+        ])
+        XCTAssertEqual(selectedTasks.map { $0["selectionReason"] as? String }, [
+            "overdue by 2 days",
+            "overdue by 1 day",
+            "due today",
+            "high priority without due date"
+        ])
+        XCTAssertFalse(request.userInput.contains("Low future external selection"))
+    }
+
     func testPlanningRequestStopsProviderCallWhenEligibilityFiltersEverySelectedTask() throws {
         let referenceDate = try isoDate("2026-06-22T09:00:00Z")
         let decision = TaskAutoExecutionDecision(

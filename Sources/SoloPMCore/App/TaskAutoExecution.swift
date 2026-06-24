@@ -483,6 +483,9 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
                 referenceDate: referenceDate,
                 calendar: calendar
             )
+            .sorted {
+                isTask($0, rankedBefore: $1, referenceDate: referenceDate, calendar: calendar)
+            }
             .prefix(normalizedSettings.maxTasksPerRun)
         )
         guard !cappedTasks.isEmpty else {
@@ -601,6 +604,51 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
             // spending LLM budget on work the user's Settings excluded.
             return dueDate <= lookaheadEnd
         }
+    }
+
+    private func isTask(
+        _ lhs: ProjectBoardTask,
+        rankedBefore rhs: ProjectBoardTask,
+        referenceDate: Date,
+        calendar: Calendar
+    ) -> Bool {
+        let lhsRank = rank(task: lhs, referenceDate: referenceDate, calendar: calendar)
+        let rhsRank = rank(task: rhs, referenceDate: referenceDate, calendar: calendar)
+        if lhsRank != rhsRank {
+            return isRank(lhsRank, orderedBefore: rhsRank)
+        }
+        // The provider boundary is the final LLM-cost guard. If a future sync or
+        // connector caller supplies eligible tasks in arbitrary order, the same
+        // stable local ordering used by the planner prevents newer equal-rank
+        // items from consuming the capped review budget first.
+        return lhs.id < rhs.id
+    }
+
+    private func rank(task: ProjectBoardTask, referenceDate: Date, calendar: Calendar) -> [Int] {
+        let dueDate = parsedDueDate(task.dueAt, calendar: calendar)
+        let dueBucket: Int
+        if let dueDate, dueDate < startOfDay(for: referenceDate, calendar: calendar) {
+            dueBucket = 0
+        } else if let dueDate, dueDate < endOfDay(for: referenceDate, calendar: calendar) {
+            dueBucket = 1
+        } else if dueDate == nil && task.priority == .high {
+            dueBucket = 2
+        } else if dueDate != nil {
+            dueBucket = 2
+        } else {
+            dueBucket = 3
+        }
+        let dueTimestamp = dueDate.map { Int($0.timeIntervalSince1970) } ?? Int.max
+        return [dueBucket, task.priority.executionSortRank, dueTimestamp]
+    }
+
+    private func isRank(_ lhs: [Int], orderedBefore rhs: [Int]) -> Bool {
+        for (lhsValue, rhsValue) in zip(lhs, rhs) {
+            if lhsValue != rhsValue {
+                return lhsValue < rhsValue
+            }
+        }
+        return lhs.count < rhs.count
     }
 
     private func redactedProviderContent(_ value: String) -> String {
