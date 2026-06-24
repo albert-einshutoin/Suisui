@@ -549,7 +549,7 @@ final class ReleasePipelineTests: XCTestCase {
             try? FileManager.default.removeItem(at: worksheetURL)
             try? FileManager.default.removeItem(at: commandURL)
         }
-        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let currentShortCommit = try currentShortGitCommit()
 
         let result = try runScript(
             "script/prepare_release_machine_evidence.sh",
@@ -5376,7 +5376,7 @@ final class ReleasePipelineTests: XCTestCase {
             try "final class \(targetName)RuntimeSource {}\n"
                 .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
         }
-        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let currentShortCommit = try currentShortGitCommit()
 
         try readPackageFile("script/release_readiness_report.sh")
             .write(to: reportURL, atomically: true, encoding: .utf8)
@@ -5483,7 +5483,7 @@ final class ReleasePipelineTests: XCTestCase {
             try "final class \(targetName)RuntimeSource {}\n"
                 .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
         }
-        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let currentShortCommit = try currentShortGitCommit()
 
         try readPackageFile("script/release_readiness_report.sh")
             .write(to: reportURL, atomically: true, encoding: .utf8)
@@ -6096,7 +6096,7 @@ final class ReleasePipelineTests: XCTestCase {
                 .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
         }
 
-        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let currentShortCommit = try currentShortGitCommit()
         try """
         # Automated Release Preflight Evidence
 
@@ -6307,7 +6307,7 @@ final class ReleasePipelineTests: XCTestCase {
         let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
         let accessibilityURL = scriptDirectory.appendingPathComponent("check_accessibility_preflight.sh")
         let actionSummaryURL = fixtureRoot.appendingPathComponent("release-actions.md")
-        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let currentShortCommit = try currentShortGitCommit()
         let evidenceURL = tmpDirectory.appendingPathComponent("automated-release-preflight-\(currentShortCommit).md")
 
         try? FileManager.default.removeItem(at: fixtureRoot)
@@ -6434,7 +6434,7 @@ final class ReleasePipelineTests: XCTestCase {
                 .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
         }
 
-        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let currentShortCommit = try currentShortGitCommit()
         try """
         # Automated Release Preflight Evidence
 
@@ -6513,7 +6513,7 @@ final class ReleasePipelineTests: XCTestCase {
                 .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
         }
 
-        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let currentShortCommit = try currentShortGitCommit()
         try """
         # Automated Release Preflight Evidence
 
@@ -6592,7 +6592,7 @@ final class ReleasePipelineTests: XCTestCase {
                 .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
         }
 
-        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let currentShortCommit = try currentShortGitCommit()
         try """
         # Automated Release Preflight Evidence
 
@@ -8541,7 +8541,7 @@ final class ReleasePipelineTests: XCTestCase {
         let screenshotDirectory = evidenceDirectory.appendingPathComponent("ui-screenshots", isDirectory: true)
         let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
         let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
-        let currentUISourceCommit = String(try currentGitCommit().prefix(7))
+        let currentUISourceCommit = try currentShortGitCommit()
 
         try? FileManager.default.removeItem(at: fixtureRoot)
         try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
@@ -9198,7 +9198,7 @@ final class ReleasePipelineTests: XCTestCase {
             try "final class \(targetName)RuntimeSource {}\n"
                 .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
         }
-        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let currentShortCommit = try currentShortGitCommit()
 
         try readPackageFile("script/release_readiness_report.sh")
             .write(to: reportURL, atomically: true, encoding: .utf8)
@@ -9729,7 +9729,7 @@ final class ReleasePipelineTests: XCTestCase {
             try "final class \(targetName)RuntimeSource {}\n"
                 .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
         }
-        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let currentShortCommit = try currentShortGitCommit()
 
         try readPackageFile("script/release_readiness_report.sh")
             .write(to: reportURL, atomically: true, encoding: .utf8)
@@ -10446,7 +10446,7 @@ final class ReleasePipelineTests: XCTestCase {
                 .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
         }
 
-        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let currentShortCommit = try currentShortGitCommit()
         let completeRuntimeEvidence = """
         # MCP Inspector Evidence
 
@@ -10580,7 +10580,7 @@ final class ReleasePipelineTests: XCTestCase {
             try "final class \(targetName)RuntimeSource {}\n"
                 .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
         }
-        let currentShortCommit = String(try currentGitCommit().prefix(7))
+        let currentShortCommit = try currentShortGitCommit()
 
         let completeMCPEvidence = """
         # MCP Inspector Evidence
@@ -10944,6 +10944,22 @@ final class ReleasePipelineTests: XCTestCase {
         return output
     }
 
+    private func currentShortGitCommit() throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["git", "-C", packageRoot().path, "rev-parse", "--short", "HEAD"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        try process.run()
+        process.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        XCTAssertEqual(process.terminationStatus, 0, output)
+        return output
+    }
+
     private func manualReleaseEvidenceSourceCommit() throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
@@ -10966,7 +10982,7 @@ final class ReleasePipelineTests: XCTestCase {
         let output = String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         XCTAssertEqual(process.terminationStatus, 0, output)
-        return output.isEmpty ? String(try currentGitCommit().prefix(7)) : output
+        return output.isEmpty ? try currentShortGitCommit() : output
     }
 
     private func writeArtifactChecksum(
