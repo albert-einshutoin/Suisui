@@ -319,6 +319,44 @@ final class SoloPMHarnessTests: XCTestCase {
         XCTAssertTrue(run.diff?.actual.contains("unlabeledRequiredNode") ?? false)
     }
 
+    func testAccessibilityHarnessRunFailsWhenSnapshotContainsBlankNodeID() {
+        let nodes = completeAccessibilityNodes() + [
+            node("   ", role: .button, label: "Untargetable extra action", help: "This cannot be targeted by MCP.")
+        ]
+
+        let run = SoloPMHarnessAccessibilityAuditRunner().run(
+            id: "run-ax-blank-node-id",
+            trigger: .cloudTriggered,
+            startedAt: "2026-06-23T00:00:00Z",
+            finishedAt: "2026-06-23T00:00:01Z",
+            nodes: nodes,
+            approvedExecutionReceipt: approvedExecutionReceipt()
+        )
+
+        XCTAssertEqual(run.status, .failed)
+        XCTAssertEqual(run.diff?.stepID, "focus-path-snapshot-blankNodeID")
+        XCTAssertTrue(run.diff?.actual.contains("blankNodeID") ?? false)
+    }
+
+    func testAccessibilityHarnessRunFailsDynamicRequiredNodeDuplicateOnMappedStep() {
+        let nodes = completeAccessibilityNodes() + [
+            node("task-status-move-in_progress-42", role: .button, label: "Duplicate move", help: "Duplicate dynamic AX target.")
+        ]
+
+        let run = SoloPMHarnessAccessibilityAuditRunner().run(
+            id: "run-ax-duplicate-dynamic-node-id",
+            trigger: .cloudTriggered,
+            startedAt: "2026-06-23T00:00:00Z",
+            finishedAt: "2026-06-23T00:00:01Z",
+            nodes: nodes,
+            approvedExecutionReceipt: approvedExecutionReceipt()
+        )
+
+        XCTAssertEqual(run.status, .failed)
+        XCTAssertEqual(run.diff?.stepID, "focus-path-task-status-move-in_progress")
+        XCTAssertTrue(run.diff?.actual.contains("duplicateNodeID") ?? false)
+    }
+
     func testAccessibilityHarnessRunFailsWithConcreteMissingFocusPathDiff() {
         let incompleteNodes = completeAccessibilityNodes()
             .filter { $0.id != "task-auto-execution-run-plan" }

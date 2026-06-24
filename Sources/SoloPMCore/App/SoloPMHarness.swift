@@ -704,7 +704,22 @@ public struct SoloPMHarnessAccessibilityAuditRunner: Sendable {
     ) -> SoloPMHarnessRun {
         let scenario = Self.accessibilityScenario()
         let result = AccessibilityFocusPathAudit().audit(nodes: nodes, requirements: requirements)
-        let findingsByNodeID = Dictionary(grouping: result.findings, by: \.nodeID)
+        // Runtime AX snapshots can report dynamic IDs or whole-snapshot ID
+        // defects. Map them back into harness steps so a complete-looking
+        // required path cannot hide an untargetable MCP/VoiceOver node.
+        let findingsByNodeID = Dictionary(
+            grouping: result.findings.compactMap { finding -> (String, AccessibilityFocusPathFinding)? in
+                guard let reportingNodeID = reportingNodeID(for: finding.nodeID, requirements: requirements) else {
+                    return nil
+                }
+                return (reportingNodeID, finding)
+            },
+            by: \.0
+        )
+        .mapValues { $0.map(\.1) }
+        let snapshotFindingSteps = result.findings
+            .filter { reportingNodeID(for: $0.nodeID, requirements: requirements) == nil }
+            .map(snapshotStep)
 
         // Emit one harness step per required focus node so a broad MCP smoke
         // cannot hide one missing create/edit/execute/delete control behind a
@@ -715,7 +730,7 @@ public struct SoloPMHarnessAccessibilityAuditRunner: Sendable {
         let receiptSteps = requirements.requiredNodeIDs.contains("task-auto-execution-run-plan")
             ? [approvedExecutionReceiptStep(approvedExecutionReceipt)]
             : []
-        let steps = focusSteps + receiptSteps
+        let steps = focusSteps + snapshotFindingSteps + receiptSteps
         let receiptCoveredCount = receiptSteps.filter { $0.status == .passed }.count
         let logs = [
             SoloPMHarnessLogEntry(
@@ -743,6 +758,34 @@ public struct SoloPMHarnessAccessibilityAuditRunner: Sendable {
             finishedAt: finishedAt,
             steps: steps,
             logs: logs
+        )
+    }
+
+    private func reportingNodeID(
+        for nodeID: String,
+        requirements: AccessibilityFocusPathRequirement
+    ) -> String? {
+        if requirements.requiredNodeIDs.contains(nodeID) {
+            return nodeID
+        }
+
+        return requirements.dynamicRequiredNodeIDPrefixes
+            .first { nodeID.hasPrefix("\($0)-") }
+    }
+
+    private func snapshotStep(
+        for finding: AccessibilityFocusPathFinding
+    ) -> SoloPMHarnessStepResult {
+        let expected = "focus path snapshot has targetable and unique accessibility identifiers"
+        let actual = "\(finding.kind.rawValue): \(finding.message)"
+
+        return SoloPMHarnessStepResult(
+            id: "focus-path-snapshot-\(finding.kind.rawValue)",
+            status: .failed,
+            expected: expected,
+            actual: actual,
+            failureReason: actual,
+            durationMilliseconds: 0
         )
     }
 
