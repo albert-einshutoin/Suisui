@@ -831,9 +831,20 @@ private struct InboxActionPanel: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inbox-action-panel")
-        .accessibilityLabel("Inbox classification actions")
+        .accessibilityLabel(panelAccessibilityLabel)
         .accessibilityValue(panelAccessibilityValue)
         .accessibilityHint(panelAccessibilityHint)
+    }
+
+    private var panelAccessibilityLabel: String {
+        var values = ["Inbox classification actions"]
+        if let task {
+            values.append("Selected Inbox item \(task.title)")
+            if viewModel.selectedInboxCaptureRecords.first != nil {
+                values.append("Voice capture metadata available for \(task.title)")
+            }
+        }
+        return values.joined(separator: ", ")
     }
 
     private var panelAccessibilityValue: String {
