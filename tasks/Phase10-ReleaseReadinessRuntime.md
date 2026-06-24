@@ -1310,7 +1310,7 @@
 - [x] action summary は `Release Environment Blockers` に `verify_release_environment.sh` の `BLOCKER:` 明細を相対パス化して列挙し、機密っぽい値を転記しない。
 - [x] action summary は release environment blocker を Signing Configuration / Notarization / Sparkle / Appcast / Gatekeeper / Release Evidence / Source Hygiene / Local Inspection に分類し、release-machine作業の順序を読み取れるようにする。
 - [x] action summary は clean-tree automated preflight evidence が有効な場合、accepted evidence、source commit、generated at、runtime AX smoke OK行、passed gatesを表示し、再実行指示だけを出さない。
-- [x] `check_automated_release_preflight.sh` は通過後に current commit の manual helper を再生成し、VoiceOver / competitor / release-machine の helper freshness を片寄らせない。
+- [x] `check_automated_release_preflight.sh` は通過後に VoiceOver / competitor helper を release-candidate product source commit、release-machine helper を current release evidence source commit で再生成し、helper freshness を片寄らせない。
 - [x] action summary は Local Product Gate Status でcurrent commitのMCP/data/CRUD/local proofがgreenか、残りがmanual/release-machineかを明示する。
 - [x] action summary は `Manual VoiceOver Blockers` と `Competitor Hands-On Blockers` に手動証跡の不足項目を分離表示し、手動作業を完了扱いにしない。
 - [x] action summary は VoiceOver の `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` preview、`.tmp/voiceover-review/voiceover-worksheet.md`、`.tmp/voiceover-review/create-evidence-command.sh` を案内し、operatorがtracked evidenceを汚さずrelease候補contextを確認できるようにする。
@@ -1340,7 +1340,7 @@
 - [x] action summary は generated VoiceOver / competitor / release-machine command が placeholder 未置換のままでは `--validate-only` でも失敗することを表示し、template command を evidence-ready に見せない。
 - [x] action summary は `docs/release/manual-unblockers.md` への Persistent Manual Unblocker Runbook 導線を出し、一時ファイルが再生成されても恒久runbookへ戻れるようにする。
 - [x] release readiness は `docs/release/manual-unblockers.md` が hardcoded automated preflight evidence や release-candidate source commit を含む場合 blocker にする。
-- [x] `script/prepare_release_manual_helpers.sh` は release-candidate source commit の VoiceOver pending preview / launch env / worksheet / command、competitor pending evidence、competitor benchmark pending worksheet、competitor worksheet / command、release-machine worksheet / command を一括再生成し、passed evidence を書かない。
+- [x] `script/prepare_release_manual_helpers.sh` は release-candidate product source commit の VoiceOver pending preview / launch env / worksheet / command、competitor pending evidence、competitor benchmark pending worksheet、competitor worksheet / command と、current release evidence source commit の release-machine worksheet / command を一括再生成し、passed evidence を書かない。
 - [x] `script/prepare_release_manual_helpers.sh` は tracked source tree がdirtyな場合、pending preview / command生成前に停止し、未コミット差分をcurrent commitのrelease candidateとして扱わない。
 - [x] action summary の Manual Review Helper Freshness は stale/missing helper を見つけた場合、個別コマンドの羅列ではなく `./script/prepare_release_manual_helpers.sh` を次アクションとして提示する。
 - [x] Manual Review Helper Freshness は command helper の `EXPECTED_SOURCE_COMMIT` 実代入だけを current commit pin として扱い、コメントや説明文に current commit が出るだけでは stale 扱いにする。

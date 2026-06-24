@@ -24,6 +24,7 @@ release_candidate_source_commit() {
 }
 
 SOURCE_COMMIT="$(release_candidate_source_commit)"
+RELEASE_EVIDENCE_SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
 
 VOICEOVER_SCRIPT="$ROOT_DIR/script/prepare_voiceover_review_candidate.sh"
 COMPETITOR_SCRIPT="$ROOT_DIR/script/create_competitor_hands_on_evidence.sh"
@@ -130,7 +131,12 @@ done
 cd "$ROOT_DIR"
 require_clean_tracked_source_tree_for_manual_helpers
 
-printf 'Preparing manual release helpers for release-candidate source commit: %s\n' "$SOURCE_COMMIT"
+# VoiceOver and competitor evidence review the shipped product surface, while
+# release-machine evidence must stay pinned to the exact HEAD that creates the
+# package/release scripts and final evidence. Printing both avoids operators
+# copying the wrong commit into a manual worksheet after script-only changes.
+printf 'Preparing manual review helpers for release-candidate product source commit: %s\n' "$SOURCE_COMMIT"
+printf 'Preparing release-machine helper for release evidence source commit: %s\n' "$RELEASE_EVIDENCE_SOURCE_COMMIT"
 printf '%s\n' 'This does not write passed manual evidence.'
 
 "$VOICEOVER_SCRIPT" --no-launch --skip-build
@@ -141,7 +147,9 @@ printf '%s\n' 'This does not write passed manual evidence.'
 "$RELEASE_MACHINE_SCRIPT"
 
 printf '\n'
-printf 'Manual release helpers prepared for release-candidate source commit: %s\n' "$SOURCE_COMMIT"
+printf 'Manual release helpers prepared.\n'
+printf -- '- Release-candidate product source commit: `%s`\n' "$SOURCE_COMMIT"
+printf -- '- Release evidence source commit: `%s`\n' "$RELEASE_EVIDENCE_SOURCE_COMMIT"
 printf -- '- VoiceOver pending preview: `%s`\n' "$VOICEOVER_PENDING_RELATIVE"
 printf -- '- VoiceOver worksheet: `%s`\n' "$VOICEOVER_WORKSHEET_RELATIVE"
 printf -- '- VoiceOver evidence command: `%s`\n' "$VOICEOVER_COMMAND_RELATIVE"
