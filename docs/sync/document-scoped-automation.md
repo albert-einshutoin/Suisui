@@ -49,6 +49,8 @@ Project Board also keeps the same source-bound deliverables in review state afte
 
 The document automation harness treats these source previews as part of the deliverable contract. A draft that only lists source document IDs, or attaches a preview from a different document, fails the `document-scoped-automation` scenario. This keeps "release notes from release docs" and "PR plan from implementation docs" from collapsing into a generic docs-present smoke test.
 
+The provider request keeps one reviewable draft per normalized suggested output path. If a future caller bypasses the local planner and supplies two approved drafts for the same file, the API-edge payload keeps the first source-bound draft and drops the collision before the LLM can generate conflicting file content.
+
 ## Proposed Output Kinds
 
 The Pro tool flow can propose:

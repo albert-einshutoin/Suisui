@@ -930,6 +930,74 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         XCTAssertFalse(request.userInput.contains("Unapproved PR plan"))
     }
 
+    func testPlanningRequestDropsDuplicateDocumentDeliverableSuggestedPathsAtProviderBoundary() throws {
+        let referenceDate = try isoDate("2026-06-22T09:00:00Z")
+        let decision = TaskAutoExecutionDecision(
+            status: .readyForReview,
+            selectedTasks: [
+                makeTask(
+                    id: 72,
+                    title: "Review generated document outputs",
+                    detail: "Create one draft file per approved path.",
+                    priority: .high,
+                    dueAt: "2026-06-22T18:00:00Z"
+                )
+            ],
+            reason: "High priority document task is due today.",
+            llmCallBudgetRemaining: 2,
+            requiresUserApproval: true,
+            allowsDirectExecution: false
+        )
+        let releaseSource = DocumentAutomationDeliverableSource(
+            id: "release",
+            title: "Release checklist",
+            redactedSummary: "Release notes and launch notes.",
+            inclusionReason: "Explicitly selected for release output."
+        )
+        let implementationSource = DocumentAutomationDeliverableSource(
+            id: "implementation",
+            title: "Implementation plan",
+            redactedSummary: "PR plan and verification steps.",
+            inclusionReason: "Explicitly selected for PR planning."
+        )
+        let drafts = [
+            DocumentAutomationDeliverableDraft(
+                kind: .releaseNotes,
+                title: "Release notes draft",
+                suggestedPath: ".tmp/document-automation/shared-output.md",
+                sourceDocumentIDs: ["release"],
+                sourceDocuments: [releaseSource],
+                rationale: "Create release notes from selected release evidence.",
+                riskLevel: .draft,
+                requiresApproval: true
+            ),
+            DocumentAutomationDeliverableDraft(
+                kind: .pullRequestPlan,
+                title: "Duplicate path PR plan",
+                suggestedPath: ".tmp/document-automation/shared-output.md",
+                sourceDocumentIDs: ["implementation"],
+                sourceDocuments: [implementationSource],
+                rationale: "Create a PR plan from selected implementation evidence.",
+                riskLevel: .draft,
+                requiresApproval: true
+            )
+        ]
+
+        let request = try TaskAutoExecutionPlanningRequestBuilder().makePlanningRequest(
+            decision: decision,
+            settings: .init(isEnabled: true, mode: .reviewOnly, cadence: .hourly),
+            referenceDate: referenceDate,
+            timeZoneIdentifier: "UTC",
+            documentDeliverableDrafts: drafts
+        )
+        let payload = try jsonPayload(from: request.userInput)
+        let deliverables = try XCTUnwrap(payload["documentDeliverables"] as? [[String: Any]])
+
+        XCTAssertEqual(deliverables.map { $0["title"] as? String }, ["Release notes draft"])
+        XCTAssertEqual(deliverables.map { $0["suggestedPath"] as? String }, [".tmp/document-automation/shared-output.md"])
+        XCTAssertFalse(request.userInput.contains("Duplicate path PR plan"))
+    }
+
     func testAppSettingsPersistTaskAutoExecutionControls() throws {
         let suiteName = "SoloPM.TaskAutoExecutionSettings.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

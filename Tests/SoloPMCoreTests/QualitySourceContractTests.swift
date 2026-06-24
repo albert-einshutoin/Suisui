@@ -68,6 +68,7 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(doc.contains("priority and due-date tradeoffs"))
         XCTAssertTrue(doc.contains("source-bound document deliverables"))
         XCTAssertTrue(doc.contains("draft-only approval-gated outputs"))
+        XCTAssertTrue(doc.contains("duplicate suggested output paths"))
         XCTAssertTrue(doc.contains("ProjectBoard review request"))
         XCTAssertTrue(doc.contains("priority/due/id ordering"))
         XCTAssertTrue(doc.contains("lower-priority future work ahead of urgent work"))

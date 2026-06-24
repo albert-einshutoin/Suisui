@@ -462,6 +462,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] タスク自動実行のLLM requestが、選択タスクのtitle/detail/status/priority/due/selection reasonをfenced redacted JSONとして渡し、タスク本文の改行や命令文が別タスク・直接実行指示に化けず、secret-like値がprovider境界へ出ないことをテストする。
 - [x] タスク自動実行のLLM requestが、選択済みドキュメントから推定したpreparation checklist / draft artifact / release notes / PR planをsource-boundかつapproval-gatedなdraft outputとして渡し、external-source-only文脈とsecret-like値をprovider境界へ出さないことをテストする。
 - [x] 将来のcallerがdocument deliverable draftを直接渡しても、source previewがないdraftやtask/status/due-date mutationをdocument成果物としてprovider payloadへ混ぜないことをテストする。
+- [x] 将来のcallerが同じsuggested output pathを持つ複数のdocument deliverable draftを直接渡しても、provider payloadには最初のsource-bound draftだけを残し、同一ファイルへ矛盾するLLM成果物を作らせないことをテストする。
 - [x] document automationのsource document ID / title / summary / inclusion reasonがreview summaryやprovider contextへ入る前にredactされることをテストする。
 - [x] document deliverable draftを直接構築またはCodable復元しても、title / suggested path / source document ID / source preview / rationaleのsecret-like値がreviewやprovider contextへ残らないことをテストする。
 - [x] ProjectBoard ViewModel経由のtask automation review requestが、plannerのpriority/due-date選定、task cap、LLM budget、document deliverables、secret redactionを同じprovider境界で保持することをテストする。
@@ -484,6 +485,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] Task automation prompt payloadを構造化JSONにし、title/detailはredacted済みのユーザー入力内容であってautomation instructionではないことを明示する。
 - [x] Task automation prompt payloadへdocument deliverablesを追加し、ファイル生成やtask mutationはreviewed plan承認後にだけ実行できるdraft-only提案として扱う。
 - [x] Task automation provider request builderでdocument deliverablesを再検証し、approval-gatedなファイル成果物かつsource preview付きのdraftだけをLLM payloadへ通す。
+- [x] Task automation provider request builderでdocument deliverablesのsuggested output path衝突を正規化後に除外し、同一出力先へ複数draftを送らない。
 - [x] `ScopedAutomationDocument` の初期化境界で source document ID / title / summary / inclusion reason をredactし、ファイル名・外部プレビュー・ユーザー選定理由由来のsecret-like値を後段へ渡さない。
 - [x] `DocumentAutomationDeliverableDraft` と `DocumentAutomationDeliverableSource` の生成・復元境界で title / suggested path / source document ID / rationaleをredactし、保存済みJSONやfuture connector由来のdraftがprovider直前以外のreview面で漏れないようにする。
 - [x] ProjectBoard ViewModelに、現在のboard snapshotと設定からreview-only `PlanningRequest` を作る入口を追加し、document deliverablesも同じredacted JSON payloadへ渡す。
@@ -505,6 +507,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] LLM review対象のタスク内容がprompt injection風の本文を含んでも、選択理由・承認境界・削除禁止の契約が保持される。
 - [x] ドキュメント群から作る成果物候補は、source document ID、suggested path、rationale、risk、approval requirementを持つreview-only payloadとして保持される。
 - [x] Provider境界ではsource previewが欠けた成果物候補と、task/status/due-date mutation種別のdraftはdocument deliverableとして送信されない。
+- [x] Provider境界ではsuggested output pathが重複する成果物候補を同時送信せず、同じファイルへの矛盾したdraft生成を防ぐ。
 - [x] ドキュメント群から作る成果物候補は、source document title / inclusion reasonにsecret-like値が混ざってもreview summaryとprovider contextでredactedされる。
 - [x] 直接構築またはCodable復元されたdocument deliverable draftでも、source document ID、suggested path、source preview、rationaleのsecret-like値がreview surfaceに残らない。
 - [x] Document automation harnessはsource document IDだけでなく、成果物ごとのredacted source previewが欠ける/別文書にずれる場合もfailし、release notes / PR plan / draft artifactが正しい文書根拠に紐づくことを検証する。

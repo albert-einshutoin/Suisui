@@ -672,17 +672,23 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
         // boundary repeats the product contract: only file-like, approval-gated
         // drafts with concrete source previews may leave the Mac. Task/status
         // mutations stay in the selected task review flow, not document output.
-        drafts
-            .filter(isProviderReviewableDocumentDeliverable)
-            .compactMap { draft in
-                let sourceDocuments = sourceDocumentsBoundToDeclaredIDs(for: draft)
-                guard !sourceDocuments.isEmpty else {
-                    return nil
-                }
-                return TaskAutoExecutionPromptDocumentDeliverable(
+        var seenSuggestedPaths = Set<String>()
+        var deliverables: [TaskAutoExecutionPromptDocumentDeliverable] = []
+        for draft in drafts where isProviderReviewableDocumentDeliverable(draft) {
+            let sourceDocuments = sourceDocumentsBoundToDeclaredIDs(for: draft)
+            guard !sourceDocuments.isEmpty else {
+                continue
+            }
+            let suggestedPath = redactedProviderContent(draft.suggestedPath)
+            let normalizedSuggestedPath = normalizedDocumentDeliverableSuggestedPath(suggestedPath)
+            guard !normalizedSuggestedPath.isEmpty, seenSuggestedPaths.insert(normalizedSuggestedPath).inserted else {
+                continue
+            }
+            deliverables.append(
+                TaskAutoExecutionPromptDocumentDeliverable(
                     kind: draft.kind.rawValue,
                     title: redactedProviderContent(draft.title),
-                    suggestedPath: redactedProviderContent(draft.suggestedPath),
+                    suggestedPath: suggestedPath,
                     sourceDocumentIDs: sourceDocuments.map { redactedProviderContent($0.id) },
                     sourceDocuments: sourceDocuments.map { source in
                         TaskAutoExecutionPromptDocumentSource(
@@ -696,7 +702,9 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
                     riskLevel: draft.riskLevel.rawValue,
                     requiresApproval: draft.requiresApproval
                 )
-            }
+            )
+        }
+        return deliverables
     }
 
     private func isProviderReviewableDocumentDeliverable(_ draft: DocumentAutomationDeliverableDraft) -> Bool {
@@ -719,6 +727,19 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
             return draft.sourceDocuments
         }
         return draft.sourceDocuments.filter { declaredIDs.contains($0.id) }
+    }
+
+    private func normalizedDocumentDeliverableSuggestedPath(_ path: String) -> String {
+        // Provider planning cannot safely resolve two draft artifacts targeting
+        // the same output file, so compare a conservative path key before the
+        // LLM sees the candidate deliverables.
+        let collapsed = path
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: #"/+"#, with: "/", options: .regularExpression)
+        guard collapsed != "/" else {
+            return collapsed
+        }
+        return (collapsed.hasSuffix("/") ? String(collapsed.dropLast()) : collapsed).lowercased()
     }
 
     private func selectionReason(for task: ProjectBoardTask, referenceDate: Date, calendar: Calendar) -> String {
