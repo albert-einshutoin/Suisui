@@ -4481,7 +4481,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("task-status-move-=>Move"))
         XCTAssertTrue(script.contains("task-inspector-apply-suggestion=>Applies the local next-step suggestion"))
         XCTAssertTrue(script.contains("task-inspector-save=>Saves edits"))
-        XCTAssertTrue(script.contains("task-auto-execution-review=>Builds a review-only LLM plan"))
+        XCTAssertTrue(script.contains("task-auto-execution-review=>Prepares review-only local automation"))
         XCTAssertTrue(script.contains("task-auto-execution-run-plan=>Runs the reviewed local task step"))
         XCTAssertTrue(script.contains("task-inspector-delete=>Deletes the selected task"))
         XCTAssertTrue(script.contains("Delete task cancel=>task-inspector-delete-confirmation-cancel"))

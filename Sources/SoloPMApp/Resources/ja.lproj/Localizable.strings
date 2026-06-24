@@ -649,10 +649,10 @@
 "Task automation stopped because the task is blocked or complete." = "タスクがブロック済みまたは完了済みのため、自動化を停止しました。";
 "Prepared review-only automation for %d tasks." = "%d件のタスクについて確認専用の自動化を準備しました。";
 "Started approved automation for \"%@\"." = "「%@」の承認済み自動化を開始しました。";
-"Builds a review-only LLM plan for the selected task" = "選択中タスクの確認専用LLM計画を作成します";
-"Builds a review-only LLM plan for the selected task." = "選択中タスクの確認専用LLM計画を作成します。";
-"Builds a review-only LLM plan from the configured task automation settings" = "設定済みのタスク自動化設定から確認専用LLM計画を作成します";
-"Builds a review-only LLM plan from the configured task automation settings." = "設定済みのタスク自動化設定から確認専用LLM計画を作成します。";
+"Prepares review-only local automation for the selected task" = "選択中タスクの確認専用ローカル自動化を準備します";
+"Prepares review-only local automation for the selected task." = "選択中タスクの確認専用ローカル自動化を準備します。";
+"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings" = "優先度、期日、頻度、日次予算設定から確認専用タスク自動化を準備します";
+"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings." = "優先度、期日、頻度、日次予算設定から確認専用タスク自動化を準備します。";
 "Runs the reviewed local task step after explicit user approval" = "明示的なユーザー承認後、確認済みのローカルタスク手順を実行します";
 "Runs the reviewed local task step after explicit user approval." = "明示的なユーザー承認後、確認済みのローカルタスク手順を実行します。";
 "Summarizes the selected Inbox capture metadata for review." = "選択中のInboxキャプチャメタデータをレビュー用に要約します。";

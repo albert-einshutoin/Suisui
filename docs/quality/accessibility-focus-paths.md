@@ -16,14 +16,14 @@ The task path covers create, content entry, edit, status execution, automation r
 | Task title | `inline-task-title` | text field | Accepts the task title. |
 | Task detail | `inline-task-detail` | text area | Accepts the task body/detail that later becomes execution context. |
 | Create task | `inline-task-create` | button | Creates the task in the local SoloPM database. |
-| Review task automation | `project-board-task-auto-execution-review` | button | Builds a review-only LLM plan from the configured priority, due-date, cadence, and daily budget settings. |
+| Review task automation | `project-board-task-auto-execution-review` | button | Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings. |
 | Open task | `task-card-open-details` | button | Opens the task inspector without requiring pointer drag. |
 | Inspector title | `task-inspector-title` | text field | Edits the selected task title before execution review. |
 | Inspector detail | `task-inspector-detail` | text area | Edits the selected task detail/body before execution review. |
 | Save edit | `task-inspector-save` | button | Saves task title, detail, status, priority, and due date. |
 | Status controls | `task-status-move-controls` | group | Exposes the status movement region. |
 | Move to In Progress | `task-status-move-in_progress-<taskID>` | button | Proves at least one concrete status move button is present, labeled with its target status, and reachable after task edits. |
-| Review automation | `task-auto-execution-review` | button | Builds a review-only LLM plan for the selected task. |
+| Review automation | `task-auto-execution-review` | button | Prepares review-only local automation for the selected task. |
 | Run approved plan | `task-auto-execution-run-plan` | button | Starts only the reviewed local task step after explicit user activation and leaves a task-detail execution note plus a redacted execution receipt. |
 | Delete task | `task-inspector-delete` | button | Opens a destructive confirmation instead of deleting immediately. |
 | Cancel delete | `task-inspector-delete-confirmation-cancel` | button | Cancels the destructive delete confirmation and returns to the inspector without mutating local data. |

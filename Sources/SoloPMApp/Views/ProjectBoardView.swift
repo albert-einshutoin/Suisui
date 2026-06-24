@@ -359,11 +359,11 @@ struct ProjectBoardView: View {
                 Label("Review Task Automation", systemImage: "sparkles")
                     .labelStyle(.titleAndIcon)
             }
-            .help("Builds a review-only LLM plan from the configured task automation settings")
+            .help("Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings")
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Review Task Automation")
             .accessibilityIdentifier("project-board-task-auto-execution-review")
-            .accessibilityHint("Builds a review-only LLM plan from the configured task automation settings.")
+            .accessibilityHint("Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings.")
 
             Button {
                 openWindow(id: "voice-capture")
@@ -3476,9 +3476,9 @@ private struct TaskInspectorAutomationSection: View {
             } label: {
                 Label("Review automation plan", systemImage: "doc.text.magnifyingglass")
             }
-            .help("Builds a review-only LLM plan for the selected task")
+            .help("Prepares review-only local automation for the selected task")
             .accessibilityIdentifier("task-auto-execution-review")
-            .accessibilityHint("Builds a review-only LLM plan for the selected task.")
+            .accessibilityHint("Prepares review-only local automation for the selected task.")
 
             Button {
                 viewModel.runApprovedAutomationForSelectedTask()

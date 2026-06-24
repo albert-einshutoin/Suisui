@@ -1366,17 +1366,11 @@ public final class ProjectBoardViewModel: ObservableObject {
             calendar: calendar
         )
 
-        if decision.shouldCallLLM {
-            // This is intentionally session-scoped until a persisted automation
-            // run ledger exists. It still prevents rapid repeated UI-triggered
-            // reviews from bypassing cadence and daily LLM call limits.
-            taskAutomationSessionHistory = TaskAutoExecutionHistory(
-                lastRunAt: referenceDate,
-                llmCallsToday: history.llmCallsToday + 1
-            )
-        } else {
-            taskAutomationSessionHistory = history
-        }
+        // Preparing a local review candidate must not spend the LLM API budget.
+        // The session ledger is charged only after a provider request is
+        // successfully assembled, so opening the review UI cannot exhaust the
+        // user's configured daily automation allowance.
+        taskAutomationSessionHistory = history
         return decision
     }
 

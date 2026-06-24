@@ -1349,12 +1349,46 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testProjectBoardViewModelSessionHistoryThrottlesRepeatedTaskAutomationReview() throws {
+    func testProjectBoardViewModelSessionHistoryThrottlesRepeatedTaskAutomationPlanningRequests() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()
         _ = viewModel.createTask(title: "High due today", status: .planned, priority: .high, dueAt: "2026-06-22T18:00:00Z")
 
         let settings = TaskAutoExecutionSettings(isEnabled: true, mode: .reviewOnly, cadence: .hourly)
+        let first = try viewModel.makeTaskAutomationPlanningRequest(
+            settings: settings,
+            referenceDate: try isoDate("2026-06-22T09:00:00Z"),
+            calendar: utcCalendar(),
+            timeZoneIdentifier: "UTC"
+        )
+
+        XCTAssertTrue(first.userInput.contains("High due today"))
+        XCTAssertThrowsError(
+            try viewModel.makeTaskAutomationPlanningRequest(
+                settings: settings,
+                referenceDate: try isoDate("2026-06-22T09:30:00Z"),
+                calendar: utcCalendar(),
+                timeZoneIdentifier: "UTC"
+            )
+        ) { error in
+            XCTAssertEqual(error as? TaskAutoExecutionPlanningRequestError, .noReviewableTasks)
+        }
+        XCTAssertNil(viewModel.taskAutomationReviewDecision)
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Task automation cadence has not elapsed.")
+    }
+
+    @MainActor
+    func testProjectBoardViewModelLocalAutomationPreparationDoesNotSpendLLMCallBudget() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        _ = viewModel.createTask(title: "High local review task", status: .planned, priority: .high, dueAt: "2026-06-22T18:00:00Z")
+        let settings = TaskAutoExecutionSettings(
+            isEnabled: true,
+            mode: .reviewOnly,
+            cadence: .hourly,
+            dailyLLMCallLimit: 1
+        )
+
         let first = viewModel.prepareTaskAutomationReview(
             settings: settings,
             referenceDate: try isoDate("2026-06-22T09:00:00Z"),
@@ -1367,9 +1401,28 @@ final class ProjectBoardStoreTests: XCTestCase {
         )
 
         XCTAssertEqual(first.status, .readyForReview)
-        XCTAssertEqual(second.status, .throttled)
-        XCTAssertNil(viewModel.taskAutomationReviewDecision)
-        XCTAssertEqual(viewModel.todayCommandFeedback, "Task automation cadence has not elapsed.")
+        XCTAssertEqual(second.status, .readyForReview)
+        XCTAssertEqual(second.llmCallBudgetRemaining, 1)
+        XCTAssertEqual(second.selectedTasks.map(\.title), ["High local review task"])
+
+        _ = try viewModel.makeTaskAutomationPlanningRequest(
+            settings: settings,
+            referenceDate: try isoDate("2026-06-22T10:00:00Z"),
+            calendar: utcCalendar(),
+            timeZoneIdentifier: "UTC"
+        )
+
+        XCTAssertThrowsError(
+            try viewModel.makeTaskAutomationPlanningRequest(
+                settings: settings,
+                referenceDate: try isoDate("2026-06-22T11:30:00Z"),
+                calendar: utcCalendar(),
+                timeZoneIdentifier: "UTC"
+            )
+        ) { error in
+            XCTAssertEqual(error as? TaskAutoExecutionPlanningRequestError, .noReviewableTasks)
+        }
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Daily LLM automation budget is exhausted.")
     }
 
     @MainActor

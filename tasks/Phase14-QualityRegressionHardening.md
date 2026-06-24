@@ -476,6 +476,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] 週次cadenceでは7日未満の通常reviewを止め、7日経過後はpriority/due-date候補をLLM reviewへ出し、provider payloadにも `weekly` を保持することをテストする。
 - [x] manual cadenceはユーザー操作時だけreview候補をLLMへ出し、scheduled triggerからはprovider callを消費しないことをテストする。
 - [x] ProjectBoard ViewModelのtask automation入口もmanual/scheduled triggerを受け取り、manual frequencyのscheduled runではreview queueもLLM budgetも消費しないことをテストする。
+- [x] ProjectBoard ViewModelのローカルautomation review準備はLLM call budgetを消費せず、provider requestの組み立て成功時だけsession historyへ課金されることをテストする。
 - [x] MCP擬似VoiceOverの軽量source-marker gateは、Swift側の `AccessibilityFocusPathRequirement.taskLifecycleAndExecution.requiredNodeIDs` と同じ必須nodeを確認し、inline composer / task inspectorのtitle/detail fieldをbuttonだけの検査で取りこぼさない。
 
 ### Implementation Steps
@@ -488,6 +489,7 @@ UI品質は永続データの形にも依存する。破損したtag、削除済
 - [x] Task automation prompt payloadへdocument deliverablesを追加し、ファイル生成やtask mutationはreviewed plan承認後にだけ実行できるdraft-only提案として扱う。
 - [x] Task automation provider request builderでdocument deliverablesを再検証し、approval-gatedなファイル成果物かつsource preview付きのdraftだけをLLM payloadへ通す。
 - [x] Task automation provider request builderでdocument deliverablesのsuggested output path衝突を正規化後に除外し、同一出力先へ複数draftを送らない。
+- [x] ProjectBoard ViewModelのsession history更新をprovider request成功後に限定し、review UIを開くだけで日次LLM API予算が枯渇しないようにする。
 - [x] Task automation provider request builderでdocument deliverablesの `sourceDocumentIDs` が空の場合は、source previewが存在してもLLM payloadへ通さず、成果物draftが選択済みdocument IDへ束縛されていることをprovider境界で再検証する。
 - [x] SoloPMHarnessDocumentAutomationRunnerでdocument deliverableのsuggested output path一意性を独立stepとして検証し、E2E reportのdiffに衝突kindを出す。
 - [x] `ScopedAutomationDocument` の初期化境界で source document ID / title / summary / inclusion reason をredactし、ファイル名・外部プレビュー・ユーザー選定理由由来のsecret-like値を後段へ渡さない。

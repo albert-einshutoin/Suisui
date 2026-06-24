@@ -649,10 +649,10 @@
 "Task automation stopped because the task is blocked or complete." = "Task automation stopped because the task is blocked or complete.";
 "Prepared review-only automation for %d tasks." = "Prepared review-only automation for %d tasks.";
 "Started approved automation for \"%@\"." = "Started approved automation for \"%@\".";
-"Builds a review-only LLM plan for the selected task" = "Builds a review-only LLM plan for the selected task";
-"Builds a review-only LLM plan for the selected task." = "Builds a review-only LLM plan for the selected task.";
-"Builds a review-only LLM plan from the configured task automation settings" = "Builds a review-only LLM plan from the configured task automation settings";
-"Builds a review-only LLM plan from the configured task automation settings." = "Builds a review-only LLM plan from the configured task automation settings.";
+"Prepares review-only local automation for the selected task" = "Prepares review-only local automation for the selected task";
+"Prepares review-only local automation for the selected task." = "Prepares review-only local automation for the selected task.";
+"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings" = "Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings";
+"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings." = "Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings.";
 "Runs the reviewed local task step after explicit user approval" = "Runs the reviewed local task step after explicit user approval";
 "Runs the reviewed local task step after explicit user approval." = "Runs the reviewed local task step after explicit user approval.";
 "Summarizes the selected Inbox capture metadata for review." = "Summarizes the selected Inbox capture metadata for review.";
