@@ -35,6 +35,7 @@ tmp_dir="$(mktemp -d "$ROOT_DIR/.tmp/solopm-runtime-accessible-crud.XXXXXX")"
 database_path="$tmp_dir/SoloPM-runtime-accessible-crud.sqlite"
 created_project_id=""
 created_task_id=""
+execution_task_id=""
 cascade_task_id=""
 app_pid=""
 
@@ -677,6 +678,84 @@ end run
 APPLESCRIPT
 }
 
+waitForAXElementContaining() {
+  local identifier_fragment="$1"
+  local required_text_one="$2"
+  local required_text_two="$3"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/osascript - "$APP_NAME" "$identifier_fragment" "$required_text_one" "$required_text_two" <<'APPLESCRIPT' >/dev/null 2>&1
+on run argv
+  set appName to item 1 of argv
+  set identifierFragment to item 2 of argv
+  set requiredTextOne to item 3 of argv
+  set requiredTextTwo to item 4 of argv
+  tell application "System Events"
+    if not (exists process appName) then error appName & " process is not visible to System Events"
+    tell process appName
+      set windowCount to count of windows
+      if windowCount < 1 then error appName & " has no visible windows"
+      try
+        set frontmost to true
+      end try
+      repeat with windowIndex from 1 to windowCount
+        set currentWindow to window windowIndex
+        try
+          perform action "AXRaise" of currentWindow
+        end try
+        set axItems to entire contents of currentWindow
+        repeat with axItem in axItems
+          set itemIdentifier to ""
+          set itemName to ""
+          set itemTitle to ""
+          set itemValue to ""
+          set itemDescription to ""
+          set itemHelp to ""
+          try
+            set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
+          end try
+          try
+            set itemName to name of axItem as text
+          end try
+          try
+            set itemTitle to value of attribute "AXTitle" of axItem as text
+          end try
+          try
+            set itemValue to value of axItem as text
+          end try
+          try
+            set itemValue to itemValue & " " & (value of attribute "AXValue" of axItem as text)
+          end try
+          try
+            set itemDescription to description of axItem as text
+          end try
+          try
+            set itemHelp to value of attribute "AXHelp" of axItem as text
+          end try
+          set signalText to itemIdentifier & " " & itemName & " " & itemTitle & " " & itemValue & " " & itemDescription & " " & itemHelp
+          if signalText contains identifierFragment and signalText contains requiredTextOne and signalText contains requiredTextTwo then
+            return "found AX element " & identifierFragment
+          end if
+        end repeat
+      end repeat
+    end tell
+  end tell
+  error "AX element signal not found: " & identifierFragment
+end run
+APPLESCRIPT
+    then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: AX element did not expose required text: $identifier_fragment" >&2
+      return 1
+    fi
+    activate_app
+    wait_for_visible_windows >/dev/null 2>&1 || true
+    sleep 1
+  done
+}
+
 pressButtonUntilTextFieldContaining() {
   local button_fragment="$1"
   local field_fragment="$2"
@@ -771,6 +850,24 @@ pressDestructiveButtonUntilSQLiteValue "deleted task" "task-inspector-delete" "t
 
 pressButtonUntilTextFieldContaining "project-header-add-task" "inline-task-title"
 waitForTextFieldContaining "inline-task-title"
+setTextFieldContaining "inline-task-title" "AX Runtime Execution Task"
+waitForTextFieldContaining "AX Runtime Execution Task"
+waitForTextFieldContaining "inline-task-detail"
+setTextFieldContaining "inline-task-detail" "Execute this runtime task through the approved plan."
+waitForTextFieldContaining "Execute this runtime task through the approved plan."
+pressButtonUntilSQLiteValue "created execution task" "inline-task-create" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Execution Task' AND detail='Execute this runtime task through the approved plan.' AND status='backlog' AND source_command='app.project-board';" "1"
+execution_task_id="$(wait_for_nonempty_value "execution task id" "SELECT id FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Execution Task' ORDER BY id DESC LIMIT 1;")"
+pressButtonContaining "task-card-open-details"
+waitForTextFieldContaining "task-inspector-title"
+pressButtonContaining "task-auto-execution-review"
+pressButtonContaining "task-auto-execution-run-plan"
+verify_single_value "executed task status" "SELECT status FROM tasks WHERE id=$execution_task_id;" "in_progress"
+verify_single_value "executed task detail marker" "SELECT CASE WHEN detail LIKE '%SoloPM approved automation execution%' THEN 1 ELSE 0 END FROM tasks WHERE id=$execution_task_id;" "1"
+pressButtonContaining "task-card-open-details"
+waitForAXElementContaining "approved-execution-receipt" "AX Runtime Execution Task" "Execute this runtime task through the approved plan."
+
+pressButtonUntilTextFieldContaining "project-header-add-task" "inline-task-title"
+waitForTextFieldContaining "inline-task-title"
 setTextFieldContaining "inline-task-title" "AX Runtime Cascade Task"
 waitForTextFieldContaining "AX Runtime Cascade Task"
 pressButtonUntilSQLiteValue "created cascade task" "inline-task-create" "SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$created_project_id AND title='AX Runtime Cascade Task' AND status='backlog' AND source_command='app.project-board';" "1"
@@ -785,4 +882,4 @@ pressButtonUntilSQLiteValue "completed project" "project-inspector-complete" "SE
 pressDestructiveButtonUntilSQLiteValue "deleted project" "project-inspector-delete" "project-inspector-delete-confirmation-confirm" "Confirm Delete Project" "" "SELECT count(*) FROM projects WHERE id=$created_project_id;" "0" "1"
 verify_single_value "deleted task cascade" "SELECT count(*) FROM tasks WHERE id=$cascade_task_id OR project_id=$created_project_id;" "0"
 
-printf "OK: runtime accessible CRUD smoke created, renamed, completed, and deleted a project, then created, updated, moved, directly deleted, and cascade-deleted tasks through the visible app\n"
+printf "OK: runtime accessible CRUD smoke created, renamed, completed, and deleted a project, then created, updated, moved, executed approved task content with a readable AX receipt, directly deleted, and cascade-deleted tasks through the visible app\n"

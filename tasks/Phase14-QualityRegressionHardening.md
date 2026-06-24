@@ -419,6 +419,7 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 - [x] `AccessibilityFocusPathAudit` は必須group/outline nodeのlabelが空の場合、存在だけでは通さず `unlabeledRequiredNode` として返す。
 - [x] `SoloPMHarnessAccessibilityAuditRunner` はdynamic AX identifier findingを安定required node stepへ戻し、required nodeに紐づかないsnapshot findingも専用stepとしてfailさせる。
 - [x] `SoloPMHarnessTaskLifecycleOperation.requiredFocusNodeIDs` と `SoloPMHarnessScenario.requiredFocusNodeIDs(for:)` で lifecycle operation と AX required node の対応をコード化し、operation list と pseudo VoiceOver focus path が将来ズレた場合にテストで落ちるようにする。
+- [x] runtime accessible CRUD smoke は承認済みtask content executionを実アプリ上で実行し、SQLiteのstatus/detail更新だけでなく `approved-execution-receipt` のAX signalにreviewed title/detailが露出することを確認する。
 
 ### Acceptance Criteria
 
@@ -426,6 +427,7 @@ VoiceOver実機確認はmanual gateとして残るが、支援技術で使える
 - [x] destructive actionはconfirmationを経由しないとDB mutationしない。
 - [x] 手動VoiceOver前に明らかなlabel/focus漏れを自動検出できる。
 - [x] 承認済み実行は、対象タスクのタイトルと本文の両方がredacted receiptに残る場合だけ擬似VoiceOver gateを通過する。
+- [x] runtime accessible CRUD smoke は、承認済み実行後のreceiptがVoiceOver/AXからreviewed title/detail付きで読めない場合にfailする。
 - [x] 必須CRUD/実行controlはenabled状態で検出された場合だけ擬似VoiceOver gateを通過する。
 - [x] 必須CRUD/実行controlはsource/runtimeから得たAX traversal順でも要求順に現れた場合だけ擬似VoiceOver gateを通過する。
 - [x] 必須focus landmarkは、button/text field以外のgroup/outlineでも非空labelを持つ場合だけ擬似VoiceOver gateを通過する。
