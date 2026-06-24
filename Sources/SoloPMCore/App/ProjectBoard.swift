@@ -1640,14 +1640,15 @@ public final class ProjectBoardViewModel: ObservableObject {
         // Keep the review UI bound to the same approval-gated draft set that
         // enters provider planning. Rendering only redacted previews lets users
         // audit source evidence without exposing raw document bodies in the UI.
-        drafts
-            .filter { $0.requiresApproval && !$0.sourceDocuments.isEmpty }
-            .map { draft in
-                TaskAutomationDocumentDeliverableReview(
+        return TaskAutomationDocumentDeliverableReviewPolicy()
+            .reviewableDeliverables(from: drafts)
+            .map { deliverable in
+                let draft = deliverable.draft
+                return TaskAutomationDocumentDeliverableReview(
                     kind: draft.kind,
                     title: draft.title,
                     suggestedPath: draft.suggestedPath,
-                    sourceDocuments: draft.sourceDocuments.map {
+                    sourceDocuments: deliverable.sourceDocuments.map {
                         TaskAutomationDocumentSourceReview(
                             id: $0.id,
                             title: $0.title,

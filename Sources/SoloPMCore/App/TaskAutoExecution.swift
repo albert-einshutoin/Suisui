@@ -456,6 +456,71 @@ public enum TaskAutoExecutionPlanningRequestError: Error, Equatable, Sendable {
     case noReviewableTasks
 }
 
+struct TaskAutomationReviewableDocumentDeliverable: Equatable, Sendable {
+    var draft: DocumentAutomationDeliverableDraft
+    var sourceDocuments: [DocumentAutomationDeliverableSource]
+}
+
+struct TaskAutomationDocumentDeliverableReviewPolicy: Sendable {
+    func reviewableDeliverables(
+        from drafts: [DocumentAutomationDeliverableDraft]
+    ) -> [TaskAutomationReviewableDocumentDeliverable] {
+        var seenSuggestedPaths = Set<String>()
+        var deliverables: [TaskAutomationReviewableDocumentDeliverable] = []
+        for draft in drafts where isReviewableDocumentDeliverable(draft) {
+            let sourceDocuments = sourceDocumentsBoundToDeclaredIDs(for: draft)
+            guard !sourceDocuments.isEmpty else {
+                continue
+            }
+            let normalizedSuggestedPath = normalizedDocumentDeliverableSuggestedPath(draft.suggestedPath)
+            guard !normalizedSuggestedPath.isEmpty, seenSuggestedPaths.insert(normalizedSuggestedPath).inserted else {
+                continue
+            }
+            deliverables.append(
+                TaskAutomationReviewableDocumentDeliverable(
+                    draft: draft,
+                    sourceDocuments: sourceDocuments
+                )
+            )
+        }
+        return deliverables
+    }
+
+    private func isReviewableDocumentDeliverable(_ draft: DocumentAutomationDeliverableDraft) -> Bool {
+        guard draft.requiresApproval, draft.riskLevel == .draft else {
+            return false
+        }
+        switch draft.kind {
+        case .preparationChecklist, .draftArtifact, .releaseNotes, .pullRequestPlan:
+            return true
+        case .taskDraft, .statusChange, .dueDateChange:
+            return false
+        }
+    }
+
+    private func sourceDocumentsBoundToDeclaredIDs(
+        for draft: DocumentAutomationDeliverableDraft
+    ) -> [DocumentAutomationDeliverableSource] {
+        let declaredIDs = Set(draft.sourceDocumentIDs)
+        if declaredIDs.isEmpty {
+            return draft.sourceDocuments
+        }
+        return draft.sourceDocuments.filter { declaredIDs.contains($0.id) }
+    }
+
+    private func normalizedDocumentDeliverableSuggestedPath(_ path: String) -> String {
+        // Provider planning and review UI cannot safely present two drafts for
+        // one output file, so both surfaces share the same conservative path key.
+        let collapsed = path
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: #"/+"#, with: "/", options: .regularExpression)
+        guard collapsed != "/" else {
+            return collapsed
+        }
+        return (collapsed.hasSuffix("/") ? String(collapsed.dropLast()) : collapsed).lowercased()
+    }
+}
+
 public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
     private let redactor: DeveloperSecretRedactor
 
@@ -672,23 +737,15 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
         // boundary repeats the product contract: only file-like, approval-gated
         // drafts with concrete source previews may leave the Mac. Task/status
         // mutations stay in the selected task review flow, not document output.
-        var seenSuggestedPaths = Set<String>()
-        var deliverables: [TaskAutoExecutionPromptDocumentDeliverable] = []
-        for draft in drafts where isProviderReviewableDocumentDeliverable(draft) {
-            let sourceDocuments = sourceDocumentsBoundToDeclaredIDs(for: draft)
-            guard !sourceDocuments.isEmpty else {
-                continue
-            }
-            let suggestedPath = redactedProviderContent(draft.suggestedPath)
-            let normalizedSuggestedPath = normalizedDocumentDeliverableSuggestedPath(suggestedPath)
-            guard !normalizedSuggestedPath.isEmpty, seenSuggestedPaths.insert(normalizedSuggestedPath).inserted else {
-                continue
-            }
-            deliverables.append(
-                TaskAutoExecutionPromptDocumentDeliverable(
+        return TaskAutomationDocumentDeliverableReviewPolicy()
+            .reviewableDeliverables(from: drafts)
+            .map { deliverable in
+                let draft = deliverable.draft
+                let sourceDocuments = deliverable.sourceDocuments
+                return TaskAutoExecutionPromptDocumentDeliverable(
                     kind: draft.kind.rawValue,
                     title: redactedProviderContent(draft.title),
-                    suggestedPath: suggestedPath,
+                    suggestedPath: redactedProviderContent(draft.suggestedPath),
                     sourceDocumentIDs: sourceDocuments.map { redactedProviderContent($0.id) },
                     sourceDocuments: sourceDocuments.map { source in
                         TaskAutoExecutionPromptDocumentSource(
@@ -702,44 +759,7 @@ public struct TaskAutoExecutionPlanningRequestBuilder: Sendable {
                     riskLevel: draft.riskLevel.rawValue,
                     requiresApproval: draft.requiresApproval
                 )
-            )
-        }
-        return deliverables
-    }
-
-    private func isProviderReviewableDocumentDeliverable(_ draft: DocumentAutomationDeliverableDraft) -> Bool {
-        guard draft.requiresApproval else {
-            return false
-        }
-        switch draft.kind {
-        case .preparationChecklist, .draftArtifact, .releaseNotes, .pullRequestPlan:
-            return true
-        case .taskDraft, .statusChange, .dueDateChange:
-            return false
-        }
-    }
-
-    private func sourceDocumentsBoundToDeclaredIDs(
-        for draft: DocumentAutomationDeliverableDraft
-    ) -> [DocumentAutomationDeliverableSource] {
-        let declaredIDs = Set(draft.sourceDocumentIDs)
-        if declaredIDs.isEmpty {
-            return draft.sourceDocuments
-        }
-        return draft.sourceDocuments.filter { declaredIDs.contains($0.id) }
-    }
-
-    private func normalizedDocumentDeliverableSuggestedPath(_ path: String) -> String {
-        // Provider planning cannot safely resolve two draft artifacts targeting
-        // the same output file, so compare a conservative path key before the
-        // LLM sees the candidate deliverables.
-        let collapsed = path
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: #"/+"#, with: "/", options: .regularExpression)
-        guard collapsed != "/" else {
-            return collapsed
-        }
-        return (collapsed.hasSuffix("/") ? String(collapsed.dropLast()) : collapsed).lowercased()
+            }
     }
 
     private func selectionReason(for task: ProjectBoardTask, referenceDate: Date, calendar: Calendar) -> String {

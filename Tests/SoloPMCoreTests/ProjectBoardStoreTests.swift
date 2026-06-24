@@ -1210,6 +1210,120 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelShowsOnlyProviderReviewableDocumentDeliverables() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        _ = viewModel.createTask(
+            title: "High document automation task",
+            detail: "Only reviewed draft files should reach the provider and UI.",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-21T08:00:00Z"
+        )
+        let releaseSource = DocumentAutomationDeliverableSource(
+            id: "release",
+            title: "Release notes source",
+            redactedSummary: "Release evidence.",
+            inclusionReason: "Selected for release notes."
+        )
+        let implementationSource = DocumentAutomationDeliverableSource(
+            id: "implementation",
+            title: "Implementation source",
+            redactedSummary: "Implementation evidence.",
+            inclusionReason: "Selected for PR planning."
+        )
+        let drafts = [
+            DocumentAutomationDeliverableDraft(
+                kind: .releaseNotes,
+                title: "Release notes draft",
+                suggestedPath: ".tmp/document-automation/shared-output.md",
+                sourceDocumentIDs: ["release"],
+                sourceDocuments: [releaseSource],
+                rationale: "Create release notes from selected release evidence.",
+                riskLevel: .draft,
+                requiresApproval: true
+            ),
+            DocumentAutomationDeliverableDraft(
+                kind: .pullRequestPlan,
+                title: "Duplicate path PR plan",
+                suggestedPath: ".tmp/document-automation/shared-output.md",
+                sourceDocumentIDs: ["implementation"],
+                sourceDocuments: [implementationSource],
+                rationale: "Create a PR plan from selected implementation evidence.",
+                riskLevel: .draft,
+                requiresApproval: true
+            ),
+            DocumentAutomationDeliverableDraft(
+                kind: .taskDraft,
+                title: "Task mutation draft",
+                suggestedPath: ".tmp/document-automation/task-draft.md",
+                sourceDocumentIDs: ["release"],
+                sourceDocuments: [releaseSource],
+                rationale: "Task mutations belong in selected task review, not document output.",
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            DocumentAutomationDeliverableDraft(
+                kind: .statusChange,
+                title: "Status mutation draft",
+                suggestedPath: ".tmp/document-automation/status-change.md",
+                sourceDocumentIDs: ["release"],
+                sourceDocuments: [releaseSource],
+                rationale: "Status mutations must not render as document deliverables.",
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            DocumentAutomationDeliverableDraft(
+                kind: .preparationChecklist,
+                title: "Mismatched source checklist",
+                suggestedPath: ".tmp/document-automation/mismatch.md",
+                sourceDocumentIDs: ["missing"],
+                sourceDocuments: [releaseSource],
+                rationale: "The source preview is not bound to the declared ID.",
+                riskLevel: .draft,
+                requiresApproval: true
+            ),
+            DocumentAutomationDeliverableDraft(
+                kind: .releaseNotes,
+                title: "Write-risk release notes",
+                suggestedPath: ".tmp/document-automation/write-risk.md",
+                sourceDocumentIDs: ["release"],
+                sourceDocuments: [releaseSource],
+                rationale: "Allowed output kinds still must remain draft-only.",
+                riskLevel: .write,
+                requiresApproval: true
+            )
+        ]
+
+        let request = try viewModel.makeTaskAutomationPlanningRequest(
+            settings: .init(
+                isEnabled: true,
+                mode: .reviewOnly,
+                cadence: .hourly,
+                maxTasksPerRun: 1,
+                dailyLLMCallLimit: 3,
+                lookaheadHours: 72
+            ),
+            history: .empty,
+            referenceDate: try isoDate("2026-06-22T09:00:00Z"),
+            calendar: utcCalendar(),
+            timeZoneIdentifier: "UTC",
+            documentDeliverableDrafts: drafts
+        )
+        let payload = try jsonPayload(from: request.userInput)
+        let deliverables = try XCTUnwrap(payload["documentDeliverables"] as? [[String: Any]])
+
+        XCTAssertEqual(deliverables.map { $0["title"] as? String }, ["Release notes draft"])
+        XCTAssertEqual(viewModel.taskAutomationDocumentDeliverableReviews.map(\.title), ["Release notes draft"])
+        XCTAssertEqual(viewModel.taskAutomationDocumentDeliverableReviews.map(\.suggestedPath), [".tmp/document-automation/shared-output.md"])
+        XCTAssertFalse(viewModel.taskAutomationDocumentDeliverableReviews.contains { $0.title == "Task mutation draft" })
+        XCTAssertFalse(viewModel.taskAutomationDocumentDeliverableReviews.contains { $0.title == "Status mutation draft" })
+        XCTAssertFalse(viewModel.taskAutomationDocumentDeliverableReviews.contains { $0.title == "Duplicate path PR plan" })
+        XCTAssertFalse(viewModel.taskAutomationDocumentDeliverableReviews.contains { $0.title == "Mismatched source checklist" })
+        XCTAssertFalse(viewModel.taskAutomationDocumentDeliverableReviews.contains { $0.title == "Write-risk release notes" })
+    }
+
+    @MainActor
     func testProjectBoardViewModelClearsTaskAutomationReviewWhenCadenceThrottles() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()
