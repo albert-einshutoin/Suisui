@@ -130,6 +130,18 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
         XCTAssertEqual(result.coveredRequiredNodeIDs, ["task-inspector-save"])
     }
 
+    func testPseudoVoiceOverAuditRejectsUnlabeledRequiredGroupNodes() {
+        let result = AccessibilityFocusPathAudit().audit(
+            nodes: [
+                node("approved-execution-receipt", role: .group, label: "   ")
+            ],
+            requirements: AccessibilityFocusPathRequirement(requiredNodeIDs: ["approved-execution-receipt"])
+        )
+
+        XCTAssertEqual(result.findings.map(\.kind), [.unlabeledRequiredNode])
+        XCTAssertEqual(result.findings.first?.nodeID, "approved-execution-receipt")
+    }
+
     private func node(
         _ id: String,
         role: AccessibilityNodeRole,

@@ -265,6 +265,36 @@ final class SoloPMHarnessTests: XCTestCase {
         XCTAssertTrue(run.diff?.actual.contains("missingTaskDetail") ?? false)
     }
 
+    func testAccessibilityHarnessRunRejectsUnlabeledRequiredLandmarks() {
+        let nodes = completeAccessibilityNodes().map { node in
+            guard node.id == "approved-execution-receipt" else {
+                return node
+            }
+            return AccessibilityNodeSnapshot(
+                id: node.id,
+                role: node.role,
+                label: "   ",
+                help: node.help,
+                isEnabled: node.isEnabled,
+                isDestructive: node.isDestructive,
+                confirmsDestructiveAction: node.confirmsDestructiveAction
+            )
+        }
+
+        let run = SoloPMHarnessAccessibilityAuditRunner().run(
+            id: "run-ax-unlabeled-receipt-landmark",
+            trigger: .cloudTriggered,
+            startedAt: "2026-06-23T00:00:00Z",
+            finishedAt: "2026-06-23T00:00:01Z",
+            nodes: nodes,
+            approvedExecutionReceipt: approvedExecutionReceipt()
+        )
+
+        XCTAssertEqual(run.status, .failed)
+        XCTAssertEqual(run.diff?.stepID, "focus-path-approved-execution-receipt")
+        XCTAssertTrue(run.diff?.actual.contains("unlabeledRequiredNode") ?? false)
+    }
+
     func testAccessibilityHarnessRunFailsWithConcreteMissingFocusPathDiff() {
         let incompleteNodes = completeAccessibilityNodes()
             .filter { $0.id != "task-auto-execution-run-plan" }

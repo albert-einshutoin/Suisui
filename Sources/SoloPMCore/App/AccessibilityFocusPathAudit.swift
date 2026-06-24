@@ -71,6 +71,7 @@ public enum AccessibilityFocusPathFindingKind: String, Codable, Equatable, Senda
     case outOfOrderRequiredNode
     case duplicateNodeID
     case blankNodeID
+    case unlabeledRequiredNode
     case unlabeledInteractiveNode
     case genericButtonWithoutHelp
     case missingDestructiveConfirmation
@@ -156,6 +157,17 @@ public struct AccessibilityFocusPathAudit: Sendable {
                 continue
             }
             coveredNodeIDs.append(node.id)
+            if node.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                // Required group/outline nodes such as the project detail region
+                // and approved execution receipt are not "interactive", but a
+                // blank label still leaves VoiceOver users without a meaningful
+                // landmark for the audited lifecycle step.
+                findings.append(AccessibilityFocusPathFinding(
+                    kind: .unlabeledRequiredNode,
+                    nodeID: requiredNodeID,
+                    message: "Required accessibility node \(requiredNodeID) needs a label."
+                ))
+            }
             if let currentIndex = firstNodeIndexesByID[requiredNodeID] {
                 if currentIndex < lastRequiredNodeIndex {
                     // VoiceOver follows the AX traversal order, so a required
