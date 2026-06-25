@@ -75,6 +75,14 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("return nil"))
     }
 
+    func testRuntimeFactorySharesSecretStoreAcrossProviderSurfaces() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(source.contains("private static let sharedSecretStore: any SecretStore"))
+        XCTAssertTrue(source.contains("return sharedSecretStore"))
+        XCTAssertFalse(source.contains("private static func makeSecretStore() -> any SecretStore {\n        if ProcessInfo.processInfo.environment[\"SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE\"] == \"1\""))
+    }
+
     func testAppDelegateReopensProjectBoardWhenNoWindowIsVisible() throws {
         let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 

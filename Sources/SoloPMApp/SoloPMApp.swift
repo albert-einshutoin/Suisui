@@ -2846,6 +2846,13 @@ private struct SettingsStatusTile: View {
 }
 
 private enum AppRuntimeFactory {
+    private static let sharedSecretStore: any SecretStore = {
+        if ProcessInfo.processInfo.environment["SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE"] == "1" {
+            return LaunchVerificationSecretStore()
+        }
+        return KeychainSecretStore()
+    }()
+
     @MainActor
     static func makeProjectBoardViewModel() -> ProjectBoardViewModel {
         do {
@@ -3101,10 +3108,9 @@ private enum AppRuntimeFactory {
     }
 
     private static func makeSecretStore() -> any SecretStore {
-        if ProcessInfo.processInfo.environment["SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE"] == "1" {
-            return LaunchVerificationSecretStore()
-        }
-        return KeychainSecretStore()
+        // Runtime surfaces can be recreated as windows open and close. Sharing the store keeps
+        // successful Keychain reads in one process-local cache instead of prompting per surface.
+        return sharedSecretStore
     }
 
     private static func makeAuditLogger() throws -> any AuditLogger {
