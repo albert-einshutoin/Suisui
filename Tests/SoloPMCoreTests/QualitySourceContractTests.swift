@@ -76,6 +76,70 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertNil(doc.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
     }
 
+    func testProductOutPhasePlanDefinesReleaseLaunchAndLearningGates() throws {
+        let readme = try readPackageFile("tasks/README.md")
+        let phase15 = try readPackageFile("tasks/Phase15-ProductOutReleaseCandidate.md")
+        let phase16 = try readPackageFile("tasks/Phase16-PublicAlphaLaunchOperations.md")
+        let phase17 = try readPackageFile("tasks/Phase17-PostLaunchLearningLoop.md")
+
+        for marker in [
+            "[Phase 15: Product-Out Release Candidate](./Phase15-ProductOutReleaseCandidate.md)",
+            "[Phase 16: Public Alpha Launch Operations](./Phase16-PublicAlphaLaunchOperations.md)",
+            "[Phase 17: Post-Launch Learning Loop](./Phase17-PostLaunchLearningLoop.md)"
+        ] {
+            XCTAssertTrue(readme.contains(marker), "phase map must route \(marker)")
+        }
+
+        for marker in [
+            "Product Bar",
+            "P15-001",
+            "release-candidate source commit",
+            "manual VoiceOver",
+            "competitor hands-on",
+            "signed, notarized, stapled",
+            "Gemini free-tier live smoke",
+            "Keychain access prompt",
+            "Exit Gate"
+        ] {
+            XCTAssertTrue(phase15.contains(marker), "Phase15 must close \(marker)")
+        }
+
+        for marker in [
+            "Product Bar",
+            "P16-001",
+            "first-run onboarding",
+            "permission education",
+            "public alpha checklist",
+            "feedback intake",
+            "support runbook",
+            "privacy boundary",
+            "Exit Gate"
+        ] {
+            XCTAssertTrue(phase16.contains(marker), "Phase16 must launch with \(marker)")
+        }
+
+        for marker in [
+            "Product Bar",
+            "P17-001",
+            "post-launch",
+            "crash/error triage",
+            "usage feedback",
+            "roadmap",
+            "OSS contribution",
+            "release cadence",
+            "Exit Gate"
+        ] {
+            XCTAssertTrue(phase17.contains(marker), "Phase17 must operate \(marker)")
+        }
+
+        for phase in [phase15, phase16, phase17] {
+            XCTAssertTrue(phase.contains("Tests First"))
+            XCTAssertTrue(phase.contains("Acceptance Criteria"))
+            XCTAssertTrue(phase.contains("Non-goals"))
+            XCTAssertNil(phase.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
+        }
+    }
+
     func testManualToAutomatedRegressionBridgeDocumentsManualGateBackstops() throws {
         let doc = try readPackageFile("docs/quality/manual-to-automated-regression.md")
 

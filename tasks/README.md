@@ -23,6 +23,9 @@ Phase ファイルは Epic / Issue seed として扱います。実装に入る�
 | [Phase 12: Product Cockpit UX Parity](./Phase12-ProductCockpitUXParity.md) | ui-samplesとの差分を日次運用cockpitへ落とす | Inbox音声triage、Schedule、Projects俯瞰、Done分析、Settings連携 |
 | [Phase 13: Multiplatform Automation](./Phase13-MultiplatformAutomation.md) | iOS / Web / macOS で使える会話ベースのタスク管理&自動化へ拡張する | Cloud Sync、Cloud Relay、Hosted MCP、docs-scoped automation、Harness |
 | [Phase 14: Quality Regression Hardening](./Phase14-QualityRegressionHardening.md) | レイアウト崩れ、クリックパス、アクセシビリティ、永続化、セキュリティのテスト漏れを体系的に潰す | Layout stability smoke、visual regression、runtime AX、quality status report |
+| [Phase 15: Product-Out Release Candidate](./Phase15-ProductOutReleaseCandidate.md) | 実装済み機能をrelease candidateとして閉じ、手動/実機/外部依存の残blockerを製品判断に落とす | Current manual evidence、Gemini live smoke、Keychain prompt hardening、signed/notarized artifact、release readiness green |
+| [Phase 16: Public Alpha Launch Operations](./Phase16-PublicAlphaLaunchOperations.md) | 初回ユーザーが迷わず使い始め、問題報告できるPublic Alpha導線を作る | first-run onboarding、permission education、public alpha checklist、feedback intake、support runbook |
+| [Phase 17: Post-Launch Learning Loop](./Phase17-PostLaunchLearningLoop.md) | Product-out後の利用実態、障害、要望を次の開発へ戻す運用を固める | crash/error triage、usage feedback、roadmap、OSS contribution、release cadence |
 
 ## 開発原則
 
