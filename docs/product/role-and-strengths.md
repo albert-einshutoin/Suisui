@@ -1,10 +1,11 @@
 # SoloPM Role And Strengths
 
-SoloPM is a Local-first personal AI PM for macOS. Its role is to turn captured work, project documents, due dates, and local context into reviewable next actions without moving ownership away from the user.
+SoloPM is a Local-first AI secretary and personal AI PM for macOS. Its role is to turn captured work, project documents, due dates, and local context into reviewable next actions without moving ownership away from the user.
 
 ## Strengths
 
 - Local-first data boundary: projects, tasks, settings, and release evidence stay on the Mac unless the user chooses a provider or connector.
+- AI secretary for tasks, documents, and chores: routine work intake, document requests, reminders, schedule drafts, follow-ups, summaries, and small coordination chores can be captured first, then organized into reviewed tasks, draft artifacts, or approval-gated actions.
 - review-before-execution: AI and MCP flows propose task changes, schedule blocks, artifacts, and plans before write actions run.
 - MCP-ready extensibility: external tools can be connected through explicit registration, audit history, structured content validation, and paid execution boundaries.
 - complete task lifecycle harness: task listing, task creation, content editing, status movement, automation review, approved local execution, and destructive delete confirmation are tracked as one E2E contract so product-critical CRUD does not regress silently. Approved local execution leaves a task-detail execution note plus a redacted execution receipt, so a status move alone cannot masquerade as running the reviewed task content and tests can inspect the reviewed payload without exposing copied tokens.

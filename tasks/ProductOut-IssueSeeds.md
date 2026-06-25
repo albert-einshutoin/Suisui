@@ -4,25 +4,46 @@
 
 Issueの粒度は0.5日から1日を基準にします。1行が1日を超える場合は、domain model、adapter、UI、script、docs、manual evidenceの単位に分割します。
 
-Labels: `phase15`, `phase16`, `phase17`, `product-out`, `release`, `accessibility`, `security`, `provider`, `docs`, `support`, `post-launch`, `tdd`
+Labels: `phase15`, `phase16`, `phase17`, `product-out`, `release`, `accessibility`, `security`, `provider`, `docs`, `support`, `post-launch`, `ai-secretary`, `tdd`
 
 Suggested order:
 
 1. P15-003 Keychain prompt hardening
 2. P15-002 Manual VoiceOver task-listing evidence
 3. P15-004 Gemini free-tier live task-list smoke
-4. CN-001 Cursor/Notion response battlecard
-5. CN-002 Agent work request handoff packet
-6. CN-003 Remote MCP context pack
-7. CN-004 Streaming progress and resumable run log
-8. CN-005 VoiceOver-first agent queue
-9. P15-001 Product-out gap ledger
-10. P15-005 Release machine signing/notarization/Sparkle proof
-11. P15-006 Product-out documentation truth sync
-12. P15-007 Release notes, known limitations, and rollback plan
-13. P15-008 Phase16/17 handoff backlog
-14. Phase16 launch operations in P16-001 -> P16-007 order
-15. Phase17 post-launch loop in P17-001 -> P17-007 order
+4. AS-001 Task and document intake
+5. AS-002 Document draft studio
+6. AS-003 Secretary queue
+7. AS-004 Right assistant rail
+8. AS-005 Schedule and reminder draft review
+9. AS-006 Done recap and follow-up suggestions
+10. AS-007 Settings readiness for secretary work
+11. CN-001 Cursor/Notion response battlecard
+12. CN-002 Agent work request handoff packet
+13. CN-003 Remote MCP context pack
+14. CN-004 Streaming progress and resumable run log
+15. CN-005 VoiceOver-first agent queue
+16. P15-001 Product-out gap ledger
+17. P15-005 Release machine signing/notarization/Sparkle proof
+18. P15-006 Product-out documentation truth sync
+19. P15-007 Release notes, known limitations, and rollback plan
+20. P15-008 Phase16/17 handoff backlog
+21. Phase16 launch operations in P16-001 -> P16-007 order
+22. Phase17 post-launch loop in P17-001 -> P17-007 order
+
+## AI Secretary UX Lane
+
+Use these issues to make SoloPM an AI secretary for ordinary tasks, documents, and chores before broadening the external-agent story. Keep the first implementation local-first, review-before-execution, and VoiceOver task listing friendly.
+
+| Issue | Implementable feature | Primary files | Tests first | Acceptance |
+| --- | --- | --- | --- | --- |
+| AS-001 | Task and document intake | Inbox capture domain, Today command input, document request model, `docs/product/ai-secretary-ux-direction.md` | Source tests require `Inbox intake`, manual capture, voice capture, document request capture, and no unapproved provider call; unit tests cover conversion to task, document draft request, schedule draft, and follow-up | Users can capture ordinary tasks, chores, and document requests from Inbox or Today without choosing the final destination first. |
+| AS-002 | Document draft studio | Project detail, document deliverable harness, draft artifact domain, `DocumentScopedAutomationTests` | Tests require article outline, memo, release notes, email draft, PR plan, source preview, duplicate output rejection, and draft-only approval gates | Selected project documents can create inspectable draft artifacts without writing files or sending external updates before review. |
+| AS-003 | Secretary queue | Project Board task list, status model, Inbox/Today/Done views, accessibility focus paths | Unit and AX/source tests require captured, drafted, waiting-review, scheduled, and done states with stable ordering and `project-task-list` traversal | The main queue shows secretary work states clearly, including AI-created drafts and follow-ups, from task listing first. |
+| AS-004 | Right assistant rail | ProjectBoardView inspector, Today/Inbox/Project/Schedule/Done assistant summaries, UI screenshots | Source/UI tests require next action, reason, risk, evidence link, approval action, and no secret-like content in the rail | The selected task, project, document draft, schedule proposal, or done recap always shows what the assistant recommends and why. |
+| AS-005 | Schedule and reminder draft review | Schedule draft model, Calendar/Reminder adapters, permission readiness, Keychain/OAuth docs | Unit tests require schedule block proposals, reminder proposals, skip reasons, OAuth/API-key distinction, and approval before external write | SoloPM can propose calendar and reminder changes while keeping macOS prompts and external writes explicit. |
+| AS-006 | Done recap and follow-up suggestions | Done analytics, completion history, recap generator, follow-up task proposal domain | Tests require completed-task sources, generated recap, follow-up suggestions, no manual-evidence claims, and no raw provider response persistence | Completed work becomes a reviewable daily or weekly recap with follow-up suggestions tied to source tasks. |
+| AS-007 | Settings readiness for secretary work | Settings Overview/AI/MCP/Sync/Privacy views, provider/STT/TTS/Calendar/Reminder readiness models | Source/UI tests require provider, STT, TTS, Calendar, Reminder, MCP, notifications, privacy, data location, and Keychain prompt explanation | Settings explains which secretary capabilities are ready, blocked, skipped, or need approval without leaking secrets. |
 
 ## Cursor/Notion Acceleration Lane
 

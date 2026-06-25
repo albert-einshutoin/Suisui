@@ -51,6 +51,8 @@ final class QualitySourceContractTests: XCTestCase {
         let doc = try readPackageFile("docs/product/role-and-strengths.md")
 
         XCTAssertTrue(doc.contains("Local-first"))
+        XCTAssertTrue(doc.contains("AI secretary for tasks, documents, and chores"))
+        XCTAssertTrue(doc.contains("routine work intake"))
         XCTAssertTrue(doc.contains("review-before-execution"))
         XCTAssertTrue(doc.contains("MCP"))
         XCTAssertTrue(doc.contains("VoiceOver"))
@@ -74,6 +76,59 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(doc.contains("lower-priority future work ahead of urgent work"))
         XCTAssertTrue(doc.contains("document deliverables are sent as fenced redacted JSON"))
         XCTAssertNil(doc.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
+    }
+
+    func testAISecretaryUXDirectionMapsUISamplesToIssueSeeds() throws {
+        let direction = try readPackageFile("docs/product/ai-secretary-ux-direction.md")
+        let issueSeeds = try readPackageFile("tasks/ProductOut-IssueSeeds.md")
+        let roleDoc = try readPackageFile("docs/product/role-and-strengths.md")
+
+        for marker in [
+            "AI Secretary UX Direction",
+            "AI secretary for tasks, documents, and chores",
+            "ui-samples/01.png",
+            "ui-samples/02.png",
+            "ui-samples/03.png",
+            "ui-samples/04.png",
+            "ui-samples/05.png",
+            "ui-samples/06.png",
+            "ui-samples/07.png",
+            "Today command bar",
+            "Inbox intake",
+            "Document draft studio",
+            "Secretary queue",
+            "Right assistant rail",
+            "review-before-execution",
+            "VoiceOver task listing",
+            "local-first"
+        ] {
+            XCTAssertTrue(direction.contains(marker), "AI secretary direction must include \(marker)")
+        }
+
+        for marker in [
+            "## AI Secretary UX Lane",
+            "AS-001",
+            "Task and document intake",
+            "AS-002",
+            "Document draft studio",
+            "AS-003",
+            "Secretary queue",
+            "AS-004",
+            "Right assistant rail",
+            "AS-005",
+            "Schedule and reminder draft review",
+            "AS-006",
+            "Done recap and follow-up suggestions",
+            "AS-007",
+            "Settings readiness for secretary work"
+        ] {
+            XCTAssertTrue(issueSeeds.contains(marker), "issue seeds must include AI secretary item \(marker)")
+        }
+
+        XCTAssertTrue(roleDoc.contains("AI secretary for tasks, documents, and chores"))
+        XCTAssertTrue(roleDoc.contains("routine work intake"))
+        XCTAssertNil(direction.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
+        XCTAssertNil(issueSeeds.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
     }
 
     func testProductOutPhasePlanDefinesReleaseLaunchAndLearningGates() throws {
