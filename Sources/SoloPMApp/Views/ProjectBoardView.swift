@@ -2737,6 +2737,8 @@ private struct ProjectTaskList: View {
             }
         }
         .accessibilityIdentifier("project-task-list")
+        .accessibilityLabel("Project task list")
+        .accessibilityHint("Lists the selected project's current tasks before creating, editing, executing, or deleting task content.")
     }
 }
 

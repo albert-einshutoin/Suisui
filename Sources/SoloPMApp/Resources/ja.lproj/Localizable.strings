@@ -54,6 +54,7 @@
 "Launch at Login" = "ログイン時に起動";
 "Light" = "ライト";
 "List" = "リスト";
+"Lists the selected project's current tasks before creating, editing, executing, or deleting task content." = "タスク内容の作成、編集、実行、削除の前に、選択中プロジェクトの現在のタスクを一覧表示します。";
 "Local Shell" = "ローカルシェル";
 "Local shell execution requires explicit approval." = "ローカルシェル実行には明示的な承認が必要です。";
 "MCP" = "MCP";
@@ -71,6 +72,7 @@
 "Project Board Unavailable" = "プロジェクトボードを利用できません";
 "Project Details" = "プロジェクト詳細";
 "Project Not Found" = "プロジェクトが見つかりません";
+"Project task list" = "プロジェクトのタスクリスト";
 "Projects" = "プロジェクト";
 "Provider" = "プロバイダー";
 "Provider Readiness" = "プロバイダー準備状況";

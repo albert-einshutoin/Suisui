@@ -38,6 +38,7 @@ final class SoloPMHarnessTests: XCTestCase {
     func testTaskLifecycleHarnessRequiresCreateEditExecuteAndDeleteCoverage() throws {
         let catalog = SoloPMHarnessScenario.templateCatalog()
         let requiredLifecycle: [SoloPMHarnessTaskLifecycleOperation] = [
+            .taskList,
             .create,
             .editContent,
             .statusMove,
@@ -73,6 +74,10 @@ final class SoloPMHarnessTests: XCTestCase {
                 "\(operation.rawValue) must map to at least one AX focus node"
             )
         }
+        XCTAssertEqual(
+            SoloPMHarnessTaskLifecycleOperation.taskList.requiredFocusNodeIDs,
+            ["project-task-list"]
+        )
         XCTAssertEqual(
             SoloPMHarnessTaskLifecycleOperation.executeContent.requiredFocusNodeIDs,
             ["task-auto-execution-run-plan", "approved-execution-receipt"]
@@ -238,7 +243,7 @@ final class SoloPMHarnessTests: XCTestCase {
 
         XCTAssertEqual(
             scenario.missingTaskLifecycleOperations(),
-            [.executeContent, .approvedExecution, .deleteConfirmation, .projectCompletion, .projectDeleteCascade]
+            [.taskList, .executeContent, .approvedExecution, .deleteConfirmation, .projectCompletion, .projectDeleteCascade]
         )
     }
 
@@ -588,6 +593,7 @@ final class SoloPMHarnessTests: XCTestCase {
         [
             node("project-board-sidebar", role: .outline, label: "Project navigation"),
             node("project-board-detail", role: .group, label: "Project board detail"),
+            node("project-task-list", role: .group, label: "Project task list"),
             node("project-header-add-task", role: .button, label: "Add Task", help: "Opens inline task composer."),
             node("inline-task-title", role: .textField, label: "Task title"),
             node("inline-task-detail", role: .textArea, label: "Task detail"),

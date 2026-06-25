@@ -26,6 +26,7 @@ public enum SoloPMHarnessAssertion: String, Codable, CaseIterable, Equatable, Ha
 }
 
 public enum SoloPMHarnessTaskLifecycleOperation: String, Codable, CaseIterable, Equatable, Hashable, Sendable {
+    case taskList
     case create
     case editContent
     case statusMove
@@ -38,6 +39,10 @@ public enum SoloPMHarnessTaskLifecycleOperation: String, Codable, CaseIterable, 
 
     public var requiredFocusNodeIDs: [String] {
         switch self {
+        case .taskList:
+            [
+                "project-task-list"
+            ]
         case .create:
             [
                 "project-board-sidebar",
@@ -124,6 +129,7 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
     }
 
     public static let completeTaskLifecycleOperations: [SoloPMHarnessTaskLifecycleOperation] = [
+        .taskList,
         .create,
         .editContent,
         .statusMove,

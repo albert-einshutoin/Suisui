@@ -6,6 +6,7 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
         let nodes = [
             node("project-board-sidebar", role: .outline, label: "Project navigation"),
             node("project-board-detail", role: .group, label: "Project board detail"),
+            node("project-task-list", role: .group, label: "Project task list"),
             node("project-header-add-task", role: .button, label: "Add Task", help: "Opens inline task composer."),
             node("inline-task-title", role: .textField, label: "Task title"),
             node("inline-task-detail", role: .textArea, label: "Task detail"),
@@ -42,6 +43,7 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
         let nodes = [
             node("project-board-sidebar", role: .outline, label: "Project navigation"),
             node("project-board-detail", role: .group, label: "Project board detail"),
+            node("project-task-list", role: .group, label: "Project task list"),
             node("project-header-add-task", role: .button, label: "Add Task", help: "Opens inline task composer."),
             node("inline-task-title", role: .textField, label: "Task title"),
             node("inline-task-create", role: .button, label: "Create Task", help: "Creates the task in the local SoloPM database."),
@@ -66,6 +68,7 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
         let nodes = [
             node("project-board-sidebar", role: .outline, label: "Project navigation"),
             node("project-board-detail", role: .group, label: "Project board detail"),
+            node("project-task-list", role: .group, label: "Project task list"),
             node("project-header-add-task", role: .button, label: "Add Task", help: "Opens inline task composer."),
             node("inline-task-title", role: .textField, label: "Task title"),
             node("inline-task-detail", role: .textArea, label: "Task detail"),
@@ -164,6 +167,7 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
         let nodes = [
             node("project-board-sidebar", role: .outline, label: "Project navigation"),
             node("project-board-detail", role: .group, label: "Project board detail"),
+            node("project-task-list", role: .group, label: "Project task list"),
             node("project-header-add-task", role: .button, label: "Add Task", help: "Opens inline task composer."),
             node("inline-task-title", role: .textField, label: "Task title"),
             node("inline-task-detail", role: .textArea, label: "Task detail"),

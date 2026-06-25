@@ -38,6 +38,7 @@ REQUIRED_MARKERS=(
   "completeTaskLifecycleOperations"
   "project-board-sidebar"
   "project-board-detail"
+  "project-task-list"
   "project-header-add-task"
   "inline-task-title"
   "inline-task-detail"
@@ -96,4 +97,4 @@ if [[ "$RUN_SWIFT_TESTS" -eq 1 ]]; then
   swift test --filter SoloPMHarnessTests
 fi
 
-echo "OK: pseudo VoiceOver focus path contract covers task create/edit/status/automation/approved execution/delete and project complete/delete cascade markers"
+echo "OK: pseudo VoiceOver focus path contract covers task list/create/edit/status/automation/approved execution/delete and project complete/delete cascade markers"

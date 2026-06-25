@@ -53,6 +53,7 @@ public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
         requiredNodeIDs: [
             "project-board-sidebar",
             "project-board-detail",
+            "project-task-list",
             "project-header-add-task",
             "inline-task-title",
             "inline-task-detail",

@@ -54,6 +54,7 @@
 "Launch at Login" = "Launch at Login";
 "Light" = "Light";
 "List" = "List";
+"Lists the selected project's current tasks before creating, editing, executing, or deleting task content." = "Lists the selected project's current tasks before creating, editing, executing, or deleting task content.";
 "Local Shell" = "Local Shell";
 "Local shell execution requires explicit approval." = "Local shell execution requires explicit approval.";
 "MCP" = "MCP";
@@ -71,6 +72,7 @@
 "Project Board Unavailable" = "Project Board Unavailable";
 "Project Details" = "Project Details";
 "Project Not Found" = "Project Not Found";
+"Project task list" = "Project task list";
 "Projects" = "Projects";
 "Provider" = "Provider";
 "Provider Readiness" = "Provider Readiness";
