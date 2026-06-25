@@ -140,6 +140,47 @@ final class QualitySourceContractTests: XCTestCase {
         }
     }
 
+    func testProductOutIssueSeedsEnumerateImplementableFeaturesByPhase() throws {
+        let readme = try readPackageFile("tasks/README.md")
+        let issueSeeds = try readPackageFile("tasks/ProductOut-IssueSeeds.md")
+
+        XCTAssertTrue(readme.contains("[Product-Out Issue Seeds](./ProductOut-IssueSeeds.md)"))
+
+        for marker in [
+            "## Phase 15 Issue Seeds",
+            "P15-001",
+            "Product-out gap ledger",
+            "Manual VoiceOver task-listing evidence",
+            "Keychain prompt hardening",
+            "Gemini free-tier live task-list smoke",
+            "Release machine signing/notarization/Sparkle proof",
+            "## Phase 16 Issue Seeds",
+            "P16-001",
+            "First-run onboarding",
+            "Permission education",
+            "Redacted diagnostics export",
+            "Public alpha release channel",
+            "## Phase 17 Issue Seeds",
+            "P17-001",
+            "Post-launch issue triage",
+            "Crash/error triage without secret leakage",
+            "Primary workflow regression intake",
+            "Provider cost and reliability learning"
+        ] {
+            XCTAssertTrue(issueSeeds.contains(marker), "Issue seed index must include \(marker)")
+        }
+
+        for requiredColumn in [
+            "| Issue | Implementable feature | Primary files | Tests first | Acceptance |",
+            "Labels:",
+            "Suggested order:"
+        ] {
+            XCTAssertTrue(issueSeeds.contains(requiredColumn), "Issue seed index must expose \(requiredColumn)")
+        }
+
+        XCTAssertNil(issueSeeds.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
+    }
+
     func testManualToAutomatedRegressionBridgeDocumentsManualGateBackstops() throws {
         let doc = try readPackageFile("docs/quality/manual-to-automated-regression.md")
 

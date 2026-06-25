@@ -27,6 +27,8 @@ Phase ファイルは Epic / Issue seed として扱います。実装に入る�
 | [Phase 16: Public Alpha Launch Operations](./Phase16-PublicAlphaLaunchOperations.md) | 初回ユーザーが迷わず使い始め、問題報告できるPublic Alpha導線を作る | first-run onboarding、permission education、public alpha checklist、feedback intake、support runbook |
 | [Phase 17: Post-Launch Learning Loop](./Phase17-PostLaunchLearningLoop.md) | Product-out後の利用実態、障害、要望を次の開発へ戻す運用を固める | crash/error triage、usage feedback、roadmap、OSS contribution、release cadence |
 
+Issue起票時は [Product-Out Issue Seeds](./ProductOut-IssueSeeds.md) を入口にし、Phase15-17の `P15-xxx` / `P16-xxx` / `P17-xxx` を1 Issue単位へ展開する。
+
 ## 開発原則
 
 ### Gitflow
