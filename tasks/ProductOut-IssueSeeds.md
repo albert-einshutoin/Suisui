@@ -11,13 +11,32 @@ Suggested order:
 1. P15-003 Keychain prompt hardening
 2. P15-002 Manual VoiceOver task-listing evidence
 3. P15-004 Gemini free-tier live task-list smoke
-4. P15-001 Product-out gap ledger
-5. P15-005 Release machine signing/notarization/Sparkle proof
-6. P15-006 Product-out documentation truth sync
-7. P15-007 Release notes, known limitations, and rollback plan
-8. P15-008 Phase16/17 handoff backlog
-9. Phase16 launch operations in P16-001 -> P16-007 order
-10. Phase17 post-launch loop in P17-001 -> P17-007 order
+4. CN-001 Cursor/Notion response battlecard
+5. CN-002 Agent work request handoff packet
+6. CN-003 Remote MCP context pack
+7. CN-004 Streaming progress and resumable run log
+8. CN-005 VoiceOver-first agent queue
+9. P15-001 Product-out gap ledger
+10. P15-005 Release machine signing/notarization/Sparkle proof
+11. P15-006 Product-out documentation truth sync
+12. P15-007 Release notes, known limitations, and rollback plan
+13. P15-008 Phase16/17 handoff backlog
+14. Phase16 launch operations in P16-001 -> P16-007 order
+15. Phase17 post-launch loop in P17-001 -> P17-007 order
+
+## Cursor/Notion Acceleration Lane
+
+Use these issues to respond to the 2026-06-25 Cursor/Notion launch without creating another Phase. Keep them attached to Phase15 unless the issue explicitly needs Phase16 onboarding or Phase17 post-launch learning.
+
+| Issue | Implementable feature | Primary files | Tests first | Acceptance |
+| --- | --- | --- | --- | --- |
+| CN-001 | Cursor/Notion response battlecard | `docs/product/cursor-notion-competitive-response.md`, `docs/product/role-and-strengths.md`, `docs/product/competitor-benchmark.md` | `QualitySourceContractTests` requires source URL, threat summary, SoloPM counter-position, and acceleration lane | Product, release, and issue planning clearly explain how SoloPM differs from Notion+Cursor: local-first personal PM, VoiceOver task listing, review-before-execution, and document-scoped automation. |
+| CN-002 | Agent work request handoff packet | Project/task automation domain, document deliverable harness, export UI, `docs/sync/solopm-harness.md` | Unit tests require selected task/doc/project context, acceptance criteria, target repo/branch, redacted prompt, verification commands, and approval boundary; security tests reject secrets/raw provider keys | A user can turn selected SoloPM tasks into a reviewed external-agent work packet without granting automatic write/PR authority. |
+| CN-003 | Remote MCP context pack | MCP registry, selected document/task context, hosted relay docs, `docs/mcp-compliance.md` | Contract tests require MCP server allowlist, selected scope, redaction, expiry, and read/write boundary; fixture tests reject unscoped workspace export | SoloPM can generate a small, explicit MCP context pack for an external coding agent while preserving local-first and review-only defaults. |
+| CN-004 | Streaming progress and resumable run log | Harness run history, external agent run model, sync payload, UI progress surface | Unit tests require run id, event cursor, last event replay, failed/resumed states, redacted logs, and no raw token persistence | External agent progress can be shown as a resumable run log, matching the competitor expectation of live progress without depending on their infrastructure. |
+| CN-005 | VoiceOver-first agent queue | Project Board task list, accessibility focus path docs, issue seed export, onboarding docs | AX/source tests require `project-task-list`, task title, due/priority, handoff status, review action, and keyboard/VoiceOver traversal order | The main queue for agent work is usable from VoiceOver task listing first, not hidden behind a developer-only command surface. |
+| CN-006 | Verification-before-handoff gate | `SoloPMHarness`, release readiness scripts, generated work packet schema | Tests require focused verifier commands, expected artifacts, rollback note, and explicit "do not auto-merge/auto-push" policy before export | Every agent handoff packet includes how to prove success before PR/merge and keeps destructive or remote writes approval-gated. |
+| CN-007 | Competitive launch messaging update | README, Public Alpha notes, release notes, product role docs | Source tests require Notion/Cursor comparison, local-first boundary, personal PM scope, and honest non-goals | Public Alpha messaging acknowledges the market move and explains why SoloPM focuses on private individual project execution rather than team workspace coding automation. |
 
 ## Phase 15 Issue Seeds
 

@@ -181,6 +181,47 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertNil(issueSeeds.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
     }
 
+    func testCursorNotionCompetitiveResponseDefinesAccelerationLane() throws {
+        let response = try readPackageFile("docs/product/cursor-notion-competitive-response.md")
+        let issueSeeds = try readPackageFile("tasks/ProductOut-IssueSeeds.md")
+
+        for marker in [
+            "Cursor / Notion Competitive Response",
+            "2026-06-25",
+            "https://cursor.com/ja/blog/notion",
+            "Threat Summary",
+            "SoloPM Counter-Position",
+            "Acceleration Lane",
+            "Agent work request handoff",
+            "remote MCP context pack",
+            "streaming progress and resumable runs",
+            "review-before-execution",
+            "VoiceOver task listing",
+            "Local-first"
+        ] {
+            XCTAssertTrue(response.contains(marker), "competitive response must include \(marker)")
+        }
+
+        for marker in [
+            "## Cursor/Notion Acceleration Lane",
+            "CN-001",
+            "Cursor/Notion response battlecard",
+            "CN-002",
+            "Agent work request handoff packet",
+            "CN-003",
+            "Remote MCP context pack",
+            "CN-004",
+            "Streaming progress and resumable run log",
+            "CN-005",
+            "VoiceOver-first agent queue"
+        ] {
+            XCTAssertTrue(issueSeeds.contains(marker), "issue seeds must include acceleration item \(marker)")
+        }
+
+        XCTAssertNil(response.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
+        XCTAssertNil(issueSeeds.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
+    }
+
     func testManualToAutomatedRegressionBridgeDocumentsManualGateBackstops() throws {
         let doc = try readPackageFile("docs/quality/manual-to-automated-regression.md")
 
