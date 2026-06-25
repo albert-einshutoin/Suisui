@@ -3,6 +3,62 @@ import XCTest
 
 final class GeminiDirectProviderTests: XCTestCase {
     @MainActor
+    func testLiveGeminiVoiceOverTaskListRunsReadOnlyReviewExecutionWhenEnabled() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["SOLOPM_LIVE_GEMINI_TASK_LIST_SMOKE"] == "1" else {
+            throw XCTSkip("Set SOLOPM_LIVE_GEMINI_TASK_LIST_SMOKE=1 to run the live Gemini VoiceOver task-list smoke.")
+        }
+
+        let title = "VoiceOver task list smoke \(UUID().uuidString.prefix(8))"
+        let completedTitle = "Completed VoiceOver hidden smoke \(UUID().uuidString.prefix(8))"
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let projectStore = SQLiteProjectStore(connection: connection)
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let knowledgeStore = SQLiteKnowledgeFrameStore(connection: connection)
+        _ = try taskStore.create(title: title, priority: "high", detail: "Validate VoiceOver task listing through Gemini.")
+        _ = try taskStore.create(title: completedTitle, status: "completed")
+        let registry = try ToolRegistry.phase2Core(
+            projectStore: projectStore,
+            taskStore: taskStore,
+            knowledgeStore: knowledgeStore
+        )
+        let voiceViewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "VoiceOverで未完了タスクを列挙して。新規作成、更新、完了はしないで。")),
+            llmProvider: GeminiDirectProvider(
+                secretStore: try Self.liveGeminiSecretStore(environment: environment),
+                configuration: Self.liveGeminiConfiguration(environment: environment)
+            )
+        )
+
+        voiceViewModel.updateDraftText("VoiceOverで未完了タスクを列挙して。新規作成、更新、完了はしないで。")
+        await voiceViewModel.generatePlan(
+            currentDate: Date(timeIntervalSince1970: 1_782_000_000),
+            timeZoneIdentifier: "Asia/Tokyo",
+            availableTools: [.taskList]
+        )
+
+        try Self.skipLiveGeminiTransientFailureIfNeeded(phase: voiceViewModel.phase, smokeName: "task-list")
+        XCTAssertEqual(voiceViewModel.phase, .reviewReady)
+        let plan = try XCTUnwrap(voiceViewModel.planningResponse?.actionPlan)
+        XCTAssertFalse(plan.requiresApproval)
+        XCTAssertEqual(plan.actions.map(\.tool), [.taskList])
+
+        let reviewViewModel = ReviewSessionViewModel(
+            plan: plan,
+            executor: ActionExecutor(registry: registry)
+        )
+        XCTAssertTrue(reviewViewModel.executeOrReportError())
+
+        let result = try XCTUnwrap(reviewViewModel.session.items.first?.result)
+        XCTAssertEqual(reviewViewModel.session.executionStatus, .completed)
+        XCTAssertEqual(result.output["count"], .number(1))
+        XCTAssertTrue(String(describing: result.output["tasks"]).contains(title))
+        XCTAssertFalse(String(describing: result.output["tasks"]).contains(completedTitle))
+    }
+
+    @MainActor
     func testLiveGeminiVoiceTextTaskCreationRunsThroughReviewIntoLocalTaskStoreWhenEnabled() async throws {
         let environment = ProcessInfo.processInfo.environment
         let shouldWriteRealDatabase = environment["SOLOPM_LIVE_GEMINI_TASK_CREATE_REAL_DB"] == "1"
@@ -11,8 +67,8 @@ final class GeminiDirectProviderTests: XCTestCase {
         }
 
         let title = shouldWriteRealDatabase
-            ? "Gemini MCP real DB smoke \(UUID().uuidString.prefix(8))"
-            : "Gemini MCP smoke \(UUID().uuidString.prefix(8))"
+            ? "Gemini VoiceOver real DB smoke \(UUID().uuidString.prefix(8))"
+            : "Gemini VoiceOver smoke \(UUID().uuidString.prefix(8))"
         let databasePath = try Self.databasePath(shouldWriteRealDatabase: shouldWriteRealDatabase)
         let connection = try SQLiteConnection(path: databasePath)
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
@@ -25,7 +81,10 @@ final class GeminiDirectProviderTests: XCTestCase {
         let voiceViewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "\(title)のタスクを作成したい")),
-            llmProvider: GeminiDirectProvider(secretStore: KeychainSecretStore())
+            llmProvider: GeminiDirectProvider(
+                secretStore: try Self.liveGeminiSecretStore(environment: environment),
+                configuration: Self.liveGeminiConfiguration(environment: environment)
+            )
         )
 
         voiceViewModel.updateDraftText("\(title)のタスクを作成したい")
@@ -35,6 +94,7 @@ final class GeminiDirectProviderTests: XCTestCase {
             availableTools: [.taskCreate]
         )
 
+        try Self.skipLiveGeminiTransientFailureIfNeeded(phase: voiceViewModel.phase, smokeName: "task-create")
         XCTAssertEqual(voiceViewModel.phase, .reviewReady)
         let plan = try XCTUnwrap(voiceViewModel.planningResponse?.actionPlan)
         XCTAssertEqual(plan.actions.first?.tool, .taskCreate)
@@ -58,6 +118,67 @@ final class GeminiDirectProviderTests: XCTestCase {
             return ":memory:"
         }
         return try SoloPMAppDatabaseLocation.defaultDatabaseURL(createDirectory: true).path
+    }
+
+    private static func liveGeminiSecretStore(environment: [String: String]) throws -> any SecretStore {
+        let apiKey = try liveGeminiAPIKey(environment: environment)
+        return InMemorySecretStore(values: [.geminiAPIKey: apiKey])
+    }
+
+    private static func liveGeminiAPIKey(environment: [String: String]) throws -> String {
+        for name in ["SOLOPM_GEMINI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"] {
+            if let apiKey = try? APIKeyValidator.normalize(environment[name]) {
+                return apiKey
+            }
+        }
+
+        #if canImport(Security)
+        do {
+            if let apiKey = try KeychainSecretStore().read(.geminiAPIKey) {
+                return try APIKeyValidator.normalize(apiKey)
+            }
+        } catch APIKeyValidationError.empty, APIKeyValidationError.containsWhitespace {
+            throw XCTSkip("Gemini API key is present but invalid; re-enter it in Settings or set SOLOPM_GEMINI_API_KEY.")
+        } catch {
+            throw XCTSkip("Gemini API key is unavailable from env or Keychain; live Gemini smoke skipped.")
+        }
+        #endif
+
+        throw XCTSkip("Set SOLOPM_GEMINI_API_KEY, GEMINI_API_KEY, GOOGLE_API_KEY, or save Gemini API key in Keychain to run live Gemini smoke.")
+    }
+
+    private static func liveGeminiConfiguration(environment: [String: String]) -> GeminiDirectConfiguration {
+        let modelOverride = environment["SOLOPM_LIVE_GEMINI_MODEL"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let model: String
+        if let modelOverride, !modelOverride.isEmpty {
+            model = modelOverride
+        } else {
+            model = GeminiDirectConfiguration().model
+        }
+        return GeminiDirectConfiguration(
+            model: model,
+            maxOutputTokens: 2_048,
+            timeoutInterval: 60
+        )
+    }
+
+    private static func skipLiveGeminiTransientFailureIfNeeded(
+        phase: VoiceCapturePhase,
+        smokeName: String
+    ) throws {
+        guard case .failed(let message) = phase else {
+            return
+        }
+
+        let lowercasedMessage = message.lowercased()
+        if lowercasedMessage.contains("rate limit")
+            || lowercasedMessage.contains("quota")
+            || lowercasedMessage.contains("503")
+            || lowercasedMessage.contains("high demand")
+            || lowercasedMessage.contains("try again later") {
+            throw XCTSkip("Gemini free-tier or transient capacity limit reached; live \(smokeName) smoke skipped.")
+        }
     }
 
     func testConfigurationUsesGeminiDefaults() {
@@ -137,9 +258,9 @@ final class GeminiDirectProviderTests: XCTestCase {
         let names = declarations.compactMap { $0["name"] as? String }
 
         XCTAssertNil(generationConfig["responseMimeType"])
-        XCTAssertEqual(names, ["task_create", "task_bulk_create", "task_list", "task_update", "task_complete"])
+        XCTAssertEqual(names, ["task_list", "task_create", "task_bulk_create", "task_update", "task_complete"])
         XCTAssertEqual(functionCallingConfig["mode"] as? String, "ANY")
-        XCTAssertEqual(functionCallingConfig["allowedFunctionNames"] as? [String], ["task_create", "task_bulk_create", "task_list", "task_update", "task_complete"])
+        XCTAssertEqual(functionCallingConfig["allowedFunctionNames"] as? [String], ["task_list", "task_create", "task_bulk_create", "task_update", "task_complete"])
         XCTAssertFalse(names.contains("git_status"))
 
         let taskCreate = try XCTUnwrap(declarations.first { $0["name"] as? String == "task_create" })
@@ -515,6 +636,7 @@ final class GeminiDirectProviderTests: XCTestCase {
         XCTAssertTrue(response.validationResult.isValid)
         XCTAssertFalse(plan.requiresApproval)
         XCTAssertEqual(plan.approvalRequirement, .none)
+        XCTAssertEqual(plan.summary, "List current SoloPM tasks.")
         XCTAssertEqual(plan.actions.first?.tool, .taskList)
     }
 

@@ -364,7 +364,10 @@ private enum GeminiDirectFunctionDeclarationCatalog {
             .replacingOccurrences(of: "-", with: "_")
     }
 
-    private static let supportedTools: [ActionTool] = [.taskCreate, .taskBulkCreate, .taskList, .taskUpdate, .taskComplete]
+    // VoiceOver task enumeration is the safest primary entry point: listing is
+    // read-only, so expose it before write tools to bias Gemini's function
+    // choice toward inspection when the user asks what work exists.
+    private static let supportedTools: [ActionTool] = [.taskList, .taskCreate, .taskBulkCreate, .taskUpdate, .taskComplete]
 
     private static func declaration(for tool: ActionTool) -> GeminiDirectFunctionDeclaration? {
         switch tool {
@@ -514,10 +517,20 @@ private struct GeminiDirectFunctionCallActionPlanMapper {
     }
 
     private func summary(for actions: [PlanAction]) -> String {
-        if actions.count == 1,
-           actions[0].tool == .taskCreate,
-           case .string(let title)? = actions[0].arguments["title"] {
-            return "Create task: \(title)"
+        if actions.count == 1 {
+            switch actions[0].tool {
+            case .taskList:
+                // Review summaries are the first thing the VoiceOver flow
+                // announces, so the read-only task-list path gets a concrete
+                // label instead of a generic provider-function fallback.
+                return "List current SoloPM tasks."
+            case .taskCreate:
+                if case .string(let title)? = actions[0].arguments["title"] {
+                    return "Create task: \(title)"
+                }
+            default:
+                break
+            }
         }
         return "Prepare \(actions.count) SoloPM task action\(actions.count == 1 ? "" : "s") from Gemini function call."
     }
