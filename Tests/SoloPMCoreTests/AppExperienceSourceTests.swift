@@ -1861,6 +1861,36 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(coreSource.contains("return .applied(eventCount: 0)"))
     }
 
+    func testScheduleWorkflowShowsLocalDailyWorkloadDashboardWithoutCalendarWrites() throws {
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+        let workloadSource = try readPackageFile("Sources/SoloPMCore/App/DailyWorkloadDashboard.swift")
+
+        XCTAssertTrue(workloadSource.contains("public struct DailyWorkloadOverview"))
+        XCTAssertTrue(workloadSource.contains("public struct DailyWorkloadDay"))
+        XCTAssertTrue(workloadSource.contains("public struct DailyWorkloadProjectContribution"))
+        XCTAssertTrue(coreSource.contains("public func dailyWorkloadOverview("))
+        XCTAssertTrue(workloadSource.contains("inboxUntriagedCount"))
+        XCTAssertTrue(workloadSource.contains("private static func isInboxProject"))
+
+        XCTAssertTrue(workflowSource.contains("DailyWorkloadPanel("))
+        XCTAssertTrue(workflowSource.contains("viewModel.dailyWorkloadOverview("))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-dashboard\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-previous-week\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-next-week\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-day-cell-\\(day.dateKey)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-count-badge-\\(day.dateKey)-total\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-progress-\\(day.dateKey)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-day-detail\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-detail-task-\\(task.id)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-unscheduled-bucket\")"))
+        XCTAssertTrue(workflowSource.contains("External Calendar writes require review approval."))
+
+        let dashboardStart = try XCTUnwrap(workflowSource.range(of: "private struct DailyWorkloadPanel"))
+        let dashboardSource = String(workflowSource[dashboardStart.lowerBound...])
+        XCTAssertFalse(dashboardSource.contains("applyScheduleDraftToCalendar"))
+    }
+
     func testAppAndCLIShareDefaultDatabaseLocation() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let cliSource = try readPackageFile("Sources/SoloPMCLI/SoloPMCLIEntrypoint.swift")

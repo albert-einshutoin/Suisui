@@ -1,3 +1,4 @@
+import Foundation
 import SoloPMCore
 import SwiftUI
 
@@ -147,6 +148,8 @@ struct CatchUpWorkflowView: View {
 struct ScheduleWorkflowView: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
     @State private var approvalToken = ""
+    @State private var workloadReferenceDate = Date()
+    @State private var selectedWorkloadDayKey: String?
 
     var body: some View {
         ScrollView {
@@ -163,6 +166,13 @@ struct ScheduleWorkflowView: View {
                     .accessibilityIdentifier("schedule-generate-draft")
                     .accessibilityHint("Combines today's local time blocks and unscheduled tasks without writing to Calendar.")
                 }
+
+                DailyWorkloadPanel(
+                    overview: viewModel.dailyWorkloadOverview(around: workloadReferenceDate),
+                    selectedDayKey: $selectedWorkloadDayKey,
+                    previousWeek: moveWorkloadToPreviousWeek,
+                    nextWeek: moveWorkloadToNextWeek
+                )
 
                 ScheduleStatusBanner(result: viewModel.scheduleApplyResult)
 
@@ -198,6 +208,264 @@ struct ScheduleWorkflowView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityIdentifier("schedule-workflow")
+    }
+
+    private func moveWorkloadToPreviousWeek() {
+        workloadReferenceDate = Calendar.current.date(byAdding: .day, value: -7, to: workloadReferenceDate) ?? workloadReferenceDate
+        selectedWorkloadDayKey = nil
+    }
+
+    private func moveWorkloadToNextWeek() {
+        workloadReferenceDate = Calendar.current.date(byAdding: .day, value: 7, to: workloadReferenceDate) ?? workloadReferenceDate
+        selectedWorkloadDayKey = nil
+    }
+}
+
+private struct DailyWorkloadPanel: View {
+    let overview: DailyWorkloadOverview
+    @Binding var selectedDayKey: String?
+    let previousWeek: () -> Void
+    let nextWeek: () -> Void
+
+    private var selectedDay: DailyWorkloadDay? {
+        overview.days.first { $0.dateKey == selectedDayKey }
+            ?? overview.days.first { $0.totalTaskCount > 0 }
+            ?? overview.days.first
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 10) {
+                Label("Daily Workload", systemImage: "calendar.day.timeline.left")
+                    .font(.headline)
+                Spacer(minLength: 8)
+                Button(action: previousWeek) {
+                    Label("Previous Week", systemImage: "chevron.left")
+                }
+                .labelStyle(.iconOnly)
+                .help("Previous Week")
+                .accessibilityIdentifier("schedule-workload-previous-week")
+                .accessibilityLabel("Previous Week")
+
+                Button(action: nextWeek) {
+                    Label("Next Week", systemImage: "chevron.right")
+                }
+                .labelStyle(.iconOnly)
+                .help("Next Week")
+                .accessibilityIdentifier("schedule-workload-next-week")
+                .accessibilityLabel("Next Week")
+            }
+
+            Text("Local task counts and progress. External Calendar writes require review approval.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 8)], spacing: 8) {
+                ForEach(overview.days) { day in
+                    Button {
+                        selectedDayKey = day.dateKey
+                    } label: {
+                        DailyWorkloadDayCell(day: day, isSelected: day.dateKey == selectedDay?.dateKey)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("schedule-workload-day-cell-\(day.dateKey)")
+                    .accessibilityLabel(String(format: String(localized: "Workload for %@"), day.dateKey))
+                    .accessibilityValue(String(format: String(localized: "%d tasks, %d percent complete"), day.totalTaskCount, Int((day.progress * 100).rounded())))
+                }
+            }
+
+            if let selectedDay {
+                DailyWorkloadDayDetail(day: selectedDay)
+            }
+
+            HStack(alignment: .top, spacing: 12) {
+                DailyWorkloadUnscheduledBucket(
+                    title: "Unscheduled",
+                    count: overview.unscheduledTasks.count,
+                    tasks: overview.unscheduledTasks,
+                    systemImage: "tray.full"
+                )
+                DailyWorkloadInboxBucket(count: overview.inboxUntriagedCount)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("schedule-workload-dashboard")
+        .accessibilityLabel("Daily Workload")
+        .accessibilityHint("Shows local per-day task counts, progress, unscheduled tasks, and Inbox triage without writing Calendar.")
+    }
+}
+
+private struct DailyWorkloadDayCell: View {
+    let day: DailyWorkloadDay
+    let isSelected: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(shortDateLabel)
+                    .font(.caption.weight(.semibold))
+                Spacer(minLength: 4)
+                if day.overdueTaskCount > 0 {
+                    Image(systemName: "clock.badge.exclamationmark")
+                        .foregroundStyle(.orange)
+                        .accessibilityHidden(true)
+                }
+            }
+
+            ProgressView(value: day.progress)
+                .accessibilityIdentifier("schedule-workload-progress-\(day.dateKey)")
+                .accessibilityLabel("Daily progress")
+                .accessibilityValue("\(Int((day.progress * 100).rounded()))%")
+
+            HStack(spacing: 6) {
+                metric("Total", value: day.totalTaskCount)
+                    .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-total")
+                metric("Open", value: day.openTaskCount)
+                    .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-open")
+                metric("Done", value: day.doneTaskCount)
+                    .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-done")
+            }
+            HStack(spacing: 6) {
+                metric("Blocked", value: day.blockedTaskCount)
+                metric("Missed", value: day.overdueTaskCount)
+            }
+        }
+        .padding(10)
+        .frame(minHeight: 118, maxHeight: 132, alignment: .topLeading)
+        .background(isSelected ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? Color.accentColor.opacity(0.55) : Color.secondary.opacity(0.14))
+        }
+    }
+
+    private var shortDateLabel: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "E d"
+        return formatter.string(from: day.date)
+    }
+
+    private func metric(_ title: LocalizedStringKey, value: Int) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text("\(value)")
+                .font(.caption.weight(.semibold))
+                .monospacedDigit()
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(minWidth: 34, alignment: .leading)
+    }
+}
+
+private struct DailyWorkloadDayDetail: View {
+    let day: DailyWorkloadDay
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Selected Day", systemImage: "list.bullet.rectangle")
+                .font(.subheadline.weight(.semibold))
+
+            if day.projectContributions.isEmpty {
+                Text("No scheduled tasks for this day.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(day.projectContributions) { contribution in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text(contribution.projectTitle)
+                                .font(.caption.weight(.semibold))
+                            Spacer(minLength: 8)
+                            Text(String(format: String(localized: "%d open / %d done"), contribution.openTaskCount, contribution.doneTaskCount))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        ForEach(contribution.tasks) { task in
+                            HStack(spacing: 8) {
+                                Image(systemName: task.status.systemImage)
+                                    .foregroundStyle(task.status.tint)
+                                    .frame(width: 18)
+                                    .accessibilityHidden(true)
+                                Text(task.title)
+                                    .font(.caption)
+                                    .lineLimit(1)
+                                Spacer(minLength: 8)
+                                Text(LocalizedStringKey(task.status.title))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("schedule-workload-detail-task-\(task.id)")
+                            .accessibilityLabel(String(format: String(localized: "%@ task %@"), task.status.title, task.title))
+                        }
+                    }
+                    .padding(8)
+                    .background(Color.secondary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("schedule-workload-day-detail")
+        .accessibilityLabel("Selected workload day detail")
+    }
+}
+
+private struct DailyWorkloadUnscheduledBucket: View {
+    let title: LocalizedStringKey
+    let count: Int
+    let tasks: [ProjectBoardTask]
+    let systemImage: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline.weight(.semibold))
+            Text(String(format: String(localized: "%d tasks"), count))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(tasks.prefix(4)) { task in
+                Text(task.title)
+                    .font(.caption)
+                    .lineLimit(1)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("schedule-workload-unscheduled-bucket")
+        .accessibilityLabel("Unscheduled tasks")
+        .accessibilityValue("\(count)")
+    }
+}
+
+private struct DailyWorkloadInboxBucket: View {
+    let count: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Inbox Triage", systemImage: "tray")
+                .font(.subheadline.weight(.semibold))
+            Text(String(format: String(localized: "%d captures waiting"), count))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("Inbox captures are shown separately until moved into a project.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("schedule-workload-inbox-bucket")
+        .accessibilityLabel("Inbox triage captures")
+        .accessibilityValue("\(count)")
     }
 }
 

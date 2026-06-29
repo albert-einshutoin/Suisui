@@ -1645,6 +1645,99 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDailyWorkloadOverviewAggregatesWeekCountsProgressAndUnscheduledBuckets() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-24T09:00:00Z")
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let inbox = try XCTUnwrap(viewModel.inboxProject)
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        let support = try XCTUnwrap(viewModel.createProject(title: "Support"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Inbox raw capture", projectID: inbox.id, status: .planned, dueAt: nil))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Overdue launch follow-up", projectID: launch.id, status: .planned, dueAt: "2026-06-22T18:00:00Z"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Blocked support reply", projectID: support.id, status: .blocked, dueAt: "2026-06-24T15:00:00Z"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Done launch note", projectID: launch.id, status: .done, dueAt: "2026-06-24T12:00:00Z"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Tomorrow in progress", projectID: launch.id, status: .inProgress, dueAt: "2026-06-25T10:00:00Z"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Backlog without date", projectID: support.id, status: .planned, dueAt: nil))
+
+        let overview = viewModel.dailyWorkloadOverview(
+            around: referenceDate,
+            calendar: calendar,
+            visibleDayCount: 7
+        )
+
+        XCTAssertEqual(overview.days.map(\.dateKey), [
+            "2026-06-22",
+            "2026-06-23",
+            "2026-06-24",
+            "2026-06-25",
+            "2026-06-26",
+            "2026-06-27",
+            "2026-06-28"
+        ])
+        XCTAssertEqual(overview.inboxUntriagedCount, 1)
+        XCTAssertEqual(overview.unscheduledTasks.map(\.title), ["Backlog without date"])
+
+        let monday = try XCTUnwrap(overview.days.first { $0.dateKey == "2026-06-22" })
+        XCTAssertEqual(monday.totalTaskCount, 1)
+        XCTAssertEqual(monday.openTaskCount, 1)
+        XCTAssertEqual(monday.overdueTaskCount, 1)
+        XCTAssertEqual(monday.progress, 0)
+        XCTAssertEqual(monday.projectContributions.map(\.projectTitle), ["Launch"])
+
+        let wednesday = try XCTUnwrap(overview.days.first { $0.dateKey == "2026-06-24" })
+        XCTAssertEqual(wednesday.totalTaskCount, 2)
+        XCTAssertEqual(wednesday.openTaskCount, 1)
+        XCTAssertEqual(wednesday.blockedTaskCount, 1)
+        XCTAssertEqual(wednesday.doneTaskCount, 1)
+        XCTAssertEqual(wednesday.overdueTaskCount, 0)
+        XCTAssertEqual(wednesday.progress, 0.5)
+        XCTAssertEqual(wednesday.projectContributions.map(\.projectTitle), ["Launch", "Support"])
+
+        let thursday = try XCTUnwrap(overview.days.first { $0.dateKey == "2026-06-25" })
+        XCTAssertEqual(thursday.totalTaskCount, 1)
+        XCTAssertEqual(thursday.inProgressTaskCount, 1)
+        XCTAssertEqual(thursday.progress, 0)
+    }
+
+    @MainActor
+    func testDailyWorkloadOverviewExcludesInboxArchivedAndCompletedProjectsWithoutCalendarWrite() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let calendarClient = InMemoryCalendarClient()
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            scheduleCalendarClient: calendarClient
+        )
+        viewModel.load()
+        let inbox = try XCTUnwrap(viewModel.inboxProject)
+        let active = try XCTUnwrap(viewModel.createProject(title: "Active Plan"))
+        let archived = try XCTUnwrap(viewModel.createProject(title: "Archived Plan"))
+        let completed = try XCTUnwrap(viewModel.createProject(title: "Completed Plan"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Inbox due capture", projectID: inbox.id, status: .planned, dueAt: "2026-06-24"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Active due", projectID: active.id, status: .planned, dueAt: "2026-06-24"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Archived due", projectID: archived.id, status: .planned, dueAt: "2026-06-24"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Completed due", projectID: completed.id, status: .planned, dueAt: "2026-06-24"))
+        viewModel.selectedProjectID = archived.id
+        viewModel.archiveSelectedProject()
+        viewModel.selectedProjectID = completed.id
+        viewModel.completeSelectedProject()
+
+        let overview = viewModel.dailyWorkloadOverview(
+            around: try isoDate("2026-06-24T09:00:00Z"),
+            calendar: calendar,
+            visibleDayCount: 7
+        )
+
+        let wednesday = try XCTUnwrap(overview.days.first { $0.dateKey == "2026-06-24" })
+        XCTAssertEqual(wednesday.projectContributions.map(\.projectTitle), ["Active Plan"])
+        XCTAssertEqual(wednesday.projectContributions.flatMap(\.tasks).map(\.title), ["Active due"])
+        XCTAssertEqual(overview.inboxUntriagedCount, 1)
+        XCTAssertTrue(try calendarClient.listEvents().isEmpty)
+    }
+
+    @MainActor
     func testScheduleApplyRequiresApprovalBeforeCalendarWrite() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!

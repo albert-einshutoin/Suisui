@@ -815,3 +815,16 @@
 "%d missed tasks need review" = "%d missed tasks need review";
 "%d new" = "%d new";
 "%@ tasks" = "%@ tasks";
+"Daily Workload" = "Daily Workload";
+"Daily progress" = "Daily progress";
+"Inbox Triage" = "Inbox Triage";
+"Inbox captures are shown separately until moved into a project." = "Inbox captures are shown separately until moved into a project.";
+"Inbox triage captures" = "Inbox triage captures";
+"Local task counts and progress. External Calendar writes require review approval." = "Local task counts and progress. External Calendar writes require review approval.";
+"Next Week" = "Next Week";
+"No scheduled tasks for this day." = "No scheduled tasks for this day.";
+"Previous Week" = "Previous Week";
+"Selected Day" = "Selected Day";
+"Selected workload day detail" = "Selected workload day detail";
+"Shows local per-day task counts, progress, unscheduled tasks, and Inbox triage without writing Calendar." = "Shows local per-day task counts, progress, unscheduled tasks, and Inbox triage without writing Calendar.";
+"Unscheduled tasks" = "Unscheduled tasks";
