@@ -96,6 +96,32 @@ final class InboxCaptureStoreTests: XCTestCase {
         }
     }
 
+    func testSQLiteInboxCaptureStoreUpdatesVoiceCaptureMemo() throws {
+        let stores = try makeStores()
+        let task = try stores.board.createInboxTask(title: "Annotate capture")
+        let record = try stores.captures.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: task.id,
+            audioFilePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/memo-update.m4a",
+            durationSeconds: 14,
+            transcript: "Clarify launch owner",
+            interpretationSummary: "Likely task: clarify launch owner",
+            memo: nil,
+            classificationStatus: .unclassified,
+            transcriptionStatus: .succeeded,
+            createdAt: "2026-06-21T10:40:00Z"
+        ))
+
+        let updated = try stores.captures.updateMemo(id: record.id, memo: "  Needs owner review.  ")
+
+        XCTAssertEqual(updated.memo, "Needs owner review.")
+        XCTAssertEqual(try stores.captures.get(id: record.id).memo, "Needs owner review.")
+
+        let cleared = try stores.captures.updateMemo(id: record.id, memo: "   ")
+
+        XCTAssertNil(cleared.memo)
+        XCTAssertNil(try stores.captures.get(id: record.id).memo)
+    }
+
     func testFailedTranscriptionStillPersistsVoiceCaptureWithoutTranscript() throws {
         let stores = try makeStores()
         let task = try stores.board.createInboxTask(title: "Retry transcription later")
@@ -188,6 +214,8 @@ final class InboxCaptureStoreTests: XCTestCase {
             transcriptionStatus: .succeeded,
             createdAt: "2026-06-21T10:20:00Z"
         ))
+        viewModel.load()
+        viewModel.selectedTaskID = task.id
 
         let metadata = try XCTUnwrap(viewModel.selectedInboxCaptureRecords.first)
 
@@ -196,6 +224,119 @@ final class InboxCaptureStoreTests: XCTestCase {
         XCTAssertEqual(metadata.transcript, "Draft launch checklist")
         XCTAssertEqual(metadata.sourceKind, .voiceMemo)
         XCTAssertEqual(metadata.classificationStatus, .unclassified)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelUpdatesSelectedVoiceCaptureMemo() throws {
+        let stores = try makeStores()
+        let viewModel = ProjectBoardViewModel(store: stores.board, inboxCaptureStore: stores.captures)
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createInboxTask(title: "Voice-backed inbox item"))
+        _ = try stores.captures.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: task.id,
+            audioFilePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/voice-memo-note.m4a",
+            durationSeconds: 18.5,
+            transcript: "Draft launch checklist",
+            interpretationSummary: "Create checklist task",
+            memo: nil,
+            classificationStatus: .unclassified,
+            transcriptionStatus: .succeeded,
+            createdAt: "2026-06-21T10:45:00Z"
+        ))
+        viewModel.load()
+        viewModel.selectedTaskID = task.id
+
+        let updated = try XCTUnwrap(viewModel.updateSelectedInboxCaptureMemo(" Confirm owner before converting. "))
+
+        XCTAssertEqual(updated.memo, "Confirm owner before converting.")
+        XCTAssertEqual(viewModel.selectedInboxCaptureRecords.first?.memo, "Confirm owner before converting.")
+        XCTAssertEqual(
+            viewModel.inboxClassificationFeedback,
+            InboxClassificationFeedback(
+                message: "Saved note for \"Voice-backed inbox item\".",
+                systemImage: "note.text",
+                canUndo: false
+            )
+        )
+    }
+
+    @MainActor
+    func testProjectBoardViewModelBuildsInboxTriageSummariesForListRows() throws {
+        let stores = try makeStores()
+        let viewModel = ProjectBoardViewModel(store: stores.board, inboxCaptureStore: stores.captures)
+        viewModel.load()
+
+        let manual = try stores.board.createInboxTask(title: "Manual note")
+        let failedVoice = try stores.board.createInboxTask(title: "Failed voice memo")
+        _ = try stores.captures.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: failedVoice.id,
+            audioFilePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/failed-summary.m4a",
+            durationSeconds: 9,
+            transcript: nil,
+            interpretationSummary: nil,
+            memo: nil,
+            classificationStatus: .unclassified,
+            transcriptionStatus: .failed,
+            createdAt: "2026-06-21T10:05:00Z"
+        ))
+        let interpretedVoice = try stores.board.createInboxTask(title: "AI interpreted voice memo")
+        _ = try stores.captures.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: interpretedVoice.id,
+            audioFilePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/interpreted-summary.m4a",
+            durationSeconds: 18,
+            transcript: "Draft launch checklist",
+            interpretationSummary: "Likely task: draft launch checklist",
+            memo: "Confidence: high",
+            classificationStatus: .unclassified,
+            transcriptionStatus: .succeeded,
+            createdAt: "2026-06-21T10:20:00Z"
+        ))
+        let failedWithStaleInterpretation = try stores.board.createInboxTask(title: "Failed voice with stale interpretation")
+        _ = try stores.captures.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: failedWithStaleInterpretation.id,
+            audioFilePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/stale-ai.m4a",
+            durationSeconds: 21,
+            transcript: nil,
+            interpretationSummary: "Stale interpretation from a previous provider run",
+            memo: nil,
+            classificationStatus: .unclassified,
+            transcriptionStatus: .failed,
+            createdAt: "2026-06-21T10:25:00Z"
+        ))
+        viewModel.load()
+
+        XCTAssertEqual(
+            viewModel.inboxTriageSummary(for: manual),
+            InboxTriageSummary(
+                sourceLabel: "Manual",
+                interpretationLabel: "Unprocessed",
+                systemImage: "square.and.pencil",
+                tintName: "secondary",
+                accessibilityValue: "Source: Manual, Interpretation: Unprocessed"
+            )
+        )
+        XCTAssertEqual(
+            viewModel.inboxTriageSummary(for: failedVoice),
+            InboxTriageSummary(
+                sourceLabel: "Voice",
+                interpretationLabel: "Transcript failed",
+                systemImage: "waveform.badge.exclamationmark",
+                tintName: "red",
+                accessibilityValue: "Source: Voice, Interpretation: Transcript failed"
+            )
+        )
+        XCTAssertEqual(
+            viewModel.inboxTriageSummary(for: interpretedVoice),
+            InboxTriageSummary(
+                sourceLabel: "Voice",
+                interpretationLabel: "AI interpreted",
+                systemImage: "sparkles",
+                tintName: "blue",
+                accessibilityValue: "Source: Voice, Interpretation: AI interpreted, Confidence: high"
+            )
+        )
+        viewModel.setInboxTriageFilter(.aiSuggested)
+        XCTAssertEqual(viewModel.filteredInboxTasks.map(\.id), [interpretedVoice.id])
     }
 
     func testCaptureValidationRedactsTranscriptAndAudioPathFromUserFacingErrors() throws {

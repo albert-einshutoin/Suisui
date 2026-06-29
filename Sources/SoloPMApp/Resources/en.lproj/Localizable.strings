@@ -779,3 +779,14 @@
 "Direct external sending must become a reviewed draft before any external action." = "Direct external sending must become a reviewed draft before any external action.";
 "The transcript does not contain enough task, schedule, document, development, notification, or status signal." = "The transcript does not contain enough task, schedule, document, development, notification, or status signal.";
 "The transcript has overlapping intent signals and needs a clearer target." = "The transcript has overlapping intent signals and needs a clearer target.";
+"00:00" = "00:00";
+"Inbox source and interpretation" = "Inbox source and interpretation";
+"Inbox voice note" = "Inbox voice note";
+"Note" = "Note";
+"Play" = "Play";
+"Save Note" = "Save Note";
+"Save the note on this Inbox voice capture" = "Save the note on this Inbox voice capture";
+"Stores this note locally on the selected voice capture." = "Stores this note locally on the selected voice capture.";
+"Voice Intake" = "Voice Intake";
+"Voice playback" = "Voice playback";
+"Voice waveform" = "Voice waveform";
