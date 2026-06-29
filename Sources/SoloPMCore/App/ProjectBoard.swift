@@ -497,6 +497,28 @@ public struct InboxClassificationFeedback: Equatable, Sendable {
     }
 }
 
+public struct InboxTriageSummary: Equatable, Sendable {
+    public var sourceLabel: String
+    public var interpretationLabel: String
+    public var systemImage: String
+    public var tintName: String
+    public var accessibilityValue: String
+
+    public init(
+        sourceLabel: String,
+        interpretationLabel: String,
+        systemImage: String,
+        tintName: String,
+        accessibilityValue: String
+    ) {
+        self.sourceLabel = sourceLabel
+        self.interpretationLabel = interpretationLabel
+        self.systemImage = systemImage
+        self.tintName = tintName
+        self.accessibilityValue = accessibilityValue
+    }
+}
+
 public enum InboxTriageFilter: String, CaseIterable, Identifiable, Sendable {
     case all
     case voice
@@ -1081,6 +1103,9 @@ public final class ProjectBoardViewModel: ObservableObject {
     private let scheduleCalendarClient: (any CalendarClient)?
     private let onChange: () -> Void
     private var lastInboxClassificationUndo: InboxClassificationUndo?
+    // Inbox rows render often during filtering and selection changes, so capture
+    // metadata is cached at board load time instead of hitting SQLite from SwiftUI body rendering.
+    private var inboxCaptureRecordsByTaskID: [Int64: [InboxCaptureRecord]]
     private var taskAutomationSessionHistory: TaskAutoExecutionHistory
 
     public init(
@@ -1102,6 +1127,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.showsCompletedWorkflowTasks = false
         self.inboxTriageFilter = .all
         self.todayCommandFeedback = nil
+        self.inboxCaptureRecordsByTaskID = [:]
         self.todayFocusTaskID = nil
         self.todayScheduleDraft = nil
         self.scheduleDraft = nil
@@ -1130,15 +1156,35 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     public var selectedInboxCaptureRecords: [InboxCaptureRecord] {
-        guard let selectedTaskID, let inboxCaptureStore else {
+        guard let selectedTaskID else {
             return []
         }
 
+        return captureRecords(for: selectedTaskID, reportErrors: true)
+    }
+
+    @discardableResult
+    public func updateSelectedInboxCaptureMemo(_ memo: String) -> InboxCaptureRecord? {
+        guard let capture = selectedInboxCaptureRecords.first, let inboxCaptureStore else {
+            errorMessage = "Inbox capture is no longer available."
+            return nil
+        }
+
         do {
-            return try inboxCaptureStore.list(taskID: selectedTaskID)
+            let updated = try inboxCaptureStore.updateMemo(id: capture.id, memo: memo)
+            replaceCachedCapture(updated)
+            let taskTitle = selectedTask?.title ?? "selected Inbox item"
+            inboxClassificationFeedback = InboxClassificationFeedback(
+                message: String(format: String(localized: "Saved note for \"%@\"."), taskTitle),
+                systemImage: "note.text",
+                canUndo: false
+            )
+            errorMessage = nil
+            onChange()
+            return updated
         } catch {
             errorMessage = InboxCaptureStoreError.userMessage(for: error)
-            return []
+            return nil
         }
     }
 
@@ -1165,17 +1211,75 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     public func inboxTriageCount(for filter: InboxTriageFilter) -> Int {
-        inboxTasks.filter { task in
+        refreshInboxCaptureCacheForInbox()
+        return inboxTasks.filter { task in
             matchesInboxTriageFilter(task, filter: filter)
         }.count
     }
 
+    public func inboxTriageSummary(for task: ProjectBoardTask) -> InboxTriageSummary {
+        let captures = captureRecords(for: task.id)
+        guard let capture = captures.first else {
+            return InboxTriageSummary(
+                sourceLabel: "Manual",
+                interpretationLabel: task.status == .backlog && task.dueAt == nil ? "Unprocessed" : "Manual",
+                systemImage: "square.and.pencil",
+                tintName: "secondary",
+                accessibilityValue: task.status == .backlog && task.dueAt == nil
+                    ? "Source: Manual, Interpretation: Unprocessed"
+                    : "Source: Manual, Interpretation: Manual"
+            )
+        }
+
+        if capture.transcriptionStatus == .failed {
+            return InboxTriageSummary(
+                sourceLabel: "Voice",
+                interpretationLabel: "Transcript failed",
+                systemImage: "waveform.badge.exclamationmark",
+                tintName: "red",
+                accessibilityValue: "Source: Voice, Interpretation: Transcript failed"
+            )
+        }
+
+        if capture.transcriptionStatus == .pending {
+            return InboxTriageSummary(
+                sourceLabel: "Voice",
+                interpretationLabel: "Transcript pending",
+                systemImage: "waveform",
+                tintName: "secondary",
+                accessibilityValue: "Source: Voice, Interpretation: Transcript pending"
+            )
+        }
+
+        guard capture.interpretationSummary?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            return InboxTriageSummary(
+                sourceLabel: "Voice",
+                interpretationLabel: "Transcript ready",
+                systemImage: "waveform",
+                tintName: "blue",
+                accessibilityValue: "Source: Voice, Interpretation: Transcript ready"
+            )
+        }
+
+        let confidence = Self.inboxInterpretationConfidence(from: capture.memo)
+        let confidenceValue = confidence.map { ", Confidence: \($0)" } ?? ""
+        return InboxTriageSummary(
+            sourceLabel: "Voice",
+            interpretationLabel: "AI interpreted",
+            systemImage: "sparkles",
+            tintName: "blue",
+            accessibilityValue: "Source: Voice, Interpretation: AI interpreted\(confidenceValue)"
+        )
+    }
+
     public func setInboxTriageFilter(_ filter: InboxTriageFilter) {
+        refreshInboxCaptureCacheForInbox()
         inboxTriageFilter = filter
         ensureSelectedTaskIsVisibleInInboxFilter()
     }
 
     public func ensureSelectedInboxTaskIsVisible() {
+        refreshInboxCaptureCacheForInbox()
         // Inbox actions and voice metadata are contextual; auto-selecting the
         // first visible item prevents a loaded Inbox from presenting disabled
         // classification controls with available work hidden in the list.
@@ -1856,14 +1960,16 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     public func load() {
         do {
-            snapshot = try store.loadSnapshot(includeArchived: showsArchivedProjects)
+            let loadedSnapshot = try store.loadSnapshot(includeArchived: showsArchivedProjects)
+            let captureCacheErrorMessage = refreshInboxCaptureCache(for: loadedSnapshot)
+            snapshot = loadedSnapshot
             if selectedProjectID == nil || !snapshot.projects.contains(where: { $0.id == selectedProjectID }) {
                 selectedProjectID = snapshot.projects.first?.id
             }
             if selectedTaskID != nil, selectedTask == nil {
                 self.selectedTaskID = nil
             }
-            errorMessage = nil
+            errorMessage = captureCacheErrorMessage
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
         }
@@ -2813,7 +2919,10 @@ public final class ProjectBoardViewModel: ObservableObject {
         case .voice:
             return captures.contains { $0.sourceKind == .voiceMemo }
         case .aiSuggested:
-            return captures.contains { $0.interpretationSummary?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+            return captures.contains {
+                $0.transcriptionStatus == .succeeded
+                    && $0.interpretationSummary?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            }
         case .manual:
             return captures.isEmpty
         case .unprocessed:
@@ -2821,7 +2930,10 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
-    private func captureRecords(for taskID: Int64) -> [InboxCaptureRecord] {
+    private func captureRecords(for taskID: Int64, reportErrors: Bool = false) -> [InboxCaptureRecord] {
+        if let records = inboxCaptureRecordsByTaskID[taskID] {
+            return records
+        }
         guard let inboxCaptureStore else {
             // Older test/runtime surfaces can instantiate the board without
             // capture metadata. Treat those items as manual captures so the
@@ -2830,11 +2942,78 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         do {
-            return try inboxCaptureStore.list(taskID: taskID)
+            let records = try inboxCaptureStore.list(taskID: taskID)
+            inboxCaptureRecordsByTaskID[taskID] = records
+            return records
         } catch {
-            errorMessage = InboxCaptureStoreError.userMessage(for: error)
+            if reportErrors {
+                errorMessage = InboxCaptureStoreError.userMessage(for: error)
+            }
             return []
         }
+    }
+
+    private func refreshInboxCaptureCache(for snapshot: ProjectBoardSnapshot) -> String? {
+        guard let inboxCaptureStore else {
+            inboxCaptureRecordsByTaskID = [:]
+            return nil
+        }
+
+        var refreshedRecords = inboxCaptureRecordsByTaskID
+        var firstErrorMessage: String?
+        let taskIDs = Self.inboxTaskIDs(in: snapshot)
+        for taskID in taskIDs {
+            do {
+                refreshedRecords[taskID] = try inboxCaptureStore.list(taskID: taskID)
+            } catch {
+                refreshedRecords[taskID] = []
+                if firstErrorMessage == nil {
+                    firstErrorMessage = InboxCaptureStoreError.userMessage(for: error)
+                }
+            }
+        }
+        inboxCaptureRecordsByTaskID = refreshedRecords
+        return firstErrorMessage
+    }
+
+    private func refreshInboxCaptureCacheForInbox() {
+        if let errorMessage = refreshInboxCaptureCache(for: snapshot) {
+            self.errorMessage = errorMessage
+        }
+    }
+
+    private static func inboxTaskIDs(in snapshot: ProjectBoardSnapshot) -> Set<Int64> {
+        guard let inboxProject = snapshot.projects.first(where: {
+            $0.title.caseInsensitiveCompare("Inbox") == .orderedSame && !$0.isArchived
+        }) else {
+            return []
+        }
+        return Set(inboxProject.tasks.map(\.id))
+    }
+
+    private func replaceCachedCapture(_ updated: InboxCaptureRecord) {
+        var records = inboxCaptureRecordsByTaskID[updated.taskID] ?? []
+        if let index = records.firstIndex(where: { $0.id == updated.id }) {
+            records[index] = updated
+        } else {
+            records.insert(updated, at: 0)
+        }
+        inboxCaptureRecordsByTaskID[updated.taskID] = records.sorted { $0.id > $1.id }
+    }
+
+    private static func inboxInterpretationConfidence(from memo: String?) -> String? {
+        guard let memo else {
+            return nil
+        }
+        let prefix = "Confidence:"
+        guard let range = memo.range(of: prefix, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let value = memo[range.upperBound...]
+            .split(whereSeparator: { $0 == "," || $0 == "\n" })
+            .first
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        return value?.isEmpty == false ? value : nil
     }
 
     private func dueDate(for rawDueAt: String?) -> Date? {

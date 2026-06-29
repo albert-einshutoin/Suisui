@@ -475,6 +475,9 @@ struct InboxWorkflowView: View {
             emptyTitle: "Inbox is clear",
             emptyDescription: "Voice notes, manual captures, and unassigned tasks land here before classification.",
             viewModel: viewModel,
+            triageSummary: { task in
+                viewModel.inboxTriageSummary(for: task)
+            },
             headerAccessory: {
                 InboxHeaderControls(quickTitle: $quickTitle, viewModel: viewModel, addInboxTask: addInboxTask)
             },
@@ -560,6 +563,7 @@ private struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
     let emptyTitle: String
     let emptyDescription: String
     @ObservedObject var viewModel: ProjectBoardViewModel
+    let triageSummary: (ProjectBoardTask) -> InboxTriageSummary?
     @ViewBuilder var headerAccessory: () -> HeaderAccessory
     @ViewBuilder var footer: () -> Footer
 
@@ -571,6 +575,7 @@ private struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
         emptyTitle: String,
         emptyDescription: String,
         viewModel: ProjectBoardViewModel,
+        triageSummary: @escaping (ProjectBoardTask) -> InboxTriageSummary? = { _ in nil },
         @ViewBuilder headerAccessory: @escaping () -> HeaderAccessory = { EmptyView() },
         @ViewBuilder footer: @escaping () -> Footer
     ) {
@@ -581,6 +586,7 @@ private struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
         self.emptyTitle = emptyTitle
         self.emptyDescription = emptyDescription
         self.viewModel = viewModel
+        self.triageSummary = triageSummary
         self.headerAccessory = headerAccessory
         self.footer = footer
     }
@@ -614,6 +620,7 @@ private struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
                             WorkflowTaskRow(
                                 task: task,
                                 projectTitle: viewModel.projectTitle(for: task),
+                                triageSummary: triageSummary(task),
                                 isSelected: viewModel.selectedTaskID == task.id,
                                 onSelect: { viewModel.selectedTaskID = task.id },
                                 onToggleCompletion: { viewModel.toggleTaskCompletion(id: task.id) }
@@ -676,6 +683,7 @@ private struct WorkflowHeader: View {
 private struct WorkflowTaskRow: View {
     let task: ProjectBoardTask
     let projectTitle: String
+    let triageSummary: InboxTriageSummary?
     let isSelected: Bool
     let onSelect: () -> Void
     let onToggleCompletion: () -> Void
@@ -720,6 +728,10 @@ private struct WorkflowTaskRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        if let triageSummary {
+                            InboxTriagePill(summary: triageSummary)
+                                .accessibilityIdentifier("inbox-row-triage-summary-\(task.id)")
+                        }
                     }
 
                     Spacer(minLength: 8)
@@ -760,6 +772,9 @@ private struct WorkflowTaskRow: View {
             "\(String(localized: "Status")): \(String(localized: String.LocalizationValue(task.status.title)))",
             "\(String(localized: "Priority")): \(String(localized: String.LocalizationValue(task.priority.label)))"
         ]
+        if let triageSummary {
+            values.append(triageSummary.accessibilityValue)
+        }
         if let dueLabel = task.dueLabel {
             values.append("\(String(localized: "Due")): \(dueLabel)")
         }
@@ -778,6 +793,37 @@ private struct WorkflowTaskRow: View {
     }
 }
 
+private struct InboxTriagePill: View {
+    let summary: InboxTriageSummary
+
+    var body: some View {
+        Label {
+            Text("\(summary.sourceLabel) · \(summary.interpretationLabel)")
+        } icon: {
+            Image(systemName: summary.systemImage)
+        }
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(tint)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(tint.opacity(0.10), in: Capsule())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Inbox source and interpretation")
+        .accessibilityValue(summary.accessibilityValue)
+    }
+
+    private var tint: Color {
+        switch summary.tintName {
+        case "blue":
+            .blue
+        case "red":
+            .red
+        default:
+            .secondary
+        }
+    }
+}
+
 private struct InboxActionPanel: View {
     let task: ProjectBoardTask?
     @ObservedObject var viewModel: ProjectBoardViewModel
@@ -786,9 +832,12 @@ private struct InboxActionPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Classify Selected Item")
                 .font(.headline)
-            InboxCaptureMetadataPanel(
+            InboxVoiceIntakeDetail(
                 captures: viewModel.selectedInboxCaptureRecords,
-                taskTitle: task?.title ?? "Selected Inbox item"
+                taskTitle: task?.title ?? "Selected Inbox item",
+                onSaveMemo: { memo in
+                    viewModel.updateSelectedInboxCaptureMemo(memo)
+                }
             )
             if let feedback = viewModel.inboxClassificationFeedback {
                 HStack(spacing: 8) {
@@ -817,14 +866,11 @@ private struct InboxActionPanel: View {
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("inbox-classification-feedback")
             }
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) {
-                    actionButtons
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    actionButtons
-                }
+            LazyVGrid(columns: actionGridColumns, alignment: .leading, spacing: 8) {
+                actionButtons
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("inbox-action-grid")
             .disabled(task == nil)
         }
         .padding(12)
@@ -873,6 +919,12 @@ private struct InboxActionPanel: View {
         return "\(base) Voice capture metadata available for \(task.title)."
     }
 
+    private var actionGridColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: 150), spacing: 8)
+        ]
+    }
+
     @ViewBuilder
     private var actionButtons: some View {
         Button {
@@ -914,56 +966,254 @@ private struct InboxActionPanel: View {
     }
 }
 
-private struct InboxCaptureMetadataPanel: View {
+private struct InboxVoiceIntakeDetail: View {
     let captures: [InboxCaptureRecord]
     let taskTitle: String
+    let onSaveMemo: (String) -> Void
+    @State private var memoDraft = ""
+    @State private var memoCaptureID: Int64?
 
     var body: some View {
         if let capture = captures.first {
-            VStack(alignment: .leading, spacing: 6) {
-                Label("Voice Capture", systemImage: "waveform")
-                    .font(.caption.weight(.semibold))
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 8)], alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center, spacing: 8) {
+                    Label("Voice Intake", systemImage: "waveform")
+                        .font(.caption.weight(.semibold))
+                    Spacer(minLength: 8)
+                    Text(capture.sourceKind.rawValue)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.blue)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color.blue.opacity(0.10), in: Capsule())
+                }
+
+                voicePlayback(capture)
+
+                LazyVGrid(columns: metadataColumns, alignment: .leading, spacing: 6) {
                     metadataRow(title: "Source", value: capture.sourceKind.rawValue)
                     metadataRow(title: "Duration", value: capture.durationLabel)
                     metadataRow(title: "Classification", value: capture.classificationStatus.rawValue)
                     metadataRow(title: "Transcription", value: capture.transcriptionStatus.rawValue)
                 }
-                metadataRow(title: "Transcript", value: capture.transcript ?? "No transcript yet")
-                if let interpretationSummary = capture.interpretationSummary {
-                    metadataRow(title: "Interpretation", value: interpretationSummary)
-                }
-                if let memo = capture.memo {
-                    metadataRow(title: "Memo", value: memo)
-                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("inbox-voice-source-metadata")
+
+                detailSection(
+                    title: "Transcript",
+                    value: transcriptReviewText(for: capture),
+                    systemImage: transcriptSystemImage(for: capture)
+                )
+                .accessibilityIdentifier("inbox-voice-transcript")
+
+                detailSection(
+                    title: "AI Interpretation",
+                    value: interpretationReviewText(for: capture),
+                    systemImage: interpretationSystemImage(for: capture)
+                )
+                .accessibilityIdentifier("inbox-voice-interpretation")
+
+                memoEditor(for: capture)
+
+                Text(reviewStatusText(for: capture))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(reviewStatusColor(for: capture))
+                    .accessibilityIdentifier("inbox-voice-review-status")
             }
             .padding(8)
             .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
-            .accessibilityIdentifier("inbox-capture-metadata")
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Voice capture metadata for \(taskTitle)")
+            .accessibilityIdentifier("inbox-voice-intake-detail")
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Voice intake detail for \(taskTitle)")
             .accessibilityValue(captureAccessibilityValue(capture))
             .accessibilityHint("Summarizes the selected Inbox capture metadata for review.")
+            .onAppear {
+                resetMemoDraft(for: capture)
+            }
+            .onChange(of: capture.id) { _, _ in
+                resetMemoDraft(for: capture)
+            }
         }
     }
 
+    private var metadataColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: 120), spacing: 8)
+        ]
+    }
+
+    private func voicePlayback(_ capture: InboxCaptureRecord) -> some View {
+        HStack(spacing: 8) {
+            Button {} label: {
+                Label("Play", systemImage: "play.fill")
+                    .labelStyle(.iconOnly)
+            }
+            .disabled(true)
+            .frame(width: 28, height: 28)
+            .accessibilityLabel("Voice playback")
+            .accessibilityValue("Playback unavailable")
+
+            Text("00:00")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+
+            HStack(alignment: .center, spacing: 3) {
+                ForEach(waveformBars.indices, id: \.self) { index in
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.accentColor.opacity(0.55))
+                        .frame(width: 3, height: waveformBars[index])
+                }
+            }
+            .frame(height: 28)
+            .accessibilityIdentifier("inbox-voice-waveform")
+            .accessibilityLabel("Voice waveform")
+            .accessibilityValue("Waveform preview")
+
+            Spacer(minLength: 8)
+
+            Text(capture.durationLabel)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .padding(8)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("inbox-voice-playback")
+        .accessibilityLabel("Voice playback")
+        .accessibilityValue("Playback unavailable in this MVP, duration \(capture.durationLabel), waveform preview placeholder")
+    }
+
+    private var waveformBars: [CGFloat] {
+        [8, 14, 10, 20, 12, 18, 9, 16, 22, 11, 15, 19, 10, 17, 13, 21]
+    }
+
+    private func memoEditor(for capture: InboxCaptureRecord) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label {
+                Text("Note")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            } icon: {
+                Image(systemName: "note.text")
+                    .foregroundStyle(.secondary)
+            }
+
+            TextEditor(text: $memoDraft)
+                .font(.caption)
+                .frame(minHeight: 56, maxHeight: 76)
+                .padding(4)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
+                .accessibilityIdentifier("inbox-voice-memo-editor")
+                .accessibilityLabel("Inbox voice note")
+                .accessibilityValue(normalizedMemo(memoDraft).isEmpty ? "No memo yet." : normalizedMemo(memoDraft))
+
+            HStack {
+                Text(normalizedMemo(capture.memo).isEmpty ? "No memo yet." : "Saved note available.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                Button {
+                    onSaveMemo(memoDraft)
+                } label: {
+                    Label("Save Note", systemImage: "checkmark.circle")
+                }
+                .controlSize(.small)
+                .disabled(!memoHasChanges(for: capture))
+                .help("Save the note on this Inbox voice capture")
+                .accessibilityIdentifier("inbox-voice-memo-save")
+                .accessibilityHint("Stores this note locally on the selected voice capture.")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("inbox-voice-memo")
+    }
+
     private func captureAccessibilityValue(_ capture: InboxCaptureRecord) -> String {
-        // Keep the combined AX node self-contained so release marker scans and
-        // screen readers do not depend on SwiftUI child traversal order.
+        // Keep a parent summary for release marker scans while preserving child
+        // identifiers for transcript, interpretation, playback, and memo controls.
         var values = [
             "Source: \(capture.sourceKind.rawValue)",
             "Duration: \(capture.durationLabel)",
             "Classification: \(capture.classificationStatus.rawValue)",
             "Transcription: \(capture.transcriptionStatus.rawValue)",
-            "Transcript: \(capture.transcript ?? "No transcript yet")"
+            "Transcript: \(transcriptReviewText(for: capture))",
+            "Interpretation: \(interpretationReviewText(for: capture))",
+            "Review: \(reviewStatusText(for: capture))"
         ]
-        if let interpretationSummary = capture.interpretationSummary {
-            values.append("Interpretation: \(interpretationSummary)")
-        }
         if let memo = capture.memo {
             values.append("Memo: \(memo)")
         }
         return values.joined(separator: ", ")
+    }
+
+    private func resetMemoDraft(for capture: InboxCaptureRecord) {
+        guard memoCaptureID != capture.id else {
+            return
+        }
+        memoCaptureID = capture.id
+        memoDraft = capture.memo ?? ""
+    }
+
+    private func memoHasChanges(for capture: InboxCaptureRecord) -> Bool {
+        normalizedMemo(memoDraft) != normalizedMemo(capture.memo)
+    }
+
+    private func normalizedMemo(_ value: String?) -> String {
+        value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private func transcriptReviewText(for capture: InboxCaptureRecord) -> String {
+        switch capture.transcriptionStatus {
+        case .failed:
+            return "Transcript failed. Review the original voice memo before converting."
+        case .pending:
+            return "Transcript pending."
+        case .succeeded:
+            let transcript = capture.transcript?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return transcript.isEmpty ? "Transcript is empty." : transcript
+        }
+    }
+
+    private func interpretationReviewText(for capture: InboxCaptureRecord) -> String {
+        guard capture.transcriptionStatus != .failed else {
+            return "AI interpretation unavailable because transcription failed."
+        }
+        let interpretation = capture.interpretationSummary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return interpretation.isEmpty ? "No AI interpretation yet." : interpretation
+    }
+
+    private func reviewStatusText(for capture: InboxCaptureRecord) -> String {
+        switch capture.transcriptionStatus {
+        case .failed:
+            return "Needs transcript review"
+        case .pending:
+            return "Waiting for transcription"
+        case .succeeded:
+            return capture.interpretationSummary?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                ? "Ready for triage"
+                : "Transcript ready"
+        }
+    }
+
+    private func transcriptSystemImage(for capture: InboxCaptureRecord) -> String {
+        capture.transcriptionStatus == .failed ? "exclamationmark.triangle" : "text.quote"
+    }
+
+    private func interpretationSystemImage(for capture: InboxCaptureRecord) -> String {
+        capture.interpretationSummary?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? "sparkles"
+            : "questionmark.bubble"
+    }
+
+    private func reviewStatusColor(for capture: InboxCaptureRecord) -> Color {
+        switch capture.transcriptionStatus {
+        case .failed:
+            .red
+        case .pending:
+            .secondary
+        case .succeeded:
+            .blue
+        }
     }
 
     private func metadataRow(title: LocalizedStringKey, value: String) -> some View {
@@ -976,6 +1226,27 @@ private struct InboxCaptureMetadataPanel: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private func detailSection(title: String, value: String, systemImage: String) -> some View {
+        Label {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.caption)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } icon: {
+            Image(systemName: systemImage)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
+        .accessibilityValue(value)
     }
 }
 

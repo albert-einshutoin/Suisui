@@ -135,6 +135,7 @@ public protocol InboxCaptureStore {
     func createVoiceCapture(_ draft: InboxVoiceCaptureDraft) throws -> InboxCaptureRecord
     func get(id: Int64) throws -> InboxCaptureRecord
     func list(taskID: Int64) throws -> [InboxCaptureRecord]
+    func updateMemo(id: Int64, memo: String?) throws -> InboxCaptureRecord
     func relinkCaptures(fromTaskID: Int64, toTaskID: Int64) throws -> Int
     func delete(id: Int64) throws
 }
@@ -217,6 +218,26 @@ public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendab
             ORDER BY id DESC;
             """
         ).map(Self.record(row:))
+    }
+
+    @discardableResult
+    public func updateMemo(id: Int64, memo: String?) throws -> InboxCaptureRecord {
+        lock.lock()
+        defer { lock.unlock() }
+
+        _ = try getLocked(id: id)
+        let normalizedMemo = Self.normalizedOptionalMemo(memo)
+        // Empty notes are stored as NULL so filters and review summaries do not
+        // have to treat whitespace as meaningful user context.
+        try connection.execute(
+            """
+            UPDATE inbox_capture_records
+            SET memo = \(Self.optional(normalizedMemo)),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = \(id);
+            """
+        )
+        return try getLocked(id: id)
     }
 
     @discardableResult
@@ -344,6 +365,14 @@ public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendab
             return nil
         }
         return value
+    }
+
+    private static func normalizedOptionalMemo(_ value: String?) -> String? {
+        guard let value else {
+            return nil
+        }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private static func optional(_ value: String?) -> String {

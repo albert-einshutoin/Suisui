@@ -658,3 +658,14 @@
 "Runs the reviewed local task step after explicit user approval" = "明示的なユーザー承認後、確認済みのローカルタスク手順を実行します";
 "Runs the reviewed local task step after explicit user approval." = "明示的なユーザー承認後、確認済みのローカルタスク手順を実行します。";
 "Summarizes the selected Inbox capture metadata for review." = "選択中のInboxキャプチャメタデータをレビュー用に要約します。";
+"00:00" = "00:00";
+"Inbox source and interpretation" = "Inboxの入力元と解釈";
+"Inbox voice note" = "Inbox音声メモ";
+"Note" = "メモ";
+"Play" = "再生";
+"Save Note" = "メモを保存";
+"Save the note on this Inbox voice capture" = "このInbox音声キャプチャにメモを保存します";
+"Stores this note locally on the selected voice capture." = "このメモを選択中の音声キャプチャへローカル保存します。";
+"Voice Intake" = "音声取り込み";
+"Voice playback" = "音声再生";
+"Voice waveform" = "音声波形";
