@@ -165,4 +165,18 @@ final class DatabaseMigrationTests: XCTestCase {
             )
         )
     }
+
+    func testCurrentMigrationsAddProjectWorkspaceBookmarkForLocalDirectoryScope() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase2)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+
+        let projectColumns = try connection.queryRows("PRAGMA table_info(projects);").compactMap { $0["name"] }
+
+        XCTAssertTrue(projectColumns.contains("workspace_path"))
+        XCTAssertTrue(projectColumns.contains("workspace_bookmark"))
+        XCTAssertTrue(try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;").contains("0014_add_project_workspace_bookmark"))
+    }
 }
