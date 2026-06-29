@@ -29,10 +29,16 @@ public enum AssistantQueueRequiredCapability: Codable, Equatable, Sendable {
 public struct AssistantQueueApprovalRecord: Codable, Equatable, Sendable {
     public var reviewerID: String
     public var note: String?
+    public var reviewedContentFingerprint: String
 
-    public init(reviewerID: String, note: String? = nil) {
+    public init(
+        reviewerID: String,
+        note: String? = nil,
+        reviewedContentFingerprint: String
+    ) {
         self.reviewerID = reviewerID
         self.note = note
+        self.reviewedContentFingerprint = reviewedContentFingerprint
     }
 
     public var executionTokenID: String? {
@@ -43,13 +49,13 @@ public struct AssistantQueueApprovalRecord: Codable, Equatable, Sendable {
 public struct AssistantQueueItem: Identifiable, Codable, Equatable, Sendable {
     public var id: String
     public var state: AssistantQueueState
-    public var payload: AssistantQueuePayload
-    public var riskLevel: RiskLevel
+    public private(set) var payload: AssistantQueuePayload
+    public private(set) var riskLevel: RiskLevel
     public var sourceTranscript: String?
     public var interpretationSummary: String?
     public var reviewReason: String
     public var redactedSummary: String
-    public var requiredCapabilities: [AssistantQueueRequiredCapability]
+    public private(set) var requiredCapabilities: [AssistantQueueRequiredCapability]
     public var approval: AssistantQueueApprovalRecord?
     public var blockingReason: String?
 
@@ -82,7 +88,9 @@ public struct AssistantQueueItem: Identifiable, Codable, Equatable, Sendable {
 
 public enum AssistantQueueTransitionError: Error, Equatable, Sendable {
     case blockedItemCannotBeApproved
+    case dangerousPayloadCannotBeApproved
     case approvalRequiredBeforeRunning
+    case approvedPayloadChanged
     case terminalItemCannotTransition
 }
 
@@ -95,6 +103,9 @@ public enum AssistantQueueStateMachine {
         guard item.state != .blocked else {
             throw AssistantQueueTransitionError.blockedItemCannotBeApproved
         }
+        guard !item.containsDangerousPayload else {
+            throw AssistantQueueTransitionError.dangerousPayloadCannotBeApproved
+        }
         guard item.state != .done, item.state != .rejected else {
             throw AssistantQueueTransitionError.terminalItemCannotTransition
         }
@@ -104,13 +115,20 @@ public enum AssistantQueueStateMachine {
         // Queue approval records user intent only. Execution must still go
         // through ReviewSession/ActionExecutor so tool-level approval tokens
         // are minted at the existing execution gate, never here.
-        approved.approval = AssistantQueueApprovalRecord(reviewerID: reviewerID, note: note)
+        approved.approval = AssistantQueueApprovalRecord(
+            reviewerID: reviewerID,
+            note: note,
+            reviewedContentFingerprint: approved.contentFingerprint
+        )
         return approved
     }
 
     public static func startRunning(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
         guard item.state == .approved else {
             throw AssistantQueueTransitionError.approvalRequiredBeforeRunning
+        }
+        guard item.approval?.reviewedContentFingerprint == item.contentFingerprint else {
+            throw AssistantQueueTransitionError.approvedPayloadChanged
         }
 
         var running = item
@@ -159,7 +177,7 @@ public enum AssistantQueueAdapter {
             sourceTranscript: sourceTranscript,
             interpretationSummary: interpretationSummary,
             reviewReason: reason,
-            redactedSummary: actionPlan.summary,
+            redactedSummary: DeveloperSecretRedactor().redact(actionPlan.summary).text,
             requiredCapabilities: requiredCapabilities(for: actionPlan, riskLevel: risk),
             blockingReason: isDangerous ? "Dangerous action plans cannot be approved from Assistant Queue." : nil
         )
@@ -188,6 +206,9 @@ public enum AssistantQueueAdapter {
         riskLevel: RiskLevel
     ) -> [AssistantQueueRequiredCapability] {
         var capabilities = actionPlan.actions.map { AssistantQueueRequiredCapability.tool($0.tool) }
+        capabilities.append(contentsOf: actionPlan.actions.compactMap { action in
+            action.tool.requiredAssistantQueueAppPermission.map(AssistantQueueRequiredCapability.appPermission)
+        })
         if actionPlan.requiresApproval || riskLevel >= .write {
             capabilities.append(.providerExecutionApproval)
         }
@@ -224,5 +245,47 @@ public enum AssistantQueueAdapter {
             result.append(capability)
         }
         return result
+    }
+}
+
+private extension AssistantQueueItem {
+    var contentFingerprint: String {
+        [
+            id,
+            riskLevel.rawValue,
+            redactedSummary,
+            String(describing: payload),
+            requiredCapabilities.map(String.init(describing:)).joined(separator: "|")
+        ].joined(separator: "::")
+    }
+
+    var containsDangerousPayload: Bool {
+        if riskLevel == .danger {
+            return true
+        }
+
+        switch payload {
+        case .actionPlan(let plan):
+            return plan.riskLevel == .danger || plan.actions.contains { $0.riskLevel == .danger }
+        case .automationRequest:
+            return false
+        }
+    }
+}
+
+private extension ActionTool {
+    var requiredAssistantQueueAppPermission: AppPermission? {
+        switch actionType {
+        case .calendar:
+            .calendar
+        case .reminder:
+            .reminders
+        case .notification:
+            .notifications
+        case .filesystem:
+            .fileAccess
+        case .project, .task, .knowledgeFrame, .mailDraft, .developer:
+            nil
+        }
     }
 }
