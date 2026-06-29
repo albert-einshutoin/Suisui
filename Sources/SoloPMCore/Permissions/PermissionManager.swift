@@ -1,6 +1,6 @@
 import Foundation
 
-public enum AppPermission: String, CaseIterable, Equatable, Hashable, Sendable {
+public enum AppPermission: String, CaseIterable, Codable, Equatable, Hashable, Sendable {
     case calendar
     case reminders
     case notifications
