@@ -21,23 +21,15 @@ final class VoiceCommandRouterTests: XCTestCase {
     func testRouterMarksStronglyAmbiguousUtterancesForClarification() {
         let router = VoiceCommandRouter()
 
-        XCTAssertEqual(
-            router.route("明日の会議メモを作って"),
-            VoiceCommandRoute(
-                utterance: "明日の会議メモを作って",
-                intent: .unknown,
-                disposition: .needsClarification
-            )
-        )
+        let mixedIntent = router.route("明日の会議メモを作って")
+        XCTAssertEqual(mixedIntent.intent, .unknown)
+        XCTAssertEqual(mixedIntent.disposition, .needsClarification)
+        XCTAssertEqual(mixedIntent.confidence, .low)
 
-        XCTAssertEqual(
-            router.route("Please handle it"),
-            VoiceCommandRoute(
-                utterance: "Please handle it",
-                intent: .unknown,
-                disposition: .needsClarification
-            )
-        )
+        let unsupported = router.route("Please handle it")
+        XCTAssertEqual(unsupported.intent, .unknown)
+        XCTAssertEqual(unsupported.disposition, .needsClarification)
+        XCTAssertEqual(unsupported.confidence, .low)
     }
 
     func testRouterKeepsUnknownCommandsOutOfExecution() {
@@ -50,6 +42,23 @@ final class VoiceCommandRouterTests: XCTestCase {
         XCTAssertNotEqual(route.intent, .execution)
     }
 
+    func testRouterRejectsExplicitlyUnapprovedExecutionRequests() {
+        let router = VoiceCommandRouter()
+
+        for utterance in [
+            "Run the unapproved plan in this workspace",
+            "Run without approval in this workspace",
+            "Run the not reviewed plan",
+            "未承認のプランを実行して"
+        ] {
+            let route = router.route(utterance)
+
+            XCTAssertEqual(route.intent, .unknown, utterance)
+            XCTAssertEqual(route.disposition, .needsClarification, utterance)
+            XCTAssertNotEqual(route.intent, .execution, utterance)
+        }
+    }
+
     func testRouterRequiresApprovalOrPlanSignalsBeforeExecution() {
         let router = VoiceCommandRouter()
 
@@ -60,5 +69,17 @@ final class VoiceCommandRouterTests: XCTestCase {
             XCTAssertEqual(route.disposition, .needsClarification)
             XCTAssertNotEqual(route.intent, .execution)
         }
+    }
+
+    func testRouterReturnsConfidenceAndInterpretationSummary() {
+        let router = VoiceCommandRouter()
+
+        let routed = router.route("Create a task to review release notes tomorrow")
+        XCTAssertEqual(routed.confidence, .high)
+        XCTAssertTrue(routed.interpretationSummary.contains("task"))
+
+        let unclear = router.route("明日の会議メモを作って")
+        XCTAssertEqual(unclear.confidence, .low)
+        XCTAssertTrue(unclear.interpretationSummary.contains("clarification"))
     }
 }

@@ -13,19 +13,31 @@ public enum VoiceCommandDisposition: String, Codable, Equatable, Sendable {
     case needsClarification
 }
 
+public enum VoiceCommandConfidence: String, Codable, Equatable, Sendable {
+    case high
+    case medium
+    case low
+}
+
 public struct VoiceCommandRoute: Codable, Equatable, Sendable {
     public var utterance: String
     public var intent: VoiceCommandIntent
     public var disposition: VoiceCommandDisposition
+    public var confidence: VoiceCommandConfidence
+    public var interpretationSummary: String
 
     public init(
         utterance: String,
         intent: VoiceCommandIntent,
-        disposition: VoiceCommandDisposition
+        disposition: VoiceCommandDisposition,
+        confidence: VoiceCommandConfidence = .low,
+        interpretationSummary: String = "Needs clarification before routing."
     ) {
         self.utterance = utterance
         self.intent = intent
         self.disposition = disposition
+        self.confidence = confidence
+        self.interpretationSummary = interpretationSummary
     }
 }
 
@@ -38,7 +50,9 @@ public struct VoiceCommandRouter: Sendable {
             return VoiceCommandRoute(
                 utterance: utterance,
                 intent: .unknown,
-                disposition: .needsClarification
+                disposition: .needsClarification,
+                confidence: .low,
+                interpretationSummary: "Empty voice command needs clarification."
             )
         }
 
@@ -59,27 +73,34 @@ public struct VoiceCommandRouter: Sendable {
             return VoiceCommandRoute(
                 utterance: utterance,
                 intent: .unknown,
-                disposition: .needsClarification
+                disposition: .needsClarification,
+                confidence: .low,
+                interpretationSummary: "No supported voice command intent matched; ask for clarification."
             )
         }
 
         let nextStrongestScore = matches.dropFirst().first?.score ?? 0
+        let scoreMargin = strongest.score - nextStrongestScore
 
         // Spoken commands frequently mix time and document words. Require a
         // real score margin so ambiguous requests fall into clarification
         // instead of drifting into the execution or mutation lanes.
-        if strongest.score - nextStrongestScore <= 1 {
+        if scoreMargin <= 1 {
             return VoiceCommandRoute(
                 utterance: utterance,
                 intent: .unknown,
-                disposition: .needsClarification
+                disposition: .needsClarification,
+                confidence: .low,
+                interpretationSummary: "Multiple intents are close; ask for clarification before routing."
             )
         }
 
         return VoiceCommandRoute(
             utterance: utterance,
             intent: strongest.intent,
-            disposition: .routed
+            disposition: .routed,
+            confidence: confidence(forScoreMargin: scoreMargin),
+            interpretationSummary: "Routed as \(strongest.intent.rawValue) intent with score margin \(scoreMargin)."
         )
     }
 
@@ -178,11 +199,26 @@ public struct VoiceCommandRouter: Sendable {
         let hasRunSignal = normalizedUtterance.containsAny(runSignals)
         let hasApprovalSignal = normalizedUtterance.containsAny(approvalSignals)
         let hasPlanSignal = normalizedUtterance.containsAny(planSignals)
+        let rejectionSignals = [
+            "unapproved",
+            "without approval",
+            "no approval",
+            "not approved",
+            "not reviewed",
+            "without review",
+            "未承認",
+            "承認なし",
+            "承認されてない",
+            "レビューなし",
+            "レビュー前"
+        ]
 
         // Execution must stay conservative: a bare "run it" is too vague for
         // write-capable automation, so require either an approval or a concrete
         // plan/workspace signal before routing into the execution lane.
-        guard hasRunSignal, hasApprovalSignal || hasPlanSignal else {
+        guard !normalizedUtterance.containsAny(rejectionSignals),
+              hasRunSignal,
+              hasApprovalSignal || hasPlanSignal else {
             return 0
         }
 
@@ -205,6 +241,16 @@ public struct VoiceCommandRouter: Sendable {
         }
 
         return score
+    }
+
+    private func confidence(forScoreMargin scoreMargin: Int) -> VoiceCommandConfidence {
+        if scoreMargin >= 4 {
+            return .high
+        }
+        if scoreMargin >= 2 {
+            return .medium
+        }
+        return .low
     }
 
     private func score(_ normalizedUtterance: String, weightedSignals: [(String, Int)]) -> Int {
