@@ -1526,7 +1526,9 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         let staleCutoff = calendar.date(byAdding: .day, value: -max(staleAfterDays, 1), to: dayInterval.start) ?? dayInterval.start
-        let activeProjects = snapshot.projects.filter { !$0.isArchived && !$0.isCompleted }
+        // Inbox is intake, not committed work; Catch Up should not make raw captures
+        // look like forgotten tasks before the user triages them into a project.
+        let activeProjects = snapshot.projects.filter { !$0.isArchived && !$0.isCompleted && !isInboxProject($0) }
         var didFailToLoadReviewState = false
         let items = activeProjects
             .flatMap { project in

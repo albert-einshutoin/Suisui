@@ -2221,6 +2221,36 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelKeepsInboxCapturesOutOfMissedTaskReview() throws {
+        let bundle = try makeStoreBundle()
+        let reviewStore = SQLiteMissedTaskReviewStateStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(store: bundle.board, missedTaskReviewStateStore: reviewStore)
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        _ = viewModel.createTask(
+            title: "Follow up with customer",
+            projectID: launch.id,
+            status: .backlog,
+            priority: .medium
+        )
+        _ = try XCTUnwrap(viewModel.createInboxTask(title: "Raw voice capture"))
+        _ = try XCTUnwrap(viewModel.createInboxTask(
+            title: "Inbox due today",
+            dueAt: "2026-06-19T12:00:00Z"
+        ))
+
+        let summary = viewModel.missedTaskReview(
+            on: try isoDate("2026-06-19T09:00:00Z"),
+            calendar: utcCalendar()
+        )
+
+        XCTAssertEqual(summary.unscheduledCount, 1)
+        XCTAssertEqual(summary.dueTodayCount, 0)
+        XCTAssertEqual(summary.immediateQueue.map(\.task.title), ["Follow up with customer"])
+        XCTAssertFalse(summary.items.contains { $0.projectTitle == "Inbox" })
+    }
+
+    @MainActor
     func testProjectBoardViewModelMissedTaskReviewFailsClosedWhenReviewStateCannotLoad() throws {
         let bundle = try makeStoreBundle()
         let viewModel = ProjectBoardViewModel(
