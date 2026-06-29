@@ -1832,7 +1832,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
         XCTAssertFalse(appSource.contains("registry = ToolRegistry()"))
-        XCTAssertTrue(appSource.contains("runtimeValidationMessage: reviewRuntimeValidationMessage"))
+        XCTAssertTrue(appSource.contains("runtimeValidationMessage: runtime.reviewRuntimeValidationMessage"))
         XCTAssertTrue(appSource.contains("Review execution tools are unavailable because audit logging or local data stores could not be opened."))
     }
 
