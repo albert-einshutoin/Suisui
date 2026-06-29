@@ -68,6 +68,7 @@ public struct TaskRecord: Equatable, Sendable {
     public var priority: String?
     public var sourceCommand: String?
     public var detail: String?
+    public var updatedAt: String?
 
     public init(
         id: Int64,
@@ -78,7 +79,8 @@ public struct TaskRecord: Equatable, Sendable {
         completedAt: String? = nil,
         priority: String?,
         sourceCommand: String?,
-        detail: String? = nil
+        detail: String? = nil,
+        updatedAt: String? = nil
     ) {
         self.id = id
         self.projectID = projectID
@@ -89,6 +91,7 @@ public struct TaskRecord: Equatable, Sendable {
         self.priority = priority
         self.sourceCommand = sourceCommand
         self.detail = detail
+        self.updatedAt = updatedAt
     }
 }
 
@@ -1226,7 +1229,8 @@ private extension TaskRecord {
             completedAt: SQL.nilIfEmpty(row["completed_at"]),
             priority: SQL.nilIfEmpty(row["priority"]),
             sourceCommand: SQL.nilIfEmpty(row["source_command"]),
-            detail: SQL.nilIfEmpty(row["detail"])
+            detail: SQL.nilIfEmpty(row["detail"]),
+            updatedAt: SQL.nilIfEmpty(row["updated_at"])
         )
     }
 }

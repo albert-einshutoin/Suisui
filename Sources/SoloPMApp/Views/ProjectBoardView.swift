@@ -59,6 +59,8 @@ struct ProjectBoardView: View {
                             .tag(ProjectBoardSidebarDestination.inbox)
                         ProjectBoardSidebarDestinationRow(destination: .today, count: viewModel.todayTasks().count)
                             .tag(ProjectBoardSidebarDestination.today)
+                        ProjectBoardSidebarDestinationRow(destination: .catchUp, count: viewModel.missedTaskReview().newlyMissedCount)
+                            .tag(ProjectBoardSidebarDestination.catchUp)
                         ProjectBoardSidebarDestinationRow(destination: .schedule, count: viewModel.unscheduledScheduleTasks().count)
                             .tag(ProjectBoardSidebarDestination.schedule)
                         ProjectBoardSidebarDestinationRow(destination: .done, count: viewModel.doneAnalytics().completedTaskCount)
@@ -174,6 +176,8 @@ struct ProjectBoardView: View {
                             InboxWorkflowView(viewModel: viewModel)
                         case .today:
                             TodayWorkflowView(viewModel: viewModel)
+                        case .catchUp:
+                            CatchUpWorkflowView(viewModel: viewModel)
                         case .schedule:
                             ScheduleWorkflowView(viewModel: viewModel)
                         case .done:
@@ -478,7 +482,7 @@ struct ProjectBoardView: View {
             viewModel.selectedProjectID = projectID
             viewModel.selectedTaskID = nil
             isInspectorPresented = true
-        case .inbox, .today, .schedule, .done, .projects, .none:
+        case .inbox, .today, .catchUp, .schedule, .done, .projects, .none:
             viewModel.selectedTaskID = nil
             isInspectorPresented = false
         }

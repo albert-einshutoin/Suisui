@@ -52,6 +52,34 @@ final class DailyCheckRunnerTests: XCTestCase {
         XCTAssertEqual(logger.recordedEvents.last?.metadata["error"], "")
     }
 
+    func testRunnerDoesNotScheduleDuplicateDailyNotificationForSameOverdueTask() throws {
+        let stores = try makeStores()
+        let overdue = try stores.tasks.create(title: "Review alpha", dueAt: "2026-06-16T12:00:00Z")
+        _ = try stores.rules.create(DeadlineRule(target: .task(overdue.id), kind: .overdueDaily))
+        let notificationClient = InMemoryNotificationClient()
+        let firstRunner = try makeRunner(
+            stores: stores,
+            stateStore: InMemoryDailyCheckStateStore(lastRunAt: try Date.iso8601("2026-06-16T01:00:00Z")),
+            notificationClient: notificationClient,
+            logger: InMemoryAuditLogger()
+        )
+        let forcedSameDayRunner = try makeRunner(
+            stores: stores,
+            stateStore: InMemoryDailyCheckStateStore(lastRunAt: try Date.iso8601("2026-06-16T01:00:00Z")),
+            notificationClient: notificationClient,
+            logger: InMemoryAuditLogger()
+        )
+
+        let first = try firstRunner.runIfNeeded(reason: .scheduledDaily)
+        let second = try forcedSameDayRunner.runIfNeeded(reason: .manual)
+
+        XCTAssertEqual(first.scheduledCount, 1)
+        XCTAssertEqual(second.scheduledCount, 0)
+        XCTAssertEqual(second.skippedCount, 1)
+        XCTAssertEqual(second.skipReason, "already_notified_today")
+        XCTAssertEqual(try notificationClient.listScheduled().count, 1)
+    }
+
     func testSafeDailyCheckRunnerRecordsFailedScanWithoutThrowing() throws {
         let logger = InMemoryAuditLogger()
         let runner = SafeDailyCheckRunner(

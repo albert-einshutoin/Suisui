@@ -544,6 +544,25 @@ public enum CoreMigrations {
                       AND completed_at IS NULL;
                     """
                 )
+            },
+            DatabaseMigration(id: "0013_create_missed_task_review_state") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS missed_task_review_state (
+                        task_id INTEGER PRIMARY KEY NOT NULL,
+                        last_reviewed_at TEXT,
+                        last_reviewed_day TEXT,
+                        last_notified_day TEXT,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_missed_task_review_state_reviewed_day
+                    ON missed_task_review_state(last_reviewed_day);
+
+                    CREATE INDEX IF NOT EXISTS idx_missed_task_review_state_notified_day
+                    ON missed_task_review_state(last_notified_day);
+                    """
+                )
             }
         ]
     }

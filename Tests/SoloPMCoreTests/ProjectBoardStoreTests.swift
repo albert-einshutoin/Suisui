@@ -2091,6 +2091,185 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelBuildsMissedTaskReviewWithCountsAndReviewedState() throws {
+        let bundle = try makeStoreBundle()
+        let reviewStore = SQLiteMissedTaskReviewStateStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(store: bundle.board, missedTaskReviewStateStore: reviewStore)
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        _ = viewModel.createTask(
+            title: "Clear overdue blocker",
+            projectID: launch.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-18T09:00:00Z"
+        )
+        _ = viewModel.createTask(
+            title: "Ship today update",
+            projectID: launch.id,
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-19T12:00:00Z"
+        )
+        _ = viewModel.createTask(
+            title: "Resolve blocked handoff",
+            projectID: launch.id,
+            status: .blocked,
+            priority: .high,
+            dueAt: "2026-06-19T14:00:00Z"
+        )
+        let stale = try XCTUnwrap(viewModel.createTask(
+            title: "Revive stale unscheduled follow-up",
+            projectID: launch.id,
+            status: .backlog,
+            priority: .medium
+        ))
+        _ = viewModel.createTask(
+            title: "Unscheduled idea",
+            projectID: launch.id,
+            status: .backlog,
+            priority: .low
+        )
+        try bundle.connection.execute("UPDATE tasks SET updated_at = '2026-06-01T12:00:00Z' WHERE id = \(stale.id);")
+        viewModel.load()
+
+        let summary = viewModel.missedTaskReview(
+            on: try isoDate("2026-06-19T09:00:00Z"),
+            calendar: utcCalendar()
+        )
+
+        XCTAssertEqual(summary.overdueCount, 1)
+        XCTAssertEqual(summary.dueTodayCount, 2)
+        XCTAssertEqual(summary.blockedCount, 1)
+        XCTAssertEqual(summary.unscheduledCount, 2)
+        XCTAssertEqual(summary.staleCount, 1)
+        XCTAssertEqual(summary.newlyMissedCount, 4)
+        XCTAssertEqual(
+            summary.immediateQueue.map(\.task.title),
+            [
+                "Clear overdue blocker",
+                "Resolve blocked handoff",
+                "Revive stale unscheduled follow-up",
+                "Unscheduled idea"
+            ]
+        )
+        XCTAssertTrue(summary.immediateQueue.allSatisfy(\.isNewlyMissed))
+        XCTAssertEqual(summary.immediateQueue.first?.reasons, [.overdue])
+        XCTAssertEqual(summary.immediateQueue[1].reasons, [.dueToday, .blocked])
+        XCTAssertEqual(summary.immediateQueue[2].reasons, [.unscheduled, .stale])
+    }
+
+    @MainActor
+    func testProjectBoardViewModelMissedTaskReviewFailsClosedWhenReviewStateCannotLoad() throws {
+        let bundle = try makeStoreBundle()
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            missedTaskReviewStateStore: FailingMissedTaskReviewStateStore()
+        )
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        _ = viewModel.createTask(
+            title: "Clear overdue blocker",
+            projectID: launch.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-18T09:00:00Z"
+        )
+
+        let summary = viewModel.missedTaskReview(
+            on: try isoDate("2026-06-19T09:00:00Z"),
+            calendar: utcCalendar()
+        )
+
+        XCTAssertEqual(summary.overdueCount, 1)
+        XCTAssertEqual(summary.newlyMissedCount, 0)
+        XCTAssertEqual(summary.immediateQueue, [])
+        XCTAssertEqual(summary.items.first?.isNewlyMissed, false)
+        XCTAssertEqual(summary.stateErrorMessage, "Missed task review state could not be loaded.")
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelMissedTaskActionsUpdateLocalStateAndImmediateQueue() throws {
+        let bundle = try makeStoreBundle()
+        let reviewStore = SQLiteMissedTaskReviewStateStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(store: bundle.board, missedTaskReviewStateStore: reviewStore)
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        let overdue = try XCTUnwrap(viewModel.createTask(
+            title: "Close overdue QA",
+            projectID: launch.id,
+            status: .planned,
+            dueAt: "2026-06-18T09:00:00Z"
+        ))
+        let reschedule = try XCTUnwrap(viewModel.createTask(
+            title: "Pick new time",
+            projectID: launch.id,
+            status: .backlog
+        ))
+        let deferred = try XCTUnwrap(viewModel.createTask(
+            title: "Keep for later",
+            projectID: launch.id,
+            status: .backlog
+        ))
+        let referenceDate = try isoDate("2026-06-19T09:00:00Z")
+        let calendar = utcCalendar()
+
+        XCTAssertEqual(viewModel.missedTaskReview(on: referenceDate, calendar: calendar).newlyMissedCount, 3)
+
+        viewModel.completeMissedTask(id: overdue.id, referenceDate: referenceDate)
+        viewModel.rescheduleMissedTaskForToday(id: reschedule.id, referenceDate: referenceDate)
+        viewModel.deferMissedTaskForLater(id: deferred.id, referenceDate: referenceDate)
+
+        let summary = viewModel.missedTaskReview(on: referenceDate, calendar: calendar)
+        let reloaded = ProjectBoardViewModel(store: bundle.board, missedTaskReviewStateStore: reviewStore)
+        reloaded.load()
+        let tasks = reloaded.snapshot.projects.flatMap(\.tasks)
+
+        XCTAssertEqual(summary.immediateQueue.map(\.task.title), [])
+        XCTAssertEqual(tasks.first { $0.id == overdue.id }?.status, .done)
+        XCTAssertEqual(tasks.first { $0.id == reschedule.id }?.dueAt, "2026-06-19T09:00:00Z")
+        XCTAssertEqual(tasks.first { $0.id == reschedule.id }?.status, .planned)
+        XCTAssertEqual(try reviewStore.lastReviewedAt(taskID: deferred.id), referenceDate)
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Deferred \"Keep for later\" from today's missed queue.")
+    }
+
+    func testSQLiteMissedTaskReviewStateStorePersistsReviewedTaskDates() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteMissedTaskReviewStateStore(connection: connection)
+        let reviewedAt = try isoDate("2026-06-19T09:00:00Z")
+
+        try store.markReviewed(taskID: 42, at: reviewedAt)
+
+        let reloaded = SQLiteMissedTaskReviewStateStore(connection: connection)
+        XCTAssertTrue(try connection.tableExists("missed_task_review_state"))
+        XCTAssertEqual(try reloaded.lastReviewedAt(taskID: 42), reviewedAt)
+    }
+
+    func testSQLiteMissedTaskReviewStateStorePersistsNotificationDayWithoutTaskContent() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteMissedTaskReviewStateStore(connection: connection)
+
+        try store.recordNotification(day: "2026-06-19", at: try isoDate("2026-06-19T09:00:00Z"))
+        try store.recordNotification(day: "2026-06-20", at: try isoDate("2026-06-20T09:00:00Z"))
+
+        let columns = Set(try connection.queryRows("PRAGMA table_info(missed_task_review_state);").compactMap { $0["name"] })
+        let notificationRows = try connection.queryRows(
+            "SELECT task_id, last_reviewed_at, last_notified_day FROM missed_task_review_state WHERE task_id = 0;"
+        )
+
+        XCTAssertEqual(try store.lastNotifiedDay(), "2026-06-20")
+        XCTAssertTrue(columns.isSuperset(of: ["task_id", "last_reviewed_at", "last_reviewed_day", "last_notified_day", "updated_at"]))
+        XCTAssertFalse(columns.contains("title"))
+        XCTAssertFalse(columns.contains("detail"))
+        XCTAssertEqual(notificationRows.count, 1)
+        XCTAssertEqual(notificationRows.first?["last_reviewed_at"], "")
+        XCTAssertEqual(notificationRows.first?["last_notified_day"], "2026-06-20")
+    }
+
+    @MainActor
     func testProjectBoardViewModelTodayCommandCreatesInboxItemAndNotifies() throws {
         var changeCount = 0
         let viewModel = ProjectBoardViewModel(
@@ -2945,5 +3124,23 @@ private enum ProjectBoardStoreTestError: Error, CustomStringConvertible {
 
     var description: String {
         "Project board unavailable"
+    }
+}
+
+private struct FailingMissedTaskReviewStateStore: MissedTaskReviewStateStore {
+    func lastReviewedAt(taskID: Int64) throws -> Date? {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func markReviewed(taskID: Int64, at date: Date) throws {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func lastNotifiedDay() throws -> String? {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func recordNotification(day: String, at date: Date) throws {
+        throw ProjectBoardStoreTestError.unavailable
     }
 }
