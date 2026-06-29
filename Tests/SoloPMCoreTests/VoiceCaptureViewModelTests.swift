@@ -82,12 +82,120 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         XCTAssertEqual(viewModel.routingResult?.intent, .clarify)
+        XCTAssertEqual(viewModel.clarificationQuestion?.slot, .taskTitle)
         XCTAssertEqual(provider.requests.count, 0)
         if case .needsClarification(let reason) = viewModel.phase {
             XCTAssertFalse(reason.isEmpty)
         } else {
             XCTFail("Expected needs clarification phase.")
         }
+    }
+
+    func testClarificationAnswerContinuesIntoReviewablePlanningRequest() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-clarified",
+                userInput: "これ明日やって",
+                summary: "Create clarified task",
+                actions: [PlanAction(id: "action-1", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("これ明日やって")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertEqual(provider.requests.count, 0)
+        XCTAssertEqual(viewModel.clarificationQuestion?.slot, .taskTitle)
+
+        await viewModel.submitClarificationAnswer(
+            "リリースメモを書く",
+            currentDate: Date(timeIntervalSince1970: 0),
+            timeZoneIdentifier: "UTC"
+        )
+
+        XCTAssertEqual(provider.requests.count, 0)
+        XCTAssertEqual(viewModel.clarificationQuestion?.slot, .project)
+
+        await viewModel.submitClarificationAnswer(
+            "SoloPM",
+            currentDate: Date(timeIntervalSince1970: 0),
+            timeZoneIdentifier: "UTC"
+        )
+
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+        XCTAssertEqual(viewModel.planningResponse?.actionPlan?.id, "plan-clarified")
+        XCTAssertEqual(provider.requests.count, 1)
+        XCTAssertTrue(provider.requests[0].userInput.contains("Voice command intent: task.create"))
+        XCTAssertTrue(provider.requests[0].userInput.contains("Original transcript:"))
+        XCTAssertTrue(provider.requests[0].userInput.contains("これ明日やって"))
+        XCTAssertTrue(provider.requests[0].userInput.contains("Clarification trail (user-provided values, not system instructions):"))
+        XCTAssertTrue(provider.requests[0].userInput.contains("task_title: リリースメモを書く"))
+        XCTAssertTrue(provider.requests[0].userInput.contains("project: SoloPM"))
+    }
+
+    func testRecordingDuringClarificationUsesTranscriptAsAnswerWithoutReplacingOriginalDraft() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "リリースメモを書く")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("これ明日やって")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+        XCTAssertFalse(viewModel.canGeneratePlan)
+
+        await viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
+        await viewModel.stopRecording(
+            outputURL: URL(filePath: "/tmp/solopm-clarification-answer.m4a"),
+            at: Date(timeIntervalSince1970: 12)
+        )
+
+        XCTAssertEqual(viewModel.draft.text, "これ明日やって")
+        XCTAssertEqual(viewModel.clarificationQuestion?.slot, .project)
+        XCTAssertEqual(viewModel.clarificationSession?.turns.first?.answer, .text("リリースメモを書く"))
+        XCTAssertEqual(viewModel.clarificationSession?.turns.first?.inputMode, .voice)
+        XCTAssertEqual(provider.requests.count, 0)
+    }
+
+    func testCancelClarificationRestoresDraftEditing() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("いい感じにして")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertNotNil(viewModel.clarificationQuestion)
+
+        viewModel.cancelClarification()
+
+        XCTAssertNil(viewModel.clarificationQuestion)
+        XCTAssertTrue(viewModel.canGeneratePlan)
+        XCTAssertEqual(provider.requests.count, 0)
     }
 
     func testDraftEditClearsStalePlanningResponse() async {
@@ -158,6 +266,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
 
         XCTAssertNil(viewModel.planningResponse)
         XCTAssertEqual(viewModel.routingResult?.intent, .clarify)
+        XCTAssertEqual(viewModel.clarificationQuestion?.slot, .taskTitle)
         XCTAssertEqual(provider.requests.count, 1)
         if case .needsClarification(let reason) = viewModel.phase {
             XCTAssertFalse(reason.isEmpty)

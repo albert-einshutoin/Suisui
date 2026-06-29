@@ -444,6 +444,7 @@ private struct MenuBarPanel: View {
 
 private struct VoiceCaptureView: View {
     @StateObject private var viewModel: VoiceCaptureViewModel
+    @State private var clarificationAnswer = ""
 
     init(viewModel: VoiceCaptureViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -458,6 +459,7 @@ private struct VoiceCaptureView: View {
                     Spacer()
                     Button {
                         viewModel.clear()
+                        clarificationAnswer = ""
                     } label: {
                         Label("Clear", systemImage: "xmark.circle")
                     }
@@ -488,6 +490,24 @@ private struct VoiceCaptureView: View {
 
                 if let routingResult = viewModel.routingResult {
                     VoiceIntentPreview(result: routingResult)
+                }
+
+                if let question = viewModel.clarificationQuestion {
+                    ClarificationPanel(
+                        question: question,
+                        turns: viewModel.clarificationSession?.turns ?? [],
+                        answerText: $clarificationAnswer,
+                        onSubmit: { answer in
+                            Task {
+                                await viewModel.submitClarificationAnswer(answer)
+                                clarificationAnswer = ""
+                            }
+                        },
+                        onCancel: {
+                            viewModel.cancelClarification()
+                            clarificationAnswer = ""
+                        }
+                    )
                 }
 
                 HStack {
@@ -543,6 +563,66 @@ private struct VoiceCaptureView: View {
     private func recordingOutputURL() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("solopm-recording-\(UUID().uuidString).m4a")
+    }
+}
+
+private struct ClarificationPanel: View {
+    let question: ClarificationQuestion
+    let turns: [ClarificationTurn]
+    @Binding var answerText: String
+    let onSubmit: (String) -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(localizedSettingsDisplay("Clarification"), systemImage: "questionmark.bubble")
+                .font(.subheadline)
+
+            Text(localizedSettingsDisplay(question.prompt))
+                .font(.body)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !turns.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(turns.enumerated()), id: \.offset) { _, turn in
+                        Text(String(format: localizedSettingsDisplay("Answered: %@"), turn.response))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+
+            HStack(spacing: 8) {
+                TextField(localizedSettingsDisplay("Clarification answer"), text: $answerText)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("voice-command-clarification-answer")
+
+                Button {
+                    let trimmed = answerText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else {
+                        return
+                    }
+                    onSubmit(trimmed)
+                } label: {
+                    Label(localizedSettingsDisplay("Answer"), systemImage: "arrow.turn.down.left")
+                }
+                .disabled(answerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("voice-command-clarification-submit")
+
+                Button {
+                    onCancel()
+                } label: {
+                    Label(localizedSettingsDisplay("Cancel"), systemImage: "xmark.circle")
+                }
+                .accessibilityIdentifier("voice-command-clarification-cancel")
+            }
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .accessibilityIdentifier("voice-command-clarification-panel")
     }
 }
 
