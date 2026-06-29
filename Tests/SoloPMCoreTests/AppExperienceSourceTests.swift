@@ -2251,8 +2251,18 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertFalse(reviewFactory.contains("try? makeAuditLogger()"))
         XCTAssertTrue(reviewFactory.contains("let auditLogger = try makeAuditLogger()"))
-        XCTAssertTrue(reviewFactory.contains("logger = auditLogger"))
+        XCTAssertTrue(reviewFactory.contains("let receiptStore = try makeExecutionReceiptStore()"))
+        XCTAssertTrue(reviewFactory.contains("return (auditLogger, receiptStore, registry, nil)"))
+        XCTAssertTrue(reviewFactory.contains("executionReceiptStore: runtime.receiptStore"))
         XCTAssertTrue(reviewFactory.contains("Review execution tools are unavailable because audit logging or local data stores could not be opened."))
+    }
+
+    func testReviewRuntimePersistsExecutionReceiptsUnderApplicationSupport() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(appSource.contains("private static func makeExecutionReceiptStore() throws -> any ExecutionReceiptStore"))
+        XCTAssertTrue(appSource.contains("FileExecutionReceiptStore("))
+        XCTAssertTrue(appSource.contains("appendingPathComponent(\"ExecutionReceipts\", isDirectory: true)"))
     }
 
     func testUnavailableReviewRegistryDoesNotSilentlyDropRegistrationFailures() throws {
@@ -2361,6 +2371,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-action-review-approve\")"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-action-review-execute\")"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-action-review-cancel\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-execution-receipt\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-execution-receipt-status\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-execution-receipt-output\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-execution-receipt-cost\")"))
     }
 
     func testSettingsSurfaceStartsWithStatusOverviewForCoreOperationalAreas() throws {

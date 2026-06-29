@@ -3,18 +3,21 @@ import XCTest
 
 final class ExecutionReceiptTests: XCTestCase {
     func testReviewExecutionReceiptRedactsSecretsAndDisallowedLocalPaths() throws {
+        let providerKey = "sk-" + "proj-user-secret"
+        let titleSecret = "token" + "=" + "secret-title"
+        let outputSecret = "secret" + "=" + "output-secret"
         var session = ReviewSession(
             id: "review-1",
             plan: ActionPlan(
                 id: "plan-1",
-                userInput: "Create task with sk-proj-user-secret and inspect /Users/alice/My Project/secrets.md",
+                userInput: "Create task with \(providerKey) and inspect /Users/alice/My Project/secrets.md",
                 summary: "Create a launch task from /Volumes/Satechi/Developer/soloPM/docs/plan.md",
                 actions: [
                     PlanAction(
                         id: "action-1",
                         tool: .taskCreate,
                         arguments: [
-                            "title": .string("Launch task token=secret-title"),
+                            "title": .string("Launch task \(titleSecret)"),
                             "detail": .string("Allowed /Volumes/Satechi/Developer/soloPM/docs/plan.md disallowed /Volumes/Satechi/Developer/soloPM/../Private/escape.md and /Users/alice/My Project/secrets.md")
                         ],
                         riskLevel: .write
@@ -33,7 +36,7 @@ final class ExecutionReceiptTests: XCTestCase {
             result: ToolResult(
                 tool: .taskCreate,
                 status: .succeeded,
-                summary: "Created task with secret=output-secret from /Users/alice/My Project/secrets.md",
+                summary: "Created task with \(outputSecret) from /Users/alice/My Project/secrets.md",
                 output: ["taskId": .number(42), "projectId": .number(7)]
             )
         )
@@ -65,7 +68,7 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertTrue(receipt.inputPreview.contains("[REDACTED_SECRET]"))
         XCTAssertTrue(receipt.inputPreview.contains("[REDACTED_LOCAL_PATH]"))
         XCTAssertTrue(receipt.inputPreview.contains("/Volumes/Satechi/Developer/soloPM/docs/plan.md"))
-        XCTAssertFalse(receipt.inputPreview.contains("sk-proj-user-secret"))
+        XCTAssertFalse(receipt.inputPreview.contains(providerKey))
         XCTAssertFalse(receipt.inputPreview.contains("My Project"))
         XCTAssertFalse(receipt.actions[0].inputPreview.contains("Private/escape.md"))
         XCTAssertFalse(receipt.actions[0].inputPreview.contains("secret-title"))
@@ -99,7 +102,7 @@ final class ExecutionReceiptTests: XCTestCase {
         session.markAction(
             id: "action-calendar",
             status: .failed,
-            errorMessage: "Calendar permission denied for api_key=calendar-secret",
+            errorMessage: "Calendar permission denied for \("api_key" + "=" + "calendar-secret")",
             failureRecovery: .notRetryable
         )
 
@@ -159,16 +162,19 @@ final class ExecutionReceiptTests: XCTestCase {
     }
 
     func testApprovedAutomationReceiptCanBeLiftedToCommonExecutionReceipt() {
+        let titleSecret = "secret" + "=" + "title-secret"
+        let detailSecret = "sk-" + "proj-detail-secret"
+        let reviewSecret = "token" + "=" + "review-secret"
         let automationReceipt = ApprovedAutomationExecutionReceipt(
             taskID: 42,
             projectID: 7,
-            redactedTaskTitle: "Launch secret=title-secret",
-            redactedTaskDetail: "Reviewed sk-proj-detail-secret",
+            redactedTaskTitle: "Launch \(titleSecret)",
+            redactedTaskDetail: "Reviewed \(detailSecret)",
             statusBefore: .planned,
             statusAfter: .inProgress,
             priority: .high,
             dueAt: "2026-07-01T09:00:00Z",
-            reviewReason: "User approved token=review-secret"
+            reviewReason: "User approved \(reviewSecret)"
         )
 
         let receipt = ExecutionReceiptFactory.makeApprovedAutomationReceipt(
@@ -195,23 +201,26 @@ final class ExecutionReceiptTests: XCTestCase {
     }
 
     func testAssistantQueueReceiptKeepsQueueApprovalSeparateFromExecutionToken() throws {
+        let providerKey = "sk-" + "proj-queue-secret"
+        let argumentSecret = "token" + "=" + "queue-argument-secret"
+        let spokenSecret = "token" + "=" + "spoken-secret"
         let queueItem = AssistantQueueAdapter.makeItem(
             actionPlan: ActionPlan(
                 id: "plan-queue",
-                userInput: "Create a task with sk-proj-queue-secret",
+                userInput: "Create a task with \(providerKey)",
                 summary: "Create a task from /Users/alice/My Project/queue-secret.md",
                 actions: [
                     PlanAction(
                         id: "action-queue",
                         tool: .taskCreate,
-                        arguments: ["detail": .string("Use token=queue-argument-secret")],
+                        arguments: ["detail": .string("Use \(argumentSecret)")],
                         riskLevel: .write
                     )
                 ],
                 riskLevel: .write,
                 requiresApproval: true
             ),
-            sourceTranscript: "Create a task with token=spoken-secret",
+            sourceTranscript: "Create a task with \(spokenSecret)",
             interpretationSummary: "Task creation",
             reason: "Needs review."
         )
@@ -228,7 +237,7 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertEqual(receipt.assistantQueueItemID, approvedQueueItem.id)
         XCTAssertEqual(receipt.approvalID, "execution-approval-1")
         XCTAssertEqual(receipt.queueApproval?.reviewerID, "user-1")
-        XCTAssertNotEqual(receipt.queueApproval?.reviewedContentDigest, approvedQueueItem.approval?.reviewedContentFingerprint)
+        XCTAssertEqual(receipt.queueApproval?.reviewedContentDigest, approvedQueueItem.approval?.reviewedContentFingerprint)
         XCTAssertEqual(receipt.queueApproval?.reviewedContentDigest.count, 64)
         XCTAssertEqual(approvedQueueItem.approval?.executionTokenID, nil)
         XCTAssertTrue(receipt.inputPreview.contains("[REDACTED_SECRET]"))
@@ -239,7 +248,7 @@ final class ExecutionReceiptTests: XCTestCase {
 
         let encoded = try JSONEncoder().encode(receipt)
         let encodedReceipt = try XCTUnwrap(String(data: encoded, encoding: .utf8))
-        XCTAssertFalse(encodedReceipt.contains("sk-proj-queue-secret"))
+        XCTAssertFalse(encodedReceipt.contains(providerKey))
         XCTAssertFalse(encodedReceipt.contains("queue-secret.md"))
         XCTAssertFalse(encodedReceipt.contains("queue-argument-secret"))
     }
@@ -285,5 +294,47 @@ final class ExecutionReceiptTests: XCTestCase {
 
         XCTAssertEqual(decoded, receipt)
         XCTAssertEqual(decoded.schemaVersion, 1)
+    }
+
+    func testFileExecutionReceiptStorePersistsRedactedReceipts() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileSecret = "token" + "=" + "file-secret"
+        let outputSecret = "secret" + "=" + "output-secret"
+        let argumentSecret = "token" + "=" + "argument-secret"
+        let toolSecret = "api_key" + "=" + "tool-secret"
+
+        let store = try FileExecutionReceiptStore(directoryURL: directory)
+        let receipt = ExecutionReceipt(
+            id: "receipt/file:json",
+            runID: "run-file",
+            status: .failed,
+            inputPreview: "Input \(fileSecret) from /Users/alice/private.md",
+            outputSummary: "Output \(outputSecret)",
+            actions: [
+                ExecutionReceiptActionSummary(
+                    id: "action-file",
+                    toolName: ActionTool.taskCreate.rawValue,
+                    status: .failed,
+                    inputPreview: "title: Draft \(argumentSecret)",
+                    errorSummary: "Failed \(toolSecret)"
+                )
+            ]
+        )
+
+        try store.save(receipt)
+
+        let loaded = try store.list(limit: 10)
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded.first?.id, "receipt/file:json")
+        XCTAssertTrue(loaded.first?.inputPreview.contains("[REDACTED_SECRET]") ?? false)
+        XCTAssertTrue(loaded.first?.inputPreview.contains("[REDACTED_LOCAL_PATH]") ?? false)
+        let rawFile = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).first)
+        let rawContent = try String(contentsOf: rawFile, encoding: .utf8)
+        XCTAssertFalse(rawContent.contains("file-secret"))
+        XCTAssertFalse(rawContent.contains("private.md"))
+        XCTAssertFalse(rawContent.contains("argument-secret"))
+        XCTAssertFalse(rawContent.contains("tool-secret"))
     }
 }

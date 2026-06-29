@@ -970,6 +970,14 @@ private struct ActionReviewPanel: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
+            if let message = viewModel.executionReceiptErrorMessage {
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            if let receipt = viewModel.lastExecutionReceipt {
+                ExecutionReceiptSummaryView(receipt: receipt)
+            }
 
             ViewThatFits(in: .horizontal) {
                 HStack {
@@ -1024,6 +1032,120 @@ private struct ActionReviewPanel: View {
         case .blocked(let reason):
             reason
         }
+    }
+}
+
+private struct ExecutionReceiptSummaryView: View {
+    let receipt: ExecutionReceipt
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    Label(localizedSettingsDisplay("Execution receipt"), systemImage: "doc.text.magnifyingglass")
+                        .font(.caption)
+                    statusLabel
+                    Spacer(minLength: 8)
+                    usageLabel
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(localizedSettingsDisplay("Execution receipt"), systemImage: "doc.text.magnifyingglass")
+                        .font(.caption)
+                    HStack(spacing: 8) {
+                        statusLabel
+                        usageLabel
+                    }
+                }
+            }
+
+            Text(receipt.outputSummary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("voice-execution-receipt-output")
+
+            if !receipt.actions.isEmpty {
+                Text(String(format: localizedSettingsDisplay("%d actions recorded"), receipt.actions.count))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(8)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .accessibilityIdentifier("voice-execution-receipt")
+        .accessibilityLabel(localizedSettingsDisplay("Execution receipt"))
+        .accessibilityValue(accessibilityValue)
+    }
+
+    private var statusLabel: some View {
+        Text(localizedSettingsDisplay(statusText))
+            .font(.caption2)
+            .foregroundStyle(statusColor)
+            .lineLimit(1)
+            .accessibilityIdentifier("voice-execution-receipt-status")
+    }
+
+    private var usageLabel: some View {
+        Text(localizedSettingsDisplay(usageText))
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .accessibilityIdentifier("voice-execution-receipt-cost")
+    }
+
+    private var statusText: String {
+        switch receipt.status {
+        case .notStarted:
+            "Not started"
+        case .running:
+            "Running"
+        case .succeeded:
+            "Succeeded"
+        case .failed:
+            "Failed"
+        case .skipped:
+            "Skipped"
+        case .canceled:
+            "Canceled"
+        }
+    }
+
+    private var statusColor: Color {
+        switch receipt.status {
+        case .succeeded:
+            .green
+        case .failed:
+            .red
+        case .canceled, .skipped:
+            .orange
+        case .notStarted, .running:
+            .secondary
+        }
+    }
+
+    private var usageText: String {
+        switch receipt.usage.state {
+        case .measured:
+            if let totalTokens = receipt.usage.totalTokens {
+                return String(format: localizedSettingsDisplay("%d tokens"), totalTokens)
+            }
+            return "Measured cost"
+        case .estimated:
+            if let totalTokens = receipt.usage.totalTokens {
+                return String(format: localizedSettingsDisplay("%d tokens estimated"), totalTokens)
+            }
+            return "Estimated cost"
+        case .unknown:
+            return "Cost unknown"
+        case .unavailable:
+            return "Cost unavailable"
+        }
+    }
+
+    private var accessibilityValue: String {
+        "\(localizedSettingsDisplay(statusText)). \(receipt.outputSummary)"
     }
 }
 
@@ -3476,42 +3598,45 @@ private enum AppRuntimeFactory {
 
     @MainActor
     static func makeReviewSessionViewModel(plan: ActionPlan) -> ReviewSessionViewModel {
-        let logger: (any AuditLogger)?
-        let registry: ToolRegistry
-        let reviewRuntimeValidationMessage: String?
-        do {
-            let auditLogger = try makeAuditLogger()
-            let connection = try migratedConnection()
-            registry = try ToolRegistry.phase2MVP(
-                projectStore: SQLiteProjectStore(connection: connection),
-                taskStore: SQLiteTaskStore(connection: connection),
-                knowledgeStore: SQLiteKnowledgeFrameStore(connection: connection),
-                notificationClient: UserNotificationsNotificationClient(),
-                calendarClient: EventKitCalendarClient(),
-                reminderClient: EventKitReminderClient(),
-                fileAccessClient: LocalFileAccessClient(workspaceRoot: try workspaceRootURL()),
-                mailDraftClient: UnavailableMailDraftClient(),
-                notificationRequestStore: SQLiteNotificationRequestStore(connection: connection),
-                calendarLinkStore: SQLiteCalendarLinkStore(connection: connection),
-                reminderLinkStore: SQLiteReminderLinkStore(connection: connection),
-                artifactStore: SQLiteArtifactStore(connection: connection),
-                auditLogger: auditLogger
-            )
-            logger = auditLogger
-            reviewRuntimeValidationMessage = nil
-        } catch {
-            logger = nil
-            let baseMessage = "Review execution tools are unavailable because audit logging or local data stores could not be opened."
-            let unavailableRegistry = unavailableReviewRegistry(for: plan, message: baseMessage)
-            reviewRuntimeValidationMessage = unavailableRegistry.message
-            registry = unavailableRegistry.registry
-        }
+        let runtime: (
+            logger: (any AuditLogger)?,
+            receiptStore: (any ExecutionReceiptStore)?,
+            registry: ToolRegistry,
+            reviewRuntimeValidationMessage: String?
+        ) = {
+            do {
+                let auditLogger = try makeAuditLogger()
+                let connection = try migratedConnection()
+                let registry = try ToolRegistry.phase2MVP(
+                    projectStore: SQLiteProjectStore(connection: connection),
+                    taskStore: SQLiteTaskStore(connection: connection),
+                    knowledgeStore: SQLiteKnowledgeFrameStore(connection: connection),
+                    notificationClient: UserNotificationsNotificationClient(),
+                    calendarClient: EventKitCalendarClient(),
+                    reminderClient: EventKitReminderClient(),
+                    fileAccessClient: LocalFileAccessClient(workspaceRoot: try workspaceRootURL()),
+                    mailDraftClient: UnavailableMailDraftClient(),
+                    notificationRequestStore: SQLiteNotificationRequestStore(connection: connection),
+                    calendarLinkStore: SQLiteCalendarLinkStore(connection: connection),
+                    reminderLinkStore: SQLiteReminderLinkStore(connection: connection),
+                    artifactStore: SQLiteArtifactStore(connection: connection),
+                    auditLogger: auditLogger
+                )
+                let receiptStore = try makeExecutionReceiptStore()
+                return (auditLogger, receiptStore, registry, nil)
+            } catch {
+                let baseMessage = "Review execution tools are unavailable because audit logging or local data stores could not be opened."
+                let unavailableRegistry = unavailableReviewRegistry(for: plan, message: baseMessage)
+                return (nil, nil, unavailableRegistry.registry, unavailableRegistry.message)
+            }
+        }()
 
         return ReviewSessionViewModel(
             plan: plan,
-            executor: ActionExecutor(registry: registry, auditLogger: logger),
-            auditLogger: logger,
-            runtimeValidationMessage: reviewRuntimeValidationMessage
+            executor: ActionExecutor(registry: runtime.registry, auditLogger: runtime.logger),
+            auditLogger: runtime.logger,
+            executionReceiptStore: runtime.receiptStore,
+            runtimeValidationMessage: runtime.reviewRuntimeValidationMessage
         )
     }
 
@@ -3529,6 +3654,12 @@ private enum AppRuntimeFactory {
 
     private static func makeAuditLogger() throws -> any AuditLogger {
         RedactingAuditLogger(base: try SQLiteAuditLogger(path: applicationDatabaseURL().path))
+    }
+
+    private static func makeExecutionReceiptStore() throws -> any ExecutionReceiptStore {
+        try FileExecutionReceiptStore(
+            directoryURL: applicationSupportDirectoryURL().appendingPathComponent("ExecutionReceipts", isDirectory: true)
+        )
     }
 
     private static func externalMCPAuditLoadResult() -> ExternalMCPAuditLoadResult {

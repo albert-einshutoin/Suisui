@@ -179,7 +179,7 @@ public struct ExecutionReceiptQueueApproval: Codable, Equatable, Sendable {
     ) {
         self.reviewerID = reviewerID
         self.note = note
-        self.reviewedContentDigest = ExecutionReceiptDigest.sha256(reviewedContentFingerprint)
+        self.reviewedContentDigest = ExecutionReceiptDigest.normalizedDigest(reviewedContentFingerprint)
     }
 
     init(
@@ -283,6 +283,96 @@ public struct ExecutionReceipt: Codable, Equatable, Sendable {
             )
         }
         self.visibleSurfaces = visibleSurfaces
+    }
+}
+
+public protocol ExecutionReceiptStore: Sendable {
+    func save(_ receipt: ExecutionReceipt) throws
+    func list(limit: Int) throws -> [ExecutionReceipt]
+}
+
+public final class InMemoryExecutionReceiptStore: ExecutionReceiptStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [ExecutionReceipt]
+
+    public init(receipts: [ExecutionReceipt] = []) {
+        self.storage = receipts
+    }
+
+    public var receipts: [ExecutionReceipt] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    public func save(_ receipt: ExecutionReceipt) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        storage.append(receipt)
+    }
+
+    public func list(limit: Int = 100) throws -> [ExecutionReceipt] {
+        lock.lock()
+        defer { lock.unlock() }
+        let boundedLimit = max(1, min(limit, 500))
+        return Array(storage.suffix(boundedLimit).reversed())
+    }
+}
+
+public final class FileExecutionReceiptStore: ExecutionReceiptStore, @unchecked Sendable {
+    private let directoryURL: URL
+    private let encoder: JSONEncoder
+    private let decoder: JSONDecoder
+    private let lock = NSLock()
+
+    public init(directoryURL: URL) throws {
+        self.directoryURL = directoryURL
+        self.encoder = JSONEncoder()
+        self.encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        self.encoder.dateEncodingStrategy = .iso8601
+        self.decoder = JSONDecoder()
+        self.decoder.dateDecodingStrategy = .iso8601
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+    }
+
+    public func save(_ receipt: ExecutionReceipt) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        let data = try encoder.encode(receipt)
+        try data.write(to: fileURL(for: receipt.id), options: [.atomic])
+    }
+
+    public func list(limit: Int = 100) throws -> [ExecutionReceipt] {
+        lock.lock()
+        defer { lock.unlock() }
+        let boundedLimit = max(1, min(limit, 500))
+        let urls = try FileManager.default.contentsOfDirectory(
+            at: directoryURL,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        )
+        let sortedURLs = try urls
+            .filter { $0.pathExtension == "json" }
+            .map { url -> (URL, Date) in
+                let values = try url.resourceValues(forKeys: [.contentModificationDateKey])
+                return (url, values.contentModificationDate ?? .distantPast)
+            }
+            .sorted { $0.1 > $1.1 }
+            .prefix(boundedLimit)
+            .map(\.0)
+        return try sortedURLs.map { url in
+            let data = try Data(contentsOf: url)
+            return try decoder.decode(ExecutionReceipt.self, from: data)
+        }
+    }
+
+    private func fileURL(for id: String) -> URL {
+        let safeName = id
+            .map { character -> Character in
+                character.isLetter || character.isNumber || character == "-" || character == "_" ? character : "-"
+            }
+            .reduce(into: "") { $0.append($1) }
+        return directoryURL.appendingPathComponent("\(safeName).json")
     }
 }
 
@@ -662,6 +752,14 @@ public enum ExecutionReceiptFactory {
 }
 
 private enum ExecutionReceiptDigest {
+    static func normalizedDigest(_ value: String) -> String {
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalized.count == 64 && normalized.allSatisfy(\.isHexDigit) {
+            return normalized
+        }
+        return sha256(value)
+    }
+
     static func sha256(_ value: String) -> String {
         let digest = SHA256.hash(data: Data(value.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()

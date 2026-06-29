@@ -129,6 +129,9 @@ final class AssistantQueueTests: XCTestCase {
         XCTAssertEqual(approved.state, .approved)
         XCTAssertEqual(approved.approval?.reviewerID, "user-1")
         XCTAssertNil(approved.approval?.executionTokenID)
+        XCTAssertEqual(approved.approval?.reviewedContentFingerprint.count, 64)
+        XCTAssertFalse(approved.approval?.reviewedContentFingerprint.contains("Create a task") ?? true)
+        XCTAssertTrue(approved.approval?.reviewedContentFingerprint.allSatisfy(\.isHexDigit) ?? false)
     }
 
     func testStartRunningRejectsApprovalPayloadDrift() throws {
@@ -183,14 +186,15 @@ final class AssistantQueueTests: XCTestCase {
 
     func testActionPlanSummaryIsRedactedBeforeQueuePersistence() {
         let probeValue = "s" + "k-" + "assistantQueueSecret123"
+        let secretPrefix = "token" + "="
         let item = AssistantQueueAdapter.makeItem(
-            actionPlan: makePlan(summary: "Create task with token=\(probeValue)"),
+            actionPlan: makePlan(summary: "Create task with \(secretPrefix)\(probeValue)"),
             sourceTranscript: "Create a task",
             interpretationSummary: "Routed as task intent.",
             reason: "Needs review."
         )
 
-        XCTAssertEqual(item.redactedSummary, "Create task with token=[REDACTED_SECRET]")
+        XCTAssertEqual(item.redactedSummary, "Create task with \(secretPrefix)[REDACTED_SECRET]")
     }
 
     func testQueuePayloadAndCapabilitiesRoundTripThroughJSON() throws {

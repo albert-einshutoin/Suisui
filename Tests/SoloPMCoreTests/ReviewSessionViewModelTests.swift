@@ -5,6 +5,7 @@ import XCTest
 final class ReviewSessionViewModelTests: XCTestCase {
     func testApproveEditAndExecuteSession() throws {
         let logger = InMemoryAuditLogger()
+        let receiptStore = InMemoryExecutionReceiptStore()
         let registry = try ToolRegistry(tools: [
             StaticTool(name: .taskCreate, description: "create", inputSchema: ToolInputSchema(required: ["title"]), permissionLevel: .writeWithApproval) { _, context in
                 XCTAssertNotNil(context.approvalToken)
@@ -16,7 +17,8 @@ final class ReviewSessionViewModelTests: XCTestCase {
                 PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
             ]),
             executor: ActionExecutor(registry: registry, auditLogger: logger),
-            auditLogger: logger
+            auditLogger: logger,
+            executionReceiptStore: receiptStore
         )
 
         viewModel.updateStringArgument(actionID: "task", key: "title", value: "Review")
@@ -27,6 +29,16 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.session.executionStatus, .completed)
         XCTAssertEqual(viewModel.session.items.first?.result?.rollbackMetadata["taskId"], .number(1))
         XCTAssertTrue(logger.recordedEvents.contains { $0.action == "session.approve" })
+        XCTAssertEqual(viewModel.lastExecutionReceipt?.status, .succeeded)
+        XCTAssertEqual(viewModel.lastExecutionReceipt?.actions.first?.status, .succeeded)
+        XCTAssertEqual(viewModel.lastExecutionReceipt?.approvalID, viewModel.session.approvalToken?.id)
+        XCTAssertEqual(viewModel.executionReceipts.map(\.id), receiptStore.receipts.map(\.id))
+        let receipt = try XCTUnwrap(viewModel.lastExecutionReceipt)
+        let receiptAudit = try XCTUnwrap(logger.recordedEvents.last { $0.category == "receipt" && $0.action == "execution.receipt.create" })
+        XCTAssertEqual(receiptAudit.metadata["receipt_id"], receipt.id)
+        XCTAssertEqual(receiptAudit.metadata["run_id"], receipt.runID)
+        XCTAssertEqual(receiptAudit.metadata["receipt_status"], ExecutionReceiptStatus.succeeded.rawValue)
+        XCTAssertEqual(receiptAudit.metadata["session_id"], viewModel.session.id)
     }
 
     func testApproveOrReportErrorSurfacesDisabledApprovalFailure() throws {
@@ -87,15 +99,43 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.session.executionStatus, .completed)
     }
 
+    func testFailedToolExecutionCreatesRedactedExecutionReceipt() throws {
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let registry = try ToolRegistry(tools: [
+            StaticTool(name: .taskCreate, description: "create", inputSchema: ToolInputSchema(required: ["title"]), permissionLevel: .writeWithApproval) { _, _ in
+                throw ToolExecutionError.executionFailed(.taskCreate, "provider failed \("token" + "=" + "tool-secret")")
+            }
+        ])
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+            ]),
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore
+        )
+
+        try viewModel.approve()
+        try viewModel.execute()
+
+        let receipt = try XCTUnwrap(viewModel.lastExecutionReceipt)
+        XCTAssertEqual(receipt.status, .failed)
+        XCTAssertEqual(receipt.actions.first?.status, .failed)
+        XCTAssertTrue(receipt.actions.first?.errorSummary?.contains("[REDACTED_SECRET]") ?? false)
+        XCTAssertFalse(receipt.actions.first?.errorSummary?.contains("tool-secret") ?? true)
+        XCTAssertEqual(receiptStore.receipts, [receipt])
+    }
+
     func testCancelSessionRecordsAuditEventAndDisablesExecution() throws {
         let logger = InMemoryAuditLogger()
+        let receiptStore = InMemoryExecutionReceiptStore()
         let registry = ToolRegistry()
         let viewModel = ReviewSessionViewModel(
             plan: ActionPlan.reviewViewModelFixture(actions: [
                 PlanAction(id: "read", tool: .projectList)
             ]),
             executor: ActionExecutor(registry: registry),
-            auditLogger: logger
+            auditLogger: logger,
+            executionReceiptStore: receiptStore
         )
 
         viewModel.cancel()
@@ -103,6 +143,8 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.session.executionStatus, .canceled)
         XCTAssertFalse(viewModel.canExecute)
         XCTAssertTrue(logger.recordedEvents.contains { $0.action == "session.cancel" })
+        XCTAssertEqual(viewModel.lastExecutionReceipt?.status, .canceled)
+        XCTAssertEqual(receiptStore.receipts, viewModel.executionReceipts)
     }
 
     func testInvalidEditDisablesExecutionAndReportsValidationIssue() throws {
