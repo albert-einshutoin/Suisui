@@ -24,9 +24,9 @@
 
 ## Checklist
 
-### P0-001: リポジトリと Gitflow の初期化
+### P0-001: リポジトリと GitHub Flow の初期化
 
-- [x] `git init` し、`main` と `develop` の運用方針を root `README.md` に書く。
+- [x] `git init` し、`main` と短命 feature branch の運用方針を root `README.md` に書く。
 - [x] `.gitignore` を追加し、Xcode、SwiftPM、DerivedData、`.DS_Store`、local secret を除外する。
 - [x] `docs/` と `tasks/` を追跡対象にし、実装前の設計資産として扱う。
 - [x] `feature/phase0-skeleton` で初期実装を開始できる状態にする。
@@ -114,7 +114,7 @@
 ### P0-011: Project documentation baseline
 
 - [x] root `README.md` を作り、SoloPM の一文説明、MVP scope、開発開始手順、local verification command を書く。
-- [x] `CONTRIBUTING.md` を作り、Gitflow、TDD、Issue 展開ルール、PR checklist を `tasks/README.md` へリンクする。
+- [x] `CONTRIBUTING.md` を作り、GitHub Flow、TDD、Issue 展開ルール、PR checklist を `tasks/README.md` へリンクする。
 - [x] `SECURITY.md` を作り、API Key / token を Keychain に保存し、ログや DB に保存しない方針を書く。
 - [x] root README から `docs/README.md`、`docs/tech_stack.md`、`tasks/README.md` へリンクする。
 - [x] テスト: 新規 contributor が root README から設計、タスク、検証コマンドへ辿れることを確認する。
@@ -134,6 +134,6 @@
 - [x] SQLite migration と Keychain wrapper の unit test がある。
 - [x] macOS API は protocol / adapter 経由で差し替え可能。
 - [x] API Key を安全に保存する境界ができている。
-- [x] `develop` に merge できる Gitflow baseline がある。
+- [x] `main` へPRで戻せる GitHub Flow baseline がある。
 - [x] root README / CONTRIBUTING / SECURITY の最小版がある。
 - [x] ADR template と Phase 0 の主要判断 ADR がある。

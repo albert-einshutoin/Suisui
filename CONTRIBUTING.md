@@ -1,16 +1,15 @@
 # Contributing
 
-SoloPM is developed with Gitflow, TDD, and a review-before-write safety model.
+SoloPM is developed with GitHub Flow, TDD, and a review-before-write safety model.
 
 ## Branches
 
 - `main`: release-ready code only.
-- `develop`: integration branch for the next release.
-- `feature/phaseN-short-name`: feature work.
-- `fix/phaseN-short-name`: bug fixes.
-- `docs/phaseN-short-name`: documentation-only changes.
+- `feature/short-name`: feature work from the current target branch.
+- `fix/short-name`: bug fixes from the current target branch.
+- `docs/short-name`: documentation-only changes from the current target branch.
 
-Do not push directly to `main`.
+Do not push directly to `main`. Open a pull request back to the branch you started from. During a release-candidate or large integration effort, that target branch may be an active release branch instead of `main`, but it should stay short-lived and return to `main`.
 
 ## Supported Environment
 

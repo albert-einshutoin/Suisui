@@ -6,7 +6,7 @@ When automated gates are green but readiness still reports manual/release-machin
 
 ## Preconditions
 
-- Release branch is cut from `develop`.
+- Release branch is cut from `main`, or from the active release-candidate target branch while that PR is still open.
 - `security find-identity -p codesigning -v` shows a Developer ID Application identity.
 - `packaging/signing.env` exists only on the release machine.
 - `packaging/notarization.env` exists only on the release machine.
