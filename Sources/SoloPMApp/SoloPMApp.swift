@@ -1017,6 +1017,19 @@ private enum SettingsTab: String {
     case privacy = "Privacy"
 }
 
+private extension VoiceModelID {
+    var voiceModelSystemImage: String {
+        switch self {
+        case .whisperCppTinyMultilingual:
+            "waveform"
+        case .kokoro82M:
+            "speaker.wave.2"
+        case .custom:
+            "shippingbox"
+        }
+    }
+}
+
 private struct SettingsView: View {
     let watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot
     let integrationPermissionSnapshot: PermissionSnapshot
@@ -1285,6 +1298,35 @@ private struct SettingsView: View {
                 }
             }
 
+            Section("Voice Models") {
+                ForEach(settingsViewModel.voiceModelReadinessRows) { row in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Label(row.displayName, systemImage: row.modelID.voiceModelSystemImage)
+                                .font(.headline)
+                            Spacer()
+                            Text(localizedSettingsDisplay(row.statusLabel))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Text(row.languageSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Text("\(row.sizeLabel) - \(row.detailLabel)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+
+                        Button(localizedSettingsDisplay(row.actionLabel)) {
+                            handleVoiceModelAction(row)
+                        }
+                        .disabled(row.action == .wait)
+                        .accessibilityIdentifier("settings-voice-model-\(row.modelID.rawValue)")
+                        .accessibilityHint("Manages the cached local voice model file.")
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
     }
@@ -1901,6 +1943,19 @@ private struct SettingsView: View {
         }
         .accessibilityIdentifier("settings-save-button")
         .accessibilityHint("Persists non-secret settings to local UserDefaults.")
+    }
+
+    private func handleVoiceModelAction(_ row: VoiceModelReadinessRow) {
+        switch row.action {
+        case .download, .retry:
+            Task {
+                await settingsViewModel.installVoiceModel(row.modelID)
+            }
+        case .removeFromCache:
+            settingsViewModel.removeVoiceModelFromCache(row.modelID)
+        case .wait:
+            break
+        }
     }
 
     private var activeAIProviderReadinessRow: AIProviderReadinessRow {

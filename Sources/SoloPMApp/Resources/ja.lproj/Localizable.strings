@@ -617,6 +617,17 @@
 "%@ permission is restricted on this Mac." = "%@ の権限はこのMacで制限されています。";
 "Permission denied" = "権限拒否";
 "System Speech" = "システム読み上げ";
+"Voice Models" = "音声モデル";
+"Manages the cached local voice model file." = "キャッシュされたローカル音声モデルファイルを管理します。";
+"Installed" = "インストール済み";
+"Not installed" = "未インストール";
+"Downloading" = "ダウンロード中";
+"Failed" = "失敗";
+"Needs reinstall" = "再インストールが必要";
+"Download" = "ダウンロード";
+"Wait" = "待機";
+"Remove from cache" = "キャッシュから削除";
+"Retry" = "再試行";
 "Not configured" = "未設定";
 "Task Automation" = "タスク自動化";
 "Review task automation" = "タスク自動化を確認";
