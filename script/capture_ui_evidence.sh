@@ -1133,7 +1133,7 @@ SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-integrations-li
 SETTINGS_INTEGRATIONS_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-integrations-dark.png"
 
 INBOX_TARGET_MARKERS="sidebar-destination-inbox=>Inbox|inbox-action-panel=>Inbox"
-TODAY_TARGET_MARKERS="sidebar-destination-today=>Today|today-briefing-panel=>Today"
+TODAY_TARGET_MARKERS="sidebar-destination-today=>Today|today-briefing-panel=>Today|today-assistant-rail=>Today"
 PROJECTS_TARGET_MARKERS="sidebar-destination-projects=>Projects|projects-portfolio-overview=>Projects"
 SCHEDULE_TARGET_MARKERS="sidebar-destination-schedule=>Schedule|schedule-workflow=>Schedule"
 DONE_TARGET_MARKERS="sidebar-destination-done=>Done|done-workflow=>Done"

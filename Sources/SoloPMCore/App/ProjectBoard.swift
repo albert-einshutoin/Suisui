@@ -299,6 +299,46 @@ public struct TodayWorkflowPlan: Equatable, Sendable {
     }
 }
 
+public enum TodayAssistantRailSource: String, Codable, Equatable, Sendable {
+    case selected
+    case recommended
+    case empty
+}
+
+public struct TodayAssistantRailContext: Equatable, Sendable {
+    public var source: TodayAssistantRailSource
+    public var task: ProjectBoardTask?
+    public var projectTitle: String
+    public var nextActionTitle: String
+    public var nextActionReason: String
+    public var nextBlockLabel: String?
+    public var notes: String
+    public var subtaskSummary: String
+    public var reminderSummary: String
+
+    public init(
+        source: TodayAssistantRailSource,
+        task: ProjectBoardTask?,
+        projectTitle: String,
+        nextActionTitle: String,
+        nextActionReason: String,
+        nextBlockLabel: String?,
+        notes: String,
+        subtaskSummary: String,
+        reminderSummary: String
+    ) {
+        self.source = source
+        self.task = task
+        self.projectTitle = projectTitle
+        self.nextActionTitle = nextActionTitle
+        self.nextActionReason = nextActionReason
+        self.nextBlockLabel = nextBlockLabel
+        self.notes = notes
+        self.subtaskSummary = subtaskSummary
+        self.reminderSummary = reminderSummary
+    }
+}
+
 public enum TodayRecommendationKind: String, Codable, Equatable, Sendable {
     case blocker
     case overdue
@@ -1256,6 +1296,47 @@ public final class ProjectBoardViewModel: ObservableObject {
         )
     }
 
+    public func todayAssistantRailContext(
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> TodayAssistantRailContext {
+        let plan = todayPlan(on: referenceDate, calendar: calendar)
+        if let selectedTask = selectedTask,
+           plan.tasks.contains(where: { $0.id == selectedTask.id }) {
+            return todayAssistantRailContext(
+                source: .selected,
+                task: selectedTask,
+                plan: plan,
+                nextActionTitle: String(localized: "Review selected task"),
+                nextActionReason: String(localized: "You selected this Today task for review.")
+            )
+        }
+
+        if let recommendedTask = plan.recommendedTask {
+            return todayAssistantRailContext(
+                source: .recommended,
+                task: recommendedTask,
+                plan: plan,
+                nextActionTitle: String(localized: "Start recommended task"),
+                nextActionReason: plan.recommendationReason
+            )
+        }
+
+        return TodayAssistantRailContext(
+            source: .empty,
+            task: nil,
+            projectTitle: String(localized: "No project selected"),
+            nextActionTitle: String(localized: "Capture the next task"),
+            nextActionReason: plan.recommendationReason,
+            nextBlockLabel: nil,
+            notes: String(localized: "Add a Today command or schedule Inbox work to create a focus path."),
+            // Subtasks and reminders stay as command drafts until those domains
+            // have approval-gated writes wired into the Today workflow.
+            subtaskSummary: String(localized: "Subtask capture is staged through the Today command."),
+            reminderSummary: String(localized: "Reminder draft only; external writes require approval.")
+        )
+    }
+
     @discardableResult
     public func submitTodayCommand(_ rawTitle: String) -> ProjectBoardTask? {
         let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1680,10 +1761,18 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     @discardableResult
     public func prepareTodayScheduleDraft(
+        prioritizing taskID: Int64? = nil,
         on referenceDate: Date = Date(),
         calendar: Calendar = .current
     ) -> TodayScheduleDraft {
-        let draft = TodayScheduleDraft(timeBlocks: todayPlan(on: referenceDate, calendar: calendar).timeBlocks)
+        let plan = todayPlan(on: referenceDate, calendar: calendar)
+        let timeBlocks = prioritizedTodayTimeBlocks(
+            plan: plan,
+            taskID: taskID,
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        let draft = TodayScheduleDraft(timeBlocks: timeBlocks)
         todayScheduleDraft = draft
         todayCommandFeedback = String(format: String(localized: "Prepared %d time blocks for schedule review."), draft.timeBlocks.count)
         return draft
@@ -3063,6 +3152,50 @@ public final class ProjectBoardViewModel: ObservableObject {
             return "High-priority work is the best first task."
         }
         return "Earliest due task keeps today on track."
+    }
+
+    private func todayAssistantRailContext(
+        source: TodayAssistantRailSource,
+        task: ProjectBoardTask,
+        plan: TodayWorkflowPlan,
+        nextActionTitle: String,
+        nextActionReason: String
+    ) -> TodayAssistantRailContext {
+        TodayAssistantRailContext(
+            source: source,
+            task: task,
+            projectTitle: projectTitle(for: task),
+            nextActionTitle: nextActionTitle,
+            nextActionReason: nextActionReason,
+            nextBlockLabel: plan.timeBlocks.first { $0.task.id == task.id }?.label,
+            notes: task.detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? String(localized: "No notes yet.")
+                : task.detail,
+            // This context powers a personal-MVP rail, so it exposes draft state
+            // without pretending a subtask/reminder persistence model exists yet.
+            subtaskSummary: String(localized: "Subtask capture is staged through the Today command."),
+            reminderSummary: String(localized: "Reminder draft only; external writes require approval.")
+        )
+    }
+
+    private func prioritizedTodayTimeBlocks(
+        plan: TodayWorkflowPlan,
+        taskID: Int64?,
+        referenceDate: Date,
+        calendar: Calendar
+    ) -> [TodayTimeBlock] {
+        guard let taskID,
+              let task = plan.tasks.first(where: { $0.id == taskID }) else {
+            return plan.timeBlocks
+        }
+
+        // The rail action is an explicit user choice, so the draft must include
+        // that task even when the normal recommendation order would place it later.
+        return timeBlocks(
+            for: orderedTimeBlockTasks(plan.tasks, recommendedTask: task),
+            startingAt: referenceDate,
+            calendar: calendar
+        )
     }
 
     private func orderedTimeBlockTasks(
