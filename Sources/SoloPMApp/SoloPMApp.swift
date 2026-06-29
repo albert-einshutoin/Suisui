@@ -1283,11 +1283,21 @@ private struct SettingsView: View {
                         set: { settingsViewModel.setSTTProvider($0) }
                     )
                 ) {
-                    ForEach(STTProvider.releaseReadyCases, id: \.self) { provider in
+                    ForEach(settingsViewModel.selectableSTTProviders, id: \.self) { provider in
                         Text(provider.displayName)
                             .tag(provider)
                     }
                 }
+                TextField(
+                    "whisper.cpp executable",
+                    text: Binding(
+                        get: { settingsViewModel.settings.whisperCppExecutablePath ?? "" },
+                        set: { settingsViewModel.setWhisperCppExecutablePath($0) }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("settings-whisper-cpp-executable-path")
+                .accessibilityHint("Sets the absolute path to whisper-cli for offline speech to text.")
                 LabeledContent("Shortcut", value: "Option + Space")
                 if TTSProvider.releaseReadyCases.isEmpty {
                     LabeledContent("Text to Speech", value: ttsOverviewStatusLabel)
@@ -3109,9 +3119,15 @@ private enum AppRuntimeFactory {
         settings: AppSettings,
         secretStore: any SecretStore
     ) -> any SpeechToTextProvider {
-        switch settings.normalizedForRuntime.sttProvider {
-        case .openAITranscribe, .appleSpeechAnalyzer, .localWhisperKit, .localWhisperCpp:
-            OpenAITranscribeProvider(secretStore: secretStore)
+        let normalizedSettings = settings.normalizedForRuntime
+        switch normalizedSettings.sttProvider {
+        case .openAITranscribe, .appleSpeechAnalyzer, .localWhisperKit:
+            return OpenAITranscribeProvider(secretStore: secretStore)
+        case .localWhisperCpp:
+            let configuration = WhisperCppLocalSTTConfiguration(
+                executablePath: normalizedSettings.whisperCppExecutablePath ?? ""
+            )
+            return WhisperCppLocalSTTProvider(configuration: configuration)
         }
     }
 

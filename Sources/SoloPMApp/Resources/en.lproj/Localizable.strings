@@ -669,3 +669,4 @@
 "Runs the reviewed local task step after explicit user approval" = "Runs the reviewed local task step after explicit user approval";
 "Runs the reviewed local task step after explicit user approval." = "Runs the reviewed local task step after explicit user approval.";
 "Summarizes the selected Inbox capture metadata for review." = "Summarizes the selected Inbox capture metadata for review.";
+"Sets the absolute path to whisper-cli for offline speech to text." = "Sets the absolute path to whisper-cli for offline speech to text.";

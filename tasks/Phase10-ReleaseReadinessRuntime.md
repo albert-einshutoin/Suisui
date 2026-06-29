@@ -211,9 +211,9 @@
 
 ### P10-023: Release-ready STT provider surface
 
-- [x] release-ready STT provider は実装済みの `OpenAITranscribeProvider` のみに制限する。
-- [x] Settings UI は `STTProvider.releaseReadyCases` のみを表示し、未実装 provider を選択肢に出さない。
-- [x] 既存 UserDefaults 由来の未実装 STT 設定は runtime 起動時に `openAITranscribe` へ正規化する。
+- [x] release-ready STT provider は実装済みの `OpenAITranscribeProvider` と ready-gated `WhisperCppLocalSTTProvider` に制限する。
+- [x] Settings UI は `settingsViewModel.selectableSTTProviders` を表示し、モデルと実行ファイルが揃わない local provider を選択肢に出さない。
+- [x] 既存 UserDefaults 由来の未実装 STT 設定や ready でない local STT 設定は runtime 起動時に `openAITranscribe` へ正規化する。
 - [x] 完了条件: shipping app に未実装 STT provider skeleton を含めず、使えない音声 provider を選ばせない。
 
 ### P10-024: Project board narrow-window resilience

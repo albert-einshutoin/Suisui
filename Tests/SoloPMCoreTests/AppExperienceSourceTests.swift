@@ -2596,6 +2596,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains(".local/share/opencode/auth.json"))
     }
 
+    func testRuntimeSTTFactoryUsesWhisperCppProviderWithoutOpenAIFallback() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let factoryStart = try XCTUnwrap(appSource.range(of: "private static func makeSpeechToTextProvider"))
+        let factorySource = String(appSource[factoryStart.lowerBound..<appSource.endIndex])
+
+        XCTAssertTrue(factorySource.contains("case .localWhisperCpp:"))
+        XCTAssertTrue(factorySource.contains("WhisperCppLocalSTTConfiguration("))
+        XCTAssertTrue(factorySource.contains("normalizedSettings.whisperCppExecutablePath ?? \"\""))
+        XCTAssertTrue(factorySource.contains("WhisperCppLocalSTTProvider(configuration: configuration)"))
+        XCTAssertFalse(factorySource.contains(".openAITranscribe, .appleSpeechAnalyzer, .localWhisperKit, .localWhisperCpp"))
+    }
+
     func testRuntimeLLMFactoryUsesGroqCompatibleProviderWithoutOpenAIFallback() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let factoryStart = try XCTUnwrap(appSource.range(of: "private static func makeLLMProvider"))
@@ -2609,10 +2621,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(factorySource.contains(".openaiResponses,\n             .groqOpenAICompatible"))
     }
 
-    func testSettingsSurfaceOnlyShowsReleaseReadySTTProviders() throws {
+    func testSettingsSurfaceUsesRuntimeReadySTTProviderPicker() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
-        XCTAssertTrue(appSource.contains("STTProvider.releaseReadyCases"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.selectableSTTProviders"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.setWhisperCppExecutablePath($0)"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.settings.whisperCppExecutablePath ?? \"\""))
+        XCTAssertFalse(appSource.contains("ForEach(STTProvider.releaseReadyCases"))
         XCTAssertFalse(appSource.contains("ForEach(STTProvider.allCases"))
         XCTAssertFalse(appSource.contains("AppleSpeechAnalyzerProvider()"))
         XCTAssertFalse(appSource.contains("WhisperKitProvider()"))
