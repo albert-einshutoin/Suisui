@@ -173,7 +173,11 @@ struct ProjectBoardView: View {
                         case .inbox:
                             InboxWorkflowView(viewModel: viewModel)
                         case .today:
-                            TodayWorkflowView(viewModel: viewModel)
+                            TodayWorkflowView(
+                                viewModel: viewModel,
+                                selectTodayTask: selectTodayTask,
+                                openInspectorForTodayRailTask: openInspectorForTodayRailTask
+                            )
                         case .schedule:
                             ScheduleWorkflowView(viewModel: viewModel)
                         case .done:
@@ -274,7 +278,7 @@ struct ProjectBoardView: View {
             applySelectedTaskOverrideIfNeeded()
         }
         .onChange(of: viewModel.selectedTaskID) { _, selectedTaskID in
-            if selectedTaskID != nil {
+            if selectedTaskID != nil && selectedDestination != .today {
                 isInspectorPresented = true
             }
         }
@@ -493,6 +497,22 @@ struct ProjectBoardView: View {
         // first selection without changing the user's persisted Project Board state.
         viewModel.selectedProjectID = task.projectID
         viewModel.selectedTaskID = task.id
+        isInspectorPresented = true
+    }
+
+    private func selectTodayTask(_ task: ProjectBoardTask) {
+        // Today row selection feeds the persistent assistant rail first. The
+        // inspector still opens explicitly from the rail Edit action.
+        viewModel.selectedTaskID = task.id
+        isInspectorPresented = false
+    }
+
+    private func openInspectorForTodayRailTask(_ taskID: Int64) {
+        viewModel.selectedTaskID = taskID
+        guard viewModel.selectedTask != nil else {
+            return
+        }
+
         isInspectorPresented = true
     }
 

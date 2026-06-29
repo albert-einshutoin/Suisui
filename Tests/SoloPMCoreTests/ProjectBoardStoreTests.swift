@@ -2091,6 +2091,67 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelBuildsTodayAssistantRailContextFromSelectedTask() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        _ = viewModel.createTask(
+            title: "Fix overdue blocker",
+            detail: "Unblock the release owner",
+            projectID: launch.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-18T09:00:00Z"
+        )
+        let selected = try XCTUnwrap(viewModel.createTask(
+            title: "Ship today update",
+            detail: "Prepare release note",
+            projectID: launch.id,
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-19T12:00:00Z"
+        ))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        viewModel.selectedTaskID = selected.id
+
+        let context = viewModel.todayAssistantRailContext(
+            on: try isoDate("2026-06-19T08:37:00Z"),
+            calendar: calendar
+        )
+
+        XCTAssertEqual(context.source, .selected)
+        XCTAssertEqual(context.task?.title, "Ship today update")
+        XCTAssertEqual(context.projectTitle, "Launch")
+        XCTAssertEqual(context.nextActionTitle, "Review selected task")
+        XCTAssertEqual(context.nextActionReason, "You selected this Today task for review.")
+        XCTAssertEqual(context.nextBlockLabel, "09:30-10:00")
+        XCTAssertEqual(context.notes, "Prepare release note")
+        XCTAssertEqual(context.subtaskSummary, "Subtask capture is staged through the Today command.")
+        XCTAssertEqual(context.reminderSummary, "Reminder draft only; external writes require approval.")
+    }
+
+    @MainActor
+    func testProjectBoardViewModelBuildsEmptyTodayAssistantRailContext() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+
+        let context = viewModel.todayAssistantRailContext(
+            on: try isoDate("2026-06-19T08:37:00Z"),
+            calendar: calendar
+        )
+
+        XCTAssertEqual(context.source, .empty)
+        XCTAssertNil(context.task)
+        XCTAssertEqual(context.projectTitle, "No project selected")
+        XCTAssertEqual(context.nextActionTitle, "Capture the next task")
+        XCTAssertEqual(context.nextActionReason, "No due work is scheduled for today.")
+        XCTAssertNil(context.nextBlockLabel)
+    }
+
+    @MainActor
     func testProjectBoardViewModelTodayCommandCreatesInboxItemAndNotifies() throws {
         var changeCount = 0
         let viewModel = ProjectBoardViewModel(
@@ -2193,6 +2254,39 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(draft.timeBlocks.map(\.task.id), [task.id])
         XCTAssertEqual(viewModel.todayScheduleDraft, draft)
         XCTAssertEqual(reloaded.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id }?.status, .planned)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelPreparesPrioritizedTodayScheduleDraftForRailTask() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        for index in 0..<5 {
+            _ = viewModel.createTask(
+                title: "Earlier task \(index)",
+                projectID: project.id,
+                status: .planned,
+                dueAt: "2026-06-19T0\(index + 8):00:00Z"
+            )
+        }
+        let railTask = try XCTUnwrap(viewModel.createTask(
+            title: "Rail selected task",
+            projectID: project.id,
+            status: .planned,
+            dueAt: "2026-06-19T15:00:00Z"
+        ))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+
+        let draft = viewModel.prepareTodayScheduleDraft(
+            prioritizing: railTask.id,
+            on: try isoDate("2026-06-19T08:37:00Z"),
+            calendar: calendar
+        )
+
+        XCTAssertEqual(draft.timeBlocks.first?.task.id, railTask.id)
+        XCTAssertEqual(draft.timeBlocks.first?.label, "09:00-09:30")
+        XCTAssertTrue(draft.timeBlocks.contains { $0.task.title == "Earlier task 0" })
     }
 
     @MainActor
