@@ -131,7 +131,7 @@ final class ClarificationSessionTests: XCTestCase {
     }
 
     func testNegativeApprovalAnswersAreNotTreatedAsApprovedBySubstringMatch() {
-        for answer in ["not approved", "承認しない"] {
+        for answer in ["not approved", "not ok", "not okay", "承認しない", "承認はしない"] {
             var session = ClarificationSession(
                 originalUtterance: "Run the approved plan",
                 requiredSlots: [.executionApproval]
@@ -144,5 +144,33 @@ final class ClarificationSessionTests: XCTestCase {
             }
             XCTAssertEqual(result.answers[.executionApproval], .approval(false))
         }
+    }
+
+    func testSessionRecordsClarificationTurnsForQueueReview() {
+        var session = ClarificationSession(
+            originalUtterance: "Run the approved plan",
+            resolvedRoute: VoiceCommandRoute(
+                utterance: "Run the approved plan",
+                intent: .execution,
+                disposition: .routed,
+                confidence: .high,
+                interpretationSummary: "Routed as execution intent."
+            ),
+            requiredSlots: [.repository, .executionScope, .executionApproval]
+        )
+
+        _ = session.answer("soloPM")
+        _ = session.answer("only run tests")
+        let finalState = session.answer("approved")
+
+        guard case .resolved(let result) = finalState else {
+            return XCTFail("Expected resolved state after all execution slots are answered.")
+        }
+        XCTAssertEqual(result.resolvedRoute?.intent, .execution)
+        XCTAssertEqual(result.answers[.repository], .text("soloPM"))
+        XCTAssertEqual(result.answers[.executionScope], .text("only run tests"))
+        XCTAssertEqual(result.turns.map(\.slot), [.repository, .executionScope, .executionApproval])
+        XCTAssertEqual(result.turns.first?.question.prompt, "Which repository or project directory should this use?")
+        XCTAssertEqual(result.turns.last?.answer, .approval(true))
     }
 }

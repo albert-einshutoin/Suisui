@@ -2,9 +2,12 @@ import Foundation
 
 public enum ClarificationSlot: String, Codable, CaseIterable, Equatable, Hashable, Sendable {
     case project
+    case repository
     case dueDate
     case destination
     case documentScope
+    case documentSource
+    case executionScope
     case executionApproval
 }
 
@@ -25,11 +28,39 @@ public struct ClarificationQuestion: Codable, Equatable, Sendable {
 
 public struct ClarificationResult: Codable, Equatable, Sendable {
     public var originalUtterance: String
+    public var resolvedRoute: VoiceCommandRoute?
     public var answers: [ClarificationSlot: ClarificationValue]
+    public var turns: [ClarificationTurn]
 
-    public init(originalUtterance: String, answers: [ClarificationSlot: ClarificationValue]) {
+    public init(
+        originalUtterance: String,
+        resolvedRoute: VoiceCommandRoute? = nil,
+        answers: [ClarificationSlot: ClarificationValue],
+        turns: [ClarificationTurn] = []
+    ) {
         self.originalUtterance = originalUtterance
+        self.resolvedRoute = resolvedRoute
         self.answers = answers
+        self.turns = turns
+    }
+}
+
+public struct ClarificationTurn: Codable, Equatable, Sendable {
+    public var slot: ClarificationSlot
+    public var question: ClarificationQuestion
+    public var response: String
+    public var answer: ClarificationValue
+
+    public init(
+        slot: ClarificationSlot,
+        question: ClarificationQuestion,
+        response: String,
+        answer: ClarificationValue
+    ) {
+        self.slot = slot
+        self.question = question
+        self.response = response
+        self.answer = answer
     }
 }
 
@@ -40,16 +71,21 @@ public enum ClarificationSessionState: Codable, Equatable, Sendable {
 
 public struct ClarificationSession: Codable, Equatable, Sendable {
     public let originalUtterance: String
+    public let resolvedRoute: VoiceCommandRoute?
     public let requiredSlots: [ClarificationSlot]
     public private(set) var answers: [ClarificationSlot: ClarificationValue]
+    public private(set) var turns: [ClarificationTurn]
 
     public init(
         originalUtterance: String,
+        resolvedRoute: VoiceCommandRoute? = nil,
         requiredSlots: [ClarificationSlot] = [.project, .dueDate, .executionApproval]
     ) {
         self.originalUtterance = originalUtterance
+        self.resolvedRoute = resolvedRoute
         self.requiredSlots = Self.unique(requiredSlots)
         self.answers = [:]
+        self.turns = []
     }
 
     private var remainingSlots: [ClarificationSlot] {
@@ -58,7 +94,14 @@ public struct ClarificationSession: Codable, Equatable, Sendable {
 
     public var state: ClarificationSessionState {
         guard let currentSlot = remainingSlots.first else {
-            return .resolved(result: ClarificationResult(originalUtterance: originalUtterance, answers: answers))
+            return .resolved(
+                result: ClarificationResult(
+                    originalUtterance: originalUtterance,
+                    resolvedRoute: resolvedRoute,
+                    answers: answers,
+                    turns: turns
+                )
+            )
         }
         return .needsClarification(
             question: question(for: currentSlot),
@@ -71,16 +114,25 @@ public struct ClarificationSession: Codable, Equatable, Sendable {
             return state
         }
 
+        let currentQuestion = question(for: currentSlot)
         guard let parsedValue = parse(currentSlot, from: response) else {
             // Keep the same question when input is empty or ambiguous.
             // This avoids unsafe fallback by pretending a missing required value is present.
             return .needsClarification(
-                question: question(for: currentSlot),
+                question: currentQuestion,
                 remainingSlots: remainingSlots
             )
         }
 
         answers[currentSlot] = parsedValue
+        turns.append(
+            ClarificationTurn(
+                slot: currentSlot,
+                question: currentQuestion,
+                response: response.trimmedForClarification,
+                answer: parsedValue
+            )
+        )
         return state
     }
 
@@ -90,6 +142,11 @@ public struct ClarificationSession: Codable, Equatable, Sendable {
             return ClarificationQuestion(
                 slot: .project,
                 prompt: "Which project should this request belong to?"
+            )
+        case .repository:
+            return ClarificationQuestion(
+                slot: .repository,
+                prompt: "Which repository or project directory should this use?"
             )
         case .dueDate:
             return ClarificationQuestion(
@@ -106,6 +163,16 @@ public struct ClarificationSession: Codable, Equatable, Sendable {
                 slot: .documentScope,
                 prompt: "Which document scope should be used?"
             )
+        case .documentSource:
+            return ClarificationQuestion(
+                slot: .documentSource,
+                prompt: "Which source documents should be used?"
+            )
+        case .executionScope:
+            return ClarificationQuestion(
+                slot: .executionScope,
+                prompt: "What execution scope is allowed?"
+            )
         case .executionApproval:
             return ClarificationQuestion(
                 slot: .executionApproval,
@@ -118,7 +185,7 @@ public struct ClarificationSession: Codable, Equatable, Sendable {
         let normalized = response.voiceClarificationNormalized
         let trimmed = response.trimmedForClarification
         switch slot {
-        case .project, .destination, .documentScope:
+        case .project, .repository, .destination, .documentScope, .documentSource, .executionScope:
             return parseTextSlotValue(from: trimmed)
         case .dueDate:
             return parseDueDate(from: normalized, raw: trimmed)
@@ -152,7 +219,7 @@ public struct ClarificationSession: Codable, Equatable, Sendable {
     }
 
     private func parseExecutionApproval(from response: String) -> ClarificationValue? {
-        let normalized = response.trimmedForClarification
+        let normalized = response.voiceClarificationNormalized
         guard !normalized.isClarificationFallback else {
             return nil
         }
@@ -163,8 +230,9 @@ public struct ClarificationSession: Codable, Equatable, Sendable {
         ]
         let noSignals = [
             "no", "nah", "nope", "not now", "not yet", "not approved", "do not approve",
-            "don't approve", "do not run", "don't run", "reject", "rejected", "やめ", "やめて",
-            "不要", "いりません", "だめ", "承認しない", "承認しません", "実行しない"
+            "don't approve", "not ok", "not okay", "do not run", "don't run", "reject", "rejected",
+            "やめ", "やめて", "不要", "いりません", "だめ", "承認しない", "承認しません",
+            "承認はしない", "承認はしません", "実行しない"
         ]
 
         // Negative approval phrases can contain positive words such as
