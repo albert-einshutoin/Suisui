@@ -3,6 +3,7 @@ import Foundation
 public enum ProjectBoardSidebarDestination: Hashable, Sendable {
     case inbox
     case today
+    case catchUp
     case schedule
     case done
     case projects
@@ -14,6 +15,8 @@ public enum ProjectBoardSidebarDestination: Hashable, Sendable {
             "Inbox"
         case .today:
             "Today"
+        case .catchUp:
+            "Catch Up"
         case .schedule:
             "Schedule"
         case .done:
@@ -31,6 +34,8 @@ public enum ProjectBoardSidebarDestination: Hashable, Sendable {
             "tray"
         case .today:
             "sun.max"
+        case .catchUp:
+            "clock.badge.exclamationmark"
         case .schedule:
             "calendar"
         case .done:
@@ -48,6 +53,8 @@ public enum ProjectBoardSidebarDestination: Hashable, Sendable {
             "inbox"
         case .today:
             "today"
+        case .catchUp:
+            "catch-up"
         case .schedule:
             "schedule"
         case .done:
@@ -81,6 +88,8 @@ public enum ProjectBoardSelectionPersistence {
             return "inbox"
         case .today:
             return "today"
+        case .catchUp:
+            return "catch-up"
         case .schedule:
             return "schedule"
         case .done:
@@ -101,6 +110,8 @@ public enum ProjectBoardSelectionPersistence {
             return .inbox
         case "today":
             return .today
+        case "catch-up":
+            return .catchUp
         case "schedule":
             return .schedule
         case "done":
