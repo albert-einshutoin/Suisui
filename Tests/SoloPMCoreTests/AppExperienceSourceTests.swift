@@ -2343,6 +2343,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("openVoiceCommandWindowForEvidenceIfRequested()"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-root\")"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-input\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-intent-preview\")"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-generate-plan\")"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-status\")"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-action-review-panel\")"))
