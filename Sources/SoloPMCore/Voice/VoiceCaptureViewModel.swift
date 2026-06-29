@@ -21,6 +21,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     @Published public private(set) var auditErrorMessage: String?
     @Published public private(set) var routingResult: VoiceCommandRoutingResult?
     @Published public private(set) var clarificationSession: ClarificationSession?
+    @Published public private(set) var assistantQueueItem: AssistantQueueItem?
 
     private var audioRecorder: any AudioRecorder
     private let sttProvider: any SpeechToTextProvider
@@ -51,6 +52,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.auditErrorMessage = nil
         self.routingResult = draft.canGeneratePlan ? commandRouter.route(transcript: draft.normalizedText) : nil
         self.clarificationSession = nil
+        self.assistantQueueItem = nil
     }
 
     public var canGeneratePlan: Bool {
@@ -80,6 +82,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         draft.text = text
         planningResponse = nil
         clarificationSession = nil
+        assistantQueueItem = nil
         refreshRoutingResult()
         if shouldResetPhaseAfterDraftChange, runtimeValidationMessage == nil {
             phase = .idle
@@ -94,6 +97,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         auditErrorMessage = nil
         routingResult = nil
         clarificationSession = nil
+        assistantQueueItem = nil
         recordingState = audioRecorder.state
         phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
     }
@@ -123,6 +127,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             draft = TranscriptDraft(text: transcript.text)
             planningResponse = nil
             clarificationSession = nil
+            assistantQueueItem = nil
             refreshRoutingResult()
             phase = .idle
         } catch {
@@ -152,6 +157,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         routingResult = routedCommand
         guard !routedCommand.needsClarification else {
             planningResponse = nil
+            assistantQueueItem = nil
             beginClarification(for: routedCommand)
             return
         }
@@ -208,6 +214,35 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
     }
 
+    @discardableResult
+    public func approveAssistantQueueItem(reviewerID: String = "local-user") -> Bool {
+        guard let assistantQueueItem else {
+            return false
+        }
+
+        do {
+            self.assistantQueueItem = try AssistantQueueStateMachine.approve(assistantQueueItem, reviewerID: reviewerID)
+            return true
+        } catch {
+            auditErrorMessage = userMessage(for: error)
+            return false
+        }
+    }
+
+    public func deferAssistantQueueItem() {
+        guard let assistantQueueItem else {
+            return
+        }
+        self.assistantQueueItem = AssistantQueueStateMachine.deferItem(assistantQueueItem)
+    }
+
+    public func rejectAssistantQueueItem() {
+        guard let assistantQueueItem else {
+            return
+        }
+        self.assistantQueueItem = AssistantQueueStateMachine.reject(assistantQueueItem)
+    }
+
     private func beginClarification(for route: VoiceCommandRoutingResult) {
         let session = ClarificationSession(route: route)
         clarificationSession = session
@@ -232,6 +267,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
         phase = .generatingPlan
         auditErrorMessage = nil
+        assistantQueueItem = nil
 
         do {
             try auditRecorder?.recordStarted(input: request.userInput, providerID: llmProvider.providerID)
@@ -255,6 +291,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 return
             }
             planningResponse = response
+            assistantQueueItem = makeAssistantQueueItem(from: response, routedCommand: routedCommand)
             recordPlanningAudit {
                 try auditRecorder?.recordCompleted(response: response)
             }
@@ -345,6 +382,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         // stale response instead of leaving an executable panel for old input.
         planningResponse = nil
         clarificationSession = nil
+        assistantQueueItem = nil
         refreshRoutingResult()
         if let routingResult, routingResult.needsClarification {
             beginClarification(for: routingResult)
@@ -353,6 +391,21 @@ public final class VoiceCaptureViewModel: ObservableObject {
         } else {
             phase = .failed(runtimeValidationMessage ?? "Voice planning is unavailable.")
         }
+    }
+
+    private func makeAssistantQueueItem(
+        from response: PlanningResponse,
+        routedCommand: VoiceCommandRoutingResult
+    ) -> AssistantQueueItem? {
+        guard let actionPlan = response.actionPlan else {
+            return nil
+        }
+        return AssistantQueueAdapter.makeItem(
+            actionPlan: actionPlan,
+            sourceTranscript: routedCommand.originalTranscript,
+            interpretationSummary: routedCommand.interpretationSummary,
+            reason: "Voice planning draft needs review."
+        )
     }
 }
 

@@ -545,7 +545,18 @@ private struct VoiceCaptureView: View {
 
                 if let response = viewModel.planningResponse {
                     Divider()
-                    if let plan = response.actionPlan, response.validationResult.isValid {
+                    if let item = viewModel.assistantQueueItem {
+                        AssistantQueuePanel(
+                            item: item,
+                            onApprove: { viewModel.approveAssistantQueueItem() },
+                            onDefer: { viewModel.deferAssistantQueueItem() },
+                            onReject: { viewModel.rejectAssistantQueueItem() }
+                        )
+                    }
+
+                    if let plan = response.actionPlan,
+                       response.validationResult.isValid,
+                       viewModel.assistantQueueItem?.state == .approved {
                         ActionReviewPanel(viewModel: AppRuntimeFactory.makeReviewSessionViewModel(plan: plan)) {
                             NotificationCenter.default.post(name: .soloPMProjectBoardDidChange, object: nil)
                         }
@@ -563,6 +574,167 @@ private struct VoiceCaptureView: View {
     private func recordingOutputURL() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("solopm-recording-\(UUID().uuidString).m4a")
+    }
+}
+
+private struct AssistantQueuePanel: View {
+    let item: AssistantQueueItem
+    let onApprove: () -> Void
+    let onDefer: () -> Void
+    let onReject: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    Label(localizedSettingsDisplay("Assistant Queue"), systemImage: "tray.full")
+                        .font(.subheadline)
+                    queueStateLabel
+                    Spacer(minLength: 8)
+                    riskLabel
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(localizedSettingsDisplay("Assistant Queue"), systemImage: "tray.full")
+                        .font(.subheadline)
+                    HStack(spacing: 8) {
+                        queueStateLabel
+                        riskLabel
+                    }
+                }
+            }
+
+            Text(localizedSettingsDisplay(item.redactedSummary))
+                .font(.body)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(localizedSettingsDisplay(item.reviewReason))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let source = item.sourceTranscript, !source.isEmpty {
+                Label(source, systemImage: "quote.bubble")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !item.requiredCapabilities.isEmpty {
+                Text(item.requiredCapabilities.map(capabilityLabel).joined(separator: ", "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("voice-assistant-queue-capabilities")
+            }
+
+            if let blockingReason = item.blockingReason {
+                Label(localizedSettingsDisplay(blockingReason), systemImage: "exclamationmark.octagon")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    onApprove()
+                } label: {
+                    Label(localizedSettingsDisplay("Approve"), systemImage: "checkmark.seal")
+                }
+                .disabled(item.state != .waitingReview)
+                .accessibilityIdentifier("voice-assistant-queue-approve")
+
+                Button {
+                    onDefer()
+                } label: {
+                    Label(localizedSettingsDisplay("Defer"), systemImage: "clock")
+                }
+                .disabled(item.state == .blocked || item.state == .done || item.state == .rejected)
+                .accessibilityIdentifier("voice-assistant-queue-defer")
+
+                Button {
+                    onReject()
+                } label: {
+                    Label(localizedSettingsDisplay("Reject"), systemImage: "xmark.circle")
+                }
+                .disabled(item.state == .done || item.state == .rejected)
+                .accessibilityIdentifier("voice-assistant-queue-reject")
+            }
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .accessibilityIdentifier("voice-assistant-queue-panel")
+    }
+
+    private var queueStateLabel: some View {
+        Text(localizedSettingsDisplay(stateLabel))
+            .font(.caption)
+            .foregroundStyle(stateColor)
+            .lineLimit(1)
+            .accessibilityIdentifier("voice-assistant-queue-state")
+    }
+
+    private var riskLabel: some View {
+        Text(String(format: localizedSettingsDisplay("Risk: %@"), item.riskLevel.rawValue))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .accessibilityIdentifier("voice-assistant-queue-risk")
+    }
+
+    private var stateLabel: String {
+        switch item.state {
+        case .captured:
+            "Captured"
+        case .interpreted:
+            "Interpreted"
+        case .drafted:
+            "Drafted"
+        case .waitingReview:
+            "Waiting review"
+        case .approved:
+            "Approved"
+        case .running:
+            "Running"
+        case .blocked:
+            "Blocked"
+        case .done:
+            "Done"
+        case .rejected:
+            "Rejected"
+        case .deferred:
+            "Deferred"
+        }
+    }
+
+    private var stateColor: Color {
+        switch item.state {
+        case .blocked, .rejected:
+            .red
+        case .approved, .done:
+            .green
+        case .deferred:
+            .orange
+        case .captured, .interpreted, .drafted, .waitingReview, .running:
+            .secondary
+        }
+    }
+
+    private func capabilityLabel(_ capability: AssistantQueueRequiredCapability) -> String {
+        switch capability {
+        case .tool(let tool):
+            return tool.rawValue
+        case .appPermission(let permission):
+            return permission.rawValue
+        case .connectedMacRequired:
+            return localizedSettingsDisplay("Connected Mac required")
+        case .providerExecutionApproval:
+            return localizedSettingsDisplay("Execution approval")
+        case .externalMCP(let serverID, let toolName):
+            return "\(serverID):\(toolName)"
+        }
     }
 }
 
