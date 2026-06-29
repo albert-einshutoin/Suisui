@@ -816,6 +816,7 @@
 "%d new" = "新規 %d 件";
 "%@ tasks" = "%@ タスク";
 "Daily Workload" = "日次ワークロード";
+"Daily Planning Review" = "日次計画レビュー";
 "Daily progress" = "日次進捗";
 "Inbox Triage" = "Inbox整理";
 "Inbox captures are shown separately until moved into a project." = "Inboxキャプチャは、プロジェクトへ移動するまで別枠で表示します。";
@@ -824,7 +825,11 @@
 "Next Week" = "翌週";
 "No scheduled tasks for this day." = "この日に予定されたタスクはありません。";
 "Previous Week" = "前週";
+"Prepared daily planning review." = "日次計画レビューを準備しました。";
+"Proposal only" = "提案のみ";
 "Selected Day" = "選択中の日";
 "Selected workload day detail" = "選択中ワークロード日の詳細";
 "Shows local per-day task counts, progress, unscheduled tasks, and Inbox triage without writing Calendar." = "カレンダーへ書き込まず、ローカルの日別タスク件数、進捗、未スケジュール、Inbox整理待ちを表示します。";
+"Shows a local proposal for today's focus without changing tasks or writing Calendar." = "タスク変更やカレンダー書き込みをせず、今日の集中対象のローカル提案を表示します。";
+"Today daily planning review" = "今日の日次計画レビュー";
 "Unscheduled tasks" = "未スケジュールタスク";

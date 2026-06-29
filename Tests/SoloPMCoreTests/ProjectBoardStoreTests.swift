@@ -1738,6 +1738,40 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDailyPlanningReviewUsesTodayAndWorkloadWithoutMutatingStoreOrCalendar() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-30T09:10:00Z")
+        let calendarClient = InMemoryCalendarClient()
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            scheduleCalendarClient: calendarClient
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Daily Plan"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Clear overdue blocker",
+            projectID: project.id,
+            status: .blocked,
+            priority: .high,
+            dueAt: "2026-06-29"
+        ))
+        let beforeSnapshot = viewModel.snapshot
+
+        let review = viewModel.prepareDailyPlanningReview(
+            transcript: "今日やることを確認して",
+            on: referenceDate,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(review.recommendedTaskID, task.id)
+        XCTAssertEqual(viewModel.dailyPlanningReview?.recommendedTaskID, task.id)
+        XCTAssertEqual(viewModel.snapshot, beforeSnapshot)
+        XCTAssertEqual(viewModel.snapshot.projects.first { $0.id == project.id }?.column(.blocked)?.tasks.map(\.id), [task.id])
+        XCTAssertTrue(try calendarClient.listEvents().isEmpty)
+    }
+
+    @MainActor
     func testScheduleApplyRequiresApprovalBeforeCalendarWrite() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!

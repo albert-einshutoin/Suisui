@@ -3,6 +3,7 @@ import Foundation
 public enum VoiceCommandIntentKind: String, Codable, CaseIterable, Equatable, Sendable {
     case taskCreate = "task.create"
     case taskTriage = "task.triage"
+    case dailyPlanningReview = "voice.daily_planning_review"
     case schedulePlan = "schedule.plan"
     case documentBrief = "document.brief"
     case developmentPRWorkflow = "development.pr_workflow"
@@ -16,6 +17,8 @@ public enum VoiceCommandIntentKind: String, Codable, CaseIterable, Equatable, Se
             "Create task"
         case .taskTriage:
             "Triage tasks"
+        case .dailyPlanningReview:
+            "Daily planning review"
         case .schedulePlan:
             "Plan schedule"
         case .documentBrief:
@@ -167,6 +170,26 @@ public struct VoiceCommandRouter: VoiceCommandRouting {
                     .init(phrase: "優先順位", weight: 1.7)
                 ],
                 summary: "Route as task.triage for an Inbox or priority review."
+            ),
+            RouteCandidate(
+                intent: .dailyPlanningReview,
+                signals: [
+                    .init(phrase: "daily planning", weight: 2.0),
+                    .init(phrase: "what should i focus", weight: 2.0),
+                    .init(phrase: "what should i do", weight: 1.8),
+                    .init(phrase: "focus on today", weight: 1.8),
+                    .init(phrase: "next 90 minutes", weight: 1.6),
+                    .init(phrase: "next action", weight: 1.5),
+                    .init(phrase: "pick three", weight: 1.6),
+                    .init(phrase: "today", weight: 1.2),
+                    .init(phrase: "今日やること", weight: 2.1),
+                    .init(phrase: "今日", weight: 1.1),
+                    .init(phrase: "今から", weight: 1.4),
+                    .init(phrase: "絞", weight: 1.8),
+                    .init(phrase: "やること", weight: 1.4),
+                    .init(phrase: "確認", weight: 1.0)
+                ],
+                summary: "Route as voice.daily_planning_review for a review-only Today planning briefing."
             ),
             RouteCandidate(
                 intent: .schedulePlan,

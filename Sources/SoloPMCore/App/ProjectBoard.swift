@@ -1132,6 +1132,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var todayCommandFeedback: String?
     @Published public private(set) var todayFocusTaskID: Int64?
     @Published public private(set) var todayScheduleDraft: TodayScheduleDraft?
+    @Published public private(set) var dailyPlanningReview: DailyPlanningReview?
     @Published public private(set) var scheduleDraft: ScheduleDraft?
     @Published public private(set) var scheduleApplyResult: ScheduleApplyResult?
     @Published public private(set) var projectAssistantAnswer: ProjectAssistantAnswer?
@@ -1177,6 +1178,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.inboxCaptureRecordsByTaskID = [:]
         self.todayFocusTaskID = nil
         self.todayScheduleDraft = nil
+        self.dailyPlanningReview = nil
         self.scheduleDraft = nil
         self.scheduleApplyResult = nil
         self.projectAssistantAnswer = nil
@@ -1418,6 +1420,36 @@ public final class ProjectBoardViewModel: ObservableObject {
             recommendationReason: recommendationReason(for: recommendedTask, on: referenceDate, calendar: calendar),
             timeBlocks: timeBlocks(for: orderedTimeBlockTasks(tasks, recommendedTask: recommendedTask), startingAt: referenceDate, calendar: calendar)
         )
+    }
+
+    public func makeDailyPlanningReview(
+        transcript: String,
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> DailyPlanningReview {
+        DailyPlanningReviewBuilder.review(
+            transcript: transcript,
+            plan: todayPlan(on: referenceDate, calendar: calendar),
+            workload: dailyWorkloadOverview(around: referenceDate, calendar: calendar),
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+    }
+
+    @discardableResult
+    public func prepareDailyPlanningReview(
+        transcript: String,
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> DailyPlanningReview {
+        let review = makeDailyPlanningReview(
+            transcript: transcript,
+            on: referenceDate,
+            calendar: calendar
+        )
+        dailyPlanningReview = review
+        todayCommandFeedback = String(localized: "Prepared daily planning review.")
+        return review
     }
 
     public func todayAssistantRailContext(

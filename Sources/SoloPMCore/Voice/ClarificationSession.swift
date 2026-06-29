@@ -214,6 +214,8 @@ public struct ClarificationSession: Codable, Equatable, Sendable {
         switch route.intent {
         case .taskCreate, .taskTriage:
             return taskSlots(for: transcript)
+        case .dailyPlanningReview:
+            return [.project]
         case .schedulePlan:
             return transcript.containsDateSignal ? [.project] : [.dueDate, .project]
         case .documentBrief:

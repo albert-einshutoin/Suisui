@@ -11,6 +11,23 @@ final class VoiceCommandRouterTests: XCTestCase {
         XCTAssertFalse(VoiceCommandIntentKind.developmentPRWorkflow.displayName.contains("_"))
     }
 
+    func testRoutesJapaneseDailyPlanningReviewCommand() {
+        let result = router.route(transcript: "今から90分で今日やることを3つに絞って")
+
+        XCTAssertEqual(result.intent, .dailyPlanningReview)
+        XCTAssertGreaterThanOrEqual(result.confidence, 0.7)
+        XCTAssertEqual(result.decision, .reviewOnly)
+        XCTAssertTrue(result.reviewOnly)
+    }
+
+    func testRoutesEnglishDailyPlanningReviewCommand() {
+        let result = router.route(transcript: "What should I focus on today for the next 90 minutes?")
+
+        XCTAssertEqual(result.intent, .dailyPlanningReview)
+        XCTAssertGreaterThanOrEqual(result.confidence, 0.7)
+        XCTAssertEqual(result.decision, .reviewOnly)
+    }
+
     func testRoutesJapaneseTaskCreateCommand() {
         let result = router.route(transcript: "リリースメモのタスクを作成して")
 

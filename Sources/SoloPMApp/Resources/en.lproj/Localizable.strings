@@ -816,6 +816,7 @@
 "%d new" = "%d new";
 "%@ tasks" = "%@ tasks";
 "Daily Workload" = "Daily Workload";
+"Daily Planning Review" = "Daily Planning Review";
 "Daily progress" = "Daily progress";
 "Inbox Triage" = "Inbox Triage";
 "Inbox captures are shown separately until moved into a project." = "Inbox captures are shown separately until moved into a project.";
@@ -824,7 +825,11 @@
 "Next Week" = "Next Week";
 "No scheduled tasks for this day." = "No scheduled tasks for this day.";
 "Previous Week" = "Previous Week";
+"Prepared daily planning review." = "Prepared daily planning review.";
+"Proposal only" = "Proposal only";
 "Selected Day" = "Selected Day";
 "Selected workload day detail" = "Selected workload day detail";
 "Shows local per-day task counts, progress, unscheduled tasks, and Inbox triage without writing Calendar." = "Shows local per-day task counts, progress, unscheduled tasks, and Inbox triage without writing Calendar.";
+"Shows a local proposal for today's focus without changing tasks or writing Calendar." = "Shows a local proposal for today's focus without changing tasks or writing Calendar.";
+"Today daily planning review" = "Today daily planning review";
 "Unscheduled tasks" = "Unscheduled tasks";
