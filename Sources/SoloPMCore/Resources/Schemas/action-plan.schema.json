@@ -69,7 +69,8 @@
         "development.pr_workflow.prepare",
         "development.repository.read_file",
         "development.repository.create_file",
-        "development.repository.update_file"
+        "development.repository.update_file",
+        "development.verification.run"
       ]
     },
     "action": {

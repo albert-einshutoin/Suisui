@@ -70,7 +70,8 @@ final class DeveloperModeTests: XCTestCase {
             .developmentPreparePullRequestWorkflow,
             .developmentRepositoryReadFile,
             .developmentRepositoryCreateFile,
-            .developmentRepositoryUpdateFile
+            .developmentRepositoryUpdateFile,
+            .developmentRunVerification
         ])
     }
 
