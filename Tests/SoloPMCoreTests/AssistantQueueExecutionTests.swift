@@ -559,6 +559,10 @@ private final class FailingExecutionReceiptStore: ExecutionReceiptStore, @unchec
         []
     }
 
+    func list(matching filter: ExecutionReceiptSearchFilter, limit: Int) throws -> [ExecutionReceipt] {
+        []
+    }
+
     func list(
         referenceKind: ExecutionReceiptReferenceKind,
         referenceID: String,

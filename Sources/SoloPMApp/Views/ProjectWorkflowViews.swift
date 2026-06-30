@@ -1,6 +1,7 @@
 import Foundation
 import SoloPMCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ProjectBoardSidebarDestinationRow: View {
     let destination: ProjectBoardSidebarDestination
@@ -698,6 +699,8 @@ private struct CatchUpReasonPills: View {
 
 struct DoneWorkflowView: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
+    @State private var isExportingExecutionReceipts = false
+    @State private var executionReceiptExportDocument = ExecutionReceiptHistoryFileDocument(data: Data())
 
     private var analytics: DoneAnalyticsSummary {
         viewModel.doneAnalytics()
@@ -748,6 +751,91 @@ struct DoneWorkflowView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Label("Recent AI Receipts", systemImage: "doc.text.magnifyingglass")
                         .font(.headline)
+                    HStack(spacing: 8) {
+                        TextField(
+                            "Search receipts",
+                            text: Binding(
+                                get: { viewModel.executionReceiptHistorySearchText },
+                                set: { viewModel.setExecutionReceiptHistorySearchText($0) }
+                            )
+                        )
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("execution-receipt-search-field")
+
+                        Menu {
+                            Button("All Statuses") {
+                                viewModel.setExecutionReceiptHistoryStatusFilter(nil)
+                            }
+                            Divider()
+                            Button("Succeeded") {
+                                viewModel.setExecutionReceiptHistoryStatusFilter(.succeeded)
+                            }
+                            Button("Failed") {
+                                viewModel.setExecutionReceiptHistoryStatusFilter(.failed)
+                            }
+                            Button("Canceled") {
+                                viewModel.setExecutionReceiptHistoryStatusFilter(.canceled)
+                            }
+                            Button("Running") {
+                                viewModel.setExecutionReceiptHistoryStatusFilter(.running)
+                            }
+                        } label: {
+                            Label(receiptStatusFilterLabel, systemImage: "line.3.horizontal.decrease.circle")
+                        }
+                        .accessibilityIdentifier("execution-receipt-status-filter")
+
+                        Menu {
+                            Button("All References") {
+                                viewModel.setExecutionReceiptHistoryReferenceKindFilter(nil)
+                            }
+                            Divider()
+                            Button("Task") {
+                                viewModel.setExecutionReceiptHistoryReferenceKindFilter(.task)
+                            }
+                            Button("Project") {
+                                viewModel.setExecutionReceiptHistoryReferenceKindFilter(.project)
+                            }
+                            Button("Document") {
+                                viewModel.setExecutionReceiptHistoryReferenceKindFilter(.document)
+                            }
+                            Button("Reminder") {
+                                viewModel.setExecutionReceiptHistoryReferenceKindFilter(.reminder)
+                            }
+                            Button("Calendar Event") {
+                                viewModel.setExecutionReceiptHistoryReferenceKindFilter(.calendarEvent)
+                            }
+                            Button("Development Branch") {
+                                viewModel.setExecutionReceiptHistoryReferenceKindFilter(.developmentBranch)
+                            }
+                            Button("Pull Request") {
+                                viewModel.setExecutionReceiptHistoryReferenceKindFilter(.pullRequest)
+                            }
+                        } label: {
+                            Label(receiptReferenceFilterLabel, systemImage: "tag")
+                        }
+                        .accessibilityIdentifier("execution-receipt-reference-filter")
+
+                        Button {
+                            viewModel.prepareExecutionReceiptHistoryExport()
+                            guard let data = viewModel.executionReceiptHistoryExportData else {
+                                return
+                            }
+                            executionReceiptExportDocument = ExecutionReceiptHistoryFileDocument(data: data)
+                            isExportingExecutionReceipts = true
+                        } label: {
+                            Label("Export JSON", systemImage: "square.and.arrow.up")
+                        }
+                        .disabled(viewModel.executionReceiptHistorySnapshot.rows.isEmpty)
+                        .accessibilityIdentifier("execution-receipt-export-button")
+                    }
+                    .font(.caption)
+
+                    if let exportMessage = viewModel.executionReceiptHistoryExportMessage {
+                        Label(exportMessage, systemImage: "doc.text")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("execution-receipt-export-message")
+                    }
                     if let unavailableMessage = viewModel.executionReceiptHistorySnapshot.unavailableMessage {
                         ContentUnavailableView(
                             "Execution receipts are unavailable",
@@ -772,6 +860,105 @@ struct DoneWorkflowView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityIdentifier("done-workflow")
+        .fileExporter(
+            isPresented: $isExportingExecutionReceipts,
+            document: executionReceiptExportDocument,
+            contentType: .json,
+            defaultFilename: executionReceiptDefaultExportFilename
+        ) { result in
+            switch result {
+            case .success:
+                viewModel.recordExecutionReceiptHistoryExportCompleted()
+                executionReceiptExportDocument = ExecutionReceiptHistoryFileDocument(data: Data())
+            case .failure(let error):
+                viewModel.recordExecutionReceiptHistoryFileFailure(error)
+            }
+        }
+    }
+
+    private var receiptStatusFilterLabel: LocalizedStringKey {
+        guard let status = viewModel.executionReceiptHistoryStatusFilter else {
+            return "All Statuses"
+        }
+        switch status {
+        case .notStarted:
+            return "Not Started"
+        case .running:
+            return "Running"
+        case .succeeded:
+            return "Succeeded"
+        case .failed:
+            return "Failed"
+        case .skipped:
+            return "Skipped"
+        case .canceled:
+            return "Canceled"
+        }
+    }
+
+    private var receiptReferenceFilterLabel: LocalizedStringKey {
+        guard let referenceKind = viewModel.executionReceiptHistoryReferenceKindFilter else {
+            return "All References"
+        }
+        switch referenceKind {
+        case .unknown:
+            return "Unknown"
+        case .assistantQueue:
+            return "Assistant Queue"
+        case .actionPlan:
+            return "Action Plan"
+        case .reviewSession:
+            return "Review Session"
+        case .task:
+            return "Task"
+        case .project:
+            return "Project"
+        case .document:
+            return "Document"
+        case .calendarEvent:
+            return "Calendar Event"
+        case .notification:
+            return "Notification"
+        case .reminder:
+            return "Reminder"
+        case .developmentBranch:
+            return "Development Branch"
+        case .file:
+            return "File"
+        case .pullRequest:
+            return "Pull Request"
+        }
+    }
+
+    private var executionReceiptDefaultExportFilename: String {
+        "solopm-receipts-\(Self.exportDateFormatter.string(from: Date())).json"
+    }
+
+    private static let exportDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter
+    }()
+}
+
+private struct ExecutionReceiptHistoryFileDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+    static var writableContentTypes: [UTType] { [.json] }
+
+    var data: Data
+
+    init(data: Data = Data()) {
+        self.data = data
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        data = configuration.file.regularFileContents ?? Data()
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
     }
 }
 

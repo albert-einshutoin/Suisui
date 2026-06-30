@@ -971,7 +971,8 @@ final class ProjectBoardStoreTests: XCTestCase {
                 outputSummary: "Created visible audit row",
                 primaryToolName: ActionTool.taskCreate.rawValue,
                 usage: ExecutionReceiptUsage(inputTokens: 4, outputTokens: 6, estimatedCostCents: 0.5, currencyCode: "USD"),
-                references: [ExecutionReceiptReference(kind: .task, id: "1", label: "History task")]
+                references: [ExecutionReceiptReference(kind: .task, id: "1", label: "History task")],
+                visibleSurfaces: [.auditLog]
             )
         ])
         let viewModel = ProjectBoardViewModel(
@@ -991,6 +992,130 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertTrue(row.usageLabel.contains("10 tokens"))
         XCTAssertFalse(row.accessibilityValue.contains("history-secret"))
         XCTAssertNil(viewModel.executionReceiptHistorySnapshot.unavailableMessage)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelHidesNonAuditReceiptsFromDoneHistoryAndExport() throws {
+        let receiptStore = InMemoryExecutionReceiptStore(receipts: [
+            ExecutionReceipt(
+                id: "receipt-audit-visible",
+                runID: "run-audit-visible",
+                createdAt: Date(timeIntervalSince1970: 100),
+                finishedAt: Date(timeIntervalSince1970: 120),
+                status: .succeeded,
+                inputPreview: "Visible audit prompt",
+                outputSummary: "Visible audit outcome",
+                primaryToolName: ActionTool.taskUpdate.rawValue,
+                visibleSurfaces: [.auditLog]
+            ),
+            ExecutionReceipt(
+                id: "receipt-queue-hidden",
+                runID: "run-queue-hidden",
+                createdAt: Date(timeIntervalSince1970: 130),
+                finishedAt: Date(timeIntervalSince1970: 140),
+                status: .succeeded,
+                inputPreview: "Queue-only prompt",
+                outputSummary: "Queue-only hidden outcome",
+                primaryToolName: ActionTool.taskCreate.rawValue,
+                visibleSurfaces: [.assistantQueue]
+            ),
+            ExecutionReceipt(
+                id: "receipt-surfaceless-hidden",
+                runID: "run-surfaceless-hidden",
+                createdAt: Date(timeIntervalSince1970: 150),
+                finishedAt: Date(timeIntervalSince1970: 160),
+                status: .succeeded,
+                inputPreview: "Surface-less prompt",
+                outputSummary: "Surface-less hidden outcome",
+                primaryToolName: ActionTool.calendarCreateWorkBlock.rawValue
+            )
+        ])
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: receiptStore
+        )
+
+        viewModel.load()
+        viewModel.prepareExecutionReceiptHistoryExport(exportedAt: Date(timeIntervalSince1970: 200))
+
+        XCTAssertEqual(viewModel.executionReceiptHistorySnapshot.rows.map(\.outcomeSummary), ["Visible audit outcome"])
+        let exportData = try XCTUnwrap(viewModel.executionReceiptHistoryExportData)
+        let exportText = try XCTUnwrap(String(data: exportData, encoding: .utf8))
+        XCTAssertTrue(exportText.contains("Visible audit outcome"))
+        XCTAssertFalse(exportText.contains("Queue-only hidden outcome"))
+        XCTAssertFalse(exportText.contains("Surface-less hidden outcome"))
+        XCTAssertFalse(exportText.contains("receipt-queue-hidden"))
+        XCTAssertFalse(exportText.contains("receipt-surfaceless-hidden"))
+    }
+
+    @MainActor
+    func testProjectBoardViewModelFiltersAndExportsExecutionReceiptHistory() throws {
+        let rawReceiptID = "receipt:https://docs.example.com/export?token=board-export-secret"
+        let taskReferenceID = "task-board-export-secret"
+        let receiptStore = InMemoryExecutionReceiptStore(receipts: [
+            ExecutionReceipt(
+                id: "receipt-unrelated-board-export",
+                runID: "run-unrelated-board-export",
+                createdAt: Date(timeIntervalSince1970: 90),
+                finishedAt: Date(timeIntervalSince1970: 110),
+                status: .failed,
+                inputPreview: "Wrong prompt",
+                outputSummary: "Calendar failed",
+                primaryToolName: ActionTool.calendarCreateWorkBlock.rawValue,
+                references: [ExecutionReceiptReference(kind: .calendarEvent, id: "event-board-export")],
+                visibleSurfaces: [.auditLog]
+            ),
+            ExecutionReceipt(
+                id: rawReceiptID,
+                runID: "run-board-export",
+                createdAt: Date(timeIntervalSince1970: 100),
+                finishedAt: Date(timeIntervalSince1970: 120),
+                status: .succeeded,
+                inputPreview: "Raw prompt sk-proj-board-export-secret from /Users/alice/board-export.md",
+                outputSummary: "Created board launch audit",
+                primaryToolName: ActionTool.taskCreate.rawValue,
+                usage: ExecutionReceiptUsage(inputTokens: 10, outputTokens: 5, estimatedCostCents: 1.2, currencyCode: "USD"),
+                references: [
+                    ExecutionReceiptReference(kind: .task, id: taskReferenceID, label: "Board launch token=board-reference-secret")
+                ],
+                sourceLinks: [
+                    ExecutionReceiptSourceLink(kind: .document, title: "Board spec", url: "file:///Users/alice/board-export.md")
+                ],
+                visibleSurfaces: [.auditLog]
+            )
+        ])
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: receiptStore
+        )
+
+        viewModel.load()
+        viewModel.setExecutionReceiptHistorySearchText("board launch")
+        viewModel.setExecutionReceiptHistoryStatusFilter(.succeeded)
+        viewModel.setExecutionReceiptHistoryReferenceKindFilter(.task)
+        viewModel.prepareExecutionReceiptHistoryExport(exportedAt: Date(timeIntervalSince1970: 200))
+
+        XCTAssertEqual(viewModel.executionReceiptHistorySnapshot.rows.map(\.toolLabel), [ActionTool.taskCreate.rawValue])
+        XCTAssertEqual(viewModel.executionReceiptHistorySearchText, "board launch")
+        XCTAssertEqual(viewModel.executionReceiptHistoryStatusFilter, .succeeded)
+        XCTAssertEqual(viewModel.executionReceiptHistoryReferenceKindFilter, .task)
+        XCTAssertTrue(viewModel.executionReceiptHistoryExportMessage?.contains("Prepared 1 redacted receipt export row") ?? false)
+
+        let exportData = try XCTUnwrap(viewModel.executionReceiptHistoryExportData)
+        let exportText = try XCTUnwrap(String(data: exportData, encoding: .utf8))
+        XCTAssertTrue(exportText.contains("Created board launch audit"))
+        XCTAssertTrue(exportText.contains(ActionTool.taskCreate.rawValue))
+        XCTAssertFalse(exportText.contains(rawReceiptID))
+        XCTAssertFalse(exportText.contains(taskReferenceID))
+        XCTAssertFalse(exportText.contains("board-export-secret"))
+        XCTAssertFalse(exportText.contains("board-reference-secret"))
+        XCTAssertFalse(exportText.contains("file://"))
+        XCTAssertFalse(exportText.contains("/Users/alice/board-export.md"))
+        XCTAssertFalse(exportText.contains("Raw prompt"))
+
+        viewModel.recordExecutionReceiptHistoryExportCompleted()
+        XCTAssertNil(viewModel.executionReceiptHistoryExportData)
+        XCTAssertEqual(viewModel.executionReceiptHistoryExportMessage, "Saved redacted receipt export JSON.")
     }
 
     @MainActor
