@@ -4,6 +4,7 @@ public enum DeveloperModeCapability: String, CaseIterable, Equatable, Hashable, 
     case gitReadOnly
     case githubIssues
     case codebaseMemory
+    case developmentPRWorkflow
 }
 
 public struct DeveloperModePermissionDisclosure: Equatable, Sendable {
@@ -48,6 +49,7 @@ public struct DeveloperModeSettings: Equatable, Sendable {
 
 public enum DeveloperModeError: Error, Equatable, Sendable {
     case workspaceRequired
+    case projectStoresRequired
 }
 
 public extension DeveloperModeCapability {
@@ -71,6 +73,12 @@ public extension DeveloperModeCapability {
                 title: "codebase-memory optional context",
                 summary: "Previews selected local context before sending it to an approved external connector."
             )
+        case .developmentPRWorkflow:
+            return DeveloperModePermissionDisclosure(
+                capability: self,
+                title: "Development PR workflow",
+                summary: "Creates local branches only inside an approved project directory and keeps push or PR creation behind a separate approval."
+            )
         }
     }
 }
@@ -78,7 +86,9 @@ public extension DeveloperModeCapability {
 public extension ToolRegistryFactory {
     static func developerMode(
         settings: DeveloperModeSettings,
-        gitRunner: any GitCommandRunner = ProcessGitCommandRunner()
+        gitRunner: any GitCommandRunner = ProcessGitCommandRunner(),
+        projectStore: SQLiteProjectStore? = nil,
+        taskStore: SQLiteTaskStore? = nil
     ) throws -> ToolRegistry {
         guard settings.isEnabled else {
             return ToolRegistry()
@@ -98,6 +108,17 @@ public extension ToolRegistryFactory {
                 GitReadOnlyTool(name: .gitLogSummary, client: gitClient),
                 GitReadOnlyTool(name: .gitDiffSummary, client: gitClient)
             ])
+        }
+
+        if settings.enabledCapabilities.contains(.developmentPRWorkflow) {
+            guard let projectStore, let taskStore else {
+                throw DeveloperModeError.projectStoresRequired
+            }
+            tools.append(DevelopmentPRWorkflowTool(
+                projectStore: projectStore,
+                taskStore: taskStore,
+                gitRunner: gitRunner
+            ))
         }
 
         return try ToolRegistry(tools: tools)

@@ -65,7 +65,8 @@
         "git.status",
         "git.branch",
         "git.log_summary",
-        "git.diff_summary"
+        "git.diff_summary",
+        "development.pr_workflow.prepare"
       ]
     },
     "action": {
