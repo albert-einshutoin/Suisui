@@ -628,6 +628,7 @@ public enum ExecutionReceiptFactory {
                     outputSummary: outputSummary
                 )
             ],
+            visibleSurfaces: [.doneList, .taskDetail, .auditLog],
             redactionPolicy: redactionPolicy
         )
     }
