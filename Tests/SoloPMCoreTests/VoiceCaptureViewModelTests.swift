@@ -286,6 +286,68 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.phase, .reviewReady)
     }
 
+    func testExplicitInboxVoiceTriageCommandCreatesLocalRequestWithoutProviderCall() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-should-not-run",
+                userInput: "inbox today",
+                summary: "Should not call provider",
+                actions: [PlanAction(id: "action-1", tool: .taskUpdate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("inbox today")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertEqual(viewModel.routingResult?.intent, .taskTriage)
+        XCTAssertEqual(provider.requests.count, 0)
+        XCTAssertNil(viewModel.planningResponse)
+        XCTAssertNil(viewModel.assistantQueueItem)
+        XCTAssertNil(viewModel.dailyPlanningReviewRequest)
+        XCTAssertEqual(viewModel.inboxTriageRequest?.sourceTranscript, "inbox today")
+        XCTAssertEqual(viewModel.inboxTriageRequest?.command.action, .scheduleToday)
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+
+        viewModel.updateDraftText("Create a task")
+
+        XCTAssertNil(viewModel.inboxTriageRequest)
+    }
+
+    func testBareInboxVoiceTriageCommandNeedsContextBeforeLocalRequest() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("today")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertNil(viewModel.inboxTriageRequest)
+        XCTAssertNil(viewModel.dailyPlanningReviewRequest)
+        XCTAssertEqual(provider.requests.count, 0)
+        if case .needsClarification = viewModel.phase {
+        } else {
+            XCTFail("Expected bare command to require clarification outside explicit Inbox context.")
+        }
+    }
+
     func testClarificationAnswerContinuesIntoReviewablePlanningRequest() async {
         let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
             providerID: "fake",

@@ -1994,6 +1994,31 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains("reminderClient.create"))
     }
 
+    func testVoiceInboxTriageBridgeUsesLocalProjectBoardInboxCommands() throws {
+        let voiceSource = try readPackageFile("Sources/SoloPMCore/Voice/VoiceCaptureViewModel.swift")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(voiceSource.contains("public struct VoiceInboxTriageRequest"))
+        XCTAssertTrue(voiceSource.contains("@Published public private(set) var inboxTriageRequest"))
+        XCTAssertTrue(voiceSource.contains("InboxVoiceTriageCommandParser"))
+        XCTAssertTrue(appSource.contains("viewModel.inboxTriageRequest"))
+        XCTAssertTrue(appSource.contains("SoloPMVoiceInboxTriageBridge.storePendingRequest"))
+        XCTAssertTrue(appSource.contains("name: .soloPMVoiceInboxTriageRequested"))
+        XCTAssertTrue(boardSource.contains(".onReceive(NotificationCenter.default.publisher(for: .soloPMVoiceInboxTriageRequested))"))
+        XCTAssertTrue(boardSource.contains("consumePendingVoiceInboxTriageRequestIfNeeded"))
+        XCTAssertTrue(boardSource.contains("SoloPMVoiceInboxTriageBridge.consumePendingRequest()"))
+        XCTAssertTrue(boardSource.contains("consumedRequestIDs"))
+        XCTAssertTrue(boardSource.contains("handleVoiceInboxTriageRequest"))
+        XCTAssertTrue(boardSource.contains("viewModel.applyInboxVoiceTriageCommand(request.command)"))
+        let openStart = try XCTUnwrap(boardSource.range(of: "private func openInboxForVoiceTriage()"))
+        let overrideStart = try XCTUnwrap(boardSource.range(of: "private func applySelectedTaskOverrideIfNeeded()"))
+        let openSource = String(boardSource[openStart.lowerBound..<overrideStart.lowerBound])
+        XCTAssertFalse(openSource.contains("ensureSelectedInboxTaskIsVisible"))
+        XCTAssertFalse(appSource.contains("calendarClient.create"))
+        XCTAssertFalse(appSource.contains("reminderClient.create"))
+    }
+
     func testTodayWorkflowUsesSampleInspiredBriefingAndFlowRail() throws {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
 
