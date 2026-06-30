@@ -274,7 +274,7 @@ final class ExternalTaskInteropTests: XCTestCase {
             status: GoogleCalendarRuntimeSyncStatus(plan: .free, state: .upgradeRequired(requiredPlan: .pro))
         )
         XCTAssertEqual(upgradeRequired.statusLabel, "Upgrade required")
-        XCTAssertEqual(upgradeRequired.nextActionLabel, "Connect with OAuth authorization")
+        XCTAssertEqual(upgradeRequired.nextActionLabel, "Upgrade to Pro before OAuth authorization")
 
         let disconnected = GoogleCalendarSettingsReadinessRow(
             status: GoogleCalendarRuntimeSyncStatus(plan: .pro, state: .oauthDisconnected)

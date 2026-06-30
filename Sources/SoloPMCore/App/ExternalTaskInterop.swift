@@ -484,7 +484,7 @@ public struct GoogleCalendarSettingsReadinessRow: Equatable, Sendable {
     private static func nextActionLabel(for state: GoogleCalendarRuntimeSyncState) -> String {
         switch state {
         case .upgradeRequired:
-            "Connect with OAuth authorization"
+            "Upgrade to Pro before OAuth authorization"
         case .calendarNotConfigured, .invalidCalendarID:
             "Choose a calendar before syncing"
         case .oauthDisconnected:
