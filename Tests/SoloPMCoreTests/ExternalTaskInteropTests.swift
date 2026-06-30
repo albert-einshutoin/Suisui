@@ -186,7 +186,8 @@ final class ExternalTaskInteropTests: XCTestCase {
             linkStore: linkStore,
             calendarSink: calendarSink,
             calendarID: "primary",
-            timeZoneIdentifier: "Asia/Tokyo"
+            timeZoneIdentifier: "Asia/Tokyo",
+            idempotencyNamespace: "test-installation"
         )
 
         XCTAssertThrowsError(try proService.syncDueTasks(context: ToolExecutionContext(source: .reviewUI))) { error in
@@ -203,6 +204,10 @@ final class ExternalTaskInteropTests: XCTestCase {
         XCTAssertEqual(secondResult.skippedAlreadyLinkedCount, 1)
         XCTAssertEqual(calendarSink.createdDrafts.map(\.title), ["Due task"])
         XCTAssertEqual(calendarSink.createdDrafts.first?.isAllDay, true)
+        XCTAssertEqual(calendarSink.createdDrafts.first?.startAt, "2026-07-04")
+        XCTAssertEqual(calendarSink.createdDrafts.first?.endAt, "2026-07-05")
+        XCTAssertEqual(calendarSink.createdDrafts.first?.idempotencyKey?.hasPrefix("solopm"), true)
+        XCTAssertEqual(calendarSink.createdDrafts.first?.idempotencyKey?.count, 70)
         XCTAssertEqual(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 1)?.externalID, "calendar-event-1")
     }
 
@@ -282,7 +287,8 @@ final class ExternalTaskInteropTests: XCTestCase {
             linkStore: linkStore,
             calendarSink: calendarSink,
             calendarID: "primary",
-            timeZoneIdentifier: "Asia/Tokyo"
+            timeZoneIdentifier: "Asia/Tokyo",
+            idempotencyNamespace: "test-installation"
         )
         let controller = GoogleCalendarRuntimeSyncController(
             entitlementStore: StaticEntitlementStore(plan: .pro),
@@ -311,6 +317,163 @@ final class ExternalTaskInteropTests: XCTestCase {
         XCTAssertEqual(calendarSink.createdDrafts.map(\.title), ["Due task"])
         XCTAssertEqual(viewModel.integrationStatusMessage, "Created 1 Google Calendar event.")
         XCTAssertEqual(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 1)?.externalID, "calendar-event-1")
+    }
+
+    func testGoogleCalendarTaskSyncKeepsTimedEventsAndUsesStableIdempotencyKey() throws {
+        let store = InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
+            makeProject(
+                id: 7,
+                title: "Launch",
+                tasks: [
+                    ProjectBoardTask(
+                        id: 12,
+                        projectID: 7,
+                        title: "Timed task",
+                        detail: "",
+                        status: .planned,
+                        priority: .high,
+                        dueAt: "2026-07-04T09:00:00+09:00"
+                    )
+                ]
+            )
+        ]))
+        let calendarSink = RecordingExternalCalendarEventSink()
+        let service = GoogleCalendarTaskSyncService(
+            entitlementStore: StaticEntitlementStore(plan: .pro),
+            store: store,
+            linkStore: InMemoryExternalTaskLinkStore(),
+            calendarSink: calendarSink,
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo",
+            idempotencyNamespace: "timed-installation"
+        )
+
+        _ = try service.syncDueTasks(context: approvedContext())
+
+        let draft = try XCTUnwrap(calendarSink.createdDrafts.first)
+        XCTAssertFalse(draft.isAllDay)
+        XCTAssertEqual(draft.startAt, "2026-07-04T09:00:00+09:00")
+        XCTAssertEqual(draft.endAt, "2026-07-04T09:00:00+09:00")
+        XCTAssertEqual(draft.idempotencyKey?.hasPrefix("solopm"), true)
+        XCTAssertEqual(draft.idempotencyKey?.count, 70)
+    }
+
+    func testGoogleCalendarTaskSyncRequiresNamespaceBeforeSendingStableIdempotencyKey() throws {
+        let store = InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
+            makeProject(
+                id: 7,
+                title: "Launch",
+                tasks: [
+                    ProjectBoardTask(id: 12, projectID: 7, title: "Due task", detail: "", status: .planned, priority: .high, dueAt: "2026-07-04")
+                ]
+            )
+        ]))
+        let calendarSink = RecordingExternalCalendarEventSink()
+        let service = GoogleCalendarTaskSyncService(
+            entitlementStore: StaticEntitlementStore(plan: .pro),
+            store: store,
+            linkStore: InMemoryExternalTaskLinkStore(),
+            calendarSink: calendarSink,
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo"
+        )
+
+        _ = try service.syncDueTasks(context: approvedContext())
+
+        XCTAssertNil(calendarSink.createdDrafts.first?.idempotencyKey)
+    }
+
+    func testGoogleCalendarTaskSyncNamespacesStableIdempotencyKeys() throws {
+        let project = makeProject(
+            id: 7,
+            title: "Launch",
+            tasks: [
+                ProjectBoardTask(id: 12, projectID: 7, title: "Due task", detail: "", status: .planned, priority: .high, dueAt: "2026-07-04")
+            ]
+        )
+        let firstSink = RecordingExternalCalendarEventSink()
+        let secondSink = RecordingExternalCalendarEventSink()
+
+        _ = try GoogleCalendarTaskSyncService(
+            entitlementStore: StaticEntitlementStore(plan: .pro),
+            store: InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [project])),
+            linkStore: InMemoryExternalTaskLinkStore(),
+            calendarSink: firstSink,
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo",
+            idempotencyNamespace: "installation-a"
+        ).syncDueTasks(context: approvedContext())
+
+        _ = try GoogleCalendarTaskSyncService(
+            entitlementStore: StaticEntitlementStore(plan: .pro),
+            store: InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [project])),
+            linkStore: InMemoryExternalTaskLinkStore(),
+            calendarSink: secondSink,
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo",
+            idempotencyNamespace: "installation-b"
+        ).syncDueTasks(context: approvedContext())
+
+        let firstKey = try XCTUnwrap(firstSink.createdDrafts.first?.idempotencyKey)
+        let secondKey = try XCTUnwrap(secondSink.createdDrafts.first?.idempotencyKey)
+
+        XCTAssertNotEqual(firstKey, secondKey)
+        XCTAssertFalse(firstKey.contains("installation-a"))
+        XCTAssertFalse(firstKey.contains("Due task"))
+    }
+
+    func testGoogleCalendarTaskSyncRejectsInvalidDateOnlyDueAtBeforeExternalWrite() throws {
+        let store = InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
+            makeProject(
+                id: 7,
+                title: "Launch",
+                tasks: [
+                    ProjectBoardTask(id: 12, projectID: 7, title: "Invalid date", detail: "", status: .planned, priority: .high, dueAt: "2026-02-31")
+                ]
+            )
+        ]))
+        let calendarSink = RecordingExternalCalendarEventSink()
+        let service = GoogleCalendarTaskSyncService(
+            entitlementStore: StaticEntitlementStore(plan: .pro),
+            store: store,
+            linkStore: InMemoryExternalTaskLinkStore(),
+            calendarSink: calendarSink,
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo",
+            idempotencyNamespace: "test-installation"
+        )
+
+        XCTAssertThrowsError(try service.syncDueTasks(context: approvedContext())) { error in
+            XCTAssertEqual(error as? GoogleCalendarRuntimeSyncError, .invalidDueDate("2026-02-31"))
+        }
+        XCTAssertEqual(calendarSink.createdDrafts.count, 0)
+    }
+
+    func testGoogleCalendarTaskSyncUsesExclusiveAllDayEndAcrossCalendarBoundaries() throws {
+        let store = InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
+            makeProject(
+                id: 7,
+                title: "Launch",
+                tasks: [
+                    ProjectBoardTask(id: 12, projectID: 7, title: "Year end", detail: "", status: .planned, priority: .high, dueAt: "2026-12-31"),
+                    ProjectBoardTask(id: 13, projectID: 7, title: "Leap day", detail: "", status: .planned, priority: .high, dueAt: "2028-02-29")
+                ]
+            )
+        ]))
+        let calendarSink = RecordingExternalCalendarEventSink()
+        let service = GoogleCalendarTaskSyncService(
+            entitlementStore: StaticEntitlementStore(plan: .pro),
+            store: store,
+            linkStore: InMemoryExternalTaskLinkStore(),
+            calendarSink: calendarSink,
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo",
+            idempotencyNamespace: "test-installation"
+        )
+
+        _ = try service.syncDueTasks(context: approvedContext())
+
+        XCTAssertEqual(calendarSink.createdDrafts.map(\.endAt), ["2027-01-01", "2028-03-01"])
     }
 
     private func makeProject(id: Int64, title: String, tasks: [ProjectBoardTask]) -> ProjectBoardProject {

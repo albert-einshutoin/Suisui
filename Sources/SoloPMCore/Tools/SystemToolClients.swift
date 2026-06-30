@@ -62,13 +62,22 @@ public struct CalendarEventDraft: Equatable, Sendable {
     public var endAt: String
     public var isAllDay: Bool
     public var notes: String?
+    public var idempotencyKey: String?
 
-    public init(title: String, startAt: String, endAt: String, isAllDay: Bool = false, notes: String? = nil) {
+    public init(
+        title: String,
+        startAt: String,
+        endAt: String,
+        isAllDay: Bool = false,
+        notes: String? = nil,
+        idempotencyKey: String? = nil
+    ) {
         self.title = title
         self.startAt = startAt
         self.endAt = endAt
         self.isAllDay = isAllDay
         self.notes = notes
+        self.idempotencyKey = idempotencyKey
     }
 }
 
