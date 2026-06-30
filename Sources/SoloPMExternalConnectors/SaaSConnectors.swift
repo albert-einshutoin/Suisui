@@ -524,6 +524,7 @@ public struct GoogleCalendarHTTPClient: GoogleCalendarClient {
     }
 
     public func createEvent(_ draft: CalendarEventDraft, calendarID: String, timeZoneIdentifier: String) throws -> GoogleCalendarEventRecord {
+        let idempotencyID = GoogleCalendarEventID.normalized(draft.idempotencyKey)
         let request = try makeCreateEventRequest(
             draft,
             calendarID: calendarID,
@@ -531,6 +532,17 @@ public struct GoogleCalendarHTTPClient: GoogleCalendarClient {
             accessToken: try tokenProvider.bearerToken()
         )
         let (data, response) = try httpClient.data(for: request)
+        if response.statusCode == 409, let idempotencyID, idempotencyID.hasPrefix("solopm") {
+            // Google returns a conflict when an events.insert caller-provided ID
+            // already exists. For SoloPM-generated IDs this means the previous
+            // approved write reached Google, so the sync can recreate the local
+            // link instead of creating a duplicate event.
+            return GoogleCalendarEventRecord(
+                calendarID: calendarID,
+                timeZoneIdentifier: timeZoneIdentifier,
+                event: CalendarEventRecord(id: idempotencyID, draft: draft)
+            )
+        }
         guard (200..<300).contains(response.statusCode) else {
             throw SaaSConnectorError.apiFailure(.googleCalendar, "Google Calendar events.insert failed with HTTP \(response.statusCode).")
         }
@@ -571,12 +583,16 @@ public struct GoogleCalendarHTTPClient: GoogleCalendarClient {
 }
 
 private struct GoogleCalendarEventRequest: Encodable {
+    var id: String?
     var summary: String
     var description: String?
     var start: GoogleCalendarEventDate
     var end: GoogleCalendarEventDate
+    var extendedProperties: GoogleCalendarEventExtendedProperties?
 
     init(draft: CalendarEventDraft, timeZoneIdentifier: String) {
+        let normalizedID = GoogleCalendarEventID.normalized(draft.idempotencyKey)
+        id = normalizedID
         summary = draft.title
         description = draft.notes
         if draft.isAllDay {
@@ -586,6 +602,9 @@ private struct GoogleCalendarEventRequest: Encodable {
             start = GoogleCalendarEventDate(date: nil, dateTime: draft.startAt, timeZone: timeZoneIdentifier)
             end = GoogleCalendarEventDate(date: nil, dateTime: draft.endAt, timeZone: timeZoneIdentifier)
         }
+        extendedProperties = normalizedID.map {
+            GoogleCalendarEventExtendedProperties(privateProperties: ["soloPMIdempotencyKey": $0])
+        }
     }
 }
 
@@ -593,6 +612,37 @@ private struct GoogleCalendarEventDate: Encodable {
     var date: String?
     var dateTime: String?
     var timeZone: String?
+}
+
+private struct GoogleCalendarEventExtendedProperties: Encodable {
+    var privateProperties: [String: String]
+
+    enum CodingKeys: String, CodingKey {
+        case privateProperties = "private"
+    }
+}
+
+private enum GoogleCalendarEventID {
+    private static let allowedCharacters = Set("0123456789abcdefghijklmnopqrstuv")
+    private static let prefix = "solopm"
+    private static let digestLength = 64
+
+    static func normalized(_ rawValue: String?) -> String? {
+        guard let rawValue else {
+            return nil
+        }
+        let candidate = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let suffix = candidate.dropFirst(prefix.count)
+        guard candidate.hasPrefix(prefix),
+              suffix.count == digestLength,
+              candidate.allSatisfy({ allowedCharacters.contains($0) }) else {
+            // Google rejects invalid caller-provided event IDs. Dropping a bad
+            // key is safer than turning an approved user write into a 400 while
+            // the Core sync service owns generation of valid SoloPM keys.
+            return nil
+        }
+        return candidate
+    }
 }
 
 private struct GoogleCalendarEventResponse: Decodable {
@@ -635,6 +685,59 @@ public struct GoogleCalendarConnector: Sendable {
     ) throws -> GoogleCalendarEventRecord {
         try requireApproval(context)
         return try client.createEvent(draft, calendarID: calendarID, timeZoneIdentifier: timeZoneIdentifier)
+    }
+}
+
+public struct GoogleCalendarOAuthCredentialStatusStore: GoogleCalendarRuntimeCredentialStatusStore {
+    private let credentialStore: any OAuthCredentialStore
+
+    public init(credentialStore: any OAuthCredentialStore) {
+        self.credentialStore = credentialStore
+    }
+
+    public func loadGoogleCalendarCredentialStatus() throws -> GoogleCalendarRuntimeCredentialStatus? {
+        guard let credential = try credentialStore.loadCredential(for: .googleCalendar) else {
+            return nil
+        }
+        guard let accessToken = try credentialStore.accessToken(for: credential),
+              !accessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        let refreshToken = try credentialStore.refreshToken(for: credential)
+        return GoogleCalendarRuntimeCredentialStatus(
+            grantedScopes: Set(credential.scopes.map(\.rawValue)),
+            expiresAt: credential.expiresAt,
+            hasRefreshToken: refreshToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        )
+    }
+}
+
+public struct GoogleCalendarConnectorEventSink: ExternalCalendarEventSink {
+    private let connector: GoogleCalendarConnector
+
+    public init(connector: GoogleCalendarConnector) {
+        self.connector = connector
+    }
+
+    public func createEvent(
+        _ draft: CalendarEventDraft,
+        calendarID: String,
+        timeZoneIdentifier: String,
+        context: ToolExecutionContext
+    ) throws -> ExternalCalendarEventRecord {
+        let record = try connector.createEvent(
+            draft,
+            calendarID: calendarID,
+            timeZoneIdentifier: timeZoneIdentifier,
+            context: context
+        )
+        return ExternalCalendarEventRecord(
+            providerID: ExternalTaskSource.googleCalendar.rawValue,
+            externalID: record.event.id,
+            calendarID: record.calendarID,
+            timeZoneIdentifier: record.timeZoneIdentifier,
+            title: record.event.draft.title
+        )
     }
 }
 

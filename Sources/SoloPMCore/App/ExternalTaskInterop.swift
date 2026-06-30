@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 public enum ExternalTaskSource: String, Codable, CaseIterable, Sendable {
@@ -449,6 +450,7 @@ public struct GoogleCalendarRuntimeSyncStatus: Equatable, Sendable {
 
 public enum GoogleCalendarRuntimeSyncError: Error, Equatable, Sendable {
     case approvalRequired
+    case invalidDueDate(String)
     case notReady(GoogleCalendarRuntimeSyncState)
 }
 
@@ -541,6 +543,7 @@ public final class GoogleCalendarTaskSyncService: @unchecked Sendable {
     private let calendarSink: any ExternalCalendarEventSink
     private let calendarID: String
     private let timeZoneIdentifier: String
+    private let idempotencyNamespace: String?
 
     public init(
         entitlementStore: any EntitlementStore,
@@ -548,7 +551,8 @@ public final class GoogleCalendarTaskSyncService: @unchecked Sendable {
         linkStore: any ExternalTaskLinkStore,
         calendarSink: any ExternalCalendarEventSink,
         calendarID: String,
-        timeZoneIdentifier: String
+        timeZoneIdentifier: String,
+        idempotencyNamespace: String? = nil
     ) {
         self.entitlementStore = entitlementStore
         self.store = store
@@ -556,6 +560,8 @@ public final class GoogleCalendarTaskSyncService: @unchecked Sendable {
         self.calendarSink = calendarSink
         self.calendarID = calendarID
         self.timeZoneIdentifier = timeZoneIdentifier
+        let normalizedNamespace = idempotencyNamespace?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.idempotencyNamespace = normalizedNamespace?.isEmpty == false ? normalizedNamespace : nil
     }
 
     public func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult {
@@ -597,17 +603,78 @@ public final class GoogleCalendarTaskSyncService: @unchecked Sendable {
         return result
     }
 
-    private func calendarDraft(for task: ProjectBoardTask, project: ProjectBoardProject) -> CalendarEventDraft {
+    private func calendarDraft(for task: ProjectBoardTask, project: ProjectBoardProject) throws -> CalendarEventDraft {
         let dueAt = task.dueAt ?? ""
         let isAllDay = !dueAt.contains("T")
         let detail = task.detail.trimmingCharacters(in: .whitespacesAndNewlines)
         let notes = detail.isEmpty ? "SoloPM project: \(project.title)" : "SoloPM project: \(project.title)\n\n\(detail)"
+        let endAt = isAllDay ? try Self.exclusiveEndDate(forDateOnlyDueAt: dueAt) : dueAt
         return CalendarEventDraft(
             title: task.title,
             startAt: dueAt,
-            endAt: dueAt,
+            endAt: endAt,
             isAllDay: isAllDay,
-            notes: notes
+            notes: notes,
+            idempotencyKey: idempotencyNamespace.map {
+                // The namespace is a durable local-installation/workspace identifier.
+                // Hashing it with task identity prevents leaking local titles while
+                // avoiding cross-database collisions on Google caller-provided IDs.
+                Self.googleCalendarIdempotencyKey(namespace: $0, project: project, task: task)
+            }
         )
+    }
+
+    private static func exclusiveEndDate(forDateOnlyDueAt dueAt: String) throws -> String {
+        let parts = dueAt.split(separator: "-")
+        guard parts.count == 3,
+              dueAt.count == 10,
+              let year = Int(parts[0]),
+              let month = Int(parts[1]),
+              let day = Int(parts[2]) else {
+            throw GoogleCalendarRuntimeSyncError.invalidDueDate(dueAt)
+        }
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
+
+        var components = DateComponents()
+        components.calendar = calendar
+        components.timeZone = calendar.timeZone
+        components.year = year
+        components.month = month
+        components.day = day
+
+        guard let date = components.date else {
+            throw GoogleCalendarRuntimeSyncError.invalidDueDate(dueAt)
+        }
+        let normalizedComponents = calendar.dateComponents([.year, .month, .day], from: date)
+        guard normalizedComponents.year == year,
+              normalizedComponents.month == month,
+              normalizedComponents.day == day,
+              let nextDate = calendar.date(byAdding: .day, value: 1, to: date) else {
+            throw GoogleCalendarRuntimeSyncError.invalidDueDate(dueAt)
+        }
+
+        let nextComponents = calendar.dateComponents([.year, .month, .day], from: nextDate)
+        guard let nextYear = nextComponents.year,
+              let nextMonth = nextComponents.month,
+              let nextDay = nextComponents.day else {
+            throw GoogleCalendarRuntimeSyncError.invalidDueDate(dueAt)
+        }
+        return String(format: "%04d-%02d-%02d", nextYear, nextMonth, nextDay)
+    }
+
+    private static func googleCalendarIdempotencyKey(namespace: String, project: ProjectBoardProject, task: ProjectBoardTask) -> String {
+        let identity = [
+            "v1",
+            namespace,
+            "\(project.id)",
+            project.title,
+            "\(task.id)",
+            task.title,
+            task.dueAt ?? ""
+        ].joined(separator: "|")
+        let digest = SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x", $0) }.joined()
+        return "solopm\(digest)"
     }
 }
