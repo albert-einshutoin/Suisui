@@ -853,6 +853,7 @@ public enum ExecutionReceiptFactory {
             id: item.id,
             label: redactor.redact(item.redactedSummary, maxLength: 300)
         )
+        let references = [queueReference] + references(for: session)
 
         return ExecutionReceipt(
             id: "receipt:\(runID):\(item.id):\(session.id)",
@@ -876,9 +877,9 @@ public enum ExecutionReceiptFactory {
             model: model,
             primaryToolName: actions.first?.toolName,
             usage: usage,
-            references: [queueReference] + references(for: session),
+            references: references,
             actions: actions,
-            visibleSurfaces: [.assistantQueue],
+            visibleSurfaces: assistantQueueVisibleSurfaces(for: references),
             redactionPolicy: redactionPolicy
         )
     }
@@ -968,6 +969,25 @@ public enum ExecutionReceiptFactory {
             return "\(failed) failed, \(succeeded) succeeded, \(skipped) skipped."
         }
         return "\(succeeded) succeeded, \(skipped) skipped."
+    }
+
+    private static func assistantQueueVisibleSurfaces(
+        for references: [ExecutionReceiptReference]
+    ) -> [ExecutionReceiptSurface] {
+        var surfaces: [ExecutionReceiptSurface] = [.assistantQueue]
+        // Derive scoped visibility from receipt references so task/project
+        // detail screens only show queue executions that have redacted proof of
+        // touching that entity.
+        if references.contains(where: { $0.kind == .task }) {
+            surfaces.append(.taskDetail)
+        }
+        if references.contains(where: { $0.kind == .project }) {
+            surfaces.append(.projectDetail)
+        }
+        if surfaces.count > 1 {
+            surfaces.append(.auditLog)
+        }
+        return surfaces
     }
 
     private static func executionReceiptFailureRecovery(

@@ -47,7 +47,15 @@ final class AssistantQueueExecutionTests: XCTestCase {
         XCTAssertEqual(receipt.approvalID, result.session.approvalToken?.id)
         XCTAssertEqual(receipt.references.first, ExecutionReceiptReference(kind: .assistantQueue, id: approved.id, label: "Create Launch checklist"))
         XCTAssertEqual(receipt.actions.first?.status, .succeeded)
-        XCTAssertEqual(receipt.visibleSurfaces, [.assistantQueue])
+        XCTAssertEqual(receipt.visibleSurfaces, [.assistantQueue, .taskDetail, .projectDetail, .auditLog])
+        XCTAssertEqual(
+            try receiptStore.list(referenceKind: .task, referenceID: "42", visibleSurface: .taskDetail, limit: 5).map(\.id),
+            [receipt.id]
+        )
+        XCTAssertEqual(
+            try receiptStore.list(referenceKind: .project, referenceID: "7", visibleSurface: .projectDetail, limit: 5).map(\.id),
+            [receipt.id]
+        )
     }
 
     func testCoordinatorRunsApprovedAutomationRequestTaskMutationThroughActionExecutor() throws {
