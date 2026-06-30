@@ -2355,6 +2355,226 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testSyncAutomationRequestIngestQueuesPendingTaskMutationForReview() throws {
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Remote Queue"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Update remote status",
+            projectID: project.id,
+            status: .planned
+        ))
+        let request = SyncAutomationRequestPayload(
+            id: "relay-status-update",
+            source: .cloudRelay,
+            approvalState: .pendingApproval,
+            sourceClientID: "web",
+            toolName: HostedMCPTaskToolName.taskUpdate.rawValue,
+            redactedArgumentSummary: "Set task status to in progress",
+            taskMutation: SyncTaskMutationPayload(
+                taskID: task.id,
+                operation: .update,
+                status: ProjectTaskStatus.inProgress.rawValue,
+                source: .cloudRelay,
+                approvalState: .pendingApproval
+            )
+        )
+
+        let ingested = viewModel.ingestAssistantQueueAutomationRequests([request])
+
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        XCTAssertTrue(ingested)
+        XCTAssertTrue(itemID.hasPrefix("automation-request:remote-"))
+        XCTAssertFalse(itemID.contains(request.id))
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Queued 1 remote automation request for review.")
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, [itemID])
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.map(\.id), [itemID])
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first?.state, .waitingReview)
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first?.canApprove, true)
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first?.canRun, false)
+        let item = try assistantQueueStore.get(id: itemID)
+        guard case .automationRequest(let storedRequest) = item.payload else {
+            return XCTFail("Expected automation request payload")
+        }
+        XCTAssertEqual(storedRequest.id, itemID.replacingOccurrences(of: "automation-request:", with: ""))
+        XCTAssertNotEqual(storedRequest.id, request.id)
+        XCTAssertEqual(storedRequest.source, request.source)
+        XCTAssertEqual(storedRequest.approvalState, request.approvalState)
+        XCTAssertEqual(storedRequest.sourceClientID, request.sourceClientID)
+        XCTAssertEqual(storedRequest.toolName, request.toolName)
+        XCTAssertEqual(storedRequest.redactedArgumentSummary, request.redactedArgumentSummary)
+        XCTAssertEqual(storedRequest.taskMutation, request.taskMutation)
+    }
+
+    @MainActor
+    func testSyncAutomationRequestIngestRedactsExternalMetadataBeforePersistence() throws {
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let secret = "sk-meta-secret123"
+        let request = SyncAutomationRequestPayload(
+            id: "relay-\(secret)",
+            source: .cloudRelay,
+            approvalState: .pendingApproval,
+            sourceClientID: "web token=\(secret)",
+            toolName: "\(HostedMCPTaskToolName.taskUpdate.rawValue) token=\(secret)",
+            redactedArgumentSummary: "Update remote task api_key=\(secret)",
+            taskMutation: SyncTaskMutationPayload(
+                taskID: 1,
+                operation: .update,
+                status: ProjectTaskStatus.inProgress.rawValue,
+                source: .cloudRelay,
+                approvalState: .pendingApproval
+            )
+        )
+
+        XCTAssertTrue(viewModel.ingestAssistantQueueAutomationRequests([request]))
+
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        let item = try assistantQueueStore.get(id: itemID)
+        guard case .automationRequest(let storedRequest) = item.payload else {
+            return XCTFail("Expected automation request payload")
+        }
+        let payloadData = try JSONEncoder().encode(storedRequest)
+        let payloadJSON = try XCTUnwrap(String(data: payloadData, encoding: .utf8))
+        XCTAssertFalse(itemID.contains(secret))
+        XCTAssertFalse(storedRequest.id.contains(secret))
+        XCTAssertFalse(storedRequest.sourceClientID?.contains(secret) ?? true)
+        XCTAssertFalse(storedRequest.toolName?.contains(secret) ?? true)
+        XCTAssertFalse(storedRequest.redactedArgumentSummary.contains(secret))
+        XCTAssertFalse(item.redactedSummary.contains(secret))
+        XCTAssertFalse(payloadJSON.contains(secret))
+    }
+
+    @MainActor
+    func testSyncAutomationRequestIngestBlocksMalformedTaskMutationBeforeApproval() throws {
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let request = SyncAutomationRequestPayload(
+            id: "relay-malformed-mutation",
+            source: .cloudRelay,
+            approvalState: .pendingApproval,
+            sourceClientID: "web",
+            toolName: HostedMCPTaskToolName.taskUpdate.rawValue,
+            redactedArgumentSummary: "Update task without a task id",
+            taskMutation: SyncTaskMutationPayload(
+                operation: .update,
+                status: ProjectTaskStatus.inProgress.rawValue,
+                source: .cloudRelay,
+                approvalState: .pendingApproval
+            )
+        )
+
+        XCTAssertTrue(viewModel.ingestAssistantQueueAutomationRequests([request]))
+
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        let item = try assistantQueueStore.get(id: itemID)
+        let row = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first { $0.id == itemID })
+        XCTAssertEqual(item.state, .blocked)
+        XCTAssertEqual(item.blockingReason, "Remote automation request is missing executable task mutation details.")
+        XCTAssertEqual(row.state, .blocked)
+        XCTAssertEqual(row.canApprove, false)
+        XCTAssertEqual(row.canRun, false)
+    }
+
+    @MainActor
+    func testSyncAutomationRequestIngestDoesNotOverwriteExistingQueueReview() throws {
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let originalRequest = SyncAutomationRequestPayload(
+            id: "relay-existing-review",
+            source: .cloudRelay,
+            approvalState: .pendingApproval,
+            sourceClientID: "web",
+            toolName: HostedMCPTaskToolName.taskComplete.rawValue,
+            redactedArgumentSummary: "Complete task",
+            taskMutation: SyncTaskMutationPayload(
+                taskID: 42,
+                operation: .complete,
+                status: ProjectTaskStatus.done.rawValue,
+                source: .cloudRelay,
+                approvalState: .pendingApproval
+            )
+        )
+        XCTAssertTrue(viewModel.ingestAssistantQueueAutomationRequests([originalRequest]))
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        var existing = try assistantQueueStore.get(id: itemID)
+        existing.reviewReason = "Existing local review."
+        existing = try AssistantQueueStateMachine.approve(existing, reviewerID: "tester")
+        try assistantQueueStore.save(existing)
+        let changedRemoteRequest = SyncAutomationRequestPayload(
+            id: originalRequest.id,
+            source: .cloudRelay,
+            approvalState: .pendingApproval,
+            sourceClientID: "web",
+            toolName: HostedMCPTaskToolName.taskComplete.rawValue,
+            redactedArgumentSummary: "Changed remote payload",
+            taskMutation: SyncTaskMutationPayload(
+                taskID: 42,
+                operation: .update,
+                title: "Remote overwrite attempt",
+                source: .cloudRelay,
+                approvalState: .pendingApproval
+            )
+        )
+
+        let ingested = viewModel.ingestAssistantQueueAutomationRequests([changedRemoteRequest])
+
+        let stored = try assistantQueueStore.get(id: itemID)
+        XCTAssertTrue(ingested)
+        XCTAssertEqual(stored.state, .approved)
+        XCTAssertEqual(stored.reviewReason, "Existing local review.")
+        XCTAssertEqual(stored.payload, existing.payload)
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Remote automation request is already in Assistant Queue.")
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, [itemID])
+    }
+
+    @MainActor
+    func testSyncAutomationRequestIngestRequiresAssistantQueueStore() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let request = SyncAutomationRequestPayload(
+            id: "relay-without-store",
+            source: .cloudRelay,
+            approvalState: .pendingApproval,
+            toolName: HostedMCPTaskToolName.taskUpdate.rawValue,
+            redactedArgumentSummary: "Update task",
+            taskMutation: SyncTaskMutationPayload(
+                taskID: 1,
+                operation: .update,
+                status: ProjectTaskStatus.inProgress.rawValue,
+                source: .cloudRelay,
+                approvalState: .pendingApproval
+            )
+        )
+
+        let ingested = viewModel.ingestAssistantQueueAutomationRequests([request])
+
+        XCTAssertFalse(ingested)
+        XCTAssertEqual(viewModel.errorMessage, "Assistant Queue is unavailable in this build.")
+        XCTAssertTrue(viewModel.assistantQueueSnapshot.rows.isEmpty)
+    }
+
+    @MainActor
     func testDailyPlanningReviewQueueDraftRequiresAssistantQueueStore() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()
