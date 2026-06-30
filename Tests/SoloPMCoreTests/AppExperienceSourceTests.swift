@@ -1909,6 +1909,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let dailyPlanningSource = try readPackageFile("Sources/SoloPMCore/App/DailyPlanningReview.swift")
+        let dailyPlanningDraftSource = try readPackageFile("Sources/SoloPMCore/App/DailyPlanningActionDraft.swift")
         let missedReviewSource = try readPackageFile("Sources/SoloPMCore/App/MissedTaskReview.swift")
 
         XCTAssertTrue(workflowSource.contains("TodayCommandPanel"))
@@ -1923,6 +1924,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("TodayDailyPlanningReviewPanel"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-review\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-focus-"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-draft-start\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-draft-defer\")"))
+        XCTAssertTrue(workflowSource.contains("viewModel.enqueueDailyPlanningActionDraft(kind: .startRecommended)"))
+        XCTAssertTrue(workflowSource.contains("viewModel.enqueueDailyPlanningActionDraft(kind: .deferRecommendedToTomorrow)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-assistant-rail\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-rail-next-action\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-rail-task-detail\")"))
@@ -1946,6 +1951,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("public struct TodayTimeBlock"))
         XCTAssertTrue(dailyPlanningSource.contains("public struct DailyPlanningReview"))
         XCTAssertTrue(dailyPlanningSource.contains("public enum DailyPlanningReviewBoundary"))
+        XCTAssertTrue(dailyPlanningDraftSource.contains("public enum DailyPlanningActionDraftKind"))
+        XCTAssertTrue(dailyPlanningDraftSource.contains("DailyPlanningActionDraftBuilder"))
+        XCTAssertTrue(dailyPlanningDraftSource.contains("tool: .taskUpdate"))
+        XCTAssertFalse(dailyPlanningDraftSource.contains("calendarCreate"))
         XCTAssertTrue(coreSource.contains("public struct TodayAssistantRailContext"))
         XCTAssertTrue(coreSource.contains("public enum TodayAssistantRailSource"))
         XCTAssertTrue(missedReviewSource.contains("public struct MissedTaskReviewSummary"))
@@ -1962,6 +1971,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("public func todayRecommendationChips"))
         XCTAssertTrue(coreSource.contains("public func todayAssistantRailContext"))
         XCTAssertTrue(coreSource.contains("public func prepareDailyPlanningReview"))
+        XCTAssertTrue(coreSource.contains("public func enqueueDailyPlanningActionDraft"))
+        XCTAssertTrue(coreSource.contains("ActionPlanValidator().validate(draft.actionPlan)"))
         XCTAssertTrue(coreSource.contains("public func startFocus"))
         XCTAssertTrue(coreSource.contains("public func prepareTodayScheduleDraft"))
         XCTAssertTrue(coreSource.contains("public func todayPlan("))
@@ -1969,6 +1980,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let commandPanelStart = try XCTUnwrap(workflowSource.range(of: "private struct TodayCommandPanel"))
         let reviewPanelSource = String(workflowSource[reviewPanelStart.lowerBound..<commandPanelStart.lowerBound])
         XCTAssertFalse(reviewPanelSource.contains("applyScheduleDraftToCalendar"))
+        XCTAssertFalse(reviewPanelSource.contains("startFocus("))
     }
 
     func testVoiceDailyPlanningReviewBridgeUsesLocalProjectBoardReview() throws {
