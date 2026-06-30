@@ -58,6 +58,43 @@ final class AssistantQueueExecutionTests: XCTestCase {
         )
     }
 
+    func testCoordinatorCopiesCostPreviewIntoEstimatedReceiptUsage() throws {
+        let queueStore = try makeQueueStore()
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let preview = makeCostPreview(inputTokens: 1_000, outputTokens: 500)
+        let approved = try AssistantQueueStateMachine.approve(
+            makeActionPlanItem(costPreview: preview),
+            reviewerID: "local-user"
+        )
+        try queueStore.save(approved)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created Launch checklist")
+            }
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-queue-cost-preview" },
+            now: { Date(timeIntervalSince1970: 125) }
+        )
+
+        let result = try coordinator.execute(id: approved.id)
+
+        XCTAssertEqual(result.receipt.usage.state, .estimated)
+        XCTAssertEqual(result.receipt.usage.inputTokens, 1_000)
+        XCTAssertEqual(result.receipt.usage.outputTokens, 500)
+        XCTAssertEqual(result.receipt.usage.estimatedCostCents ?? -1, 0.25, accuracy: 0.0001)
+        XCTAssertEqual(result.receipt.usage.currencyCode, "USD")
+        XCTAssertEqual(result.receipt.model, ExecutionReceiptModel(provider: "openai", name: "gpt-test"))
+    }
+
     func testCoordinatorRunsApprovedAutomationRequestTaskMutationThroughActionExecutor() throws {
         let queueStore = try makeQueueStore()
         let receiptStore = InMemoryExecutionReceiptStore()
@@ -452,8 +489,8 @@ final class AssistantQueueExecutionTests: XCTestCase {
         return SQLiteAssistantQueueStore(connection: connection)
     }
 
-    private func makeActionPlanItem() -> AssistantQueueItem {
-        AssistantQueueAdapter.makeItem(
+    private func makeActionPlanItem(costPreview: AssistantQueueCostPreview? = nil) -> AssistantQueueItem {
+        let item = AssistantQueueAdapter.makeItem(
             actionPlan: ActionPlan(
                 id: "plan-queue-execution",
                 userInput: "Create Launch checklist",
@@ -473,6 +510,33 @@ final class AssistantQueueExecutionTests: XCTestCase {
             interpretationSummary: "Task creation",
             reason: "Needs review before execution."
         )
+        guard let costPreview else {
+            return item
+        }
+        return AssistantQueueItem(
+            id: item.id,
+            state: item.state,
+            payload: item.payload,
+            riskLevel: item.riskLevel,
+            sourceTranscript: item.sourceTranscript,
+            interpretationSummary: item.interpretationSummary,
+            reviewReason: item.reviewReason,
+            redactedSummary: item.redactedSummary,
+            requiredCapabilities: item.requiredCapabilities,
+            approval: item.approval,
+            blockingReason: item.blockingReason,
+            costPreview: costPreview
+        )
+    }
+
+    private func makeCostPreview(inputTokens: Int, outputTokens: Int) -> AssistantQueueCostPreview {
+        AssistantQueueCostRateCard(
+            provider: "openai",
+            modelName: "gpt-test",
+            currencyCode: "USD",
+            inputTokenCentsPerMillion: 100,
+            outputTokenCentsPerMillion: 300
+        ).preview(inputTokens: inputTokens, outputTokens: outputTokens, hardCapCents: 2)
     }
 
     private func makeTaskMutationItem(

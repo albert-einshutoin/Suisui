@@ -384,8 +384,8 @@ public struct AssistantQueueExecutionCoordinator {
             item: item,
             session: session,
             runID: runID,
-            model: nil,
-            usage: .unknown,
+            model: item.costPreview?.model,
+            usage: item.costPreview?.executionReceiptUsage ?? .unknown,
             startedAt: startedAt,
             finishedAt: finishedAt
         )

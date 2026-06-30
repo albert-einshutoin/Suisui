@@ -3005,6 +3005,16 @@ public final class ProjectBoardViewModel: ObservableObject {
             errorMessage = "Dangerous action plans cannot be approved from Assistant Queue."
             integrationStatusMessage = nil
             return false
+        } catch AssistantQueueTransitionError.costPreviewRequiredBeforeApproval {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = "Review the cost preview before approving this Assistant Queue item."
+            integrationStatusMessage = nil
+            return false
+        } catch AssistantQueueTransitionError.managedCostCapExceeded {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = "This managed cost preview exceeds the configured cap. Adjust the request before approving."
+            integrationStatusMessage = nil
+            return false
         } catch AssistantQueueTransitionError.terminalItemCannotTransition {
             _ = refreshAssistantQueueSnapshot()
             errorMessage = "Assistant Queue item was already reviewed."
@@ -3081,6 +3091,11 @@ public final class ProjectBoardViewModel: ObservableObject {
             return "This Assistant Queue item cannot run from Project Board yet."
         case AssistantQueueTransitionError.approvalRequiredBeforeRunning:
             return "Approve this Assistant Queue item before running it."
+        case AssistantQueueTransitionError.costPreviewRequiredBeforeApproval,
+             AssistantQueueTransitionError.costPreviewRequiredBeforeRunning:
+            return "Review the cost preview before running this Assistant Queue item."
+        case AssistantQueueTransitionError.managedCostCapExceeded:
+            return "This managed cost preview exceeds the configured cap. Adjust the request before running."
         case AssistantQueueTransitionError.approvedPayloadChanged:
             return "Review this Assistant Queue item again because it changed after approval."
         case AssistantQueueTransitionError.runningRequiredBeforeCompletion:

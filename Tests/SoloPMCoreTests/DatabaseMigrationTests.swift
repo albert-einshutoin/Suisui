@@ -188,6 +188,7 @@ final class DatabaseMigrationTests: XCTestCase {
 
         XCTAssertTrue(try connection.tableExists("assistant_queue_items"))
         XCTAssertTrue(try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;").contains("0015_create_assistant_queue_items"))
+        XCTAssertTrue(try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;").contains("0016_add_assistant_queue_cost_preview"))
 
         let columns = Set(try connection.queryRows("PRAGMA table_info(assistant_queue_items);").compactMap { $0["name"] })
         XCTAssertTrue(columns.contains("id"))
@@ -199,11 +200,140 @@ final class DatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(columns.contains("review_reason"))
         XCTAssertTrue(columns.contains("required_capabilities_json"))
         XCTAssertTrue(columns.contains("approval_json"))
+        XCTAssertTrue(columns.contains("cost_preview_json"))
         XCTAssertTrue(columns.contains("created_at"))
         XCTAssertTrue(columns.contains("updated_at"))
 
         let indexes = Set(try connection.queryRows("PRAGMA index_list(assistant_queue_items);").compactMap { $0["name"] })
         XCTAssertTrue(indexes.contains("idx_assistant_queue_items_state_updated_at"))
         XCTAssertTrue(indexes.contains("idx_assistant_queue_items_payload_kind"))
+    }
+
+    func testAssistantQueueCostPreviewMigrationKeepsExistingRowsReadable() throws {
+        func sql(_ value: String) -> String {
+            value.replacingOccurrences(of: "'", with: "''")
+        }
+
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsThroughAssistantQueue = Array(
+            CoreMigrations.current.prefix { $0.id != "0016_add_assistant_queue_cost_preview" }
+        )
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: migrationsThroughAssistantQueue)
+
+        let oldItem = AssistantQueueAdapter.makeItem(
+            actionPlan: ActionPlan(
+                id: "legacy-plan",
+                userInput: "Create legacy task",
+                summary: "Create legacy task",
+                actions: [PlanAction(id: "legacy-action", tool: .taskCreate, riskLevel: .write)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            sourceTranscript: "Create legacy task",
+            interpretationSummary: "Task creation",
+            reason: "Needs review."
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let payloadJSON = String(decoding: try encoder.encode(oldItem.payload), as: UTF8.self)
+        let capabilitiesJSON = String(decoding: try encoder.encode(oldItem.requiredCapabilities), as: UTF8.self)
+        let approvalJSON = String(
+            decoding: try encoder.encode(AssistantQueueApprovalRecord(
+                reviewerID: "legacy-user",
+                reviewedContentFingerprint: "legacy-reviewed-content"
+            )),
+            as: UTF8.self
+        )
+        try connection.execute(
+            """
+            INSERT INTO assistant_queue_items (
+                id,
+                schema_version,
+                payload_kind,
+                payload_json,
+                state,
+                risk_level,
+                source_transcript,
+                interpretation_summary,
+                review_reason,
+                redacted_summary,
+                required_capabilities_json,
+                approval_json,
+                blocking_reason,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                'legacy-queue-item',
+                1,
+                'action_plan',
+                '\(sql(payloadJSON))',
+                'waitingReview',
+                'write',
+                'Create legacy task',
+                'Task creation',
+                'Needs review.',
+                'Create legacy task',
+                '\(sql(capabilitiesJSON))',
+                NULL,
+                NULL,
+                '2026-07-01T00:00:00Z',
+                '2026-07-01T00:00:00Z'
+            );
+
+            INSERT INTO assistant_queue_items (
+                id,
+                schema_version,
+                payload_kind,
+                payload_json,
+                state,
+                risk_level,
+                source_transcript,
+                interpretation_summary,
+                review_reason,
+                redacted_summary,
+                required_capabilities_json,
+                approval_json,
+                blocking_reason,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                'legacy-approved-queue-item',
+                1,
+                'action_plan',
+                '\(sql(payloadJSON))',
+                'approved',
+                'write',
+                'Create approved legacy task',
+                'Task creation',
+                'Approved before cost preview.',
+                'Create approved legacy task',
+                '\(sql(capabilitiesJSON))',
+                '\(sql(approvalJSON))',
+                NULL,
+                '2026-07-01T00:00:00Z',
+                '2026-07-01T00:00:00Z'
+            );
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+
+        let columns = Set(try connection.queryRows("PRAGMA table_info(assistant_queue_items);").compactMap { $0["name"] })
+        XCTAssertTrue(columns.contains("cost_preview_json"))
+        let store = SQLiteAssistantQueueStore(connection: connection)
+        let migrated = try store.get(id: "legacy-queue-item")
+        XCTAssertEqual(migrated.costPreview?.billingMode, .localOnly)
+        XCTAssertTrue(AssistantQueueReadModel.snapshot(from: [migrated]).rows.first?.canApprove ?? false)
+
+        let migratedApproved = try store.get(id: "legacy-approved-queue-item")
+        XCTAssertEqual(migratedApproved.state, .waitingReview)
+        XCTAssertNil(migratedApproved.approval)
+        XCTAssertEqual(migratedApproved.costPreview?.billingMode, .localOnly)
+        XCTAssertEqual(
+            migratedApproved.reviewReason,
+            "Cost preview was added during migration. Review this item again before running."
+        )
     }
 }
