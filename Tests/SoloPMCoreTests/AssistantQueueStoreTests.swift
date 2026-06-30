@@ -107,6 +107,43 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertNil(viewModel.errorMessage)
     }
 
+    @MainActor
+    func testProjectBoardViewModelTransitionsAssistantQueueRowsFromVisibleInboxActions() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+        let waiting = makeItem(id: "queue-visible-approve", state: .waitingReview, summary: "Create visible inbox task")
+        let deferred = makeItem(id: "queue-visible-defer", state: .waitingReview, summary: "Review later")
+        let blocked = makeItem(id: "queue-visible-blocked", state: .blocked, summary: "Blocked destructive plan")
+        try assistantQueueStore.save(waiting)
+        try assistantQueueStore.save(deferred)
+        try assistantQueueStore.save(blocked)
+        let viewModel = ProjectBoardViewModel(
+            store: boardStore,
+            assistantQueueStore: assistantQueueStore
+        )
+
+        viewModel.load()
+
+        XCTAssertTrue(viewModel.approveAssistantQueueItem(id: waiting.id))
+        XCTAssertEqual(try assistantQueueStore.get(id: waiting.id).state, .approved)
+        XCTAssertNil(try assistantQueueStore.get(id: waiting.id).approval?.executionTokenID)
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first { $0.id == waiting.id }?.state, .approved)
+
+        XCTAssertTrue(viewModel.deferAssistantQueueItem(id: deferred.id))
+        XCTAssertEqual(try assistantQueueStore.get(id: deferred.id).state, .deferred)
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first { $0.id == deferred.id }?.state, .deferred)
+
+        XCTAssertFalse(viewModel.approveAssistantQueueItem(id: blocked.id))
+        XCTAssertEqual(try assistantQueueStore.get(id: blocked.id).state, .blocked)
+        XCTAssertEqual(viewModel.errorMessage, "Blocked Assistant Queue items cannot be approved.")
+
+        XCTAssertTrue(viewModel.rejectAssistantQueueItem(id: blocked.id))
+        XCTAssertEqual(try assistantQueueStore.get(id: blocked.id).state, .rejected)
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first { $0.id == blocked.id }?.state, .rejected)
+    }
+
     private func makeItem(
         id: String = "queue-item",
         state: AssistantQueueState = .waitingReview,

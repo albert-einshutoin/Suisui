@@ -14,6 +14,7 @@ final class ProjectBoardSelectionPersistenceTests: XCTestCase {
         XCTAssertEqual(ProjectBoardSelectionPersistence.environmentOverrideKey, "SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION")
         XCTAssertEqual(ProjectBoardSelectionPersistence.defaultRawValue, "today")
         XCTAssertEqual(ProjectBoardSelectionPersistence.rawValue(for: .inbox), "inbox")
+        XCTAssertEqual(ProjectBoardSelectionPersistence.rawValue(for: .assistantQueue), "assistant-queue")
         XCTAssertEqual(ProjectBoardSelectionPersistence.rawValue(for: .today), "today")
         XCTAssertEqual(ProjectBoardSelectionPersistence.rawValue(for: .schedule), "schedule")
         XCTAssertEqual(ProjectBoardSelectionPersistence.rawValue(for: .done), "done")
@@ -26,6 +27,14 @@ final class ProjectBoardSelectionPersistenceTests: XCTestCase {
             makeProject(id: 41),
             makeProject(id: 42)
         ]
+
+        XCTAssertEqual(
+            ProjectBoardSelectionPersistence.destination(
+                from: "assistant-queue",
+                availableProjects: projects
+            ),
+            .assistantQueue
+        )
 
         XCTAssertEqual(
             ProjectBoardSelectionPersistence.destination(
