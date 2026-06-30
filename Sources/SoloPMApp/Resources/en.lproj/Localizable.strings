@@ -930,6 +930,12 @@
 "No AI receipts yet" = "No AI receipts yet";
 "Receipts appear here after approved AI work runs." = "Receipts appear here after approved AI work runs.";
 "Shows the redacted outcome, usage state, references, sources, and receipt identifier for approved AI work." = "Shows the redacted outcome, usage state, references, sources, and receipt identifier for approved AI work.";
+"Project AI Receipts" = "Project AI Receipts";
+"No project AI receipts yet" = "No project AI receipts yet";
+"Receipts appear here after approved AI work references this project." = "Receipts appear here after approved AI work references this project.";
+"Task AI Receipts" = "Task AI Receipts";
+"No task AI receipts yet" = "No task AI receipts yet";
+"Receipts appear here after approved AI work references this task." = "Receipts appear here after approved AI work references this task.";
 "Action Plan" = "Action Plan";
 "AI work" = "AI work";
 "Assistant Queue execution receipts are unavailable. Queue state is still shown." = "Assistant Queue execution receipts are unavailable. Queue state is still shown.";

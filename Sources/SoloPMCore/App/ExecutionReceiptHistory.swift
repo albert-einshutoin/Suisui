@@ -71,6 +71,22 @@ public enum ExecutionReceiptHistoryReadModel {
         return ExecutionReceiptHistorySnapshot(rows: Array(rows))
     }
 
+    public static func snapshot(
+        from receipts: [ExecutionReceipt],
+        referenceKind: ExecutionReceiptReferenceKind,
+        referenceID: String,
+        visibleSurface: ExecutionReceiptSurface,
+        limit: Int = 5
+    ) -> ExecutionReceiptHistorySnapshot {
+        let matchingReceipts = receipts.filter { receipt in
+            receipt.visibleSurfaces.contains(visibleSurface)
+                && receipt.references.contains { reference in
+                    reference.kind == referenceKind && reference.id == referenceID
+                }
+        }
+        return snapshot(from: matchingReceipts, limit: limit)
+    }
+
     private static func row(from receipt: ExecutionReceipt) -> ExecutionReceiptHistoryRow {
         let redactor = ExecutionReceiptRedactor()
         let occurredAt = occurrenceDate(for: receipt)

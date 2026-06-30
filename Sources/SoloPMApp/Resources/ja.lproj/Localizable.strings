@@ -930,6 +930,12 @@
 "No AI receipts yet" = "AIレシートはまだありません";
 "Receipts appear here after approved AI work runs." = "承認済みのAI作業を実行すると、ここにレシートが表示されます。";
 "Shows the redacted outcome, usage state, references, sources, and receipt identifier for approved AI work." = "承認済みAI作業の秘匿済み結果、使用状況、参照、ソース、レシートIDを表示します。";
+"Project AI Receipts" = "プロジェクトAIレシート";
+"No project AI receipts yet" = "プロジェクトAIレシートはまだありません";
+"Receipts appear here after approved AI work references this project." = "承認済みのAI作業がこのプロジェクトを参照すると、ここにレシートが表示されます。";
+"Task AI Receipts" = "タスクAIレシート";
+"No task AI receipts yet" = "タスクAIレシートはまだありません";
+"Receipts appear here after approved AI work references this task." = "承認済みのAI作業がこのタスクを参照すると、ここにレシートが表示されます。";
 "Action Plan" = "アクション計画";
 "AI work" = "AI作業";
 "Assistant Queue execution receipts are unavailable. Queue state is still shown." = "アシスタントキューの実行レシートを利用できません。キュー状態は表示しています。";

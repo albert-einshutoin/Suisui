@@ -506,7 +506,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"execution-receipt-row-\\(row.id)\")"))
         XCTAssertTrue(workflowSource.contains("ExecutionReceiptHistoryRowView"))
         let receiptHistoryViewTail = try XCTUnwrap(
-            workflowSource.components(separatedBy: "private struct ExecutionReceiptHistoryRowView").last
+            workflowSource.components(separatedBy: "struct ExecutionReceiptHistoryRowView").last
         )
         let receiptHistoryViewSource = try XCTUnwrap(
             receiptHistoryViewTail.components(separatedBy: "private struct ScheduleDraftPanel").first
@@ -517,6 +517,31 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(receiptHistoryViewSource.contains(".sourceLinks"))
         XCTAssertFalse(receiptHistoryViewSource.contains(".actions"))
         XCTAssertFalse(receiptHistoryViewSource.contains("receipt.id"))
+    }
+
+    func testInspectorsShowScopedAIReceiptsWithoutRawReceiptFields() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+
+        XCTAssertTrue(boardSource.contains("Section(\"Project AI Receipts\")"))
+        XCTAssertTrue(boardSource.contains("Section(\"Task AI Receipts\")"))
+        XCTAssertTrue(boardSource.contains("viewModel.executionReceiptHistorySnapshot(forProjectID: project.id)"))
+        XCTAssertTrue(boardSource.contains("viewModel.executionReceiptHistorySnapshot(forTaskID: task.id)"))
+        XCTAssertTrue(boardSource.contains("accessibilityIdentifier: \"project-execution-receipts\""))
+        XCTAssertTrue(boardSource.contains("accessibilityIdentifier: \"task-execution-receipts\""))
+        XCTAssertTrue(boardSource.contains("ExecutionReceiptHistoryInspectorSection"))
+        XCTAssertTrue(boardSource.contains("ExecutionReceiptHistoryRowView(row: row)"))
+        XCTAssertTrue(workflowSource.contains("struct ExecutionReceiptHistoryRowView: View"))
+
+        let inspectorReceiptSection = try sourceBlock(
+            in: boardSource,
+            from: "private struct ExecutionReceiptHistoryInspectorSection",
+            to: "private struct InspectorMetadataPill"
+        )
+        XCTAssertFalse(inspectorReceiptSection.contains(".inputPreview"))
+        XCTAssertFalse(inspectorReceiptSection.contains(".sourceLinks"))
+        XCTAssertFalse(inspectorReceiptSection.contains(".actions"))
+        XCTAssertFalse(inspectorReceiptSection.contains("receipt.id"))
     }
 
     func testTaskInspectorShowsDocumentSourceReviewForAutomationDrafts() throws {

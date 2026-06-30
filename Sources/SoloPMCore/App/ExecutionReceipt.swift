@@ -295,6 +295,12 @@ public struct ExecutionReceipt: Codable, Equatable, Sendable {
 public protocol ExecutionReceiptStore: Sendable {
     func save(_ receipt: ExecutionReceipt) throws
     func list(limit: Int) throws -> [ExecutionReceipt]
+    func list(
+        referenceKind: ExecutionReceiptReferenceKind,
+        referenceID: String,
+        visibleSurface: ExecutionReceiptSurface,
+        limit: Int
+    ) throws -> [ExecutionReceipt]
 }
 
 public enum ExecutionReceiptStoreError: Error, Equatable, Sendable {
@@ -326,6 +332,28 @@ public final class InMemoryExecutionReceiptStore: ExecutionReceiptStore, @unchec
         defer { lock.unlock() }
         let boundedLimit = max(1, min(limit, 500))
         return Array(storage.suffix(boundedLimit).reversed())
+    }
+
+    public func list(
+        referenceKind: ExecutionReceiptReferenceKind,
+        referenceID: String,
+        visibleSurface: ExecutionReceiptSurface,
+        limit: Int = 100
+    ) throws -> [ExecutionReceipt] {
+        lock.lock()
+        defer { lock.unlock() }
+        let boundedLimit = max(1, min(limit, 500))
+        // Scope before limiting so a busy global receipt stream cannot hide
+        // older task/project evidence from the detail inspector.
+        return Array(storage.reversed())
+            .filter { receipt in
+                receipt.visibleSurfaces.contains(visibleSurface)
+                    && receipt.references.contains { reference in
+                        reference.kind == referenceKind && reference.id == referenceID
+                    }
+            }
+            .prefix(boundedLimit)
+            .map { $0 }
     }
 }
 
@@ -360,24 +388,60 @@ public final class FileExecutionReceiptStore: ExecutionReceiptStore, @unchecked 
         lock.lock()
         defer { lock.unlock() }
         let boundedLimit = max(1, min(limit, 500))
+        return try sortedReceiptURLs()
+            .prefix(boundedLimit)
+            .map { url in
+                try loadReceipt(from: url)
+            }
+    }
+
+    public func list(
+        referenceKind: ExecutionReceiptReferenceKind,
+        referenceID: String,
+        visibleSurface: ExecutionReceiptSurface,
+        limit: Int = 100
+    ) throws -> [ExecutionReceipt] {
+        lock.lock()
+        defer { lock.unlock() }
+        let boundedLimit = max(1, min(limit, 500))
+        var matches: [ExecutionReceipt] = []
+        // Scope before limiting so a busy global receipt stream cannot hide
+        // older task/project evidence from the detail inspector.
+        for url in try sortedReceiptURLs() {
+            let receipt = try loadReceipt(from: url)
+            guard receipt.visibleSurfaces.contains(visibleSurface),
+                  receipt.references.contains(where: { reference in
+                      reference.kind == referenceKind && reference.id == referenceID
+                  }) else {
+                continue
+            }
+            matches.append(receipt)
+            if matches.count >= boundedLimit {
+                break
+            }
+        }
+        return matches
+    }
+
+    private func sortedReceiptURLs() throws -> [URL] {
         let urls = try FileManager.default.contentsOfDirectory(
             at: directoryURL,
             includingPropertiesForKeys: [.contentModificationDateKey],
             options: [.skipsHiddenFiles]
         )
-        let sortedURLs = try urls
+        return try urls
             .filter { $0.pathExtension == "json" }
             .map { url -> (URL, Date) in
                 let values = try url.resourceValues(forKeys: [.contentModificationDateKey])
                 return (url, values.contentModificationDate ?? .distantPast)
             }
             .sorted { $0.1 > $1.1 }
-            .prefix(boundedLimit)
             .map(\.0)
-        return try sortedURLs.map { url in
-            let data = try Data(contentsOf: url)
-            return try decoder.decode(ExecutionReceipt.self, from: data)
-        }
+    }
+
+    private func loadReceipt(from url: URL) throws -> ExecutionReceipt {
+        let data = try Data(contentsOf: url)
+        return try decoder.decode(ExecutionReceipt.self, from: data)
     }
 
     private func fileURL(for id: String) -> URL {
@@ -628,7 +692,7 @@ public enum ExecutionReceiptFactory {
                     outputSummary: outputSummary
                 )
             ],
-            visibleSurfaces: [.doneList, .taskDetail, .auditLog],
+            visibleSurfaces: [.doneList, .taskDetail, .projectDetail, .auditLog],
             redactionPolicy: redactionPolicy
         )
     }

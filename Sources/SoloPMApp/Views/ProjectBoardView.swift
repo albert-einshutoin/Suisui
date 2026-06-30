@@ -2928,6 +2928,15 @@ private struct ProjectInspectorView: View {
                 ProjectInspectorMetadataSummary(project: project)
             }
 
+            Section("Project AI Receipts") {
+                ExecutionReceiptHistoryInspectorSection(
+                    snapshot: viewModel.executionReceiptHistorySnapshot(forProjectID: project.id),
+                    emptyTitle: "No project AI receipts yet",
+                    emptyDescription: "Receipts appear here after approved AI work references this project.",
+                    accessibilityIdentifier: "project-execution-receipts"
+                )
+            }
+
             Section("Edit") {
                 TextField("Title", text: $title)
                     .accessibilityIdentifier("project-inspector-title")
@@ -3403,6 +3412,15 @@ private struct TaskInspectorView: View {
                 TaskInspectorAutomationSection(task: task, viewModel: viewModel)
             }
 
+            Section("Task AI Receipts") {
+                ExecutionReceiptHistoryInspectorSection(
+                    snapshot: viewModel.executionReceiptHistorySnapshot(forTaskID: task.id),
+                    emptyTitle: "No task AI receipts yet",
+                    emptyDescription: "Receipts appear here after approved AI work references this task.",
+                    accessibilityIdentifier: "task-execution-receipts"
+                )
+            }
+
             Section("Danger Zone") {
                 if isConfirmingDelete {
                     InspectorDestructiveConfirmation(
@@ -3548,6 +3566,37 @@ private struct TaskInspectorMetadataSummary: View {
 
     private var dueValue: String {
         task.dueLabel ?? "No due date"
+    }
+}
+
+private struct ExecutionReceiptHistoryInspectorSection: View {
+    let snapshot: ExecutionReceiptHistorySnapshot
+    let emptyTitle: LocalizedStringKey
+    let emptyDescription: LocalizedStringKey
+    let accessibilityIdentifier: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let unavailableMessage = snapshot.unavailableMessage {
+                ContentUnavailableView(
+                    "Execution receipts are unavailable",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(unavailableMessage)
+                )
+            } else if snapshot.rows.isEmpty {
+                ContentUnavailableView(
+                    emptyTitle,
+                    systemImage: "doc.text.magnifyingglass",
+                    description: Text(emptyDescription)
+                )
+            } else {
+                ForEach(snapshot.rows) { row in
+                    ExecutionReceiptHistoryRowView(row: row)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(accessibilityIdentifier)
     }
 }
 

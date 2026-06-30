@@ -1015,7 +1015,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         let storedReceipt = try XCTUnwrap(receiptStore.receipts.first)
         XCTAssertEqual(storedReceipt.status, .succeeded)
         XCTAssertEqual(storedReceipt.primaryToolName, ActionTool.taskUpdate.rawValue)
-        XCTAssertEqual(storedReceipt.visibleSurfaces, [.doneList, .taskDetail, .auditLog])
+        XCTAssertEqual(storedReceipt.visibleSurfaces, [.doneList, .taskDetail, .projectDetail, .auditLog])
         XCTAssertTrue(storedReceipt.inputPreview.contains("[REDACTED_SECRET]"))
         XCTAssertFalse(storedReceipt.inputPreview.contains("approved-history-secret"))
 
@@ -1036,6 +1036,84 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertFalse(rowText.contains(storedReceipt.id))
         XCTAssertFalse(rowText.contains("approved-history-secret"))
         XCTAssertNil(viewModel.executionReceiptHistorySnapshot.unavailableMessage)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelLoadsTaskAndProjectScopedExecutionReceiptHistory() throws {
+        let scopedReceipt = ExecutionReceipt(
+            id: "receipt-task-project-history",
+            runID: "run-task-project-history",
+            createdAt: Date(timeIntervalSince1970: 100),
+            finishedAt: Date(timeIntervalSince1970: 120),
+            status: .succeeded,
+            inputPreview: "Raw prompt token=scoped-history-secret",
+            outputSummary: "Updated task and project audit row",
+            primaryToolName: ActionTool.taskUpdate.rawValue,
+            references: [
+                ExecutionReceiptReference(kind: .task, id: "42", label: "Scoped task token=scoped-history-secret"),
+                ExecutionReceiptReference(kind: .project, id: "7", label: "Scoped project")
+            ],
+            visibleSurfaces: [.taskDetail, .projectDetail]
+        )
+        let newerUnrelatedReceipts = (0..<120).map { index in
+            ExecutionReceipt(
+                id: "receipt-global-only-\(index)",
+                runID: "run-global-only-\(index)",
+                createdAt: Date(timeIntervalSince1970: 1_000 + TimeInterval(index)),
+                finishedAt: Date(timeIntervalSince1970: 1_010 + TimeInterval(index)),
+                status: .succeeded,
+                inputPreview: "Global only",
+                outputSummary: "Should only show globally",
+                primaryToolName: "calendar.create",
+                references: [ExecutionReceiptReference(kind: .task, id: "420")],
+                visibleSurfaces: [.doneList]
+            )
+        }
+        let receiptStore = InMemoryExecutionReceiptStore(receipts: [scopedReceipt] + newerUnrelatedReceipts + [
+            ExecutionReceipt(
+                id: "receipt-global-only",
+                runID: "run-global-only",
+                createdAt: Date(timeIntervalSince1970: 110),
+                finishedAt: Date(timeIntervalSince1970: 130),
+                status: .succeeded,
+                inputPreview: "Global only",
+                outputSummary: "Should only show globally",
+                primaryToolName: "calendar.create",
+                references: [ExecutionReceiptReference(kind: .task, id: "42")],
+                visibleSurfaces: [.doneList]
+            )
+        ])
+        let task = ProjectBoardTask(
+            id: 42,
+            projectID: 7,
+            title: "Scoped history task",
+            detail: "Inspect scoped receipt history.",
+            status: .planned,
+            priority: .medium,
+            dueAt: nil
+        )
+        let project = ProjectBoardProject(
+            id: 7,
+            title: "Scoped history project",
+            status: "active",
+            subtitle: "1 open / 1 total",
+            columns: ProjectTaskStatus.allCases.map { status in
+                ProjectBoardColumn(status: status, tasks: status == .planned ? [task] : [])
+            }
+        )
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [project])),
+            executionReceiptStore: receiptStore
+        )
+
+        viewModel.load()
+
+        let taskSnapshot = viewModel.executionReceiptHistorySnapshot(forTaskID: 42)
+        let projectSnapshot = viewModel.executionReceiptHistorySnapshot(forProjectID: 7)
+        XCTAssertEqual(taskSnapshot.rows.map(\.toolLabel), [ActionTool.taskUpdate.rawValue])
+        XCTAssertEqual(projectSnapshot.rows.map(\.toolLabel), [ActionTool.taskUpdate.rawValue])
+        XCTAssertFalse(taskSnapshot.rows[0].accessibilityValue.contains("scoped-history-secret"))
+        XCTAssertFalse(projectSnapshot.rows[0].accessibilityValue.contains("scoped-history-secret"))
     }
 
     @MainActor
