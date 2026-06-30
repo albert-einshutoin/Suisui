@@ -1230,6 +1230,10 @@ public final class ProjectBoardViewModel: ObservableObject {
     // Inbox rows render often during filtering and selection changes, so capture
     // metadata is cached at board load time instead of hitting SQLite from SwiftUI body rendering.
     private var inboxCaptureRecordsByTaskID: [Int64: [InboxCaptureRecord]]
+    // Inspector receipt rows are cached as redacted read-model snapshots so
+    // SwiftUI rendering never performs file I/O or holds raw receipt details.
+    private var executionReceiptHistorySnapshotsByTaskID: [Int64: ExecutionReceiptHistorySnapshot]
+    private var executionReceiptHistorySnapshotsByProjectID: [Int64: ExecutionReceiptHistorySnapshot]
     private var taskAutomationSessionHistory: TaskAutoExecutionHistory
 
     public init(
@@ -1276,6 +1280,8 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.approvedAutomationExecutionReceipts = []
         self.assistantQueueSnapshot = .empty
         self.executionReceiptHistorySnapshot = .empty
+        self.executionReceiptHistorySnapshotsByTaskID = [:]
+        self.executionReceiptHistorySnapshotsByProjectID = [:]
         self.taskAutomationSessionHistory = .empty
         refreshGoogleCalendarSyncStatus()
     }
@@ -2435,7 +2441,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             let loadedSnapshot = try store.loadSnapshot(includeArchived: showsArchivedProjects)
             let captureCacheErrorMessage = refreshInboxCaptureCache(for: loadedSnapshot)
             let assistantQueueErrorMessage = refreshAssistantQueueSnapshot()
-            refreshExecutionReceiptHistorySnapshot()
+            refreshExecutionReceiptHistorySnapshot(for: loadedSnapshot)
             snapshot = loadedSnapshot
             if selectedProjectID == nil || !snapshot.projects.contains(where: { $0.id == selectedProjectID }) {
                 selectedProjectID = snapshot.projects.first?.id
@@ -2450,8 +2456,14 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     private func refreshExecutionReceiptHistorySnapshot() {
+        refreshExecutionReceiptHistorySnapshot(for: snapshot)
+    }
+
+    private func refreshExecutionReceiptHistorySnapshot(for snapshot: ProjectBoardSnapshot) {
         guard let executionReceiptStore else {
             executionReceiptHistorySnapshot = .empty
+            executionReceiptHistorySnapshotsByTaskID = [:]
+            executionReceiptHistorySnapshotsByProjectID = [:]
             return
         }
 
@@ -2461,12 +2473,68 @@ public final class ProjectBoardViewModel: ObservableObject {
                 from: receipts,
                 limit: 10
             )
+            executionReceiptHistorySnapshotsByTaskID = try scopedExecutionReceiptSnapshotsByTaskID(
+                in: snapshot,
+                store: executionReceiptStore
+            )
+            executionReceiptHistorySnapshotsByProjectID = try scopedExecutionReceiptSnapshotsByProjectID(
+                in: snapshot,
+                store: executionReceiptStore
+            )
         } catch {
+            executionReceiptHistorySnapshotsByTaskID = [:]
+            executionReceiptHistorySnapshotsByProjectID = [:]
             executionReceiptHistorySnapshot = ExecutionReceiptHistorySnapshot(
                 rows: [],
                 unavailableMessage: String(localized: "Execution receipts are unavailable.")
             )
         }
+    }
+
+    public func executionReceiptHistorySnapshot(forTaskID taskID: Int64) -> ExecutionReceiptHistorySnapshot {
+        executionReceiptHistorySnapshotsByTaskID[taskID]
+            ?? ExecutionReceiptHistorySnapshot(
+                rows: [],
+                unavailableMessage: executionReceiptHistorySnapshot.unavailableMessage
+            )
+    }
+
+    public func executionReceiptHistorySnapshot(forProjectID projectID: Int64) -> ExecutionReceiptHistorySnapshot {
+        executionReceiptHistorySnapshotsByProjectID[projectID]
+            ?? ExecutionReceiptHistorySnapshot(
+                rows: [],
+                unavailableMessage: executionReceiptHistorySnapshot.unavailableMessage
+            )
+    }
+
+    private func scopedExecutionReceiptSnapshotsByTaskID(
+        in snapshot: ProjectBoardSnapshot,
+        store: any ExecutionReceiptStore
+    ) throws -> [Int64: ExecutionReceiptHistorySnapshot] {
+        try Dictionary(uniqueKeysWithValues: Set(snapshot.projects.flatMap(\.tasks).map(\.id)).map { taskID in
+            let receipts = try store.list(
+                referenceKind: .task,
+                referenceID: String(taskID),
+                visibleSurface: .taskDetail,
+                limit: 5
+            )
+            return (taskID, ExecutionReceiptHistoryReadModel.snapshot(from: receipts, limit: 5))
+        })
+    }
+
+    private func scopedExecutionReceiptSnapshotsByProjectID(
+        in snapshot: ProjectBoardSnapshot,
+        store: any ExecutionReceiptStore
+    ) throws -> [Int64: ExecutionReceiptHistorySnapshot] {
+        try Dictionary(uniqueKeysWithValues: Set(snapshot.projects.map(\.id)).map { projectID in
+            let receipts = try store.list(
+                referenceKind: .project,
+                referenceID: String(projectID),
+                visibleSurface: .projectDetail,
+                limit: 5
+            )
+            return (projectID, ExecutionReceiptHistoryReadModel.snapshot(from: receipts, limit: 5))
+        })
     }
 
     private func refreshAssistantQueueSnapshot() -> String? {

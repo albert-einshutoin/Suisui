@@ -374,6 +374,56 @@ final class ExecutionReceiptTests: XCTestCase {
         }
     }
 
+    func testFileExecutionReceiptStoreScopedListDoesNotLoseOlderMatchingReceiptsBehindGlobalLimit() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try FileExecutionReceiptStore(directoryURL: directory)
+        let matchingReceipt = ExecutionReceipt(
+            id: "receipt-task-match",
+            runID: "run-task-match",
+            createdAt: Date(timeIntervalSince1970: 10),
+            finishedAt: Date(timeIntervalSince1970: 20),
+            status: .succeeded,
+            inputPreview: "Older scoped receipt",
+            outputSummary: "Updated old scoped task",
+            primaryToolName: ActionTool.taskUpdate.rawValue,
+            references: [
+                ExecutionReceiptReference(kind: .task, id: "42"),
+                ExecutionReceiptReference(kind: .project, id: "7")
+            ],
+            visibleSurfaces: [.taskDetail, .projectDetail]
+        )
+        try store.save(matchingReceipt)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 10)],
+            ofItemAtPath: directory.appendingPathComponent("receipt-task-match.json").path
+        )
+
+        for index in 0..<120 {
+            try store.save(ExecutionReceipt(
+                id: "receipt-unrelated-\(index)",
+                runID: "run-unrelated-\(index)",
+                createdAt: Date(timeIntervalSince1970: 1_000 + TimeInterval(index)),
+                finishedAt: Date(timeIntervalSince1970: 1_010 + TimeInterval(index)),
+                status: .succeeded,
+                inputPreview: "New unrelated receipt",
+                outputSummary: "Not a task detail row",
+                primaryToolName: "calendar.create",
+                references: [ExecutionReceiptReference(kind: .task, id: "420")],
+                visibleSurfaces: [.doneList]
+            ))
+        }
+
+        let scopedReceipts = try store.list(
+            referenceKind: .task,
+            referenceID: "42",
+            visibleSurface: .taskDetail,
+            limit: 5
+        )
+        XCTAssertEqual(scopedReceipts.map(\.id), ["receipt-task-match"])
+    }
+
     func testExecutionReceiptHistoryRowsExposeOnlySafeGlobalAuditFields() throws {
         let promptSecret = "sk-" + "proj-history-secret"
         let argumentSecret = "token" + "=" + "argument-secret"
@@ -507,5 +557,81 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertTrue(snapshot.rows[1].usageLabel.contains("Unknown"))
         XCTAssertTrue(snapshot.rows[2].usageLabel.contains("Measured"))
         XCTAssertTrue(snapshot.rows[2].usageLabel.contains("12 tokens"))
+    }
+
+    func testExecutionReceiptHistoryFiltersScopedRowsByReferenceAndVisibleSurface() throws {
+        let matchingTask = ExecutionReceipt(
+            id: "receipt-task-match",
+            runID: "run-task-match",
+            createdAt: Date(timeIntervalSince1970: 10),
+            finishedAt: Date(timeIntervalSince1970: 30),
+            status: .succeeded,
+            inputPreview: "Raw task prompt token=scoped-secret",
+            outputSummary: "Updated scoped task",
+            primaryToolName: ActionTool.taskUpdate.rawValue,
+            references: [
+                ExecutionReceiptReference(kind: .task, id: "42", label: "Scoped task token=scoped-secret"),
+                ExecutionReceiptReference(kind: .project, id: "7", label: "Scoped project")
+            ],
+            sourceLinks: [
+                ExecutionReceiptSourceLink(kind: .document, title: "Spec token=scoped-secret", url: "file:///Users/alice/private.md")
+            ],
+            actions: [
+                ExecutionReceiptActionSummary(
+                    id: "action-scoped",
+                    toolName: ActionTool.taskUpdate.rawValue,
+                    status: .succeeded,
+                    inputPreview: "detail=token=scoped-secret"
+                )
+            ],
+            visibleSurfaces: [.taskDetail, .projectDetail]
+        )
+        let wrongSurface = ExecutionReceipt(
+            id: "receipt-wrong-surface",
+            runID: "run-wrong-surface",
+            createdAt: Date(timeIntervalSince1970: 20),
+            finishedAt: Date(timeIntervalSince1970: 40),
+            status: .succeeded,
+            inputPreview: "Wrong surface",
+            outputSummary: "Should not show",
+            primaryToolName: "calendar.create",
+            references: [ExecutionReceiptReference(kind: .task, id: "42")],
+            visibleSurfaces: [.doneList]
+        )
+        let wrongReference = ExecutionReceipt(
+            id: "receipt-wrong-reference",
+            runID: "run-wrong-reference",
+            createdAt: Date(timeIntervalSince1970: 30),
+            finishedAt: Date(timeIntervalSince1970: 50),
+            status: .succeeded,
+            inputPreview: "Wrong reference",
+            outputSummary: "Should not show either",
+            primaryToolName: "notification.send",
+            references: [ExecutionReceiptReference(kind: .task, id: "420")],
+            visibleSurfaces: [.taskDetail]
+        )
+
+        let taskSnapshot = ExecutionReceiptHistoryReadModel.snapshot(
+            from: [wrongReference, wrongSurface, matchingTask],
+            referenceKind: .task,
+            referenceID: "42",
+            visibleSurface: .taskDetail,
+            limit: 5
+        )
+        let projectSnapshot = ExecutionReceiptHistoryReadModel.snapshot(
+            from: [wrongReference, wrongSurface, matchingTask],
+            referenceKind: .project,
+            referenceID: "7",
+            visibleSurface: .projectDetail,
+            limit: 5
+        )
+
+        let taskRow = try XCTUnwrap(taskSnapshot.rows.first)
+        XCTAssertEqual(taskSnapshot.rows.count, 1)
+        XCTAssertEqual(taskRow.toolLabel, ActionTool.taskUpdate.rawValue)
+        XCTAssertEqual(taskRow.outcomeSummary, "Updated scoped task")
+        XCTAssertFalse(taskRow.accessibilityValue.contains("scoped-secret"))
+        XCTAssertFalse(taskRow.accessibilityValue.contains("file:///Users/alice/private.md"))
+        XCTAssertEqual(projectSnapshot.rows.map(\.toolLabel), [ActionTool.taskUpdate.rawValue])
     }
 }

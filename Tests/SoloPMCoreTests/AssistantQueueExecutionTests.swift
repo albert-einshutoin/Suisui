@@ -238,4 +238,13 @@ private final class FailingExecutionReceiptStore: ExecutionReceiptStore, @unchec
     func list(limit: Int) throws -> [ExecutionReceipt] {
         []
     }
+
+    func list(
+        referenceKind: ExecutionReceiptReferenceKind,
+        referenceID: String,
+        visibleSurface: ExecutionReceiptSurface,
+        limit: Int
+    ) throws -> [ExecutionReceipt] {
+        []
+    }
 }

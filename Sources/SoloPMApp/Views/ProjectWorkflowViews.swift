@@ -836,7 +836,7 @@ private struct DoneTaskHistoryRow: View {
     }
 }
 
-private struct ExecutionReceiptHistoryRowView: View {
+struct ExecutionReceiptHistoryRowView: View {
     let row: ExecutionReceiptHistoryRow
 
     var body: some View {
