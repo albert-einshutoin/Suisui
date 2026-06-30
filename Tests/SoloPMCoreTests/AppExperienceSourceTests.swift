@@ -2986,6 +2986,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains("import SoloPMExternalConnectors"))
     }
 
+    func testProjectBoardGoogleCalendarSyncMenuUsesRuntimeReadinessInsteadOfHardcodedDisabled() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let menuStart = try XCTUnwrap(boardSource.range(of: "Button {\n                    viewModel.syncDueTasksToGoogleCalendar(approvalToken: nil)"))
+        let menuEnd = try XCTUnwrap(boardSource.range(of: "} label: {\n                Label(\"Integrations\"", range: menuStart.lowerBound..<boardSource.endIndex))
+        let googleCalendarMenuSource = String(boardSource[menuStart.lowerBound..<menuEnd.lowerBound])
+
+        XCTAssertTrue(googleCalendarMenuSource.contains("viewModel.syncDueTasksToGoogleCalendar"))
+        XCTAssertTrue(googleCalendarMenuSource.contains(".disabled(!viewModel.canSyncGoogleCalendar)"))
+        XCTAssertTrue(googleCalendarMenuSource.contains(".help(viewModel.googleCalendarSyncHelp)"))
+        XCTAssertFalse(googleCalendarMenuSource.contains(".disabled(true)"))
+        XCTAssertFalse(boardSource.contains("ProjectBoardIntegrationUnavailableError.googleCalendarOAuthNotConfigured"))
+    }
+
     func testSettingsSurfaceShowsInlineMCPServerRowsWithCheckActions() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let mcpSource = try readPackageFile("Sources/SoloPMCore/ExternalMCP/MCPRegistration.swift")

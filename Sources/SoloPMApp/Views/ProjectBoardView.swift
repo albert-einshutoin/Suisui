@@ -354,12 +354,13 @@ struct ProjectBoardView: View {
                 Divider()
 
                 Button {
-                    viewModel.recordTaskInteropFileFailure(ProjectBoardIntegrationUnavailableError.googleCalendarOAuthNotConfigured)
+                    viewModel.syncDueTasksToGoogleCalendar(approvalToken: nil)
                 } label: {
                     Label("Google Calendar Sync", systemImage: "calendar.badge.plus")
                 }
-                .disabled(true)
-                .help("Google Calendar sync requires Pro and OAuth authorization.")
+                .disabled(!viewModel.canSyncGoogleCalendar)
+                .help(viewModel.googleCalendarSyncHelp)
+                .accessibilityIdentifier("project-board-google-calendar-sync")
             } label: {
                 Label("Integrations", systemImage: "arrow.left.arrow.right")
                     .labelStyle(.titleAndIcon)
@@ -923,10 +924,6 @@ enum SoloPMVoiceDailyPlanningReviewBridge {
     private static func normalized(_ sourceTranscript: String) -> String {
         sourceTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
     }
-}
-
-private enum ProjectBoardIntegrationUnavailableError: Error {
-    case googleCalendarOAuthNotConfigured
 }
 
 private struct TaskInteropFileDocument: FileDocument {

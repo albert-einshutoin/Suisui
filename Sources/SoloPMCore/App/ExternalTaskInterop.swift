@@ -321,6 +321,209 @@ public protocol ExternalCalendarEventSink: Sendable {
     ) throws -> ExternalCalendarEventRecord
 }
 
+public struct GoogleCalendarRuntimeCredentialStatus: Equatable, Sendable {
+    public static let eventsWriteScope = "https://www.googleapis.com/auth/calendar.events"
+
+    public var grantedScopes: Set<String>
+    public var expiresAt: Date?
+    public var hasRefreshToken: Bool
+
+    public init(
+        grantedScopes: Set<String>,
+        expiresAt: Date?,
+        hasRefreshToken: Bool
+    ) {
+        self.grantedScopes = grantedScopes
+        self.expiresAt = expiresAt
+        self.hasRefreshToken = hasRefreshToken
+    }
+}
+
+public protocol GoogleCalendarRuntimeCredentialStatusStore: Sendable {
+    func loadGoogleCalendarCredentialStatus() throws -> GoogleCalendarRuntimeCredentialStatus?
+}
+
+public struct UnavailableGoogleCalendarRuntimeCredentialStatusStore: GoogleCalendarRuntimeCredentialStatusStore {
+    public init() {}
+
+    public func loadGoogleCalendarCredentialStatus() throws -> GoogleCalendarRuntimeCredentialStatus? {
+        nil
+    }
+}
+
+public struct GoogleCalendarRuntimeSyncConfiguration: Equatable, Sendable {
+    public var calendarID: String?
+    public var timeZoneIdentifier: String
+
+    public init(calendarID: String?, timeZoneIdentifier: String) {
+        self.calendarID = calendarID
+        self.timeZoneIdentifier = timeZoneIdentifier
+    }
+
+    public static let notConfigured = GoogleCalendarRuntimeSyncConfiguration(
+        calendarID: nil,
+        timeZoneIdentifier: "UTC"
+    )
+
+    var normalizedCalendarID: String? {
+        calendarID?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+public enum GoogleCalendarRuntimeSyncState: Equatable, Sendable {
+    case upgradeRequired(requiredPlan: SubscriptionPlan)
+    case calendarNotConfigured
+    case invalidCalendarID
+    case oauthDisconnected
+    case missingRequiredScope(requiredScope: String)
+    case tokenExpiredWithoutRefresh
+    case runtimeNotConfigured
+    case ready
+    case failed(message: String)
+}
+
+public struct GoogleCalendarRuntimeSyncStatus: Equatable, Sendable {
+    public var plan: SubscriptionPlan
+    public var state: GoogleCalendarRuntimeSyncState
+
+    public init(plan: SubscriptionPlan, state: GoogleCalendarRuntimeSyncState) {
+        self.plan = plan
+        self.state = state
+    }
+
+    public static let runtimeNotConfigured = GoogleCalendarRuntimeSyncStatus(
+        plan: .free,
+        state: .runtimeNotConfigured
+    )
+
+    public var canSync: Bool {
+        state == .ready
+    }
+
+    public var statusLabel: String {
+        switch state {
+        case .upgradeRequired:
+            "Upgrade required"
+        case .calendarNotConfigured:
+            "Calendar not configured"
+        case .invalidCalendarID:
+            "Invalid calendar ID"
+        case .oauthDisconnected:
+            "OAuth required"
+        case .missingRequiredScope:
+            "Calendar scope missing"
+        case .tokenExpiredWithoutRefresh:
+            "OAuth expired"
+        case .runtimeNotConfigured:
+            "Runtime not configured"
+        case .ready:
+            "Ready"
+        case .failed:
+            "Sync failed"
+        }
+    }
+
+    public var detailLabel: String {
+        switch state {
+        case .upgradeRequired(let requiredPlan):
+            "Google Calendar writes require the \(requiredPlan.displayName) plan."
+        case .calendarNotConfigured:
+            "Choose a Google Calendar before enabling due-task sync."
+        case .invalidCalendarID:
+            "Google Calendar ID is blank or invalid."
+        case .oauthDisconnected:
+            "Connect Google Calendar with OAuth before syncing due tasks."
+        case .missingRequiredScope(let requiredScope):
+            "Google Calendar OAuth is missing the required \(requiredScope) scope."
+        case .tokenExpiredWithoutRefresh:
+            "Google Calendar OAuth expired and has no refresh token."
+        case .runtimeNotConfigured:
+            "Google Calendar sync is not configured in this build."
+        case .ready:
+            "Google Calendar sync is ready. Approval is still required before writing events."
+        case .failed(let message):
+            message
+        }
+    }
+}
+
+public enum GoogleCalendarRuntimeSyncError: Error, Equatable, Sendable {
+    case approvalRequired
+    case notReady(GoogleCalendarRuntimeSyncState)
+}
+
+public protocol GoogleCalendarRuntimeSyncing: Sendable {
+    func status(now: Date) throws -> GoogleCalendarRuntimeSyncStatus
+    func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult
+}
+
+public final class GoogleCalendarRuntimeSyncController: GoogleCalendarRuntimeSyncing, @unchecked Sendable {
+    private let entitlementStore: any EntitlementStore
+    private let credentialStatusStore: any GoogleCalendarRuntimeCredentialStatusStore
+    private let configuration: GoogleCalendarRuntimeSyncConfiguration
+    private let taskSyncService: GoogleCalendarTaskSyncService?
+
+    public init(
+        entitlementStore: any EntitlementStore,
+        credentialStatusStore: any GoogleCalendarRuntimeCredentialStatusStore,
+        configuration: GoogleCalendarRuntimeSyncConfiguration,
+        taskSyncService: GoogleCalendarTaskSyncService?
+    ) {
+        self.entitlementStore = entitlementStore
+        self.credentialStatusStore = credentialStatusStore
+        self.configuration = configuration
+        self.taskSyncService = taskSyncService
+    }
+
+    public func status(now: Date = Date()) throws -> GoogleCalendarRuntimeSyncStatus {
+        let entitlement = try entitlementStore.snapshot()
+        guard entitlement.plan.allows(.externalConnectorWrite) else {
+            return GoogleCalendarRuntimeSyncStatus(
+                plan: entitlement.plan,
+                state: .upgradeRequired(requiredPlan: FeatureGate.externalConnectorWrite.requiredPlan)
+            )
+        }
+
+        guard let calendarID = configuration.normalizedCalendarID else {
+            return GoogleCalendarRuntimeSyncStatus(plan: entitlement.plan, state: .calendarNotConfigured)
+        }
+        guard !calendarID.isEmpty else {
+            return GoogleCalendarRuntimeSyncStatus(plan: entitlement.plan, state: .invalidCalendarID)
+        }
+
+        guard let credentialStatus = try credentialStatusStore.loadGoogleCalendarCredentialStatus() else {
+            return GoogleCalendarRuntimeSyncStatus(plan: entitlement.plan, state: .oauthDisconnected)
+        }
+        guard credentialStatus.grantedScopes.contains(GoogleCalendarRuntimeCredentialStatus.eventsWriteScope) else {
+            return GoogleCalendarRuntimeSyncStatus(
+                plan: entitlement.plan,
+                state: .missingRequiredScope(requiredScope: GoogleCalendarRuntimeCredentialStatus.eventsWriteScope)
+            )
+        }
+        if let expiresAt = credentialStatus.expiresAt, expiresAt <= now, !credentialStatus.hasRefreshToken {
+            return GoogleCalendarRuntimeSyncStatus(plan: entitlement.plan, state: .tokenExpiredWithoutRefresh)
+        }
+        guard taskSyncService != nil else {
+            // Readiness must account for the local app boundary: metadata alone is not enough
+            // unless a write sink is present, otherwise the UI could imply a fake success path.
+            return GoogleCalendarRuntimeSyncStatus(plan: entitlement.plan, state: .runtimeNotConfigured)
+        }
+
+        return GoogleCalendarRuntimeSyncStatus(plan: entitlement.plan, state: .ready)
+    }
+
+    public func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult {
+        let readiness = try status(now: context.now)
+        guard readiness.canSync else {
+            throw GoogleCalendarRuntimeSyncError.notReady(readiness.state)
+        }
+        guard let taskSyncService else {
+            throw GoogleCalendarRuntimeSyncError.notReady(.runtimeNotConfigured)
+        }
+        return try taskSyncService.syncDueTasks(context: context)
+    }
+}
+
 public struct GoogleCalendarTaskSyncResult: Equatable, Sendable {
     public var createdEventCount: Int
     public var skippedAlreadyLinkedCount: Int
@@ -331,7 +534,7 @@ public struct GoogleCalendarTaskSyncResult: Equatable, Sendable {
     }
 }
 
-public final class GoogleCalendarTaskSyncService {
+public final class GoogleCalendarTaskSyncService: @unchecked Sendable {
     private let entitlementStore: any EntitlementStore
     private let store: any ProjectBoardStore
     private let linkStore: any ExternalTaskLinkStore
@@ -361,6 +564,10 @@ public final class GoogleCalendarTaskSyncService {
             // Device sync is a personal data feature; writing to a third-party
             // calendar is an external side effect and must stay behind Pro.
             throw SyncServiceError.upgradeRequired(requiredPlan: FeatureGate.externalConnectorWrite.requiredPlan)
+        }
+        guard let approvalToken = context.approvalToken,
+              !approvalToken.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw GoogleCalendarRuntimeSyncError.approvalRequired
         }
 
         var result = GoogleCalendarTaskSyncResult()
