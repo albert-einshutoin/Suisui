@@ -1539,6 +1539,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("InboxHeaderControls("))
         XCTAssertTrue(workflowSource.contains("Picker(\"Inbox Filter\""))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-triage-filter\")"))
+        XCTAssertTrue(workflowSource.contains("private var mainSurface: some View"))
+        XCTAssertTrue(workflowSource.contains("InboxTriageRail("))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-workflow\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-triage-rail\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityLabel(\"Inbox triage station\")"))
+        XCTAssertTrue(workflowSource.contains("without opening the task inspector"))
+        XCTAssertTrue(workflowSource.contains("onSelectTask: selectInboxTask"))
+        XCTAssertTrue(workflowSource.contains("@State private var voiceMemoDraft"))
+        XCTAssertTrue(workflowSource.contains("@State private var voiceMemoCaptureID"))
+        XCTAssertTrue(workflowSource.contains("memoDraft: $voiceMemoDraft"))
+        XCTAssertTrue(workflowSource.contains("memoCaptureID: $voiceMemoCaptureID"))
+        XCTAssertTrue(workflowSource.contains("@Binding var memoDraft: String"))
+        XCTAssertTrue(workflowSource.contains("@Binding var memoCaptureID: Int64?"))
         XCTAssertTrue(workflowSource.contains("InboxVoiceIntakeDetail("))
         XCTAssertTrue(workflowSource.contains("onSaveMemo: { memo in"))
         XCTAssertTrue(workflowSource.contains("viewModel.updateSelectedInboxCaptureMemo(memo)"))
@@ -1576,6 +1589,28 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("$0.transcriptionStatus == .succeeded"))
         XCTAssertTrue(appSource.contains("inboxCaptureStore: SQLiteInboxCaptureStore(connection: connection)"))
         XCTAssertTrue(appSource.contains("Window(\"Voice Command\", id: \"voice-capture\")"))
+    }
+
+    func testInboxSelectionKeepsTriageInWorkflowInsteadOfInspector() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+
+        XCTAssertTrue(boardSource.contains("InboxWorkflowView(viewModel: viewModel, selectInboxTask: selectInboxTask)"))
+        XCTAssertTrue(boardSource.contains("selectedDestination != .today && selectedDestination != .inbox"))
+        XCTAssertTrue(boardSource.contains("private func selectInboxTask(_ task: ProjectBoardTask)"))
+        XCTAssertTrue(boardSource.contains("isInspectorPresented = false"))
+        XCTAssertTrue(boardSource.contains("isInspectorPresented = selectedDestination != .today && selectedDestination != .inbox"))
+        XCTAssertTrue(workflowSource.contains("var selectInboxTask: (ProjectBoardTask) -> Void = { _ in }"))
+        XCTAssertTrue(workflowSource.contains("onSelectTask: selectInboxTask"))
+        XCTAssertTrue(workflowSource.contains("memoDraft: $voiceMemoDraft"))
+        XCTAssertTrue(workflowSource.contains("memoCaptureID: $voiceMemoCaptureID"))
+        XCTAssertTrue(workflowSource.contains(".frame(minWidth: 300, idealWidth: 320, maxWidth: 360"))
+
+        let overrideStart = try XCTUnwrap(boardSource.range(of: "private func applySelectedTaskOverrideIfNeeded()"))
+        let overrideEnd = try XCTUnwrap(boardSource[overrideStart.lowerBound...].range(of: "private func selectTodayTask"))
+        let overrideBlock = String(boardSource[overrideStart.lowerBound..<overrideEnd.lowerBound])
+        XCTAssertTrue(overrideBlock.contains("isInspectorPresented = selectedDestination != .today && selectedDestination != .inbox"))
+        XCTAssertFalse(overrideBlock.contains("isInspectorPresented = true"))
     }
 
     func testInboxAndTodayWorkflowsExposeKeyboardAndVoiceOverAnchors() throws {

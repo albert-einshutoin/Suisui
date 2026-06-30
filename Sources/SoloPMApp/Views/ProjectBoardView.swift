@@ -179,7 +179,7 @@ struct ProjectBoardView: View {
                     } else {
                         switch selectedDestination ?? .today {
                         case .inbox:
-                            InboxWorkflowView(viewModel: viewModel)
+                            InboxWorkflowView(viewModel: viewModel, selectInboxTask: selectInboxTask)
                         case .assistantQueue:
                             AssistantQueueWorkflowView(viewModel: viewModel)
                         case .today:
@@ -305,7 +305,7 @@ struct ProjectBoardView: View {
             applySelectedTaskOverrideIfNeeded()
         }
         .onChange(of: viewModel.selectedTaskID) { _, selectedTaskID in
-            if selectedTaskID != nil && selectedDestination != .today {
+            if selectedTaskID != nil && selectedDestination != .today && selectedDestination != .inbox {
                 isInspectorPresented = true
             }
         }
@@ -655,12 +655,21 @@ struct ProjectBoardView: View {
         // first selection without changing the user's persisted Project Board state.
         viewModel.selectedProjectID = task.projectID
         viewModel.selectedTaskID = task.id
-        isInspectorPresented = true
+        // Inbox and Today own their review details in persistent workflow rails;
+        // opening the broader inspector here would hide the seeded evidence state.
+        isInspectorPresented = selectedDestination != .today && selectedDestination != .inbox
     }
 
     private func selectTodayTask(_ task: ProjectBoardTask) {
         // Today row selection feeds the persistent assistant rail first. The
         // inspector still opens explicitly from the rail Edit action.
+        viewModel.selectedTaskID = task.id
+        isInspectorPresented = false
+    }
+
+    private func selectInboxTask(_ task: ProjectBoardTask) {
+        // Inbox triage keeps consecutive voice captures in the workflow rail so
+        // users can classify them without the broader edit inspector taking focus.
         viewModel.selectedTaskID = task.id
         isInspectorPresented = false
     }

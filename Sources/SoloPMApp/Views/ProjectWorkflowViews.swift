@@ -1506,7 +1506,10 @@ private struct TodayBriefingPanel: View {
 
 struct InboxWorkflowView: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
+    var selectInboxTask: (ProjectBoardTask) -> Void = { _ in }
     @State private var quickTitle = ""
+    @State private var voiceMemoDraft = ""
+    @State private var voiceMemoCaptureID: Int64?
 
     private var tasks: [ProjectBoardTask] {
         viewModel.filteredInboxTasks
@@ -1524,6 +1527,44 @@ struct InboxWorkflowView: View {
     }
 
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 0) {
+                mainSurface
+                Divider()
+                    .padding(.vertical, 18)
+                InboxTriageRail(
+                    task: viewModel.selectedTask,
+                    viewModel: viewModel,
+                    memoDraft: $voiceMemoDraft,
+                    memoCaptureID: $voiceMemoCaptureID
+                )
+                    .frame(minWidth: 300, idealWidth: 320, maxWidth: 360)
+                    .padding(.vertical, 18)
+                    .padding(.trailing, 18)
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                mainSurface
+                InboxTriageRail(
+                    task: viewModel.selectedTask,
+                    viewModel: viewModel,
+                    memoDraft: $voiceMemoDraft,
+                    memoCaptureID: $voiceMemoCaptureID
+                )
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 18)
+            }
+        }
+        .accessibilityIdentifier("inbox-workflow")
+        .onAppear {
+            viewModel.ensureSelectedInboxTaskIsVisible()
+        }
+        .onChange(of: tasks.map(\.id)) { _, _ in
+            viewModel.ensureSelectedInboxTaskIsVisible()
+        }
+    }
+
+    private var mainSurface: some View {
         WorkflowTaskSurface(
             title: "Inbox",
             subtitle: subtitle,
@@ -1532,6 +1573,7 @@ struct InboxWorkflowView: View {
             emptyTitle: "Inbox is clear",
             emptyDescription: "Voice notes, manual captures, and unassigned tasks land here before classification.",
             viewModel: viewModel,
+            onSelectTask: selectInboxTask,
             triageSummary: { task in
                 viewModel.inboxTriageSummary(for: task)
             },
@@ -1539,15 +1581,9 @@ struct InboxWorkflowView: View {
                 InboxHeaderControls(quickTitle: $quickTitle, viewModel: viewModel, addInboxTask: addInboxTask)
             },
             footer: {
-                InboxActionPanel(task: viewModel.selectedTask, viewModel: viewModel)
+                EmptyView()
             }
         )
-        .onAppear {
-            viewModel.ensureSelectedInboxTaskIsVisible()
-        }
-        .onChange(of: tasks.map(\.id)) { _, _ in
-            viewModel.ensureSelectedInboxTaskIsVisible()
-        }
     }
 
     private func addInboxTask() {
@@ -2474,9 +2510,48 @@ private struct InboxTriagePill: View {
     }
 }
 
+private struct InboxTriageRail: View {
+    let task: ProjectBoardTask?
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    @Binding var memoDraft: String
+    @Binding var memoCaptureID: Int64?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Triage Station")
+                        .font(.headline)
+                    Text("Review the selected Inbox capture and classify it without opening the task inspector.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } icon: {
+                Image(systemName: "tray.and.arrow.down")
+                    .foregroundStyle(.blue)
+            }
+
+            InboxActionPanel(
+                task: task,
+                viewModel: viewModel,
+                memoDraft: $memoDraft,
+                memoCaptureID: $memoCaptureID
+            )
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("inbox-triage-rail")
+        .accessibilityLabel("Inbox triage station")
+        .accessibilityHint("Keeps selected Inbox item review and classification actions visible without opening the task inspector.")
+    }
+}
+
 private struct InboxActionPanel: View {
     let task: ProjectBoardTask?
     @ObservedObject var viewModel: ProjectBoardViewModel
+    @Binding var memoDraft: String
+    @Binding var memoCaptureID: Int64?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -2485,6 +2560,8 @@ private struct InboxActionPanel: View {
             InboxVoiceIntakeDetail(
                 captures: viewModel.selectedInboxCaptureRecords,
                 taskTitle: task?.title ?? "Selected Inbox item",
+                memoDraft: $memoDraft,
+                memoCaptureID: $memoCaptureID,
                 onSaveMemo: { memo in
                     viewModel.updateSelectedInboxCaptureMemo(memo)
                 }
@@ -2619,9 +2696,9 @@ private struct InboxActionPanel: View {
 private struct InboxVoiceIntakeDetail: View {
     let captures: [InboxCaptureRecord]
     let taskTitle: String
+    @Binding var memoDraft: String
+    @Binding var memoCaptureID: Int64?
     let onSaveMemo: (String) -> Void
-    @State private var memoDraft = ""
-    @State private var memoCaptureID: Int64?
 
     var body: some View {
         if let capture = captures.first {
