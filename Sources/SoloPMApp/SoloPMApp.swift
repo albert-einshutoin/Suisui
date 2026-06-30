@@ -917,6 +917,8 @@ private struct VoiceIntentPreview: View {
         switch result.intent {
         case .taskCreate, .taskTriage:
             "checkmark.circle"
+        case .dailyPlanningReview:
+            "sun.max"
         case .schedulePlan:
             "calendar"
         case .documentBrief:

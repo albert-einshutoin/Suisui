@@ -916,13 +916,87 @@ private struct ScheduleStatusBanner: View {
     }
 }
 
+private struct TodayDailyPlanningReviewPanel: View {
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    private var review: DailyPlanningReview {
+        viewModel.dailyPlanningReview
+            ?? viewModel.makeDailyPlanningReview(transcript: String(localized: "Today daily planning review"))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
+                Label("Daily Planning Review", systemImage: "sparkles")
+                    .font(.subheadline.weight(.semibold))
+                Spacer(minLength: 8)
+                Text("Proposal only")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.secondary.opacity(0.08), in: Capsule())
+            }
+
+            Text(review.headline)
+                .font(.caption.weight(.semibold))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(review.spokenSummary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !review.focusItems.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(review.focusItems.prefix(3)) { item in
+                        HStack(spacing: 7) {
+                            Image(systemName: "target")
+                                .font(.caption)
+                                .foregroundStyle(.blue)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(item.title)
+                                    .font(.caption.weight(.medium))
+                                    .lineLimit(1)
+                                Text(item.reason)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer(minLength: 6)
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("today-daily-planning-focus-\(item.taskID)")
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.secondary.opacity(0.14), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("today-daily-planning-review")
+        .accessibilityLabel("Daily Planning Review")
+        .accessibilityHint("Shows a local proposal for today's focus without changing tasks or writing Calendar.")
+    }
+}
+
 private struct TodayCommandPanel: View {
     @Binding var commandTitle: String
     let plan: TodayWorkflowPlan
     @ObservedObject var viewModel: ProjectBoardViewModel
 
     var body: some View {
-        TodayBriefingPanel(commandTitle: $commandTitle, plan: plan, viewModel: viewModel)
+        VStack(alignment: .leading, spacing: 10) {
+            TodayDailyPlanningReviewPanel(viewModel: viewModel)
+            TodayBriefingPanel(commandTitle: $commandTitle, plan: plan, viewModel: viewModel)
+        }
     }
 }
 
