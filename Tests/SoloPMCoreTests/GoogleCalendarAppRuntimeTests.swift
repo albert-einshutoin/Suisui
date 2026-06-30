@@ -253,6 +253,310 @@ final class GoogleCalendarAppRuntimeTests: XCTestCase {
         XCTAssertTrue(namespaceRows.isEmpty)
     }
 
+    func testOAuthPKCEBuildsGoogleAuthorizationURLWithoutClientSecret() throws {
+        let configuration = GoogleCalendarOAuthAuthorizationConfiguration(
+            clientID: "google-client-id.apps.googleusercontent.com",
+            redirectURI: "solopm://oauth/google-calendar"
+        )
+
+        let request = try GoogleCalendarOAuthAuthorizationService(configuration: configuration)
+            .makeAuthorizationRequest(
+                state: "calendar-state",
+                codeVerifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+            )
+        let components = try XCTUnwrap(URLComponents(url: request.authorizationURL, resolvingAgainstBaseURL: false))
+        let query = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
+            item.value.map { (item.name, $0) }
+        })
+
+        XCTAssertEqual(request.codeChallenge, "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
+        XCTAssertEqual(components.scheme, "https")
+        XCTAssertEqual(components.host, "accounts.google.com")
+        XCTAssertEqual(query["client_id"], "google-client-id.apps.googleusercontent.com")
+        XCTAssertEqual(query["redirect_uri"], "solopm://oauth/google-calendar")
+        XCTAssertEqual(query["response_type"], "code")
+        XCTAssertEqual(query["code_challenge_method"], "S256")
+        XCTAssertEqual(query["code_challenge"], request.codeChallenge)
+        XCTAssertEqual(query["scope"], GoogleCalendarRuntimeOAuthScope.eventsWrite)
+        XCTAssertEqual(query["access_type"], "offline")
+        XCTAssertEqual(query["prompt"], "consent")
+        XCTAssertNil(query["client_secret"])
+        XCTAssertFalse(request.authorizationURL.absoluteString.contains("calendar-access-token"))
+    }
+
+    func testOAuthAuthorizationRejectsUnsafeRequestConfiguration() throws {
+        XCTAssertThrowsError(
+            try GoogleCalendarOAuthAuthorizationService(configuration: GoogleCalendarOAuthAuthorizationConfiguration(
+                clientID: " \n ",
+                redirectURI: "solopm://oauth/google-calendar"
+            )).makeAuthorizationRequest(state: "calendar-state", codeVerifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")
+        ) { error in
+            XCTAssertEqual(error as? GoogleCalendarOAuthAuthorizationError, .missingClientID)
+        }
+        XCTAssertThrowsError(
+            try GoogleCalendarOAuthAuthorizationService(configuration: GoogleCalendarOAuthAuthorizationConfiguration(
+                clientID: "google-client-id.apps.googleusercontent.com",
+                redirectURI: "solopm://oauth/google-calendar?unexpected=query"
+            )).makeAuthorizationRequest(state: "calendar-state", codeVerifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")
+        ) { error in
+            XCTAssertEqual(error as? GoogleCalendarOAuthAuthorizationError, .invalidRedirectURI)
+        }
+        XCTAssertThrowsError(
+            try GoogleCalendarOAuthAuthorizationService(configuration: GoogleCalendarOAuthAuthorizationConfiguration(
+                clientID: "google-client-id.apps.googleusercontent.com",
+                redirectURI: "solopm://oauth/google-calendar",
+                scopes: []
+            )).makeAuthorizationRequest(state: "calendar-state", codeVerifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")
+        ) { error in
+            XCTAssertEqual(
+                error as? GoogleCalendarOAuthAuthorizationError,
+                .missingRequiredScope(GoogleCalendarRuntimeOAuthScope.eventsWrite)
+            )
+        }
+        XCTAssertThrowsError(
+            try GoogleCalendarOAuthAuthorizationService(configuration: GoogleCalendarOAuthAuthorizationConfiguration(
+                clientID: "google-client-id.apps.googleusercontent.com",
+                redirectURI: "solopm://oauth/google-calendar"
+            )).makeAuthorizationRequest(state: " \n ", codeVerifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")
+        ) { error in
+            XCTAssertEqual(error as? GoogleCalendarOAuthAuthorizationError, .invalidState)
+        }
+    }
+
+    func testOAuthCallbackExchangesCodeAndStoresTokensInSecretStore() throws {
+        let secretStore = InMemorySecretStore()
+        let connection = try migratedConnection()
+        let metadataStore = SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        let credentialStore = GoogleCalendarOAuthCredentialStore(secretStore: secretStore, metadataStore: metadataStore)
+        let httpClient = GoogleCalendarRecordingHTTPDataClient(
+            responseBody: """
+            {
+              "access_token": "calendar-access-token",
+              "refresh_token": "calendar-refresh-token",
+              "expires_in": 3600,
+              "scope": "\(GoogleCalendarRuntimeOAuthScope.eventsWrite)",
+              "token_type": "Bearer"
+            }
+            """.data(using: .utf8)!,
+            statusCode: 200
+        )
+        let service = GoogleCalendarOAuthAuthorizationService(
+            configuration: GoogleCalendarOAuthAuthorizationConfiguration(
+                clientID: "google-client-id.apps.googleusercontent.com",
+                redirectURI: "solopm://oauth/google-calendar"
+            ),
+            httpClient: httpClient,
+            credentialStore: credentialStore
+        )
+        let pendingRequest = try service.makeAuthorizationRequest(
+            state: "calendar-state",
+            codeVerifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+        )
+
+        let metadata = try service.completeAuthorization(
+            callbackURL: URL(string: "solopm://oauth/google-calendar?state=calendar-state&code=authorization-code")!,
+            pendingRequest: pendingRequest,
+            now: Date(timeIntervalSince1970: 4_000)
+        )
+        let request = try XCTUnwrap(httpClient.requests.first)
+        let body = String(data: try XCTUnwrap(request.httpBody), encoding: .utf8) ?? ""
+        let storedValue = try XCTUnwrap(try connection.queryRows(
+            "SELECT value FROM settings WHERE key = 'google_calendar.oauth.metadata.v1';"
+        ).first?["value"])
+
+        XCTAssertEqual(request.url?.absoluteString, "https://oauth2.googleapis.com/token")
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/x-www-form-urlencoded")
+        XCTAssertTrue(body.contains("grant_type=authorization_code"))
+        XCTAssertTrue(body.contains("code=authorization-code"))
+        XCTAssertTrue(body.contains("client_id=google-client-id.apps.googleusercontent.com"))
+        XCTAssertTrue(body.contains("redirect_uri=solopm%3A%2F%2Foauth%2Fgoogle-calendar"))
+        XCTAssertTrue(body.contains("code_verifier=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"))
+        XCTAssertFalse(body.contains("client_secret"))
+        XCTAssertEqual(metadata.grantedScopes, [GoogleCalendarRuntimeOAuthScope.eventsWrite])
+        XCTAssertEqual(metadata.expiresAt, Date(timeIntervalSince1970: 7_600))
+        XCTAssertEqual(try secretStore.read(GoogleCalendarOAuthCredentialStore.accessTokenKey), "calendar-access-token")
+        XCTAssertEqual(try secretStore.read(GoogleCalendarOAuthCredentialStore.refreshTokenKey), "calendar-refresh-token")
+        XCTAssertFalse(storedValue.contains("calendar-access-token"))
+        XCTAssertFalse(storedValue.contains("calendar-refresh-token"))
+    }
+
+    func testOAuthCallbackRejectsRedirectStateAndProviderErrorsBeforeTokenExchange() throws {
+        let secretStore = InMemorySecretStore()
+        let connection = try migratedConnection()
+        let metadataStore = SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        let credentialStore = GoogleCalendarOAuthCredentialStore(secretStore: secretStore, metadataStore: metadataStore)
+        let httpClient = GoogleCalendarRecordingHTTPDataClient(responseBody: Data(), statusCode: 200)
+        let service = GoogleCalendarOAuthAuthorizationService(
+            configuration: GoogleCalendarOAuthAuthorizationConfiguration(
+                clientID: "google-client-id.apps.googleusercontent.com",
+                redirectURI: "solopm://oauth/google-calendar"
+            ),
+            httpClient: httpClient,
+            credentialStore: credentialStore
+        )
+        let pendingRequest = try service.makeAuthorizationRequest(
+            state: "calendar-state",
+            codeVerifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+        )
+
+        XCTAssertThrowsError(
+            try service.completeAuthorization(
+                callbackURL: URL(string: "solopm://oauth/other?state=calendar-state&code=authorization-code")!,
+                pendingRequest: pendingRequest
+            )
+        ) { error in
+            XCTAssertEqual(error as? GoogleCalendarOAuthAuthorizationError, .callbackRedirectMismatch)
+        }
+        XCTAssertThrowsError(
+            try service.completeAuthorization(
+                callbackURL: URL(string: "solopm://oauth/google-calendar?state=wrong-state&code=authorization-code")!,
+                pendingRequest: pendingRequest
+            )
+        ) { error in
+            XCTAssertEqual(error as? GoogleCalendarOAuthAuthorizationError, .callbackStateMismatch)
+        }
+        XCTAssertThrowsError(
+            try service.completeAuthorization(
+                callbackURL: URL(string: "solopm://oauth/google-calendar?state=calendar-state&error=access_denied")!,
+                pendingRequest: pendingRequest
+            )
+        ) { error in
+            XCTAssertEqual(error as? GoogleCalendarOAuthAuthorizationError, .callbackError("access_denied"))
+        }
+        XCTAssertThrowsError(
+            try service.completeAuthorization(
+                callbackURL: URL(string: "solopm://oauth/google-calendar?state=calendar-state")!,
+                pendingRequest: pendingRequest
+            )
+        ) { error in
+            XCTAssertEqual(error as? GoogleCalendarOAuthAuthorizationError, .callbackMissingCode)
+        }
+
+        XCTAssertTrue(httpClient.requests.isEmpty)
+        XCTAssertNil(try metadataStore.loadMetadata())
+    }
+
+    func testOAuthCallbackRejectsDuplicateSecurityParametersBeforeTokenExchange() throws {
+        let secretStore = InMemorySecretStore()
+        let connection = try migratedConnection()
+        let metadataStore = SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        let credentialStore = GoogleCalendarOAuthCredentialStore(secretStore: secretStore, metadataStore: metadataStore)
+        let httpClient = GoogleCalendarRecordingHTTPDataClient(responseBody: Data(), statusCode: 200)
+        let service = GoogleCalendarOAuthAuthorizationService(
+            configuration: GoogleCalendarOAuthAuthorizationConfiguration(
+                clientID: " google-client-id.apps.googleusercontent.com ",
+                redirectURI: "solopm://oauth/google-calendar"
+            ),
+            httpClient: httpClient,
+            credentialStore: credentialStore
+        )
+        let pendingRequest = try service.makeAuthorizationRequest(
+            state: "calendar-state",
+            codeVerifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+        )
+
+        XCTAssertThrowsError(
+            try service.completeAuthorization(
+                callbackURL: URL(string: "solopm://oauth/google-calendar?state=calendar-state&state=other&code=authorization-code")!,
+                pendingRequest: pendingRequest
+            )
+        ) { error in
+            XCTAssertEqual(error as? GoogleCalendarOAuthAuthorizationError, .callbackInvalidQuery)
+        }
+        XCTAssertTrue(httpClient.requests.isEmpty)
+        XCTAssertNil(try metadataStore.loadMetadata())
+    }
+
+    func testOAuthCallbackRejectsScopeMismatchAndInvalidTokenResponse() throws {
+        let secretStore = InMemorySecretStore()
+        let connection = try migratedConnection()
+        let metadataStore = SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        let credentialStore = GoogleCalendarOAuthCredentialStore(secretStore: secretStore, metadataStore: metadataStore)
+        let configuration = GoogleCalendarOAuthAuthorizationConfiguration(
+            clientID: "google-client-id.apps.googleusercontent.com",
+            redirectURI: "solopm://oauth/google-calendar"
+        )
+        let scopeMismatchClient = GoogleCalendarRecordingHTTPDataClient(
+            responseBody: """
+            {
+              "access_token": "calendar-access-token",
+              "scope": "openid profile"
+            }
+            """.data(using: .utf8)!,
+            statusCode: 200
+        )
+        let invalidTokenClient = GoogleCalendarRecordingHTTPDataClient(
+            responseBody: """
+            {
+              "access_token": "   "
+            }
+            """.data(using: .utf8)!,
+            statusCode: 200
+        )
+        let scopeMismatchService = GoogleCalendarOAuthAuthorizationService(
+            configuration: configuration,
+            httpClient: scopeMismatchClient,
+            credentialStore: credentialStore
+        )
+        let invalidTokenService = GoogleCalendarOAuthAuthorizationService(
+            configuration: configuration,
+            httpClient: invalidTokenClient,
+            credentialStore: credentialStore
+        )
+        let pendingRequest = try scopeMismatchService.makeAuthorizationRequest(
+            state: "calendar-state",
+            codeVerifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+        )
+
+        XCTAssertThrowsError(
+            try scopeMismatchService.completeAuthorization(
+                callbackURL: URL(string: "solopm://oauth/google-calendar?state=calendar-state&code=authorization-code")!,
+                pendingRequest: pendingRequest
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? GoogleCalendarOAuthAuthorizationError,
+                .missingRequiredScope(GoogleCalendarRuntimeOAuthScope.eventsWrite)
+            )
+        }
+        XCTAssertNil(try metadataStore.loadMetadata())
+        XCTAssertNil(try secretStore.read(GoogleCalendarOAuthCredentialStore.accessTokenKey))
+
+        XCTAssertThrowsError(
+            try invalidTokenService.completeAuthorization(
+                callbackURL: URL(string: "solopm://oauth/google-calendar?state=calendar-state&code=authorization-code")!,
+                pendingRequest: pendingRequest
+            )
+        ) { error in
+            XCTAssertEqual(error as? GoogleCalendarOAuthAuthorizationError, .invalidTokenResponse)
+        }
+        XCTAssertNil(try metadataStore.loadMetadata())
+        XCTAssertNil(try secretStore.read(GoogleCalendarOAuthCredentialStore.accessTokenKey))
+    }
+
+    func testOAuthCallbackRequiresTokenExchangeRuntime() throws {
+        let service = GoogleCalendarOAuthAuthorizationService(
+            configuration: GoogleCalendarOAuthAuthorizationConfiguration(
+                clientID: "google-client-id.apps.googleusercontent.com",
+                redirectURI: "solopm://oauth/google-calendar"
+            )
+        )
+        let pendingRequest = try service.makeAuthorizationRequest(
+            state: "calendar-state",
+            codeVerifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+        )
+
+        XCTAssertThrowsError(
+            try service.completeAuthorization(
+                callbackURL: URL(string: "solopm://oauth/google-calendar?state=calendar-state&code=authorization-code")!,
+                pendingRequest: pendingRequest
+            )
+        ) { error in
+            XCTAssertEqual(error as? GoogleCalendarOAuthAuthorizationError, .missingTokenExchangeRuntime)
+        }
+    }
+
     private func makeController(
         secretStore: any SecretStore,
         connection: SQLiteConnection
