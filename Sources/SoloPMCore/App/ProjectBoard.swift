@@ -1218,6 +1218,11 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var assistantQueueSort: AssistantQueueSort
     @Published public private(set) var assistantQueueSelectedItemIDs: Set<String>
     @Published public private(set) var executionReceiptHistorySnapshot: ExecutionReceiptHistorySnapshot
+    @Published public private(set) var executionReceiptHistorySearchText: String
+    @Published public private(set) var executionReceiptHistoryStatusFilter: ExecutionReceiptStatus?
+    @Published public private(set) var executionReceiptHistoryReferenceKindFilter: ExecutionReceiptReferenceKind?
+    @Published public private(set) var executionReceiptHistoryExportData: Data?
+    @Published public private(set) var executionReceiptHistoryExportMessage: String?
 
     private let store: any ProjectBoardStore
     private let inboxCaptureStore: (any InboxCaptureStore)?
@@ -1289,6 +1294,11 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.assistantQueueSort = .needsActionFirst
         self.assistantQueueSelectedItemIDs = []
         self.executionReceiptHistorySnapshot = .empty
+        self.executionReceiptHistorySearchText = ""
+        self.executionReceiptHistoryStatusFilter = nil
+        self.executionReceiptHistoryReferenceKindFilter = nil
+        self.executionReceiptHistoryExportData = nil
+        self.executionReceiptHistoryExportMessage = nil
         self.executionReceiptHistorySnapshotsByTaskID = [:]
         self.executionReceiptHistorySnapshotsByProjectID = [:]
         self.taskAutomationSessionHistory = .empty
@@ -2575,6 +2585,104 @@ public final class ProjectBoardViewModel: ObservableObject {
         refreshExecutionReceiptHistorySnapshot(for: snapshot)
     }
 
+    public func setExecutionReceiptHistorySearchText(_ text: String) {
+        guard executionReceiptHistorySearchText != text else {
+            return
+        }
+        executionReceiptHistorySearchText = text
+        clearExecutionReceiptHistoryExport()
+        refreshGlobalExecutionReceiptHistorySnapshot()
+    }
+
+    public func setExecutionReceiptHistoryStatusFilter(_ status: ExecutionReceiptStatus?) {
+        guard executionReceiptHistoryStatusFilter != status else {
+            return
+        }
+        executionReceiptHistoryStatusFilter = status
+        clearExecutionReceiptHistoryExport()
+        refreshGlobalExecutionReceiptHistorySnapshot()
+    }
+
+    public func setExecutionReceiptHistoryReferenceKindFilter(_ referenceKind: ExecutionReceiptReferenceKind?) {
+        guard executionReceiptHistoryReferenceKindFilter != referenceKind else {
+            return
+        }
+        executionReceiptHistoryReferenceKindFilter = referenceKind
+        clearExecutionReceiptHistoryExport()
+        refreshGlobalExecutionReceiptHistorySnapshot()
+    }
+
+    public func prepareExecutionReceiptHistoryExport(exportedAt: Date = Date()) {
+        do {
+            let data = try ExecutionReceiptHistoryExporter.exportJSON(
+                snapshot: executionReceiptHistorySnapshot,
+                exportedAt: exportedAt
+            )
+            executionReceiptHistoryExportData = data
+            executionReceiptHistoryExportMessage = exportPreparedMessage(rowCount: executionReceiptHistorySnapshot.rows.count)
+        } catch {
+            executionReceiptHistoryExportData = nil
+            executionReceiptHistoryExportMessage = String(localized: "Receipt export could not be prepared.")
+        }
+    }
+
+    public func recordExecutionReceiptHistoryExportCompleted() {
+        executionReceiptHistoryExportData = nil
+        executionReceiptHistoryExportMessage = String(localized: "Saved redacted receipt export JSON.")
+    }
+
+    public func recordExecutionReceiptHistoryFileFailure(_ error: Error) {
+        executionReceiptHistoryExportData = nil
+        executionReceiptHistoryExportMessage = String(localized: "Receipt export could not be saved.")
+    }
+
+    private func clearExecutionReceiptHistoryExport() {
+        executionReceiptHistoryExportData = nil
+        executionReceiptHistoryExportMessage = nil
+    }
+
+    private func executionReceiptHistoryFilter() -> ExecutionReceiptSearchFilter {
+        ExecutionReceiptSearchFilter(
+            query: executionReceiptHistorySearchText,
+            statuses: executionReceiptHistoryStatusFilter.map { Set([$0]) } ?? [],
+            referenceKinds: executionReceiptHistoryReferenceKindFilter.map { Set([$0]) } ?? [],
+            visibleSurface: .auditLog
+        )
+    }
+
+    private func exportPreparedMessage(rowCount: Int) -> String {
+        if rowCount == 1 {
+            return String(format: String(localized: "Prepared %d redacted receipt export row."), rowCount)
+        }
+        return String(format: String(localized: "Prepared %d redacted receipt export rows."), rowCount)
+    }
+
+    private func refreshGlobalExecutionReceiptHistorySnapshot() {
+        guard let executionReceiptStore else {
+            executionReceiptHistorySnapshot = .empty
+            return
+        }
+
+        do {
+            executionReceiptHistorySnapshot = try globalExecutionReceiptHistorySnapshot(store: executionReceiptStore)
+        } catch {
+            executionReceiptHistorySnapshot = ExecutionReceiptHistorySnapshot(
+                rows: [],
+                unavailableMessage: String(localized: "Execution receipts are unavailable.")
+            )
+        }
+    }
+
+    private func globalExecutionReceiptHistorySnapshot(
+        store: any ExecutionReceiptStore
+    ) throws -> ExecutionReceiptHistorySnapshot {
+        let receipts = try store.list(matching: executionReceiptHistoryFilter(), limit: 100)
+        return ExecutionReceiptHistoryReadModel.snapshot(
+            from: receipts,
+            limit: 10
+        )
+    }
+
     private func refreshExecutionReceiptHistorySnapshot(for snapshot: ProjectBoardSnapshot) {
         guard let executionReceiptStore else {
             executionReceiptHistorySnapshot = .empty
@@ -2584,11 +2692,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         do {
-            let receipts = try executionReceiptStore.list(limit: 100)
-            executionReceiptHistorySnapshot = ExecutionReceiptHistoryReadModel.snapshot(
-                from: receipts,
-                limit: 10
-            )
+            executionReceiptHistorySnapshot = try globalExecutionReceiptHistorySnapshot(store: executionReceiptStore)
             executionReceiptHistorySnapshotsByTaskID = try scopedExecutionReceiptSnapshotsByTaskID(
                 in: snapshot,
                 store: executionReceiptStore

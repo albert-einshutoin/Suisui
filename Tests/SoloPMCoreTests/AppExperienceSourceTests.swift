@@ -538,8 +538,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("viewModel.executionReceiptHistorySnapshot"))
         XCTAssertTrue(workflowSource.contains("Recent AI Receipts"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"recent-ai-receipts\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"execution-receipt-search-field\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"execution-receipt-export-button\")"))
+        XCTAssertTrue(workflowSource.contains(".fileExporter("))
+        XCTAssertTrue(workflowSource.contains("isExportingExecutionReceipts"))
+        XCTAssertTrue(workflowSource.contains("ExecutionReceiptHistoryFileDocument"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"execution-receipt-row-\\(row.id)\")"))
         XCTAssertTrue(workflowSource.contains("ExecutionReceiptHistoryRowView"))
+        XCTAssertTrue(workflowSource.contains("viewModel.prepareExecutionReceiptHistoryExport()"))
         let receiptHistoryViewTail = try XCTUnwrap(
             workflowSource.components(separatedBy: "struct ExecutionReceiptHistoryRowView").last
         )

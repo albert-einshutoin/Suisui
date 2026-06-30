@@ -976,6 +976,16 @@
 "Unknown" = "不明";
 "Usage Unknown" = "使用状況不明";
 "Usage Unavailable" = "使用状況なし";
+"All References" = "すべての参照";
+"All Statuses" = "すべての状態";
+"Export JSON" = "JSONをエクスポート";
+"Prepare Export" = "エクスポートを準備";
+"Prepared %d redacted receipt export row." = "秘匿済みレシートエクスポートを%d行準備しました。";
+"Prepared %d redacted receipt export rows." = "秘匿済みレシートエクスポートを%d行準備しました。";
+"Receipt export could not be prepared." = "レシートエクスポートを準備できませんでした。";
+"Receipt export could not be saved." = "レシートエクスポートを保存できませんでした。";
+"Saved redacted receipt export JSON." = "秘匿済みレシートエクスポートJSONを保存しました。";
+"Search receipts" = "レシートを検索";
 "%d tokens" = "%d トークン";
 "%@ usage" = "%@ 使用状況";
 "%@: none" = "%@: なし";

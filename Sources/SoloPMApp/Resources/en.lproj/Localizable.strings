@@ -976,6 +976,16 @@
 "Unknown" = "Unknown";
 "Usage Unknown" = "Usage Unknown";
 "Usage Unavailable" = "Usage Unavailable";
+"All References" = "All References";
+"All Statuses" = "All Statuses";
+"Export JSON" = "Export JSON";
+"Prepare Export" = "Prepare Export";
+"Prepared %d redacted receipt export row." = "Prepared %d redacted receipt export row.";
+"Prepared %d redacted receipt export rows." = "Prepared %d redacted receipt export rows.";
+"Receipt export could not be prepared." = "Receipt export could not be prepared.";
+"Receipt export could not be saved." = "Receipt export could not be saved.";
+"Saved redacted receipt export JSON." = "Saved redacted receipt export JSON.";
+"Search receipts" = "Search receipts";
 "%d tokens" = "%d tokens";
 "%@ usage" = "%@ usage";
 "%@: none" = "%@: none";
