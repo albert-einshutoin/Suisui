@@ -953,6 +953,58 @@ public enum ExecutionReceiptFactory {
         )
     }
 
+    public static func makeDocumentDeliverableReceipt(
+        deliverables: [TaskAutomationDocumentDeliverableReview],
+        selectedTasks: [ProjectBoardTask],
+        runID: String,
+        approvalID: String? = nil,
+        status: ExecutionReceiptStatus = .succeeded,
+        errorSummary: String? = nil,
+        createdAt: Date = Date(),
+        redactionPolicy: ExecutionReceiptRedactionPolicy = ExecutionReceiptRedactionPolicy()
+    ) -> ExecutionReceipt {
+        let redactor = ExecutionReceiptRedactor(policy: redactionPolicy)
+        let references = documentDeliverableReferences(
+            deliverables: deliverables,
+            selectedTasks: selectedTasks,
+            redactor: redactor
+        )
+        let sourceLinks = documentDeliverableSourceLinks(deliverables: deliverables, redactor: redactor)
+        let inputPreview = documentDeliverableInputPreview(
+            deliverables: deliverables,
+            selectedTasks: selectedTasks
+        )
+        let outputSummary = documentDeliverableOutputSummary(status: status, deliverableCount: deliverables.count)
+        let actions = documentDeliverableActions(
+            deliverables: deliverables,
+            status: status,
+            errorSummary: errorSummary,
+            redactor: redactor
+        )
+
+        // Document deliverable planning produces review evidence, not files.
+        // Keeping a separate tool name prevents audit surfaces from implying
+        // filesystem write permission was granted before explicit approval.
+        return ExecutionReceipt(
+            id: "receipt:\(runID):document-deliverables",
+            runID: runID,
+            approvalID: approvalID,
+            createdAt: createdAt,
+            startedAt: createdAt,
+            finishedAt: createdAt,
+            status: status,
+            inputPreview: inputPreview,
+            outputSummary: outputSummary,
+            primaryToolName: documentDeliverablePrepareToolName,
+            usage: .unavailable,
+            references: references,
+            sourceLinks: sourceLinks,
+            actions: actions,
+            visibleSurfaces: documentDeliverableVisibleSurfaces(selectedTasks: selectedTasks),
+            redactionPolicy: redactionPolicy
+        )
+    }
+
     public static func makeAssistantQueueReceipt(
         item: AssistantQueueItem,
         session: ReviewSession,
@@ -1094,6 +1146,196 @@ public enum ExecutionReceiptFactory {
             return "\(failed) failed, \(succeeded) succeeded, \(skipped) skipped."
         }
         return "\(succeeded) succeeded, \(skipped) skipped."
+    }
+
+    private static let documentDeliverablePrepareToolName = "document.deliverable.prepare"
+
+    private static func documentDeliverableInputPreview(
+        deliverables: [TaskAutomationDocumentDeliverableReview],
+        selectedTasks: [ProjectBoardTask]
+    ) -> String {
+        let sourceCount = documentDeliverableUniqueSources(deliverables).count
+        let approvalRequired = deliverables.contains(where: \.requiresApproval)
+        let taskPreview = selectedTasks.map { task in
+            "task \(task.id): \(task.title), priority: \(task.priority.rawValue), dueAt: \(task.dueAt ?? "none")"
+        }
+        let draftPreview = deliverables.map { deliverable in
+            [
+                "draft \(deliverable.kind.rawValue)",
+                "title: \(deliverable.title)",
+                "suggestedPath: \(deliverable.suggestedPath)",
+                "sources: \(deliverable.sourceDocuments.count)",
+                "rationale: \(deliverable.rationale)",
+                "requiresApproval: \(deliverable.requiresApproval)"
+            ].joined(separator: ", ")
+        }
+        return ([
+            "documentDeliverables: \(deliverables.count)",
+            "selectedTasks: \(selectedTasks.count)",
+            "sourceDocuments: \(sourceCount)",
+            "approvalRequired: \(approvalRequired)",
+            "noFilesWritten: true"
+        ] + taskPreview + draftPreview).joined(separator: "\n")
+    }
+
+    private static func documentDeliverableOutputSummary(
+        status: ExecutionReceiptStatus,
+        deliverableCount: Int
+    ) -> String {
+        let draftLabel = deliverableCount == 1 ? "draft" : "drafts"
+        switch status {
+        case .succeeded:
+            return "Prepared \(deliverableCount) approval-gated document deliverable \(draftLabel) for review. No files were written."
+        case .failed:
+            return "Document deliverable draft preparation failed before files were written."
+        case .canceled:
+            return "Document deliverable draft preparation was canceled before files were written."
+        case .skipped:
+            return "Document deliverable draft preparation was skipped. No files were written."
+        case .running:
+            return "Document deliverable draft preparation is running. No files have been written."
+        case .notStarted:
+            return "Document deliverable draft preparation has not started. No files have been written."
+        }
+    }
+
+    private static func documentDeliverableActions(
+        deliverables: [TaskAutomationDocumentDeliverableReview],
+        status: ExecutionReceiptStatus,
+        errorSummary: String?,
+        redactor: ExecutionReceiptRedactor
+    ) -> [ExecutionReceiptActionSummary] {
+        guard !deliverables.isEmpty else {
+            return [
+                ExecutionReceiptActionSummary(
+                    id: "document-deliverable:none",
+                    toolName: documentDeliverablePrepareToolName,
+                    status: status,
+                    inputPreview: "documentDeliverables: 0",
+                    outputSummary: documentDeliverableOutputSummary(status: status, deliverableCount: 0),
+                    errorSummary: errorSummary.map { redactor.redact($0) }
+                )
+            ]
+        }
+        return deliverables.map { deliverable in
+            let draftDigest = ExecutionReceiptDigest.normalizedDigest(deliverable.id)
+            let inputPreview = [
+                "kind: \(deliverable.kind.rawValue)",
+                "title: \(deliverable.title)",
+                "suggestedPath: \(deliverable.suggestedPath)",
+                "sourceDocuments: \(deliverable.sourceDocuments.count)",
+                "requiresApproval: \(deliverable.requiresApproval)"
+            ].joined(separator: ", ")
+            let outputSummary = documentDeliverableActionOutputSummary(
+                status: status,
+                kind: deliverable.kind
+            )
+            return ExecutionReceiptActionSummary(
+                id: "document-deliverable:\(draftDigest)",
+                toolName: documentDeliverablePrepareToolName,
+                status: status,
+                inputPreview: inputPreview,
+                outputSummary: outputSummary,
+                errorSummary: errorSummary.map { redactor.redact($0) }
+            )
+        }
+    }
+
+    private static func documentDeliverableActionOutputSummary(
+        status: ExecutionReceiptStatus,
+        kind: DocumentAutomationOutputKind
+    ) -> String {
+        switch status {
+        case .succeeded:
+            return "Prepared \(kind.rawValue) document deliverable draft for approval. No file was written."
+        case .failed:
+            return "\(kind.rawValue) document deliverable draft preparation failed before a file was written."
+        case .canceled:
+            return "\(kind.rawValue) document deliverable draft preparation was canceled before a file was written."
+        case .skipped:
+            return "\(kind.rawValue) document deliverable draft preparation was skipped. No file was written."
+        case .running:
+            return "\(kind.rawValue) document deliverable draft preparation is running. No file has been written."
+        case .notStarted:
+            return "\(kind.rawValue) document deliverable draft preparation has not started. No file has been written."
+        }
+    }
+
+    private static func documentDeliverableReferences(
+        deliverables: [TaskAutomationDocumentDeliverableReview],
+        selectedTasks: [ProjectBoardTask],
+        redactor: ExecutionReceiptRedactor
+    ) -> [ExecutionReceiptReference] {
+        var references: [ExecutionReceiptReference] = []
+        for task in selectedTasks {
+            appendReference(
+                kind: .task,
+                id: String(task.id),
+                label: redactor.redact(task.title, maxLength: 300),
+                references: &references
+            )
+        }
+        for projectID in Set(selectedTasks.map(\.projectID)).sorted() {
+            appendReference(kind: .project, id: String(projectID), references: &references)
+        }
+        for source in documentDeliverableUniqueSources(deliverables) {
+            appendReference(
+                kind: .document,
+                id: "document-source:\(ExecutionReceiptDigest.normalizedDigest(source.id))",
+                label: redactor.redact(source.title, maxLength: 300),
+                references: &references
+            )
+        }
+        for deliverable in deliverables {
+            appendReference(
+                kind: .file,
+                id: deliverable.suggestedPath,
+                label: redactor.redact(deliverable.title, maxLength: 300),
+                references: &references
+            )
+        }
+        return references
+    }
+
+    private static func documentDeliverableSourceLinks(
+        deliverables: [TaskAutomationDocumentDeliverableReview],
+        redactor: ExecutionReceiptRedactor
+    ) -> [ExecutionReceiptSourceLink] {
+        documentDeliverableUniqueSources(deliverables).map { source in
+            ExecutionReceiptSourceLink(
+                kind: .document,
+                title: redactor.redact(source.title, maxLength: 240),
+                url: "solopm://document-source/\(ExecutionReceiptDigest.normalizedDigest(source.id))"
+            )
+        }
+    }
+
+    private static func documentDeliverableUniqueSources(
+        _ deliverables: [TaskAutomationDocumentDeliverableReview]
+    ) -> [TaskAutomationDocumentSourceReview] {
+        var seen = Set<String>()
+        var sources: [TaskAutomationDocumentSourceReview] = []
+        for source in deliverables.flatMap(\.sourceDocuments) {
+            guard seen.insert(source.id).inserted else {
+                continue
+            }
+            sources.append(source)
+        }
+        return sources
+    }
+
+    private static func documentDeliverableVisibleSurfaces(
+        selectedTasks: [ProjectBoardTask]
+    ) -> [ExecutionReceiptSurface] {
+        var surfaces: [ExecutionReceiptSurface] = []
+        if !selectedTasks.isEmpty {
+            surfaces.append(.taskDetail)
+        }
+        if !Set(selectedTasks.map(\.projectID)).isEmpty {
+            surfaces.append(.projectDetail)
+        }
+        surfaces.append(.auditLog)
+        return surfaces
     }
 
     private static func assistantQueueVisibleSurfaces(

@@ -218,6 +218,69 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .reminder, id: "reminder-launch")))
     }
 
+    func testDocumentDeliverableReceiptRedactsDraftSourcesAndDoesNotClaimFileWrites() throws {
+        let task = ProjectBoardTask(
+            id: 42,
+            projectID: 7,
+            title: "Launch notes token=task-title-secret",
+            detail: "Use sk-proj-task-detail-secret before drafting.",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-07-01"
+        )
+        let deliverable = TaskAutomationDocumentDeliverableReview(
+            kind: .releaseNotes,
+            title: "Release notes token=deliverable-title-secret",
+            suggestedPath: "/Users/alice/private/token=path-secret/release.md",
+            sourceDocuments: [
+                TaskAutomationDocumentSourceReview(
+                    id: "doc-sk-proj-source123",
+                    title: "Launch source token=source-title-secret",
+                    redactedSummary: "Summarized from token=source-summary-secret.",
+                    inclusionReason: "Selected because token=source-reason-secret matched."
+                )
+            ],
+            rationale: "Draft from token=rationale-secret.",
+            riskLevel: .draft,
+            requiresApproval: true
+        )
+
+        let receipt = ExecutionReceiptFactory.makeDocumentDeliverableReceipt(
+            deliverables: [deliverable],
+            selectedTasks: [task],
+            runID: "run-document-deliverable",
+            createdAt: Date(timeIntervalSince1970: 100),
+            redactionPolicy: ExecutionReceiptRedactionPolicy(
+                allowedLocalPathPrefixes: ["/Volumes/Satechi/Developer/soloPM"]
+            )
+        )
+
+        XCTAssertEqual(receipt.id, "receipt:run-document-deliverable:document-deliverables")
+        XCTAssertEqual(receipt.status, .succeeded)
+        XCTAssertEqual(receipt.primaryToolName, "document.deliverable.prepare")
+        XCTAssertEqual(receipt.usage.state, .unavailable)
+        XCTAssertEqual(receipt.visibleSurfaces, [.taskDetail, .projectDetail, .auditLog])
+        XCTAssertTrue(receipt.outputSummary.contains("Prepared 1 approval-gated document deliverable draft"))
+        XCTAssertTrue(receipt.outputSummary.contains("No files were written"))
+        XCTAssertEqual(receipt.actions.count, 1)
+        XCTAssertTrue(receipt.actions[0].outputSummary?.contains("No file was written") ?? false)
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .task, id: "42", label: "Launch notes [REDACTED_SECRET]")))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .project, id: "7")))
+        XCTAssertTrue(receipt.references.contains { $0.kind == .document })
+        XCTAssertTrue(receipt.references.contains { $0.kind == .file })
+        XCTAssertEqual(receipt.sourceLinks.map(\.kind), [.document])
+        XCTAssertTrue(receipt.inputPreview.contains("[REDACTED_SECRET]"))
+        XCTAssertTrue(receipt.inputPreview.contains("[REDACTED_LOCAL_PATH]"))
+        XCTAssertFalse(receipt.inputPreview.contains("task-title-secret"))
+        XCTAssertFalse(receipt.inputPreview.contains("task-detail-secret"))
+        XCTAssertFalse(receipt.inputPreview.contains("deliverable-title-secret"))
+        XCTAssertFalse(receipt.inputPreview.contains("path-secret"))
+        XCTAssertFalse(receipt.inputPreview.contains("source-title-secret"))
+        XCTAssertFalse(receipt.inputPreview.contains("source-summary-secret"))
+        XCTAssertFalse(receipt.inputPreview.contains("source-reason-secret"))
+        XCTAssertFalse(receipt.sourceLinks[0].url.contains("source123"))
+    }
+
     func testReviewExecutionReceiptLinksBulkReminderReferencesFromToolOutput() throws {
         var session = ReviewSession(
             id: "review-reminder-bulk",
