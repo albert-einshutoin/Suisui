@@ -1214,6 +1214,9 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var lastApprovedAutomationExecutionReceipt: ApprovedAutomationExecutionReceipt?
     @Published public private(set) var approvedAutomationExecutionReceipts: [ApprovedAutomationExecutionReceipt]
     @Published public private(set) var assistantQueueSnapshot: AssistantQueueSnapshot
+    @Published public private(set) var assistantQueueViewFilter: AssistantQueueViewFilter
+    @Published public private(set) var assistantQueueSort: AssistantQueueSort
+    @Published public private(set) var assistantQueueSelectedItemIDs: Set<String>
     @Published public private(set) var executionReceiptHistorySnapshot: ExecutionReceiptHistorySnapshot
 
     private let store: any ProjectBoardStore
@@ -1279,6 +1282,9 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.lastApprovedAutomationExecutionReceipt = nil
         self.approvedAutomationExecutionReceipts = []
         self.assistantQueueSnapshot = .empty
+        self.assistantQueueViewFilter = .needsAttention
+        self.assistantQueueSort = .needsActionFirst
+        self.assistantQueueSelectedItemIDs = []
         self.executionReceiptHistorySnapshot = .empty
         self.executionReceiptHistorySnapshotsByTaskID = [:]
         self.executionReceiptHistorySnapshotsByProjectID = [:]
@@ -2540,6 +2546,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     private func refreshAssistantQueueSnapshot() -> String? {
         guard let assistantQueueStore else {
             assistantQueueSnapshot = .empty
+            assistantQueueSelectedItemIDs = []
             return nil
         }
 
@@ -2547,7 +2554,10 @@ public final class ProjectBoardViewModel: ObservableObject {
             // Project Board owns the central task cockpit, so it reads a compact
             // queue snapshot instead of querying local stores from SwiftUI views.
             // Receipts are outcome-only metadata; queue state remains the source of truth.
-            let items = try assistantQueueStore.list(filter: .all(limit: 50))
+            // Counts come from state aggregates so terminal queue history cannot
+            // hide older review work behind the row fetch limit.
+            let stateCounts = try assistantQueueStore.stateCounts()
+            let visibleItems = try assistantQueueStore.list(filter: assistantQueueViewFilter.storeFilter(limit: 100))
             var receiptErrorMessage: String?
             let receipts: [ExecutionReceipt]
             do {
@@ -2557,13 +2567,82 @@ public final class ProjectBoardViewModel: ObservableObject {
                 receiptErrorMessage = String(localized: "Assistant Queue execution receipts are unavailable. Queue state is still shown.")
             }
             assistantQueueSnapshot = AssistantQueueReadModel.snapshot(
-                from: items,
-                receipts: receipts
+                from: visibleItems,
+                receipts: receipts,
+                viewFilter: assistantQueueViewFilter,
+                sort: assistantQueueSort,
+                stateCounts: stateCounts
             )
+            pruneAssistantQueueSelectionToVisibleRows()
             return receiptErrorMessage
         } catch {
             assistantQueueSnapshot = .empty
+            assistantQueueSelectedItemIDs = []
             return AssistantQueueStoreError.userMessage(for: error)
+        }
+    }
+
+    public func setAssistantQueueViewFilter(_ filter: AssistantQueueViewFilter) {
+        guard assistantQueueViewFilter != filter else {
+            return
+        }
+        assistantQueueViewFilter = filter
+        assistantQueueSelectedItemIDs = []
+        _ = refreshAssistantQueueSnapshot()
+    }
+
+    public func setAssistantQueueSort(_ sort: AssistantQueueSort) {
+        guard assistantQueueSort != sort else {
+            return
+        }
+        assistantQueueSort = sort
+        _ = refreshAssistantQueueSnapshot()
+    }
+
+    @discardableResult
+    public func toggleAssistantQueueSelection(id: String) -> Bool {
+        setAssistantQueueSelection(
+            id: id,
+            selected: !assistantQueueSelectedItemIDs.contains(id)
+        )
+    }
+
+    @discardableResult
+    public func setAssistantQueueSelection(id: String, selected: Bool) -> Bool {
+        guard assistantQueueSnapshot.rows.contains(where: { $0.id == id }) else {
+            return false
+        }
+        if selected {
+            assistantQueueSelectedItemIDs.insert(id)
+        } else {
+            assistantQueueSelectedItemIDs.remove(id)
+        }
+        return true
+    }
+
+    @discardableResult
+    public func deferSelectedAssistantQueueItems() -> Bool {
+        transitionSelectedAssistantQueueItems(
+            eligible: \.canDefer,
+            emptyMessage: String(localized: "No selected Assistant Queue items can be deferred."),
+            successMessage: { count in
+                String(format: String(localized: "Deferred %d Assistant Queue items."), count)
+            }
+        ) { item in
+            AssistantQueueStateMachine.deferItem(item)
+        }
+    }
+
+    @discardableResult
+    public func rejectSelectedAssistantQueueItems() -> Bool {
+        transitionSelectedAssistantQueueItems(
+            eligible: \.canReject,
+            emptyMessage: String(localized: "No selected Assistant Queue items can be rejected."),
+            successMessage: { count in
+                String(format: String(localized: "Rejected %d Assistant Queue items."), count)
+            }
+        ) { item in
+            AssistantQueueStateMachine.reject(item)
         }
     }
 
@@ -2691,6 +2770,53 @@ public final class ProjectBoardViewModel: ObservableObject {
             integrationStatusMessage = nil
             return false
         }
+    }
+
+    private func transitionSelectedAssistantQueueItems(
+        eligible: KeyPath<AssistantQueueReadModelRow, Bool>,
+        emptyMessage: String,
+        successMessage: (Int) -> String,
+        _ transform: (AssistantQueueItem) throws -> AssistantQueueItem
+    ) -> Bool {
+        guard let assistantQueueStore else {
+            assistantQueueSnapshot = .empty
+            assistantQueueSelectedItemIDs = []
+            errorMessage = "Assistant Queue is unavailable in this build."
+            return false
+        }
+
+        let eligibleIDs = assistantQueueSnapshot.rows
+            .filter { row in
+                assistantQueueSelectedItemIDs.contains(row.id) && row[keyPath: eligible]
+            }
+            .map(\.id)
+        guard !eligibleIDs.isEmpty else {
+            errorMessage = emptyMessage
+            integrationStatusMessage = nil
+            return false
+        }
+
+        do {
+            for id in eligibleIDs {
+                _ = try assistantQueueStore.transition(id: id, transform)
+            }
+            assistantQueueSelectedItemIDs = []
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = nil
+            integrationStatusMessage = successMessage(eligibleIDs.count)
+            onChange()
+            return true
+        } catch {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = AssistantQueueStoreError.userMessage(for: error)
+            integrationStatusMessage = nil
+            return false
+        }
+    }
+
+    private func pruneAssistantQueueSelectionToVisibleRows() {
+        let visibleIDs = Set(assistantQueueSnapshot.rows.map(\.id))
+        assistantQueueSelectedItemIDs = assistantQueueSelectedItemIDs.intersection(visibleIDs)
     }
 
     private static func assistantQueueExecutionMessage(for error: Error) -> String {

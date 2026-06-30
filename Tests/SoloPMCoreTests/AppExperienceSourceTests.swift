@@ -120,7 +120,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(persistenceSource.contains("case assistantQueue"))
         XCTAssertTrue(persistenceSource.contains("return \"assistant-queue\""))
-        XCTAssertTrue(boardSource.contains("ProjectBoardSidebarDestinationRow(destination: .assistantQueue, count: viewModel.assistantQueueSnapshot.reviewableCount)"))
+        XCTAssertTrue(boardSource.contains("ProjectBoardSidebarDestinationRow(destination: .assistantQueue, count: viewModel.assistantQueueSnapshot.needsAttentionCount)"))
         XCTAssertTrue(boardSource.contains("AssistantQueueWorkflowView(viewModel: viewModel)"))
         XCTAssertTrue(workflowSource.contains("struct AssistantQueueWorkflowView"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-workflow\")"))
@@ -145,6 +145,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-edit-cancel-\\(row.id)\")"))
         XCTAssertTrue(workflowSource.contains("draftRedactedSummary = row.redactedSummary"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-retry-\\(row.id)\")"))
+        XCTAssertTrue(workflowSource.contains("AssistantQueueTriageControls("))
+        XCTAssertTrue(workflowSource.contains("AssistantQueueBatchToolbar("))
+        XCTAssertTrue(workflowSource.contains("viewModel.setAssistantQueueViewFilter"))
+        XCTAssertTrue(workflowSource.contains("viewModel.setAssistantQueueSort"))
+        XCTAssertTrue(workflowSource.contains("viewModel.setAssistantQueueSelection(id: row.id, selected: selected)"))
+        XCTAssertTrue(workflowSource.contains("viewModel.deferSelectedAssistantQueueItems()"))
+        XCTAssertTrue(workflowSource.contains("viewModel.rejectSelectedAssistantQueueItems()"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-filter\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-sort\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-batch-toolbar\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-select-\\(row.id)\")"))
+        XCTAssertFalse(workflowSource.contains("approveSelectedAssistantQueueItems"))
+        XCTAssertFalse(workflowSource.contains("runSelectedAssistantQueueItems"))
         XCTAssertTrue(workflowSource.contains("if let receipt = row.latestReceipt"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-receipt-\\(row.id)\")"))
         XCTAssertTrue(workflowSource.contains("localizedDisplay(\"Receipt: %@\", localizedDisplay(receipt.statusLabel))"))
@@ -154,6 +167,24 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("public func editAssistantQueueItem("))
         XCTAssertTrue(coreSource.contains("public func retryAssistantQueueItem(id: String) -> Bool"))
         XCTAssertTrue(coreSource.contains("public func rejectAssistantQueueItem(id: String) -> Bool"))
+        XCTAssertTrue(coreSource.contains("public func setAssistantQueueViewFilter(_ filter: AssistantQueueViewFilter)"))
+        XCTAssertTrue(coreSource.contains("public func setAssistantQueueSort(_ sort: AssistantQueueSort)"))
+        XCTAssertTrue(coreSource.contains("public func setAssistantQueueSelection(id: String, selected: Bool) -> Bool"))
+        XCTAssertTrue(coreSource.contains("public func deferSelectedAssistantQueueItems() -> Bool"))
+        XCTAssertTrue(coreSource.contains("public func rejectSelectedAssistantQueueItems() -> Bool"))
+    }
+
+    func testAssistantQueueTriageLocalizationsDoNotDuplicateSharedKeys() throws {
+        let english = try readPackageFile("Sources/SoloPMApp/Resources/en.lproj/Localizable.strings")
+        let japanese = try readPackageFile("Sources/SoloPMApp/Resources/ja.lproj/Localizable.strings")
+        for source in [english, japanese] {
+            XCTAssertEqual(source.components(separatedBy: "\"All\" =").count - 1, 1)
+            XCTAssertEqual(source.components(separatedBy: "\"Sort\" =").count - 1, 1)
+            XCTAssertEqual(source.components(separatedBy: "\"Needs attention\" =").count - 1, 1)
+            XCTAssertEqual(source.components(separatedBy: "\"Needs action first\" =").count - 1, 1)
+            XCTAssertEqual(source.components(separatedBy: "\"Risk high first\" =").count - 1, 1)
+            XCTAssertEqual(source.components(separatedBy: "\"Title A-Z\" =").count - 1, 1)
+        }
     }
 
     func testProjectBoardExposesPortableTaskImportExportFileActions() throws {

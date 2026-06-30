@@ -1361,6 +1361,9 @@ struct AssistantQueueWorkflowView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("assistant-queue-boundary-note")
 
+            AssistantQueueTriageControls(viewModel: viewModel)
+            AssistantQueueBatchToolbar(viewModel: viewModel)
+
             if snapshot.rows.isEmpty {
                 ContentUnavailableView(
                     "Assistant Queue is clear",
@@ -1389,19 +1392,123 @@ struct AssistantQueueWorkflowView: View {
     }
 }
 
+private struct AssistantQueueTriageControls: View {
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                filterPicker
+                sortPicker
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                filterPicker
+                sortPicker
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("assistant-queue-triage-controls")
+    }
+
+    private var filterPicker: some View {
+        Picker("Filter", selection: filterBinding) {
+            ForEach(AssistantQueueViewFilter.allCases) { filter in
+                Text(LocalizedStringKey(filter.title)).tag(filter)
+            }
+        }
+        .pickerStyle(.menu)
+        .accessibilityIdentifier("assistant-queue-filter")
+        .accessibilityHint("Filters Assistant Queue rows without changing stored queue state.")
+    }
+
+    private var sortPicker: some View {
+        Picker("Sort", selection: sortBinding) {
+            ForEach(AssistantQueueSort.allCases) { sort in
+                Text(LocalizedStringKey(sort.title)).tag(sort)
+            }
+        }
+        .pickerStyle(.menu)
+        .accessibilityIdentifier("assistant-queue-sort")
+        .accessibilityHint("Sorts visible Assistant Queue rows.")
+    }
+
+    private var filterBinding: Binding<AssistantQueueViewFilter> {
+        Binding(
+            get: { viewModel.assistantQueueViewFilter },
+            set: { viewModel.setAssistantQueueViewFilter($0) }
+        )
+    }
+
+    private var sortBinding: Binding<AssistantQueueSort> {
+        Binding(
+            get: { viewModel.assistantQueueSort },
+            set: { viewModel.setAssistantQueueSort($0) }
+        )
+    }
+}
+
+private struct AssistantQueueBatchToolbar: View {
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    private var selectedCount: Int {
+        viewModel.assistantQueueSelectedItemIDs.count
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(String(format: String(localized: "%d selected"), selectedCount))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Spacer(minLength: 8)
+
+            Button {
+                _ = viewModel.deferSelectedAssistantQueueItems()
+            } label: {
+                Label("Defer selected", systemImage: "clock")
+            }
+            .disabled(selectedCount == 0)
+            .controlSize(.small)
+            .accessibilityIdentifier("assistant-queue-batch-defer")
+            .accessibilityHint("Defers selected reviewable Assistant Queue items without approving or running them.")
+
+            Button {
+                _ = viewModel.rejectSelectedAssistantQueueItems()
+            } label: {
+                Label("Reject selected", systemImage: "xmark.circle")
+            }
+            .disabled(selectedCount == 0)
+            .controlSize(.small)
+            .accessibilityIdentifier("assistant-queue-batch-reject")
+            .accessibilityHint("Rejects selected Assistant Queue items that are still rejectable.")
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .background(Color.secondary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("assistant-queue-batch-toolbar")
+        .accessibilityLabel("Assistant Queue batch toolbar")
+    }
+}
+
 private struct AssistantQueueCountStrip: View {
     let snapshot: AssistantQueueSnapshot
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 8) {
+                badge(title: "Total", value: snapshot.totalCount, tint: .secondary)
                 badge(title: "Waiting", value: snapshot.waitingReviewCount, tint: .orange)
                 badge(title: "Blocked", value: snapshot.blockedCount, tint: .red)
+                badge(title: "Failed", value: snapshot.failedCount, tint: .red)
             }
 
             VStack(alignment: .leading, spacing: 8) {
+                badge(title: "Total", value: snapshot.totalCount, tint: .secondary)
                 badge(title: "Waiting", value: snapshot.waitingReviewCount, tint: .orange)
                 badge(title: "Blocked", value: snapshot.blockedCount, tint: .red)
+                badge(title: "Failed", value: snapshot.failedCount, tint: .red)
             }
         }
         .accessibilityElement(children: .contain)
@@ -1435,6 +1542,13 @@ private struct AssistantQueueRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
+                Toggle("", isOn: selectionBinding)
+                    .labelsHidden()
+                    .toggleStyle(.checkbox)
+                    .accessibilityIdentifier("assistant-queue-select-\(row.id)")
+                    .accessibilityLabel("Select Assistant Queue item")
+                    .accessibilityValue(viewModel.assistantQueueSelectedItemIDs.contains(row.id) ? "Selected" : "Not selected")
+
                 Image(systemName: stateSystemImage)
                     .foregroundStyle(stateTint)
                     .frame(width: 22, height: 22)
@@ -1682,6 +1796,15 @@ private struct AssistantQueueRow: View {
             values.append(receipt.outputSummary)
         }
         return values.joined(separator: ", ")
+    }
+
+    private var selectionBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.assistantQueueSelectedItemIDs.contains(row.id) },
+            set: { selected in
+                _ = viewModel.setAssistantQueueSelection(id: row.id, selected: selected)
+            }
+        )
     }
 }
 

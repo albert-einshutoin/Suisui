@@ -80,7 +80,8 @@ final class AssistantQueueStoreTests: XCTestCase {
 
         XCTAssertEqual(snapshot.waitingReviewCount, 1)
         XCTAssertEqual(snapshot.blockedCount, 1)
-        XCTAssertEqual(snapshot.reviewableCount, 2)
+        XCTAssertEqual(snapshot.needsAttentionCount, 5)
+        XCTAssertEqual(snapshot.reviewableCount, snapshot.needsAttentionCount)
         XCTAssertEqual(snapshot.rows.map(\.id), [blocked.id, waiting.id, approvedAutomation.id, approved.id, failed.id, done.id])
         let waitingRow = try XCTUnwrap(snapshot.rows.first { $0.id == waiting.id })
         XCTAssertFalse(waitingRow.title.contains("sk-assistantQueueStoreSecret"))
@@ -111,6 +112,102 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertTrue(failedRow.canRetry)
         XCTAssertFalse(failedRow.canEdit)
         XCTAssertFalse(failedRow.canReject)
+    }
+
+    func testReadModelFiltersAndSortsRowsWithoutHidingAttentionCounts() throws {
+        let blocked = makeItem(id: "queue-filter-blocked", state: .blocked, summary: "Blocked write")
+        let waitingLow = makeItem(id: "queue-filter-waiting-low", state: .waitingReview, summary: "Low review")
+        let approved = try AssistantQueueStateMachine.approve(
+            makeItem(id: "queue-filter-approved", state: .waitingReview, summary: "Approved work"),
+            reviewerID: "local-user"
+        )
+        let failedHigh = makeItem(id: "queue-filter-failed-high", state: .failed, summary: "Failed high")
+        let deferred = makeItem(id: "queue-filter-deferred", state: .deferred, summary: "Deferred work")
+        let done = makeItem(id: "queue-filter-done", state: .done, summary: "Done work")
+        let captured = makeItem(id: "queue-filter-captured", state: .captured, summary: "Captured work")
+        let allItems = [done, deferred, approved, waitingLow, failedHigh, captured, blocked]
+
+        let needsAttention = AssistantQueueReadModel.snapshot(
+            from: allItems,
+            viewFilter: .needsAttention,
+            sort: .needsActionFirst
+        )
+        XCTAssertEqual(
+            needsAttention.rows.map(\.id),
+            [blocked.id, waitingLow.id, captured.id, approved.id, failedHigh.id]
+        )
+        XCTAssertEqual(needsAttention.totalCount, allItems.count)
+        XCTAssertEqual(needsAttention.waitingReviewCount, 1)
+        XCTAssertEqual(needsAttention.blockedCount, 1)
+        XCTAssertEqual(needsAttention.approvedCount, 1)
+        XCTAssertEqual(needsAttention.failedCount, 1)
+        XCTAssertEqual(needsAttention.deferredCount, 1)
+        XCTAssertEqual(needsAttention.doneCount, 1)
+        XCTAssertEqual(needsAttention.needsAttentionCount, 5)
+
+        let failedOnly = AssistantQueueReadModel.snapshot(
+            from: allItems,
+            viewFilter: .failed,
+            sort: .titleAscending
+        )
+        XCTAssertEqual(failedOnly.rows.map(\.id), [failedHigh.id])
+        XCTAssertEqual(failedOnly.totalCount, allItems.count)
+
+        let riskSorted = AssistantQueueReadModel.snapshot(
+            from: allItems,
+            viewFilter: .all,
+            sort: .riskHighFirst
+        )
+        XCTAssertEqual(riskSorted.rows.first?.riskLabel, "Write")
+        XCTAssertEqual(riskSorted.totalCount, allItems.count)
+    }
+
+    func testSQLiteStoreFiltersAttentionStatesBeforeLimit() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteAssistantQueueStore(connection: connection)
+        let oldWaiting = makeItem(id: "queue-old-waiting", state: .waitingReview, summary: "Old waiting review")
+        try store.save(oldWaiting)
+        for index in 0..<80 {
+            try store.save(makeItem(
+                id: "queue-new-done-\(index)",
+                state: .done,
+                summary: "Done \(index)"
+            ))
+        }
+
+        let attentionItems = try store.list(filter: .states(AssistantQueueViewFilter.needsAttention.states, limit: 10))
+
+        XCTAssertEqual(attentionItems.map(\.id), [oldWaiting.id])
+    }
+
+    @MainActor
+    func testProjectBoardViewModelCountsAttentionStatesBeyondTerminalRowLimit() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+        let oldWaiting = makeItem(id: "queue-count-old-waiting", state: .waitingReview, summary: "Old waiting review")
+        try assistantQueueStore.save(oldWaiting)
+        for index in 0..<520 {
+            try assistantQueueStore.save(makeItem(
+                id: "queue-count-done-\(index)",
+                state: .done,
+                summary: "Done \(index)"
+            ))
+        }
+        let viewModel = ProjectBoardViewModel(
+            store: boardStore,
+            assistantQueueStore: assistantQueueStore
+        )
+
+        viewModel.load()
+
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.map(\.id), [oldWaiting.id])
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.totalCount, 521)
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.waitingReviewCount, 1)
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.doneCount, 520)
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.needsAttentionCount, 1)
     }
 
     func testReadModelKeepsFullRedactedSummaryForEditing() throws {
@@ -262,6 +359,7 @@ final class AssistantQueueStoreTests: XCTestCase {
         )
 
         viewModel.load()
+        viewModel.setAssistantQueueViewFilter(.done)
 
         let row = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first { $0.id == item.id })
         XCTAssertEqual(row.latestReceipt?.id, "receipt-project-board")
@@ -296,7 +394,10 @@ final class AssistantQueueStoreTests: XCTestCase {
 
         XCTAssertTrue(viewModel.deferAssistantQueueItem(id: deferred.id))
         XCTAssertEqual(try assistantQueueStore.get(id: deferred.id).state, .deferred)
+        XCTAssertNil(viewModel.assistantQueueSnapshot.rows.first { $0.id == deferred.id })
+        viewModel.setAssistantQueueViewFilter(.deferred)
         XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first { $0.id == deferred.id }?.state, .deferred)
+        viewModel.setAssistantQueueViewFilter(.needsAttention)
 
         XCTAssertFalse(viewModel.approveAssistantQueueItem(id: blocked.id))
         XCTAssertEqual(try assistantQueueStore.get(id: blocked.id).state, .blocked)
@@ -304,7 +405,75 @@ final class AssistantQueueStoreTests: XCTestCase {
 
         XCTAssertTrue(viewModel.rejectAssistantQueueItem(id: blocked.id))
         XCTAssertEqual(try assistantQueueStore.get(id: blocked.id).state, .rejected)
+        XCTAssertNil(viewModel.assistantQueueSnapshot.rows.first { $0.id == blocked.id })
+        viewModel.setAssistantQueueViewFilter(.all)
         XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first { $0.id == blocked.id }?.state, .rejected)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelFiltersSortsAndSafelyBatchCleansAssistantQueueRows() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+        let waiting = makeItem(id: "queue-batch-waiting", state: .waitingReview, summary: "Review waiting")
+        let approved = try AssistantQueueStateMachine.approve(
+            makeItem(id: "queue-batch-approved", state: .waitingReview, summary: "Approved cleanup"),
+            reviewerID: "local-user"
+        )
+        let failed = makeItem(id: "queue-batch-failed", state: .failed, summary: "Failed cleanup")
+        let done = makeItem(id: "queue-batch-done", state: .done, summary: "Done cleanup")
+        try assistantQueueStore.save(waiting)
+        try assistantQueueStore.save(approved)
+        try assistantQueueStore.save(failed)
+        try assistantQueueStore.save(done)
+        let viewModel = ProjectBoardViewModel(
+            store: boardStore,
+            assistantQueueStore: assistantQueueStore
+        )
+
+        viewModel.load()
+
+        XCTAssertEqual(viewModel.assistantQueueViewFilter, .needsAttention)
+        XCTAssertEqual(viewModel.assistantQueueSort, .needsActionFirst)
+        XCTAssertEqual(
+            Set(viewModel.assistantQueueSnapshot.rows.map(\.id)),
+            Set([waiting.id, approved.id, failed.id])
+        )
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.totalCount, 4)
+
+        viewModel.setAssistantQueueViewFilter(.done)
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.map(\.id), [done.id])
+
+        viewModel.setAssistantQueueViewFilter(.all)
+        viewModel.setAssistantQueueSort(.titleAscending)
+        XCTAssertEqual(
+            viewModel.assistantQueueSnapshot.rows.map(\.title),
+            ["Approved cleanup", "Done cleanup", "Failed cleanup", "Review waiting"]
+        )
+
+        XCTAssertTrue(viewModel.toggleAssistantQueueSelection(id: waiting.id))
+        XCTAssertTrue(viewModel.toggleAssistantQueueSelection(id: approved.id))
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, Set([waiting.id, approved.id]))
+        XCTAssertTrue(viewModel.setAssistantQueueSelection(id: waiting.id, selected: true))
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, Set([waiting.id, approved.id]))
+        XCTAssertTrue(viewModel.setAssistantQueueSelection(id: waiting.id, selected: false))
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, Set([approved.id]))
+        XCTAssertTrue(viewModel.setAssistantQueueSelection(id: waiting.id, selected: true))
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, Set([waiting.id, approved.id]))
+        XCTAssertTrue(viewModel.deferSelectedAssistantQueueItems())
+        XCTAssertEqual(try assistantQueueStore.get(id: waiting.id).state, .deferred)
+        XCTAssertEqual(try assistantQueueStore.get(id: approved.id).state, .deferred)
+        XCTAssertTrue(viewModel.assistantQueueSelectedItemIDs.isEmpty)
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Deferred 2 Assistant Queue items.")
+
+        viewModel.setAssistantQueueViewFilter(.all)
+        XCTAssertTrue(viewModel.toggleAssistantQueueSelection(id: failed.id))
+        XCTAssertTrue(viewModel.toggleAssistantQueueSelection(id: done.id))
+        XCTAssertFalse(viewModel.rejectSelectedAssistantQueueItems())
+        XCTAssertEqual(try assistantQueueStore.get(id: failed.id).state, .failed)
+        XCTAssertEqual(try assistantQueueStore.get(id: done.id).state, .done)
+        XCTAssertEqual(viewModel.errorMessage, "No selected Assistant Queue items can be rejected.")
     }
 
     @MainActor
@@ -426,6 +595,8 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first { $0.id == approved.id }?.canRun, true)
         XCTAssertTrue(viewModel.runAssistantQueueItem(id: approved.id))
         XCTAssertEqual(try assistantQueueStore.get(id: approved.id).state, .done)
+        XCTAssertNil(viewModel.assistantQueueSnapshot.rows.first { $0.id == approved.id })
+        viewModel.setAssistantQueueViewFilter(.done)
         XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first { $0.id == approved.id }?.state, .done)
         XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first { $0.id == approved.id }?.latestReceipt?.status, .succeeded)
         XCTAssertEqual(receiptStore.receipts.first?.assistantQueueItemID, approved.id)
