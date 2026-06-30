@@ -95,6 +95,48 @@ final class AssistantQueueExecutionTests: XCTestCase {
         XCTAssertEqual(result.receipt.model, ExecutionReceiptModel(provider: "openai", name: "gpt-test"))
     }
 
+    func testCoordinatorCopiesMeasuredProviderUsageAndBillingContextIntoReceipt() throws {
+        let queueStore = try makeQueueStore()
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let preview = AssistantQueueCostPreview.userProviderBilled(
+            provider: "openai.chat_completions",
+            modelName: "gpt-5.5",
+            observedUsage: ExecutionReceiptUsage(inputTokens: 900, outputTokens: 120, isEstimated: false)
+        )
+        let approved = try AssistantQueueStateMachine.approve(
+            makeActionPlanItem(costPreview: preview),
+            reviewerID: "local-user"
+        )
+        try queueStore.save(approved)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created Launch checklist")
+            }
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-queue-measured-provider-usage" },
+            now: { Date(timeIntervalSince1970: 130) }
+        )
+
+        let result = try coordinator.execute(id: approved.id)
+
+        XCTAssertEqual(result.receipt.usage.state, .measured)
+        XCTAssertEqual(result.receipt.usage.inputTokens, 900)
+        XCTAssertEqual(result.receipt.usage.outputTokens, 120)
+        XCTAssertNil(result.receipt.usage.estimatedCostCents)
+        XCTAssertEqual(result.receipt.model, ExecutionReceiptModel(provider: "openai.chat_completions", name: "gpt-5.5"))
+        XCTAssertTrue(result.receipt.outputSummary.contains("provider-billed"))
+        XCTAssertTrue(result.receipt.outputSummary.contains("SoloPM managed charge unavailable"))
+    }
+
     func testCoordinatorRunsApprovedAutomationRequestTaskMutationThroughActionExecutor() throws {
         let queueStore = try makeQueueStore()
         let receiptStore = InMemoryExecutionReceiptStore()

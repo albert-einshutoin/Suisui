@@ -229,6 +229,85 @@ final class ChatCompletionsCompatibleProviderTests: XCTestCase {
         XCTAssertTrue(response.validationResult.isValid)
     }
 
+    func testProviderCarriesMeasuredUsageAndResponseModelIntoPlanningResponse() async throws {
+        let provider = ChatCompletionsCompatibleProvider(
+            configuration: .groq(model: "llama-3.3-70b-versatile"),
+            secretStore: InMemorySecretStore(values: [.groqAPIKey: "gsk-test"]),
+            httpClient: StubHTTPDataClient(
+                data: Data(
+                    """
+                    {
+                      "id": "chatcmpl-usage",
+                      "object": "chat.completion",
+                      "created": 0,
+                      "model": "llama-3.3-70b-versatile",
+                      "choices": [
+                        {
+                          "index": 0,
+                          "message": {
+                            "role": "assistant",
+                            "content": "{\\"id\\":\\"plan-usage\\",\\"userInput\\":\\"Create a task\\",\\"summary\\":\\"Create task\\",\\"riskLevel\\":\\"write\\",\\"requiresApproval\\":true,\\"actions\\":[{\\"id\\":\\"action-1\\",\\"tool\\":\\"task.create\\"}]}"
+                          },
+                          "finish_reason": "stop"
+                        }
+                      ],
+                      "usage": {
+                        "prompt_tokens": 321,
+                        "completion_tokens": 123,
+                        "total_tokens": 444
+                      }
+                    }
+                    """.utf8
+                ),
+                statusCode: 200
+            )
+        )
+
+        let response = try await provider.generatePlan(for: PlanningRequest(userInput: "Create a task"))
+
+        XCTAssertEqual(response.model, ExecutionReceiptModel(provider: "groq.chat", name: "llama-3.3-70b-versatile"))
+        XCTAssertEqual(response.usage.state, .measured)
+        XCTAssertEqual(response.usage.inputTokens, 321)
+        XCTAssertEqual(response.usage.outputTokens, 123)
+        XCTAssertNil(response.usage.estimatedCostCents)
+    }
+
+    func testProviderRedactsSecretsAndLocalPathsFromResponseModelMetadata() async throws {
+        let provider = ChatCompletionsCompatibleProvider(
+            configuration: .ollama(model: "/Users/alice/private/fallback.gguf"),
+            secretStore: InMemorySecretStore(),
+            httpClient: StubHTTPDataClient(
+                data: Data(
+                    """
+                    {
+                      "model": "/Users/alice/private/sk-modelSecret1234567890/model.gguf",
+                      "choices": [
+                        {
+                          "message": {
+                            "role": "assistant",
+                            "content": "{\\"id\\":\\"plan-redacted\\",\\"userInput\\":\\"Create a task\\",\\"summary\\":\\"Create task\\",\\"riskLevel\\":\\"write\\",\\"requiresApproval\\":true,\\"actions\\":[{\\"id\\":\\"action-1\\",\\"tool\\":\\"task.create\\"}]}"
+                          }
+                        }
+                      ],
+                      "usage": {
+                        "prompt_tokens": 5,
+                        "completion_tokens": 7
+                      }
+                    }
+                    """.utf8
+                ),
+                statusCode: 200
+            )
+        )
+
+        let response = try await provider.generatePlan(for: PlanningRequest(userInput: "Create a task"))
+
+        let modelName = try XCTUnwrap(response.model?.name)
+        XCTAssertFalse(modelName.contains("/Users/alice"))
+        XCTAssertFalse(modelName.contains("modelSecret"))
+        XCTAssertTrue(modelName.contains("[REDACTED"))
+    }
+
     func testProviderMapsRateLimitStatus() async throws {
         let store = InMemorySecretStore(values: [.openRouterAPIKey: "sk-router"])
         let provider = ChatCompletionsCompatibleProvider(

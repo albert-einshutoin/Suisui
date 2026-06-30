@@ -1050,7 +1050,10 @@ public enum ExecutionReceiptFactory {
             finishedAt: finishedAt,
             status: executionReceiptStatus(for: session.executionStatus),
             inputPreview: redactor.redact(inputPreview),
-            outputSummary: redactor.redact(outcomeSummary(for: actions)),
+            outputSummary: redactor.redact(assistantQueueOutputSummary(
+                base: outcomeSummary(for: actions),
+                costPreview: item.costPreview
+            )),
             model: model,
             primaryToolName: actions.first?.toolName,
             usage: usage,
@@ -1098,7 +1101,10 @@ public enum ExecutionReceiptFactory {
             finishedAt: createdAt,
             status: status,
             inputPreview: redactor.redact(inputPreview),
-            outputSummary: redactor.redact(outputSummary),
+            outputSummary: redactor.redact(assistantQueueOutputSummary(
+                base: outputSummary,
+                costPreview: item.costPreview
+            )),
             model: model,
             usage: usage,
             references: [
@@ -1146,6 +1152,23 @@ public enum ExecutionReceiptFactory {
             return "\(failed) failed, \(succeeded) succeeded, \(skipped) skipped."
         }
         return "\(succeeded) succeeded, \(skipped) skipped."
+    }
+
+    private static func assistantQueueOutputSummary(
+        base: String,
+        costPreview: AssistantQueueCostPreview?
+    ) -> String {
+        guard let costPreview else {
+            return base
+        }
+        switch costPreview.billingMode {
+        case .userProviderBilled:
+            return "\(base) provider-billed usage recorded; SoloPM managed charge unavailable."
+        case .localOnly:
+            return "\(base) Local-only execution; SoloPM managed charge unavailable."
+        case .soloPMManaged:
+            return base
+        }
     }
 
     private static let documentDeliverablePrepareToolName = "document.deliverable.prepare"

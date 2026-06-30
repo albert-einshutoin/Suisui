@@ -145,6 +145,37 @@ public struct ChatCompletionsOutputTextExtractor: Sendable {
     }
 }
 
+public struct ChatCompletionsResponseMetadataExtractor: Sendable {
+    public init() {}
+
+    public func extractMetadata(
+        from data: Data,
+        providerID: String,
+        fallbackModelName: String
+    ) -> PlanningResponseMetadata {
+        guard let response = try? JSONDecoder().decode(ChatCompletionsResponseBody.self, from: data) else {
+            return PlanningResponseMetadata(
+                model: redactedModel(providerID: providerID, name: fallbackModelName),
+                usage: .unknown
+            )
+        }
+
+        return PlanningResponseMetadata(
+            model: redactedModel(providerID: providerID, name: response.model ?? fallbackModelName),
+            usage: response.usage?.executionReceiptUsage ?? .unknown
+        )
+    }
+
+    private func redactedModel(providerID: String, name: String) -> ExecutionReceiptModel {
+        let provider = AssistantQueueCostPreview.redactedMetadataText(providerID)
+        let model = AssistantQueueCostPreview.redactedMetadataText(name)
+        return ExecutionReceiptModel(
+            provider: provider.isEmpty ? "unknown" : provider,
+            name: model.isEmpty ? "unknown" : model
+        )
+    }
+}
+
 public struct ChatCompletionsCompatibleProvider: LLMProvider {
     public var providerID: String {
         configuration.providerID
@@ -156,6 +187,7 @@ public struct ChatCompletionsCompatibleProvider: LLMProvider {
     private let promptBuilder: PlanningPromptBuilder?
     private let requestBuilder: ChatCompletionsCompatibleRequestBuilder
     private let outputTextExtractor: ChatCompletionsOutputTextExtractor
+    private let metadataExtractor: ChatCompletionsResponseMetadataExtractor
     private let responseParser: ActionPlanResponseParser
 
     public init(
@@ -164,6 +196,7 @@ public struct ChatCompletionsCompatibleProvider: LLMProvider {
         httpClient: any HTTPDataClient = URLSessionHTTPDataClient(),
         promptBuilder: PlanningPromptBuilder? = nil,
         outputTextExtractor: ChatCompletionsOutputTextExtractor = ChatCompletionsOutputTextExtractor(),
+        metadataExtractor: ChatCompletionsResponseMetadataExtractor = ChatCompletionsResponseMetadataExtractor(),
         responseParser: ActionPlanResponseParser = ActionPlanResponseParser()
     ) {
         self.configuration = configuration
@@ -172,6 +205,7 @@ public struct ChatCompletionsCompatibleProvider: LLMProvider {
         self.promptBuilder = promptBuilder
         self.requestBuilder = ChatCompletionsCompatibleRequestBuilder(configuration: configuration)
         self.outputTextExtractor = outputTextExtractor
+        self.metadataExtractor = metadataExtractor
         self.responseParser = responseParser
     }
 
@@ -195,7 +229,17 @@ public struct ChatCompletionsCompatibleProvider: LLMProvider {
         }
 
         let rawContent = try outputTextExtractor.extractText(from: data)
-        return responseParser.parse(rawContent: rawContent, providerID: providerID)
+        let metadata = metadataExtractor.extractMetadata(
+            from: data,
+            providerID: providerID,
+            fallbackModelName: configuration.model
+        )
+        return responseParser.parse(
+            rawContent: rawContent,
+            providerID: providerID,
+            model: metadata.model,
+            usage: metadata.usage
+        )
     }
 
     private func readAPIKey() throws -> String? {
@@ -238,9 +282,42 @@ private struct ChatCompletionsMessage: Codable {
 }
 
 private struct ChatCompletionsResponseBody: Decodable {
+    var model: String?
     var choices: [ChatCompletionsChoice]
+    var usage: ChatCompletionsUsage?
 }
 
 private struct ChatCompletionsChoice: Decodable {
     var message: ChatCompletionsMessage
+}
+
+private struct ChatCompletionsUsage: Decodable {
+    var promptTokens: Int?
+    var completionTokens: Int?
+    var inputTokens: Int?
+    var outputTokens: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case promptTokens = "prompt_tokens"
+        case completionTokens = "completion_tokens"
+        case inputTokens = "input_tokens"
+        case outputTokens = "output_tokens"
+    }
+
+    var executionReceiptUsage: ExecutionReceiptUsage {
+        let input = Self.nonNegative(promptTokens ?? inputTokens)
+        let output = Self.nonNegative(completionTokens ?? outputTokens)
+        guard input != nil || output != nil else {
+            return .unknown
+        }
+        return ExecutionReceiptUsage(
+            inputTokens: input,
+            outputTokens: output,
+            isEstimated: false
+        )
+    }
+
+    private static func nonNegative(_ value: Int?) -> Int? {
+        value.map { max(0, $0) }
+    }
 }

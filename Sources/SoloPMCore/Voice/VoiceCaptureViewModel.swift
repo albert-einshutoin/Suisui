@@ -589,8 +589,35 @@ public final class VoiceCaptureViewModel: ObservableObject {
             actionPlan: actionPlan,
             sourceTranscript: routedCommand.originalTranscript,
             interpretationSummary: routedCommand.interpretationSummary,
-            reason: "Voice planning draft needs review."
+            reason: "Voice planning draft needs review.",
+            costPreview: assistantQueueCostPreview(for: response)
         )
+    }
+
+    private func assistantQueueCostPreview(for response: PlanningResponse) -> AssistantQueueCostPreview {
+        let observedUsage = response.usage.state == .measured ? response.usage : nil
+        guard response.model != nil || observedUsage != nil else {
+            return .localOnly()
+        }
+
+        let model = response.model ?? ExecutionReceiptModel(provider: response.providerID, name: "unknown")
+        if isLocalProvider(response.providerID) {
+            return .localOnly(model: model, observedUsage: observedUsage)
+        }
+
+        // Provider planning usage is already incurred before local execution.
+        // Store it as BYOK/provider-billed telemetry so receipts can audit token
+        // usage without treating it as a SoloPM-managed pre-run charge.
+        return .userProviderBilled(
+            provider: model.provider,
+            modelName: model.name,
+            observedUsage: observedUsage
+        )
+    }
+
+    private func isLocalProvider(_ providerID: String) -> Bool {
+        let normalized = providerID.lowercased()
+        return normalized.contains("ollama") || normalized.contains("local")
     }
 }
 
