@@ -560,6 +560,149 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertFalse(displayedText.contains("--body-file"))
     }
 
+    func testDevelopmentMergeGateReceiptKeepsPullRequestEvidenceWithoutRawCommands() throws {
+        let branchName = "feature/solopm-7-merge-gate"
+        let baseBranch = "feature/phase14-product-completion"
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        var session = ReviewSession(
+            id: "review-development-merge-gate",
+            plan: ActionPlan(
+                id: "plan-development-merge-gate",
+                userInput: "Check and merge the reviewed PR.",
+                summary: "Review CI and merge the pull request.",
+                actions: [
+                    PlanAction(
+                        id: "action-development-review-gate",
+                        tool: .developmentReviewPullRequestGate,
+                        arguments: [
+                            "projectId": .number(7),
+                            "pullRequestURL": .string(pullRequestURL),
+                            "branchName": .string(branchName),
+                            "baseBranch": .string(baseBranch)
+                        ],
+                        riskLevel: .write
+                    ),
+                    PlanAction(
+                        id: "action-development-merge",
+                        tool: .developmentMergePullRequest,
+                        arguments: [
+                            "projectId": .number(7),
+                            "pullRequestURL": .string(pullRequestURL),
+                            "branchName": .string(branchName),
+                            "baseBranch": .string(baseBranch)
+                        ],
+                        riskLevel: .write
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+        )
+        try session.approve(token: ApprovalToken(id: "approval-development-merge", sessionID: session.id))
+        session.executionStatus = .completed
+        session.markAction(
+            id: "action-development-review-gate",
+            status: .succeeded,
+            result: ToolResult(
+                tool: .developmentReviewPullRequestGate,
+                status: .succeeded,
+                summary: "Pull request review, CI, and mergeability gates passed.",
+                output: [
+                    "projectId": .number(7),
+                    "pullRequestURL": .string(pullRequestURL),
+                    "branchName": .string(branchName),
+                    "baseBranch": .string(baseBranch),
+                    "readyToMerge": .bool(true),
+                    "statusCheckCount": .number(2)
+                ]
+            )
+        )
+        session.markAction(
+            id: "action-development-merge",
+            status: .succeeded,
+            result: ToolResult(
+                tool: .developmentMergePullRequest,
+                status: .succeeded,
+                summary: "Merged pull request \(pullRequestURL) token=merge-secret",
+                output: [
+                    "projectId": .number(7),
+                    "pullRequestURL": .string(pullRequestURL),
+                    "branchName": .string(branchName),
+                    "baseBranch": .string(baseBranch),
+                    "readyToMerge": .bool(true),
+                    "merged": .bool(true),
+                    "deletedRemoteBranch": .bool(true),
+                    "mergeSummary": .string("Merged pull request #116 token=merge-secret")
+                ]
+            )
+        )
+
+        let receipt = ExecutionReceiptFactory.makeReviewReceipt(
+            session: session,
+            runID: "run-development-merge-gate",
+            model: nil,
+            usage: .unavailable,
+            startedAt: Date(timeIntervalSince1970: 43),
+            finishedAt: Date(timeIntervalSince1970: 44)
+        )
+        let displayedText = [
+            receipt.outputSummary,
+            receipt.actions.map { $0.outputSummary ?? "" }.joined(separator: " "),
+            ExecutionReceiptHistoryReadModel.snapshot(from: [receipt]).rows.first?.referenceSummary ?? ""
+        ].joined(separator: " ")
+
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBranch, id: branchName)))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .pullRequest, id: pullRequestURL)))
+        XCTAssertTrue(receipt.actions[0].outputSummary?.contains("2 status check(s) evaluated") == true)
+        XCTAssertTrue(receipt.actions[1].outputSummary?.contains("Merged pull request") == true)
+        XCTAssertTrue(receipt.actions[1].outputSummary?.contains("Remote feature branch deletion requested") == true)
+        XCTAssertFalse(displayedText.contains("token=merge-secret"))
+        XCTAssertFalse(displayedText.contains("gh pr merge"))
+        XCTAssertFalse(displayedText.contains("statusCheckRollup"))
+    }
+
+    func testFailedDevelopmentMergeReceiptDistinguishesBlockedGateFromFailedMergeCommand() throws {
+        let branchName = "feature/solopm-7-merge-gate"
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        let blocked = developmentMergeReceipt(
+            actionID: "action-development-merge-blocked",
+            branchName: branchName,
+            pullRequestURL: pullRequestURL,
+            result: ToolResult(
+                tool: .developmentMergePullRequest,
+                status: .failed,
+                summary: "Pull request merge blocked: status checks are missing.",
+                output: [
+                    "projectId": .number(7),
+                    "pullRequestURL": .string(pullRequestURL),
+                    "branchName": .string(branchName),
+                    "readyToMerge": .bool(false)
+                ]
+            )
+        )
+        let failedCommand = developmentMergeReceipt(
+            actionID: "action-development-merge-failed",
+            branchName: branchName,
+            pullRequestURL: pullRequestURL,
+            result: ToolResult(
+                tool: .developmentMergePullRequest,
+                status: .failed,
+                summary: "GitHub CLI pull request merge failed with exit code 1. stderr: token=merge-secret",
+                output: [
+                    "projectId": .number(7),
+                    "pullRequestURL": .string(pullRequestURL),
+                    "branchName": .string(branchName),
+                    "readyToMerge": .bool(true),
+                    "merged": .bool(false)
+                ]
+            )
+        )
+
+        XCTAssertTrue(blocked.actions.first?.outputSummary?.contains("Pull request merge did not run") == true)
+        XCTAssertTrue(failedCommand.actions.first?.outputSummary?.contains("Pull request merge failed") == true)
+        XCTAssertFalse(failedCommand.actions.first?.outputSummary?.contains("merge-secret") == true)
+    }
+
     func testFailedDevelopmentPushReceiptDoesNotClaimBranchWasPushed() throws {
         let branchName = "feature/solopm-7-publish-gate"
         var session = ReviewSession(
@@ -1474,5 +1617,47 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertFalse(ExecutionReceiptSearchFilter(query: referenceID).matches(receipt))
         XCTAssertFalse(ExecutionReceiptSearchFilter(query: sourceURL).matches(receipt))
         XCTAssertFalse(ExecutionReceiptSearchFilter(query: "action-search-safe").matches(receipt))
+    }
+
+    private func developmentMergeReceipt(
+        actionID: String,
+        branchName: String,
+        pullRequestURL: String,
+        result: ToolResult
+    ) -> ExecutionReceipt {
+        var session = ReviewSession(
+            id: "review-\(actionID)",
+            plan: ActionPlan(
+                id: "plan-\(actionID)",
+                userInput: "Merge the reviewed PR.",
+                summary: "Merge the pull request.",
+                actions: [
+                    PlanAction(
+                        id: actionID,
+                        tool: .developmentMergePullRequest,
+                        arguments: [
+                            "projectId": .number(7),
+                            "pullRequestURL": .string(pullRequestURL),
+                            "branchName": .string(branchName),
+                            "baseBranch": .string("feature/phase14-product-completion")
+                        ],
+                        riskLevel: .write
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+        )
+        try? session.approve(token: ApprovalToken(id: "approval-\(actionID)", sessionID: session.id))
+        session.executionStatus = .failed
+        session.markAction(id: actionID, status: .failed, result: result)
+        return ExecutionReceiptFactory.makeReviewReceipt(
+            session: session,
+            runID: "run-\(actionID)",
+            model: nil,
+            usage: .unavailable,
+            startedAt: Date(timeIntervalSince1970: 50),
+            finishedAt: Date(timeIntervalSince1970: 51)
+        )
     }
 }
