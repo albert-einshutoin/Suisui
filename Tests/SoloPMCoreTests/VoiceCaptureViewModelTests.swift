@@ -30,6 +30,11 @@ final class VoiceCaptureViewModelTests: XCTestCase {
 
         XCTAssertEqual(viewModel.phase, .reviewReady)
         XCTAssertEqual(viewModel.planningResponse?.actionPlan?.id, "plan-1")
+        let expectedCapabilities: [AssistantQueueRequiredCapability] = [.tool(.taskCreate), .providerExecutionApproval]
+        XCTAssertEqual(viewModel.assistantQueueItem?.state, .waitingReview)
+        XCTAssertEqual(viewModel.assistantQueueItem?.sourceTranscript, "Create a task")
+        XCTAssertEqual(viewModel.assistantQueueItem?.redactedSummary, "Create task")
+        XCTAssertEqual(viewModel.assistantQueueItem?.requiredCapabilities, expectedCapabilities)
         XCTAssertEqual(logger.recordedEvents.map(\.status), [.started, .succeeded])
     }
 
@@ -143,6 +148,79 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertTrue(provider.requests[0].userInput.contains("project: SoloPM"))
     }
 
+    func testGeneratePlanQueuesDangerousActionPlanAsBlockedBeforeReview() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-danger",
+                userInput: "Create a task",
+                summary: "Create risky project files",
+                actions: [PlanAction(id: "action-danger", tool: .filesystemCreateMarkdownFile, riskLevel: .danger)],
+                riskLevel: .danger,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [
+                ActionPlanValidationIssue(
+                    severity: .blocking,
+                    path: "actions[0].riskLevel",
+                    message: "Dangerous action plans are blocked."
+                )
+            ])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("Create a task")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        if case .failed(let message) = viewModel.phase {
+            XCTAssertEqual(message, "ActionPlan validation failed.")
+        } else {
+            XCTFail("Expected dangerous plan validation failure.")
+        }
+        XCTAssertEqual(viewModel.assistantQueueItem?.state, .blocked)
+        XCTAssertEqual(viewModel.assistantQueueItem?.blockingReason, "Dangerous action plans cannot be approved from Assistant Queue.")
+    }
+
+    func testAssistantQueueItemCanBeApprovedDeferredAndRejectedWithoutExecutionToken() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-queue",
+                userInput: "Create a task",
+                summary: "Create task",
+                actions: [PlanAction(id: "action-1", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("Create a task")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertTrue(viewModel.approveAssistantQueueItem(reviewerID: "local-user"))
+        XCTAssertEqual(viewModel.assistantQueueItem?.state, .approved)
+        XCTAssertNil(viewModel.assistantQueueItem?.approval?.executionTokenID)
+
+        viewModel.deferAssistantQueueItem()
+        XCTAssertEqual(viewModel.assistantQueueItem?.state, .deferred)
+
+        viewModel.rejectAssistantQueueItem()
+        XCTAssertEqual(viewModel.assistantQueueItem?.state, .rejected)
+        XCTAssertNil(viewModel.assistantQueueItem?.approval)
+    }
+
     func testRecordingDuringClarificationUsesTranscriptAsAnswerWithoutReplacingOriginalDraft() async {
         let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
             providerID: "fake",
@@ -226,6 +304,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         viewModel.updateDraftText("いい感じにして")
 
         XCTAssertNil(viewModel.planningResponse)
+        XCTAssertNil(viewModel.assistantQueueItem)
         XCTAssertEqual(viewModel.routingResult?.intent, .clarify)
         XCTAssertEqual(viewModel.phase, .idle)
     }

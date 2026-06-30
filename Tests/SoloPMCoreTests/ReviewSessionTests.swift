@@ -35,6 +35,19 @@ final class ReviewSessionTests: XCTestCase {
         XCTAssertFalse(session.canExecute)
     }
 
+    func testEditingApprovedWriteActionInvalidatesApprovalBeforeExecution() throws {
+        let plan = ActionPlan.reviewFixture(actions: [
+            PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Draft")])
+        ])
+        var session = ReviewSession(plan: plan)
+        try session.approve(token: ApprovalToken(id: "approval-1", sessionID: session.id))
+
+        session.updateStringArgument(id: "task", key: "title", value: "Edited")
+
+        XCTAssertEqual(session.approvalState, .pending)
+        XCTAssertFalse(session.canExecute)
+    }
+
     func testReviewActionArgumentSummaryTruncatesLongValuesAndExtraFields() throws {
         let plan = ActionPlan.reviewFixture(actions: [
             PlanAction(
