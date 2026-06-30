@@ -2,6 +2,9 @@ import SoloPMCore
 import SoloPMGoogleCalendarRuntime
 import SwiftUI
 import UniformTypeIdentifiers
+#if canImport(AuthenticationServices)
+import AuthenticationServices
+#endif
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -74,6 +77,7 @@ struct SoloPM: App {
                 externalMCPViewModel: AppRuntimeFactory.makeExternalMCPSettingsViewModel(),
                 syncViewModel: AppRuntimeFactory.makeSyncSettingsViewModel(),
                 googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
+                googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
                 appearancePreference: $appearancePreference,
                 languagePreference: $languagePreference
             )
@@ -253,6 +257,7 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
                     externalMCPViewModel: AppRuntimeFactory.makeExternalMCPSettingsViewModel(),
                     syncViewModel: AppRuntimeFactory.makeSyncSettingsViewModel(),
                     googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
+                    googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
                     appearancePreference: .constant(SoloPMAppearancePreference.environmentOverride ?? .system),
                     languagePreference: .constant(AppLanguagePreference.environmentOverride ?? .system),
                     initialTab: selectedTab
@@ -1564,6 +1569,7 @@ private struct SettingsView: View {
     let watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot
     let integrationPermissionSnapshot: PermissionSnapshot
     let googleCalendarStatusProvider: () -> GoogleCalendarRuntimeSyncStatus
+    let googleCalendarOAuthConnector: (any GoogleCalendarOAuthConnecting)?
     @StateObject private var settingsViewModel: AppSettingsViewModel
     @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
     @StateObject private var externalMCPViewModel: ExternalMCPSettingsViewModel
@@ -1575,6 +1581,7 @@ private struct SettingsView: View {
     @State private var selectedTab: SettingsTab
     @State private var googleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus?
     @State private var googleCalendarSetupMessage: String?
+    @State private var isGoogleCalendarOAuthAuthorizationInProgress = false
 
     init(
         settingsViewModel: AppSettingsViewModel,
@@ -1584,6 +1591,7 @@ private struct SettingsView: View {
         externalMCPViewModel: ExternalMCPSettingsViewModel,
         syncViewModel: SyncSettingsViewModel,
         googleCalendarStatusProvider: @escaping () -> GoogleCalendarRuntimeSyncStatus,
+        googleCalendarOAuthConnector: (any GoogleCalendarOAuthConnecting)?,
         appearancePreference: Binding<SoloPMAppearancePreference>,
         languagePreference: Binding<AppLanguagePreference>,
         initialTab: SettingsTab = .overview
@@ -1591,6 +1599,7 @@ private struct SettingsView: View {
         self.watcherDiagnosticsSnapshot = watcherDiagnosticsSnapshot
         self.integrationPermissionSnapshot = integrationPermissionSnapshot
         self.googleCalendarStatusProvider = googleCalendarStatusProvider
+        self.googleCalendarOAuthConnector = googleCalendarOAuthConnector
         _settingsViewModel = StateObject(wrappedValue: settingsViewModel)
         _launchAtLoginViewModel = StateObject(wrappedValue: launchAtLoginViewModel)
         _externalMCPViewModel = StateObject(wrappedValue: externalMCPViewModel)
@@ -1986,11 +1995,12 @@ private struct SettingsView: View {
                     statusActionLabel: googleCalendarSettingsReadinessRow.statusCheckActionLabel,
                     onStatusAction: refreshGoogleCalendarSettingsStatus
                 )
-                Button("Connect with OAuth authorization") {
-                    googleCalendarSetupMessage = "OAuth authorization opens in the system browser with PKCE. The connect flow is not available in this build yet."
+                Button(localizedSettingsDisplay(googleCalendarOAuthActionLabel)) {
+                    startGoogleCalendarOAuthAuthorization()
                 }
+                .disabled(isGoogleCalendarOAuthAuthorizationInProgress || googleCalendarOAuthConnector == nil)
                 .accessibilityIdentifier("settings-google-calendar-oauth-setup")
-                .accessibilityHint("Explains the Google Calendar OAuth setup flow until browser authorization is available.")
+                .accessibilityHint("Opens Google Calendar OAuth authorization with PKCE. Tokens stay in Keychain.")
                 if let googleCalendarSetupMessage {
                     Label(localizedSettingsDisplay(googleCalendarSetupMessage), systemImage: "info.circle")
                         .font(.caption)
@@ -2626,9 +2636,60 @@ private struct SettingsView: View {
         }
     }
 
+    private var googleCalendarOAuthActionLabel: String {
+        switch googleCalendarSyncStatus?.state {
+        case .missingRequiredScope, .tokenExpiredWithoutRefresh:
+            return "Reconnect with OAuth authorization"
+        default:
+            return "Connect with OAuth authorization"
+        }
+    }
+
     private func refreshGoogleCalendarSettingsStatus() {
         googleCalendarSetupMessage = nil
         googleCalendarSyncStatus = googleCalendarStatusProvider()
+    }
+
+    private func startGoogleCalendarOAuthAuthorization() {
+        guard let googleCalendarOAuthConnector else {
+            googleCalendarSetupMessage = "Google Calendar OAuth authorization is not available in this build."
+            return
+        }
+
+        isGoogleCalendarOAuthAuthorizationInProgress = true
+        googleCalendarSetupMessage = "OAuth authorization opens in the system browser with PKCE. Tokens stay in Keychain before calendar writes are enabled."
+        googleCalendarOAuthConnector.startAuthorization { result in
+            isGoogleCalendarOAuthAuthorizationInProgress = false
+            switch result {
+            case .success:
+                googleCalendarSetupMessage = "Google Calendar OAuth authorization completed. Check Status to refresh readiness."
+                googleCalendarSyncStatus = googleCalendarStatusProvider()
+            case .failure(let error):
+                googleCalendarSetupMessage = googleCalendarOAuthFailureMessage(from: error)
+            }
+        }
+    }
+
+    private func googleCalendarOAuthFailureMessage(from error: Error) -> String {
+        if let authorizationError = error as? GoogleCalendarOAuthAuthorizationError {
+            switch authorizationError {
+            case .missingClientID:
+                return "Google Calendar OAuth client ID is not configured. Set SOLOPM_GOOGLE_CALENDAR_OAUTH_CLIENT_ID or SoloPMGoogleCalendarOAuthClientID before connecting."
+            case .callbackError:
+                return "Google Calendar OAuth authorization failed."
+            default:
+                break
+            }
+        }
+        if let localizedError = error as? LocalizedError,
+           let description = localizedError.errorDescription,
+           description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            return description
+        }
+        return UserFacingErrorMessageSanitizer.message(
+            from: error,
+            fallback: "Google Calendar OAuth authorization failed."
+        )
     }
 
     private var calendarOverviewStatusLabel: String {
@@ -3644,6 +3705,8 @@ private struct SettingsStatusTile: View {
 }
 
 private enum AppRuntimeFactory {
+    private static let googleCalendarOAuthRedirectURI = URL(string: "solopm://oauth/google-calendar")!
+
     private static let sharedSecretStore: any SecretStore = {
         if ProcessInfo.processInfo.environment["SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE"] == "1" {
             return LaunchVerificationSecretStore()
@@ -3788,6 +3851,20 @@ private enum AppRuntimeFactory {
                 ))
             )
         }
+    }
+
+    @MainActor
+    static func makeGoogleCalendarOAuthConnector() -> (any GoogleCalendarOAuthConnecting)? {
+#if canImport(AuthenticationServices) && canImport(AppKit)
+        GoogleCalendarOAuthAuthenticationSessionController(
+            callbackURLScheme: googleCalendarOAuthRedirectURI.scheme,
+            serviceFactory: {
+                try makeGoogleCalendarOAuthAuthorizationService()
+            }
+        )
+#else
+        nil
+#endif
     }
 
     static func makeIntegrationPermissionSnapshot() -> PermissionSnapshot {
@@ -4049,6 +4126,37 @@ private enum AppRuntimeFactory {
         )
     }
 
+    private static func makeGoogleCalendarOAuthAuthorizationService() throws -> GoogleCalendarOAuthAuthorizationService {
+        let connection = try migratedConnection()
+        let secretStore = makeSecretStore()
+        let credentialStore = GoogleCalendarOAuthCredentialStore(
+            secretStore: secretStore,
+            metadataStore: SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        )
+        return GoogleCalendarOAuthAuthorizationService(
+            configuration: GoogleCalendarOAuthAuthorizationConfiguration(
+                clientID: googleCalendarOAuthClientID() ?? "",
+                redirectURI: googleCalendarOAuthRedirectURI.absoluteString
+            ),
+            httpClient: URLSessionSynchronousHTTPDataClient(),
+            credentialStore: credentialStore
+        )
+    }
+
+    private static func googleCalendarOAuthClientID() -> String? {
+        for key in ["SOLOPM_GOOGLE_CALENDAR_OAUTH_CLIENT_ID", "GOOGLE_CALENDAR_OAUTH_CLIENT_ID"] {
+            if let value = ProcessInfo.processInfo.environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+               value.isEmpty == false {
+                return value
+            }
+        }
+        if let value = Bundle.main.object(forInfoDictionaryKey: "SoloPMGoogleCalendarOAuthClientID") as? String {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        return nil
+    }
+
     private static func makeAuditLogger() throws -> any AuditLogger {
         RedactingAuditLogger(base: try SQLiteAuditLogger(path: applicationDatabaseURL().path))
     }
@@ -4110,6 +4218,110 @@ private enum AppRuntimeFactory {
         try SoloPMAppDatabaseLocation.applicationSupportDirectoryURL(createDirectory: true)
     }
 }
+
+@MainActor
+private protocol GoogleCalendarOAuthConnecting: AnyObject {
+    func startAuthorization(
+        completion: @escaping @MainActor (Result<GoogleCalendarOAuthCredentialMetadata, Error>) -> Void
+    )
+}
+
+private enum GoogleCalendarOAuthConnectionError: LocalizedError, Equatable {
+    case authorizationCancelled
+    case callbackURLMissing
+    case sessionDidNotStart
+
+    var errorDescription: String? {
+        switch self {
+        case .authorizationCancelled:
+            return "Google Calendar OAuth authorization was cancelled."
+        case .callbackURLMissing:
+            return "Google Calendar OAuth authorization did not return a callback URL."
+        case .sessionDidNotStart:
+            return "Google Calendar OAuth authorization could not start."
+        }
+    }
+}
+
+#if canImport(AuthenticationServices) && canImport(AppKit)
+@MainActor
+private final class GoogleCalendarOAuthAuthenticationSessionController: NSObject, GoogleCalendarOAuthConnecting, ASWebAuthenticationPresentationContextProviding {
+    private let callbackURLScheme: String?
+    private let serviceFactory: () throws -> GoogleCalendarOAuthAuthorizationService
+    private var activeSession: ASWebAuthenticationSession?
+
+    init(
+        callbackURLScheme: String?,
+        serviceFactory: @escaping () throws -> GoogleCalendarOAuthAuthorizationService
+    ) {
+        self.callbackURLScheme = callbackURLScheme
+        self.serviceFactory = serviceFactory
+    }
+
+    func startAuthorization(
+        completion: @escaping @MainActor (Result<GoogleCalendarOAuthCredentialMetadata, Error>) -> Void
+    ) {
+        do {
+            let service = try serviceFactory()
+            let request = try service.makeAuthorizationRequest()
+            let session = ASWebAuthenticationSession(
+                url: request.authorizationURL,
+                callbackURLScheme: callbackURLScheme
+            ) { [weak self] callbackURL, error in
+                if let error {
+                    Task { @MainActor in
+                        self?.activeSession = nil
+                        if Self.isCancellation(error) {
+                            completion(.failure(GoogleCalendarOAuthConnectionError.authorizationCancelled))
+                        } else {
+                            completion(.failure(error))
+                        }
+                    }
+                    return
+                }
+                guard let callbackURL else {
+                    Task { @MainActor in
+                        self?.activeSession = nil
+                        completion(.failure(GoogleCalendarOAuthConnectionError.callbackURLMissing))
+                    }
+                    return
+                }
+
+                // The runtime token exchange writes secrets through SecretStore immediately after
+                // Google returns the callback, so Settings never receives raw token material.
+                let result = Result {
+                    try service.completeAuthorization(callbackURL: callbackURL, pendingRequest: request)
+                }
+                Task { @MainActor in
+                    self?.activeSession = nil
+                    completion(result)
+                }
+            }
+            session.presentationContextProvider = self
+            session.prefersEphemeralWebBrowserSession = false
+            activeSession = session
+            guard session.start() else {
+                activeSession = nil
+                completion(.failure(GoogleCalendarOAuthConnectionError.sessionDidNotStart))
+                return
+            }
+        } catch {
+            activeSession = nil
+            completion(.failure(error))
+        }
+    }
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        NSApplication.shared.keyWindow ?? NSApplication.shared.windows.first ?? NSWindow()
+    }
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == ASWebAuthenticationSessionError.errorDomain
+            && nsError.code == ASWebAuthenticationSessionError.canceledLogin.rawValue
+    }
+}
+#endif
 
 private struct RuntimeSettingsLoadResult {
     let settings: AppSettings
