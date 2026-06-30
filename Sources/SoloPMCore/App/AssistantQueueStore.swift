@@ -170,6 +170,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
     public var sourcePreview: String?
     public var reviewReason: String
     public var capabilityLabels: [String]
+    public var costPreviewLabel: String?
     public var blockingReason: String?
     public var latestReceipt: AssistantQueueReceiptSummary?
     public var canApprove: Bool
@@ -189,6 +190,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
         sourcePreview: String?,
         reviewReason: String,
         capabilityLabels: [String],
+        costPreviewLabel: String? = nil,
         blockingReason: String?,
         latestReceipt: AssistantQueueReceiptSummary? = nil,
         canApprove: Bool,
@@ -207,6 +209,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
         self.sourcePreview = sourcePreview
         self.reviewReason = reviewReason
         self.capabilityLabels = capabilityLabels
+        self.costPreviewLabel = costPreviewLabel
         self.blockingReason = blockingReason
         self.latestReceipt = latestReceipt
         self.canApprove = canApprove
@@ -339,6 +342,7 @@ public enum AssistantQueueReadModel {
             sourcePreview: item.sourceTranscript.map(redactedPreview),
             reviewReason: item.reviewReason,
             capabilityLabels: item.requiredCapabilities.map { redactedPreview(label(for: $0)) },
+            costPreviewLabel: item.costPreview.map { redactedPreview($0.reviewLabel) },
             blockingReason: item.blockingReason,
             latestReceipt: receipt.map(receiptSummary),
             canApprove: canApprove(item),
@@ -442,7 +446,7 @@ public enum AssistantQueueReadModel {
     private static func canApprove(_ item: AssistantQueueItem) -> Bool {
         switch item.state {
         case .waitingReview, .captured, .interpreted, .drafted, .deferred:
-            return item.riskLevel != .danger
+            return item.riskLevel != .danger && (item.costPreview?.allowsApprovalAndRun ?? false)
         case .approved, .running, .blocked, .done, .failed, .rejected:
             return false
         }
@@ -450,6 +454,9 @@ public enum AssistantQueueReadModel {
 
     private static func canRun(_ item: AssistantQueueItem) -> Bool {
         guard item.state == .approved else {
+            return false
+        }
+        guard item.costPreview?.allowsApprovalAndRun == true else {
             return false
         }
         return AssistantQueueExecutableActionPlanFactory.actionPlan(for: item.payload) != nil
@@ -555,10 +562,36 @@ public enum AssistantQueueReadModel {
     }
 
     private static func tokenUsageLabel(prefix: String, usage: ExecutionReceiptUsage) -> String {
-        guard let totalTokens = usage.totalTokens else {
-            return "\(prefix) usage"
+        var parts: [String] = []
+        if let totalTokens = usage.totalTokens {
+            parts.append("\(formattedInteger(totalTokens)) tokens")
+        } else {
+            parts.append("usage")
         }
-        return "\(prefix): \(totalTokens) tokens"
+        if let estimatedCostCents = usage.estimatedCostCents,
+           let currencyCode = usage.currencyCode,
+           !currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            parts.append("\(currencyCode) \(formattedMajorCurrency(fromCents: estimatedCostCents))")
+        }
+        return "\(prefix): \(parts.joined(separator: ", "))"
+    }
+
+    private static func formattedMajorCurrency(fromCents cents: Double) -> String {
+        let value = cents / 100
+        let format = value > 0 && value < 0.01 ? "%.4f" : "%.2f"
+        return String(format: format, value)
+    }
+
+    private static func formattedInteger(_ value: Int) -> String {
+        let digits = Array(String(abs(value)).reversed())
+        let grouped = stride(from: 0, to: digits.count, by: 3)
+            .map { start -> String in
+                let end = min(start + 3, digits.count)
+                return String(digits[start..<end].reversed())
+            }
+            .reversed()
+            .joined(separator: ",")
+        return value < 0 ? "-\(grouped)" : grouped
     }
 
     private static func label(for capability: AssistantQueueRequiredCapability) -> String {
@@ -695,6 +728,7 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
         let payloadJSON = try encode(item.payload, column: "assistant_queue_items.payload_json")
         let requiredCapabilitiesJSON = try encode(item.requiredCapabilities, column: "assistant_queue_items.required_capabilities_json")
         let approvalJSON = try item.approval.map { try encode($0, column: "assistant_queue_items.approval_json") }
+        let costPreviewJSON = try item.costPreview.map { try encode($0, column: "assistant_queue_items.cost_preview_json") }
         let now = Self.timestamp()
 
         if existing {
@@ -713,6 +747,7 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
                     required_capabilities_json = '\(Self.escape(requiredCapabilitiesJSON))',
                     approval_json = \(Self.optional(approvalJSON)),
                     blocking_reason = \(Self.optional(item.blockingReason)),
+                    cost_preview_json = \(Self.optional(costPreviewJSON)),
                     updated_at = '\(Self.escape(now))'
                 WHERE id = '\(Self.escape(item.id))';
                 """
@@ -734,6 +769,7 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
                     required_capabilities_json,
                     approval_json,
                     blocking_reason,
+                    cost_preview_json,
                     created_at,
                     updated_at
                 )
@@ -751,6 +787,7 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
                     '\(Self.escape(requiredCapabilitiesJSON))',
                     \(Self.optional(approvalJSON)),
                     \(Self.optional(item.blockingReason)),
+                    \(Self.optional(costPreviewJSON)),
                     '\(Self.escape(now))',
                     '\(Self.escape(now))'
                 );
@@ -795,6 +832,11 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
             from: row["approval_json"],
             column: "assistant_queue_items.approval_json"
         )
+        let costPreview = try decodeOptional(
+            AssistantQueueCostPreview.self,
+            from: row["cost_preview_json"],
+            column: "assistant_queue_items.cost_preview_json"
+        )
 
         return AssistantQueueItem(
             id: try requiredString(row["id"], column: "assistant_queue_items.id"),
@@ -807,7 +849,8 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
             redactedSummary: try requiredString(row["redacted_summary"], column: "assistant_queue_items.redacted_summary"),
             requiredCapabilities: capabilities,
             approval: approval,
-            blockingReason: nilIfEmpty(row["blocking_reason"])
+            blockingReason: nilIfEmpty(row["blocking_reason"]),
+            costPreview: costPreview
         )
     }
 

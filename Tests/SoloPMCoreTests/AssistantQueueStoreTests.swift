@@ -24,6 +24,71 @@ final class AssistantQueueStoreTests: XCTestCase {
         )
     }
 
+    func testSQLiteStorePersistsCostPreviewAndReadModelShowsEstimatedManagedCost() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteAssistantQueueStore(connection: connection)
+        let preview = makeCostPreview(inputTokens: 1_000, outputTokens: 500)
+        let item = makeItem(id: "queue-cost-preview", summary: "Create launch task", costPreview: preview)
+
+        try store.save(item)
+        let reloaded = try store.get(id: item.id)
+        let row = try XCTUnwrap(AssistantQueueReadModel.snapshot(from: [reloaded]).rows.first)
+
+        XCTAssertEqual(reloaded.costPreview, preview)
+        XCTAssertTrue(row.costPreviewLabel?.contains("Preview only") ?? false)
+        XCTAssertTrue(row.costPreviewLabel?.contains("estimated before run") ?? false)
+        XCTAssertTrue(row.costPreviewLabel?.contains("not charged yet") ?? false)
+        XCTAssertTrue(row.costPreviewLabel?.contains("SoloPM managed") ?? false)
+        XCTAssertTrue(row.costPreviewLabel?.contains("USD") ?? false)
+        XCTAssertTrue(
+            row.costPreviewLabel?.contains("1,500 tokens") ?? false,
+            row.costPreviewLabel ?? "missing cost preview label"
+        )
+    }
+
+    func testReadModelBlocksApprovalAndRunWithoutAllowedCostPreview() throws {
+        let missingPreview = AssistantQueueItem(
+            id: "queue-missing-preview",
+            state: .waitingReview,
+            payload: makeItem(id: "queue-missing-preview-source").payload,
+            riskLevel: .write,
+            sourceTranscript: "Create task",
+            interpretationSummary: "Routed as task intent.",
+            reviewReason: "Needs review.",
+            redactedSummary: "Create task",
+            requiredCapabilities: [.tool(.taskCreate), .providerExecutionApproval]
+        )
+        let overCap = makeItem(
+            id: "queue-over-cap",
+            state: .waitingReview,
+            summary: "Managed over cap",
+            costPreview: makeCostPreview(inputTokens: 2_000, outputTokens: 1_000, hardCapCents: 0.10)
+        )
+        let approvedOverCap = AssistantQueueItem(
+            id: "queue-approved-over-cap",
+            state: .approved,
+            payload: overCap.payload,
+            riskLevel: overCap.riskLevel,
+            sourceTranscript: overCap.sourceTranscript,
+            interpretationSummary: overCap.interpretationSummary,
+            reviewReason: overCap.reviewReason,
+            redactedSummary: overCap.redactedSummary,
+            requiredCapabilities: overCap.requiredCapabilities,
+            approval: AssistantQueueApprovalRecord(
+                reviewerID: "local-user",
+                reviewedContentFingerprint: "stale"
+            ),
+            costPreview: overCap.costPreview
+        )
+
+        let snapshot = AssistantQueueReadModel.snapshot(from: [missingPreview, overCap, approvedOverCap])
+
+        XCTAssertFalse(snapshot.rows.first { $0.id == missingPreview.id }?.canApprove ?? true)
+        XCTAssertFalse(snapshot.rows.first { $0.id == overCap.id }?.canApprove ?? true)
+        XCTAssertFalse(snapshot.rows.first { $0.id == approvedOverCap.id }?.canRun ?? true)
+    }
+
     func testSQLiteStorePersistsApprovalWithoutExecutionToken() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
@@ -358,7 +423,14 @@ final class AssistantQueueStoreTests: XCTestCase {
             status: .succeeded,
             outputSummary: "Created task from /Users/local/private-plan.md",
             finishedAt: Date(timeIntervalSince1970: 20),
-            actionCount: 2
+            actionCount: 2,
+            usage: ExecutionReceiptUsage(
+                inputTokens: 1_000,
+                outputTokens: 500,
+                estimatedCostCents: 0.25,
+                currencyCode: "USD",
+                state: .estimated
+            )
         )
         let unrelatedReceipt = makeReceipt(
             id: "receipt-unrelated",
@@ -387,6 +459,9 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertEqual(receipt.status, .succeeded)
         XCTAssertEqual(receipt.statusLabel, "Succeeded")
         XCTAssertEqual(receipt.actionCount, 2)
+        XCTAssertTrue(receipt.usageLabel.contains("Estimated"))
+        XCTAssertTrue(receipt.usageLabel.contains("1,500 tokens"))
+        XCTAssertTrue(receipt.usageLabel.contains("USD 0.0025"))
         XCTAssertFalse(receipt.outputSummary.contains("/Users/local/private-plan.md"))
         XCTAssertTrue(receipt.outputSummary.contains("[REDACTED_LOCAL_PATH]"))
     }
@@ -683,7 +758,8 @@ final class AssistantQueueStoreTests: XCTestCase {
         id: String = "queue-item",
         state: AssistantQueueState = .waitingReview,
         sourceTranscript: String = "Create a task",
-        summary: String = "Create task"
+        summary: String = "Create task",
+        costPreview: AssistantQueueCostPreview? = .localOnly()
     ) -> AssistantQueueItem {
         AssistantQueueItem(
             id: id,
@@ -709,8 +785,23 @@ final class AssistantQueueStoreTests: XCTestCase {
             reviewReason: "Voice planning draft needs review.",
             redactedSummary: summary,
             requiredCapabilities: [.tool(.taskCreate), .providerExecutionApproval],
-            blockingReason: state == .blocked ? "Dangerous action plans cannot be approved from Assistant Queue." : nil
+            blockingReason: state == .blocked ? "Dangerous action plans cannot be approved from Assistant Queue." : nil,
+            costPreview: costPreview
         )
+    }
+
+    private func makeCostPreview(
+        inputTokens: Int,
+        outputTokens: Int,
+        hardCapCents: Double = 2
+    ) -> AssistantQueueCostPreview {
+        AssistantQueueCostRateCard(
+            provider: "openai",
+            modelName: "gpt-test",
+            currencyCode: "USD",
+            inputTokenCentsPerMillion: 100,
+            outputTokenCentsPerMillion: 300
+        ).preview(inputTokens: inputTokens, outputTokens: outputTokens, hardCapCents: hardCapCents)
     }
 
     private func makeAutomationRequestItem(
@@ -736,7 +827,8 @@ final class AssistantQueueStoreTests: XCTestCase {
         outputSummary: String,
         finishedAt: Date,
         actionCount: Int = 1,
-        visibleSurfaces: [ExecutionReceiptSurface] = [.assistantQueue]
+        visibleSurfaces: [ExecutionReceiptSurface] = [.assistantQueue],
+        usage: ExecutionReceiptUsage = .unavailable
     ) -> ExecutionReceipt {
         ExecutionReceipt(
             id: id,
@@ -748,7 +840,7 @@ final class AssistantQueueStoreTests: XCTestCase {
             status: status,
             inputPreview: "Queue input preview",
             outputSummary: outputSummary,
-            usage: .unavailable,
+            usage: usage,
             actions: (0..<actionCount).map { index in
                 ExecutionReceiptActionSummary(
                     id: "\(id)-action-\(index)",

@@ -135,6 +135,80 @@ final class AssistantQueueTests: XCTestCase {
         XCTAssertTrue(approved.approval?.reviewedContentFingerprint.allSatisfy(\.isHexDigit) ?? false)
     }
 
+    func testQueueApprovalRequiresCostPreview() throws {
+        let item = AssistantQueueItem(
+            id: "missing-cost-preview",
+            state: .waitingReview,
+            payload: .actionPlan(makePlan()),
+            riskLevel: .write,
+            sourceTranscript: "Create a task",
+            interpretationSummary: "Routed as task intent.",
+            reviewReason: "Needs review.",
+            redactedSummary: "Create task",
+            requiredCapabilities: [.tool(.taskCreate), .providerExecutionApproval]
+        )
+
+        XCTAssertThrowsError(try AssistantQueueStateMachine.approve(item, reviewerID: "user-1")) { error in
+            XCTAssertEqual(error as? AssistantQueueTransitionError, .costPreviewRequiredBeforeApproval)
+        }
+    }
+
+    func testManagedCostCapExceededBlocksApprovalAndRunning() throws {
+        let withinCap = makeCostPreview(inputTokens: 500, outputTokens: 200, hardCapCents: 2)
+        let overCap = makeCostPreview(inputTokens: 2_000, outputTokens: 1_000, hardCapCents: 0.10)
+        let item = AssistantQueueItem(
+            id: "managed-cost-cap",
+            state: .waitingReview,
+            payload: .actionPlan(makePlan()),
+            riskLevel: .write,
+            sourceTranscript: "Create a task",
+            interpretationSummary: "Routed as task intent.",
+            reviewReason: "Needs review.",
+            redactedSummary: "Create task",
+            requiredCapabilities: [.tool(.taskCreate), .providerExecutionApproval],
+            costPreview: overCap
+        )
+        XCTAssertEqual(overCap.capStatus, .wouldExceedLimit)
+
+        XCTAssertThrowsError(try AssistantQueueStateMachine.approve(item, reviewerID: "user-1")) { error in
+            XCTAssertEqual(error as? AssistantQueueTransitionError, .managedCostCapExceeded)
+        }
+
+        let approved = try AssistantQueueStateMachine.approve(
+            AssistantQueueItem(
+                id: item.id,
+                state: .waitingReview,
+                payload: item.payload,
+                riskLevel: item.riskLevel,
+                sourceTranscript: item.sourceTranscript,
+                interpretationSummary: item.interpretationSummary,
+                reviewReason: item.reviewReason,
+                redactedSummary: item.redactedSummary,
+                requiredCapabilities: item.requiredCapabilities,
+                costPreview: withinCap
+            ),
+            reviewerID: "user-1"
+        )
+        let driftedOverCap = AssistantQueueItem(
+            id: approved.id,
+            state: approved.state,
+            payload: approved.payload,
+            riskLevel: approved.riskLevel,
+            sourceTranscript: approved.sourceTranscript,
+            interpretationSummary: approved.interpretationSummary,
+            reviewReason: approved.reviewReason,
+            redactedSummary: approved.redactedSummary,
+            requiredCapabilities: approved.requiredCapabilities,
+            approval: approved.approval,
+            blockingReason: approved.blockingReason,
+            costPreview: overCap
+        )
+
+        XCTAssertThrowsError(try AssistantQueueStateMachine.startRunning(driftedOverCap)) { error in
+            XCTAssertEqual(error as? AssistantQueueTransitionError, .managedCostCapExceeded)
+        }
+    }
+
     func testStartRunningRejectsApprovalPayloadDrift() throws {
         let item = AssistantQueueAdapter.makeItem(
             actionPlan: makePlan(),
@@ -158,7 +232,42 @@ final class AssistantQueueTests: XCTestCase {
             redactedSummary: approved.redactedSummary,
             requiredCapabilities: approved.requiredCapabilities,
             approval: approved.approval,
-            blockingReason: approved.blockingReason
+            blockingReason: approved.blockingReason,
+            costPreview: approved.costPreview
+        )
+
+        XCTAssertThrowsError(try AssistantQueueStateMachine.startRunning(drifted)) { error in
+            XCTAssertEqual(error as? AssistantQueueTransitionError, .approvedPayloadChanged)
+        }
+    }
+
+    func testStartRunningRejectsApprovalCostPreviewDrift() throws {
+        let item = AssistantQueueItem(
+            id: "cost-preview-drift",
+            state: .waitingReview,
+            payload: .actionPlan(makePlan()),
+            riskLevel: .write,
+            sourceTranscript: "Create a task",
+            interpretationSummary: "Routed as task intent.",
+            reviewReason: "Needs review.",
+            redactedSummary: "Create task",
+            requiredCapabilities: [.tool(.taskCreate), .providerExecutionApproval],
+            costPreview: makeCostPreview(inputTokens: 500, outputTokens: 200)
+        )
+        let approved = try AssistantQueueStateMachine.approve(item, reviewerID: "user-1")
+        let drifted = AssistantQueueItem(
+            id: approved.id,
+            state: .approved,
+            payload: approved.payload,
+            riskLevel: approved.riskLevel,
+            sourceTranscript: approved.sourceTranscript,
+            interpretationSummary: approved.interpretationSummary,
+            reviewReason: approved.reviewReason,
+            redactedSummary: approved.redactedSummary,
+            requiredCapabilities: approved.requiredCapabilities,
+            approval: approved.approval,
+            blockingReason: approved.blockingReason,
+            costPreview: makeCostPreview(inputTokens: 2_000, outputTokens: 1_000)
         )
 
         XCTAssertThrowsError(try AssistantQueueStateMachine.startRunning(drifted)) { error in
@@ -446,5 +555,19 @@ final class AssistantQueueTests: XCTestCase {
             riskLevel: riskLevel,
             requiresApproval: requiresApproval
         )
+    }
+
+    private func makeCostPreview(
+        inputTokens: Int,
+        outputTokens: Int,
+        hardCapCents: Double = 2
+    ) -> AssistantQueueCostPreview {
+        AssistantQueueCostRateCard(
+            provider: "openai",
+            modelName: "gpt-test",
+            currencyCode: "USD",
+            inputTokenCentsPerMillion: 100,
+            outputTokenCentsPerMillion: 300
+        ).preview(inputTokens: inputTokens, outputTokens: outputTokens, hardCapCents: hardCapCents)
     }
 }

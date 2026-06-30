@@ -63,6 +63,7 @@ public struct AssistantQueueItem: Identifiable, Codable, Equatable, Sendable {
     public private(set) var requiredCapabilities: [AssistantQueueRequiredCapability]
     public var approval: AssistantQueueApprovalRecord?
     public var blockingReason: String?
+    public var costPreview: AssistantQueueCostPreview?
 
     public init(
         id: String,
@@ -75,7 +76,8 @@ public struct AssistantQueueItem: Identifiable, Codable, Equatable, Sendable {
         redactedSummary: String,
         requiredCapabilities: [AssistantQueueRequiredCapability],
         approval: AssistantQueueApprovalRecord? = nil,
-        blockingReason: String? = nil
+        blockingReason: String? = nil,
+        costPreview: AssistantQueueCostPreview? = nil
     ) {
         self.id = id
         self.state = state
@@ -88,12 +90,16 @@ public struct AssistantQueueItem: Identifiable, Codable, Equatable, Sendable {
         self.requiredCapabilities = requiredCapabilities
         self.approval = approval
         self.blockingReason = blockingReason
+        self.costPreview = costPreview
     }
 }
 
 public enum AssistantQueueTransitionError: Error, Equatable, Sendable {
     case blockedItemCannotBeApproved
     case dangerousPayloadCannotBeApproved
+    case costPreviewRequiredBeforeApproval
+    case costPreviewRequiredBeforeRunning
+    case managedCostCapExceeded
     case approvalRequiredBeforeRunning
     case approvedPayloadChanged
     case runningRequiredBeforeCompletion
@@ -117,6 +123,12 @@ public enum AssistantQueueStateMachine {
         guard item.state != .done, item.state != .failed, item.state != .rejected else {
             throw AssistantQueueTransitionError.terminalItemCannotTransition
         }
+        guard let costPreview = item.costPreview else {
+            throw AssistantQueueTransitionError.costPreviewRequiredBeforeApproval
+        }
+        guard costPreview.allowsApprovalAndRun else {
+            throw AssistantQueueTransitionError.managedCostCapExceeded
+        }
 
         var approved = item
         approved.state = .approved
@@ -134,6 +146,12 @@ public enum AssistantQueueStateMachine {
     public static func startRunning(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
         guard item.state == .approved else {
             throw AssistantQueueTransitionError.approvalRequiredBeforeRunning
+        }
+        guard let costPreview = item.costPreview else {
+            throw AssistantQueueTransitionError.costPreviewRequiredBeforeRunning
+        }
+        guard costPreview.allowsApprovalAndRun else {
+            throw AssistantQueueTransitionError.managedCostCapExceeded
         }
         guard item.approval?.reviewedContentFingerprint == item.contentFingerprint else {
             throw AssistantQueueTransitionError.approvedPayloadChanged
@@ -232,7 +250,8 @@ public enum AssistantQueueAdapter {
         actionPlan: ActionPlan,
         sourceTranscript: String?,
         interpretationSummary: String?,
-        reason: String
+        reason: String,
+        costPreview: AssistantQueueCostPreview = .localOnly()
     ) -> AssistantQueueItem {
         let risk = maxRiskLevel(for: actionPlan)
         let isDangerous = risk == .danger
@@ -246,11 +265,15 @@ public enum AssistantQueueAdapter {
             reviewReason: reason,
             redactedSummary: DeveloperSecretRedactor().redact(actionPlan.summary).text,
             requiredCapabilities: requiredCapabilities(for: actionPlan, riskLevel: risk),
-            blockingReason: isDangerous ? "Dangerous action plans cannot be approved from Assistant Queue." : nil
+            blockingReason: isDangerous ? "Dangerous action plans cannot be approved from Assistant Queue." : nil,
+            costPreview: costPreview
         )
     }
 
-    public static func makeItem(automationRequest: SyncAutomationRequestPayload) -> AssistantQueueItem {
+    public static func makeItem(
+        automationRequest: SyncAutomationRequestPayload,
+        costPreview: AssistantQueueCostPreview = .localOnly(note: "Local Mac execution preview only. No SoloPM managed charge before run.")
+    ) -> AssistantQueueItem {
         AssistantQueueItem(
             id: "automation-request:\(automationRequest.id)",
             state: state(for: automationRequest),
@@ -260,7 +283,8 @@ public enum AssistantQueueAdapter {
             interpretationSummary: automationRequest.toolName,
             reviewReason: reviewReason(for: automationRequest),
             redactedSummary: AssistantQueueExecutableActionPlanFactory.reviewSummary(for: automationRequest),
-            requiredCapabilities: [.connectedMacRequired, .providerExecutionApproval]
+            requiredCapabilities: [.connectedMacRequired, .providerExecutionApproval],
+            costPreview: costPreview
         )
     }
 
@@ -319,14 +343,19 @@ private extension AssistantQueueItem {
     var contentFingerprint: String {
         let payloadDigest = (try? AssistantQueueDigest.sha256(payload)) ?? AssistantQueueDigest.sha256(String(describing: payload))
         let capabilitiesDigest = AssistantQueueDigest.sha256(requiredCapabilities.map(String.init(describing:)).joined(separator: "|"))
+        let costPreviewDigest = costPreview.map { preview in
+            (try? AssistantQueueDigest.sha256(preview)) ?? AssistantQueueDigest.sha256(String(describing: preview))
+        } ?? AssistantQueueDigest.sha256("no-cost-preview")
         // Approval records must never persist raw prompts or action arguments. The
-        // digest keeps payload-drift detection while preserving the queue boundary.
+        // digest keeps payload and cost-preview drift detection while preserving
+        // the queue boundary and avoiding raw prompt/argument persistence.
         return AssistantQueueDigest.sha256([
             id,
             riskLevel.rawValue,
             redactedSummary,
             payloadDigest,
-            capabilitiesDigest
+            capabilitiesDigest,
+            costPreviewDigest
         ].joined(separator: "::"))
     }
 

@@ -600,6 +600,40 @@ public enum CoreMigrations {
                     ON assistant_queue_items(payload_kind);
                     """
                 )
+            },
+            DatabaseMigration(id: "0016_add_assistant_queue_cost_preview") { connection in
+                let columns = try connection.queryRows("PRAGMA table_info(assistant_queue_items);").compactMap { $0["name"] }
+                if !columns.contains("cost_preview_json") {
+                    try connection.execute("ALTER TABLE assistant_queue_items ADD COLUMN cost_preview_json TEXT;")
+                }
+
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.sortedKeys]
+                let previewJSON = String(
+                    decoding: try encoder.encode(AssistantQueueCostPreview.localOnly(
+                        note: "Legacy local execution preview added during migration. No SoloPM managed charge before run."
+                    )),
+                    as: UTF8.self
+                )
+                let escapedPreviewJSON = previewJSON.replacingOccurrences(of: "'", with: "''")
+                try connection.execute(
+                    """
+                    UPDATE assistant_queue_items
+                    SET cost_preview_json = '\(escapedPreviewJSON)'
+                    WHERE cost_preview_json IS NULL;
+                    """
+                )
+
+                try connection.execute(
+                    """
+                    UPDATE assistant_queue_items
+                    SET state = 'waitingReview',
+                        approval_json = NULL,
+                        review_reason = 'Cost preview was added during migration. Review this item again before running.',
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE state IN ('approved', 'running');
+                    """
+                )
             }
         ]
     }

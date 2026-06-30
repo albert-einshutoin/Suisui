@@ -1774,6 +1774,14 @@ private struct AssistantQueueRow: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
+                    if let costPreviewLabel = row.costPreviewLabel, !costPreviewLabel.isEmpty {
+                        Label(costPreviewLabel, systemImage: "chart.bar.doc.horizontal")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
                     if let blockingReason = row.blockingReason {
                         Label(blockingReason, systemImage: "exclamationmark.octagon")
                             .font(.caption)
