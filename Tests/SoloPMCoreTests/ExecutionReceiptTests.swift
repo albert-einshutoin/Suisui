@@ -200,6 +200,74 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertFalse(receipt.inputPreview.contains("review-secret"))
     }
 
+    func testScheduleDraftApplyReceiptRedactsSecretsAndLinksCalendarReferences() throws {
+        let taskTitleSecret = "token" + "=" + "schedule-task-secret"
+        let projectTitleSecret = "secret" + "=" + "schedule-project-secret"
+        let calendarTitleSecret = "api_key" + "=" + "calendar-title-secret"
+        let calendarNoteSecret = "sk-" + "proj-calendar-note-secret"
+        let approvalSecret = "approval-token-secret"
+        let task = ProjectBoardTask(
+            id: 42,
+            projectID: 7,
+            title: "Calendar block \(taskTitleSecret)",
+            detail: "Do not persist \(calendarNoteSecret)",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-21"
+        )
+        let block = TodayTimeBlock(
+            label: "09:00",
+            task: task,
+            startAt: "2026-06-21T09:00:00Z",
+            endAt: "2026-06-21T10:00:00Z"
+        )
+        let event = CalendarEventRecord(
+            id: "calendar-event-1",
+            draft: CalendarEventDraft(
+                title: "Calendar block \(calendarTitleSecret)",
+                startAt: "2026-06-21T09:00:00Z",
+                endAt: "2026-06-21T10:00:00Z",
+                notes: "Reviewed schedule note \(calendarNoteSecret)"
+            )
+        )
+
+        let receipt = ExecutionReceiptFactory.makeScheduleDraftApplyReceipt(
+            writeCandidates: [try XCTUnwrap(ScheduleDraftApplyWriteCandidate(block: block))],
+            unscheduledTaskCount: 0,
+            createdEvents: [
+                ScheduleDraftApplyCreatedEvent(
+                    candidate: try XCTUnwrap(ScheduleDraftApplyWriteCandidate(block: block)),
+                    record: event
+                )
+            ],
+            projectTitlesByID: [7: "Client Launch \(projectTitleSecret)"],
+            runID: "schedule-run-1",
+            approvalID: "schedule-draft-apply-approval:123",
+            status: .succeeded,
+            createdAt: Date(timeIntervalSince1970: 40)
+        )
+
+        XCTAssertEqual(receipt.id, "receipt:schedule-run-1:schedule-draft-apply")
+        XCTAssertEqual(receipt.status, .succeeded)
+        XCTAssertEqual(receipt.approvalID, "schedule-draft-apply-approval:123")
+        XCTAssertEqual(receipt.primaryToolName, ActionTool.calendarCreateWorkBlock.rawValue)
+        XCTAssertEqual(receipt.usage.state, .unavailable)
+        XCTAssertEqual(receipt.references.map(\.kind), [.task, .project, .calendarEvent])
+        XCTAssertEqual(receipt.visibleSurfaces, [.taskDetail, .projectDetail, .auditLog])
+        XCTAssertTrue(receipt.outputSummary.contains("1 Calendar event"))
+        XCTAssertTrue(receipt.references[0].label?.contains("[REDACTED_SECRET]") ?? false)
+        XCTAssertTrue(receipt.references[1].label?.contains("[REDACTED_SECRET]") ?? false)
+        XCTAssertTrue(receipt.references[2].label?.contains("[REDACTED_SECRET]") ?? false)
+
+        let encoded = try JSONEncoder().encode(receipt)
+        let encodedReceipt = try XCTUnwrap(String(data: encoded, encoding: .utf8))
+        XCTAssertFalse(encodedReceipt.contains(taskTitleSecret))
+        XCTAssertFalse(encodedReceipt.contains(projectTitleSecret))
+        XCTAssertFalse(encodedReceipt.contains(calendarTitleSecret))
+        XCTAssertFalse(encodedReceipt.contains(calendarNoteSecret))
+        XCTAssertFalse(encodedReceipt.contains(approvalSecret))
+    }
+
     func testAssistantQueueReceiptKeepsQueueApprovalSeparateFromExecutionToken() throws {
         let providerKey = "sk-" + "proj-queue-secret"
         let argumentSecret = "token" + "=" + "queue-argument-secret"
