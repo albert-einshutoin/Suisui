@@ -149,6 +149,8 @@ public struct AssistantQueueStateCounts: Equatable, Sendable {
 public protocol AssistantQueueStore {
     @discardableResult
     func save(_ item: AssistantQueueItem) throws -> AssistantQueueItem
+    @discardableResult
+    func insertIfAbsent(_ item: AssistantQueueItem) throws -> AssistantQueueItem?
     func get(id: String) throws -> AssistantQueueItem
     func list(filter: AssistantQueueFilter) throws -> [AssistantQueueItem]
     func stateCounts() throws -> AssistantQueueStateCounts
@@ -158,6 +160,20 @@ public protocol AssistantQueueStore {
         id: String,
         _ transform: (AssistantQueueItem) throws -> AssistantQueueItem
     ) throws -> AssistantQueueItem
+}
+
+public extension AssistantQueueStore {
+    @discardableResult
+    func insertIfAbsent(_ item: AssistantQueueItem) throws -> AssistantQueueItem? {
+        // Default stores are used by in-memory tests and lightweight adapters. Durable
+        // sync-facing stores should override this with a conflict-safe insert.
+        do {
+            _ = try get(id: item.id)
+            return nil
+        } catch AssistantQueueStoreError.notFound {
+            return try save(item)
+        }
+    }
 }
 
 public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
@@ -637,6 +653,17 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
         return item
     }
 
+    @discardableResult
+    public func insertIfAbsent(_ item: AssistantQueueItem) throws -> AssistantQueueItem? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        // Sync ingest replays remote facts, while queue rows hold local review state.
+        // Conflict-safe insert preserves approvals, edits, and receipts on duplicates.
+        let inserted = try insertLocked(item, onIDConflict: "ON CONFLICT(id) DO NOTHING")
+        return inserted ? item : nil
+    }
+
     public func get(id: String) throws -> AssistantQueueItem {
         lock.lock()
         defer { lock.unlock() }
@@ -753,47 +780,63 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
                 """
             )
         } else {
-            try connection.execute(
-                """
-                INSERT INTO assistant_queue_items (
-                    id,
-                    schema_version,
-                    payload_kind,
-                    payload_json,
-                    state,
-                    risk_level,
-                    source_transcript,
-                    interpretation_summary,
-                    review_reason,
-                    redacted_summary,
-                    required_capabilities_json,
-                    approval_json,
-                    blocking_reason,
-                    cost_preview_json,
-                    created_at,
-                    updated_at
-                )
-                VALUES (
-                    '\(Self.escape(item.id))',
-                    1,
-                    '\(Self.escape(payloadKind(for: item.payload)))',
-                    '\(Self.escape(payloadJSON))',
-                    '\(Self.escape(item.state.rawValue))',
-                    '\(Self.escape(item.riskLevel.rawValue))',
-                    \(Self.optional(item.sourceTranscript)),
-                    \(Self.optional(item.interpretationSummary)),
-                    '\(Self.escape(item.reviewReason))',
-                    '\(Self.escape(item.redactedSummary))',
-                    '\(Self.escape(requiredCapabilitiesJSON))',
-                    \(Self.optional(approvalJSON)),
-                    \(Self.optional(item.blockingReason)),
-                    \(Self.optional(costPreviewJSON)),
-                    '\(Self.escape(now))',
-                    '\(Self.escape(now))'
-                );
-                """
-            )
+            _ = try insertLocked(item)
         }
+    }
+
+    @discardableResult
+    private func insertLocked(
+        _ item: AssistantQueueItem,
+        onIDConflict conflictClause: String = ""
+    ) throws -> Bool {
+        let payloadJSON = try encode(item.payload, column: "assistant_queue_items.payload_json")
+        let requiredCapabilitiesJSON = try encode(item.requiredCapabilities, column: "assistant_queue_items.required_capabilities_json")
+        let approvalJSON = try item.approval.map { try encode($0, column: "assistant_queue_items.approval_json") }
+        let costPreviewJSON = try item.costPreview.map { try encode($0, column: "assistant_queue_items.cost_preview_json") }
+        let now = Self.timestamp()
+        let normalizedConflictClause = conflictClause.trimmingCharacters(in: .whitespacesAndNewlines)
+        let conflictSQL = normalizedConflictClause.isEmpty ? "" : "\n\(normalizedConflictClause)"
+        try connection.execute(
+            """
+            INSERT INTO assistant_queue_items (
+                id,
+                schema_version,
+                payload_kind,
+                payload_json,
+                state,
+                risk_level,
+                source_transcript,
+                interpretation_summary,
+                review_reason,
+                redacted_summary,
+                required_capabilities_json,
+                approval_json,
+                blocking_reason,
+                cost_preview_json,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                '\(Self.escape(item.id))',
+                1,
+                '\(Self.escape(payloadKind(for: item.payload)))',
+                '\(Self.escape(payloadJSON))',
+                '\(Self.escape(item.state.rawValue))',
+                '\(Self.escape(item.riskLevel.rawValue))',
+                \(Self.optional(item.sourceTranscript)),
+                \(Self.optional(item.interpretationSummary)),
+                '\(Self.escape(item.reviewReason))',
+                '\(Self.escape(item.redactedSummary))',
+                '\(Self.escape(requiredCapabilitiesJSON))',
+                \(Self.optional(approvalJSON)),
+                \(Self.optional(item.blockingReason)),
+                \(Self.optional(costPreviewJSON)),
+                '\(Self.escape(now))',
+                '\(Self.escape(now))'
+            )\(conflictSQL);
+            """
+        )
+        return try connection.queryStrings("SELECT changes();").first == "1"
     }
 
     private func item(row: [String: String]) throws -> AssistantQueueItem {

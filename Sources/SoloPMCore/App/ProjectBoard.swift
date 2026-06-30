@@ -1,4 +1,5 @@
 import Combine
+import CryptoKit
 import Foundation
 
 public enum ProjectTaskStatus: String, Codable, CaseIterable, Identifiable, Sendable {
@@ -1577,6 +1578,148 @@ public final class ProjectBoardViewModel: ObservableObject {
         dailyPlanningReview = review
         todayCommandFeedback = String(localized: "Prepared daily planning review.")
         return review
+    }
+
+    @discardableResult
+    public func ingestAssistantQueueAutomationRequests(from payload: SyncDomainPayload) -> Bool {
+        ingestAssistantQueueAutomationRequests(payload.automationRequests)
+    }
+
+    @discardableResult
+    public func ingestAssistantQueueAutomationRequests(
+        _ requests: [SyncAutomationRequestPayload]
+    ) -> Bool {
+        guard let assistantQueueStore else {
+            assistantQueueSnapshot = .empty
+            assistantQueueSelectedItemIDs = []
+            errorMessage = String(localized: "Assistant Queue is unavailable in this build.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        guard !requests.isEmpty else {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = nil
+            integrationStatusMessage = String(localized: "No remote automation requests to queue.")
+            return true
+        }
+
+        var queuedItemIDs: [String] = []
+        var existingItemIDs: [String] = []
+        do {
+            for request in requests {
+                let item = Self.reviewableAutomationRequestItem(for: request)
+                if try assistantQueueStore.insertIfAbsent(item) != nil {
+                    queuedItemIDs.append(item.id)
+                } else {
+                    existingItemIDs.append(item.id)
+                }
+            }
+
+            if let focusedID = queuedItemIDs.first ?? existingItemIDs.first {
+                focusAssistantQueueItem(id: focusedID)
+            } else {
+                _ = refreshAssistantQueueSnapshot()
+            }
+            errorMessage = nil
+            integrationStatusMessage = Self.automationRequestIngestMessage(
+                queuedCount: queuedItemIDs.count,
+                existingCount: existingItemIDs.count
+            )
+            if !queuedItemIDs.isEmpty {
+                onChange()
+            }
+            return true
+        } catch {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = AssistantQueueStoreError.userMessage(for: error)
+            integrationStatusMessage = nil
+            return false
+        }
+    }
+
+    private static func reviewableAutomationRequestItem(
+        for request: SyncAutomationRequestPayload
+    ) -> AssistantQueueItem {
+        var item = AssistantQueueAdapter.makeItem(automationRequest: sanitizedAutomationRequest(request))
+        guard item.state != .rejected,
+              AssistantQueueExecutableActionPlanFactory.actionPlan(for: item.payload) == nil else {
+            return item
+        }
+
+        item.state = .blocked
+        item.blockingReason = String(localized: "Remote automation request is missing executable task mutation details.")
+        return item
+    }
+
+    private static func sanitizedAutomationRequest(
+        _ request: SyncAutomationRequestPayload
+    ) -> SyncAutomationRequestPayload {
+        var sanitized = request
+        sanitized.id = sanitizedAutomationRequestID(for: request)
+        sanitized.sourceClientID = sanitizedAutomationMetadata(request.sourceClientID, maxLength: 160)
+        sanitized.toolName = sanitizedAutomationMetadata(request.toolName, maxLength: 160)
+        sanitized.redactedArgumentSummary = sanitizedAutomationMetadata(
+            request.redactedArgumentSummary,
+            maxLength: 1_200
+        )
+        return sanitized
+    }
+
+    private static func sanitizedAutomationRequestID(
+        for request: SyncAutomationRequestPayload
+    ) -> String {
+        // Remote request IDs can originate outside the Mac trust boundary. Hashing
+        // keeps replay identity stable without persisting secrets or unbounded IDs.
+        let digestInput = "\(request.source.rawValue):\(request.id.trimmingCharacters(in: .whitespacesAndNewlines))"
+        let digest = SHA256.hash(data: Data(digestInput.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return "remote-\(digest.prefix(24))"
+    }
+
+    private static func sanitizedAutomationMetadata(
+        _ value: String?,
+        maxLength: Int
+    ) -> String? {
+        guard let value else {
+            return nil
+        }
+
+        let sanitized = sanitizedAutomationMetadata(value, maxLength: maxLength)
+        return sanitized.isEmpty ? nil : sanitized
+    }
+
+    private static func sanitizedAutomationMetadata(
+        _ value: String,
+        maxLength: Int
+    ) -> String {
+        let redacted = DeveloperSecretRedactor()
+            .redact(value.trimmingCharacters(in: .whitespacesAndNewlines))
+            .text
+        guard redacted.count > maxLength else {
+            return redacted
+        }
+        return "\(redacted.prefix(maxLength))..."
+    }
+
+    private static func automationRequestIngestMessage(
+        queuedCount: Int,
+        existingCount: Int
+    ) -> String {
+        if queuedCount == 1, existingCount == 0 {
+            return String(localized: "Queued 1 remote automation request for review.")
+        }
+        if queuedCount > 1, existingCount == 0 {
+            return String(localized: "Queued \(queuedCount) remote automation requests for review.")
+        }
+        if queuedCount == 0, existingCount == 1 {
+            return String(localized: "Remote automation request is already in Assistant Queue.")
+        }
+        if queuedCount == 0, existingCount > 1 {
+            return String(localized: "Remote automation requests are already in Assistant Queue.")
+        }
+        return String(localized: "Queued \(queuedCount) remote automation requests for review; \(existingCount) were already in Assistant Queue.")
     }
 
     @discardableResult
