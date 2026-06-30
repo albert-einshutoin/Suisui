@@ -361,7 +361,7 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertLessThan(row.title.count, row.redactedSummary.count)
     }
 
-    func testReadModelMarksOnlyFailedActionPlanRowsRetryable() throws {
+    func testReadModelMarksOnlyFailedRunnableRowsRetryable() throws {
         let failedActionPlan = makeItem(id: "queue-retry-failed-action", state: .failed)
         let waitingActionPlan = makeItem(id: "queue-retry-waiting-action", state: .waitingReview)
         let dangerousActionPlan = AssistantQueueItem(
@@ -383,8 +383,42 @@ final class AssistantQueueStoreTests: XCTestCase {
             requiredCapabilities: [.tool(.taskDelete), .providerExecutionApproval],
             blockingReason: "Dangerous action plans cannot be retried."
         )
-        let failedAutomation = AssistantQueueItem(
-            id: "queue-retry-failed-automation",
+        let failedRunnableAutomation = AssistantQueueItem(
+            id: "queue-retry-failed-runnable-automation",
+            state: .failed,
+            payload: makeAutomationRequestItem(
+                id: "queue-retry-runnable-automation",
+                toolName: HostedMCPTaskToolName.taskDueDateUpdate.rawValue,
+                taskMutation: SyncTaskMutationPayload(
+                    taskID: 42,
+                    operation: .updateDueDate,
+                    dueAt: "2026-07-01T09:00:00Z",
+                    source: .cloudRelay,
+                    approvalState: .pendingApproval
+                )
+            ).payload,
+            riskLevel: .write,
+            sourceTranscript: nil,
+            interpretationSummary: HostedMCPTaskToolName.taskDueDateUpdate.rawValue,
+            reviewReason: "Remote request failed.",
+            redactedSummary: "Remote request failed",
+            requiredCapabilities: [.connectedMacRequired, .providerExecutionApproval],
+            blockingReason: "Remote execution failed."
+        )
+        let dangerousRunnableAutomation = AssistantQueueItem(
+            id: "queue-retry-dangerous-runnable-automation",
+            state: .failed,
+            payload: failedRunnableAutomation.payload,
+            riskLevel: .danger,
+            sourceTranscript: nil,
+            interpretationSummary: HostedMCPTaskToolName.taskDueDateUpdate.rawValue,
+            reviewReason: "Remote request failed.",
+            redactedSummary: "Remote request failed",
+            requiredCapabilities: [.connectedMacRequired, .providerExecutionApproval],
+            blockingReason: "Remote execution failed."
+        )
+        let failedUnsupportedAutomation = AssistantQueueItem(
+            id: "queue-retry-failed-unsupported-automation",
             state: .failed,
             payload: makeAutomationRequestItem().payload,
             riskLevel: .write,
@@ -396,16 +430,27 @@ final class AssistantQueueStoreTests: XCTestCase {
             blockingReason: "Remote execution failed."
         )
 
-        let snapshot = AssistantQueueReadModel.snapshot(from: [failedActionPlan, waitingActionPlan, dangerousActionPlan, failedAutomation])
+        let snapshot = AssistantQueueReadModel.snapshot(from: [
+            failedActionPlan,
+            waitingActionPlan,
+            dangerousActionPlan,
+            failedRunnableAutomation,
+            dangerousRunnableAutomation,
+            failedUnsupportedAutomation
+        ])
 
         let failedActionPlanRow = try XCTUnwrap(snapshot.rows.first { $0.id == failedActionPlan.id })
         let waitingActionPlanRow = try XCTUnwrap(snapshot.rows.first { $0.id == waitingActionPlan.id })
         let dangerousActionPlanRow = try XCTUnwrap(snapshot.rows.first { $0.id == dangerousActionPlan.id })
-        let failedAutomationRow = try XCTUnwrap(snapshot.rows.first { $0.id == failedAutomation.id })
+        let failedRunnableAutomationRow = try XCTUnwrap(snapshot.rows.first { $0.id == failedRunnableAutomation.id })
+        let dangerousRunnableAutomationRow = try XCTUnwrap(snapshot.rows.first { $0.id == dangerousRunnableAutomation.id })
+        let failedUnsupportedAutomationRow = try XCTUnwrap(snapshot.rows.first { $0.id == failedUnsupportedAutomation.id })
         XCTAssertTrue(failedActionPlanRow.canRetry)
         XCTAssertFalse(waitingActionPlanRow.canRetry)
         XCTAssertFalse(dangerousActionPlanRow.canRetry)
-        XCTAssertFalse(failedAutomationRow.canRetry)
+        XCTAssertTrue(failedRunnableAutomationRow.canRetry)
+        XCTAssertFalse(dangerousRunnableAutomationRow.canRetry)
+        XCTAssertFalse(failedUnsupportedAutomationRow.canRetry)
     }
 
     func testReadModelAttachesLatestAssistantQueueExecutionReceiptSummary() throws {
@@ -651,7 +696,7 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertEqual(reopened.state, .waitingReview)
         XCTAssertNil(reopened.approval)
         XCTAssertNil(reopened.blockingReason)
-        XCTAssertEqual(reopened.reviewReason, "Retry after failed execution. Review the action plan before running it again.")
+        XCTAssertEqual(reopened.reviewReason, "Retry after failed execution. Review this Assistant Queue item before running it again.")
         let row = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first { $0.id == failed.id })
         XCTAssertTrue(row.canApprove)
         XCTAssertFalse(row.canRun)
@@ -660,8 +705,54 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertNil(viewModel.errorMessage)
 
         XCTAssertFalse(viewModel.retryAssistantQueueItem(id: failed.id))
-        XCTAssertEqual(viewModel.errorMessage, "Only failed action-plan Assistant Queue items can be retried.")
+        XCTAssertEqual(viewModel.errorMessage, "Only failed runnable Assistant Queue items can be retried.")
         XCTAssertNil(viewModel.integrationStatusMessage)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelReopensFailedTaskMutationAutomationRequestForRetryReview() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+        let item = AssistantQueueAdapter.makeItem(automationRequest: SyncAutomationRequestPayload(
+            id: "queue-visible-automation-retry",
+            source: .cloudRelay,
+            approvalState: .pendingApproval,
+            sourceClientID: "web",
+            toolName: HostedMCPTaskToolName.taskDueDateUpdate.rawValue,
+            redactedArgumentSummary: "taskID=42, dueAt=2026-07-01T09:00:00Z",
+            taskMutation: SyncTaskMutationPayload(
+                taskID: 42,
+                operation: .updateDueDate,
+                dueAt: "2026-07-01T09:00:00Z",
+                source: .cloudRelay,
+                approvalState: .pendingApproval
+            )
+        ))
+        let approved = try AssistantQueueStateMachine.approve(item, reviewerID: "local-user")
+        let running = try AssistantQueueStateMachine.startRunning(approved)
+        let failed = try AssistantQueueStateMachine.markFailed(running, reason: "Remote task update failed.")
+        try assistantQueueStore.save(failed)
+        let viewModel = ProjectBoardViewModel(
+            store: boardStore,
+            assistantQueueStore: assistantQueueStore
+        )
+
+        viewModel.load()
+
+        let failedRow = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first { $0.id == failed.id })
+        XCTAssertTrue(failedRow.canRetry)
+        XCTAssertTrue(viewModel.retryAssistantQueueItem(id: failed.id))
+        let reopened = try assistantQueueStore.get(id: failed.id)
+        XCTAssertEqual(reopened.state, .waitingReview)
+        XCTAssertNil(reopened.approval)
+        XCTAssertNil(reopened.blockingReason)
+        XCTAssertEqual(reopened.reviewReason, "Retry after failed execution. Review this Assistant Queue item before running it again.")
+        let row = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first { $0.id == failed.id })
+        XCTAssertTrue(row.canApprove)
+        XCTAssertFalse(row.canRun)
+        XCTAssertFalse(row.canRetry)
     }
 
     @MainActor

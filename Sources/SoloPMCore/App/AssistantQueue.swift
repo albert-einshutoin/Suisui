@@ -104,7 +104,7 @@ public enum AssistantQueueTransitionError: Error, Equatable, Sendable {
     case approvedPayloadChanged
     case runningRequiredBeforeCompletion
     case terminalItemCannotTransition
-    case retryRequiresFailedActionPlan
+    case retryRequiresFailedRunnablePayload
     case editRequiresReviewableItem
 }
 
@@ -185,8 +185,9 @@ public enum AssistantQueueStateMachine {
     }
 
     public static func reopenFailedForReview(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
-        guard item.state == .failed, case .actionPlan = item.payload else {
-            throw AssistantQueueTransitionError.retryRequiresFailedActionPlan
+        guard item.state == .failed,
+              AssistantQueueExecutableActionPlanFactory.actionPlan(for: item.payload) != nil else {
+            throw AssistantQueueTransitionError.retryRequiresFailedRunnablePayload
         }
         guard !item.containsDangerousPayload else {
             throw AssistantQueueTransitionError.dangerousPayloadCannotBeApproved
@@ -198,7 +199,7 @@ public enum AssistantQueueStateMachine {
         // returns the item to human review so the execution gate mints a fresh token.
         retry.approval = nil
         retry.blockingReason = nil
-        retry.reviewReason = "Retry after failed execution. Review the action plan before running it again."
+        retry.reviewReason = "Retry after failed execution. Review this Assistant Queue item before running it again."
         return retry
     }
 
@@ -358,7 +359,9 @@ private extension AssistantQueueItem {
             costPreviewDigest
         ].joined(separator: "::"))
     }
+}
 
+extension AssistantQueueItem {
     var containsDangerousPayload: Bool {
         if riskLevel == .danger {
             return true
@@ -366,10 +369,19 @@ private extension AssistantQueueItem {
 
         switch payload {
         case .actionPlan(let plan):
-            return plan.riskLevel == .danger || plan.actions.contains { $0.riskLevel == .danger }
+            return plan.containsDangerousAction
         case .automationRequest:
-            return false
+            // Automation requests are transport payloads; re-derive the
+            // executable plan so connector-originated requests cannot bypass the
+            // same danger gate that protects native action plans.
+            return AssistantQueueExecutableActionPlanFactory.actionPlan(for: payload)?.containsDangerousAction ?? false
         }
+    }
+}
+
+private extension ActionPlan {
+    var containsDangerousAction: Bool {
+        riskLevel == .danger || actions.contains { $0.riskLevel == .danger }
     }
 }
 
