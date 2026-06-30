@@ -76,6 +76,10 @@ public enum DevelopmentPRPublishWorkflowError: Error, Equatable, Sendable {
     case sameBaseAndHeadBranch
     case secretLikePullRequestContent
     case localPathInPullRequestContent
+    case invalidPullRequestURL
+    case invalidGitHubOriginRemote
+    case pullRequestRepositoryMismatch(expected: String, actual: String)
+    case invalidPullRequestStatusJSON
     case missingPullRequestURL
     case commandNotAllowed(tool: ActionTool, command: [String])
     case commandFailed(tool: ActionTool, command: [String], exitCode: Int32, standardError: String)
@@ -98,14 +102,31 @@ public enum DevelopmentPRPublishWorkflowError: Error, Equatable, Sendable {
             return "Pull request title or body looks like it contains credentials or secrets."
         case .localPathInPullRequestContent:
             return "Pull request title or body includes a local filesystem path."
+        case .invalidPullRequestURL:
+            return "Pull request URL must be a GitHub HTTPS pull request URL."
+        case .invalidGitHubOriginRemote:
+            return "Origin remote must resolve to a GitHub repository."
+        case .pullRequestRepositoryMismatch(let expected, let actual):
+            return "Pull request repository \(actual) does not match origin repository \(expected)."
+        case .invalidPullRequestStatusJSON:
+            return "GitHub CLI returned an unreadable pull request status response."
         case .missingPullRequestURL:
             return "GitHub CLI did not return a pull request URL."
         case .commandNotAllowed:
             return "Command is not allowed for development publish workflow."
         case .commandFailed(let tool, let command, let exitCode, let standardError):
             let suffix = standardError.isEmpty ? "" : " stderr: \(standardError)"
+            if command == ["remote", "get-url", "origin"] {
+                return "Git origin remote lookup failed with exit code \(exitCode).\(suffix)"
+            }
             if tool == .developmentCreatePullRequest {
                 return "GitHub CLI pull request creation failed with exit code \(exitCode).\(suffix)"
+            }
+            if tool == .developmentReviewPullRequestGate {
+                return "GitHub CLI pull request status check failed with exit code \(exitCode).\(suffix)"
+            }
+            if tool == .developmentMergePullRequest {
+                return "GitHub CLI pull request merge failed with exit code \(exitCode).\(suffix)"
             }
             return "\((["git"] + command).joined(separator: " ")) failed with exit code \(exitCode).\(suffix)"
         }
@@ -114,7 +135,8 @@ public enum DevelopmentPRPublishWorkflowError: Error, Equatable, Sendable {
 
 public enum DevelopmentPublishGitCommandPolicy {
     public static func isAllowed(arguments: [String]) -> Bool {
-        if arguments == ["status", "--short", "--branch"] {
+        if arguments == ["status", "--short", "--branch"]
+            || arguments == ["remote", "get-url", "origin"] {
             return true
         }
 
@@ -138,8 +160,28 @@ public enum DevelopmentPublishGitCommandPolicy {
     }
 }
 
+struct DevelopmentGitHubRepositoryIdentity: Equatable, Sendable {
+    var owner: String
+    var name: String
+
+    var displayNameWithOwner: String {
+        "\(owner)/\(name)"
+    }
+
+    func matches(_ other: DevelopmentGitHubRepositoryIdentity) -> Bool {
+        owner.lowercased() == other.owner.lowercased()
+            && name.lowercased() == other.name.lowercased()
+    }
+}
+
 public enum DevelopmentGitHubPRCommandPolicy {
+    public static let statusJSONFields = "reviewDecision,statusCheckRollup,mergeable,mergeStateStatus,url,headRefName,baseRefName,headRepository,headRepositoryOwner,isCrossRepository"
+
     public static func isAllowed(arguments: [String]) -> Bool {
+        if isAllowedStatusView(arguments: arguments) || isAllowedMerge(arguments: arguments) {
+            return true
+        }
+
         guard arguments.count == 10,
               arguments[0] == "pr",
               arguments[1] == "create",
@@ -161,6 +203,88 @@ public enum DevelopmentGitHubPRCommandPolicy {
         return bodyFilePath.hasPrefix("/")
             && !bodyFilePath.contains("\u{0}")
             && !URL(fileURLWithPath: bodyFilePath).lastPathComponent.hasPrefix("-")
+    }
+
+    public static func validatedPullRequestURL(
+        _ rawURL: String,
+        redactor: DeveloperSecretRedactor
+    ) throws -> String {
+        let pullRequestURL = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard redactor.redact(pullRequestURL).report.replacementCount == 0,
+              !pullRequestURL.contains("\u{0}"),
+              !pullRequestURL.contains(where: { $0.isWhitespace }),
+              !containsLocalPath(pullRequestURL) else {
+            throw DevelopmentPRPublishWorkflowError.invalidPullRequestURL
+        }
+        // Keep gh subcommands tied to a concrete repository and PR number;
+        // arbitrary GitHub URLs are not safe enough for a merge-capable workflow.
+        _ = try repositoryIdentity(fromPullRequestURL: pullRequestURL)
+        return pullRequestURL
+    }
+
+    static func repositoryIdentity(fromPullRequestURL pullRequestURL: String) throws -> DevelopmentGitHubRepositoryIdentity {
+        guard let components = URLComponents(string: pullRequestURL),
+              components.scheme == "https",
+              components.host?.lowercased() == "github.com",
+              components.port == nil,
+              components.user == nil,
+              components.password == nil,
+              components.query == nil,
+              components.fragment == nil else {
+            throw DevelopmentPRPublishWorkflowError.invalidPullRequestURL
+        }
+
+        let parts = strictPathParts(components.percentEncodedPath)
+        guard parts.count == 4,
+              parts[2] == "pull",
+              isValidGitHubOwner(parts[0]),
+              isValidGitHubRepositoryName(parts[1]),
+              !parts[3].isEmpty,
+              parts[3].allSatisfy(\.isNumber) else {
+            throw DevelopmentPRPublishWorkflowError.invalidPullRequestURL
+        }
+
+        return DevelopmentGitHubRepositoryIdentity(owner: parts[0], name: parts[1])
+    }
+
+    static func repositoryIdentity(fromRemoteURL rawRemoteURL: String) throws -> DevelopmentGitHubRepositoryIdentity {
+        let remoteURL = rawRemoteURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !remoteURL.isEmpty,
+              !remoteURL.contains("\u{0}"),
+              !remoteURL.contains(where: { $0.isWhitespace }),
+              !containsLocalPath(remoteURL) else {
+            throw DevelopmentPRPublishWorkflowError.invalidGitHubOriginRemote
+        }
+
+        if remoteURL.hasPrefix("git@github.com:") {
+            let path = String(remoteURL.dropFirst("git@github.com:".count))
+            return try repositoryIdentity(fromRemotePath: path)
+        }
+
+        guard let components = URLComponents(string: remoteURL),
+              components.host?.lowercased() == "github.com",
+              components.port == nil,
+              components.password == nil,
+              components.query == nil,
+              components.fragment == nil else {
+            throw DevelopmentPRPublishWorkflowError.invalidGitHubOriginRemote
+        }
+
+        if components.scheme == "https" {
+            guard components.user == nil else {
+                throw DevelopmentPRPublishWorkflowError.invalidGitHubOriginRemote
+            }
+            return try repositoryIdentity(fromRemotePath: components.path)
+        }
+
+        if components.scheme == "ssh" {
+            guard components.user == "git" else {
+                throw DevelopmentPRPublishWorkflowError.invalidGitHubOriginRemote
+            }
+            return try repositoryIdentity(fromRemotePath: components.path)
+        }
+
+        throw DevelopmentPRPublishWorkflowError.invalidGitHubOriginRemote
     }
 
     public static func validatedPullRequestTitle(
@@ -214,6 +338,618 @@ public enum DevelopmentGitHubPRCommandPolicy {
 
     private static func containsLocalPath(_ value: String) -> Bool {
         LocalPathRedactor.redact(value) != value
+    }
+
+    private static func repositoryIdentity(fromRemotePath rawPath: String) throws -> DevelopmentGitHubRepositoryIdentity {
+        var parts = strictPathParts(rawPath)
+        guard parts.count == 2 else {
+            throw DevelopmentPRPublishWorkflowError.invalidGitHubOriginRemote
+        }
+        if parts[1].hasSuffix(".git") {
+            parts[1].removeLast(4)
+        }
+        guard isValidGitHubOwner(parts[0]),
+              isValidGitHubRepositoryName(parts[1]) else {
+            throw DevelopmentPRPublishWorkflowError.invalidGitHubOriginRemote
+        }
+        return DevelopmentGitHubRepositoryIdentity(owner: parts[0], name: parts[1])
+    }
+
+    private static func strictPathParts(_ rawPath: String) -> [String] {
+        guard rawPath.hasPrefix("/") else {
+            return rawPath.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        }
+        let pathWithoutLeadingSlash = rawPath.dropFirst()
+        return pathWithoutLeadingSlash.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+    }
+
+    private static func isValidGitHubOwner(_ value: String) -> Bool {
+        guard (1...39).contains(value.count),
+              let first = value.first,
+              let last = value.last,
+              first.isLetter || first.isNumber,
+              last.isLetter || last.isNumber else {
+            return false
+        }
+        return value.allSatisfy { isASCIIAlphaNumeric($0) || $0 == "-" }
+    }
+
+    private static func isValidGitHubRepositoryName(_ value: String) -> Bool {
+        guard (1...100).contains(value.count),
+              value != ".",
+              value != ".." else {
+            return false
+        }
+        return value.allSatisfy { character in
+            isASCIIAlphaNumeric(character) || character == "-" || character == "_" || character == "."
+        }
+    }
+
+    private static func isASCIIAlphaNumeric(_ character: Character) -> Bool {
+        guard character.unicodeScalars.count == 1,
+              let scalar = character.unicodeScalars.first else {
+            return false
+        }
+        return (48...57).contains(scalar.value)
+            || (65...90).contains(scalar.value)
+            || (97...122).contains(scalar.value)
+    }
+
+    private static func isAllowedStatusView(arguments: [String]) -> Bool {
+        guard arguments.count == 5,
+              arguments[0] == "pr",
+              arguments[1] == "view",
+              arguments[3] == "--json",
+              arguments[4] == statusJSONFields else {
+            return false
+        }
+        return (try? validatedPullRequestURL(arguments[2], redactor: DeveloperSecretRedactor())) != nil
+    }
+
+    private static func isAllowedMerge(arguments: [String]) -> Bool {
+        guard arguments.count == 5,
+              arguments[0] == "pr",
+              arguments[1] == "merge",
+              arguments[3] == "--merge",
+              arguments[4] == "--delete-branch" else {
+            return false
+        }
+        return (try? validatedPullRequestURL(arguments[2], redactor: DeveloperSecretRedactor())) != nil
+    }
+}
+
+private struct DevelopmentPullRequestCheckStatus: Decodable, Equatable, Sendable {
+    var name: String
+    var status: String?
+    var conclusion: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case typename = "__typename"
+        case name
+        case context
+        case status
+        case conclusion
+        case state
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let rawName = try container.decodeIfPresent(String.self, forKey: .name)
+            ?? container.decodeIfPresent(String.self, forKey: .context)
+            ?? container.decodeIfPresent(String.self, forKey: .typename)
+            ?? "unnamed status check"
+        name = rawName
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        conclusion = try container.decodeIfPresent(String.self, forKey: .conclusion)
+
+        if status == nil, let state = try container.decodeIfPresent(String.self, forKey: .state) {
+            switch state.uppercased() {
+            case "SUCCESS", "FAILURE", "ERROR":
+                status = "COMPLETED"
+                conclusion = conclusion ?? state
+            default:
+                status = state
+            }
+        }
+    }
+}
+
+private struct DevelopmentPullRequestRepositoryStatus: Decodable, Equatable, Sendable {
+    var name: String?
+    var nameWithOwner: String?
+}
+
+private struct DevelopmentPullRequestRepositoryOwnerStatus: Decodable, Equatable, Sendable {
+    var login: String?
+}
+
+private struct DevelopmentPullRequestGateStatus: Decodable, Equatable, Sendable {
+    var url: String
+    var headRefName: String
+    var baseRefName: String
+    var headRepository: DevelopmentPullRequestRepositoryStatus?
+    var headRepositoryOwner: DevelopmentPullRequestRepositoryOwnerStatus?
+    var isCrossRepository: Bool?
+    var reviewDecision: String?
+    var mergeable: String?
+    var mergeStateStatus: String?
+    var statusCheckRollup: [DevelopmentPullRequestCheckStatus]
+
+    var normalizedReviewDecision: String {
+        normalized(reviewDecision)
+    }
+
+    var normalizedMergeable: String {
+        normalized(mergeable)
+    }
+
+    var normalizedMergeStateStatus: String {
+        normalized(mergeStateStatus)
+    }
+
+    func blockingReasons(
+        expectedURL: String,
+        expectedHeadBranch: String,
+        expectedBaseBranch: String,
+        expectedRepository: DevelopmentGitHubRepositoryIdentity
+    ) -> [String] {
+        var reasons: [String] = []
+
+        if url != expectedURL {
+            reasons.append("pull request URL mismatch")
+        }
+        if headRefName != expectedHeadBranch {
+            reasons.append("head branch is \(headRefName), expected \(expectedHeadBranch)")
+        }
+        if baseRefName != expectedBaseBranch {
+            reasons.append("base branch is \(baseRefName), expected \(expectedBaseBranch)")
+        }
+        // Fork PRs can be valid collaboration, but this automation only owns
+        // same-repository merges for the approved project workspace.
+        switch isCrossRepository {
+        case .some(false):
+            break
+        case .some(true):
+            reasons.append("head repository is cross-repository")
+        case .none:
+            reasons.append("cross-repository status is UNKNOWN")
+        }
+        if let headRepositoryIdentity {
+            if !headRepositoryIdentity.matches(expectedRepository) {
+                reasons.append("head repository is \(headRepositoryIdentity.displayNameWithOwner), expected \(expectedRepository.displayNameWithOwner)")
+            }
+        } else {
+            reasons.append("head repository metadata is missing")
+        }
+        if normalizedReviewDecision != "APPROVED" {
+            reasons.append("review decision is \(normalizedReviewDecision)")
+        }
+        if normalizedMergeable != "MERGEABLE" {
+            reasons.append("mergeable is \(normalizedMergeable)")
+        }
+        if normalizedMergeStateStatus != "CLEAN" {
+            reasons.append("merge state is \(normalizedMergeStateStatus)")
+        }
+        if statusCheckRollup.isEmpty {
+            reasons.append("status checks are missing")
+        }
+        for check in statusCheckRollup {
+            let name = displayName(check.name)
+            let status = normalized(check.status)
+            let conclusion = normalized(check.conclusion)
+            if status != "COMPLETED" {
+                reasons.append("\(name) is \(status)")
+                continue
+            }
+            if conclusion != "SUCCESS" {
+                reasons.append("\(name) concluded \(conclusion)")
+            }
+        }
+
+        return reasons
+    }
+
+    private var headRepositoryIdentity: DevelopmentGitHubRepositoryIdentity? {
+        guard let owner = headRepositoryOwner?.login,
+              let name = headRepository?.name,
+              !owner.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            if let nameWithOwner = headRepository?.nameWithOwner,
+               let identity = identity(fromNameWithOwner: nameWithOwner) {
+                return identity
+            }
+            return nil
+        }
+        return DevelopmentGitHubRepositoryIdentity(owner: owner, name: name)
+    }
+
+    private func identity(fromNameWithOwner nameWithOwner: String) -> DevelopmentGitHubRepositoryIdentity? {
+        let parts = nameWithOwner.split(separator: "/").map(String.init)
+        guard parts.count == 2,
+              !parts[0].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !parts[1].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return DevelopmentGitHubRepositoryIdentity(owner: parts[0], name: parts[1])
+    }
+
+    private func normalized(_ value: String?, fallback: String = "UNKNOWN") -> String {
+        guard let value else {
+            return fallback
+        }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed.uppercased()
+    }
+
+    private func displayName(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "unnamed status check" : trimmed
+    }
+}
+
+private struct DevelopmentPullRequestGateDecision: Equatable, Sendable {
+    var status: DevelopmentPullRequestGateStatus
+    var blockingReasons: [String]
+
+    var isReadyToMerge: Bool {
+        blockingReasons.isEmpty
+    }
+
+    var summary: String {
+        if isReadyToMerge {
+            return "Pull request review, CI, and mergeability gates passed."
+        }
+        return "Pull request merge blocked: \(blockingReasons.joined(separator: "; "))."
+    }
+
+    func output(projectID: Int64, pullRequestURL: String, branchName: String, baseBranch: String) -> [String: JSONValue] {
+        [
+            "projectId": .number(Double(projectID)),
+            "pullRequestURL": .string(pullRequestURL),
+            "branchName": .string(branchName),
+            "baseBranch": .string(baseBranch),
+            "readyToMerge": .bool(isReadyToMerge),
+            "reviewDecision": .string(status.normalizedReviewDecision),
+            "mergeable": .string(status.normalizedMergeable),
+            "mergeStateStatus": .string(status.normalizedMergeStateStatus),
+            "statusCheckCount": .number(Double(status.statusCheckRollup.count)),
+            "blockingReasons": .array(blockingReasons.map(JSONValue.string))
+        ]
+    }
+}
+
+private struct DevelopmentPullRequestGateEvaluator {
+    var projectStore: SQLiteProjectStore
+    var gitRunner: any GitCommandRunner
+    var githubRunner: any GitHubCLICommandRunner
+    var redactor: DeveloperSecretRedactor
+
+    func evaluate(arguments: [String: JSONValue], tool: ActionTool) throws -> DevelopmentPullRequestGateContext {
+        try validateRequiredArguments(arguments, tool: tool)
+        let args = ToolArguments(arguments, tool: tool)
+        let projectID = try args.requiredInt64("projectId")
+        let pullRequestURL = try DevelopmentGitHubPRCommandPolicy.validatedPullRequestURL(
+            args.requiredTrimmedString("pullRequestURL"),
+            redactor: redactor
+        )
+        let branchName = try DevelopmentPublishGitCommandPolicy.validatedPublishHeadBranch(
+            args.requiredTrimmedString("branchName")
+        )
+        let baseBranch = try DevelopmentBranchNamePolicy.validated(args.requiredTrimmedString("baseBranch"))
+        try DevelopmentGitHubPRCommandPolicy.validateBaseAndHead(baseBranch: baseBranch, headBranch: branchName)
+        let project = try projectStore.get(id: projectID)
+        let scope = try ProjectWorkspaceScope(project: project)
+        // Resolve origin before calling GitHub so a pasted PR URL for another
+        // repository cannot read or merge outside the approved workspace.
+        let originRepository = try fetchOriginRepository(
+            workingDirectory: scope.rootURL,
+            tool: tool
+        )
+        let pullRequestRepository = try DevelopmentGitHubPRCommandPolicy.repositoryIdentity(
+            fromPullRequestURL: pullRequestURL
+        )
+        guard pullRequestRepository.matches(originRepository) else {
+            throw DevelopmentPRPublishWorkflowError.pullRequestRepositoryMismatch(
+                expected: originRepository.displayNameWithOwner,
+                actual: pullRequestRepository.displayNameWithOwner
+            )
+        }
+        let status = try fetchStatus(
+            pullRequestURL: pullRequestURL,
+            workingDirectory: scope.rootURL,
+            tool: tool
+        )
+        let blockingReasons = status.blockingReasons(
+            expectedURL: pullRequestURL,
+            expectedHeadBranch: branchName,
+            expectedBaseBranch: baseBranch,
+            expectedRepository: originRepository
+        ).map(redacted)
+
+        return DevelopmentPullRequestGateContext(
+            projectID: project.id,
+            pullRequestURL: pullRequestURL,
+            branchName: branchName,
+            baseBranch: baseBranch,
+            workingDirectory: scope.rootURL,
+            decision: DevelopmentPullRequestGateDecision(
+                status: status,
+                blockingReasons: blockingReasons
+            )
+        )
+    }
+
+    private func fetchOriginRepository(
+        workingDirectory: URL,
+        tool: ActionTool
+    ) throws -> DevelopmentGitHubRepositoryIdentity {
+        let arguments = ["remote", "get-url", "origin"]
+        guard DevelopmentPublishGitCommandPolicy.isAllowed(arguments: arguments) else {
+            throw DevelopmentPRPublishWorkflowError.commandNotAllowed(tool: tool, command: arguments)
+        }
+        let output = try gitRunner.runGit(arguments: arguments, workingDirectory: workingDirectory)
+        guard output.exitCode == 0 else {
+            throw DevelopmentPRPublishWorkflowError.commandFailed(
+                tool: tool,
+                command: arguments,
+                exitCode: output.exitCode,
+                standardError: redacted(output.standardError.trimmingCharacters(in: .whitespacesAndNewlines))
+            )
+        }
+        return try DevelopmentGitHubPRCommandPolicy.repositoryIdentity(fromRemoteURL: output.standardOutput)
+    }
+
+    private func fetchStatus(
+        pullRequestURL: String,
+        workingDirectory: URL,
+        tool: ActionTool
+    ) throws -> DevelopmentPullRequestGateStatus {
+        let arguments = [
+            "pr", "view", pullRequestURL,
+            "--json", DevelopmentGitHubPRCommandPolicy.statusJSONFields
+        ]
+        guard DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: arguments) else {
+            throw DevelopmentPRPublishWorkflowError.commandNotAllowed(tool: tool, command: arguments)
+        }
+        let output = try githubRunner.runGitHub(arguments: arguments, workingDirectory: workingDirectory)
+        guard output.exitCode == 0 else {
+            throw DevelopmentPRPublishWorkflowError.commandFailed(
+                tool: tool,
+                command: arguments,
+                exitCode: output.exitCode,
+                standardError: redacted(output.standardError.trimmingCharacters(in: .whitespacesAndNewlines))
+            )
+        }
+        guard let data = output.standardOutput.data(using: .utf8),
+              let status = try? JSONDecoder().decode(DevelopmentPullRequestGateStatus.self, from: data) else {
+            throw DevelopmentPRPublishWorkflowError.invalidPullRequestStatusJSON
+        }
+        return status
+    }
+
+    private func validateRequiredArguments(_ arguments: [String: JSONValue], tool: ActionTool) throws {
+        let required = ["projectId", "pullRequestURL", "branchName", "baseBranch"]
+        for key in required where arguments[key] == nil {
+            throw ToolExecutionError.validationFailed(tool, "Missing required argument '\(key)'.")
+        }
+    }
+
+    private func redacted(_ value: String) -> String {
+        LocalPathRedactor.redact(redactor.redact(value).text)
+    }
+}
+
+private struct DevelopmentPullRequestGateContext: Equatable, Sendable {
+    var projectID: Int64
+    var pullRequestURL: String
+    var branchName: String
+    var baseBranch: String
+    var workingDirectory: URL
+    var decision: DevelopmentPullRequestGateDecision
+}
+
+public struct DevelopmentPullRequestReviewGateTool: Tool {
+    public let name: ActionTool = .developmentReviewPullRequestGate
+    public let description: String = "Check GitHub pull request review, CI, and mergeability status before merge approval."
+    public let inputSchema = ToolInputSchema(
+        required: ["projectId", "pullRequestURL", "branchName", "baseBranch"],
+        properties: [
+            "projectId": "integer",
+            "pullRequestURL": "string",
+            "branchName": "string",
+            "baseBranch": "string"
+        ],
+        nonBlank: ["pullRequestURL", "branchName", "baseBranch"]
+    )
+    public let permissionLevel: ToolPermissionLevel = .writeWithApproval
+
+    private let evaluator: DevelopmentPullRequestGateEvaluator
+    private let redactor: DeveloperSecretRedactor
+
+    public init(
+        projectStore: SQLiteProjectStore,
+        gitRunner: any GitCommandRunner = ProcessGitCommandRunner(),
+        githubRunner: any GitHubCLICommandRunner = ProcessGitHubCLICommandRunner(),
+        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()
+    ) {
+        self.evaluator = DevelopmentPullRequestGateEvaluator(
+            projectStore: projectStore,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner,
+            redactor: redactor
+        )
+        self.redactor = redactor
+    }
+
+    public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
+        try enforcePermission(context: context)
+
+        do {
+            let gate = try evaluator.evaluate(arguments: arguments, tool: name)
+            return ToolResult(
+                tool: name,
+                status: gate.decision.isReadyToMerge ? .succeeded : .failed,
+                summary: redacted(gate.decision.summary),
+                output: gate.decision.output(
+                    projectID: gate.projectID,
+                    pullRequestURL: gate.pullRequestURL,
+                    branchName: gate.branchName,
+                    baseBranch: gate.baseBranch
+                ),
+                rollbackMetadata: ["pullRequestURL": .string(gate.pullRequestURL)],
+                compensationHint: gate.decision.isReadyToMerge
+                    ? "Request explicit merge approval before merging."
+                    : "Resolve review, CI, or mergeability blockers before requesting merge approval."
+            )
+        } catch let error as ToolExecutionError {
+            throw error
+        } catch let error as DevelopmentPRWorkflowError {
+            throw ToolExecutionError.executionFailed(name, redacted(error.userMessage))
+        } catch let error as DevelopmentPRPublishWorkflowError {
+            throw ToolExecutionError.executionFailed(name, redacted(error.userMessage))
+        } catch let error as GitReadOnlyError {
+            throw ToolExecutionError.executionFailed(name, redacted(String(describing: error)))
+        } catch {
+            throw ToolExecutionError.executionFailed(name, redacted(String(describing: error)))
+        }
+    }
+
+    private func redacted(_ value: String) -> String {
+        LocalPathRedactor.redact(redactor.redact(value).text)
+    }
+}
+
+public struct DevelopmentPullRequestMergeTool: Tool {
+    public let name: ActionTool = .developmentMergePullRequest
+    public let description: String = "Merge a GitHub pull request only after review, CI, and mergeability gates pass and explicit approval is given."
+    public let inputSchema = ToolInputSchema(
+        required: ["projectId", "pullRequestURL", "branchName", "baseBranch"],
+        properties: [
+            "projectId": "integer",
+            "pullRequestURL": "string",
+            "branchName": "string",
+            "baseBranch": "string"
+        ],
+        nonBlank: ["pullRequestURL", "branchName", "baseBranch"]
+    )
+    public let permissionLevel: ToolPermissionLevel = .writeWithApproval
+
+    private let evaluator: DevelopmentPullRequestGateEvaluator
+    private let githubRunner: any GitHubCLICommandRunner
+    private let redactor: DeveloperSecretRedactor
+
+    public init(
+        projectStore: SQLiteProjectStore,
+        gitRunner: any GitCommandRunner = ProcessGitCommandRunner(),
+        githubRunner: any GitHubCLICommandRunner = ProcessGitHubCLICommandRunner(),
+        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()
+    ) {
+        self.githubRunner = githubRunner
+        self.redactor = redactor
+        self.evaluator = DevelopmentPullRequestGateEvaluator(
+            projectStore: projectStore,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner,
+            redactor: redactor
+        )
+    }
+
+    public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
+        try enforcePermission(context: context)
+
+        do {
+            let gate = try evaluator.evaluate(arguments: arguments, tool: name)
+            guard gate.decision.isReadyToMerge else {
+                return ToolResult(
+                    tool: name,
+                    status: .failed,
+                    summary: redacted(gate.decision.summary),
+                    output: gate.decision.output(
+                        projectID: gate.projectID,
+                        pullRequestURL: gate.pullRequestURL,
+                        branchName: gate.branchName,
+                        baseBranch: gate.baseBranch
+                    ),
+                    rollbackMetadata: ["pullRequestURL": .string(gate.pullRequestURL)],
+                    compensationHint: "Resolve review, CI, or mergeability blockers before requesting merge approval again."
+                )
+            }
+
+            let mergeArguments = ["pr", "merge", gate.pullRequestURL, "--merge", "--delete-branch"]
+            guard DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: mergeArguments) else {
+                throw DevelopmentPRPublishWorkflowError.commandNotAllowed(tool: name, command: mergeArguments)
+            }
+            let merge = try githubRunner.runGitHub(arguments: mergeArguments, workingDirectory: gate.workingDirectory)
+            guard merge.exitCode == 0 else {
+                return failedCommandResult(gate: gate, exitCode: merge.exitCode, standardError: merge.standardError)
+            }
+
+            var output = gate.decision.output(
+                projectID: gate.projectID,
+                pullRequestURL: gate.pullRequestURL,
+                branchName: gate.branchName,
+                baseBranch: gate.baseBranch
+            )
+            output["merged"] = .bool(true)
+            output["mergeStrategy"] = .string("merge")
+            output["deletedRemoteBranch"] = .bool(true)
+            output["mergeSummary"] = .string(redacted(merge.standardOutput))
+
+            return ToolResult(
+                tool: name,
+                status: .succeeded,
+                summary: "Merged pull request \(gate.pullRequestURL) after review and CI gates passed.",
+                output: output,
+                rollbackMetadata: [
+                    "pullRequestURL": .string(gate.pullRequestURL),
+                    "branchName": .string(gate.branchName)
+                ],
+                compensationHint: "Pull the base branch after merge and continue from the updated base."
+            )
+        } catch let error as ToolExecutionError {
+            throw error
+        } catch let error as DevelopmentPRWorkflowError {
+            throw ToolExecutionError.executionFailed(name, redacted(error.userMessage))
+        } catch let error as DevelopmentPRPublishWorkflowError {
+            throw ToolExecutionError.executionFailed(name, redacted(error.userMessage))
+        } catch let error as GitReadOnlyError {
+            throw ToolExecutionError.executionFailed(name, redacted(String(describing: error)))
+        } catch {
+            throw ToolExecutionError.executionFailed(name, redacted(String(describing: error)))
+        }
+    }
+
+    private func failedCommandResult(
+        gate: DevelopmentPullRequestGateContext,
+        exitCode: Int32,
+        standardError: String
+    ) -> ToolResult {
+        let error = DevelopmentPRPublishWorkflowError.commandFailed(
+            tool: name,
+            command: ["pr", "merge", gate.pullRequestURL, "--merge", "--delete-branch"],
+            exitCode: exitCode,
+            standardError: redacted(standardError.trimmingCharacters(in: .whitespacesAndNewlines))
+        )
+        var output = gate.decision.output(
+            projectID: gate.projectID,
+            pullRequestURL: gate.pullRequestURL,
+            branchName: gate.branchName,
+            baseBranch: gate.baseBranch
+        )
+        output["merged"] = .bool(false)
+        output["publishError"] = .string(redacted(error.userMessage))
+        return ToolResult(
+            tool: name,
+            status: .failed,
+            summary: redacted(error.userMessage),
+            output: output,
+            rollbackMetadata: ["pullRequestURL": .string(gate.pullRequestURL)],
+            compensationHint: "Inspect the GitHub merge result and retry after fixing the merge error."
+        )
+    }
+
+    private func redacted(_ value: String) -> String {
+        LocalPathRedactor.redact(redactor.redact(value).text)
     }
 }
 
@@ -503,7 +1239,7 @@ public struct DevelopmentPullRequestCreationTool: Tool {
                 )
             }
 
-            guard let pullRequestURL = pullRequestURL(from: output.standardOutput) else {
+            guard let rawPullRequestURL = pullRequestURL(from: output.standardOutput) else {
                 return failedCommandResult(
                     projectID: project.id,
                     branchName: branchName,
@@ -511,6 +1247,10 @@ public struct DevelopmentPullRequestCreationTool: Tool {
                     error: .missingPullRequestURL
                 )
             }
+            let pullRequestURL = try DevelopmentGitHubPRCommandPolicy.validatedPullRequestURL(
+                rawPullRequestURL,
+                redactor: redactor
+            )
 
             return ToolResult(
                 tool: name,

@@ -418,6 +418,48 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         XCTAssertEqual(githubRunner.recordedBodyFiles, [body])
     }
 
+    func testCreatePullRequestRejectsMalformedReturnedURLBeforeReceiptOutput() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let branchName = "feature/solopm-\(project.id)-publish-gate"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        gitRunner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
+        )
+        let githubRunner = RecordingGitHubCLICommandRunner(
+            output: GitHubCLICommandOutput(
+                standardOutput: "https://user:token@github.com/albert-einshutoin/soloPM/pull/106\n",
+                standardError: "",
+                exitCode: 0
+            )
+        )
+        let tool = DevelopmentPullRequestCreationTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string(branchName),
+                    "baseBranch": .string("feature/phase14-product-completion"),
+                    "title": .string("Add development publish gate"),
+                    "body": .string("Reviewed pull request body")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentCreatePullRequest, "Pull request URL must be a GitHub HTTPS pull request URL.")
+            )
+        }
+    }
+
     func testCreatePullRequestRejectsProtectedOrMatchingHeadBeforeGitHubCommand() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
@@ -571,8 +613,441 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         XCTAssertFalse(publishError.contains(workspace.path))
     }
 
+    func testPullRequestReviewGateReportsBlockedReasonsWithoutMergeCommand() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let branchName = "feature/solopm-\(project.id)-merge-gate"
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        stubOrigin(gitRunner)
+        let githubRunner = RecordingGitHubCLICommandRunner(outputs: [
+            GitHubCLICommandOutput(
+                standardOutput: pullRequestStatusJSON(
+                    url: pullRequestURL,
+                    headBranch: branchName,
+                    baseBranch: "feature/phase14-product-completion",
+                    reviewDecision: "CHANGES_REQUESTED",
+                    mergeable: "CONFLICTING",
+                    mergeStateStatus: "DIRTY",
+                    checks: [
+                        (name: "SwiftPM macOS", status: "COMPLETED", conclusion: "FAILURE"),
+                        (name: "GitGuardian Security Checks", status: "IN_PROGRESS", conclusion: nil)
+                    ]
+                ),
+                standardError: "",
+                exitCode: 0
+            )
+        ])
+        let tool = DevelopmentPullRequestReviewGateTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner
+        )
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "pullRequestURL": .string(pullRequestURL),
+                "branchName": .string(branchName),
+                "baseBranch": .string("feature/phase14-product-completion")
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .failed)
+        XCTAssertEqual(result.output["readyToMerge"], .bool(false))
+        XCTAssertEqual(result.output["reviewDecision"], .string("CHANGES_REQUESTED"))
+        XCTAssertEqual(result.output["mergeable"], .string("CONFLICTING"))
+        XCTAssertEqual(result.output["mergeStateStatus"], .string("DIRTY"))
+        XCTAssertEqual(result.output["statusCheckCount"], .number(2))
+        XCTAssertTrue(result.summary.contains("review decision is CHANGES_REQUESTED"))
+        XCTAssertTrue(result.summary.contains("SwiftPM macOS concluded FAILURE"))
+        XCTAssertTrue(result.summary.contains("GitGuardian Security Checks is IN_PROGRESS"))
+        XCTAssertEqual(githubRunner.recordedInvocations, [
+            GitHubCLICommandInvocation(
+                arguments: [
+                    "pr", "view", pullRequestURL,
+                    "--json", DevelopmentGitHubPRCommandPolicy.statusJSONFields
+                ],
+                workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()
+            )
+        ])
+    }
+
+    func testPullRequestReviewGateRequiresApprovalBeforeExternalReads() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let gitRunner = RecordingDevelopmentGitRunner()
+        let githubRunner = RecordingGitHubCLICommandRunner()
+        let tool = DevelopmentPullRequestReviewGateTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "pullRequestURL": .string("https://github.com/albert-einshutoin/soloPM/pull/116"),
+                    "branchName": .string("feature/solopm-\(project.id)-merge-gate"),
+                    "baseBranch": .string("feature/phase14-product-completion")
+                ],
+                context: ToolExecutionContext(source: .reviewUI)
+            )
+        ) { error in
+            XCTAssertEqual(error as? ToolExecutionError, .approvalRequired(.developmentReviewPullRequestGate))
+        }
+        XCTAssertEqual(gitRunner.recordedInvocations, [])
+        XCTAssertEqual(githubRunner.recordedInvocations, [])
+    }
+
+    func testPullRequestReviewGateRejectsDifferentOriginRepositoryBeforeGitHubRead() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: temporaryDirectory().path)
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        stubOrigin(gitRunner, remoteURL: "https://github.com/other-org/other-repo.git")
+        let githubRunner = RecordingGitHubCLICommandRunner()
+        let tool = DevelopmentPullRequestReviewGateTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "pullRequestURL": .string(pullRequestURL),
+                    "branchName": .string("feature/solopm-\(project.id)-merge-gate"),
+                    "baseBranch": .string("feature/phase14-product-completion")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(
+                    .developmentReviewPullRequestGate,
+                    "Pull request repository albert-einshutoin/soloPM does not match origin repository other-org/other-repo."
+                )
+            )
+        }
+        XCTAssertEqual(githubRunner.recordedInvocations, [])
+    }
+
+    func testPullRequestReviewGateBlocksForkHeadRepositoryAndMissingChecks() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: temporaryDirectory().path)
+        let branchName = "feature/solopm-\(project.id)-merge-gate"
+        let baseBranch = "feature/phase14-product-completion"
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        stubOrigin(gitRunner)
+        let githubRunner = RecordingGitHubCLICommandRunner(outputs: [
+            GitHubCLICommandOutput(
+                standardOutput: pullRequestStatusJSON(
+                    url: pullRequestURL,
+                    headBranch: branchName,
+                    baseBranch: baseBranch,
+                    reviewDecision: "APPROVED",
+                    mergeable: "MERGEABLE",
+                    mergeStateStatus: "CLEAN",
+                    checks: [],
+                    headOwner: "outside-contributor",
+                    headRepository: "soloPM-fork",
+                    isCrossRepository: true
+                ),
+                standardError: "",
+                exitCode: 0
+            )
+        ])
+        let tool = DevelopmentPullRequestReviewGateTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner
+        )
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "pullRequestURL": .string(pullRequestURL),
+                "branchName": .string(branchName),
+                "baseBranch": .string(baseBranch)
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .failed)
+        XCTAssertTrue(result.summary.contains("status checks are missing"))
+        XCTAssertTrue(result.summary.contains("head repository is cross-repository"))
+        XCTAssertTrue(result.summary.contains("head repository is outside-contributor/soloPM-fork"))
+    }
+
+    func testPullRequestReviewGateFailsClosedForGitHubStatusErrors() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: temporaryDirectory().path)
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        stubOrigin(gitRunner)
+        let githubRunner = RecordingGitHubCLICommandRunner(outputs: [
+            GitHubCLICommandOutput(
+                standardOutput: "not-json",
+                standardError: "",
+                exitCode: 0
+            )
+        ])
+        let tool = DevelopmentPullRequestReviewGateTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "pullRequestURL": .string(pullRequestURL),
+                    "branchName": .string("feature/solopm-\(project.id)-merge-gate"),
+                    "baseBranch": .string("feature/phase14-product-completion")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(
+                    .developmentReviewPullRequestGate,
+                    "GitHub CLI returned an unreadable pull request status response."
+                )
+            )
+        }
+    }
+
+    func testPullRequestReviewGateAcceptsSuccessfulStatusContextShape() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let branchName = "feature/solopm-\(project.id)-merge-gate"
+        let baseBranch = "feature/phase14-product-completion"
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        stubOrigin(gitRunner)
+        let githubRunner = RecordingGitHubCLICommandRunner(outputs: [
+            GitHubCLICommandOutput(
+                standardOutput: """
+                {
+                  "url": "\(pullRequestURL)",
+                  "headRefName": "\(branchName)",
+                  "baseRefName": "\(baseBranch)",
+                  "headRepository": {
+                    "name": "soloPM",
+                    "nameWithOwner": ""
+                  },
+                  "headRepositoryOwner": {
+                    "login": "albert-einshutoin"
+                  },
+                  "isCrossRepository": false,
+                  "reviewDecision": "APPROVED",
+                  "mergeable": "MERGEABLE",
+                  "mergeStateStatus": "CLEAN",
+                  "statusCheckRollup": [
+                    {
+                      "__typename": "StatusContext",
+                      "context": "legacy/status",
+                      "state": "SUCCESS"
+                    }
+                  ]
+                }
+                """,
+                standardError: "",
+                exitCode: 0
+            )
+        ])
+        let tool = DevelopmentPullRequestReviewGateTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner
+        )
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "pullRequestURL": .string(pullRequestURL),
+                "branchName": .string(branchName),
+                "baseBranch": .string(baseBranch)
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .succeeded)
+        XCTAssertEqual(result.output["readyToMerge"], .bool(true))
+        XCTAssertEqual(result.output["statusCheckCount"], .number(1))
+        XCTAssertFalse(result.summary.contains("legacy/status concluded"))
+        XCTAssertEqual(githubRunner.recordedInvocations.first?.workingDirectory, workspace.standardizedFileURL.resolvingSymlinksInPath())
+    }
+
+    func testMergePullRequestRequiresApprovalBeforeExternalWrite() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let gitRunner = RecordingDevelopmentGitRunner()
+        let githubRunner = RecordingGitHubCLICommandRunner()
+        let tool = DevelopmentPullRequestMergeTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "pullRequestURL": .string("https://github.com/albert-einshutoin/soloPM/pull/116"),
+                    "branchName": .string("feature/solopm-\(project.id)-merge-gate"),
+                    "baseBranch": .string("feature/phase14-product-completion")
+                ],
+                context: ToolExecutionContext(source: .reviewUI)
+            )
+        ) { error in
+            XCTAssertEqual(error as? ToolExecutionError, .approvalRequired(.developmentMergePullRequest))
+        }
+        XCTAssertEqual(githubRunner.recordedInvocations, [])
+    }
+
+    func testPullRequestMergeGateBlocksWhenChecksOrReviewAreNotGreenBeforeGitHubMergeCommand() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let branchName = "feature/solopm-\(project.id)-merge-gate"
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        stubOrigin(gitRunner)
+        let githubRunner = RecordingGitHubCLICommandRunner(outputs: [
+            GitHubCLICommandOutput(
+                standardOutput: pullRequestStatusJSON(
+                    url: pullRequestURL,
+                    headBranch: branchName,
+                    baseBranch: "feature/phase14-product-completion",
+                    reviewDecision: "APPROVED",
+                    mergeable: "MERGEABLE",
+                    mergeStateStatus: "UNSTABLE",
+                    checks: [
+                        (name: "SwiftPM macOS", status: "COMPLETED", conclusion: "SUCCESS"),
+                        (name: "GitGuardian Security Checks", status: "IN_PROGRESS", conclusion: nil)
+                    ]
+                ),
+                standardError: "",
+                exitCode: 0
+            )
+        ])
+        let tool = DevelopmentPullRequestMergeTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner
+        )
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "pullRequestURL": .string(pullRequestURL),
+                "branchName": .string(branchName),
+                "baseBranch": .string("feature/phase14-product-completion")
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .failed)
+        XCTAssertEqual(result.output["readyToMerge"], .bool(false))
+        XCTAssertEqual(result.output["pullRequestURL"], .string(pullRequestURL))
+        XCTAssertTrue(result.summary.contains("GitGuardian Security Checks is IN_PROGRESS"))
+        XCTAssertTrue(result.summary.contains("merge state is UNSTABLE"))
+        XCTAssertEqual(githubRunner.recordedInvocations.map(\.arguments), [
+            [
+                "pr", "view", pullRequestURL,
+                "--json", DevelopmentGitHubPRCommandPolicy.statusJSONFields
+            ]
+        ])
+    }
+
+    func testMergePullRequestRechecksGateAndUsesNarrowMergeCommand() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let branchName = "feature/solopm-\(project.id)-merge-gate"
+        let baseBranch = "feature/phase14-product-completion"
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        stubOrigin(gitRunner)
+        let githubRunner = RecordingGitHubCLICommandRunner(outputs: [
+            GitHubCLICommandOutput(
+                standardOutput: pullRequestStatusJSON(
+                    url: pullRequestURL,
+                    headBranch: branchName,
+                    baseBranch: baseBranch,
+                    reviewDecision: "APPROVED",
+                    mergeable: "MERGEABLE",
+                    mergeStateStatus: "CLEAN",
+                    checks: [
+                        (name: "SwiftPM macOS", status: "COMPLETED", conclusion: "SUCCESS"),
+                        (name: "GitGuardian Security Checks", status: "COMPLETED", conclusion: "SUCCESS")
+                    ]
+                ),
+                standardError: "",
+                exitCode: 0
+            ),
+            GitHubCLICommandOutput(
+                standardOutput: "Merged pull request #116 token=merge-secret\n",
+                standardError: "",
+                exitCode: 0
+            )
+        ])
+        let tool = DevelopmentPullRequestMergeTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner
+        )
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "pullRequestURL": .string(pullRequestURL),
+                "branchName": .string(branchName),
+                "baseBranch": .string(baseBranch)
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .succeeded)
+        XCTAssertEqual(result.output["readyToMerge"], .bool(true))
+        XCTAssertEqual(result.output["merged"], .bool(true))
+        XCTAssertEqual(result.output["pullRequestURL"], .string(pullRequestURL))
+        XCTAssertEqual(result.output["branchName"], .string(branchName))
+        XCTAssertEqual(result.output["baseBranch"], .string(baseBranch))
+        XCTAssertEqual(result.output["statusCheckCount"], .number(2))
+        XCTAssertEqual(result.output["mergeSummary"], .string("Merged pull request #116 [REDACTED_SECRET]\n"))
+        XCTAssertFalse(result.summary.contains("merge-secret"))
+        XCTAssertEqual(githubRunner.recordedInvocations, [
+            GitHubCLICommandInvocation(
+                arguments: [
+                    "pr", "view", pullRequestURL,
+                    "--json", DevelopmentGitHubPRCommandPolicy.statusJSONFields
+                ],
+                workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()
+            ),
+            GitHubCLICommandInvocation(
+                arguments: ["pr", "merge", pullRequestURL, "--merge", "--delete-branch"],
+                workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()
+            )
+        ])
+    }
+
     func testDevelopmentPublishPoliciesRejectUnsafeCommands() {
         XCTAssertTrue(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["status", "--short", "--branch"]))
+        XCTAssertTrue(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["remote", "get-url", "origin"]))
         XCTAssertTrue(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push", "-u", "origin", "feature/solopm-1-task"]))
         XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push"]))
         XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push", "--force", "origin", "feature/solopm-1-task"]))
@@ -612,6 +1087,77 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
             "--title", "Add publish gate",
             "--body-file", "--editor"
         ]))
+        XCTAssertTrue(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
+            "pr", "view", "https://github.com/albert-einshutoin/soloPM/pull/116",
+            "--json", DevelopmentGitHubPRCommandPolicy.statusJSONFields
+        ]))
+        XCTAssertTrue(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
+            "pr", "merge", "https://github.com/albert-einshutoin/soloPM/pull/116",
+            "--merge", "--delete-branch"
+        ]))
+        XCTAssertFalse(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
+            "pr", "merge", "https://github.com/albert-einshutoin/soloPM/pull/116",
+            "--squash", "--delete-branch"
+        ]))
+        XCTAssertFalse(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
+            "pr", "merge", "https://github.com/albert-einshutoin/soloPM/pull/116",
+            "--merge", "--admin"
+        ]))
+        XCTAssertFalse(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
+            "pr", "view", "https://example.com/repo/pull/116",
+            "--json", DevelopmentGitHubPRCommandPolicy.statusJSONFields
+        ]))
+        XCTAssertFalse(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
+            "pr", "view", "https://user:token@github.com/albert-einshutoin/soloPM/pull/116",
+            "--json", DevelopmentGitHubPRCommandPolicy.statusJSONFields
+        ]))
+        XCTAssertFalse(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
+            "pr", "view", "https://github.com/albert-einshutoin/soloPM/pull/116?merge=1",
+            "--json", DevelopmentGitHubPRCommandPolicy.statusJSONFields
+        ]))
+        XCTAssertFalse(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
+            "pr", "view", "https://github.com/albert-einshutoin/soloPM/pull/not-a-number",
+            "--json", DevelopmentGitHubPRCommandPolicy.statusJSONFields
+        ]))
+        XCTAssertFalse(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
+            "pr", "view", "https://github.com/albert-einshutoin//soloPM/pull/116",
+            "--json", DevelopmentGitHubPRCommandPolicy.statusJSONFields
+        ]))
+        XCTAssertFalse(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
+            "pr", "view", "https://github.com/albert-einshutoin/soloPM/pull/116/",
+            "--json", DevelopmentGitHubPRCommandPolicy.statusJSONFields
+        ]))
+    }
+
+    func testPullRequestReviewGateRejectsMalformedOriginRemoteBeforeGitHubRead() throws {
+        let stores = try makeStores()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: temporaryDirectory().path)
+        let gitRunner = RecordingDevelopmentGitRunner()
+        stubOrigin(gitRunner, remoteURL: "https://github.com/albert-einshutoin//soloPM.git")
+        let githubRunner = RecordingGitHubCLICommandRunner()
+        let tool = DevelopmentPullRequestReviewGateTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "pullRequestURL": .string("https://github.com/albert-einshutoin/soloPM/pull/116"),
+                    "branchName": .string("feature/solopm-\(project.id)-merge-gate"),
+                    "baseBranch": .string("feature/phase14-product-completion")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentReviewPullRequestGate, "Origin remote must resolve to a GitHub repository.")
+            )
+        }
+        XCTAssertEqual(githubRunner.recordedInvocations, [])
     }
 
     func testPreparePullRequestWorkflowRejectsSymlinkWorkspace() throws {
@@ -665,10 +1211,64 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }
+
+    private func stubOrigin(
+        _ runner: RecordingDevelopmentGitRunner,
+        remoteURL: String = "https://github.com/albert-einshutoin/soloPM.git"
+    ) {
+        runner.stub(
+            arguments: ["remote", "get-url", "origin"],
+            output: GitCommandOutput(standardOutput: "\(remoteURL)\n", standardError: "", exitCode: 0)
+        )
+    }
+
+    private func pullRequestStatusJSON(
+        url: String,
+        headBranch: String,
+        baseBranch: String,
+        reviewDecision: String,
+        mergeable: String,
+        mergeStateStatus: String,
+        checks: [(name: String, status: String, conclusion: String?)],
+        headOwner: String = "albert-einshutoin",
+        headRepository: String = "soloPM",
+        isCrossRepository: Bool = false
+    ) -> String {
+        let checkObjects = checks.map { check -> String in
+            let conclusion = check.conclusion.map { "\"\($0)\"" } ?? "null"
+            return """
+            {
+              "__typename": "CheckRun",
+              "name": "\(check.name)",
+              "status": "\(check.status)",
+              "conclusion": \(conclusion)
+            }
+            """
+        }.joined(separator: ",")
+        return """
+        {
+          "url": "\(url)",
+          "headRefName": "\(headBranch)",
+          "baseRefName": "\(baseBranch)",
+          "headRepository": {
+            "name": "\(headRepository)",
+            "nameWithOwner": "\(headOwner)/\(headRepository)"
+          },
+          "headRepositoryOwner": {
+            "login": "\(headOwner)"
+          },
+          "isCrossRepository": \(isCrossRepository ? "true" : "false"),
+          "reviewDecision": "\(reviewDecision)",
+          "mergeable": "\(mergeable)",
+          "mergeStateStatus": "\(mergeStateStatus)",
+          "statusCheckRollup": [\(checkObjects)]
+        }
+        """
+    }
 }
 
 private final class RecordingGitHubCLICommandRunner: GitHubCLICommandRunner, @unchecked Sendable {
-    private let output: GitHubCLICommandOutput
+    private var outputs: [GitHubCLICommandOutput]
     private(set) var recordedInvocations: [GitHubCLICommandInvocation] = []
     private(set) var recordedBodyFiles: [String] = []
 
@@ -679,7 +1279,11 @@ private final class RecordingGitHubCLICommandRunner: GitHubCLICommandRunner, @un
             exitCode: 127
         )
     ) {
-        self.output = output
+        self.outputs = [output]
+    }
+
+    init(outputs: [GitHubCLICommandOutput]) {
+        self.outputs = outputs
     }
 
     func runGitHub(arguments: [String], workingDirectory: URL) throws -> GitHubCLICommandOutput {
@@ -689,7 +1293,14 @@ private final class RecordingGitHubCLICommandRunner: GitHubCLICommandRunner, @un
             let bodyFile = arguments[arguments.index(after: bodyFileIndex)]
             recordedBodyFiles.append((try? String(contentsOfFile: bodyFile, encoding: .utf8)) ?? "")
         }
-        return output
+        if outputs.count > 1 {
+            return outputs.removeFirst()
+        }
+        return outputs.first ?? GitHubCLICommandOutput(
+            standardOutput: "",
+            standardError: "unexpected command",
+            exitCode: 127
+        )
     }
 }
 

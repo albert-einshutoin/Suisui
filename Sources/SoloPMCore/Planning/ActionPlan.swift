@@ -134,6 +134,8 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
     case developmentCommitChanges = "development.pr_workflow.commit"
     case developmentPushBranch = "development.pr_workflow.push"
     case developmentCreatePullRequest = "development.pr_workflow.create_pull_request"
+    case developmentReviewPullRequestGate = "development.pr_workflow.review_gate"
+    case developmentMergePullRequest = "development.pr_workflow.merge"
     case developmentRepositoryReadFile = "development.repository.read_file"
     case developmentRepositoryCreateFile = "development.repository.create_file"
     case developmentRepositoryUpdateFile = "development.repository.update_file"
@@ -189,6 +191,8 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
              .developmentCommitChanges,
              .developmentPushBranch,
              .developmentCreatePullRequest,
+             .developmentReviewPullRequestGate,
+             .developmentMergePullRequest,
              .developmentRepositoryCreateFile,
              .developmentRepositoryUpdateFile,
              .developmentRunVerification:
@@ -225,6 +229,8 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
              .developmentCommitChanges,
              .developmentPushBranch,
              .developmentCreatePullRequest,
+             .developmentReviewPullRequestGate,
+             .developmentMergePullRequest,
              .developmentRepositoryReadFile,
              .developmentRepositoryCreateFile,
              .developmentRepositoryUpdateFile,
@@ -261,6 +267,8 @@ public extension ActionTool {
             .developmentCommitChanges,
             .developmentPushBranch,
             .developmentCreatePullRequest,
+            .developmentReviewPullRequestGate,
+            .developmentMergePullRequest,
             .developmentRepositoryReadFile,
             .developmentRepositoryCreateFile,
             .developmentRepositoryUpdateFile,

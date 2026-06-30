@@ -1406,6 +1406,12 @@ public enum ExecutionReceiptFactory {
         case .developmentCreatePullRequest:
             return developmentPullRequestOutputSummary(for: result, redactor: redactor)
                 ?? redactor.redact(result.summary)
+        case .developmentReviewPullRequestGate:
+            return developmentPullRequestGateOutputSummary(for: result, redactor: redactor)
+                ?? redactor.redact(result.summary)
+        case .developmentMergePullRequest:
+            return developmentPullRequestMergeOutputSummary(for: result, redactor: redactor)
+                ?? redactor.redact(result.summary)
         default:
             return redactor.redact(result.summary)
         }
@@ -1472,6 +1478,49 @@ public enum ExecutionReceiptFactory {
         }
         if let baseBranch = result.output["baseBranch"]?.receiptIDValue {
             parts.append("Base \(redactor.redact(baseBranch, maxLength: 240)).")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private static func developmentPullRequestGateOutputSummary(
+        for result: ToolResult,
+        redactor: ExecutionReceiptRedactor
+    ) -> String? {
+        guard let pullRequestURL = result.output["pullRequestURL"]?.receiptIDValue else {
+            return nil
+        }
+        var parts = [
+            "Checked pull request gate \(redactor.redact(pullRequestURL, maxLength: 300))."
+        ]
+        if result.output["readyToMerge"]?.receiptBoolValue == true {
+            parts.append("Review, CI, and mergeability gates passed.")
+        } else {
+            parts.append("Merge gate blocked.")
+        }
+        if let statusCheckCount = result.output["statusCheckCount"]?.receiptNumberValue {
+            parts.append("\(Int(statusCheckCount)) status check(s) evaluated.")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private static func developmentPullRequestMergeOutputSummary(
+        for result: ToolResult,
+        redactor: ExecutionReceiptRedactor
+    ) -> String? {
+        guard let pullRequestURL = result.output["pullRequestURL"]?.receiptIDValue else {
+            return nil
+        }
+        if result.status != .succeeded {
+            if result.output["merged"]?.receiptBoolValue == false {
+                return "Pull request merge failed for \(redactor.redact(pullRequestURL, maxLength: 300)). \(redactor.redact(result.summary))"
+            }
+            return "Pull request merge did not run for \(redactor.redact(pullRequestURL, maxLength: 300)). \(redactor.redact(result.summary))"
+        }
+        var parts = [
+            "Merged pull request \(redactor.redact(pullRequestURL, maxLength: 300))."
+        ]
+        if result.output["deletedRemoteBranch"]?.receiptBoolValue == true {
+            parts.append("Remote feature branch deletion requested.")
         }
         return parts.joined(separator: " ")
     }
@@ -1593,6 +1642,14 @@ public enum ExecutionReceiptFactory {
                 appendReference(kind: .developmentBranch, keys: ["branchName"], output: output, references: &references)
                 appendReference(kind: .pullRequest, keys: ["pullRequestURL"], output: output, references: &references)
             }
+            if item.editedAction.tool == .developmentReviewPullRequestGate {
+                appendReference(kind: .developmentBranch, keys: ["branchName"], output: output, references: &references)
+                appendReference(kind: .pullRequest, keys: ["pullRequestURL"], output: output, references: &references)
+            }
+            if item.editedAction.tool == .developmentMergePullRequest {
+                appendReference(kind: .developmentBranch, keys: ["branchName"], output: output, references: &references)
+                appendReference(kind: .pullRequest, keys: ["pullRequestURL"], output: output, references: &references)
+            }
         }
         return references
     }
@@ -1661,6 +1718,15 @@ private extension JSONValue {
     var receiptBoolValue: Bool? {
         switch self {
         case .bool(let value):
+            value
+        default:
+            nil
+        }
+    }
+
+    var receiptNumberValue: Double? {
+        switch self {
+        case .number(let value):
             value
         default:
             nil
