@@ -98,6 +98,7 @@
 "Shows the redacted document source preview used for the reviewed automation draft." = "Shows the redacted document source preview used for the reviewed automation draft.";
 "Shows the redacted task title and detail that were approved and executed." = "Shows the redacted task title and detail that were approved and executed.";
 "Settings..." = "Settings...";
+"Sets the absolute path to the local Kokoro TTS executable." = "Sets the absolute path to the local Kokoro TTS executable.";
 "Hide Sidebar" = "Hide Sidebar";
 "Sidebar" = "Sidebar";
 "Show Archived" = "Show Archived";
@@ -112,12 +113,15 @@
 "Sync" = "Sync";
 "System" = "System";
 "Task Details" = "Task Details";
+"Test Play" = "Test Play";
+"Tests the selected local TTS provider when the model and runtime are ready." = "Tests the selected local TTS provider when the model and runtime are ready.";
 "Terminal" = "Terminal";
 "Terminal Locked" = "Terminal Locked";
 "Terminal Unavailable" = "Terminal Unavailable";
 "Theme" = "Theme";
 "This removes the saved registration from SoloPM." = "This removes the saved registration from SoloPM.";
 "Today" = "Today";
+"TTS provider readiness" = "TTS provider readiness";
 "Voice" = "Voice";
 "Voice Command" = "Voice Command";
 "Voice Capture" = "Voice Capture";

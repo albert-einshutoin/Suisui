@@ -923,11 +923,65 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertFalse(absoluteSettings.validate().contains { $0.field == "defaultWorkspacePath" })
     }
 
-    func testTTSProvidersAreExplicitlyUnsupportedInThisRelease() {
-        XCTAssertTrue(TTSProvider.releaseReadyCases.isEmpty)
+    func testTTSProvidersExposeLocalKokoroWhileKeepingSystemSpeechUnsupported() {
+        XCTAssertEqual(TTSProvider.releaseReadyCases, [.localKokoro])
         XCTAssertFalse(TTSProvider.systemSpeech.isReleaseReady)
+        XCTAssertTrue(TTSProvider.localKokoro.isReleaseReady)
         XCTAssertEqual(TTSProvider.systemSpeech.displayName, "System Speech")
-        XCTAssertEqual(TTSProvider.systemSpeech.unavailableReason, "TTS is not supported in this release.")
+        XCTAssertEqual(TTSProvider.localKokoro.displayName, "Local Kokoro")
+        XCTAssertEqual(TTSProvider.systemSpeech.unavailableReason, "System Speech is kept only for legacy settings and is not product TTS.")
+        XCTAssertEqual(TTSProvider.localKokoro.unavailableReason, "Install the Kokoro model and configure the executable in Settings.")
+    }
+
+    @MainActor
+    func testAppSettingsViewModelReportsKokoroTTSReadinessWithoutRequiringModelToSaveSettings() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelTTSReadiness.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let executableURL = try writeExecutable(named: "kokoro-tts")
+        let viewModel = AppSettingsViewModel(
+            settingsStore: store,
+            secretStore: InMemorySecretStore(),
+            voiceModelManager: StaticAppSettingsVoiceModelManager(statuses: [
+                .kokoro82M: .notInstalled
+            ])
+        )
+
+        XCTAssertEqual(viewModel.settings.ttsProvider, .localKokoro)
+        XCTAssertEqual(viewModel.selectableTTSProviders, [.localKokoro])
+        XCTAssertEqual(viewModel.ttsProviderReadinessRow.statusLabel, "Model not installed")
+
+        viewModel.setKokoroExecutablePath(executableURL.path)
+        viewModel.saveSettings()
+
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(viewModel.successMessage, "Settings saved.")
+    }
+
+    @MainActor
+    func testAppSettingsViewModelMarksKokoroTTSReadyWithInstalledModelAndExecutable() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelTTSReady.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let executableURL = try writeExecutable(named: "kokoro-tts")
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            voiceModelManager: StaticAppSettingsVoiceModelManager(statuses: [
+                .kokoro82M: .installed
+            ])
+        )
+
+        XCTAssertEqual(viewModel.ttsProviderReadinessRow.statusLabel, "Runtime pending")
+
+        viewModel.setKokoroExecutablePath(executableURL.path)
+        viewModel.setTTSLanguageCode("ja")
+        viewModel.setTTSVoiceID("jf_alpha")
+
+        XCTAssertEqual(viewModel.ttsProviderReadinessRow.statusLabel, "Ready")
+        XCTAssertEqual(viewModel.ttsProviderReadinessRow.nextActionLabel, "Test play")
+        XCTAssertEqual(viewModel.ttsProviderReadinessRow.detailLabel, "JA / jf_alpha short prompts")
     }
 
     @MainActor

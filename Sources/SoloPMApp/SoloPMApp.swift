@@ -1646,9 +1646,9 @@ private struct SettingsView: View {
                     sttStatusLabel: settingsViewModel.settings.sttProvider.displayName,
                     sttDetailLabel: sttOverviewDetailLabel,
                     sttTone: sttOverviewTone,
-                    ttsStatusLabel: ttsOverviewStatusLabel,
-                    ttsDetailLabel: TTSProvider.systemSpeech.unavailableReason,
-                    ttsTone: .neutral,
+                    ttsStatusLabel: settingsViewModel.settings.ttsProvider.displayName,
+                    ttsDetailLabel: ttsOverviewDetailLabel,
+                    ttsTone: ttsOverviewTone,
                     calendarStatusLabel: calendarOverviewStatusLabel,
                     calendarDetailLabel: calendarOverviewDetailLabel,
                     calendarTone: integrationTone(for: integrationPermissionSnapshot.status(for: .calendar)),
@@ -1826,13 +1826,61 @@ private struct SettingsView: View {
                 .accessibilityIdentifier("settings-whisper-cpp-executable-path")
                 .accessibilityHint("Sets the absolute path to whisper-cli for offline speech to text.")
                 LabeledContent("Shortcut", value: "Option + Space")
-                if TTSProvider.releaseReadyCases.isEmpty {
-                    LabeledContent("Text to Speech", value: ttsOverviewStatusLabel)
-                    Label(TTSProvider.systemSpeech.unavailableReason, systemImage: "speaker.slash")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("settings-tts-unavailable")
+                Picker(
+                    "Text to Speech",
+                    selection: Binding(
+                        get: { settingsViewModel.settings.ttsProvider },
+                        set: { settingsViewModel.setTTSProvider($0) }
+                    )
+                ) {
+                    ForEach(settingsViewModel.selectableTTSProviders, id: \.self) { provider in
+                        Text(provider.displayName)
+                            .tag(provider)
+                    }
                 }
+                .accessibilityIdentifier("settings-tts-provider-picker")
+
+                SelectedTTSProviderStatusRow(row: settingsViewModel.ttsProviderReadinessRow)
+
+                TextField(
+                    "Kokoro executable",
+                    text: Binding(
+                        get: { settingsViewModel.settings.kokoroExecutablePath ?? "" },
+                        set: { settingsViewModel.setKokoroExecutablePath($0) }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("settings-kokoro-executable-path")
+                .accessibilityHint("Sets the absolute path to the local Kokoro TTS executable.")
+
+                Picker(
+                    "TTS Language",
+                    selection: Binding(
+                        get: { settingsViewModel.settings.ttsLanguageCode },
+                        set: { settingsViewModel.setTTSLanguageCode($0) }
+                    )
+                ) {
+                    Text("English").tag("en")
+                    Text("Japanese").tag("ja")
+                }
+                .accessibilityIdentifier("settings-tts-language-picker")
+
+                TextField(
+                    "TTS voice",
+                    text: Binding(
+                        get: { settingsViewModel.settings.ttsVoiceID },
+                        set: { settingsViewModel.setTTSVoiceID($0) }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("settings-tts-voice-id")
+
+                Button("Test Play") {
+                    settingsViewModel.setTransientErrorMessage("TTS playback adapter is not connected in this slice.")
+                }
+                .disabled(!settingsViewModel.ttsProviderReadinessRow.isReady)
+                .accessibilityIdentifier("settings-tts-test-play")
+                .accessibilityHint("Tests the selected local TTS provider when the model and runtime are ready.")
             }
 
             Section("Voice Models") {
@@ -2523,8 +2571,12 @@ private struct SettingsView: View {
         settingsViewModel.settings.sttProvider.isReleaseReady ? .ready : .danger
     }
 
-    private var ttsOverviewStatusLabel: String {
-        TTSProvider.releaseReadyCases.isEmpty ? "Not supported in this release" : "Not configured"
+    private var ttsOverviewDetailLabel: String {
+        settingsViewModel.ttsProviderReadinessRow.statusLabel
+    }
+
+    private var ttsOverviewTone: SettingsStatusTone {
+        settingsViewModel.ttsProviderReadinessRow.isReady ? .ready : .warning
     }
 
     private var calendarOverviewStatusLabel: String {
@@ -2890,6 +2942,53 @@ private struct SelectedAIProviderStatusRow: View {
         .accessibilityIdentifier("ai-provider-readiness-row")
         .accessibilityLabel("AI provider readiness")
         .accessibilityValue("\(providerName), \(localizedSettingsDisplay(statusLabel)), \(localizedSettingsDisplay(nextActionLabel))")
+    }
+}
+
+private struct SelectedTTSProviderStatusRow: View {
+    let row: TTSProviderReadinessRow
+
+    private var tone: SettingsStatusTone {
+        row.isReady ? .ready : .warning
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: tone.systemImage)
+                .foregroundStyle(tone.color)
+                .frame(width: 20)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(row.provider.displayName)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+
+                Text(localizedSettingsDisplay(row.statusLabel))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(tone.color)
+                    .lineLimit(1)
+
+                Text(localizedSettingsDisplay(row.detailLabel))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Label(localizedSettingsDisplay(row.nextActionLabel), systemImage: row.isReady ? "play.circle" : "arrow.right.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("tts-provider-readiness-row")
+        .accessibilityLabel("TTS provider readiness")
+        .accessibilityValue("\(row.provider.displayName), \(localizedSettingsDisplay(row.statusLabel)), \(localizedSettingsDisplay(row.nextActionLabel))")
     }
 }
 
@@ -3704,6 +3803,19 @@ private enum AppRuntimeFactory {
                 executablePath: normalizedSettings.whisperCppExecutablePath ?? ""
             )
             return WhisperCppLocalSTTProvider(configuration: configuration)
+        }
+    }
+
+    private static func makeTextToSpeechProvider(settings: AppSettings) -> any TextToSpeechProvider {
+        let normalizedSettings = settings.normalizedForRuntime
+        switch normalizedSettings.ttsProvider {
+        case .systemSpeech, .localKokoro:
+            let configuration = KokoroLocalTTSConfiguration(
+                executablePath: normalizedSettings.kokoroExecutablePath ?? "",
+                languageCode: normalizedSettings.ttsLanguageCode,
+                voiceID: normalizedSettings.ttsVoiceID
+            )
+            return KokoroLocalTTSProvider(configuration: configuration)
         }
     }
 

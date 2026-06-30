@@ -98,6 +98,7 @@
 "Shows the redacted document source preview used for the reviewed automation draft." = "レビュー中の自動化下書きに使われた、秘密値を伏せた文書ソースのプレビューを表示します。";
 "Shows the redacted task title and detail that were approved and executed." = "承認され実行されたタスクのタイトルと詳細を、秘密値を伏せた形で表示します。";
 "Settings..." = "設定...";
+"Sets the absolute path to the local Kokoro TTS executable." = "ローカルKokoro TTS実行ファイルの絶対パスを設定します。";
 "Hide Sidebar" = "サイドバーを非表示";
 "Sidebar" = "サイドバー";
 "Show Archived" = "アーカイブを表示";
@@ -112,12 +113,15 @@
 "Sync" = "同期";
 "System" = "システム";
 "Task Details" = "タスク詳細";
+"Test Play" = "テスト再生";
+"Tests the selected local TTS provider when the model and runtime are ready." = "モデルとランタイムの準備ができている場合に、選択中のローカルTTSプロバイダーをテストします。";
 "Terminal" = "ターミナル";
 "Terminal Locked" = "ターミナルはロック中";
 "Terminal Unavailable" = "ターミナルを利用できません";
 "Theme" = "テーマ";
 "This removes the saved registration from SoloPM." = "保存済みの登録をSoloPMから削除します。";
 "Today" = "今日";
+"TTS provider readiness" = "TTSプロバイダー準備状況";
 "Voice" = "音声";
 "Voice Command" = "音声コマンド";
 "Voice Capture" = "音声キャプチャ";
