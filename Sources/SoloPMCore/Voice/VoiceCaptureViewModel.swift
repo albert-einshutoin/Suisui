@@ -20,6 +20,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     @Published public private(set) var recordedAudio: RecordedAudio?
     @Published public private(set) var auditErrorMessage: String?
     @Published public private(set) var routingResult: VoiceCommandRoutingResult?
+    @Published public private(set) var clarificationSession: ClarificationSession?
 
     private var audioRecorder: any AudioRecorder
     private let sttProvider: any SpeechToTextProvider
@@ -49,11 +50,13 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.recordingState = audioRecorder.state
         self.auditErrorMessage = nil
         self.routingResult = draft.canGeneratePlan ? commandRouter.route(transcript: draft.normalizedText) : nil
+        self.clarificationSession = nil
     }
 
     public var canGeneratePlan: Bool {
         runtimeValidationMessage == nil
             && draft.canGeneratePlan
+            && clarificationSession == nil
             && phase != .generatingPlan
             && phase != .recording
             && phase != .transcribing
@@ -66,12 +69,17 @@ public final class VoiceCaptureViewModel: ObservableObject {
         return false
     }
 
+    public var clarificationQuestion: ClarificationQuestion? {
+        clarificationSession?.currentQuestion
+    }
+
     public func updateDraftText(_ text: String) {
         guard draft.text != text else {
             return
         }
         draft.text = text
         planningResponse = nil
+        clarificationSession = nil
         refreshRoutingResult()
         if shouldResetPhaseAfterDraftChange, runtimeValidationMessage == nil {
             phase = .idle
@@ -85,6 +93,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         recordedAudio = nil
         auditErrorMessage = nil
         routingResult = nil
+        clarificationSession = nil
         recordingState = audioRecorder.state
         phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
     }
@@ -107,8 +116,13 @@ public final class VoiceCaptureViewModel: ObservableObject {
             recordingState = audioRecorder.state
             recordedAudio = audio
             let transcript = try await sttProvider.transcribe(audio)
+            if clarificationSession != nil {
+                await submitClarificationAnswer(transcript.text, inputMode: .voice)
+                return
+            }
             draft = TranscriptDraft(text: transcript.text)
             planningResponse = nil
+            clarificationSession = nil
             refreshRoutingResult()
             phase = .idle
         } catch {
@@ -138,10 +152,76 @@ public final class VoiceCaptureViewModel: ObservableObject {
         routingResult = routedCommand
         guard !routedCommand.needsClarification else {
             planningResponse = nil
-            phase = .needsClarification(routedCommand.clarificationReason ?? "Voice command needs clarification.")
+            beginClarification(for: routedCommand)
             return
         }
 
+        await generatePlan(
+            for: routedCommand,
+            plannedTranscript: plannedTranscript,
+            currentDate: currentDate,
+            timeZoneIdentifier: timeZoneIdentifier,
+            availableTools: availableTools,
+            knowledgeFrameCandidates: knowledgeFrameCandidates
+        )
+    }
+
+    public func submitClarificationAnswer(
+        _ answer: String,
+        inputMode: ClarificationInputMode = .typed,
+        currentDate: Date = Date(),
+        timeZoneIdentifier: String = TimeZone.current.identifier,
+        availableTools: [ActionTool] = ActionTool.allCases,
+        knowledgeFrameCandidates: [KnowledgeFrameCandidate] = []
+    ) async {
+        guard var session = clarificationSession else {
+            phase = .failed("No clarification is active.")
+            return
+        }
+
+        switch session.answer(answer, inputMode: inputMode) {
+        case .needsClarification:
+            clarificationSession = session
+            phase = .needsClarification(session.currentQuestion?.prompt ?? "Voice command needs clarification.")
+        case .resolved:
+            clarificationSession = nil
+            guard let result = session.result else {
+                phase = .failed("Clarification could not be resolved.")
+                return
+            }
+            routingResult = result.resolvedRoute
+            await generatePlan(
+                for: result.resolvedRoute,
+                plannedTranscript: result.resolvedRoute.normalizedTranscript,
+                currentDate: currentDate,
+                timeZoneIdentifier: timeZoneIdentifier,
+                availableTools: availableTools,
+                knowledgeFrameCandidates: knowledgeFrameCandidates
+            )
+        }
+    }
+
+    public func cancelClarification() {
+        clarificationSession = nil
+        if case .needsClarification = phase {
+            phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
+        }
+    }
+
+    private func beginClarification(for route: VoiceCommandRoutingResult) {
+        let session = ClarificationSession(route: route)
+        clarificationSession = session
+        phase = .needsClarification(session.currentQuestion?.prompt ?? route.clarificationReason ?? "Voice command needs clarification.")
+    }
+
+    private func generatePlan(
+        for routedCommand: VoiceCommandRoutingResult,
+        plannedTranscript: String,
+        currentDate: Date,
+        timeZoneIdentifier: String,
+        availableTools: [ActionTool],
+        knowledgeFrameCandidates: [KnowledgeFrameCandidate]
+    ) async {
         let request = PlanningRequest(
             userInput: routedCommand.planningInput,
             currentDate: currentDate,
@@ -264,9 +344,10 @@ public final class VoiceCaptureViewModel: ObservableObject {
         // If the user edits speech text during provider generation, discard the
         // stale response instead of leaving an executable panel for old input.
         planningResponse = nil
+        clarificationSession = nil
         refreshRoutingResult()
         if let routingResult, routingResult.needsClarification {
-            phase = .needsClarification(routingResult.clarificationReason ?? "Voice command needs clarification.")
+            beginClarification(for: routingResult)
         } else if runtimeValidationMessage == nil {
             phase = .idle
         } else {
