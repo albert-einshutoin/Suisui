@@ -516,6 +516,10 @@
 "Inbox Filter" = "Inbox Filter";
 "Inbox filter" = "Inbox filter";
 "Filters Inbox items by source and interpretation status." = "Filters Inbox items by source and interpretation status.";
+"Inbox triage station" = "Inbox triage station";
+"Keeps selected Inbox item review and classification actions visible without opening the task inspector." = "Keeps selected Inbox item review and classification actions visible without opening the task inspector.";
+"Review the selected Inbox capture and classify it without opening the task inspector." = "Review the selected Inbox capture and classify it without opening the task inspector.";
+"Triage Station" = "Triage Station";
 "What should move next?" = "What should move next?";
 "Today briefing" = "Today briefing";
 "Captures work into Inbox and offers the next reviewed Today action." = "Captures work into Inbox and offers the next reviewed Today action.";

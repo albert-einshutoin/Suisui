@@ -516,6 +516,10 @@
 "Inbox Filter" = "Inboxフィルタ";
 "Inbox filter" = "Inboxフィルタ";
 "Filters Inbox items by source and interpretation status." = "Inbox項目をソースと解釈状態で絞り込みます。";
+"Inbox triage station" = "Inboxトリアージステーション";
+"Keeps selected Inbox item review and classification actions visible without opening the task inspector." = "タスクインスペクタを開かずに、選択中のInbox項目の確認と分類アクションを表示したままにします。";
+"Review the selected Inbox capture and classify it without opening the task inspector." = "選択中のInbox取り込みを確認し、タスクインスペクタを開かずに分類します。";
+"Triage Station" = "トリアージステーション";
 "What should move next?" = "次に何を進めますか?";
 "Today briefing" = "今日のブリーフィング";
 "Captures work into Inbox and offers the next reviewed Today action." = "作業をInboxへ取り込み、確認済みの次のTodayアクションを提示します。";
