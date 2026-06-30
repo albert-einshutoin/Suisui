@@ -245,6 +245,375 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         XCTAssertFalse(DevelopmentGitCommandPolicy.isAllowed(arguments: ["switch", "-c", "feature/unsafe;rm"]))
     }
 
+    func testPushBranchRequiresApprovalBeforeExternalWrite() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let runner = RecordingDevelopmentGitRunner()
+        let tool = DevelopmentPushWorkflowTool(projectStore: stores.projects, gitRunner: runner)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string("feature/solopm-1-task")
+                ],
+                context: ToolExecutionContext(source: .reviewUI)
+            )
+        ) { error in
+            XCTAssertEqual(error as? ToolExecutionError, .approvalRequired(.developmentPushBranch))
+        }
+        XCTAssertEqual(runner.recordedInvocations, [])
+    }
+
+    func testPushBranchRequiresCleanExpectedBranchAndUsesNarrowPushCommand() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let branchName = "feature/solopm-\(project.id)-publish-gate"
+        let runner = RecordingDevelopmentGitRunner()
+        runner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
+        )
+        runner.stub(
+            arguments: ["push", "-u", "origin", branchName],
+            output: GitCommandOutput(standardOutput: "pushed token=push-secret\n", standardError: "", exitCode: 0)
+        )
+        let tool = DevelopmentPushWorkflowTool(projectStore: stores.projects, gitRunner: runner)
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "branchName": .string(branchName)
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .succeeded)
+        XCTAssertEqual(result.output["projectId"], .number(Double(project.id)))
+        XCTAssertEqual(result.output["branchName"], .string(branchName))
+        XCTAssertEqual(result.output["remoteName"], .string("origin"))
+        XCTAssertEqual(result.output["requiresPullRequestApproval"], .bool(true))
+        XCTAssertEqual(result.output["pushSummary"], .string("pushed [REDACTED_SECRET]\n"))
+        XCTAssertFalse(result.summary.contains("push-secret"))
+        XCTAssertEqual(runner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["push", "-u", "origin", branchName], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
+        ])
+    }
+
+    func testPushBranchRejectsProtectedHeadBranchBeforeRunningGit() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let runner = RecordingDevelopmentGitRunner()
+        let tool = DevelopmentPushWorkflowTool(projectStore: stores.projects, gitRunner: runner)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string("main")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentPushBranch, "Publish head branch must use a reviewed feature branch.")
+            )
+        }
+        XCTAssertEqual(runner.recordedInvocations, [])
+    }
+
+    func testPushBranchRejectsDirtyOrWrongBranchBeforeRunningExternalWrite() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let runner = RecordingDevelopmentGitRunner()
+        runner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(
+                standardOutput: """
+                ## feature/other
+                 M Sources/SoloPMCore/App.swift
+                """,
+                standardError: "",
+                exitCode: 0
+            )
+        )
+        let tool = DevelopmentPushWorkflowTool(projectStore: stores.projects, gitRunner: runner)
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "branchName": .string("feature/solopm-\(project.id)-publish-gate")
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .failed)
+        XCTAssertEqual(result.output["branchName"], .string("feature/solopm-\(project.id)-publish-gate"))
+        XCTAssertEqual(result.output["workspaceClean"], .bool(false))
+        XCTAssertEqual(runner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
+        ])
+    }
+
+    func testCreatePullRequestRequiresSeparateApprovalAndBodyFileCommand() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let branchName = "feature/solopm-\(project.id)-publish-gate"
+        let baseBranch = "feature/phase14-product-completion"
+        let title = "Add development publish gate"
+        let body = "## Summary\n- Add approval-gated publish tools\n"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        gitRunner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
+        )
+        let githubRunner = RecordingGitHubCLICommandRunner(
+            output: GitHubCLICommandOutput(
+                standardOutput: "https://github.com/albert-einshutoin/soloPM/pull/106\n",
+                standardError: "",
+                exitCode: 0
+            )
+        )
+        let tool = DevelopmentPullRequestCreationTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner
+        )
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "branchName": .string(branchName),
+                "baseBranch": .string(baseBranch),
+                "title": .string(title),
+                "body": .string(body)
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .succeeded)
+        XCTAssertEqual(result.output["projectId"], .number(Double(project.id)))
+        XCTAssertEqual(result.output["branchName"], .string(branchName))
+        XCTAssertEqual(result.output["baseBranch"], .string(baseBranch))
+        XCTAssertEqual(result.output["pullRequestURL"], .string("https://github.com/albert-einshutoin/soloPM/pull/106"))
+        XCTAssertEqual(githubRunner.recordedInvocations.count, 1)
+        let invocation = try XCTUnwrap(githubRunner.recordedInvocations.first)
+        XCTAssertEqual(invocation.workingDirectory, workspace.standardizedFileURL.resolvingSymlinksInPath())
+        XCTAssertEqual(Array(invocation.arguments.prefix(8)), [
+            "pr", "create",
+            "--base", baseBranch,
+            "--head", branchName,
+            "--title", title
+        ])
+        XCTAssertEqual(invocation.arguments[8], "--body-file")
+        XCTAssertFalse(invocation.arguments.contains("--body"))
+        XCTAssertFalse(invocation.arguments.contains("--fill"))
+        XCTAssertEqual(githubRunner.recordedBodyFiles, [body])
+    }
+
+    func testCreatePullRequestRejectsProtectedOrMatchingHeadBeforeGitHubCommand() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let gitRunner = RecordingDevelopmentGitRunner()
+        let githubRunner = RecordingGitHubCLICommandRunner()
+        let tool = DevelopmentPullRequestCreationTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string("main"),
+                    "baseBranch": .string("main"),
+                    "title": .string("Add publish gate"),
+                    "body": .string("Reviewed body")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentCreatePullRequest, "Publish head branch must use a reviewed feature branch.")
+            )
+        }
+        XCTAssertEqual(gitRunner.recordedInvocations, [])
+        XCTAssertEqual(githubRunner.recordedInvocations, [])
+    }
+
+    func testCreatePullRequestRejectsSecretLikeTitleOrBodyBeforeGitHubCommand() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let branchName = "feature/solopm-\(project.id)-publish-gate"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        gitRunner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
+        )
+        let githubRunner = RecordingGitHubCLICommandRunner()
+        let tool = DevelopmentPullRequestCreationTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string(branchName),
+                    "baseBranch": .string("main"),
+                    "title": .string("Add token=ghp_supersecret"),
+                    "body": .string("safe body")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentCreatePullRequest, "Pull request title or body looks like it contains credentials or secrets.")
+            )
+        }
+        XCTAssertEqual(githubRunner.recordedInvocations, [])
+    }
+
+    func testCreatePullRequestRejectsLocalPathsInTitleOrBodyBeforeGitHubCommand() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let branchName = "feature/solopm-\(project.id)-publish-gate"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        gitRunner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
+        )
+        let githubRunner = RecordingGitHubCLICommandRunner()
+        let tool = DevelopmentPullRequestCreationTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string(branchName),
+                    "baseBranch": .string("main"),
+                    "title": .string("Add publish gate"),
+                    "body": .string("See /Volumes/Satechi/Developer/soloPM/Sources/SoloPMCore/App.swift")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentCreatePullRequest, "Pull request title or body includes a local filesystem path.")
+            )
+        }
+        XCTAssertEqual(githubRunner.recordedInvocations, [])
+    }
+
+    func testCreatePullRequestFailureRedactsCommandBodyFileAndSecrets() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let branchName = "feature/solopm-\(project.id)-publish-gate"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        gitRunner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
+        )
+        let githubRunner = RecordingGitHubCLICommandRunner(
+            output: GitHubCLICommandOutput(
+                standardOutput: "",
+                standardError: "gh failed token=pr-secret",
+                exitCode: 1
+            )
+        )
+        let tool = DevelopmentPullRequestCreationTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner
+        )
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "branchName": .string(branchName),
+                "baseBranch": .string("main"),
+                "title": .string("Add publish gate"),
+                "body": .string("Reviewed pull request body")
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .failed)
+        XCTAssertTrue(result.summary.contains("[REDACTED_SECRET]"))
+        XCTAssertFalse(result.summary.contains("pr-secret"))
+        XCTAssertFalse(result.summary.contains("--body-file"))
+        XCTAssertFalse(result.summary.contains("Reviewed pull request body"))
+        guard case .string(let publishError)? = result.output["publishError"] else {
+            return XCTFail("Expected publishError output")
+        }
+        XCTAssertFalse(publishError.contains("--body-file"))
+        XCTAssertFalse(publishError.contains(workspace.path))
+    }
+
+    func testDevelopmentPublishPoliciesRejectUnsafeCommands() {
+        XCTAssertTrue(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["status", "--short", "--branch"]))
+        XCTAssertTrue(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push", "-u", "origin", "feature/solopm-1-task"]))
+        XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push"]))
+        XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push", "--force", "origin", "feature/solopm-1-task"]))
+        XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push", "--mirror"]))
+        XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push", "--tags"]))
+        XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["reset", "--hard"]))
+        XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push", "-u", "origin", "main"]))
+        XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push", "-u", "origin", "develop"]))
+
+        let bodyFile = FileManager.default.temporaryDirectory.appendingPathComponent("solopm-pr-body-test.md").path
+        XCTAssertTrue(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
+            "pr", "create",
+            "--base", "main",
+            "--head", "feature/solopm-1-task",
+            "--title", "Add publish gate",
+            "--body-file", bodyFile
+        ]))
+        XCTAssertFalse(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
+            "pr", "create",
+            "--base", "main",
+            "--head", "main",
+            "--title", "Add publish gate",
+            "--body-file", bodyFile
+        ]))
+        XCTAssertFalse(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: ["pr", "merge", "1"]))
+        XCTAssertFalse(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
+            "pr", "create",
+            "--base", "main",
+            "--head", "feature/solopm-1-task",
+            "--title", "Add publish gate",
+            "--body", "inline body"
+        ]))
+        XCTAssertFalse(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
+            "pr", "create",
+            "--base", "main",
+            "--head", "feature/solopm-1-task",
+            "--title", "Add publish gate",
+            "--body-file", "--editor"
+        ]))
+    }
+
     func testPreparePullRequestWorkflowRejectsSymlinkWorkspace() throws {
         let stores = try makeStores()
         let base = temporaryDirectory()
@@ -295,6 +664,32 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+}
+
+private final class RecordingGitHubCLICommandRunner: GitHubCLICommandRunner, @unchecked Sendable {
+    private let output: GitHubCLICommandOutput
+    private(set) var recordedInvocations: [GitHubCLICommandInvocation] = []
+    private(set) var recordedBodyFiles: [String] = []
+
+    init(
+        output: GitHubCLICommandOutput = GitHubCLICommandOutput(
+            standardOutput: "",
+            standardError: "unexpected command",
+            exitCode: 127
+        )
+    ) {
+        self.output = output
+    }
+
+    func runGitHub(arguments: [String], workingDirectory: URL) throws -> GitHubCLICommandOutput {
+        recordedInvocations.append(GitHubCLICommandInvocation(arguments: arguments, workingDirectory: workingDirectory))
+        if let bodyFileIndex = arguments.firstIndex(of: "--body-file"),
+           arguments.indices.contains(arguments.index(after: bodyFileIndex)) {
+            let bodyFile = arguments[arguments.index(after: bodyFileIndex)]
+            recordedBodyFiles.append((try? String(contentsOfFile: bodyFile, encoding: .utf8)) ?? "")
+        }
+        return output
     }
 }
 

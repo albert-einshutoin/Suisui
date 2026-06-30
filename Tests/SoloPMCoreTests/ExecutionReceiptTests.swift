@@ -460,6 +460,162 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertFalse(displayedText.contains("gh pr create"))
     }
 
+    func testDevelopmentPublishReceiptKeepsBranchAndPullRequestReferencesWithoutCommandLeakage() throws {
+        let branchName = "feature/solopm-7-publish-gate"
+        let baseBranch = "feature/phase14-product-completion"
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/106"
+        let pushSecret = "token" + "=" + "push-secret"
+        let prSecret = "ghp_supersecret"
+        var session = ReviewSession(
+            id: "review-development-publish",
+            plan: ActionPlan(
+                id: "plan-development-publish",
+                userInput: "Push the branch and create a PR.",
+                summary: "Publish a reviewed development branch.",
+                actions: [
+                    PlanAction(
+                        id: "action-development-push",
+                        tool: .developmentPushBranch,
+                        arguments: [
+                            "projectId": .number(7),
+                            "branchName": .string(branchName)
+                        ],
+                        riskLevel: .write
+                    ),
+                    PlanAction(
+                        id: "action-development-pr-create",
+                        tool: .developmentCreatePullRequest,
+                        arguments: [
+                            "projectId": .number(7),
+                            "branchName": .string(branchName),
+                            "baseBranch": .string(baseBranch),
+                            "title": .string("Add publish gate"),
+                            "body": .string("Reviewed body")
+                        ],
+                        riskLevel: .write
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+        )
+        try session.approve(token: ApprovalToken(id: "approval-development-publish", sessionID: session.id))
+        session.executionStatus = .completed
+        session.markAction(
+            id: "action-development-push",
+            status: .succeeded,
+            result: ToolResult(
+                tool: .developmentPushBranch,
+                status: .succeeded,
+                summary: "Pushed \(branchName) \(pushSecret)",
+                output: [
+                    "projectId": .number(7),
+                    "branchName": .string(branchName),
+                    "requiresPullRequestApproval": .bool(true)
+                ]
+            )
+        )
+        session.markAction(
+            id: "action-development-pr-create",
+            status: .succeeded,
+            result: ToolResult(
+                tool: .developmentCreatePullRequest,
+                status: .succeeded,
+                summary: "Created pull request \(pullRequestURL) \(prSecret)",
+                output: [
+                    "projectId": .number(7),
+                    "branchName": .string(branchName),
+                    "baseBranch": .string(baseBranch),
+                    "pullRequestURL": .string(pullRequestURL),
+                    "title": .string("Add \(prSecret)")
+                ]
+            )
+        )
+
+        let receipt = ExecutionReceiptFactory.makeReviewReceipt(
+            session: session,
+            runID: "run-development-publish",
+            model: nil,
+            usage: .unavailable,
+            startedAt: Date(timeIntervalSince1970: 42),
+            finishedAt: Date(timeIntervalSince1970: 43)
+        )
+        let displayedText = [
+            receipt.outputSummary,
+            receipt.actions.map { $0.outputSummary ?? "" }.joined(separator: " "),
+            ExecutionReceiptHistoryReadModel.snapshot(from: [receipt]).rows.first?.referenceSummary ?? ""
+        ].joined(separator: " ")
+
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .project, id: "7")))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBranch, id: branchName)))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .pullRequest, id: pullRequestURL)))
+        XCTAssertEqual(receipt.visibleSurfaces, [.projectDetail, .auditLog])
+        XCTAssertTrue(displayedText.contains("Development Branch"))
+        XCTAssertTrue(displayedText.contains("Pull Request"))
+        XCTAssertTrue(receipt.actions[0].outputSummary?.contains("Pull request approval required") == true)
+        XCTAssertTrue(receipt.actions[1].outputSummary?.contains(pullRequestURL) == true)
+        XCTAssertFalse(displayedText.contains(pushSecret))
+        XCTAssertFalse(displayedText.contains(prSecret))
+        XCTAssertFalse(displayedText.contains("gh pr create"))
+        XCTAssertFalse(displayedText.contains("--body-file"))
+    }
+
+    func testFailedDevelopmentPushReceiptDoesNotClaimBranchWasPushed() throws {
+        let branchName = "feature/solopm-7-publish-gate"
+        var session = ReviewSession(
+            id: "review-development-push-failed",
+            plan: ActionPlan(
+                id: "plan-development-push-failed",
+                userInput: "Push the branch.",
+                summary: "Publish a reviewed development branch.",
+                actions: [
+                    PlanAction(
+                        id: "action-development-push-failed",
+                        tool: .developmentPushBranch,
+                        arguments: [
+                            "projectId": .number(7),
+                            "branchName": .string(branchName)
+                        ],
+                        riskLevel: .write
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+        )
+        try session.approve(token: ApprovalToken(id: "approval-development-push-failed", sessionID: session.id))
+        session.executionStatus = .failed
+        session.markAction(
+            id: "action-development-push-failed",
+            status: .failed,
+            result: ToolResult(
+                tool: .developmentPushBranch,
+                status: .failed,
+                summary: "Workspace has 1 changed path(s); push and PR creation require a clean reviewed commit.",
+                output: [
+                    "projectId": .number(7),
+                    "branchName": .string(branchName),
+                    "workspaceClean": .bool(false),
+                    "changedPathCount": .number(1)
+                ]
+            )
+        )
+
+        let receipt = ExecutionReceiptFactory.makeReviewReceipt(
+            session: session,
+            runID: "run-development-push-failed",
+            model: nil,
+            usage: .unavailable,
+            startedAt: Date(timeIntervalSince1970: 44),
+            finishedAt: Date(timeIntervalSince1970: 45)
+        )
+
+        XCTAssertEqual(receipt.status, .failed)
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBranch, id: branchName)))
+        XCTAssertFalse(receipt.actions.first?.outputSummary?.contains("Pushed development branch") == true)
+        XCTAssertTrue(receipt.actions.first?.outputSummary?.contains("Push did not run") == true)
+    }
+
     func testFailedDevelopmentPRWorkflowReceiptKeepsBranchEvidenceFromToolOutput() throws {
         let branchName = "feature/solopm-7-42-fix-calendar-sync"
         let gitSecret = "token" + "=" + "git-secret"

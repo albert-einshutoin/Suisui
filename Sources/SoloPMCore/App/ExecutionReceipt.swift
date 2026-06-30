@@ -1396,11 +1396,19 @@ public enum ExecutionReceiptFactory {
         guard let result = item.result else {
             return nil
         }
-        guard item.editedAction.tool == .developmentPreparePullRequestWorkflow else {
+        switch item.editedAction.tool {
+        case .developmentPreparePullRequestWorkflow:
+            return developmentPRWorkflowOutputSummary(for: result, redactor: redactor)
+                ?? redactor.redact(result.summary)
+        case .developmentPushBranch:
+            return developmentPushOutputSummary(for: result, redactor: redactor)
+                ?? redactor.redact(result.summary)
+        case .developmentCreatePullRequest:
+            return developmentPullRequestOutputSummary(for: result, redactor: redactor)
+                ?? redactor.redact(result.summary)
+        default:
             return redactor.redact(result.summary)
         }
-        return developmentPRWorkflowOutputSummary(for: result, redactor: redactor)
-            ?? redactor.redact(result.summary)
     }
 
     private static func developmentPRWorkflowOutputSummary(
@@ -1426,6 +1434,44 @@ public enum ExecutionReceiptFactory {
             parts.append("No git status or diff-stat evidence was returned.")
         } else {
             parts.append("Git evidence captured.")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private static func developmentPushOutputSummary(
+        for result: ToolResult,
+        redactor: ExecutionReceiptRedactor
+    ) -> String? {
+        guard let branchName = result.output["branchName"]?.receiptIDValue else {
+            return nil
+        }
+        guard result.status == .succeeded else {
+            return "Push did not run for development branch \(redactor.redact(branchName, maxLength: 240)). \(redactor.redact(result.summary))"
+        }
+        var parts = [
+            "Pushed development branch \(redactor.redact(branchName, maxLength: 240))."
+        ]
+        if result.output["requiresPullRequestApproval"]?.receiptBoolValue == true {
+            parts.append("Pull request approval required.")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private static func developmentPullRequestOutputSummary(
+        for result: ToolResult,
+        redactor: ExecutionReceiptRedactor
+    ) -> String? {
+        guard let pullRequestURL = result.output["pullRequestURL"]?.receiptIDValue else {
+            return nil
+        }
+        var parts = [
+            "Created pull request \(redactor.redact(pullRequestURL, maxLength: 300))."
+        ]
+        if let branchName = result.output["branchName"]?.receiptIDValue {
+            parts.append("Head \(redactor.redact(branchName, maxLength: 240)).")
+        }
+        if let baseBranch = result.output["baseBranch"]?.receiptIDValue {
+            parts.append("Base \(redactor.redact(baseBranch, maxLength: 240)).")
         }
         return parts.joined(separator: " ")
     }
@@ -1539,6 +1585,13 @@ public enum ExecutionReceiptFactory {
             )
             if item.editedAction.tool == .developmentPreparePullRequestWorkflow {
                 appendReference(kind: .developmentBranch, keys: ["branchName"], output: output, references: &references)
+            }
+            if item.editedAction.tool == .developmentPushBranch {
+                appendReference(kind: .developmentBranch, keys: ["branchName"], output: output, references: &references)
+            }
+            if item.editedAction.tool == .developmentCreatePullRequest {
+                appendReference(kind: .developmentBranch, keys: ["branchName"], output: output, references: &references)
+                appendReference(kind: .pullRequest, keys: ["pullRequestURL"], output: output, references: &references)
             }
         }
         return references
