@@ -824,6 +824,8 @@
 "Local task counts and progress. External Calendar writes require review approval." = "Local task counts and progress. External Calendar writes require review approval.";
 "Next Week" = "Next Week";
 "No scheduled tasks for this day." = "No scheduled tasks for this day.";
+"Open Today Review" = "Open Today Review";
+"Opening a local Today review. No provider, Calendar, Reminder, connector, or file write is run." = "Opening a local Today review. No provider, Calendar, Reminder, connector, or file write is run.";
 "Previous Week" = "Previous Week";
 "Prepared daily planning review." = "Prepared daily planning review.";
 "Proposal only" = "Proposal only";

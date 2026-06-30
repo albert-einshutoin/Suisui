@@ -268,10 +268,14 @@ struct ProjectBoardView: View {
         .task {
             viewModel.load()
             restoreSelectedDestinationIfNeeded()
+            consumePendingVoiceDailyPlanningReviewRequestIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
             viewModel.load()
             restoreSelectedDestinationIfNeeded()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .soloPMVoiceDailyPlanningReviewRequested)) { notification in
+            handleVoiceDailyPlanningReviewRequest(notification)
         }
         .onChange(of: selectedDestination) { _, destination in
             persistSelectedDestination(destination)
@@ -490,6 +494,34 @@ struct ProjectBoardView: View {
             viewModel.selectedTaskID = nil
             isInspectorPresented = false
         }
+    }
+
+    private func consumePendingVoiceDailyPlanningReviewRequestIfNeeded() {
+        guard let transcript = SoloPMVoiceDailyPlanningReviewBridge.consumePendingSourceTranscript() else {
+            return
+        }
+        handleVoiceDailyPlanningReviewRequest(sourceTranscript: transcript)
+    }
+
+    private func handleVoiceDailyPlanningReviewRequest(_ notification: Notification) {
+        let transcript = SoloPMVoiceDailyPlanningReviewBridge.consumePendingSourceTranscript()
+            ?? SoloPMVoiceDailyPlanningReviewBridge.sourceTranscript(from: notification)
+        let sourceTranscript: String
+        if let transcript, !transcript.isEmpty {
+            sourceTranscript = transcript
+        } else {
+            sourceTranscript = String(localized: "Today daily planning review")
+        }
+        handleVoiceDailyPlanningReviewRequest(sourceTranscript: sourceTranscript)
+    }
+
+    private func handleVoiceDailyPlanningReviewRequest(sourceTranscript: String) {
+        viewModel.load()
+        _ = viewModel.prepareDailyPlanningReview(transcript: sourceTranscript)
+        let summary = viewModel.missedTaskReview()
+        selectedDestination = summary.newlyMissedCount > 0 ? .catchUp : .today
+        persistSelectedDestination(selectedDestination)
+        applySelectedDestination(selectedDestination)
     }
 
     private func applySelectedTaskOverrideIfNeeded() {
@@ -860,6 +892,33 @@ private struct ProjectBoardToolbarLayoutBridge: View {
 
 extension Notification.Name {
     static let soloPMProjectBoardDidChange = Notification.Name("dev.solopm.projectBoardDidChange")
+    static let soloPMVoiceDailyPlanningReviewRequested = Notification.Name("dev.solopm.voiceDailyPlanningReviewRequested")
+}
+
+@MainActor
+enum SoloPMVoiceDailyPlanningReviewBridge {
+    static let sourceTranscriptUserInfoKey = "sourceTranscript"
+    private static var pendingSourceTranscript: String?
+
+    static func storePendingSourceTranscript(_ sourceTranscript: String) {
+        pendingSourceTranscript = normalized(sourceTranscript)
+    }
+
+    static func consumePendingSourceTranscript() -> String? {
+        defer { pendingSourceTranscript = nil }
+        return pendingSourceTranscript
+    }
+
+    static func sourceTranscript(from notification: Notification) -> String? {
+        guard let value = notification.userInfo?[sourceTranscriptUserInfoKey] as? String else {
+            return nil
+        }
+        return normalized(value)
+    }
+
+    private static func normalized(_ sourceTranscript: String) -> String {
+        sourceTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }
 
 private enum ProjectBoardIntegrationUnavailableError: Error {

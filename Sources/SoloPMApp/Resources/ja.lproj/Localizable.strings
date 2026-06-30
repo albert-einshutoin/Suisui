@@ -824,6 +824,8 @@
 "Local task counts and progress. External Calendar writes require review approval." = "ローカルタスクの件数と進捗です。外部カレンダーへの書き込みにはレビュー承認が必要です。";
 "Next Week" = "翌週";
 "No scheduled tasks for this day." = "この日に予定されたタスクはありません。";
+"Open Today Review" = "今日のレビューを開く";
+"Opening a local Today review. No provider, Calendar, Reminder, connector, or file write is run." = "ローカルのTodayレビューを開きます。プロバイダー、カレンダー、リマインダー、コネクター、ファイル書き込みは実行しません。";
 "Previous Week" = "前週";
 "Prepared daily planning review." = "日次計画レビューを準備しました。";
 "Proposal only" = "提案のみ";

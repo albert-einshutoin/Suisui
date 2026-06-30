@@ -1810,6 +1810,29 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(reviewPanelSource.contains("applyScheduleDraftToCalendar"))
     }
 
+    func testVoiceDailyPlanningReviewBridgeUsesLocalProjectBoardReview() throws {
+        let voiceSource = try readPackageFile("Sources/SoloPMCore/Voice/VoiceCaptureViewModel.swift")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(voiceSource.contains("public struct VoiceDailyPlanningReviewRequest"))
+        XCTAssertTrue(voiceSource.contains("@Published public private(set) var dailyPlanningReviewRequest"))
+        XCTAssertTrue(voiceSource.contains("routedCommand.intent != .dailyPlanningReview"))
+        XCTAssertTrue(voiceSource.contains("beginDailyPlanningReviewRequest"))
+        XCTAssertTrue(appSource.contains("viewModel.dailyPlanningReviewRequest"))
+        XCTAssertTrue(appSource.contains("SoloPMVoiceDailyPlanningReviewBridge.storePendingSourceTranscript"))
+        XCTAssertTrue(appSource.contains("name: .soloPMVoiceDailyPlanningReviewRequested"))
+        XCTAssertTrue(boardSource.contains(".onReceive(NotificationCenter.default.publisher(for: .soloPMVoiceDailyPlanningReviewRequested))"))
+        XCTAssertTrue(boardSource.contains("consumePendingVoiceDailyPlanningReviewRequestIfNeeded"))
+        XCTAssertTrue(boardSource.contains("SoloPMVoiceDailyPlanningReviewBridge.consumePendingSourceTranscript()"))
+        XCTAssertTrue(boardSource.contains("handleVoiceDailyPlanningReviewRequest"))
+        XCTAssertTrue(boardSource.contains("viewModel.prepareDailyPlanningReview(transcript:"))
+        XCTAssertTrue(boardSource.contains("selectedDestination = summary.newlyMissedCount > 0 ? .catchUp : .today"))
+        XCTAssertTrue(boardSource.contains("static let soloPMVoiceDailyPlanningReviewRequested"))
+        XCTAssertFalse(appSource.contains("calendarClient.create"))
+        XCTAssertFalse(appSource.contains("reminderClient.create"))
+    }
+
     func testTodayWorkflowUsesSampleInspiredBriefingAndFlowRail() throws {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
 
