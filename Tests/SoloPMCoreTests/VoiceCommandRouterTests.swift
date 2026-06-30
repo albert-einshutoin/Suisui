@@ -96,6 +96,15 @@ final class VoiceCommandRouterTests: XCTestCase {
         XCTAssertTrue(result.reviewOnly)
     }
 
+    func testRoutesCommitWorkflowCommandAsDevelopmentReviewOnly() {
+        let result = router.route(transcript: "この変更をコミットしてPRにしたい")
+
+        XCTAssertEqual(result.intent, .developmentPRWorkflow)
+        XCTAssertGreaterThanOrEqual(result.confidence, 0.7)
+        XCTAssertEqual(result.decision, .reviewOnly)
+        XCTAssertTrue(result.reviewOnly)
+    }
+
     func testRoutesNotificationDraftWithoutSending() {
         let result = router.route(transcript: "Slack notification draft for the release delay")
 

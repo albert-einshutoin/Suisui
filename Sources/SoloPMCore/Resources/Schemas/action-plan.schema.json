@@ -67,6 +67,7 @@
         "git.log_summary",
         "git.diff_summary",
         "development.pr_workflow.prepare",
+        "development.pr_workflow.commit",
         "development.repository.read_file",
         "development.repository.create_file",
         "development.repository.update_file",
