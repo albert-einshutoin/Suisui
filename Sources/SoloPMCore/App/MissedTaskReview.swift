@@ -92,6 +92,171 @@ public struct MissedTaskReviewSummary: Equatable, Sendable {
     )
 }
 
+public enum MissedTaskDailyFollowUpStatus: Equatable, Sendable {
+    case scheduled
+    case skippedNotificationsDisabled
+    case skippedNoMissedTasks
+    case skippedAlreadyNotifiedToday
+    case skippedAlreadyScheduled
+    case failed
+}
+
+public struct MissedTaskDailyFollowUpResult: Equatable, Sendable {
+    public var status: MissedTaskDailyFollowUpStatus
+    public var notificationID: String?
+    public var day: String
+    public var missedCount: Int
+    public var message: String
+
+    public init(
+        status: MissedTaskDailyFollowUpStatus,
+        notificationID: String? = nil,
+        day: String,
+        missedCount: Int,
+        message: String
+    ) {
+        self.status = status
+        self.notificationID = notificationID
+        self.day = day
+        self.missedCount = missedCount
+        self.message = message
+    }
+}
+
+public final class MissedTaskDailyFollowUpScheduler: @unchecked Sendable {
+    private let stateStore: any MissedTaskReviewStateStore
+    private let notificationClient: any NotificationClient
+    private let dateProvider: any DateProvider
+    private let settings: AppSettings
+
+    public init(
+        stateStore: any MissedTaskReviewStateStore,
+        notificationClient: any NotificationClient,
+        dateProvider: any DateProvider = SystemDateProvider(),
+        settings: AppSettings = .default
+    ) {
+        self.stateStore = stateStore
+        self.notificationClient = notificationClient
+        self.dateProvider = dateProvider
+        self.settings = settings.normalizedForRuntime
+    }
+
+    public func scheduleIfNeeded(summary: MissedTaskReviewSummary) -> MissedTaskDailyFollowUpResult {
+        let now = dateProvider.now
+        let day = configuredDay(for: now)
+        let missedCount = summary.immediateQueue.count
+
+        guard settings.notificationsEnabled else {
+            return MissedTaskDailyFollowUpResult(
+                status: .skippedNotificationsDisabled,
+                day: day,
+                missedCount: missedCount,
+                message: "Missed task review follow-up is disabled."
+            )
+        }
+
+        guard missedCount > 0 else {
+            return MissedTaskDailyFollowUpResult(
+                status: .skippedNoMissedTasks,
+                day: day,
+                missedCount: 0,
+                message: "No missed task review follow-up is needed."
+            )
+        }
+
+        do {
+            guard try stateStore.lastNotifiedDay() != day else {
+                return MissedTaskDailyFollowUpResult(
+                    status: .skippedAlreadyNotifiedToday,
+                    day: day,
+                    missedCount: missedCount,
+                    message: "Missed task review follow-up already ran today."
+                )
+            }
+
+            let identifier = "missed-task-review-\(day)"
+            if try notificationClient.listScheduled().contains(where: { $0.id == identifier }) {
+                try stateStore.recordNotification(day: day, at: now)
+                return MissedTaskDailyFollowUpResult(
+                    status: .skippedAlreadyScheduled,
+                    notificationID: identifier,
+                    day: day,
+                    missedCount: missedCount,
+                    message: "Missed task review follow-up is already scheduled."
+                )
+            }
+
+            let record = try notificationClient.schedule(
+                NotificationDraft(
+                    title: "SoloPM Catch Up",
+                    body: makeCountOnlyBody(from: summary.immediateQueue),
+                    scheduledAt: DeadlineDateParser.string(from: now),
+                    identifierHint: identifier
+                )
+            )
+            // Daily follow-up notifications are count-only by design. Task
+            // titles, details, project names, and file paths stay inside the
+            // board UI so lock-screen and audit surfaces cannot leak customer
+            // content.
+            try stateStore.recordNotification(day: day, at: now)
+            return MissedTaskDailyFollowUpResult(
+                status: .scheduled,
+                notificationID: record.id,
+                day: day,
+                missedCount: missedCount,
+                message: "Scheduled missed task review follow-up."
+            )
+        } catch let error as ToolClientError {
+            return failureResult(day: day, missedCount: missedCount, message: error.message)
+        } catch {
+            return failureResult(day: day, missedCount: missedCount, error: error)
+        }
+    }
+
+    private func configuredDay(for date: Date) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: settings.timeZoneIdentifier) ?? .current
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(
+            format: "%04d-%02d-%02d",
+            components.year ?? 1970,
+            components.month ?? 1,
+            components.day ?? 1
+        )
+    }
+
+    private func makeCountOnlyBody(from items: [MissedTaskReviewItem]) -> String {
+        let overdue = reasonCount(.overdue, in: items)
+        let dueToday = reasonCount(.dueToday, in: items)
+        let blocked = reasonCount(.blocked, in: items)
+        let unscheduled = reasonCount(.unscheduled, in: items)
+        let stale = reasonCount(.stale, in: items)
+        return "\(items.count) tasks need review. Overdue: \(overdue), due today: \(dueToday), blocked: \(blocked), unscheduled: \(unscheduled), stale: \(stale)."
+    }
+
+    private func reasonCount(_ reason: MissedTaskReviewReason, in items: [MissedTaskReviewItem]) -> Int {
+        items.filter { $0.reasons.contains(reason) }.count
+    }
+
+    private func failureResult(day: String, missedCount: Int, message: String) -> MissedTaskDailyFollowUpResult {
+        MissedTaskDailyFollowUpResult(
+            status: .failed,
+            day: day,
+            missedCount: missedCount,
+            message: UserFacingErrorMessageSanitizer.message(from: message)
+        )
+    }
+
+    private func failureResult(day: String, missedCount: Int, error: Error) -> MissedTaskDailyFollowUpResult {
+        MissedTaskDailyFollowUpResult(
+            status: .failed,
+            day: day,
+            missedCount: missedCount,
+            message: UserFacingErrorMessageSanitizer.message(from: error)
+        )
+    }
+}
+
 public protocol MissedTaskReviewStateStore: Sendable {
     func lastReviewedAt(taskID: Int64) throws -> Date?
     func markReviewed(taskID: Int64, at date: Date) throws

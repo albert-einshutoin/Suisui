@@ -502,13 +502,17 @@ final class AppExperienceSourceTests: XCTestCase {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
         XCTAssertTrue(boardSource.contains("let taskAutomationSettings: () -> TaskAutoExecutionSettings"))
+        XCTAssertTrue(boardSource.contains("let appSettings: () -> AppSettings"))
         XCTAssertTrue(boardSource.contains("taskAutomationSettings: @escaping () -> TaskAutoExecutionSettings"))
+        XCTAssertTrue(boardSource.contains("appSettings: @escaping () -> AppSettings"))
         XCTAssertTrue(boardSource.contains("viewModel.prepareTaskAutomationReview(settings: taskAutomationSettings())"))
+        XCTAssertTrue(boardSource.contains("viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())"))
         XCTAssertTrue(boardSource.contains(".help(\"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings.\")"))
         XCTAssertTrue(appSource.contains("@StateObject private var settingsViewModel: AppSettingsViewModel"))
         XCTAssertTrue(appSource.contains("_settingsViewModel = StateObject(wrappedValue: AppRuntimeFactory.makeAppSettingsViewModel())"))
         XCTAssertTrue(appSource.contains("taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution }"))
+        XCTAssertTrue(appSource.contains("appSettings: { settingsViewModel.settings }"))
     }
 
     func testTaskInspectorApprovedExecutionReceiptIsAccessibleAndRedacted() throws {

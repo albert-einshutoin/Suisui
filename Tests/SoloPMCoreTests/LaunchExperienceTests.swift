@@ -99,6 +99,7 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("fallbackProjectBoardWindow"))
         XCTAssertTrue(source.contains("rootView: ProjectBoardView("))
         XCTAssertTrue(source.contains("taskAutomationSettings: AppRuntimeFactory.loadTaskAutoExecutionSettings"))
+        XCTAssertTrue(source.contains("appSettings: AppRuntimeFactory.loadRuntimeAppSettings"))
         XCTAssertTrue(source.contains("makeKeyAndOrderFront(nil)"))
         XCTAssertTrue(source.contains("#selector(NSWindow.newWindowForTab(_:))"))
         XCTAssertTrue(source.contains("return false"))
@@ -120,10 +121,12 @@ final class LaunchExperienceTests: XCTestCase {
 
         XCTAssertTrue(appSource.contains("WindowGroup(\"SoloPM\", id: \"project-board\")"))
         XCTAssertTrue(appSource.contains("taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution }"))
+        XCTAssertTrue(appSource.contains("appSettings: { settingsViewModel.settings }"))
         XCTAssertTrue(appSource.contains("#selector(NSWindow.newWindowForTab(_:))"))
         XCTAssertTrue(appSource.contains("New SoloPM Window"))
         XCTAssertTrue(boardSource.contains("@StateObject private var viewModel: ProjectBoardViewModel"))
         XCTAssertTrue(boardSource.contains("let taskAutomationSettings: () -> TaskAutoExecutionSettings"))
+        XCTAssertTrue(boardSource.contains("let appSettings: () -> AppSettings"))
         XCTAssertTrue(boardSource.contains("@AppStorage(ProjectBoardSelectionPersistence.storageKey)"))
         XCTAssertTrue(boardSource.contains("@State private var selectedDestination: ProjectBoardSidebarDestination? = .today"))
     }
