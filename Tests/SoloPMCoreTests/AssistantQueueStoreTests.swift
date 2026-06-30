@@ -114,6 +114,81 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertFalse(failedRow.canReject)
     }
 
+    func testReadModelMarksApprovedTaskMutationAutomationRequestRunnable() throws {
+        let approvedMutation = try AssistantQueueStateMachine.approve(
+            makeAutomationRequestItem(
+                id: "queue-read-model-runnable-automation",
+                toolName: HostedMCPTaskToolName.taskComplete.rawValue,
+                taskMutation: SyncTaskMutationPayload(
+                    taskID: 42,
+                    operation: .complete,
+                    status: "completed",
+                    source: .cloudRelay,
+                    approvalState: .pendingApproval
+                )
+            ),
+            reviewerID: "local-user"
+        )
+        let approvedWithoutMutation = try AssistantQueueStateMachine.approve(
+            makeAutomationRequestItem(id: "queue-read-model-unsupported-automation"),
+            reviewerID: "local-user"
+        )
+
+        let snapshot = AssistantQueueReadModel.snapshot(from: [approvedMutation, approvedWithoutMutation])
+
+        XCTAssertTrue(snapshot.rows.first { $0.id == approvedMutation.id }?.canRun ?? false)
+        XCTAssertFalse(snapshot.rows.first { $0.id == approvedWithoutMutation.id }?.canRun ?? true)
+    }
+
+    func testReadModelDoesNotMarkMalformedTaskMutationAutomationRequestRunnable() throws {
+        let missingTaskID = try AssistantQueueStateMachine.approve(
+            makeAutomationRequestItem(
+                id: "queue-read-model-missing-task-id",
+                toolName: HostedMCPTaskToolName.taskComplete.rawValue,
+                taskMutation: SyncTaskMutationPayload(
+                    operation: .complete,
+                    status: "completed",
+                    source: .cloudRelay,
+                    approvalState: .pendingApproval
+                )
+            ),
+            reviewerID: "local-user"
+        )
+        let noOpUpdate = try AssistantQueueStateMachine.approve(
+            makeAutomationRequestItem(
+                id: "queue-read-model-no-op-update",
+                toolName: HostedMCPTaskToolName.taskUpdate.rawValue,
+                taskMutation: SyncTaskMutationPayload(
+                    taskID: 42,
+                    operation: .update,
+                    source: .cloudRelay,
+                    approvalState: .pendingApproval
+                )
+            ),
+            reviewerID: "local-user"
+        )
+        let mismatchedTool = try AssistantQueueStateMachine.approve(
+            makeAutomationRequestItem(
+                id: "queue-read-model-mismatched-tool",
+                toolName: HostedMCPTaskToolName.taskCreate.rawValue,
+                taskMutation: SyncTaskMutationPayload(
+                    taskID: 42,
+                    operation: .complete,
+                    status: "completed",
+                    source: .cloudRelay,
+                    approvalState: .pendingApproval
+                )
+            ),
+            reviewerID: "local-user"
+        )
+
+        let snapshot = AssistantQueueReadModel.snapshot(from: [missingTaskID, noOpUpdate, mismatchedTool])
+
+        XCTAssertFalse(snapshot.rows.first { $0.id == missingTaskID.id }?.canRun ?? true)
+        XCTAssertFalse(snapshot.rows.first { $0.id == noOpUpdate.id }?.canRun ?? true)
+        XCTAssertFalse(snapshot.rows.first { $0.id == mismatchedTool.id }?.canRun ?? true)
+    }
+
     func testReadModelFiltersAndSortsRowsWithoutHidingAttentionCounts() throws {
         let blocked = makeItem(id: "queue-filter-blocked", state: .blocked, summary: "Blocked write")
         let waitingLow = makeItem(id: "queue-filter-waiting-low", state: .waitingReview, summary: "Low review")
@@ -638,14 +713,19 @@ final class AssistantQueueStoreTests: XCTestCase {
         )
     }
 
-    private func makeAutomationRequestItem(id: String = "queue-read-model-automation") -> AssistantQueueItem {
+    private func makeAutomationRequestItem(
+        id: String = "queue-read-model-automation",
+        toolName: String = "task.create",
+        taskMutation: SyncTaskMutationPayload? = nil
+    ) -> AssistantQueueItem {
         AssistantQueueAdapter.makeItem(automationRequest: SyncAutomationRequestPayload(
             id: id,
             source: .cloudRelay,
             approvalState: .pendingApproval,
             sourceClientID: "web",
-            toolName: "task.create",
-            redactedArgumentSummary: "Create remote task draft"
+            toolName: toolName,
+            redactedArgumentSummary: "Create remote task draft",
+            taskMutation: taskMutation
         ))
     }
 

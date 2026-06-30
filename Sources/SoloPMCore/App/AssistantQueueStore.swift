@@ -452,10 +452,7 @@ public enum AssistantQueueReadModel {
         guard item.state == .approved else {
             return false
         }
-        if case .actionPlan = item.payload {
-            return true
-        }
-        return false
+        return AssistantQueueExecutableActionPlanFactory.actionPlan(for: item.payload) != nil
     }
 
     private static func canDefer(_ item: AssistantQueueItem) -> Bool {
