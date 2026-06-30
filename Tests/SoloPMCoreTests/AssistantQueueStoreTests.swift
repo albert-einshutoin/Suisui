@@ -94,14 +94,64 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertTrue(approvedRow.canRun)
         let automationRow = try XCTUnwrap(snapshot.rows.first { $0.id == approvedAutomation.id })
         XCTAssertFalse(automationRow.canRun)
+        XCTAssertFalse(automationRow.canRetry)
         let blockedRow = try XCTUnwrap(snapshot.rows.first { $0.id == blocked.id })
         XCTAssertFalse(blockedRow.canApprove)
         XCTAssertFalse(blockedRow.canRun)
+        XCTAssertFalse(blockedRow.canRetry)
         XCTAssertTrue(blockedRow.canReject)
         let failedRow = try XCTUnwrap(snapshot.rows.first { $0.id == failed.id })
         XCTAssertEqual(failedRow.stateLabel, "Failed")
         XCTAssertFalse(failedRow.canRun)
+        XCTAssertTrue(failedRow.canRetry)
         XCTAssertFalse(failedRow.canReject)
+    }
+
+    func testReadModelMarksOnlyFailedActionPlanRowsRetryable() throws {
+        let failedActionPlan = makeItem(id: "queue-retry-failed-action", state: .failed)
+        let waitingActionPlan = makeItem(id: "queue-retry-waiting-action", state: .waitingReview)
+        let dangerousActionPlan = AssistantQueueItem(
+            id: "queue-retry-danger-action",
+            state: .failed,
+            payload: .actionPlan(ActionPlan(
+                id: "danger-plan",
+                userInput: "Delete task",
+                summary: "Delete task",
+                actions: [PlanAction(id: "danger-action", tool: .taskDelete, riskLevel: .danger)],
+                riskLevel: .danger,
+                requiresApproval: true
+            )),
+            riskLevel: .danger,
+            sourceTranscript: "Delete task",
+            interpretationSummary: "Danger",
+            reviewReason: "Danger retry.",
+            redactedSummary: "Delete task",
+            requiredCapabilities: [.tool(.taskDelete), .providerExecutionApproval],
+            blockingReason: "Dangerous action plans cannot be retried."
+        )
+        let failedAutomation = AssistantQueueItem(
+            id: "queue-retry-failed-automation",
+            state: .failed,
+            payload: makeAutomationRequestItem().payload,
+            riskLevel: .write,
+            sourceTranscript: nil,
+            interpretationSummary: "task.create",
+            reviewReason: "Remote request failed.",
+            redactedSummary: "Remote request failed",
+            requiredCapabilities: [.connectedMacRequired, .providerExecutionApproval],
+            blockingReason: "Remote execution failed."
+        )
+
+        let snapshot = AssistantQueueReadModel.snapshot(from: [failedActionPlan, waitingActionPlan, dangerousActionPlan, failedAutomation])
+
+        let failedActionPlanRow = try XCTUnwrap(snapshot.rows.first { $0.id == failedActionPlan.id })
+        let waitingActionPlanRow = try XCTUnwrap(snapshot.rows.first { $0.id == waitingActionPlan.id })
+        let dangerousActionPlanRow = try XCTUnwrap(snapshot.rows.first { $0.id == dangerousActionPlan.id })
+        let failedAutomationRow = try XCTUnwrap(snapshot.rows.first { $0.id == failedAutomation.id })
+        XCTAssertTrue(failedActionPlanRow.canRetry)
+        XCTAssertFalse(waitingActionPlanRow.canRetry)
+        XCTAssertFalse(dangerousActionPlanRow.canRetry)
+        XCTAssertFalse(failedAutomationRow.canRetry)
     }
 
     func testReadModelAttachesLatestAssistantQueueExecutionReceiptSummary() throws {
@@ -238,6 +288,44 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertTrue(viewModel.rejectAssistantQueueItem(id: blocked.id))
         XCTAssertEqual(try assistantQueueStore.get(id: blocked.id).state, .rejected)
         XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first { $0.id == blocked.id }?.state, .rejected)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelReopensFailedAssistantQueueItemForRetryReview() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+        let approved = try AssistantQueueStateMachine.approve(
+            makeItem(id: "queue-visible-retry", state: .waitingReview, summary: "Create retry task"),
+            reviewerID: "local-user"
+        )
+        let running = try AssistantQueueStateMachine.startRunning(approved)
+        let failed = try AssistantQueueStateMachine.markFailed(running, reason: "Execution failed.")
+        try assistantQueueStore.save(failed)
+        let viewModel = ProjectBoardViewModel(
+            store: boardStore,
+            assistantQueueStore: assistantQueueStore
+        )
+
+        viewModel.load()
+
+        XCTAssertTrue(viewModel.retryAssistantQueueItem(id: failed.id))
+        let reopened = try assistantQueueStore.get(id: failed.id)
+        XCTAssertEqual(reopened.state, .waitingReview)
+        XCTAssertNil(reopened.approval)
+        XCTAssertNil(reopened.blockingReason)
+        XCTAssertEqual(reopened.reviewReason, "Retry after failed execution. Review the action plan before running it again.")
+        let row = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first { $0.id == failed.id })
+        XCTAssertTrue(row.canApprove)
+        XCTAssertFalse(row.canRun)
+        XCTAssertFalse(row.canRetry)
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Reopened Assistant Queue item for review.")
+        XCTAssertNil(viewModel.errorMessage)
+
+        XCTAssertFalse(viewModel.retryAssistantQueueItem(id: failed.id))
+        XCTAssertEqual(viewModel.errorMessage, "Only failed action-plan Assistant Queue items can be retried.")
+        XCTAssertNil(viewModel.integrationStatusMessage)
     }
 
     @MainActor

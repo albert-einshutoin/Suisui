@@ -29,15 +29,18 @@ public enum AssistantQueueRequiredCapability: Codable, Equatable, Sendable {
 }
 
 public struct AssistantQueueApprovalRecord: Codable, Equatable, Sendable {
+    public var approvalID: String?
     public var reviewerID: String
     public var note: String?
     public var reviewedContentFingerprint: String
 
     public init(
+        approvalID: String? = UUID().uuidString,
         reviewerID: String,
         note: String? = nil,
         reviewedContentFingerprint: String
     ) {
+        self.approvalID = approvalID
         self.reviewerID = reviewerID
         self.note = note
         self.reviewedContentFingerprint = reviewedContentFingerprint
@@ -95,6 +98,7 @@ public enum AssistantQueueTransitionError: Error, Equatable, Sendable {
     case approvedPayloadChanged
     case runningRequiredBeforeCompletion
     case terminalItemCannotTransition
+    case retryRequiresFailedActionPlan
 }
 
 public enum AssistantQueueStateMachine {
@@ -159,6 +163,24 @@ public enum AssistantQueueStateMachine {
         failed.state = .failed
         failed.blockingReason = reason
         return failed
+    }
+
+    public static func reopenFailedForReview(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
+        guard item.state == .failed, case .actionPlan = item.payload else {
+            throw AssistantQueueTransitionError.retryRequiresFailedActionPlan
+        }
+        guard !item.containsDangerousPayload else {
+            throw AssistantQueueTransitionError.dangerousPayloadCannotBeApproved
+        }
+
+        var retry = item
+        retry.state = .waitingReview
+        // Failed execution must not reuse the prior approval intent. Reopening
+        // returns the item to human review so the execution gate mints a fresh token.
+        retry.approval = nil
+        retry.blockingReason = nil
+        retry.reviewReason = "Retry after failed execution. Review the action plan before running it again."
+        return retry
     }
 
     public static func reject(_ item: AssistantQueueItem) -> AssistantQueueItem {

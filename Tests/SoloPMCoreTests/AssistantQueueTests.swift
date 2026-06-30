@@ -129,6 +129,7 @@ final class AssistantQueueTests: XCTestCase {
         XCTAssertEqual(approved.state, .approved)
         XCTAssertEqual(approved.approval?.reviewerID, "user-1")
         XCTAssertNil(approved.approval?.executionTokenID)
+        XCTAssertNotNil(approved.approval?.approvalID)
         XCTAssertEqual(approved.approval?.reviewedContentFingerprint.count, 64)
         XCTAssertFalse(approved.approval?.reviewedContentFingerprint.contains("Create a task") ?? true)
         XCTAssertTrue(approved.approval?.reviewedContentFingerprint.allSatisfy(\.isHexDigit) ?? false)
@@ -189,6 +190,86 @@ final class AssistantQueueTests: XCTestCase {
         XCTAssertEqual(failed.approval, approved.approval)
         XCTAssertThrowsError(try AssistantQueueStateMachine.approve(failed, reviewerID: "user-1")) { error in
             XCTAssertEqual(error as? AssistantQueueTransitionError, .terminalItemCannotTransition)
+        }
+    }
+
+    func testFailedActionPlanCanReopenForRetryReview() throws {
+        let item = AssistantQueueAdapter.makeItem(
+            actionPlan: makePlan(),
+            sourceTranscript: "Create a task",
+            interpretationSummary: "Routed as task intent.",
+            reason: "Needs review."
+        )
+        let approved = try AssistantQueueStateMachine.approve(item, reviewerID: "user-1")
+        let running = try AssistantQueueStateMachine.startRunning(approved)
+        let failed = try AssistantQueueStateMachine.markFailed(running, reason: "Tool failed.")
+
+        let retry = try AssistantQueueStateMachine.reopenFailedForReview(failed)
+
+        XCTAssertEqual(retry.id, failed.id)
+        XCTAssertEqual(retry.state, .waitingReview)
+        XCTAssertEqual(retry.payload, failed.payload)
+        XCTAssertEqual(retry.riskLevel, failed.riskLevel)
+        XCTAssertEqual(retry.sourceTranscript, failed.sourceTranscript)
+        XCTAssertEqual(retry.interpretationSummary, failed.interpretationSummary)
+        XCTAssertEqual(retry.redactedSummary, failed.redactedSummary)
+        XCTAssertEqual(retry.requiredCapabilities, failed.requiredCapabilities)
+        XCTAssertNil(retry.approval)
+        XCTAssertNil(retry.blockingReason)
+        XCTAssertEqual(retry.reviewReason, "Retry after failed execution. Review the action plan before running it again.")
+        XCTAssertEqual(failed.state, .failed)
+        XCTAssertNotNil(failed.approval)
+    }
+
+    func testRetryReviewRequiresSafeFailedActionPlan() throws {
+        let waiting = AssistantQueueAdapter.makeItem(
+            actionPlan: makePlan(),
+            sourceTranscript: "Create a task",
+            interpretationSummary: "Routed as task intent.",
+            reason: "Needs review."
+        )
+        let automation = AssistantQueueAdapter.makeItem(automationRequest: SyncAutomationRequestPayload(
+            id: "automation-1",
+            source: .cloudRelay,
+            approvalState: .pendingApproval,
+            toolName: "task.create",
+            redactedArgumentSummary: "Create remote task"
+        ))
+        let failedAutomation = AssistantQueueItem(
+            id: automation.id,
+            state: .failed,
+            payload: automation.payload,
+            riskLevel: automation.riskLevel,
+            sourceTranscript: automation.sourceTranscript,
+            interpretationSummary: automation.interpretationSummary,
+            reviewReason: automation.reviewReason,
+            redactedSummary: automation.redactedSummary,
+            requiredCapabilities: automation.requiredCapabilities,
+            approval: automation.approval,
+            blockingReason: "Remote execution failed."
+        )
+        let danger = AssistantQueueItem(
+            id: "danger-retry",
+            state: .failed,
+            payload: .actionPlan(makePlan(riskLevel: .danger)),
+            riskLevel: .danger,
+            sourceTranscript: "Delete everything",
+            interpretationSummary: "Dangerous task intent.",
+            reviewReason: "Danger retry.",
+            redactedSummary: "Danger retry.",
+            requiredCapabilities: [.tool(.taskDelete), .providerExecutionApproval],
+            approval: nil,
+            blockingReason: "Dangerous action plans cannot be retried."
+        )
+
+        XCTAssertThrowsError(try AssistantQueueStateMachine.reopenFailedForReview(waiting)) { error in
+            XCTAssertEqual(error as? AssistantQueueTransitionError, .retryRequiresFailedActionPlan)
+        }
+        XCTAssertThrowsError(try AssistantQueueStateMachine.reopenFailedForReview(failedAutomation)) { error in
+            XCTAssertEqual(error as? AssistantQueueTransitionError, .retryRequiresFailedActionPlan)
+        }
+        XCTAssertThrowsError(try AssistantQueueStateMachine.reopenFailedForReview(danger)) { error in
+            XCTAssertEqual(error as? AssistantQueueTransitionError, .dangerousPayloadCannotBeApproved)
         }
     }
 

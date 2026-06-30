@@ -2320,6 +2320,13 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     @discardableResult
+    public func retryAssistantQueueItem(id: String) -> Bool {
+        transitionAssistantQueueItem(id: id, successMessage: "Reopened Assistant Queue item for review.") { item in
+            try AssistantQueueStateMachine.reopenFailedForReview(item)
+        }
+    }
+
+    @discardableResult
     public func runAssistantQueueItem(id: String) -> Bool {
         guard let assistantQueueExecutionCoordinator else {
             _ = refreshAssistantQueueSnapshot()
@@ -2351,6 +2358,7 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     private func transitionAssistantQueueItem(
         id: String,
+        successMessage: String? = nil,
         _ transform: (AssistantQueueItem) throws -> AssistantQueueItem
     ) -> Bool {
         guard let assistantQueueStore else {
@@ -2363,23 +2371,33 @@ public final class ProjectBoardViewModel: ObservableObject {
             _ = try assistantQueueStore.transition(id: id, transform)
             _ = refreshAssistantQueueSnapshot()
             errorMessage = nil
+            integrationStatusMessage = successMessage
             onChange()
             return true
         } catch AssistantQueueTransitionError.blockedItemCannotBeApproved {
             _ = refreshAssistantQueueSnapshot()
             errorMessage = "Blocked Assistant Queue items cannot be approved."
+            integrationStatusMessage = nil
             return false
         } catch AssistantQueueTransitionError.dangerousPayloadCannotBeApproved {
             _ = refreshAssistantQueueSnapshot()
             errorMessage = "Dangerous action plans cannot be approved from Assistant Queue."
+            integrationStatusMessage = nil
             return false
         } catch AssistantQueueTransitionError.terminalItemCannotTransition {
             _ = refreshAssistantQueueSnapshot()
             errorMessage = "Assistant Queue item was already reviewed."
+            integrationStatusMessage = nil
+            return false
+        } catch AssistantQueueTransitionError.retryRequiresFailedActionPlan {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = "Only failed action-plan Assistant Queue items can be retried."
+            integrationStatusMessage = nil
             return false
         } catch {
             _ = refreshAssistantQueueSnapshot()
             errorMessage = AssistantQueueStoreError.userMessage(for: error)
+            integrationStatusMessage = nil
             return false
         }
     }

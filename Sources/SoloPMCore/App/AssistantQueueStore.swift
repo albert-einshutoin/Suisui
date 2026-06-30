@@ -71,6 +71,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
     public var canApprove: Bool
     public var canRun: Bool
     public var canDefer: Bool
+    public var canRetry: Bool
     public var canReject: Bool
 
     public init(
@@ -87,6 +88,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
         canApprove: Bool,
         canRun: Bool,
         canDefer: Bool,
+        canRetry: Bool,
         canReject: Bool
     ) {
         self.id = id
@@ -102,6 +104,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
         self.canApprove = canApprove
         self.canRun = canRun
         self.canDefer = canDefer
+        self.canRetry = canRetry
         self.canReject = canReject
     }
 }
@@ -193,6 +196,7 @@ public enum AssistantQueueReadModel {
             canApprove: canApprove(item),
             canRun: canRun(item),
             canDefer: canDefer(item),
+            canRetry: canRetry(item),
             canReject: canReject(item)
         )
     }
@@ -290,6 +294,18 @@ public enum AssistantQueueReadModel {
         case .running, .blocked, .done, .failed, .rejected, .deferred:
             return false
         }
+    }
+
+    private static func canRetry(_ item: AssistantQueueItem) -> Bool {
+        guard item.state == .failed else {
+            return false
+        }
+        guard case .actionPlan(let plan) = item.payload else {
+            return false
+        }
+        return item.riskLevel != .danger
+            && plan.riskLevel != .danger
+            && !plan.actions.contains { $0.riskLevel == .danger }
     }
 
     private static func canReject(_ item: AssistantQueueItem) -> Bool {

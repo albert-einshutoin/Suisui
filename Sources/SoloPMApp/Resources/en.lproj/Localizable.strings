@@ -679,6 +679,9 @@
 "Wait" = "Wait";
 "Remove from cache" = "Remove from cache";
 "Retry" = "Retry";
+"Reopen" = "Reopen";
+"Reopen this failed item for review before running it again" = "Reopen this failed item for review before running it again";
+"Returns failed generated work to review. It does not run until approved again." = "Returns failed generated work to review. It does not run until approved again.";
 "Not configured" = "Not configured";
 "Task Automation" = "Task Automation";
 "Review task automation" = "Review task automation";

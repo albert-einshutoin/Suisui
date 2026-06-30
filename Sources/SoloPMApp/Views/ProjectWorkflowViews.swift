@@ -1424,6 +1424,17 @@ private struct AssistantQueueRow: View {
                 .accessibilityHint("Keeps this generated work in the local queue for later review.")
 
                 Button {
+                    _ = viewModel.retryAssistantQueueItem(id: row.id)
+                } label: {
+                    Label("Reopen", systemImage: "arrow.clockwise")
+                }
+                .disabled(!row.canRetry)
+                .controlSize(.small)
+                .help("Reopen this failed item for review before running it again")
+                .accessibilityIdentifier("assistant-queue-retry-\(row.id)")
+                .accessibilityHint("Returns failed generated work to review. It does not run until approved again.")
+
+                Button {
                     _ = viewModel.rejectAssistantQueueItem(id: row.id)
                 } label: {
                     Label("Reject", systemImage: "xmark.circle")

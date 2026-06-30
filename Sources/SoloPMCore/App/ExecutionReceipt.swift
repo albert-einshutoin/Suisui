@@ -168,25 +168,30 @@ public enum ExecutionReceiptFailureRecovery: String, Codable, Equatable, Sendabl
 }
 
 public struct ExecutionReceiptQueueApproval: Codable, Equatable, Sendable {
+    public var approvalID: String?
     public var reviewerID: String
     public var note: String?
     public private(set) var reviewedContentDigest: String
 
     public init(
+        approvalID: String? = nil,
         reviewerID: String,
         note: String? = nil,
         reviewedContentFingerprint: String
     ) {
+        self.approvalID = approvalID
         self.reviewerID = reviewerID
         self.note = note
         self.reviewedContentDigest = ExecutionReceiptDigest.normalizedDigest(reviewedContentFingerprint)
     }
 
     init(
+        approvalID: String? = nil,
         reviewerID: String,
         note: String? = nil,
         reviewedContentDigest: String
     ) {
+        self.approvalID = approvalID
         self.reviewerID = reviewerID
         self.note = note
         self.reviewedContentDigest = reviewedContentDigest
@@ -243,6 +248,7 @@ public struct ExecutionReceipt: Codable, Equatable, Sendable {
         self.assistantQueueItemID = assistantQueueItemID
         self.queueApproval = queueApproval.map { approval in
             ExecutionReceiptQueueApproval(
+                approvalID: approval.approvalID,
                 reviewerID: redactor.redact(approval.reviewerID, maxLength: 180),
                 note: approval.note.map { redactor.redact($0, maxLength: 600) },
                 reviewedContentDigest: approval.reviewedContentDigest
@@ -289,6 +295,10 @@ public struct ExecutionReceipt: Codable, Equatable, Sendable {
 public protocol ExecutionReceiptStore: Sendable {
     func save(_ receipt: ExecutionReceipt) throws
     func list(limit: Int) throws -> [ExecutionReceipt]
+}
+
+public enum ExecutionReceiptStoreError: Error, Equatable, Sendable {
+    case duplicateReceiptID(String)
 }
 
 public final class InMemoryExecutionReceiptStore: ExecutionReceiptStore, @unchecked Sendable {
@@ -339,7 +349,11 @@ public final class FileExecutionReceiptStore: ExecutionReceiptStore, @unchecked 
         lock.lock()
         defer { lock.unlock() }
         let data = try encoder.encode(receipt)
-        try data.write(to: fileURL(for: receipt.id), options: [.atomic])
+        let destinationURL = fileURL(for: receipt.id)
+        guard !FileManager.default.fileExists(atPath: destinationURL.path) else {
+            throw ExecutionReceiptStoreError.duplicateReceiptID(receipt.id)
+        }
+        try data.write(to: destinationURL, options: [.atomic])
     }
 
     public func list(limit: Int = 100) throws -> [ExecutionReceipt] {
@@ -661,6 +675,7 @@ public enum ExecutionReceiptFactory {
             assistantQueueItemID: item.id,
             queueApproval: item.approval.map { approval in
                 ExecutionReceiptQueueApproval(
+                    approvalID: approval.approvalID,
                     reviewerID: approval.reviewerID,
                     note: approval.note,
                     reviewedContentFingerprint: approval.reviewedContentFingerprint
@@ -708,6 +723,7 @@ public enum ExecutionReceiptFactory {
             assistantQueueItemID: item.id,
             queueApproval: item.approval.map { approval in
                 ExecutionReceiptQueueApproval(
+                    approvalID: approval.approvalID,
                     reviewerID: approval.reviewerID,
                     note: approval.note,
                     reviewedContentFingerprint: approval.reviewedContentFingerprint
