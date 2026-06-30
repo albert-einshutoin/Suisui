@@ -699,6 +699,17 @@
 "Execution approval" = "実行承認";
 "Voice planning draft needs review." = "音声から作成した計画案はレビューが必要です。";
 "Dangerous action plans cannot be approved from Assistant Queue." = "危険なアクション計画はアシスタントキューから承認できません。";
+"Execution receipt" = "実行レシート";
+"%d actions recorded" = "%d件のアクションを記録済み";
+"Not started" = "未開始";
+"Succeeded" = "成功";
+"Canceled" = "キャンセル済み";
+"Measured cost" = "実測コスト";
+"Estimated cost" = "推定コスト";
+"Cost unknown" = "コスト不明";
+"Cost unavailable" = "コスト対象外";
+"%d tokens" = "%dトークン";
+"%d tokens estimated" = "%dトークン推定";
 "Review-only" = "確認専用";
 "Voice command confidence" = "音声コマンドの信頼度";
 "Create task" = "タスク作成";

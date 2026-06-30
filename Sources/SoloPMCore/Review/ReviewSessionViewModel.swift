@@ -7,10 +7,13 @@ public final class ReviewSessionViewModel: ObservableObject {
     @Published public private(set) var isExecuting: Bool
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var auditErrorMessage: String?
+    @Published public private(set) var executionReceiptErrorMessage: String?
+    @Published public private(set) var executionReceipts: [ExecutionReceipt]
     @Published public private(set) var validationIssuesByActionID: [String: [ToolInputValidationIssue]]
 
     private let executor: ActionExecutor
     private let auditLogger: (any AuditLogger)?
+    private let executionReceiptStore: (any ExecutionReceiptStore)?
     private let permissionGate: ReviewPermissionGate
     private let runtimeValidationMessage: String?
 
@@ -18,20 +21,28 @@ public final class ReviewSessionViewModel: ObservableObject {
         plan: ActionPlan,
         executor: ActionExecutor,
         auditLogger: (any AuditLogger)? = nil,
+        executionReceiptStore: (any ExecutionReceiptStore)? = nil,
         permissionGate: ReviewPermissionGate = ReviewPermissionGate(),
         runtimeValidationMessage: String? = nil
     ) {
         self.session = ReviewSession(plan: plan)
         self.executor = executor
         self.auditLogger = auditLogger
+        self.executionReceiptStore = executionReceiptStore
         self.permissionGate = permissionGate
         self.runtimeValidationMessage = runtimeValidationMessage
         self.isExecuting = false
         self.errorMessage = runtimeValidationMessage
         self.auditErrorMessage = nil
+        self.executionReceiptErrorMessage = nil
+        self.executionReceipts = (try? executionReceiptStore?.list(limit: 100)) ?? []
         self.validationIssuesByActionID = [:]
         refreshValidationIssues()
         recordAudit(action: "session.create", status: .started)
+    }
+
+    public var lastExecutionReceipt: ExecutionReceipt? {
+        executionReceipts.first
     }
 
     public var canApprove: Bool {
@@ -95,6 +106,7 @@ public final class ReviewSessionViewModel: ObservableObject {
 
         isExecuting = true
         errorMessage = nil
+        let startedAt = Date()
         defer { isExecuting = false }
 
         do {
@@ -103,9 +115,13 @@ public final class ReviewSessionViewModel: ObservableObject {
             if let auditErrorMessage = executedSession.auditErrorMessage {
                 self.auditErrorMessage = auditErrorMessage
             }
+            recordExecutionReceipt(for: executedSession, startedAt: startedAt, finishedAt: Date())
         } catch {
             errorMessage = Self.userFacingErrorMessage(for: error)
             recordAudit(action: "session.execute", status: .failed)
+            var failedSession = session
+            failedSession.executionStatus = .failed
+            recordExecutionReceipt(for: failedSession, startedAt: startedAt, finishedAt: Date())
             throw error
         }
     }
@@ -125,6 +141,8 @@ public final class ReviewSessionViewModel: ObservableObject {
         session.cancel()
         refreshValidationIssues()
         recordAudit(action: "session.cancel", status: .skipped)
+        let now = Date()
+        recordExecutionReceipt(for: session, startedAt: nil, finishedAt: now)
     }
 
     private func refreshValidationIssues() {
@@ -163,6 +181,49 @@ public final class ReviewSessionViewModel: ObservableObject {
             try record(action: action, status: status, actionID: actionID)
         } catch {
             auditErrorMessage = "Review audit log could not be saved."
+        }
+    }
+
+    private func recordReceiptAudit(receipt: ExecutionReceipt, status: AuditStatus) {
+        do {
+            try auditLogger?.record(AuditEvent(
+                category: "receipt",
+                action: "execution.receipt.create",
+                status: status,
+                metadata: [
+                    "receipt_id": receipt.id,
+                    "run_id": receipt.runID,
+                    "receipt_status": receipt.status.rawValue,
+                    "session_id": session.id,
+                    "plan_id": session.originalPlan.id
+                ]
+            ))
+        } catch {
+            auditErrorMessage = "Review audit log could not be saved."
+        }
+    }
+
+    private func recordExecutionReceipt(
+        for session: ReviewSession,
+        startedAt: Date?,
+        finishedAt: Date?
+    ) {
+        let receipt = ExecutionReceiptFactory.makeReviewReceipt(
+            session: session,
+            runID: "review-run:\(session.id):\(UUID().uuidString)",
+            model: nil,
+            usage: .unknown,
+            startedAt: startedAt,
+            finishedAt: finishedAt
+        )
+        do {
+            try executionReceiptStore?.save(receipt)
+            executionReceipts = (try executionReceiptStore?.list(limit: 100)) ?? [receipt] + executionReceipts
+            recordReceiptAudit(receipt: receipt, status: .succeeded)
+        } catch {
+            executionReceiptErrorMessage = "Execution receipt could not be saved."
+            executionReceipts = [receipt] + executionReceipts
+            recordReceiptAudit(receipt: receipt, status: .failed)
         }
     }
 

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 public enum AssistantQueueState: String, Codable, Equatable, Sendable {
@@ -250,13 +251,17 @@ public enum AssistantQueueAdapter {
 
 private extension AssistantQueueItem {
     var contentFingerprint: String {
-        [
+        let payloadDigest = (try? AssistantQueueDigest.sha256(payload)) ?? AssistantQueueDigest.sha256(String(describing: payload))
+        let capabilitiesDigest = AssistantQueueDigest.sha256(requiredCapabilities.map(String.init(describing:)).joined(separator: "|"))
+        // Approval records must never persist raw prompts or action arguments. The
+        // digest keeps payload-drift detection while preserving the queue boundary.
+        return AssistantQueueDigest.sha256([
             id,
             riskLevel.rawValue,
             redactedSummary,
-            String(describing: payload),
-            requiredCapabilities.map(String.init(describing:)).joined(separator: "|")
-        ].joined(separator: "::")
+            payloadDigest,
+            capabilitiesDigest
+        ].joined(separator: "::"))
     }
 
     var containsDangerousPayload: Bool {
@@ -270,6 +275,24 @@ private extension AssistantQueueItem {
         case .automationRequest:
             return false
         }
+    }
+}
+
+private enum AssistantQueueDigest {
+    static func sha256<T: Encodable>(_ value: T) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(value)
+        return sha256(data)
+    }
+
+    static func sha256(_ value: String) -> String {
+        sha256(Data(value.utf8))
+    }
+
+    private static func sha256(_ data: Data) -> String {
+        let digest = SHA256.hash(data: data)
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 }
 

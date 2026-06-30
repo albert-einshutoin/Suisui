@@ -699,6 +699,17 @@
 "Execution approval" = "Execution approval";
 "Voice planning draft needs review." = "Voice planning draft needs review.";
 "Dangerous action plans cannot be approved from Assistant Queue." = "Dangerous action plans cannot be approved from Assistant Queue.";
+"Execution receipt" = "Execution receipt";
+"%d actions recorded" = "%d actions recorded";
+"Not started" = "Not started";
+"Succeeded" = "Succeeded";
+"Canceled" = "Canceled";
+"Measured cost" = "Measured cost";
+"Estimated cost" = "Estimated cost";
+"Cost unknown" = "Cost unknown";
+"Cost unavailable" = "Cost unavailable";
+"%d tokens" = "%d tokens";
+"%d tokens estimated" = "%d tokens estimated";
 "Review-only" = "Review-only";
 "Voice command confidence" = "Voice command confidence";
 "Create task" = "Create task";
