@@ -110,14 +110,47 @@ public struct OpenAIResponsesOutputTextExtractor: Sendable {
     }
 }
 
+public struct OpenAIResponsesMetadataExtractor: Sendable {
+    public init() {}
+
+    public func extractMetadata(
+        from data: Data,
+        providerID: String,
+        fallbackModelName: String
+    ) -> PlanningResponseMetadata {
+        guard let response = try? JSONDecoder().decode(OpenAIResponsesResponseBody.self, from: data) else {
+            return PlanningResponseMetadata(
+                model: redactedModel(providerID: providerID, name: fallbackModelName),
+                usage: .unknown
+            )
+        }
+
+        return PlanningResponseMetadata(
+            model: redactedModel(providerID: providerID, name: response.model ?? fallbackModelName),
+            usage: response.usage?.executionReceiptUsage ?? .unknown
+        )
+    }
+
+    private func redactedModel(providerID: String, name: String) -> ExecutionReceiptModel {
+        let provider = AssistantQueueCostPreview.redactedMetadataText(providerID)
+        let model = AssistantQueueCostPreview.redactedMetadataText(name)
+        return ExecutionReceiptModel(
+            provider: provider.isEmpty ? "unknown" : provider,
+            name: model.isEmpty ? "unknown" : model
+        )
+    }
+}
+
 public struct OpenAIResponsesProvider: LLMProvider {
     public let providerID = "openai.responses"
 
     private let secretStore: any SecretStore
     private let httpClient: any HTTPDataClient
     private let promptBuilder: PlanningPromptBuilder?
+    private let configuration: OpenAIResponsesConfiguration
     private let requestBuilder: OpenAIResponsesRequestBuilder
     private let outputTextExtractor: OpenAIResponsesOutputTextExtractor
+    private let metadataExtractor: OpenAIResponsesMetadataExtractor
     private let responseParser: ActionPlanResponseParser
 
     public init(
@@ -126,13 +159,16 @@ public struct OpenAIResponsesProvider: LLMProvider {
         promptBuilder: PlanningPromptBuilder? = nil,
         configuration: OpenAIResponsesConfiguration = OpenAIResponsesConfiguration(),
         outputTextExtractor: OpenAIResponsesOutputTextExtractor = OpenAIResponsesOutputTextExtractor(),
+        metadataExtractor: OpenAIResponsesMetadataExtractor = OpenAIResponsesMetadataExtractor(),
         responseParser: ActionPlanResponseParser = ActionPlanResponseParser()
     ) {
         self.secretStore = secretStore
         self.httpClient = httpClient
         self.promptBuilder = promptBuilder
+        self.configuration = configuration
         self.requestBuilder = OpenAIResponsesRequestBuilder(configuration: configuration)
         self.outputTextExtractor = outputTextExtractor
+        self.metadataExtractor = metadataExtractor
         self.responseParser = responseParser
     }
 
@@ -163,7 +199,17 @@ public struct OpenAIResponsesProvider: LLMProvider {
         }
 
         let rawContent = try outputTextExtractor.extractText(from: data)
-        return responseParser.parse(rawContent: rawContent, providerID: providerID)
+        let metadata = metadataExtractor.extractMetadata(
+            from: data,
+            providerID: providerID,
+            fallbackModelName: configuration.model
+        )
+        return responseParser.parse(
+            rawContent: rawContent,
+            providerID: providerID,
+            model: metadata.model,
+            usage: metadata.usage
+        )
     }
 
     private func mapHTTPError(statusCode: Int, data: Data) -> LLMProviderError {
@@ -210,12 +256,16 @@ private struct OpenAIResponsesInputContent: Encodable {
 }
 
 private struct OpenAIResponsesResponseBody: Decodable {
+    var model: String?
     var outputText: String?
     var output: [OpenAIResponsesOutputItem]?
+    var usage: OpenAIResponsesUsage?
 
     private enum CodingKeys: String, CodingKey {
+        case model
         case outputText = "output_text"
         case output
+        case usage
     }
 }
 
@@ -227,4 +277,31 @@ private struct OpenAIResponsesOutputItem: Decodable {
 private struct OpenAIResponsesOutputContent: Decodable {
     var type: String
     var text: String?
+}
+
+private struct OpenAIResponsesUsage: Decodable {
+    var inputTokens: Int?
+    var outputTokens: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case inputTokens = "input_tokens"
+        case outputTokens = "output_tokens"
+    }
+
+    var executionReceiptUsage: ExecutionReceiptUsage {
+        let input = Self.nonNegative(inputTokens)
+        let output = Self.nonNegative(outputTokens)
+        guard input != nil || output != nil else {
+            return .unknown
+        }
+        return ExecutionReceiptUsage(
+            inputTokens: input,
+            outputTokens: output,
+            isEstimated: false
+        )
+    }
+
+    private static func nonNegative(_ value: Int?) -> Int? {
+        value.map { max(0, $0) }
+    }
 }

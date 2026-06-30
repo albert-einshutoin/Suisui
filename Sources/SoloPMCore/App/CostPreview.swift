@@ -119,6 +119,7 @@ public struct AssistantQueueCostPreview: Codable, Equatable, Sendable {
     public var model: ExecutionReceiptModel?
     public var capStatus: AssistantQueueCostCapStatus
     public var note: String?
+    public var observedUsage: ExecutionReceiptUsage?
 
     public init(
         billingMode: AssistantQueueCostBillingMode,
@@ -128,7 +129,8 @@ public struct AssistantQueueCostPreview: Codable, Equatable, Sendable {
         currencyCode: String? = nil,
         model: ExecutionReceiptModel? = nil,
         capStatus: AssistantQueueCostCapStatus = .notConfigured,
-        note: String? = nil
+        note: String? = nil,
+        observedUsage: ExecutionReceiptUsage? = nil
     ) {
         self.billingMode = billingMode
         self.state = state
@@ -138,21 +140,29 @@ public struct AssistantQueueCostPreview: Codable, Equatable, Sendable {
         self.model = model.map(Self.redactedModel)
         self.capStatus = capStatus
         self.note = note.map(Self.redactedText)
+        self.observedUsage = observedUsage
     }
 
-    public static func localOnly(note: String? = "Local-only execution. SoloPM managed charge unavailable.") -> Self {
+    public static func localOnly(
+        note: String? = "Local-only execution. SoloPM managed charge unavailable.",
+        model: ExecutionReceiptModel? = nil,
+        observedUsage: ExecutionReceiptUsage? = nil
+    ) -> Self {
         AssistantQueueCostPreview(
             billingMode: .localOnly,
             state: .unavailable,
+            model: model,
             capStatus: .notConfigured,
-            note: note
+            note: note,
+            observedUsage: observedUsage
         )
     }
 
     public static func userProviderBilled(
         provider: String,
         modelName: String,
-        note: String? = "BYOK or user-provider billing. SoloPM managed charge unavailable."
+        note: String? = "BYOK or user-provider billing. SoloPM managed charge unavailable.",
+        observedUsage: ExecutionReceiptUsage? = nil
     ) -> Self {
         AssistantQueueCostPreview(
             billingMode: .userProviderBilled,
@@ -162,11 +172,18 @@ public struct AssistantQueueCostPreview: Codable, Equatable, Sendable {
                 name: redactedText(modelName)
             ),
             capStatus: .notConfigured,
-            note: note
+            note: note,
+            observedUsage: observedUsage
         )
     }
 
     public var executionReceiptUsage: ExecutionReceiptUsage {
+        // Provider-reported usage is measured after the planning call. Keep it
+        // separate from preview state so approval and cap checks still evaluate
+        // pre-run cost estimates rather than post-call telemetry.
+        if let observedUsage, observedUsage.state == .measured {
+            return observedUsage
+        }
         switch state {
         case .estimated:
             return ExecutionReceiptUsage(
@@ -234,9 +251,14 @@ public struct AssistantQueueCostPreview: Codable, Equatable, Sendable {
     }
 
     private static func redactedText(_ value: String) -> String {
-        let redacted = DeveloperSecretRedactor().redact(value).text
-        let trimmed = redacted.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = Self.redactedMetadataText(value)
         return trimmed.isEmpty ? "unknown" : trimmed
+    }
+
+    public static func redactedMetadataText(_ value: String) -> String {
+        let secretRedacted = DeveloperSecretRedactor().redact(value).text
+        let pathRedacted = ExecutionReceiptRedactor().redact(secretRedacted)
+        return pathRedacted.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func normalizedCurrencyCode(_ value: String) -> String {

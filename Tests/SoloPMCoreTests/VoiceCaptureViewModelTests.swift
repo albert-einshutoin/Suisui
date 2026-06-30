@@ -99,6 +99,74 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(try? store.get(id: "action-plan:plan-persisted"), viewModel.assistantQueueItem)
     }
 
+    func testGeneratePlanPreservesMeasuredProviderUsageForAssistantQueueReceipt() async {
+        let response = PlanningResponse(
+            providerID: "openai.chat_completions",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-measured-usage",
+                userInput: "Create a measured task",
+                summary: "Create measured task",
+                actions: [PlanAction(id: "action-1", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: []),
+            model: ExecutionReceiptModel(provider: "openai.chat_completions", name: "gpt-5.5"),
+            usage: ExecutionReceiptUsage(inputTokens: 900, outputTokens: 120, isEstimated: false)
+        )
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: response)
+        )
+
+        viewModel.updateDraftText("Create a measured task")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        let preview = viewModel.assistantQueueItem?.costPreview
+        XCTAssertEqual(preview?.billingMode, .userProviderBilled)
+        XCTAssertEqual(preview?.model, ExecutionReceiptModel(provider: "openai.chat_completions", name: "gpt-5.5"))
+        XCTAssertEqual(preview?.executionReceiptUsage.state, .measured)
+        XCTAssertEqual(preview?.executionReceiptUsage.inputTokens, 900)
+        XCTAssertEqual(preview?.executionReceiptUsage.outputTokens, 120)
+        XCTAssertTrue(preview?.allowsApprovalAndRun ?? false)
+    }
+
+    func testGeneratePlanRedactsProviderModelPathBeforeQueuePersistence() async {
+        let response = PlanningResponse(
+            providerID: "openai.chat_completions",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-redacted-model",
+                userInput: "Create a measured task",
+                summary: "Create measured task",
+                actions: [PlanAction(id: "action-1", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: []),
+            model: ExecutionReceiptModel(
+                provider: "openai.chat_completions",
+                name: "/Users/alice/private/sk-modelSecret1234567890/model.gguf"
+            ),
+            usage: ExecutionReceiptUsage(inputTokens: 12, outputTokens: 8, isEstimated: false)
+        )
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: response)
+        )
+
+        viewModel.updateDraftText("Create a measured task")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        let modelName = viewModel.assistantQueueItem?.costPreview?.model?.name ?? ""
+        XCTAssertFalse(modelName.contains("/Users/alice"))
+        XCTAssertFalse(modelName.contains("modelSecret"))
+        XCTAssertTrue(modelName.contains("[REDACTED"))
+    }
+
     func testAssistantQueueTransitionsPersistThroughConfiguredStore() async {
         let store = RecordingAssistantQueueStore()
         let response = PlanningResponse(
