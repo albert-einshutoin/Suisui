@@ -661,6 +661,9 @@
 "Approval token" = "承認トークン";
 "Schedule approval token" = "予定承認トークン";
 "Apply to Calendar" = "カレンダーへ適用";
+"Queue Calendar Apply" = "カレンダー適用をキューへ追加";
+"External Calendar writes run from Assistant Queue after approval." = "外部カレンダーへの書き込みは承認後にAssistant Queueから実行されます。";
+"Adds reviewed schedule blocks to Assistant Queue before any external Calendar write." = "外部カレンダーへ書き込む前に、確認済みの予定枠をAssistant Queueへ追加します。";
 "Approve Google Calendar Sync" = "Googleカレンダー同期を承認";
 "Schedule block %@" = "予定枠 %@";
 "Generate a draft from Today time blocks." = "Todayの時間枠からドラフトを生成します。";
@@ -925,6 +928,12 @@
 "Daily Planning Review action is already in Assistant Queue." = "日次計画レビューのアクションはすでにAssistant Queueにあります。";
 "Daily Planning Review generated an invalid action plan." = "日次計画レビューが無効なアクションプランを生成しました。";
 "Daily Planning Review has no recommended task to queue." = "Assistant Queueへ追加できる推奨タスクが日次計画レビューにありません。";
+"Schedule draft Calendar apply" = "予定ドラフトのカレンダー適用";
+"Schedule draft Calendar apply is already in Assistant Queue." = "予定ドラフトのカレンダー適用はすでにAssistant Queueにあります。";
+"Queued Schedule draft Calendar apply for approval." = "予定ドラフトのカレンダー適用を承認待ちとしてキューに追加しました。";
+"Create a schedule draft before queuing Calendar apply." = "カレンダー適用をキューへ追加する前に予定ドラフトを作成してください。";
+"Schedule draft has no calendar-ready time blocks to queue." = "予定ドラフトにキューへ追加できるカレンダー用の時間枠がありません。";
+"Schedule draft generated an invalid Calendar action plan." = "予定ドラフトが無効なカレンダーアクションプランを生成しました。";
 "Daily progress" = "日次進捗";
 "Draft Defer" = "延期を下書き";
 "Draft Start" = "開始を下書き";

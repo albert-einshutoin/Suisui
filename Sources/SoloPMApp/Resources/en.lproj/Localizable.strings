@@ -661,6 +661,9 @@
 "Approval token" = "Approval token";
 "Schedule approval token" = "Schedule approval token";
 "Apply to Calendar" = "Apply to Calendar";
+"Queue Calendar Apply" = "Queue Calendar Apply";
+"External Calendar writes run from Assistant Queue after approval." = "External Calendar writes run from Assistant Queue after approval.";
+"Adds reviewed schedule blocks to Assistant Queue before any external Calendar write." = "Adds reviewed schedule blocks to Assistant Queue before any external Calendar write.";
 "Approve Google Calendar Sync" = "Approve Google Calendar Sync";
 "Schedule block %@" = "Schedule block %@";
 "Generate a draft from Today time blocks." = "Generate a draft from Today time blocks.";
@@ -925,6 +928,12 @@
 "Daily Planning Review action is already in Assistant Queue." = "Daily Planning Review action is already in Assistant Queue.";
 "Daily Planning Review generated an invalid action plan." = "Daily Planning Review generated an invalid action plan.";
 "Daily Planning Review has no recommended task to queue." = "Daily Planning Review has no recommended task to queue.";
+"Schedule draft Calendar apply" = "Schedule draft Calendar apply";
+"Schedule draft Calendar apply is already in Assistant Queue." = "Schedule draft Calendar apply is already in Assistant Queue.";
+"Queued Schedule draft Calendar apply for approval." = "Queued Schedule draft Calendar apply for approval.";
+"Create a schedule draft before queuing Calendar apply." = "Create a schedule draft before queuing Calendar apply.";
+"Schedule draft has no calendar-ready time blocks to queue." = "Schedule draft has no calendar-ready time blocks to queue.";
+"Schedule draft generated an invalid Calendar action plan." = "Schedule draft generated an invalid Calendar action plan.";
 "Daily progress" = "Daily progress";
 "Draft Defer" = "Draft Defer";
 "Draft Start" = "Draft Start";
