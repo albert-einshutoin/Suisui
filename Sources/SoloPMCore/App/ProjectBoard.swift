@@ -1969,7 +1969,14 @@ public final class ProjectBoardViewModel: ObservableObject {
             timeZoneIdentifier: timeZoneIdentifier,
             documentDeliverableDrafts: documentDeliverableDrafts
         )
-        taskAutomationDocumentDeliverableReviews = documentDeliverableReviews(from: documentDeliverableDrafts)
+        let documentDeliverableReviews = documentDeliverableReviews(from: documentDeliverableDrafts)
+        taskAutomationDocumentDeliverableReviews = documentDeliverableReviews
+        if let receiptPersistenceMessage = saveTaskAutomationDocumentDeliverableReceipt(
+            documentDeliverableReviews,
+            selectedTasks: decision.selectedTasks
+        ) {
+            errorMessage = receiptPersistenceMessage
+        }
 
         // The session budget is charged only after the provider request is
         // successfully assembled. Throttled or invalid review attempts still
@@ -2004,7 +2011,14 @@ public final class ProjectBoardViewModel: ObservableObject {
             timeZoneIdentifier: timeZoneIdentifier,
             documentDeliverableDrafts: documentDeliverableDrafts
         )
-        taskAutomationDocumentDeliverableReviews = documentDeliverableReviews(from: documentDeliverableDrafts)
+        let documentDeliverableReviews = documentDeliverableReviews(from: documentDeliverableDrafts)
+        taskAutomationDocumentDeliverableReviews = documentDeliverableReviews
+        if let receiptPersistenceMessage = saveTaskAutomationDocumentDeliverableReceipt(
+            documentDeliverableReviews,
+            selectedTasks: decision.selectedTasks
+        ) {
+            errorMessage = receiptPersistenceMessage
+        }
         return request
     }
 
@@ -2184,6 +2198,34 @@ public final class ProjectBoardViewModel: ObservableObject {
                 return String(localized: "Schedule apply was skipped, and the execution receipt could not be saved.")
             }
             return String(localized: "Schedule applied to Calendar, but the execution receipt could not be saved.")
+        }
+    }
+
+    private func saveTaskAutomationDocumentDeliverableReceipt(
+        _ deliverables: [TaskAutomationDocumentDeliverableReview],
+        selectedTasks: [ProjectBoardTask]
+    ) -> String? {
+        guard !deliverables.isEmpty else {
+            return nil
+        }
+        guard let executionReceiptStore else {
+            refreshExecutionReceiptHistorySnapshot()
+            return nil
+        }
+
+        let receipt = ExecutionReceiptFactory.makeDocumentDeliverableReceipt(
+            deliverables: deliverables,
+            selectedTasks: selectedTasks,
+            runID: "document-deliverable-run:\(UUID().uuidString)",
+            createdAt: Date()
+        )
+        do {
+            try executionReceiptStore.save(receipt)
+            refreshExecutionReceiptHistorySnapshot()
+            return nil
+        } catch {
+            refreshExecutionReceiptHistorySnapshot()
+            return String(localized: "Document deliverable drafts were prepared, but the execution receipt could not be saved.")
         }
     }
 

@@ -1164,6 +1164,88 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelPersistsDocumentDeliverableReceiptToGlobalAndScopedHistory() throws {
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: receiptStore
+        )
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Prepare release docs token=document-task-secret",
+            detail: "Use sk-proj-document-task-secret before drafting.",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-21T08:00:00Z"
+        ))
+        let drafts = DocumentAutomationArtifactPlanner().deliverableDrafts(
+            userRequest: "Prepare release notes and the pull request plan from selected docs.",
+            documents: [
+                ScopedAutomationDocument(
+                    id: "phase14-token=document-source-id-secret",
+                    title: "Phase14 release source token=document-source-title-secret",
+                    scope: .appDocs,
+                    redactedSummary: "Release notes and pull request plan use sk-proj-document-source-secret.",
+                    inclusionReason: "Selected because token=document-source-reason-secret matched."
+                )
+            ]
+        )
+
+        _ = try viewModel.makeTaskAutomationPlanningRequest(
+            settings: .init(
+                isEnabled: true,
+                mode: .reviewOnly,
+                cadence: .hourly,
+                maxTasksPerRun: 1,
+                dailyLLMCallLimit: 3,
+                lookaheadHours: 72
+            ),
+            history: .empty,
+            referenceDate: try isoDate("2026-06-22T09:00:00Z"),
+            calendar: utcCalendar(),
+            timeZoneIdentifier: "UTC",
+            documentDeliverableDrafts: drafts
+        )
+
+        let storedReceipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(storedReceipt.status, .succeeded)
+        XCTAssertEqual(storedReceipt.primaryToolName, "document.deliverable.prepare")
+        XCTAssertEqual(storedReceipt.visibleSurfaces, [.taskDetail, .projectDetail, .auditLog])
+        XCTAssertTrue(storedReceipt.references.contains(ExecutionReceiptReference(kind: .task, id: String(task.id), label: "Prepare release docs [REDACTED_SECRET]")))
+        XCTAssertTrue(storedReceipt.references.contains(ExecutionReceiptReference(kind: .project, id: String(task.projectID))))
+        XCTAssertTrue(storedReceipt.references.contains { $0.kind == .document })
+        XCTAssertTrue(storedReceipt.references.contains { $0.kind == .file })
+        XCTAssertTrue(storedReceipt.inputPreview.contains("[REDACTED_SECRET]"))
+        XCTAssertFalse(storedReceipt.inputPreview.contains("document-task-secret"))
+        XCTAssertFalse(storedReceipt.inputPreview.contains("document-source-id-secret"))
+        XCTAssertFalse(storedReceipt.inputPreview.contains("document-source-title-secret"))
+        XCTAssertFalse(storedReceipt.inputPreview.contains("document-source-secret"))
+        XCTAssertFalse(storedReceipt.inputPreview.contains("document-source-reason-secret"))
+
+        let globalRow = try XCTUnwrap(viewModel.executionReceiptHistorySnapshot.rows.first)
+        let taskRow = try XCTUnwrap(viewModel.executionReceiptHistorySnapshot(forTaskID: task.id).rows.first)
+        let projectRow = try XCTUnwrap(viewModel.executionReceiptHistorySnapshot(forProjectID: task.projectID).rows.first)
+        XCTAssertEqual(globalRow.toolLabel, "document.deliverable.prepare")
+        XCTAssertEqual(taskRow.toolLabel, "document.deliverable.prepare")
+        XCTAssertEqual(projectRow.toolLabel, "document.deliverable.prepare")
+        XCTAssertTrue(globalRow.outcomeSummary.contains("No files were written"))
+        XCTAssertTrue(globalRow.referenceSummary.contains("Document"))
+        XCTAssertTrue(globalRow.sourceSummary.contains("Document"))
+
+        viewModel.prepareExecutionReceiptHistoryExport()
+        let exportData = try XCTUnwrap(viewModel.executionReceiptHistoryExportData)
+        let exportText = String(decoding: exportData, as: UTF8.self)
+        XCTAssertFalse(exportText.contains(storedReceipt.id))
+        XCTAssertFalse(exportText.contains("document-task-secret"))
+        XCTAssertFalse(exportText.contains("document-source-id-secret"))
+        XCTAssertFalse(exportText.contains("document-source-title-secret"))
+        XCTAssertFalse(exportText.contains("document-source-secret"))
+        XCTAssertFalse(exportText.contains("document-source-reason-secret"))
+        XCTAssertFalse(exportText.contains("sk-proj"))
+        XCTAssertFalse(exportText.contains("file://"))
+    }
+
+    @MainActor
     func testProjectBoardViewModelLoadsTaskAndProjectScopedExecutionReceiptHistory() throws {
         let scopedReceipt = ExecutionReceipt(
             id: "receipt-task-project-history",
