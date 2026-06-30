@@ -2,6 +2,7 @@ import Foundation
 
 public enum ProjectBoardSidebarDestination: Hashable, Sendable {
     case inbox
+    case assistantQueue
     case today
     case catchUp
     case schedule
@@ -13,6 +14,8 @@ public enum ProjectBoardSidebarDestination: Hashable, Sendable {
         switch self {
         case .inbox:
             "Inbox"
+        case .assistantQueue:
+            "Assistant Queue"
         case .today:
             "Today"
         case .catchUp:
@@ -32,6 +35,8 @@ public enum ProjectBoardSidebarDestination: Hashable, Sendable {
         switch self {
         case .inbox:
             "tray"
+        case .assistantQueue:
+            "tray.full"
         case .today:
             "sun.max"
         case .catchUp:
@@ -51,6 +56,8 @@ public enum ProjectBoardSidebarDestination: Hashable, Sendable {
         switch self {
         case .inbox:
             "inbox"
+        case .assistantQueue:
+            "assistant-queue"
         case .today:
             "today"
         case .catchUp:
@@ -86,6 +93,8 @@ public enum ProjectBoardSelectionPersistence {
         switch destination {
         case .inbox:
             return "inbox"
+        case .assistantQueue:
+            return "assistant-queue"
         case .today:
             return "today"
         case .catchUp:
@@ -108,6 +117,8 @@ public enum ProjectBoardSelectionPersistence {
         switch rawValue {
         case "inbox":
             return .inbox
+        case "assistant-queue":
+            return .assistantQueue
         case "today":
             return .today
         case "catch-up":

@@ -2281,6 +2281,62 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    @discardableResult
+    public func approveAssistantQueueItem(id: String) -> Bool {
+        transitionAssistantQueueItem(id: id) { item in
+            try AssistantQueueStateMachine.approve(item, reviewerID: "local-user")
+        }
+    }
+
+    @discardableResult
+    public func deferAssistantQueueItem(id: String) -> Bool {
+        transitionAssistantQueueItem(id: id) { item in
+            AssistantQueueStateMachine.deferItem(item)
+        }
+    }
+
+    @discardableResult
+    public func rejectAssistantQueueItem(id: String) -> Bool {
+        transitionAssistantQueueItem(id: id) { item in
+            AssistantQueueStateMachine.reject(item)
+        }
+    }
+
+    private func transitionAssistantQueueItem(
+        id: String,
+        _ transform: (AssistantQueueItem) throws -> AssistantQueueItem
+    ) -> Bool {
+        guard let assistantQueueStore else {
+            assistantQueueSnapshot = .empty
+            errorMessage = "Assistant Queue is unavailable in this build."
+            return false
+        }
+
+        do {
+            _ = try assistantQueueStore.transition(id: id, transform)
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = nil
+            onChange()
+            return true
+        } catch AssistantQueueTransitionError.blockedItemCannotBeApproved {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = "Blocked Assistant Queue items cannot be approved."
+            return false
+        } catch AssistantQueueTransitionError.dangerousPayloadCannotBeApproved {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = "Dangerous action plans cannot be approved from Assistant Queue."
+            return false
+        } catch AssistantQueueTransitionError.terminalItemCannotTransition {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = "Assistant Queue item was already reviewed."
+            return false
+        } catch {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = AssistantQueueStoreError.userMessage(for: error)
+            return false
+        }
+    }
+
     private static func userFacingMessage(for error: Error) -> String {
         userFacingMessage(for: error, fallback: "Project board unavailable")
     }
