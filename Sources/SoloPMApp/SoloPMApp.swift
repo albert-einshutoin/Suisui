@@ -3390,6 +3390,7 @@ private enum AppRuntimeFactory {
             return ProjectBoardViewModel(
                 store: SQLiteProjectBoardStore(connection: connection),
                 inboxCaptureStore: SQLiteInboxCaptureStore(connection: connection),
+                missedTaskReviewStateStore: SQLiteMissedTaskReviewStateStore(connection: connection),
                 externalTaskLinkStore: SQLiteExternalTaskLinkStore(connection: connection),
                 onChange: postProjectBoardDidChange
             )

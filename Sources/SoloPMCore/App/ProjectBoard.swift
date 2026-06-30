@@ -187,6 +187,7 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
     public var priority: ProjectTaskPriority
     public var dueAt: String?
     public var completedAt: String?
+    public var updatedAt: String?
 
     public init(
         id: Int64,
@@ -196,7 +197,8 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
         status: ProjectTaskStatus,
         priority: ProjectTaskPriority,
         dueAt: String?,
-        completedAt: String? = nil
+        completedAt: String? = nil,
+        updatedAt: String? = nil
     ) {
         self.id = id
         self.projectID = projectID
@@ -206,6 +208,7 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
         self.priority = priority
         self.dueAt = dueAt
         self.completedAt = completedAt
+        self.updatedAt = updatedAt
     }
 
     public var dueLabel: String? {
@@ -1035,7 +1038,8 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             status: ProjectTaskStatus.normalized(record.status),
             priority: try ProjectTaskPriority.normalized(record.priority, column: "tasks.priority"),
             dueAt: record.dueAt,
-            completedAt: record.completedAt
+            completedAt: record.completedAt,
+            updatedAt: record.updatedAt
         )
     }
 
@@ -1139,6 +1143,7 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     private let store: any ProjectBoardStore
     private let inboxCaptureStore: (any InboxCaptureStore)?
+    private let missedTaskReviewStateStore: any MissedTaskReviewStateStore
     private let externalTaskLinkStore: (any ExternalTaskLinkStore)?
     private let scheduleCalendarClient: (any CalendarClient)?
     private let onChange: () -> Void
@@ -1151,6 +1156,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     public init(
         store: any ProjectBoardStore,
         inboxCaptureStore: (any InboxCaptureStore)? = nil,
+        missedTaskReviewStateStore: any MissedTaskReviewStateStore = InMemoryMissedTaskReviewStateStore(),
         externalTaskLinkStore: (any ExternalTaskLinkStore)? = nil,
         scheduleCalendarClient: (any CalendarClient)? = nil,
         snapshot: ProjectBoardSnapshot = .empty,
@@ -1158,6 +1164,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     ) {
         self.store = store
         self.inboxCaptureStore = inboxCaptureStore
+        self.missedTaskReviewStateStore = missedTaskReviewStateStore
         self.externalTaskLinkStore = externalTaskLinkStore
         self.scheduleCalendarClient = scheduleCalendarClient
         self.snapshot = snapshot
@@ -1507,6 +1514,146 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         return chips
+    }
+
+    public func missedTaskReview(
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current,
+        staleAfterDays: Int = 7
+    ) -> MissedTaskReviewSummary {
+        guard let dayInterval = calendar.dateInterval(of: .day, for: referenceDate) else {
+            return .empty
+        }
+
+        let staleCutoff = calendar.date(byAdding: .day, value: -max(staleAfterDays, 1), to: dayInterval.start) ?? dayInterval.start
+        // Inbox is intake, not committed work; Catch Up should not make raw captures
+        // look like forgotten tasks before the user triages them into a project.
+        let activeProjects = snapshot.projects.filter { !$0.isArchived && !$0.isCompleted && !isInboxProject($0) }
+        var didFailToLoadReviewState = false
+        let items = activeProjects
+            .flatMap { project in
+                project.tasks.compactMap { task -> MissedTaskReviewItem? in
+                    guard task.status != .done else {
+                        return nil
+                    }
+
+                    let reasons = missedTaskReasons(
+                        for: task,
+                        dayInterval: dayInterval,
+                        staleCutoff: staleCutoff
+                    )
+                    guard !reasons.isEmpty else {
+                        return nil
+                    }
+
+                    let reviewState = missedTaskReviewState(
+                        taskID: task.id,
+                        referenceDate: referenceDate,
+                        calendar: calendar,
+                        didFail: &didFailToLoadReviewState
+                    )
+                    return MissedTaskReviewItem(
+                        task: task,
+                        projectTitle: project.title,
+                        reasons: reasons,
+                        lastReviewedAt: reviewState.lastReviewedAt,
+                        isNewlyMissed: reviewState.isNewlyMissed
+                    )
+                }
+            }
+            .sorted(by: sortMissedTaskReviewItems)
+
+        let immediateQueue = items
+            .filter { $0.isNewlyMissed && isImmediateMissedTask($0) }
+            .sorted(by: sortMissedTaskReviewItems)
+
+        return MissedTaskReviewSummary(
+            items: items,
+            immediateQueue: immediateQueue,
+            overdueCount: items.filter { $0.reasons.contains(.overdue) }.count,
+            dueTodayCount: items.filter { $0.reasons.contains(.dueToday) }.count,
+            blockedCount: items.filter { $0.reasons.contains(.blocked) }.count,
+            unscheduledCount: items.filter { $0.reasons.contains(.unscheduled) }.count,
+            staleCount: items.filter { $0.reasons.contains(.stale) }.count,
+            newlyMissedCount: immediateQueue.count,
+            stateErrorMessage: didFailToLoadReviewState ? String(localized: "Missed task review state could not be loaded.") : nil
+        )
+    }
+
+    public func completeMissedTask(id taskID: Int64, referenceDate: Date = Date()) {
+        guard let task = snapshot.projects.flatMap(\.tasks).first(where: { $0.id == taskID }) else {
+            errorMessage = "Task is no longer available."
+            return
+        }
+
+        do {
+            _ = try store.moveTask(id: taskID, to: .done)
+            try missedTaskReviewStateStore.markReviewed(taskID: taskID, at: referenceDate)
+            load()
+            selectedProjectID = task.projectID
+            selectedTaskID = taskID
+            todayCommandFeedback = String(format: String(localized: "Completed \"%@\" from missed review."), task.title)
+            errorMessage = nil
+            onChange()
+        } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
+            errorMessage = "Restore the project before moving tasks."
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
+    public func rescheduleMissedTaskForToday(id taskID: Int64, referenceDate: Date = Date()) {
+        guard let task = snapshot.projects.flatMap(\.tasks).first(where: { $0.id == taskID }) else {
+            errorMessage = "Task is no longer available."
+            return
+        }
+
+        do {
+            let updatedTask = try store.updateTask(
+                id: taskID,
+                ProjectBoardTaskDraft(
+                    projectID: task.projectID,
+                    title: task.title,
+                    detail: task.detail,
+                    status: .planned,
+                    priority: task.priority,
+                    dueAt: ISO8601DateFormatter().string(from: referenceDate)
+                )
+            )
+            try missedTaskReviewStateStore.markReviewed(taskID: taskID, at: referenceDate)
+            load()
+            selectedProjectID = updatedTask.projectID
+            selectedTaskID = updatedTask.id
+            todayCommandFeedback = String(format: String(localized: "Rescheduled \"%@\" for today."), task.title)
+            errorMessage = nil
+            onChange()
+        } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
+            errorMessage = "Restore the project before editing tasks."
+        } catch ProjectBoardStoreError.emptyTitle {
+            errorMessage = "Task title is required."
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
+    public func deferMissedTaskForLater(id taskID: Int64, referenceDate: Date = Date()) {
+        guard let task = snapshot.projects.flatMap(\.tasks).first(where: { $0.id == taskID }) else {
+            errorMessage = "Task is no longer available."
+            return
+        }
+
+        do {
+            // Deferring from Catch Up is review-state only: it removes the item
+            // from today's recovery queue without hiding or mutating the task.
+            try missedTaskReviewStateStore.markReviewed(taskID: taskID, at: referenceDate)
+            selectedProjectID = task.projectID
+            selectedTaskID = task.id
+            todayCommandFeedback = String(format: String(localized: "Deferred \"%@\" from today's missed queue."), task.title)
+            errorMessage = nil
+            onChange()
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+        }
     }
 
     public func startFocus(taskID: Int64) {
@@ -3120,6 +3267,111 @@ public final class ProjectBoardViewModel: ObservableObject {
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.date(from: rawDueAt)
+    }
+
+    private func updatedDate(for rawUpdatedAt: String?) -> Date? {
+        guard let rawUpdatedAt else {
+            return nil
+        }
+
+        if let date = ISO8601DateFormatter().date(from: rawUpdatedAt) {
+            return date
+        }
+
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        if let date = formatter.date(from: rawUpdatedAt) {
+            return date
+        }
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: rawUpdatedAt)
+    }
+
+    private func missedTaskReasons(
+        for task: ProjectBoardTask,
+        dayInterval: DateInterval,
+        staleCutoff: Date
+    ) -> [MissedTaskReviewReason] {
+        var reasons: [MissedTaskReviewReason] = []
+        let taskDueDate = dueDate(for: task.dueAt)
+        if taskDueDate.map({ $0 < dayInterval.start }) == true {
+            reasons.append(.overdue)
+        } else if let taskDueDate, taskDueDate >= dayInterval.start && taskDueDate < dayInterval.end {
+            reasons.append(.dueToday)
+        }
+        if task.status == .blocked {
+            reasons.append(.blocked)
+        }
+        if task.dueAt == nil {
+            reasons.append(.unscheduled)
+        }
+        if updatedDate(for: task.updatedAt).map({ $0 < staleCutoff }) == true {
+            reasons.append(.stale)
+        }
+        return reasons
+    }
+
+    private func missedTaskReviewState(
+        taskID: Int64,
+        referenceDate: Date,
+        calendar: Calendar,
+        didFail: inout Bool
+    ) -> (lastReviewedAt: Date?, isNewlyMissed: Bool) {
+        do {
+            let lastReviewedAt = try missedTaskReviewStateStore.lastReviewedAt(taskID: taskID)
+            return (
+                lastReviewedAt,
+                lastReviewedAt.map { !calendar.isDate($0, inSameDayAs: referenceDate) } ?? true
+            )
+        } catch {
+            // Review state failures use a conservative fallback so a corrupted
+            // local store cannot re-queue tasks the user already acknowledged.
+            didFail = true
+            return (nil, false)
+        }
+    }
+
+    private func isImmediateMissedTask(_ item: MissedTaskReviewItem) -> Bool {
+        item.reasons.contains(.overdue)
+            || item.reasons.contains(.blocked)
+            || item.reasons.contains(.unscheduled)
+            || item.reasons.contains(.stale)
+    }
+
+    private func sortMissedTaskReviewItems(_ lhs: MissedTaskReviewItem, _ rhs: MissedTaskReviewItem) -> Bool {
+        let lhsRank = missedTaskQueueRank(lhs)
+        let rhsRank = missedTaskQueueRank(rhs)
+        if lhsRank != rhsRank {
+            return lhsRank < rhsRank
+        }
+        if lhs.task.priority.sortRank != rhs.task.priority.sortRank {
+            return lhs.task.priority.sortRank < rhs.task.priority.sortRank
+        }
+        let lhsDueDate = dueDate(for: lhs.task.dueAt) ?? .distantFuture
+        let rhsDueDate = dueDate(for: rhs.task.dueAt) ?? .distantFuture
+        if lhsDueDate != rhsDueDate {
+            return lhsDueDate < rhsDueDate
+        }
+        return lhs.task.id > rhs.task.id
+    }
+
+    private func missedTaskQueueRank(_ item: MissedTaskReviewItem) -> Int {
+        if item.reasons.contains(.overdue) {
+            return 0
+        }
+        if item.reasons.contains(.blocked) {
+            return 1
+        }
+        if item.reasons.contains(.stale) {
+            return 2
+        }
+        if item.reasons.contains(.unscheduled) {
+            return 3
+        }
+        return 4
     }
 
     private func completedDate(for task: ProjectBoardTask) -> Date? {
