@@ -27,10 +27,16 @@ struct ProjectBoardSidebarDestinationRow: View {
 
 struct TodayWorkflowView: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
+    var selectTodayTask: (ProjectBoardTask) -> Void = { _ in }
+    var openInspectorForTodayRailTask: (Int64) -> Void = { _ in }
     @State private var commandTitle = ""
 
     private var plan: TodayWorkflowPlan {
         viewModel.todayPlan()
+    }
+
+    private var assistantContext: TodayAssistantRailContext {
+        viewModel.todayAssistantRailContext()
     }
 
     private var subtitle: String {
@@ -41,6 +47,36 @@ struct TodayWorkflowView: View {
     }
 
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 0) {
+                mainSurface
+                TodayAssistantRail(
+                    commandTitle: $commandTitle,
+                    context: assistantContext,
+                    viewModel: viewModel,
+                    openInspector: openInspectorForTodayRailTask
+                )
+                .frame(minWidth: 300, idealWidth: 320, maxWidth: 340)
+                .padding(.vertical, 18)
+                .padding(.trailing, 18)
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                mainSurface
+                TodayAssistantRail(
+                    commandTitle: $commandTitle,
+                    context: assistantContext,
+                    viewModel: viewModel,
+                    openInspector: openInspectorForTodayRailTask
+                )
+                .padding(.horizontal, 18)
+                .padding(.bottom, 18)
+            }
+        }
+        .accessibilityIdentifier("today-workflow")
+    }
+
+    private var mainSurface: some View {
         WorkflowTaskSurface(
             title: "Today",
             subtitle: subtitle,
@@ -49,6 +85,7 @@ struct TodayWorkflowView: View {
             emptyTitle: "No tasks due today",
             emptyDescription: "Captured work remains in Inbox until it is scheduled or moved to a project.",
             viewModel: viewModel,
+            onSelectTask: selectTodayTask,
             headerAccessory: {
                 TodayCommandPanel(commandTitle: $commandTitle, plan: plan, viewModel: viewModel)
             },
@@ -366,7 +403,7 @@ private struct TodayBriefingPanel: View {
                 Button(action: addInboxItem) {
                     Label("Add to Inbox", systemImage: "plus.circle.fill")
                 }
-                .disabled(commandTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(!canAddCommand)
                 .help("Add this command to Inbox")
                 .accessibilityIdentifier("today-command-add")
                 .accessibilityHint("Creates a local Inbox item from the command text.")
@@ -378,6 +415,8 @@ private struct TodayBriefingPanel: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(Color.secondary.opacity(0.16), lineWidth: 1)
             }
+
+            commonActionRail
 
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .center, spacing: 8) {
@@ -395,11 +434,69 @@ private struct TodayBriefingPanel: View {
 
             TodayFlowStrip(plan: plan, viewModel: viewModel)
         }
-        .frame(minWidth: 360, maxWidth: 540, alignment: .leading)
+        .frame(minWidth: 320, maxWidth: 540, alignment: .leading)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-briefing-panel")
         .accessibilityLabel("Today briefing")
         .accessibilityHint("Captures work into Inbox and offers the next reviewed Today action.")
+    }
+
+    private var commonActionRail: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                commonActionButtons
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                commonActionButtons
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("today-common-action-rail")
+        .accessibilityLabel("Common Today actions")
+    }
+
+    @ViewBuilder
+    private var commonActionButtons: some View {
+        Button {
+            commandTitle = String(localized: "New task: ")
+        } label: {
+            Label("Add Task", systemImage: "plus.circle")
+        }
+        .controlSize(.small)
+        .help("Prepare a new local Inbox task")
+        .accessibilityIdentifier("today-common-chip-add-task")
+        .accessibilityHint("Prefills the Today command field for a local Inbox task.")
+
+        Button {
+            commandTitle = String(localized: "Plan tomorrow: ")
+        } label: {
+            Label("Plan Tomorrow", systemImage: "calendar.badge.plus")
+        }
+        .controlSize(.small)
+        .help("Prepare a tomorrow planning note")
+        .accessibilityIdentifier("today-common-chip-plan-tomorrow")
+        .accessibilityHint("Prefills the Today command field without writing Calendar.")
+
+        Button {
+            commandTitle = String(localized: "Prepare meeting: ")
+        } label: {
+            Label("Prepare Meeting", systemImage: "person.2")
+        }
+        .controlSize(.small)
+        .help("Prepare a meeting task")
+        .accessibilityIdentifier("today-common-chip-prepare-meeting")
+        .accessibilityHint("Prefills the Today command field for a meeting preparation task.")
+
+        Button {
+            commandTitle = String(localized: "Draft reply: ")
+        } label: {
+            Label("Draft Reply", systemImage: "arrowshape.turn.up.left")
+        }
+        .controlSize(.small)
+        .help("Prepare a reply draft task")
+        .accessibilityIdentifier("today-common-chip-draft-reply")
+        .accessibilityHint("Prefills the Today command field for a reply draft task.")
     }
 
     private var suggestionRail: some View {
@@ -438,12 +535,22 @@ private struct TodayBriefingPanel: View {
     }
 
     private func addInboxItem() {
-        let title = commandTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty else {
+        let title = trimmedCommandTitle
+        guard canAddCommand else {
             return
         }
         _ = viewModel.submitTodayCommand(title)
         commandTitle = ""
+    }
+
+    private var trimmedCommandTitle: String {
+        commandTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canAddCommand: Bool {
+        // Quick chips intentionally prefill incomplete drafts; require the user
+        // to add concrete content after the prefix before creating an Inbox item.
+        !trimmedCommandTitle.isEmpty && !trimmedCommandTitle.hasSuffix(":")
     }
 }
 
@@ -560,6 +667,7 @@ private struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
     let emptyTitle: String
     let emptyDescription: String
     @ObservedObject var viewModel: ProjectBoardViewModel
+    let onSelectTask: ((ProjectBoardTask) -> Void)?
     @ViewBuilder var headerAccessory: () -> HeaderAccessory
     @ViewBuilder var footer: () -> Footer
 
@@ -571,6 +679,7 @@ private struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
         emptyTitle: String,
         emptyDescription: String,
         viewModel: ProjectBoardViewModel,
+        onSelectTask: ((ProjectBoardTask) -> Void)? = nil,
         @ViewBuilder headerAccessory: @escaping () -> HeaderAccessory = { EmptyView() },
         @ViewBuilder footer: @escaping () -> Footer
     ) {
@@ -581,6 +690,7 @@ private struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
         self.emptyTitle = emptyTitle
         self.emptyDescription = emptyDescription
         self.viewModel = viewModel
+        self.onSelectTask = onSelectTask
         self.headerAccessory = headerAccessory
         self.footer = footer
     }
@@ -615,7 +725,7 @@ private struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
                                 task: task,
                                 projectTitle: viewModel.projectTitle(for: task),
                                 isSelected: viewModel.selectedTaskID == task.id,
-                                onSelect: { viewModel.selectedTaskID = task.id },
+                                onSelect: { selectTask(task) },
                                 onToggleCompletion: { viewModel.toggleTaskCompletion(id: task.id) }
                             )
                             .draggable(String(task.id))
@@ -629,6 +739,14 @@ private struct WorkflowTaskSurface<HeaderAccessory: View, Footer: View>: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func selectTask(_ task: ProjectBoardTask) {
+        if let onSelectTask {
+            onSelectTask(task)
+            return
+        }
+        viewModel.selectedTaskID = task.id
     }
 }
 
@@ -714,7 +832,11 @@ private struct WorkflowTaskRow: View {
                                 Image(systemName: task.status.systemImage)
                             }
                             if let dueLabel = task.dueLabel {
-                                Label(dueLabel, systemImage: "calendar")
+                                Label(
+                                    dueDisplayLabel(dueLabel),
+                                    systemImage: isOverdue ? "calendar.badge.exclamationmark" : "calendar"
+                                )
+                                .foregroundStyle(isOverdue ? .red : .secondary)
                             }
                         }
                         .font(.caption)
@@ -731,7 +853,6 @@ private struct WorkflowTaskRow: View {
                     }
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(task.priority.color)
-                        .labelStyle(.iconOnly)
                         .help(LocalizedStringKey(task.priority.label))
                 }
                 .contentShape(Rectangle())
@@ -775,6 +896,22 @@ private struct WorkflowTaskRow: View {
             return localizedDisplay("Reopen task %@", task.title)
         }
         return localizedDisplay("Complete task %@", task.title)
+    }
+
+    private var isOverdue: Bool {
+        guard let dueAt = task.dueAt,
+              let dueDate = ISO8601DateFormatter().date(from: dueAt),
+              let todayStart = Calendar.current.dateInterval(of: .day, for: Date())?.start else {
+            return false
+        }
+        return dueDate < todayStart && task.status != .done
+    }
+
+    private func dueDisplayLabel(_ dueLabel: String) -> String {
+        if isOverdue {
+            return localizedDisplay("Overdue %@", dueLabel)
+        }
+        return localizedDisplay("Due %@", dueLabel)
     }
 }
 
@@ -1020,6 +1157,145 @@ private struct TodaySuggestionPanel: View {
         .accessibilityIdentifier("today-suggestion-panel")
         .accessibilityLabel("Today planning")
         .accessibilityHint("Shows the recommended focus task, due counts, and local time blocks.")
+    }
+}
+
+private struct TodayAssistantRail: View {
+    @Binding var commandTitle: String
+    let context: TodayAssistantRailContext
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    let openInspector: (Int64) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Next Action", systemImage: "sparkles")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(LocalizedStringKey(context.nextActionTitle))
+                    .font(.subheadline.weight(.semibold))
+                Text(LocalizedStringKey(context.nextActionReason))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("today-rail-next-action")
+
+            Divider()
+
+            if let task = context.task {
+                taskDetail(task)
+                railActions(task)
+            } else {
+                emptyDetail
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("today-assistant-rail")
+        .accessibilityLabel("Today assistant rail")
+        .accessibilityHint("Shows the selected or recommended Today task details and local next actions.")
+    }
+
+    private func taskDetail(_ task: ProjectBoardTask) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(task.title)
+                .font(.headline)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .help(task.title)
+
+            detailRow(title: "Project", value: context.projectTitle, systemImage: "folder")
+            detailRow(title: "Status", value: String(localized: String.LocalizationValue(task.status.title)), systemImage: task.status.systemImage)
+            detailRow(title: "Priority", value: String(localized: String.LocalizationValue(task.priority.label)), systemImage: "flag")
+            detailRow(title: "Due", value: task.dueLabel ?? String(localized: "No due date"), systemImage: "calendar")
+            detailRow(title: "Time Block", value: context.nextBlockLabel ?? String(localized: "No block drafted"), systemImage: "clock")
+            detailRow(title: "Notes", value: context.notes, systemImage: "note.text")
+            detailRow(title: "Subtasks", value: context.subtaskSummary, systemImage: "checklist")
+            detailRow(title: "Reminder", value: context.reminderSummary, systemImage: "bell")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("today-rail-task-detail")
+    }
+
+    private var emptyDetail: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("No due task selected", systemImage: "tray")
+                .font(.subheadline.weight(.semibold))
+            Text(LocalizedStringKey(context.notes))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("today-rail-task-detail")
+    }
+
+    private func railActions(_ task: ProjectBoardTask) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                viewModel.startFocus(taskID: task.id)
+            } label: {
+                Label("Focus", systemImage: "play.circle")
+            }
+            .accessibilityIdentifier("today-rail-focus")
+            .accessibilityHint("Starts local focus without changing task status.")
+
+            Button {
+                _ = viewModel.prepareTodayScheduleDraft(prioritizing: task.id)
+            } label: {
+                Label("Schedule Block", systemImage: "calendar.badge.clock")
+            }
+            .accessibilityIdentifier("today-rail-schedule-block")
+            .accessibilityHint("Creates a local schedule draft without writing Calendar.")
+
+            Button {
+                openInspector(task.id)
+            } label: {
+                Label("Edit", systemImage: "square.and.pencil")
+            }
+            .accessibilityIdentifier("today-rail-edit-task")
+            .accessibilityHint("Opens the selected task in the inspector for manual edits.")
+
+            Button {
+                commandTitle = String(format: String(localized: "Subtask for %@: "), task.title)
+            } label: {
+                Label("Add Subtask", systemImage: "checklist")
+            }
+            .accessibilityIdentifier("today-rail-add-subtask")
+            .accessibilityHint("Prefills the Today command field for a local subtask draft.")
+
+            Button {
+                commandTitle = String(format: String(localized: "Reminder for %@: "), task.title)
+            } label: {
+                Label("Add Reminder Draft", systemImage: "bell.badge")
+            }
+            .accessibilityIdentifier("today-rail-reminder-draft")
+            .accessibilityHint("Prefills the Today command field; external reminder writes still require approval.")
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+    }
+
+    private func detailRow(title: LocalizedStringKey, value: String, systemImage: String) -> some View {
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.caption)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } icon: {
+            Image(systemName: systemImage)
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
