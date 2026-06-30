@@ -79,7 +79,7 @@ public extension DeveloperModeCapability {
             return DeveloperModePermissionDisclosure(
                 capability: self,
                 title: "Development PR workflow",
-                summary: "Creates local branches and local commits only inside an approved project directory and keeps push or PR creation behind a separate approval."
+                summary: "Creates local branches and local commits only inside an approved project directory, then gates push and PR creation behind separate approval steps."
             )
         case .developmentRepositoryFiles:
             return DeveloperModePermissionDisclosure(
@@ -135,6 +135,14 @@ public extension ToolRegistryFactory {
                 gitRunner: gitRunner
             ))
             tools.append(DevelopmentCommitWorkflowTool(
+                projectStore: projectStore,
+                gitRunner: gitRunner
+            ))
+            tools.append(DevelopmentPushWorkflowTool(
+                projectStore: projectStore,
+                gitRunner: gitRunner
+            ))
+            tools.append(DevelopmentPullRequestCreationTool(
                 projectStore: projectStore,
                 gitRunner: gitRunner
             ))

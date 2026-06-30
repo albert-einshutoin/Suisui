@@ -132,6 +132,8 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
     case gitDiffSummary = "git.diff_summary"
     case developmentPreparePullRequestWorkflow = "development.pr_workflow.prepare"
     case developmentCommitChanges = "development.pr_workflow.commit"
+    case developmentPushBranch = "development.pr_workflow.push"
+    case developmentCreatePullRequest = "development.pr_workflow.create_pull_request"
     case developmentRepositoryReadFile = "development.repository.read_file"
     case developmentRepositoryCreateFile = "development.repository.create_file"
     case developmentRepositoryUpdateFile = "development.repository.update_file"
@@ -185,6 +187,8 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
              .frameDelete,
              .developmentPreparePullRequestWorkflow,
              .developmentCommitChanges,
+             .developmentPushBranch,
+             .developmentCreatePullRequest,
              .developmentRepositoryCreateFile,
              .developmentRepositoryUpdateFile,
              .developmentRunVerification:
@@ -219,6 +223,8 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
              .gitDiffSummary,
              .developmentPreparePullRequestWorkflow,
              .developmentCommitChanges,
+             .developmentPushBranch,
+             .developmentCreatePullRequest,
              .developmentRepositoryReadFile,
              .developmentRepositoryCreateFile,
              .developmentRepositoryUpdateFile,
@@ -253,6 +259,8 @@ public extension ActionTool {
             .gitDiffSummary,
             .developmentPreparePullRequestWorkflow,
             .developmentCommitChanges,
+            .developmentPushBranch,
+            .developmentCreatePullRequest,
             .developmentRepositoryReadFile,
             .developmentRepositoryCreateFile,
             .developmentRepositoryUpdateFile,

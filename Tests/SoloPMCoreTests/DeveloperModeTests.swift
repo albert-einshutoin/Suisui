@@ -69,6 +69,8 @@ final class DeveloperModeTests: XCTestCase {
             .gitDiffSummary,
             .developmentPreparePullRequestWorkflow,
             .developmentCommitChanges,
+            .developmentPushBranch,
+            .developmentCreatePullRequest,
             .developmentRepositoryReadFile,
             .developmentRepositoryCreateFile,
             .developmentRepositoryUpdateFile,
@@ -96,6 +98,8 @@ final class DeveloperModeTests: XCTestCase {
 
         XCTAssertFalse(gitOnlyRegistry.contains(.developmentPreparePullRequestWorkflow))
         XCTAssertFalse(gitOnlyRegistry.contains(.developmentCommitChanges))
+        XCTAssertFalse(gitOnlyRegistry.contains(.developmentPushBranch))
+        XCTAssertFalse(gitOnlyRegistry.contains(.developmentCreatePullRequest))
 
         XCTAssertThrowsError(try ToolRegistryFactory.developerMode(
             settings: DeveloperModeSettings(
@@ -121,6 +125,8 @@ final class DeveloperModeTests: XCTestCase {
 
         XCTAssertTrue(developmentRegistry.contains(.developmentPreparePullRequestWorkflow))
         XCTAssertTrue(developmentRegistry.contains(.developmentCommitChanges))
+        XCTAssertTrue(developmentRegistry.contains(.developmentPushBranch))
+        XCTAssertTrue(developmentRegistry.contains(.developmentCreatePullRequest))
         XCTAssertTrue(DeveloperModeCapability.developmentPRWorkflow.disclosure.summary.contains("local commits"))
         XCTAssertTrue(DeveloperModeCapability.developmentPRWorkflow.disclosure.summary.contains("separate approval"))
     }

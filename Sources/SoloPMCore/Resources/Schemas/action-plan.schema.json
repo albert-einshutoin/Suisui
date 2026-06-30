@@ -68,6 +68,8 @@
         "git.diff_summary",
         "development.pr_workflow.prepare",
         "development.pr_workflow.commit",
+        "development.pr_workflow.push",
+        "development.pr_workflow.create_pull_request",
         "development.repository.read_file",
         "development.repository.create_file",
         "development.repository.update_file",
