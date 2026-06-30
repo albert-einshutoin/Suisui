@@ -1657,6 +1657,40 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    @discardableResult
+    public func playDailyPlanningReviewReadout(
+        using previewer: any TextToSpeechPreviewing,
+        languageCode: String,
+        voiceID: String,
+        transcript: String = "Today daily planning review",
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) async -> Bool {
+        let review = dailyPlanningReview ?? makeDailyPlanningReview(
+            transcript: transcript,
+            on: referenceDate,
+            calendar: calendar
+        )
+        dailyPlanningReview = review
+
+        let request = DailyPlanningReviewReadoutBuilder.makeRequest(
+            review: review,
+            languageCode: languageCode,
+            voiceID: voiceID
+        )
+
+        do {
+            try await previewer.playPreview(request)
+            integrationStatusMessage = nil
+            todayCommandFeedback = String(localized: "Read daily planning review aloud.")
+            return true
+        } catch {
+            integrationStatusMessage = nil
+            todayCommandFeedback = Self.dailyPlanningReadoutFailureMessage(for: error)
+            return false
+        }
+    }
+
     public func todayAssistantRailContext(
         on referenceDate: Date = Date(),
         calendar: Calendar = .current
@@ -3261,6 +3295,25 @@ public final class ProjectBoardViewModel: ObservableObject {
         default:
             return "Assistant Queue execution could not be completed."
         }
+    }
+
+    private static func dailyPlanningReadoutFailureMessage(for error: Error) -> String {
+        let rawMessage: String
+        if let error = error as? TTSProviderError {
+            rawMessage = error.userMessage
+        } else if let error = error as? SpeechAudioPlaybackError {
+            rawMessage = error.userMessage
+        } else {
+            rawMessage = UserFacingErrorMessageSanitizer.message(from: error)
+        }
+        let redactedSecrets = UserFacingErrorMessageSanitizer.message(
+            from: rawMessage,
+            fallback: "Playback failed."
+        )
+        return String(
+            format: String(localized: "Daily Planning readout failed. %@"),
+            LocalPathRedactor.redact(redactedSecrets)
+        )
     }
 
     private static func reviewCalendar(timeZoneIdentifier: String) -> Calendar {

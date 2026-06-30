@@ -2405,6 +2405,108 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDailyPlanningReadoutPlaysReviewWithoutMutatingStoreQueueOrCalendar() async throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-30T09:10:00Z")
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let calendarClient = InMemoryCalendarClient()
+        let previewer = RecordingDailyPlanningTTSPreviewer()
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore,
+            scheduleCalendarClient: calendarClient
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Daily Readout"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Clear billing blocker",
+            projectID: project.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-29"
+        ))
+        let beforeSnapshot = viewModel.snapshot
+
+        let played = await viewModel.playDailyPlanningReviewReadout(
+            using: previewer,
+            languageCode: "ja",
+            voiceID: "af_heart",
+            transcript: "今日の計画を読み上げて sk-proj-secret123",
+            on: referenceDate,
+            calendar: calendar
+        )
+
+        let request = try XCTUnwrap(previewer.requests.first)
+        XCTAssertTrue(played)
+        XCTAssertEqual(previewer.requests.count, 1)
+        XCTAssertEqual(request.languageCode, "ja")
+        XCTAssertEqual(request.voiceID, "jf_alpha")
+        XCTAssertTrue(request.text.contains("朝の計画レビューです。"))
+        XCTAssertTrue(request.text.contains("期限切れは1件"))
+        XCTAssertTrue(request.text.contains("Clear billing blocker"))
+        XCTAssertFalse(request.text.contains("今日の計画を読み上げて"))
+        XCTAssertFalse(request.text.contains("sk-proj-secret123"))
+        XCTAssertEqual(viewModel.snapshot, beforeSnapshot)
+        XCTAssertEqual(viewModel.snapshot.projects.first { $0.id == project.id }?.column(.planned)?.tasks.map(\.id), [task.id])
+        XCTAssertTrue(try calendarClient.listEvents().isEmpty)
+        XCTAssertTrue(try assistantQueueStore.list(filter: .all()).isEmpty)
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Read daily planning review aloud.")
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testDailyPlanningReadoutFailureRedactsSecretsAndLocalPathsWithoutMutating() async throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-30T09:10:00Z")
+        let calendarClient = InMemoryCalendarClient()
+        let secret = "sk-proj-secret123"
+        let localPath = "/Users/example/Library/Application Support/SoloPM/Voice/speech.wav"
+        let previewer = RecordingDailyPlanningTTSPreviewer(
+            error: TTSProviderError.unavailable("Kokoro failed at \(localPath) token=\(secret)")
+        )
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            scheduleCalendarClient: calendarClient
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Daily Readout"))
+        _ = try XCTUnwrap(viewModel.createTask(
+            title: "Clear billing blocker",
+            projectID: project.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-29"
+        ))
+        let beforeSnapshot = viewModel.snapshot
+
+        let played = await viewModel.playDailyPlanningReviewReadout(
+            using: previewer,
+            languageCode: "en",
+            voiceID: "af_heart",
+            transcript: "Read my day",
+            on: referenceDate,
+            calendar: calendar
+        )
+
+        XCTAssertFalse(played)
+        XCTAssertEqual(previewer.requests.count, 1)
+        XCTAssertEqual(viewModel.snapshot, beforeSnapshot)
+        XCTAssertTrue(try calendarClient.listEvents().isEmpty)
+        XCTAssertNil(viewModel.errorMessage)
+        let message = try XCTUnwrap(viewModel.todayCommandFeedback)
+        XCTAssertTrue(message.contains("Daily Planning readout failed."))
+        XCTAssertTrue(message.contains("[REDACTED_PATH]"))
+        XCTAssertTrue(message.contains("[REDACTED_SECRET]"))
+        XCTAssertFalse(message.contains(localPath))
+        XCTAssertFalse(message.contains("Application Support"))
+        XCTAssertFalse(message.contains("speech.wav"))
+        XCTAssertFalse(message.contains(secret))
+    }
+
+    @MainActor
     func testScheduleApplyRequiresApprovalBeforeCalendarWrite() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
@@ -4056,6 +4158,23 @@ private final class SaveFailingProjectBoardAssistantQueueStore: AssistantQueueSt
         _ transform: (AssistantQueueItem) throws -> AssistantQueueItem
     ) throws -> AssistantQueueItem {
         throw AssistantQueueStoreError.notFound(id)
+    }
+}
+
+private final class RecordingDailyPlanningTTSPreviewer: TextToSpeechPreviewing, @unchecked Sendable {
+    private(set) var requests: [TextToSpeechRequest]
+    private let error: Error?
+
+    init(error: Error? = nil) {
+        self.requests = []
+        self.error = error
+    }
+
+    func playPreview(_ request: TextToSpeechRequest) async throws {
+        requests.append(request)
+        if let error {
+            throw error
+        }
     }
 }
 
