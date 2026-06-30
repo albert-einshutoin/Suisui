@@ -5,6 +5,7 @@ public enum VoiceCapturePhase: Equatable, Sendable {
     case idle
     case recording
     case transcribing
+    case needsClarification(String)
     case generatingPlan
     case reviewReady
     case failed(String)
@@ -18,12 +19,14 @@ public final class VoiceCaptureViewModel: ObservableObject {
     @Published public private(set) var planningResponse: PlanningResponse?
     @Published public private(set) var recordedAudio: RecordedAudio?
     @Published public private(set) var auditErrorMessage: String?
+    @Published public private(set) var routingResult: VoiceCommandRoutingResult?
 
     private var audioRecorder: any AudioRecorder
     private let sttProvider: any SpeechToTextProvider
     private let llmProvider: any LLMProvider
     private let auditRecorder: PlanningAuditRecorder?
     private let runtimeValidationMessage: String?
+    private let commandRouter: any VoiceCommandRouting
 
     public init(
         draft: TranscriptDraft = TranscriptDraft(),
@@ -32,7 +35,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         sttProvider: any SpeechToTextProvider,
         llmProvider: any LLMProvider,
         auditRecorder: PlanningAuditRecorder? = nil,
-        runtimeValidationMessage: String? = nil
+        runtimeValidationMessage: String? = nil,
+        commandRouter: any VoiceCommandRouting = VoiceCommandRouter()
     ) {
         self.draft = draft
         self.phase = phase
@@ -41,8 +45,10 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.llmProvider = llmProvider
         self.auditRecorder = auditRecorder
         self.runtimeValidationMessage = runtimeValidationMessage
+        self.commandRouter = commandRouter
         self.recordingState = audioRecorder.state
         self.auditErrorMessage = nil
+        self.routingResult = draft.canGeneratePlan ? commandRouter.route(transcript: draft.normalizedText) : nil
     }
 
     public var canGeneratePlan: Bool {
@@ -61,8 +67,13 @@ public final class VoiceCaptureViewModel: ObservableObject {
     }
 
     public func updateDraftText(_ text: String) {
+        guard draft.text != text else {
+            return
+        }
         draft.text = text
-        if case .failed = phase, runtimeValidationMessage == nil {
+        planningResponse = nil
+        refreshRoutingResult()
+        if shouldResetPhaseAfterDraftChange, runtimeValidationMessage == nil {
             phase = .idle
         }
     }
@@ -73,6 +84,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         planningResponse = nil
         recordedAudio = nil
         auditErrorMessage = nil
+        routingResult = nil
         recordingState = audioRecorder.state
         phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
     }
@@ -96,6 +108,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
             recordedAudio = audio
             let transcript = try await sttProvider.transcribe(audio)
             draft = TranscriptDraft(text: transcript.text)
+            planningResponse = nil
+            refreshRoutingResult()
             phase = .idle
         } catch {
             recordingState = audioRecorder.state
@@ -119,8 +133,17 @@ public final class VoiceCaptureViewModel: ObservableObject {
             return
         }
 
+        let routedCommand = commandRouter.route(transcript: draft.normalizedText)
+        let plannedTranscript = routedCommand.normalizedTranscript
+        routingResult = routedCommand
+        guard !routedCommand.needsClarification else {
+            planningResponse = nil
+            phase = .needsClarification(routedCommand.clarificationReason ?? "Voice command needs clarification.")
+            return
+        }
+
         let request = PlanningRequest(
-            userInput: draft.normalizedText,
+            userInput: routedCommand.planningInput,
             currentDate: currentDate,
             timeZoneIdentifier: timeZoneIdentifier,
             availableTools: availableTools,
@@ -140,12 +163,34 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
         do {
             let response = try await llmProvider.generatePlan(for: request)
+            guard isCurrentTranscript(plannedTranscript) else {
+                recordPlanningAudit {
+                    try auditRecorder?.recordFailed(
+                        input: request.userInput,
+                        providerID: llmProvider.providerID,
+                        error: VoicePlanningLifecycleError.transcriptChangedBeforeReview
+                    )
+                }
+                applyStalePlanningState()
+                return
+            }
             planningResponse = response
             recordPlanningAudit {
                 try auditRecorder?.recordCompleted(response: response)
             }
             phase = response.validationResult.isValid ? .reviewReady : .failed("ActionPlan validation failed.")
         } catch {
+            guard isCurrentTranscript(plannedTranscript) else {
+                recordPlanningAudit {
+                    try auditRecorder?.recordFailed(
+                        input: request.userInput,
+                        providerID: llmProvider.providerID,
+                        error: VoicePlanningLifecycleError.transcriptChangedBeforeReview
+                    )
+                }
+                applyStalePlanningState()
+                return
+            }
             recordPlanningAudit {
                 try auditRecorder?.recordFailed(input: request.userInput, providerID: llmProvider.providerID, error: error)
             }
@@ -195,5 +240,48 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
 
         return UserFacingErrorMessageSanitizer.message(from: error)
+    }
+
+    private var shouldResetPhaseAfterDraftChange: Bool {
+        switch phase {
+        case .failed, .needsClarification, .reviewReady:
+            return true
+        case .idle, .recording, .transcribing, .generatingPlan:
+            return false
+        }
+    }
+
+    private func refreshRoutingResult() {
+        routingResult = draft.canGeneratePlan ? commandRouter.route(transcript: draft.normalizedText) : nil
+    }
+
+    private func isCurrentTranscript(_ plannedTranscript: String) -> Bool {
+        draft.normalizedText == plannedTranscript
+    }
+
+    private func applyStalePlanningState() {
+        // Review approval must stay tied to the transcript that produced it.
+        // If the user edits speech text during provider generation, discard the
+        // stale response instead of leaving an executable panel for old input.
+        planningResponse = nil
+        refreshRoutingResult()
+        if let routingResult, routingResult.needsClarification {
+            phase = .needsClarification(routingResult.clarificationReason ?? "Voice command needs clarification.")
+        } else if runtimeValidationMessage == nil {
+            phase = .idle
+        } else {
+            phase = .failed(runtimeValidationMessage ?? "Voice planning is unavailable.")
+        }
+    }
+}
+
+private enum VoicePlanningLifecycleError: Error, CustomStringConvertible {
+    case transcriptChangedBeforeReview
+
+    var description: String {
+        switch self {
+        case .transcriptChangedBeforeReview:
+            "Planning response ignored because the transcript changed before review."
+        }
     }
 }

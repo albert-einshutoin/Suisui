@@ -33,6 +33,139 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(logger.recordedEvents.map(\.status), [.started, .succeeded])
     }
 
+    func testGeneratePlanRoutesTranscriptIntoStructuredVoiceIntent() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-1",
+                userInput: "リリースメモのタスクを作成して",
+                summary: "Create task",
+                actions: [PlanAction(id: "action-1", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("リリースメモのタスクを作成して")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertEqual(viewModel.routingResult?.intent, .taskCreate)
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+        XCTAssertEqual(provider.requests.count, 1)
+        XCTAssertTrue(provider.requests[0].userInput.contains("Voice command intent: task.create"))
+        XCTAssertTrue(provider.requests[0].userInput.contains("Original transcript:"))
+        XCTAssertTrue(provider.requests[0].userInput.contains("リリースメモのタスクを作成して"))
+        XCTAssertTrue(provider.requests[0].userInput.contains("Review boundary: review-only"))
+    }
+
+    func testGeneratePlanRequiresClarificationForAmbiguousTranscriptWithoutProviderCall() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("いい感じにして")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertEqual(viewModel.routingResult?.intent, .clarify)
+        XCTAssertEqual(provider.requests.count, 0)
+        if case .needsClarification(let reason) = viewModel.phase {
+            XCTAssertFalse(reason.isEmpty)
+        } else {
+            XCTFail("Expected needs clarification phase.")
+        }
+    }
+
+    func testDraftEditClearsStalePlanningResponse() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-1",
+                userInput: "Create a task",
+                summary: "Create task",
+                actions: [PlanAction(id: "action-1", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("Create a task")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+        XCTAssertNotNil(viewModel.planningResponse)
+
+        viewModel.updateDraftText("いい感じにして")
+
+        XCTAssertNil(viewModel.planningResponse)
+        XCTAssertEqual(viewModel.routingResult?.intent, .clarify)
+        XCTAssertEqual(viewModel.phase, .idle)
+    }
+
+    func testInFlightPlanningResponseIsIgnoredWhenDraftChangesBeforeReview() async {
+        let gate = VoicePlanningGate()
+        let provider = DelayedRecordingVoiceLLMProvider(
+            gate: gate,
+            response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: ActionPlan(
+                    id: "plan-1",
+                    userInput: "Create a task",
+                    summary: "Create task",
+                    actions: [PlanAction(id: "action-1", tool: .taskCreate)],
+                    riskLevel: .write,
+                    requiresApproval: true
+                ),
+                validationResult: ActionPlanValidationResult(issues: [])
+            )
+        )
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("Create a task")
+        let planningTask = Task {
+            await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+        }
+        await gate.waitUntilRequestReceived()
+
+        viewModel.updateDraftText("いい感じにして")
+        await gate.release()
+        await planningTask.value
+
+        XCTAssertNil(viewModel.planningResponse)
+        XCTAssertEqual(viewModel.routingResult?.intent, .clarify)
+        XCTAssertEqual(provider.requests.count, 1)
+        if case .needsClarification(let reason) = viewModel.phase {
+            XCTAssertFalse(reason.isEmpty)
+        } else {
+            XCTFail("Expected stale response to leave the current ambiguous draft in clarification.")
+        }
+    }
+
     func testGeneratePlanSurfacesCompletionAuditFailureWithoutLosingPlan() async {
         let logger = SequencedVoiceAuditLogger(failOnCall: 2)
         let response = PlanningResponse(
@@ -253,6 +386,91 @@ private struct ThrowingVoiceLLMProvider: LLMProvider {
 
     func generatePlan(for request: PlanningRequest) async throws -> PlanningResponse {
         throw error
+    }
+}
+
+private final class RecordingVoiceLLMProvider: LLMProvider, @unchecked Sendable {
+    let providerID: String = "recording"
+    private let response: PlanningResponse
+    private let queue = DispatchQueue(label: "dev.solopm.tests.recording-voice-llm-provider")
+    private var recordedRequests: [PlanningRequest] = []
+
+    init(response: PlanningResponse) {
+        self.response = response
+    }
+
+    var requests: [PlanningRequest] {
+        queue.sync { recordedRequests }
+    }
+
+    func generatePlan(for request: PlanningRequest) async throws -> PlanningResponse {
+        queue.sync {
+            recordedRequests.append(request)
+        }
+        return response
+    }
+}
+
+private final class DelayedRecordingVoiceLLMProvider: LLMProvider, @unchecked Sendable {
+    let providerID: String = "delayed-recording"
+    private let gate: VoicePlanningGate
+    private let response: PlanningResponse
+    private let queue = DispatchQueue(label: "dev.solopm.tests.delayed-recording-voice-llm-provider")
+    private var recordedRequests: [PlanningRequest] = []
+
+    init(gate: VoicePlanningGate, response: PlanningResponse) {
+        self.gate = gate
+        self.response = response
+    }
+
+    var requests: [PlanningRequest] {
+        queue.sync { recordedRequests }
+    }
+
+    func generatePlan(for request: PlanningRequest) async throws -> PlanningResponse {
+        queue.sync {
+            recordedRequests.append(request)
+        }
+        await gate.markRequestReceived()
+        await gate.waitForRelease()
+        return response
+    }
+}
+
+private actor VoicePlanningGate {
+    private var requestReceived = false
+    private var released = false
+    private var requestContinuation: CheckedContinuation<Void, Never>?
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    func markRequestReceived() {
+        requestReceived = true
+        requestContinuation?.resume()
+        requestContinuation = nil
+    }
+
+    func waitUntilRequestReceived() async {
+        guard !requestReceived else {
+            return
+        }
+        await withCheckedContinuation { continuation in
+            requestContinuation = continuation
+        }
+    }
+
+    func waitForRelease() async {
+        guard !released else {
+            return
+        }
+        await withCheckedContinuation { continuation in
+            releaseContinuation = continuation
+        }
+    }
+
+    func release() {
+        released = true
+        releaseContinuation?.resume()
+        releaseContinuation = nil
     }
 }
 

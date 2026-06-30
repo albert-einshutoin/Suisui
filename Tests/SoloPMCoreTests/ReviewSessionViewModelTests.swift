@@ -328,7 +328,7 @@ final class ReviewSessionViewModelTests: XCTestCase {
             ))
         )
 
-        voiceViewModel.updateDraftText("QZT article publish checklist")
+        voiceViewModel.updateDraftText("Create a task for QZT article publish checklist")
         await voiceViewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         let generatedPlan = try XCTUnwrap(voiceViewModel.planningResponse?.actionPlan)

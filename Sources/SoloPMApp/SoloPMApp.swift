@@ -486,6 +486,10 @@ private struct VoiceCaptureView: View {
                 }
                 .accessibilityIdentifier("voice-command-input")
 
+                if let routingResult = viewModel.routingResult {
+                    VoiceIntentPreview(result: routingResult)
+                }
+
                 HStack {
                     Button {
                         if viewModel.isRecording {
@@ -560,6 +564,8 @@ private struct StatusRow: View {
             "Recording"
         case .transcribing:
             "Transcribing"
+        case .needsClarification:
+            "Clarification needed"
         case .generatingPlan:
             "Generating"
         case .reviewReady:
@@ -577,6 +583,8 @@ private struct StatusRow: View {
             "record.circle"
         case .transcribing, .generatingPlan:
             "hourglass"
+        case .needsClarification:
+            "questionmark.circle"
         case .failed:
             "exclamationmark.triangle"
         }
@@ -587,6 +595,89 @@ private struct StatusRow: View {
             return true
         }
         return false
+    }
+}
+
+private struct VoiceIntentPreview: View {
+    let result: VoiceCommandRoutingResult
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    intentLabel
+                    confidenceLabel
+                    Spacer(minLength: 8)
+                    reviewLabel
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    intentLabel
+                    HStack(spacing: 8) {
+                        confidenceLabel
+                        reviewLabel
+                    }
+                }
+            }
+
+            Text(localizedSettingsDisplay(result.interpretationSummary))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let reason = result.clarificationReason {
+                Label(localizedSettingsDisplay(reason), systemImage: "questionmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .accessibilityIdentifier("voice-command-intent-preview")
+    }
+
+    private var intentLabel: some View {
+        Label(localizedSettingsDisplay(result.intent.displayName), systemImage: iconName)
+            .font(.subheadline)
+            .lineLimit(1)
+            .help(localizedSettingsDisplay(result.intent.displayName))
+    }
+
+    private var confidenceLabel: some View {
+        Text("\(Int((result.confidence * 100).rounded()))%")
+            .font(.caption)
+            .foregroundStyle(result.needsClarification ? .orange : .secondary)
+            .lineLimit(1)
+            .accessibilityLabel(localizedSettingsDisplay("Voice command confidence"))
+    }
+
+    private var reviewLabel: some View {
+        Text(localizedSettingsDisplay("Review-only"))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+    }
+
+    private var iconName: String {
+        switch result.intent {
+        case .taskCreate, .taskTriage:
+            "checkmark.circle"
+        case .schedulePlan:
+            "calendar"
+        case .documentBrief:
+            "doc.text"
+        case .developmentPRWorkflow:
+            "terminal"
+        case .notificationDraft:
+            "bell"
+        case .statusAsk:
+            "chart.bar"
+        case .clarify:
+            "questionmark.circle"
+        }
     }
 }
 
