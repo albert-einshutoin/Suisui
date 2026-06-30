@@ -25,6 +25,8 @@ SoloPMは、音声入力からAIが意図を構造化し、MCP経由でMac上の
 
 長期的には、SoloPM は iOS / Web / macOS からアクセスできる会話ベースのタスク管理&自動化ツールへ拡張する。詳細は `docs/product/multiplatform-automation.md` を正とし、macOS alpha はその最初の実行面として扱う。
 
+プロダクト順序は `docs/product/roadmap.md` を正とする。初期は個人向けの最小MVPとして、音声からタスク・予定・通知・承認待ちを作り、忘れを防ぐ local-first な voice-task loop を成立させる。その後のMVPで、Business向けの組織管理、KnowledgeBase/RAG、QZT evidence、Memory Pager、監査、課金を追加する。
+
 ### コア体験
 ```text
 Option + Space
@@ -1007,7 +1009,9 @@ SwiftUI Mac App
 
 ## 17. MVPの定義
 
-MVPとして成立する条件:
+初期MVPは、個人ユーザー向けの最小MVPとして成立させる。Business向けの組織、RBAC、KnowledgeBase本番連携、QZT evidence、Memory Pager、監査エクスポートは後続MVPの対象であり、初期MVPの完了条件にしない。
+
+Personal MVPとして成立する条件:
 
 1. ユーザーが音声で依頼できる
 2. AIが予定・タスク・通知に構造化できる
@@ -1031,7 +1035,7 @@ Mac常駐の音声ベースAIタスク・スケジュール管理アプリ。
 音声からProject/Task/Calendar/Reminder/Notification/Fileを作成し、期限前・期限超過を通知する。
 
 **やらないこと:**
-本格RAG、WeKnora内包、Agentic Search、チーム管理、メール送信、Slack自動投稿、大量外部SaaS連携。
+本格RAG、WeKnora内包、Agentic Search、チーム管理、Business管理画面、KnowledgeBase本番連携、QZT evidence storage、Memory Pager本番文脈生成、メール送信、Slack自動投稿、大量外部SaaS連携。
 
 **勝ち筋:**
 「AIタスク管理」ではなく、**話すだけで仕事データを作り、納期まで見張るMac用個人PM**として出す。

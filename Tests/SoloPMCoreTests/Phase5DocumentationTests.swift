@@ -7,9 +7,24 @@ final class Phase5DocumentationTests: XCTestCase {
 
         XCTAssertTrue(readme.contains("Public Alpha"))
         XCTAssertTrue(readme.contains("MVP Scope"))
+        XCTAssertTrue(readme.contains("Personal MVP"))
+        XCTAssertTrue(readme.contains("Business MVP"))
+        XCTAssertTrue(readme.contains("GitHub Flow"))
         XCTAssertTrue(readme.contains("Known Limitations"))
         XCTAssertTrue(readme.contains("docs/assets/screenshots/solopm-alpha-preview.svg"))
         XCTAssertTrue(readme.contains("Release Checklist"))
+    }
+
+    func testProductRoadmapSeparatesPersonalAndBusinessMVPs() throws {
+        let roadmap = try readPackageFile("docs/product/roadmap.md")
+
+        XCTAssertTrue(roadmap.contains("Personal MVP"))
+        XCTAssertTrue(roadmap.contains("Business MVP"))
+        XCTAssertTrue(roadmap.contains("voice-task loop"))
+        XCTAssertTrue(roadmap.contains("KnowledgeBase"))
+        XCTAssertTrue(roadmap.contains("QZT"))
+        XCTAssertTrue(roadmap.contains("Memory Pager"))
+        XCTAssertTrue(roadmap.contains("Organizations, roles, tenant policies, and audit export are Business MVP scope"))
     }
 
     func testOssDocumentsCoverLicenseContributingAndSecurity() throws {
@@ -18,6 +33,7 @@ final class Phase5DocumentationTests: XCTestCase {
         let security = try readPackageFile("SECURITY.md")
 
         XCTAssertTrue(license.contains("MIT License"))
+        XCTAssertTrue(contributing.contains("GitHub Flow"))
         XCTAssertTrue(contributing.contains("Issue Triage"))
         XCTAssertTrue(contributing.contains("Review Policy"))
         XCTAssertTrue(contributing.contains("Supported Environment"))

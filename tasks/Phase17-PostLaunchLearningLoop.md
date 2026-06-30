@@ -157,7 +157,7 @@ Alphaの価値検証では、何が使われ、何が分かりにくく、何が
 
 ### Implementation Steps
 
-- [ ] `docs/product/roadmap.md` を作る。
+- [x] `docs/product/roadmap.md` を作る。
 - [ ] Feedbackを `ship`, `improve`, `defer`, `reject`, `research` に分類する。
 - [ ] 競合hands-onとuser feedbackを比較し、差分をroadmapへ反映する。
 - [ ] 次releaseで必ず直すもの、調査するもの、やらないものを分ける。

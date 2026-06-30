@@ -8,9 +8,11 @@ SoloPM is a macOS-first personal PM app that turns voice or text into projects, 
 
 SoloPM is preparing its first public alpha. The current build is intended for local-first evaluation by individual developers and makers who want a voice-first workflow for project planning and deadline follow-up.
 
-The product specification lives in [docs/README.md](docs/README.md), the technical baseline lives in [docs/tech_stack.md](docs/tech_stack.md), and the release runbook lives in [docs/release/checklist.md](docs/release/checklist.md).
+The product specification lives in [docs/README.md](docs/README.md), the product roadmap lives in [docs/product/roadmap.md](docs/product/roadmap.md), the technical baseline lives in [docs/tech_stack.md](docs/tech_stack.md), and the release runbook lives in [docs/release/checklist.md](docs/release/checklist.md).
 
 ## MVP Scope
+
+SoloPM ships the Personal MVP first. The smallest MVP is a local-first voice-task loop for one user: capture work by voice or text, clarify missing details, create reviewed tasks/projects/schedule artifacts, and prevent forgotten work.
 
 - macOS menu bar app
 - voice / text input
@@ -24,6 +26,8 @@ The product specification lives in [docs/README.md](docs/README.md), the technic
 - local audit logs with redaction
 - Developer ID signing, notarization, DMG packaging, and Sparkle update foundation
 
+The Business MVP is a later target. Organizations, roles, tenant policies, KnowledgeBase integration, QZT evidence refs, Memory Pager context assembly, cloud execution policy, and audit export must not block the first personal release.
+
 ## Known Limitations
 
 - External MCP servers are not part of the public alpha runtime.
@@ -35,11 +39,12 @@ The product specification lives in [docs/README.md](docs/README.md), the technic
 
 ## Development
 
-SoloPM follows Gitflow and TDD. Work should start from `develop` using a feature branch:
+SoloPM follows GitHub Flow and TDD. Work should start from the current target branch using a short-lived feature branch, then return by pull request:
 
 ```sh
-git checkout develop
-git checkout -b feature/phaseN-short-name
+git checkout main
+git pull --ff-only
+git checkout -b feature/short-name
 ```
 
 Local verification:
