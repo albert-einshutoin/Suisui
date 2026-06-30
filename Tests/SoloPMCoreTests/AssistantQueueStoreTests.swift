@@ -84,27 +84,44 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertEqual(snapshot.rows.map(\.id), [blocked.id, waiting.id, approvedAutomation.id, approved.id, failed.id, done.id])
         let waitingRow = try XCTUnwrap(snapshot.rows.first { $0.id == waiting.id })
         XCTAssertFalse(waitingRow.title.contains("sk-assistantQueueStoreSecret"))
+        XCTAssertFalse(waitingRow.redactedSummary.contains("sk-assistantQueueStoreSecret"))
         XCTAssertFalse(waitingRow.sourcePreview?.contains("sk-assistantQueueStoreSecret") ?? true)
         XCTAssertTrue(waitingRow.canApprove)
         XCTAssertFalse(waitingRow.canRun)
         XCTAssertTrue(waitingRow.canDefer)
+        XCTAssertTrue(waitingRow.canEdit)
         XCTAssertTrue(waitingRow.canReject)
         let approvedRow = try XCTUnwrap(snapshot.rows.first { $0.id == approved.id })
         XCTAssertFalse(approvedRow.canApprove)
         XCTAssertTrue(approvedRow.canRun)
+        XCTAssertTrue(approvedRow.canEdit)
         let automationRow = try XCTUnwrap(snapshot.rows.first { $0.id == approvedAutomation.id })
         XCTAssertFalse(automationRow.canRun)
         XCTAssertFalse(automationRow.canRetry)
+        XCTAssertTrue(automationRow.canEdit)
         let blockedRow = try XCTUnwrap(snapshot.rows.first { $0.id == blocked.id })
         XCTAssertFalse(blockedRow.canApprove)
         XCTAssertFalse(blockedRow.canRun)
         XCTAssertFalse(blockedRow.canRetry)
+        XCTAssertFalse(blockedRow.canEdit)
         XCTAssertTrue(blockedRow.canReject)
         let failedRow = try XCTUnwrap(snapshot.rows.first { $0.id == failed.id })
         XCTAssertEqual(failedRow.stateLabel, "Failed")
         XCTAssertFalse(failedRow.canRun)
         XCTAssertTrue(failedRow.canRetry)
+        XCTAssertFalse(failedRow.canEdit)
         XCTAssertFalse(failedRow.canReject)
+    }
+
+    func testReadModelKeepsFullRedactedSummaryForEditing() throws {
+        let longSummary = String(repeating: "Long review summary. ", count: 12) + "Final detail."
+        let item = makeItem(id: "queue-long-summary", state: .waitingReview, summary: longSummary)
+
+        let row = try XCTUnwrap(AssistantQueueReadModel.snapshot(from: [item]).rows.first)
+
+        XCTAssertEqual(row.redactedSummary, longSummary)
+        XCTAssertEqual(row.title, String(longSummary.prefix(160)) + "...")
+        XCTAssertLessThan(row.title.count, row.redactedSummary.count)
     }
 
     func testReadModelMarksOnlyFailedActionPlanRowsRetryable() throws {
@@ -326,6 +343,45 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertFalse(viewModel.retryAssistantQueueItem(id: failed.id))
         XCTAssertEqual(viewModel.errorMessage, "Only failed action-plan Assistant Queue items can be retried.")
         XCTAssertNil(viewModel.integrationStatusMessage)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelEditsAssistantQueueReviewDetailsAndClearsApproval() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+        let approved = try AssistantQueueStateMachine.approve(
+            makeItem(id: "queue-visible-edit", state: .waitingReview, summary: "Create visible edit task"),
+            reviewerID: "local-user"
+        )
+        try assistantQueueStore.save(approved)
+        let viewModel = ProjectBoardViewModel(
+            store: boardStore,
+            assistantQueueStore: assistantQueueStore
+        )
+
+        viewModel.load()
+
+        XCTAssertTrue(viewModel.editAssistantQueueItem(
+            id: approved.id,
+            reviewReason: "User narrowed the scope",
+            redactedSummary: "Create [REDACTED_SECRET] edit task"
+        ))
+        let edited = try assistantQueueStore.get(id: approved.id)
+        XCTAssertEqual(edited.state, .waitingReview)
+        XCTAssertNil(edited.approval)
+        XCTAssertEqual(edited.reviewReason, "User narrowed the scope")
+        XCTAssertEqual(edited.redactedSummary, "Create [REDACTED_SECRET] edit task")
+        let row = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first { $0.id == approved.id })
+        XCTAssertTrue(row.canApprove)
+        XCTAssertFalse(row.canRun)
+        XCTAssertTrue(row.canEdit)
+        XCTAssertEqual(row.reviewReason, "User narrowed the scope")
+        XCTAssertEqual(row.redactedSummary, "Create [REDACTED_SECRET] edit task")
+        XCTAssertEqual(row.title, "Create [REDACTED_SECRET] edit task")
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Updated Assistant Queue review details.")
+        XCTAssertNil(viewModel.errorMessage)
     }
 
     @MainActor

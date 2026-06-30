@@ -2474,6 +2474,21 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     @discardableResult
+    public func editAssistantQueueItem(
+        id: String,
+        reviewReason: String,
+        redactedSummary: String
+    ) -> Bool {
+        transitionAssistantQueueItem(id: id, successMessage: "Updated Assistant Queue review details.") { item in
+            try AssistantQueueStateMachine.editReviewDetails(
+                item,
+                reviewReason: reviewReason,
+                redactedSummary: redactedSummary
+            )
+        }
+    }
+
+    @discardableResult
     public func retryAssistantQueueItem(id: String) -> Bool {
         transitionAssistantQueueItem(id: id, successMessage: "Reopened Assistant Queue item for review.") { item in
             try AssistantQueueStateMachine.reopenFailedForReview(item)
@@ -2548,6 +2563,11 @@ public final class ProjectBoardViewModel: ObservableObject {
             errorMessage = "Only failed action-plan Assistant Queue items can be retried."
             integrationStatusMessage = nil
             return false
+        } catch AssistantQueueTransitionError.editRequiresReviewableItem {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = "Only reviewable Assistant Queue items can be edited."
+            integrationStatusMessage = nil
+            return false
         } catch {
             _ = refreshAssistantQueueSnapshot()
             errorMessage = AssistantQueueStoreError.userMessage(for: error)
@@ -2571,6 +2591,8 @@ public final class ProjectBoardViewModel: ObservableObject {
             return "Dangerous Assistant Queue items cannot be executed."
         case AssistantQueueTransitionError.terminalItemCannotTransition:
             return "Assistant Queue item was already reviewed."
+        case AssistantQueueTransitionError.editRequiresReviewableItem:
+            return "Only reviewable Assistant Queue items can be edited."
         default:
             return "Assistant Queue execution could not be completed."
         }

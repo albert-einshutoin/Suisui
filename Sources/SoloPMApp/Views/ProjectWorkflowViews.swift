@@ -1327,6 +1327,9 @@ private struct AssistantQueueCountStrip: View {
 private struct AssistantQueueRow: View {
     let row: AssistantQueueReadModelRow
     @ObservedObject var viewModel: ProjectBoardViewModel
+    @State private var isEditing = false
+    @State private var draftReviewReason = ""
+    @State private var draftRedactedSummary = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1384,6 +1387,51 @@ private struct AssistantQueueRow: View {
                         AssistantQueueReceiptSummaryView(receipt: receipt)
                             .accessibilityIdentifier("assistant-queue-receipt-\(row.id)")
                     }
+
+                    if isEditing {
+                        VStack(alignment: .leading, spacing: 8) {
+                            TextField("Review reason", text: $draftReviewReason, axis: .vertical)
+                                .lineLimit(2...4)
+                                .textFieldStyle(.roundedBorder)
+                                .accessibilityIdentifier("assistant-queue-edit-reason-\(row.id)")
+                                .accessibilityHint("Updates the review reason and requires approval again.")
+
+                            TextField("Redacted summary", text: $draftRedactedSummary, axis: .vertical)
+                                .lineLimit(2...4)
+                                .textFieldStyle(.roundedBorder)
+                                .accessibilityIdentifier("assistant-queue-edit-summary-\(row.id)")
+                                .accessibilityHint("Updates only the redacted queue summary shown for review.")
+
+                            HStack(spacing: 8) {
+                                Button {
+                                    if viewModel.editAssistantQueueItem(
+                                        id: row.id,
+                                        reviewReason: draftReviewReason,
+                                        redactedSummary: draftRedactedSummary
+                                    ) {
+                                        isEditing = false
+                                    }
+                                } label: {
+                                    Label("Save", systemImage: "checkmark")
+                                }
+                                .controlSize(.small)
+                                .accessibilityIdentifier("assistant-queue-edit-save-\(row.id)")
+                                .accessibilityHint("Saves edited review details and clears any prior queue approval.")
+
+                                Button {
+                                    isEditing = false
+                                    draftReviewReason = row.reviewReason
+                                    draftRedactedSummary = row.redactedSummary
+                                } label: {
+                                    Label("Cancel", systemImage: "xmark")
+                                }
+                                .controlSize(.small)
+                                .accessibilityIdentifier("assistant-queue-edit-cancel-\(row.id)")
+                                .accessibilityHint("Discards local edits to this review form.")
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
                 }
 
                 Spacer(minLength: 8)
@@ -1422,6 +1470,19 @@ private struct AssistantQueueRow: View {
                 .help("Review this queue item later")
                 .accessibilityIdentifier("assistant-queue-defer-\(row.id)")
                 .accessibilityHint("Keeps this generated work in the local queue for later review.")
+
+                Button {
+                    draftReviewReason = row.reviewReason
+                    draftRedactedSummary = row.redactedSummary
+                    isEditing.toggle()
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+                .disabled(!row.canEdit)
+                .controlSize(.small)
+                .help("Edit review details before approving this queue item")
+                .accessibilityIdentifier("assistant-queue-edit-\(row.id)")
+                .accessibilityHint("Edits the review reason and redacted summary without changing raw action arguments.")
 
                 Button {
                     _ = viewModel.retryAssistantQueueItem(id: row.id)
