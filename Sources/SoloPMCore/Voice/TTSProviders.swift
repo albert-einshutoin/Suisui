@@ -201,6 +201,9 @@ public struct KokoroLocalTTSProvider: TextToSpeechProvider {
         guard FileManager.default.fileExists(atPath: expandedPath, isDirectory: &isDirectory), !isDirectory.boolValue else {
             throw TTSProviderError.unavailable("Kokoro executable is unavailable.")
         }
+        guard !Self.isCredentialLikeExecutablePath(expandedPath) else {
+            throw TTSProviderError.unavailable("Kokoro executable path must not point to a credential or token file.")
+        }
         guard FileManager.default.isExecutableFile(atPath: expandedPath) else {
             throw TTSProviderError.unavailable("Kokoro executable is not executable.")
         }
@@ -276,6 +279,14 @@ public struct KokoroLocalTTSProvider: TextToSpeechProvider {
 
     private func preparedOutputURL() throws -> URL {
         if let outputURL = configuration.outputURL {
+            do {
+                try FileManager.default.createDirectory(
+                    at: outputURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+            } catch {
+                throw TTSProviderError.synthesisFailed("Kokoro output file could not be prepared.")
+            }
             return outputURL
         }
         let directory = FileManager.default.temporaryDirectory
@@ -286,6 +297,16 @@ public struct KokoroLocalTTSProvider: TextToSpeechProvider {
         } catch {
             throw TTSProviderError.synthesisFailed("Kokoro output file could not be prepared.")
         }
+    }
+
+    private static func isCredentialLikeExecutablePath(_ path: String) -> Bool {
+        let fileName = URL(fileURLWithPath: path).lastPathComponent.lowercased()
+        let sensitiveSignals = ["credential", "credentials", "secret", "token", "api-key", "apikey", "auth"]
+        let sensitiveFileNames = [".env", "credentials.json", "token.json", "auth.json"]
+        // The provider can be used outside Settings, so it repeats the credential-file guard
+        // before local process launch rather than trusting UI validation as the only boundary.
+        return sensitiveFileNames.contains(fileName)
+            || sensitiveSignals.contains(where: { fileName.contains($0) })
     }
 }
 

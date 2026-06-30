@@ -985,6 +985,93 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testAppSettingsViewModelRunsReadyKokoroTTSPreview() async throws {
+        let suiteName = "SoloPM.AppSettingsViewModelTTSPreview.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let executableURL = try writeExecutable(named: "kokoro-tts")
+        let previewer = RecordingTTSPreviewClient()
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            voiceModelManager: StaticAppSettingsVoiceModelManager(statuses: [
+                .kokoro82M: .installed
+            ])
+        )
+        viewModel.setKokoroExecutablePath(executableURL.path)
+        viewModel.setTTSLanguageCode("ja")
+        viewModel.setTTSVoiceID("jf_alpha")
+
+        await viewModel.testTTSPlayback(using: previewer)
+
+        XCTAssertEqual(
+            previewer.requests,
+            [
+                TextToSpeechRequest(
+                    text: "SoloPMのローカル音声テストです。",
+                    languageCode: "ja",
+                    voiceID: "jf_alpha"
+                )
+            ]
+        )
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(viewModel.successMessage, "TTS test play completed.")
+    }
+
+    @MainActor
+    func testAppSettingsViewModelBlocksTTSPreviewUntilReady() async throws {
+        let suiteName = "SoloPM.AppSettingsViewModelTTSPreviewBlocked.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let previewer = RecordingTTSPreviewClient()
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            voiceModelManager: StaticAppSettingsVoiceModelManager(statuses: [
+                .kokoro82M: .notInstalled
+            ])
+        )
+
+        await viewModel.testTTSPlayback(using: previewer)
+
+        XCTAssertTrue(previewer.requests.isEmpty)
+        XCTAssertEqual(viewModel.errorMessage, "Download Kokoro model before test play.")
+        XCTAssertNil(viewModel.successMessage)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelRedactsTTSPreviewFailureDetails() async throws {
+        let suiteName = "SoloPM.AppSettingsViewModelTTSPreviewFailure.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let executableURL = try writeExecutable(named: "kokoro-tts")
+        let secret = "sk-localPreviewSecret123"
+        let localPath = "/Users/example/Library/Application Support/SoloPM/Voice/speech.wav"
+        let previewer = RecordingTTSPreviewClient(
+            error: SpeechAudioPlaybackError.playbackFailed("Playback failed at \(localPath) token=\(secret)")
+        )
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            voiceModelManager: StaticAppSettingsVoiceModelManager(statuses: [
+                .kokoro82M: .installed
+            ])
+        )
+        viewModel.setKokoroExecutablePath(executableURL.path)
+
+        await viewModel.testTTSPlayback(using: previewer)
+
+        XCTAssertEqual(previewer.requests.count, 1)
+        let message = try XCTUnwrap(viewModel.errorMessage)
+        XCTAssertTrue(message.contains("TTS test play failed."))
+        XCTAssertTrue(message.contains("[REDACTED_PATH]"))
+        XCTAssertTrue(message.contains("[REDACTED_SECRET]"))
+        XCTAssertFalse(message.contains(localPath))
+        XCTAssertFalse(message.contains(secret))
+        XCTAssertNil(viewModel.successMessage)
+    }
+
+    @MainActor
     func testAppSettingsViewModelNormalizesUnsupportedSTTProvider() throws {
         let suiteName = "SoloPM.AppSettingsViewModelUnsupportedSTT.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -1033,6 +1120,22 @@ private struct StaticAppSettingsVoiceModelManager: VoiceModelManaging {
     }
 
     func removeFromCache(_ model: VoiceModelDescriptor) throws {}
+}
+
+private final class RecordingTTSPreviewClient: TextToSpeechPreviewing, @unchecked Sendable {
+    private let error: Error?
+    private(set) var requests: [TextToSpeechRequest] = []
+
+    init(error: Error? = nil) {
+        self.error = error
+    }
+
+    func playPreview(_ request: TextToSpeechRequest) async throws {
+        requests.append(request)
+        if let error {
+            throw error
+        }
+    }
 }
 
 private struct FailingSaveAppSettingsStore: AppSettingsStore {

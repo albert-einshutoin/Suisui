@@ -63,11 +63,58 @@ public protocol TextToSpeechProvider: Sendable {
     func synthesize(_ request: TextToSpeechRequest) async throws -> SynthesizedSpeech
 }
 
+public protocol SpeechAudioPlaying: Sendable {
+    func play(_ speech: SynthesizedSpeech) async throws
+}
+
+public protocol TextToSpeechPreviewing: Sendable {
+    func playPreview(_ request: TextToSpeechRequest) async throws
+}
+
 public enum TTSProviderError: Error, Equatable, Sendable {
     case unavailable(String)
     case modelMissing(String)
     case promptRejected(String)
     case synthesisFailed(String)
+
+    public var userMessage: String {
+        switch self {
+        case .unavailable(let message),
+             .modelMissing(let message),
+             .promptRejected(let message),
+             .synthesisFailed(let message):
+            message
+        }
+    }
+}
+
+public enum SpeechAudioPlaybackError: Error, Equatable, Sendable {
+    case unsupportedFormat(AudioFileFormat)
+    case playbackFailed(String)
+
+    public var userMessage: String {
+        switch self {
+        case .unsupportedFormat(let format):
+            "TTS audio format \(format.rawValue) is not supported for preview playback."
+        case .playbackFailed(let message):
+            message
+        }
+    }
+}
+
+public struct TextToSpeechPreviewService: TextToSpeechPreviewing {
+    private let provider: any TextToSpeechProvider
+    private let audioPlayer: any SpeechAudioPlaying
+
+    public init(provider: any TextToSpeechProvider, audioPlayer: any SpeechAudioPlaying) {
+        self.provider = provider
+        self.audioPlayer = audioPlayer
+    }
+
+    public func playPreview(_ request: TextToSpeechRequest) async throws {
+        let speech = try await provider.synthesize(request)
+        try await audioPlayer.play(speech)
+    }
 }
 
 public struct TTSProviderCatalog: Sendable {

@@ -7,7 +7,7 @@ Status: Accepted
 
 SoloPM's Personal MVP is voice-first: it should capture work by voice, clarify intent, and read back short confirmations such as overdue counts, created task summaries, and reminder results. Product TTS is separate from VoiceOver evidence; screen-reader validation remains a release gate and must not be treated as the assistant's speech runtime.
 
-Issue #14 asks for a local OSS TTS path for Japanese and English. The first release must avoid bundling large model files in git or the app bundle, and it must not introduce a license or notarization problem before the app has a stable playback adapter.
+Issue #14 asks for a local OSS TTS path for Japanese and English. The first release must avoid bundling large model files in git or the app bundle, and it must not introduce a license or notarization problem while still letting users prove a ready local runtime can play a short preview.
 
 ## Decision
 
@@ -20,7 +20,9 @@ SoloPM will:
 - Expose Local Kokoro readiness in Settings even when the model or runtime is not installed.
 - Require a user-configured absolute executable path before treating Kokoro as ready.
 - Pass prompt text through a short-lived UTF-8 file instead of process arguments so task details are not exposed through process inspection.
-- Limit the first slice to short prompts and no-network cached synthesis.
+- Play only fixed short Settings preview prompts through an AVAudioPlayer adapter; user task text and meeting documents are not sent through this path.
+- Remove the preview-owned generated audio directory after playback.
+- Limit the first slice to short prompts, no-network cached synthesis, and local preview playback.
 
 ## Options Considered
 
@@ -44,8 +46,8 @@ SoloPM will:
 - Positive: Personal MVP gains a real product TTS provider boundary without relying on VoiceOver or system speech.
 - Positive: Settings can show what is missing before users attempt playback.
 - Positive: OSS distribution stays clean because model binaries and generated audio remain out of git.
-- Negative: The first slice does not ship full playback UX or a bundled runtime.
-- Follow-up: Add a playback adapter, runtime packaging decision, and a signed/notarized smoke test before marking #14 fully complete.
+- Negative: The first slice does not ship long-form document/meeting read-aloud, streaming controls, or a bundled runtime.
+- Follow-up: Decide the packaged Kokoro runtime path and add a signed/notarized smoke test before marking #14 fully complete.
 
 ## Links
 

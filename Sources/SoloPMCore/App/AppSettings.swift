@@ -999,6 +999,40 @@ public final class AppSettingsViewModel: ObservableObject {
         successMessage = nil
     }
 
+    public func testTTSPlayback(using previewer: any TextToSpeechPreviewing) async {
+        let readinessRow = ttsProviderReadinessRow
+        guard readinessRow.isReady else {
+            rejectedAIProvider = nil
+            errorMessage = "\(readinessRow.nextActionLabel) before test play."
+            successMessage = nil
+            return
+        }
+
+        let issues = settings.validate().filter { $0.severity == .error }
+        guard issues.isEmpty else {
+            rejectedAIProvider = nil
+            errorMessage = issues.map(\.message).joined(separator: " ")
+            successMessage = nil
+            return
+        }
+
+        let request = TextToSpeechRequest(
+            text: Self.ttsPreviewText(for: settings.ttsLanguageCode),
+            languageCode: settings.ttsLanguageCode,
+            voiceID: settings.ttsVoiceID
+        )
+
+        clearMessages()
+        do {
+            try await previewer.playPreview(request)
+            errorMessage = nil
+            successMessage = "TTS test play completed."
+        } catch {
+            errorMessage = "TTS test play failed. \(Self.sanitizedTTSPreviewFailureMessage(from: error))"
+            successMessage = nil
+        }
+    }
+
     public func setGeminiModelID(_ modelID: String) {
         let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.geminiModelID = trimmed.isEmpty ? nil : trimmed
@@ -1575,6 +1609,39 @@ public final class AppSettingsViewModel: ObservableObject {
         rejectedAIProvider = nil
         errorMessage = nil
         successMessage = nil
+    }
+
+    private static func ttsPreviewText(for languageCode: String) -> String {
+        AppSettings.normalizedTTSLanguageCode(languageCode) == "ja"
+            ? "SoloPMのローカル音声テストです。"
+            : "SoloPM local voice test is ready."
+    }
+
+    private static func sanitizedTTSPreviewFailureMessage(from error: Error) -> String {
+        let rawMessage: String
+        if let error = error as? TTSProviderError {
+            rawMessage = error.userMessage
+        } else if let error = error as? SpeechAudioPlaybackError {
+            rawMessage = error.userMessage
+        } else {
+            rawMessage = UserFacingErrorMessageSanitizer.message(from: error)
+        }
+        let redactedSecrets = UserFacingErrorMessageSanitizer.message(
+            from: rawMessage,
+            fallback: "Playback failed."
+        )
+        return redactedLocalFilePaths(in: redactedSecrets)
+    }
+
+    private static func redactedLocalFilePaths(in text: String) -> String {
+        let pattern = #"(?:(?:~|/Users|/Volumes|/private|/tmp|/var)/[^\s,;)]+)"#
+        guard let expression = try? NSRegularExpression(pattern: pattern) else {
+            return text
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        // Preview playback errors can include generated audio/model paths. Those paths may expose
+        // customer names or project directories, so the Settings UI shows only a stable placeholder.
+        return expression.stringByReplacingMatches(in: text, range: range, withTemplate: "[REDACTED_PATH]")
     }
 
     private func unavailableMessage(for provider: AIProvider) -> String {

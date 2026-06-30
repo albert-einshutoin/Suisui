@@ -78,6 +78,33 @@ final class TTSProviderTests: XCTestCase {
         }
     }
 
+    func testKokoroProviderRejectsCredentialLikeExecutablePathBeforeStartingRunner() async throws {
+        let fixture = try makeKokoroFixture()
+        let sensitiveExecutableURL = fixture.executableURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("api-key-runner")
+        try Data("#!/bin/sh\n".utf8).write(to: sensitiveExecutableURL)
+        chmod(sensitiveExecutableURL.path, 0o755)
+        let runner = RecordingKokoroCommandRunner()
+        let provider = KokoroLocalTTSProvider(
+            configuration: KokoroLocalTTSConfiguration(
+                executablePath: sensitiveExecutableURL.path,
+                model: fixture.configuration.model,
+                cache: fixture.configuration.cache,
+                outputURL: fixture.outputURL
+            ),
+            commandRunner: runner
+        )
+
+        do {
+            _ = try await provider.synthesize(TextToSpeechRequest(text: "Create launch notes", languageCode: "en", voiceID: "af_heart"))
+            XCTFail("Expected credential-like executable path to fail.")
+        } catch {
+            XCTAssertEqual(error as? TTSProviderError, .unavailable("Kokoro executable path must not point to a credential or token file."))
+            XCTAssertTrue(runner.invocations.isEmpty)
+        }
+    }
+
     func testKokoroProviderRejectsLongPromptsBeforeStartingRunner() async throws {
         let fixture = try makeKokoroFixture()
         let runner = RecordingKokoroCommandRunner()
@@ -118,6 +145,28 @@ final class TTSProviderTests: XCTestCase {
             XCTAssertFalse(message.contains(fixture.outputURL.path))
             XCTAssertFalse(message.contains(fixture.modelURL.path))
         }
+    }
+
+    func testTextToSpeechPreviewServiceSynthesizesThenPlaysAudio() async throws {
+        let audio = SynthesizedSpeech(
+            fileURL: URL(fileURLWithPath: "/tmp/solopm-preview.wav"),
+            format: .wav,
+            languageCode: "en",
+            voiceID: "af_heart"
+        )
+        let provider = RecordingTextToSpeechProvider(audio: audio)
+        let player = RecordingSpeechAudioPlayer()
+        let service = TextToSpeechPreviewService(provider: provider, audioPlayer: player)
+        let request = TextToSpeechRequest(
+            text: "SoloPM local voice test is ready.",
+            languageCode: "en",
+            voiceID: "af_heart"
+        )
+
+        try await service.playPreview(request)
+
+        XCTAssertEqual(provider.requests, [request])
+        XCTAssertEqual(player.playedAudio, [audio])
     }
 
     private func makeKokoroFixture(
@@ -174,6 +223,30 @@ final class TTSProviderTests: XCTestCase {
                 outputURL: outputURL
             )
         )
+    }
+}
+
+private final class RecordingTextToSpeechProvider: TextToSpeechProvider, @unchecked Sendable {
+    let id: TTSProviderID = .kokoro
+    let availability = TTSProviderAvailability(providerID: .kokoro, isAvailable: true)
+    private let audio: SynthesizedSpeech
+    private(set) var requests: [TextToSpeechRequest] = []
+
+    init(audio: SynthesizedSpeech) {
+        self.audio = audio
+    }
+
+    func synthesize(_ request: TextToSpeechRequest) async throws -> SynthesizedSpeech {
+        requests.append(request)
+        return audio
+    }
+}
+
+private final class RecordingSpeechAudioPlayer: SpeechAudioPlaying, @unchecked Sendable {
+    private(set) var playedAudio: [SynthesizedSpeech] = []
+
+    func play(_ speech: SynthesizedSpeech) async throws {
+        playedAudio.append(speech)
     }
 }
 

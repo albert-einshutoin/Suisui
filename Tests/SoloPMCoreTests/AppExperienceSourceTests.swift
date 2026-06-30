@@ -2654,6 +2654,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-language-picker\")"))
         XCTAssertTrue(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-voice-id\")"))
         XCTAssertTrue(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-test-play\")"))
+        XCTAssertTrue(aiTabSource.contains("Task {\n                        await settingsViewModel.testTTSPlayback("))
+        XCTAssertTrue(aiTabSource.contains("AppRuntimeFactory.makeTextToSpeechPreviewer(settings: settingsViewModel.settings)"))
+        XCTAssertFalse(aiTabSource.contains("TTS playback adapter is not connected in this slice."))
         XCTAssertFalse(aiTabSource.contains("TTSProvider.systemSpeech.unavailableReason"))
         XCTAssertFalse(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-unavailable\")"))
     }
@@ -2876,7 +2879,23 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(factorySource.contains("normalizedSettings.ttsLanguageCode"))
         XCTAssertTrue(factorySource.contains("normalizedSettings.ttsVoiceID"))
         XCTAssertTrue(factorySource.contains("KokoroLocalTTSProvider(configuration: configuration)"))
+        XCTAssertTrue(factorySource.contains("static func makeTextToSpeechPreviewer(settings: AppSettings) -> any TextToSpeechPreviewing"))
+        XCTAssertTrue(factorySource.contains("TemporaryDirectoryTextToSpeechPreviewer("))
+        XCTAssertTrue(factorySource.contains("TextToSpeechPreviewService("))
+        XCTAssertTrue(factorySource.contains("AVFoundationSpeechAudioPlayer()"))
+        XCTAssertTrue(factorySource.contains("temporaryDirectory: temporaryDirectory"))
         XCTAssertFalse(factorySource.contains("AVSpeechSynthesizer"))
+    }
+
+    func testAVFoundationSpeechAudioPlayerUsesAudioPlayerInsteadOfSystemSpeech() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Adapters/AVFoundationSpeechAudioPlayer.swift")
+
+        XCTAssertTrue(source.contains("AVAudioPlayer"))
+        XCTAssertTrue(source.contains("SpeechAudioPlaying"))
+        XCTAssertTrue(source.contains("TemporaryDirectoryTextToSpeechPreviewer"))
+        XCTAssertTrue(source.contains("try? FileManager.default.removeItem(at: temporaryDirectory)"))
+        XCTAssertTrue(source.contains("UserFacingErrorMessageSanitizer.message("))
+        XCTAssertFalse(source.contains("AVSpeechSynthesizer"))
     }
 
     func testRuntimeLLMFactoryUsesGroqCompatibleProviderWithoutOpenAIFallback() throws {

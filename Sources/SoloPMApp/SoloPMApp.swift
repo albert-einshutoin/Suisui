@@ -1876,7 +1876,11 @@ private struct SettingsView: View {
                 .accessibilityIdentifier("settings-tts-voice-id")
 
                 Button("Test Play") {
-                    settingsViewModel.setTransientErrorMessage("TTS playback adapter is not connected in this slice.")
+                    Task {
+                        await settingsViewModel.testTTSPlayback(
+                            using: AppRuntimeFactory.makeTextToSpeechPreviewer(settings: settingsViewModel.settings)
+                        )
+                    }
                 }
                 .disabled(!settingsViewModel.ttsProviderReadinessRow.isReady)
                 .accessibilityIdentifier("settings-tts-test-play")
@@ -3806,17 +3810,31 @@ private enum AppRuntimeFactory {
         }
     }
 
-    private static func makeTextToSpeechProvider(settings: AppSettings) -> any TextToSpeechProvider {
+    private static func makeTextToSpeechProvider(settings: AppSettings, outputURL: URL? = nil) -> any TextToSpeechProvider {
         let normalizedSettings = settings.normalizedForRuntime
         switch normalizedSettings.ttsProvider {
         case .systemSpeech, .localKokoro:
             let configuration = KokoroLocalTTSConfiguration(
                 executablePath: normalizedSettings.kokoroExecutablePath ?? "",
                 languageCode: normalizedSettings.ttsLanguageCode,
-                voiceID: normalizedSettings.ttsVoiceID
+                voiceID: normalizedSettings.ttsVoiceID,
+                outputURL: outputURL
             )
             return KokoroLocalTTSProvider(configuration: configuration)
         }
+    }
+
+    static func makeTextToSpeechPreviewer(settings: AppSettings) -> any TextToSpeechPreviewing {
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("solopm-tts-preview-\(UUID().uuidString)", isDirectory: true)
+        let outputURL = temporaryDirectory.appendingPathComponent("preview.wav", isDirectory: false)
+        return TemporaryDirectoryTextToSpeechPreviewer(
+            previewer: TextToSpeechPreviewService(
+                provider: makeTextToSpeechProvider(settings: settings, outputURL: outputURL),
+                audioPlayer: AVFoundationSpeechAudioPlayer()
+            ),
+            temporaryDirectory: temporaryDirectory
+        )
     }
 
     @MainActor
