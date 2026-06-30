@@ -31,6 +31,7 @@ struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
     @StateObject private var viewModel: ProjectBoardViewModel
     private let taskAutomationSettings: () -> TaskAutoExecutionSettings
+    private let appSettings: () -> AppSettings
     @AppStorage(ProjectBoardSelectionPersistence.storageKey) private var persistedSelectedDestinationRawValue = ProjectBoardSelectionPersistence.defaultRawValue
     @State private var displayMode: ProjectBoardDisplayMode = .board
     @State private var selectedDestination: ProjectBoardSidebarDestination? = .today
@@ -45,10 +46,12 @@ struct ProjectBoardView: View {
 
     init(
         viewModel: ProjectBoardViewModel,
-        taskAutomationSettings: @escaping () -> TaskAutoExecutionSettings = { .default }
+        taskAutomationSettings: @escaping () -> TaskAutoExecutionSettings = { .default },
+        appSettings: @escaping () -> AppSettings = { .default }
     ) {
         _viewModel = StateObject(wrappedValue: viewModel)
         self.taskAutomationSettings = taskAutomationSettings
+        self.appSettings = appSettings
     }
 
     var body: some View {
@@ -272,11 +275,13 @@ struct ProjectBoardView: View {
         )
         .task {
             viewModel.load()
+            viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
             restoreSelectedDestinationIfNeeded()
             consumePendingVoiceDailyPlanningReviewRequestIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
             viewModel.load()
+            viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
             restoreSelectedDestinationIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: .soloPMVoiceDailyPlanningReviewRequested)) { notification in

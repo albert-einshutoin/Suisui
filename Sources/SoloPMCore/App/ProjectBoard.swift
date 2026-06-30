@@ -1225,6 +1225,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     private let assistantQueueExecutionCoordinator: AssistantQueueExecutionCoordinator?
     private let executionReceiptStore: (any ExecutionReceiptStore)?
     private let missedTaskReviewStateStore: any MissedTaskReviewStateStore
+    private let missedTaskFollowUpNotificationClient: (any NotificationClient)?
     private let externalTaskLinkStore: (any ExternalTaskLinkStore)?
     private let scheduleCalendarClient: (any CalendarClient)?
     private let googleCalendarSync: (any GoogleCalendarRuntimeSyncing)?
@@ -1246,6 +1247,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         assistantQueueExecutionCoordinator: AssistantQueueExecutionCoordinator? = nil,
         executionReceiptStore: (any ExecutionReceiptStore)? = nil,
         missedTaskReviewStateStore: any MissedTaskReviewStateStore = InMemoryMissedTaskReviewStateStore(),
+        missedTaskFollowUpNotificationClient: (any NotificationClient)? = nil,
         externalTaskLinkStore: (any ExternalTaskLinkStore)? = nil,
         scheduleCalendarClient: (any CalendarClient)? = nil,
         googleCalendarSync: (any GoogleCalendarRuntimeSyncing)? = nil,
@@ -1258,6 +1260,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.assistantQueueExecutionCoordinator = assistantQueueExecutionCoordinator
         self.executionReceiptStore = executionReceiptStore
         self.missedTaskReviewStateStore = missedTaskReviewStateStore
+        self.missedTaskFollowUpNotificationClient = missedTaskFollowUpNotificationClient
         self.externalTaskLinkStore = externalTaskLinkStore
         self.scheduleCalendarClient = scheduleCalendarClient
         self.googleCalendarSync = googleCalendarSync
@@ -1733,6 +1736,33 @@ public final class ProjectBoardViewModel: ObservableObject {
             newlyMissedCount: immediateQueue.count,
             stateErrorMessage: didFailToLoadReviewState ? String(localized: "Missed task review state could not be loaded.") : nil
         )
+    }
+
+    @discardableResult
+    public func scheduleMissedTaskDailyFollowUp(
+        settings: AppSettings,
+        dateProvider: any DateProvider = SystemDateProvider(),
+        calendar: Calendar? = nil
+    ) -> MissedTaskDailyFollowUpResult? {
+        guard let missedTaskFollowUpNotificationClient else {
+            return nil
+        }
+
+        let normalizedSettings = settings.normalizedForRuntime
+        let reviewCalendar = calendar ?? Self.reviewCalendar(timeZoneIdentifier: normalizedSettings.timeZoneIdentifier)
+        let summary = missedTaskReview(on: dateProvider.now, calendar: reviewCalendar)
+        let result = MissedTaskDailyFollowUpScheduler(
+            stateStore: missedTaskReviewStateStore,
+            notificationClient: missedTaskFollowUpNotificationClient,
+            dateProvider: dateProvider,
+            settings: normalizedSettings
+        )
+        .scheduleIfNeeded(summary: summary)
+
+        if result.status == .failed {
+            integrationStatusMessage = result.message
+        }
+        return result
     }
 
     public func completeMissedTask(id taskID: Int64, referenceDate: Date = Date()) {
@@ -2919,6 +2949,12 @@ public final class ProjectBoardViewModel: ObservableObject {
         default:
             return "Assistant Queue execution could not be completed."
         }
+    }
+
+    private static func reviewCalendar(timeZoneIdentifier: String) -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: timeZoneIdentifier) ?? .current
+        return calendar
     }
 
     private static func userFacingMessage(for error: Error) -> String {

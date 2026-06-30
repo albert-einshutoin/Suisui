@@ -2718,6 +2718,89 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelSchedulesDailyMissedTaskFollowUpFromReviewSummary() throws {
+        let bundle = try makeStoreBundle()
+        let reviewStore = SQLiteMissedTaskReviewStateStore(connection: bundle.connection)
+        let notificationClient = InMemoryNotificationClient()
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            missedTaskReviewStateStore: reviewStore,
+            missedTaskFollowUpNotificationClient: notificationClient
+        )
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        _ = viewModel.createTask(
+            title: "Sensitive customer escalation sk-secret",
+            detail: "Read /Users/alice/customer.md before replying.",
+            projectID: launch.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-18T09:00:00Z"
+        )
+        _ = viewModel.createTask(
+            title: "Revive stale unscheduled follow-up",
+            projectID: launch.id,
+            status: .backlog,
+            priority: .medium
+        )
+
+        let result = try XCTUnwrap(viewModel.scheduleMissedTaskDailyFollowUp(
+            settings: AppSettings(notificationsEnabled: true, timeZoneIdentifier: "UTC"),
+            dateProvider: ProjectBoardFixedDateProvider(now: try isoDate("2026-06-19T09:00:00Z")),
+            calendar: utcCalendar()
+        ))
+        let duplicate = try XCTUnwrap(viewModel.scheduleMissedTaskDailyFollowUp(
+            settings: AppSettings(notificationsEnabled: true, timeZoneIdentifier: "UTC"),
+            dateProvider: ProjectBoardFixedDateProvider(now: try isoDate("2026-06-19T10:00:00Z")),
+            calendar: utcCalendar()
+        ))
+        let scheduled = try notificationClient.listScheduled()
+
+        XCTAssertEqual(result.status, .scheduled)
+        XCTAssertEqual(result.day, "2026-06-19")
+        XCTAssertEqual(result.missedCount, 2)
+        XCTAssertEqual(duplicate.status, .skippedAlreadyNotifiedToday)
+        XCTAssertEqual(try reviewStore.lastNotifiedDay(), "2026-06-19")
+        XCTAssertEqual(scheduled.count, 1)
+        XCTAssertEqual(scheduled.first?.id, "missed-task-review-2026-06-19")
+        XCTAssertEqual(scheduled.first?.body, "2 tasks need review. Overdue: 1, due today: 0, blocked: 0, unscheduled: 1, stale: 0.")
+        XCTAssertFalse((scheduled.first?.body ?? "").contains("sk-secret"))
+        XCTAssertFalse((scheduled.first?.body ?? "").contains("/Users/alice/customer.md"))
+        XCTAssertFalse((scheduled.first?.body ?? "").contains("Sensitive customer"))
+    }
+
+    @MainActor
+    func testProjectBoardViewModelUsesConfiguredTimeZoneForMissedTaskDailyFollowUpClassification() throws {
+        let bundle = try makeStoreBundle()
+        let reviewStore = SQLiteMissedTaskReviewStateStore(connection: bundle.connection)
+        let notificationClient = InMemoryNotificationClient()
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            missedTaskReviewStateStore: reviewStore,
+            missedTaskFollowUpNotificationClient: notificationClient
+        )
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        _ = viewModel.createTask(
+            title: "Resolve boundary-time blocker",
+            projectID: launch.id,
+            status: .blocked,
+            priority: .high,
+            dueAt: "2026-06-30T08:00:00Z"
+        )
+
+        let result = try XCTUnwrap(viewModel.scheduleMissedTaskDailyFollowUp(
+            settings: AppSettings(notificationsEnabled: true, timeZoneIdentifier: "America/Los_Angeles"),
+            dateProvider: ProjectBoardFixedDateProvider(now: try isoDate("2026-07-01T06:30:00Z"))
+        ))
+        let scheduled = try notificationClient.listScheduled()
+
+        XCTAssertEqual(result.status, .scheduled)
+        XCTAssertEqual(result.day, "2026-06-30")
+        XCTAssertEqual(scheduled.first?.body, "1 tasks need review. Overdue: 0, due today: 1, blocked: 1, unscheduled: 0, stale: 0.")
+    }
+
+    @MainActor
     func testProjectBoardViewModelKeepsInboxCapturesOutOfMissedTaskReview() throws {
         let bundle = try makeStoreBundle()
         let reviewStore = SQLiteMissedTaskReviewStateStore(connection: bundle.connection)
@@ -3787,4 +3870,8 @@ private struct FailingMissedTaskReviewStateStore: MissedTaskReviewStateStore {
     func recordNotification(day: String, at date: Date) throws {
         throw ProjectBoardStoreTestError.unavailable
     }
+}
+
+private struct ProjectBoardFixedDateProvider: DateProvider {
+    let now: Date
 }

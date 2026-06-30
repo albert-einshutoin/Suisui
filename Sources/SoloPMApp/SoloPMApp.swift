@@ -39,7 +39,8 @@ struct SoloPM: App {
         WindowGroup("SoloPM", id: "project-board") {
             ProjectBoardView(
                 viewModel: AppRuntimeFactory.makeProjectBoardViewModel(),
-                taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution }
+                taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution },
+                appSettings: { settingsViewModel.settings }
             )
                 .preferredColorScheme(effectiveAppearancePreference.colorScheme)
                 .environment(\.locale, effectiveLanguagePreference.locale)
@@ -115,7 +116,8 @@ private final class SoloPMProjectBoardWindowFallback {
         let hostingController = NSHostingController(
             rootView: ProjectBoardView(
                 viewModel: AppRuntimeFactory.makeProjectBoardViewModel(),
-                taskAutomationSettings: AppRuntimeFactory.loadTaskAutoExecutionSettings
+                taskAutomationSettings: AppRuntimeFactory.loadTaskAutoExecutionSettings,
+                appSettings: AppRuntimeFactory.loadRuntimeAppSettings
             )
             .preferredColorScheme(Self.effectiveAppearancePreference.colorScheme)
         )
@@ -3742,6 +3744,7 @@ private enum AppRuntimeFactory {
                 ),
                 executionReceiptStore: executionReceiptStore,
                 missedTaskReviewStateStore: SQLiteMissedTaskReviewStateStore(connection: connection),
+                missedTaskFollowUpNotificationClient: UserNotificationsNotificationClient(),
                 externalTaskLinkStore: externalTaskLinkStore,
                 googleCalendarSync: googleCalendarSync,
                 onChange: postProjectBoardDidChange
@@ -3813,6 +3816,13 @@ private enum AppRuntimeFactory {
         // so they read only the persisted non-secret automation settings here.
         // Provider secrets stay in Keychain and are never materialized for this UI decision.
         (try? UserDefaultsAppSettingsStore().load().normalizedForRuntime.taskAutoExecution) ?? .default
+    }
+
+    static func loadRuntimeAppSettings() -> AppSettings {
+        // Fallback AppKit windows are created outside the SwiftUI App state, so
+        // they reload persisted non-secret settings for notification and time
+        // zone decisions without touching Keychain-backed provider secrets.
+        (try? UserDefaultsAppSettingsStore().load().normalizedForRuntime) ?? .default
     }
 
     @MainActor
