@@ -73,14 +73,15 @@ final class AssistantQueueStoreTests: XCTestCase {
             makeItem(id: "queue-read-model-approved", state: .waitingReview, summary: "Approved task"),
             reviewerID: "local-user"
         )
+        let approvedAutomation = try AssistantQueueStateMachine.approve(makeAutomationRequestItem(), reviewerID: "local-user")
         let failed = makeItem(id: "queue-read-model-failed", state: .failed, summary: "Failed task")
 
-        let snapshot = AssistantQueueReadModel.snapshot(from: [done, blocked, waiting, approved, failed])
+        let snapshot = AssistantQueueReadModel.snapshot(from: [done, blocked, waiting, approved, approvedAutomation, failed])
 
         XCTAssertEqual(snapshot.waitingReviewCount, 1)
         XCTAssertEqual(snapshot.blockedCount, 1)
         XCTAssertEqual(snapshot.reviewableCount, 2)
-        XCTAssertEqual(snapshot.rows.map(\.id), [blocked.id, waiting.id, approved.id, failed.id, done.id])
+        XCTAssertEqual(snapshot.rows.map(\.id), [blocked.id, waiting.id, approvedAutomation.id, approved.id, failed.id, done.id])
         let waitingRow = try XCTUnwrap(snapshot.rows.first { $0.id == waiting.id })
         XCTAssertFalse(waitingRow.title.contains("sk-assistantQueueStoreSecret"))
         XCTAssertFalse(waitingRow.sourcePreview?.contains("sk-assistantQueueStoreSecret") ?? true)
@@ -91,6 +92,8 @@ final class AssistantQueueStoreTests: XCTestCase {
         let approvedRow = try XCTUnwrap(snapshot.rows.first { $0.id == approved.id })
         XCTAssertFalse(approvedRow.canApprove)
         XCTAssertTrue(approvedRow.canRun)
+        let automationRow = try XCTUnwrap(snapshot.rows.first { $0.id == approvedAutomation.id })
+        XCTAssertFalse(automationRow.canRun)
         let blockedRow = try XCTUnwrap(snapshot.rows.first { $0.id == blocked.id })
         XCTAssertFalse(blockedRow.canApprove)
         XCTAssertFalse(blockedRow.canRun)
@@ -99,6 +102,54 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertEqual(failedRow.stateLabel, "Failed")
         XCTAssertFalse(failedRow.canRun)
         XCTAssertFalse(failedRow.canReject)
+    }
+
+    func testReadModelAttachesLatestAssistantQueueExecutionReceiptSummary() throws {
+        let item = makeItem(id: "queue-read-model-receipt", state: .done, summary: "Create launch task")
+        let olderReceipt = makeReceipt(
+            id: "receipt-old",
+            itemID: item.id,
+            status: .failed,
+            outputSummary: "Failed with token=sk-olderSecret",
+            finishedAt: Date(timeIntervalSince1970: 10)
+        )
+        let latestReceipt = makeReceipt(
+            id: "receipt-latest",
+            itemID: item.id,
+            status: .succeeded,
+            outputSummary: "Created task from /Users/local/private-plan.md",
+            finishedAt: Date(timeIntervalSince1970: 20),
+            actionCount: 2
+        )
+        let unrelatedReceipt = makeReceipt(
+            id: "receipt-unrelated",
+            itemID: "other-queue-item",
+            status: .succeeded,
+            outputSummary: "Other queue item",
+            finishedAt: Date(timeIntervalSince1970: 30)
+        )
+        let hiddenReceipt = makeReceipt(
+            id: "receipt-hidden",
+            itemID: item.id,
+            status: .failed,
+            outputSummary: "Hidden from Assistant Queue",
+            finishedAt: Date(timeIntervalSince1970: 40),
+            visibleSurfaces: []
+        )
+
+        let snapshot = AssistantQueueReadModel.snapshot(
+            from: [item],
+            receipts: [olderReceipt, latestReceipt, unrelatedReceipt, hiddenReceipt]
+        )
+
+        let row = try XCTUnwrap(snapshot.rows.first)
+        let receipt = try XCTUnwrap(row.latestReceipt)
+        XCTAssertEqual(receipt.id, latestReceipt.id)
+        XCTAssertEqual(receipt.status, .succeeded)
+        XCTAssertEqual(receipt.statusLabel, "Succeeded")
+        XCTAssertEqual(receipt.actionCount, 2)
+        XCTAssertFalse(receipt.outputSummary.contains("/Users/local/private-plan.md"))
+        XCTAssertTrue(receipt.outputSummary.contains("[REDACTED_LOCAL_PATH]"))
     }
 
     @MainActor
@@ -118,6 +169,37 @@ final class AssistantQueueStoreTests: XCTestCase {
 
         XCTAssertEqual(viewModel.assistantQueueSnapshot.reviewableCount, 1)
         XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first?.id, item.id)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelLoadsAssistantQueueReceiptSummaries() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let item = makeItem(id: "queue-project-board-receipt", state: .done, summary: "Create visible receipt task")
+        try assistantQueueStore.save(item)
+        try receiptStore.save(makeReceipt(
+            id: "receipt-project-board",
+            itemID: item.id,
+            status: .succeeded,
+            outputSummary: "Created visible receipt task",
+            finishedAt: Date(timeIntervalSince1970: 50)
+        ))
+        let viewModel = ProjectBoardViewModel(
+            store: boardStore,
+            assistantQueueStore: assistantQueueStore,
+            executionReceiptStore: receiptStore
+        )
+
+        viewModel.load()
+
+        let row = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first { $0.id == item.id })
+        XCTAssertEqual(row.latestReceipt?.id, "receipt-project-board")
+        XCTAssertEqual(row.latestReceipt?.statusLabel, "Succeeded")
+        XCTAssertEqual(row.latestReceipt?.outputSummary, "Created visible receipt task")
         XCTAssertNil(viewModel.errorMessage)
     }
 
@@ -191,7 +273,8 @@ final class AssistantQueueStoreTests: XCTestCase {
         let viewModel = ProjectBoardViewModel(
             store: boardStore,
             assistantQueueStore: assistantQueueStore,
-            assistantQueueExecutionCoordinator: coordinator
+            assistantQueueExecutionCoordinator: coordinator,
+            executionReceiptStore: receiptStore
         )
 
         viewModel.load()
@@ -200,6 +283,7 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertTrue(viewModel.runAssistantQueueItem(id: approved.id))
         XCTAssertEqual(try assistantQueueStore.get(id: approved.id).state, .done)
         XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first { $0.id == approved.id }?.state, .done)
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first { $0.id == approved.id }?.latestReceipt?.status, .succeeded)
         XCTAssertEqual(receiptStore.receipts.first?.assistantQueueItemID, approved.id)
         XCTAssertEqual(viewModel.integrationStatusMessage, "Executed Assistant Queue item.")
         XCTAssertNil(viewModel.errorMessage)
@@ -236,6 +320,50 @@ final class AssistantQueueStoreTests: XCTestCase {
             redactedSummary: summary,
             requiredCapabilities: [.tool(.taskCreate), .providerExecutionApproval],
             blockingReason: state == .blocked ? "Dangerous action plans cannot be approved from Assistant Queue." : nil
+        )
+    }
+
+    private func makeAutomationRequestItem(id: String = "queue-read-model-automation") -> AssistantQueueItem {
+        AssistantQueueAdapter.makeItem(automationRequest: SyncAutomationRequestPayload(
+            id: id,
+            source: .cloudRelay,
+            approvalState: .pendingApproval,
+            sourceClientID: "web",
+            toolName: "task.create",
+            redactedArgumentSummary: "Create remote task draft"
+        ))
+    }
+
+    private func makeReceipt(
+        id: String,
+        itemID: String,
+        status: ExecutionReceiptStatus,
+        outputSummary: String,
+        finishedAt: Date,
+        actionCount: Int = 1,
+        visibleSurfaces: [ExecutionReceiptSurface] = [.assistantQueue]
+    ) -> ExecutionReceipt {
+        ExecutionReceipt(
+            id: id,
+            runID: "run-\(id)",
+            assistantQueueItemID: itemID,
+            createdAt: finishedAt,
+            startedAt: finishedAt,
+            finishedAt: finishedAt,
+            status: status,
+            inputPreview: "Queue input preview",
+            outputSummary: outputSummary,
+            usage: .unavailable,
+            actions: (0..<actionCount).map { index in
+                ExecutionReceiptActionSummary(
+                    id: "\(id)-action-\(index)",
+                    toolName: ActionTool.taskCreate.rawValue,
+                    status: status,
+                    inputPreview: "Action input \(index)",
+                    outputSummary: "Action output \(index)"
+                )
+            },
+            visibleSurfaces: visibleSurfaces
         )
     }
 }

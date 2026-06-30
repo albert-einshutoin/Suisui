@@ -1147,6 +1147,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     private let inboxCaptureStore: (any InboxCaptureStore)?
     private let assistantQueueStore: (any AssistantQueueStore)?
     private let assistantQueueExecutionCoordinator: AssistantQueueExecutionCoordinator?
+    private let executionReceiptStore: (any ExecutionReceiptStore)?
     private let missedTaskReviewStateStore: any MissedTaskReviewStateStore
     private let externalTaskLinkStore: (any ExternalTaskLinkStore)?
     private let scheduleCalendarClient: (any CalendarClient)?
@@ -1162,6 +1163,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         inboxCaptureStore: (any InboxCaptureStore)? = nil,
         assistantQueueStore: (any AssistantQueueStore)? = nil,
         assistantQueueExecutionCoordinator: AssistantQueueExecutionCoordinator? = nil,
+        executionReceiptStore: (any ExecutionReceiptStore)? = nil,
         missedTaskReviewStateStore: any MissedTaskReviewStateStore = InMemoryMissedTaskReviewStateStore(),
         externalTaskLinkStore: (any ExternalTaskLinkStore)? = nil,
         scheduleCalendarClient: (any CalendarClient)? = nil,
@@ -1172,6 +1174,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.inboxCaptureStore = inboxCaptureStore
         self.assistantQueueStore = assistantQueueStore
         self.assistantQueueExecutionCoordinator = assistantQueueExecutionCoordinator
+        self.executionReceiptStore = executionReceiptStore
         self.missedTaskReviewStateStore = missedTaskReviewStateStore
         self.externalTaskLinkStore = externalTaskLinkStore
         self.scheduleCalendarClient = scheduleCalendarClient
@@ -2273,11 +2276,22 @@ public final class ProjectBoardViewModel: ObservableObject {
 
         do {
             // Project Board owns the central task cockpit, so it reads a compact
-            // queue snapshot instead of querying SQLite from SwiftUI views.
+            // queue snapshot instead of querying local stores from SwiftUI views.
+            // Receipts are outcome-only metadata; queue state remains the source of truth.
+            let items = try assistantQueueStore.list(filter: .all(limit: 50))
+            var receiptErrorMessage: String?
+            let receipts: [ExecutionReceipt]
+            do {
+                receipts = try executionReceiptStore?.list(limit: 100) ?? []
+            } catch {
+                receipts = []
+                receiptErrorMessage = "Assistant Queue execution receipts are unavailable. Queue state is still shown."
+            }
             assistantQueueSnapshot = AssistantQueueReadModel.snapshot(
-                from: try assistantQueueStore.list(filter: .all(limit: 50))
+                from: items,
+                receipts: receipts
             )
-            return nil
+            return receiptErrorMessage
         } catch {
             assistantQueueSnapshot = .empty
             return AssistantQueueStoreError.userMessage(for: error)

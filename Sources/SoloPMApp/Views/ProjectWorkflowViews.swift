@@ -1376,6 +1376,14 @@ private struct AssistantQueueRow: View {
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+
+                    if let receipt = row.latestReceipt {
+                        Divider()
+                            .padding(.vertical, 2)
+
+                        AssistantQueueReceiptSummaryView(receipt: receipt)
+                            .accessibilityIdentifier("assistant-queue-receipt-\(row.id)")
+                    }
                 }
 
                 Spacer(minLength: 8)
@@ -1496,7 +1504,86 @@ private struct AssistantQueueRow: View {
         if let blockingReason = row.blockingReason {
             values.append("Blocked: \(blockingReason)")
         }
+        if let receipt = row.latestReceipt {
+            values.append(localizedDisplay("Receipt: %@", localizedDisplay(receipt.statusLabel)))
+            values.append(receipt.outputSummary)
+        }
         return values.joined(separator: ", ")
+    }
+}
+
+private struct AssistantQueueReceiptSummaryView: View {
+    let receipt: AssistantQueueReceiptSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Label(localizedDisplay("Receipt: %@", localizedDisplay(receipt.statusLabel)), systemImage: receiptSystemImage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(receiptTint)
+                Text(String(format: String(localized: "%d actions recorded"), receipt.actionCount))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(receipt.usageLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(receipt.outputSummary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(localizedDisplay("Receipt ID: %@", receipt.id))
+                .font(.caption2.monospaced())
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Assistant Queue execution receipt")
+        .accessibilityValue(accessibilityValue)
+    }
+
+    private var receiptSystemImage: String {
+        switch receipt.status {
+        case .succeeded:
+            "checkmark.circle"
+        case .failed:
+            "exclamationmark.triangle"
+        case .running:
+            "arrow.triangle.2.circlepath"
+        case .canceled:
+            "stop.circle"
+        case .skipped:
+            "forward.end"
+        case .notStarted:
+            "circle"
+        }
+    }
+
+    private var receiptTint: Color {
+        switch receipt.status {
+        case .succeeded:
+            .green
+        case .failed:
+            .red
+        case .running:
+            .orange
+        case .canceled, .skipped, .notStarted:
+            .secondary
+        }
+    }
+
+    private var accessibilityValue: String {
+        [
+            localizedDisplay("Receipt: %@", localizedDisplay(receipt.statusLabel)),
+            String(format: String(localized: "%d actions recorded"), receipt.actionCount),
+            localizedDisplay(receipt.usageLabel),
+            receipt.outputSummary,
+            localizedDisplay("Receipt ID: %@", receipt.id)
+        ].joined(separator: ", ")
     }
 }
 
