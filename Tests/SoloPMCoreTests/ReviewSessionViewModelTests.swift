@@ -72,6 +72,36 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .notification, id: "notification-standup")))
     }
 
+    func testReminderExecutionReceiptIncludesCreatedReminderReference() throws {
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let registry = try ToolRegistry(tools: [
+            ReminderTool(name: .remindersCreate, client: InMemoryReminderClient())
+        ])
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(
+                    id: "reminder",
+                    tool: .remindersCreate,
+                    arguments: [
+                        "title": .string("Send launch notes"),
+                        "dueAt": .string("2026-07-01T09:00:00Z")
+                    ],
+                    riskLevel: .write
+                )
+            ]),
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore
+        )
+
+        try viewModel.approve()
+        try viewModel.execute()
+
+        let receipt = try XCTUnwrap(viewModel.lastExecutionReceipt)
+        XCTAssertEqual(receiptStore.receipts, [receipt])
+        XCTAssertEqual(receipt.actions.first?.toolName, ActionTool.remindersCreate.rawValue)
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .reminder, id: "reminder-1")))
+    }
+
     func testApproveOrReportErrorSurfacesDisabledApprovalFailure() throws {
         let registry = try ToolRegistry(tools: [
             StaticTool(name: .projectList, description: "read", inputSchema: ToolInputSchema(), permissionLevel: .read) { _, _ in
