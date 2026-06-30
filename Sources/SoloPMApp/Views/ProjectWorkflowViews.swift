@@ -744,6 +744,29 @@ struct DoneWorkflowView: View {
                         }
                     }
                 }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("Recent AI Receipts", systemImage: "doc.text.magnifyingglass")
+                        .font(.headline)
+                    if let unavailableMessage = viewModel.executionReceiptHistorySnapshot.unavailableMessage {
+                        ContentUnavailableView(
+                            "Execution receipts are unavailable",
+                            systemImage: "exclamationmark.triangle",
+                            description: Text(unavailableMessage)
+                        )
+                    } else if viewModel.executionReceiptHistorySnapshot.rows.isEmpty {
+                        ContentUnavailableView(
+                            "No AI receipts yet",
+                            systemImage: "doc.text.magnifyingglass",
+                            description: Text("Receipts appear here after approved AI work runs.")
+                        )
+                    } else {
+                        ForEach(viewModel.executionReceiptHistorySnapshot.rows) { row in
+                            ExecutionReceiptHistoryRowView(row: row)
+                        }
+                    }
+                }
+                .accessibilityIdentifier("recent-ai-receipts")
             }
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -810,6 +833,84 @@ private struct DoneTaskHistoryRow: View {
             return String(format: String(localized: "%@ completed at %@"), projectTitle, completedAt)
         }
         return String(format: String(localized: "%@ completed"), projectTitle)
+    }
+}
+
+private struct ExecutionReceiptHistoryRowView: View {
+    let row: ExecutionReceiptHistoryRow
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Label(row.statusLabel, systemImage: statusSystemImage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(statusTint)
+                Text(row.toolLabel)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Text(row.occurredAtLabel)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(row.outcomeSummary)
+                .font(.caption)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                Text(row.usageLabel)
+                Text(row.referenceSummary)
+                Text(row.sourceSummary)
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+
+            Text(row.receiptIDLabel)
+                .font(.caption2.monospaced())
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("execution-receipt-row-\(row.id)")
+        .accessibilityLabel("Execution receipt")
+        .accessibilityValue(row.accessibilityValue)
+        .accessibilityHint("Shows the redacted outcome, usage state, references, sources, and receipt identifier for approved AI work.")
+    }
+
+    private var statusSystemImage: String {
+        switch row.status {
+        case .notStarted:
+            return "circle"
+        case .running:
+            return "arrow.triangle.2.circlepath"
+        case .succeeded:
+            return "checkmark.circle.fill"
+        case .failed:
+            return "xmark.octagon.fill"
+        case .skipped:
+            return "forward.end.circle"
+        case .canceled:
+            return "stop.circle"
+        }
+    }
+
+    private var statusTint: Color {
+        switch row.status {
+        case .notStarted, .skipped, .canceled:
+            return .secondary
+        case .running:
+            return .blue
+        case .succeeded:
+            return .green
+        case .failed:
+            return .red
+        }
     }
 }
 

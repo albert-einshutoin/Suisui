@@ -496,6 +496,29 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("\"Reviewed detail \\(receipt.redactedTaskDetail)\""))
     }
 
+    func testDoneWorkflowShowsRecentAIReceiptsWithoutRawReceiptFields() throws {
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let historySource = try readPackageFile("Sources/SoloPMCore/App/ExecutionReceiptHistory.swift")
+
+        XCTAssertTrue(workflowSource.contains("viewModel.executionReceiptHistorySnapshot"))
+        XCTAssertTrue(workflowSource.contains("Recent AI Receipts"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"recent-ai-receipts\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"execution-receipt-row-\\(row.id)\")"))
+        XCTAssertTrue(workflowSource.contains("ExecutionReceiptHistoryRowView"))
+        let receiptHistoryViewTail = try XCTUnwrap(
+            workflowSource.components(separatedBy: "private struct ExecutionReceiptHistoryRowView").last
+        )
+        let receiptHistoryViewSource = try XCTUnwrap(
+            receiptHistoryViewTail.components(separatedBy: "private struct ScheduleDraftPanel").first
+        )
+        XCTAssertTrue(historySource.contains("displayDigest(for: receipt)"))
+        XCTAssertTrue(historySource.contains("Receipt Digest: %@"))
+        XCTAssertFalse(receiptHistoryViewSource.contains(".inputPreview"))
+        XCTAssertFalse(receiptHistoryViewSource.contains(".sourceLinks"))
+        XCTAssertFalse(receiptHistoryViewSource.contains(".actions"))
+        XCTAssertFalse(receiptHistoryViewSource.contains("receipt.id"))
+    }
+
     func testTaskInspectorShowsDocumentSourceReviewForAutomationDrafts() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
 

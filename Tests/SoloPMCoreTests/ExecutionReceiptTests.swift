@@ -373,4 +373,139 @@ final class ExecutionReceiptTests: XCTestCase {
             XCTAssertEqual(error as? ExecutionReceiptStoreError, .duplicateReceiptID("receipt-run-1"))
         }
     }
+
+    func testExecutionReceiptHistoryRowsExposeOnlySafeGlobalAuditFields() throws {
+        let promptSecret = "sk-" + "proj-history-secret"
+        let argumentSecret = "token" + "=" + "argument-secret"
+        let outputSecret = "secret" + "=" + "output-secret"
+        let rawReceiptID = "receipt:https://docs.example.com/raw-id?token=receipt-id-secret"
+        let receipt = ExecutionReceipt(
+            id: rawReceiptID,
+            runID: "run-history-safe",
+            createdAt: Date(timeIntervalSince1970: 10),
+            startedAt: Date(timeIntervalSince1970: 20),
+            finishedAt: Date(timeIntervalSince1970: 30),
+            status: .succeeded,
+            inputPreview: "Raw provider prompt \(promptSecret) from /Users/alice/private-source.md",
+            outputSummary: "Created launch task with \(outputSecret)",
+            model: ExecutionReceiptModel(provider: "OpenAI", name: "gpt-5.3"),
+            primaryToolName: ActionTool.taskCreate.rawValue,
+            usage: ExecutionReceiptUsage(
+                inputTokens: 120,
+                outputTokens: 32,
+                estimatedCostCents: 3.2,
+                currencyCode: "USD",
+                isEstimated: true
+            ),
+            references: [
+                ExecutionReceiptReference(kind: .task, id: "42", label: "Launch task \(argumentSecret)"),
+                ExecutionReceiptReference(kind: .project, id: "7", label: "Release Project")
+            ],
+            sourceLinks: [
+                ExecutionReceiptSourceLink(
+                    kind: .document,
+                    title: "Spec \(promptSecret)",
+                    url: "file:///Users/alice/private-source.md"
+                )
+            ],
+            actions: [
+                ExecutionReceiptActionSummary(
+                    id: "action-history-safe",
+                    toolName: ActionTool.taskCreate.rawValue,
+                    status: .succeeded,
+                    inputPreview: "title: \(argumentSecret)",
+                    outputSummary: "Created with \(outputSecret)"
+                )
+            ],
+            visibleSurfaces: [.auditLog]
+        )
+
+        let row = try XCTUnwrap(ExecutionReceiptHistoryReadModel.snapshot(from: [receipt]).rows.first)
+        let displayedText = [
+            row.id,
+            row.statusLabel,
+            row.toolLabel,
+            row.outcomeSummary,
+            row.usageLabel,
+            row.referenceSummary,
+            row.sourceSummary,
+            row.occurredAtLabel,
+            row.receiptIDLabel,
+            row.accessibilityValue
+        ].joined(separator: " ")
+
+        XCTAssertTrue(row.id.hasPrefix("receipt-"))
+        XCTAssertEqual(row.id.count, "receipt-".count + 16)
+        XCTAssertTrue(row.receiptIDLabel.contains(row.id))
+        XCTAssertEqual(row.status, .succeeded)
+        XCTAssertEqual(row.statusLabel, "Succeeded")
+        XCTAssertEqual(row.toolLabel, "task.create")
+        XCTAssertTrue(row.usageLabel.contains("Estimated"))
+        XCTAssertTrue(row.usageLabel.contains("152 tokens"))
+        XCTAssertTrue(row.usageLabel.contains("USD"))
+        XCTAssertTrue(row.referenceSummary.contains("Task"))
+        XCTAssertTrue(row.referenceSummary.contains("Project"))
+        XCTAssertTrue(row.sourceSummary.contains("Document"))
+        XCTAssertFalse(displayedText.contains(promptSecret))
+        XCTAssertFalse(displayedText.contains("argument-secret"))
+        XCTAssertFalse(displayedText.contains("output-secret"))
+        XCTAssertFalse(displayedText.contains("/Users/alice/private-source.md"))
+        XCTAssertFalse(displayedText.contains("file://"))
+        XCTAssertFalse(displayedText.contains("Raw provider prompt"))
+        XCTAssertFalse(displayedText.contains("title:"))
+        XCTAssertFalse(displayedText.contains(rawReceiptID))
+        XCTAssertFalse(displayedText.contains("receipt-id-secret"))
+    }
+
+    func testExecutionReceiptHistorySortsByOutcomeTimeAndIncludesFailureCanceledAndUsageStates() {
+        let failed = ExecutionReceipt(
+            id: "receipt-failed",
+            runID: "run-failed",
+            createdAt: Date(timeIntervalSince1970: 10),
+            finishedAt: Date(timeIntervalSince1970: 40),
+            status: .failed,
+            inputPreview: "Input failed",
+            outputSummary: "Tool failed",
+            primaryToolName: "calendar.create",
+            usage: .unknown
+        )
+        let canceled = ExecutionReceipt(
+            id: "receipt-canceled",
+            runID: "run-canceled",
+            createdAt: Date(timeIntervalSince1970: 50),
+            startedAt: Date(timeIntervalSince1970: 60),
+            finishedAt: nil,
+            status: .canceled,
+            inputPreview: "Input canceled",
+            outputSummary: "Canceled by user",
+            primaryToolName: "notification.send",
+            usage: .unavailable
+        )
+        let measured = ExecutionReceipt(
+            id: "receipt-measured",
+            runID: "run-measured",
+            createdAt: Date(timeIntervalSince1970: 20),
+            finishedAt: Date(timeIntervalSince1970: 30),
+            status: .succeeded,
+            inputPreview: "Input measured",
+            outputSummary: "Done",
+            primaryToolName: "task.update",
+            usage: ExecutionReceiptUsage(
+                inputTokens: 8,
+                outputTokens: 4,
+                estimatedCostCents: 1.0,
+                currencyCode: "USD",
+                isEstimated: false
+            )
+        )
+
+        let snapshot = ExecutionReceiptHistoryReadModel.snapshot(from: [failed, canceled, measured], limit: 10)
+
+        XCTAssertEqual(snapshot.rows.map(\.toolLabel), ["notification.send", "calendar.create", "task.update"])
+        XCTAssertEqual(snapshot.rows.map(\.status), [.canceled, .failed, .succeeded])
+        XCTAssertTrue(snapshot.rows[0].usageLabel.contains("Unavailable"))
+        XCTAssertTrue(snapshot.rows[1].usageLabel.contains("Unknown"))
+        XCTAssertTrue(snapshot.rows[2].usageLabel.contains("Measured"))
+        XCTAssertTrue(snapshot.rows[2].usageLabel.contains("12 tokens"))
+    }
 }

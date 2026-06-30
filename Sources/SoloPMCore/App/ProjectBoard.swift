@@ -1214,6 +1214,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var lastApprovedAutomationExecutionReceipt: ApprovedAutomationExecutionReceipt?
     @Published public private(set) var approvedAutomationExecutionReceipts: [ApprovedAutomationExecutionReceipt]
     @Published public private(set) var assistantQueueSnapshot: AssistantQueueSnapshot
+    @Published public private(set) var executionReceiptHistorySnapshot: ExecutionReceiptHistorySnapshot
 
     private let store: any ProjectBoardStore
     private let inboxCaptureStore: (any InboxCaptureStore)?
@@ -1274,6 +1275,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.lastApprovedAutomationExecutionReceipt = nil
         self.approvedAutomationExecutionReceipts = []
         self.assistantQueueSnapshot = .empty
+        self.executionReceiptHistorySnapshot = .empty
         self.taskAutomationSessionHistory = .empty
         refreshGoogleCalendarSyncStatus()
     }
@@ -2052,11 +2054,13 @@ public final class ProjectBoardViewModel: ObservableObject {
             )
             lastApprovedAutomationExecutionReceipt = receipt
             approvedAutomationExecutionReceipts.append(receipt)
+            let receiptPersistenceMessage = saveApprovedAutomationExecutionReceipt(receipt)
             // Approved automation is still local and review-gated, but it must
             // leave a visible content-execution trail so a status move cannot
             // masquerade as executing the reviewed task body.
             todayCommandFeedback = String(format: String(localized: "Executed approved automation for \"%@\"."), selectedTask.title)
             integrationStatusMessage = String(format: String(localized: "Executed approved automation for \"%@\"."), selectedTask.title)
+            errorMessage = receiptPersistenceMessage
             retainUnexecutedReviewedTasks(from: reviewDecision, excludingTaskID: selectedTask.id)
             onChange()
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
@@ -2065,6 +2069,28 @@ public final class ProjectBoardViewModel: ObservableObject {
             errorMessage = "Task title is required."
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
+    private func saveApprovedAutomationExecutionReceipt(_ receipt: ApprovedAutomationExecutionReceipt) -> String? {
+        guard let executionReceiptStore else {
+            refreshExecutionReceiptHistorySnapshot()
+            return nil
+        }
+
+        let commonReceipt = ExecutionReceiptFactory.makeApprovedAutomationReceipt(
+            receipt,
+            runID: "approved-automation-run:\(UUID().uuidString)",
+            approvalID: nil,
+            createdAt: Date()
+        )
+        do {
+            try executionReceiptStore.save(commonReceipt)
+            refreshExecutionReceiptHistorySnapshot()
+            return nil
+        } catch {
+            refreshExecutionReceiptHistorySnapshot()
+            return String(localized: "Approved automation ran, but the execution receipt could not be saved.")
         }
     }
 
@@ -2409,6 +2435,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             let loadedSnapshot = try store.loadSnapshot(includeArchived: showsArchivedProjects)
             let captureCacheErrorMessage = refreshInboxCaptureCache(for: loadedSnapshot)
             let assistantQueueErrorMessage = refreshAssistantQueueSnapshot()
+            refreshExecutionReceiptHistorySnapshot()
             snapshot = loadedSnapshot
             if selectedProjectID == nil || !snapshot.projects.contains(where: { $0.id == selectedProjectID }) {
                 selectedProjectID = snapshot.projects.first?.id
@@ -2419,6 +2446,26 @@ public final class ProjectBoardViewModel: ObservableObject {
             errorMessage = assistantQueueErrorMessage ?? captureCacheErrorMessage
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
+    private func refreshExecutionReceiptHistorySnapshot() {
+        guard let executionReceiptStore else {
+            executionReceiptHistorySnapshot = .empty
+            return
+        }
+
+        do {
+            let receipts = try executionReceiptStore.list(limit: 100)
+            executionReceiptHistorySnapshot = ExecutionReceiptHistoryReadModel.snapshot(
+                from: receipts,
+                limit: 10
+            )
+        } catch {
+            executionReceiptHistorySnapshot = ExecutionReceiptHistorySnapshot(
+                rows: [],
+                unavailableMessage: String(localized: "Execution receipts are unavailable.")
+            )
         }
     }
 
@@ -2439,7 +2486,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                 receipts = try executionReceiptStore?.list(limit: 100) ?? []
             } catch {
                 receipts = []
-                receiptErrorMessage = "Assistant Queue execution receipts are unavailable. Queue state is still shown."
+                receiptErrorMessage = String(localized: "Assistant Queue execution receipts are unavailable. Queue state is still shown.")
             }
             assistantQueueSnapshot = AssistantQueueReadModel.snapshot(
                 from: items,
@@ -2507,6 +2554,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         do {
             let result = try assistantQueueExecutionCoordinator.execute(id: id)
             _ = refreshAssistantQueueSnapshot()
+            refreshExecutionReceiptHistorySnapshot()
             if result.item.state == .done {
                 errorMessage = nil
                 integrationStatusMessage = "Executed Assistant Queue item."
@@ -2519,6 +2567,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             return false
         } catch {
             _ = refreshAssistantQueueSnapshot()
+            refreshExecutionReceiptHistorySnapshot()
             errorMessage = Self.assistantQueueExecutionMessage(for: error)
             integrationStatusMessage = nil
             return false

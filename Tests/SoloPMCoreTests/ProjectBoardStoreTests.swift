@@ -959,6 +959,86 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelLoadsGlobalExecutionReceiptHistory() throws {
+        let receiptStore = InMemoryExecutionReceiptStore(receipts: [
+            ExecutionReceipt(
+                id: "receipt-board-history",
+                runID: "run-board-history",
+                createdAt: Date(timeIntervalSince1970: 100),
+                finishedAt: Date(timeIntervalSince1970: 120),
+                status: .succeeded,
+                inputPreview: "Raw prompt token=history-secret",
+                outputSummary: "Created visible audit row",
+                primaryToolName: ActionTool.taskCreate.rawValue,
+                usage: ExecutionReceiptUsage(inputTokens: 4, outputTokens: 6, estimatedCostCents: 0.5, currencyCode: "USD"),
+                references: [ExecutionReceiptReference(kind: .task, id: "1", label: "History task")]
+            )
+        ])
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: receiptStore
+        )
+
+        viewModel.load()
+
+        let row = try XCTUnwrap(viewModel.executionReceiptHistorySnapshot.rows.first)
+        XCTAssertTrue(row.id.hasPrefix("receipt-"))
+        XCTAssertEqual(row.id.count, "receipt-".count + 16)
+        XCTAssertFalse(row.receiptIDLabel.contains("receipt-board-history"))
+        XCTAssertEqual(row.statusLabel, "Succeeded")
+        XCTAssertEqual(row.toolLabel, ActionTool.taskCreate.rawValue)
+        XCTAssertEqual(row.outcomeSummary, "Created visible audit row")
+        XCTAssertTrue(row.usageLabel.contains("10 tokens"))
+        XCTAssertFalse(row.accessibilityValue.contains("history-secret"))
+        XCTAssertNil(viewModel.executionReceiptHistorySnapshot.unavailableMessage)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelPersistsApprovedAutomationReceiptToGlobalHistory() throws {
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: receiptStore
+        )
+        viewModel.load()
+        _ = try XCTUnwrap(viewModel.createTask(
+            title: "Launch token=approved-history-secret",
+            detail: "Use sk-proj-approved-history-secret before drafting.",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-22"
+        ))
+        viewModel.prepareAutomationReviewForSelectedTask()
+
+        viewModel.runApprovedAutomationForSelectedTask()
+
+        let storedReceipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(storedReceipt.status, .succeeded)
+        XCTAssertEqual(storedReceipt.primaryToolName, ActionTool.taskUpdate.rawValue)
+        XCTAssertEqual(storedReceipt.visibleSurfaces, [.doneList, .taskDetail, .auditLog])
+        XCTAssertTrue(storedReceipt.inputPreview.contains("[REDACTED_SECRET]"))
+        XCTAssertFalse(storedReceipt.inputPreview.contains("approved-history-secret"))
+
+        let row = try XCTUnwrap(viewModel.executionReceiptHistorySnapshot.rows.first)
+        let rowText = [
+            row.id,
+            row.toolLabel,
+            row.outcomeSummary,
+            row.referenceSummary,
+            row.sourceSummary,
+            row.receiptIDLabel,
+            row.accessibilityValue
+        ].joined(separator: " ")
+        XCTAssertTrue(row.id.hasPrefix("receipt-"))
+        XCTAssertEqual(row.status, .succeeded)
+        XCTAssertEqual(row.toolLabel, ActionTool.taskUpdate.rawValue)
+        XCTAssertTrue(row.outcomeSummary.contains("Moved task"))
+        XCTAssertFalse(rowText.contains(storedReceipt.id))
+        XCTAssertFalse(rowText.contains("approved-history-secret"))
+        XCTAssertNil(viewModel.executionReceiptHistorySnapshot.unavailableMessage)
+    }
+
+    @MainActor
     func testProjectBoardViewModelRejectsDoneAndBlockedTasksBeforeAutomationReview() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()
