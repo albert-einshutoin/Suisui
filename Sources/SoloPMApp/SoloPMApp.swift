@@ -73,6 +73,7 @@ struct SoloPM: App {
                 integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot(),
                 externalMCPViewModel: AppRuntimeFactory.makeExternalMCPSettingsViewModel(),
                 syncViewModel: AppRuntimeFactory.makeSyncSettingsViewModel(),
+                googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
                 appearancePreference: $appearancePreference,
                 languagePreference: $languagePreference
             )
@@ -251,6 +252,7 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
                     integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot(),
                     externalMCPViewModel: AppRuntimeFactory.makeExternalMCPSettingsViewModel(),
                     syncViewModel: AppRuntimeFactory.makeSyncSettingsViewModel(),
+                    googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
                     appearancePreference: .constant(SoloPMAppearancePreference.environmentOverride ?? .system),
                     languagePreference: .constant(AppLanguagePreference.environmentOverride ?? .system),
                     initialTab: selectedTab
@@ -1561,6 +1563,7 @@ private extension VoiceModelID {
 private struct SettingsView: View {
     let watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot
     let integrationPermissionSnapshot: PermissionSnapshot
+    let googleCalendarStatusProvider: () -> GoogleCalendarRuntimeSyncStatus
     @StateObject private var settingsViewModel: AppSettingsViewModel
     @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
     @StateObject private var externalMCPViewModel: ExternalMCPSettingsViewModel
@@ -1570,6 +1573,8 @@ private struct SettingsView: View {
     @State private var isConfirmingMCPRegistrationDeletion = false
     @State private var isChoosingDataLocation = false
     @State private var selectedTab: SettingsTab
+    @State private var googleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus?
+    @State private var googleCalendarSetupMessage: String?
 
     init(
         settingsViewModel: AppSettingsViewModel,
@@ -1578,12 +1583,14 @@ private struct SettingsView: View {
         integrationPermissionSnapshot: PermissionSnapshot,
         externalMCPViewModel: ExternalMCPSettingsViewModel,
         syncViewModel: SyncSettingsViewModel,
+        googleCalendarStatusProvider: @escaping () -> GoogleCalendarRuntimeSyncStatus,
         appearancePreference: Binding<SoloPMAppearancePreference>,
         languagePreference: Binding<AppLanguagePreference>,
         initialTab: SettingsTab = .overview
     ) {
         self.watcherDiagnosticsSnapshot = watcherDiagnosticsSnapshot
         self.integrationPermissionSnapshot = integrationPermissionSnapshot
+        self.googleCalendarStatusProvider = googleCalendarStatusProvider
         _settingsViewModel = StateObject(wrappedValue: settingsViewModel)
         _launchAtLoginViewModel = StateObject(wrappedValue: launchAtLoginViewModel)
         _externalMCPViewModel = StateObject(wrappedValue: externalMCPViewModel)
@@ -1591,6 +1598,8 @@ private struct SettingsView: View {
         _appearancePreference = appearancePreference
         _languagePreference = languagePreference
         _selectedTab = State(initialValue: initialTab)
+        _googleCalendarSyncStatus = State(initialValue: nil)
+        _googleCalendarSetupMessage = State(initialValue: nil)
     }
 
     var body: some View {
@@ -1968,11 +1977,26 @@ private struct SettingsView: View {
                     .foregroundStyle(.secondary)
                 ExternalConnectorScopeRow(
                     name: "Google Calendar",
-                    status: "OAuth required",
-                    detail: "Due tasks can be pushed as calendar events after Pro and Google authorization.",
+                    status: googleCalendarSettingsReadinessRow.statusLabel,
+                    detail: googleCalendarSettingsReadinessRow.detailLabel,
+                    nextAction: googleCalendarSettingsReadinessRow.nextActionLabel,
+                    privacyBoundary: googleCalendarSettingsReadinessRow.privacyBoundaryLabel,
                     systemImage: "calendar.badge.plus",
-                    tone: .warning
+                    tone: googleCalendarSettingsTone,
+                    statusActionLabel: googleCalendarSettingsReadinessRow.statusCheckActionLabel,
+                    onStatusAction: refreshGoogleCalendarSettingsStatus
                 )
+                Button("Connect with OAuth authorization") {
+                    googleCalendarSetupMessage = "OAuth authorization opens in the system browser with PKCE. The connect flow is not available in this build yet."
+                }
+                .accessibilityIdentifier("settings-google-calendar-oauth-setup")
+                .accessibilityHint("Explains the Google Calendar OAuth setup flow until browser authorization is available.")
+                if let googleCalendarSetupMessage {
+                    Label(localizedSettingsDisplay(googleCalendarSetupMessage), systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("settings-google-calendar-oauth-setup-message")
+                }
                 ExternalConnectorScopeRow(
                     name: "Todoist",
                     status: "Connector planned",
@@ -2584,6 +2608,29 @@ private struct SettingsView: View {
         settingsViewModel.ttsProviderReadinessRow.isReady ? .ready : .warning
     }
 
+    private var googleCalendarSettingsReadinessRow: GoogleCalendarSettingsReadinessRow {
+        GoogleCalendarSettingsReadinessRow(status: googleCalendarSyncStatus)
+    }
+
+    private var googleCalendarSettingsTone: SettingsStatusTone {
+        guard let googleCalendarSyncStatus else {
+            return .neutral
+        }
+        switch googleCalendarSyncStatus.state {
+        case .ready:
+            return .ready
+        case .failed, .invalidCalendarID:
+            return .danger
+        default:
+            return .warning
+        }
+    }
+
+    private func refreshGoogleCalendarSettingsStatus() {
+        googleCalendarSetupMessage = nil
+        googleCalendarSyncStatus = googleCalendarStatusProvider()
+    }
+
     private var calendarOverviewStatusLabel: String {
         PermissionDisplayPolicy.integrationStatusLabel(for: integrationPermissionSnapshot.status(for: .calendar))
     }
@@ -3127,8 +3174,34 @@ private struct ExternalConnectorScopeRow: View {
     let name: String
     let status: String
     let detail: String
+    let nextAction: String?
+    let privacyBoundary: String?
     let systemImage: String
     let tone: SettingsStatusTone
+    let statusActionLabel: String?
+    let onStatusAction: (() -> Void)?
+
+    init(
+        name: String,
+        status: String,
+        detail: String,
+        nextAction: String? = nil,
+        privacyBoundary: String? = nil,
+        systemImage: String,
+        tone: SettingsStatusTone,
+        statusActionLabel: String? = nil,
+        onStatusAction: (() -> Void)? = nil
+    ) {
+        self.name = name
+        self.status = status
+        self.detail = detail
+        self.nextAction = nextAction
+        self.privacyBoundary = privacyBoundary
+        self.systemImage = systemImage
+        self.tone = tone
+        self.statusActionLabel = statusActionLabel
+        self.onStatusAction = onStatusAction
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -3156,14 +3229,43 @@ private struct ExternalConnectorScopeRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
+
+                if let nextAction {
+                    Label(localizedSettingsDisplay(nextAction), systemImage: "arrow.right.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let privacyBoundary {
+                    Label(localizedSettingsDisplay(privacyBoundary), systemImage: "key.horizontal")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            if let statusActionLabel, let onStatusAction {
+                Button(statusActionLabel) {
+                    onStatusAction()
+                }
+                .buttonStyle(.bordered)
             }
 
             Spacer(minLength: 0)
         }
         .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: statusActionLabel == nil ? .combine : .contain)
+        .accessibilityIdentifier(name == "Google Calendar" ? "settings-google-calendar-readiness-row" : "settings-external-connector-row")
         .accessibilityLabel("\(name) external connector")
-        .accessibilityValue("\(localizedSettingsDisplay(status)), \(localizedSettingsDisplay(detail))")
+        .accessibilityValue([
+            localizedSettingsDisplay(status),
+            localizedSettingsDisplay(detail),
+            nextAction.map(localizedSettingsDisplay),
+            privacyBoundary.map(localizedSettingsDisplay)
+        ].compactMap { $0 }.joined(separator: ", "))
     }
 }
 
@@ -3559,15 +3661,12 @@ private enum AppRuntimeFactory {
             let executionReceiptStore = try? makeExecutionReceiptStore()
             let secretStore = makeSecretStore()
             let entitlementStore = KeychainEntitlementStore(secretStore: secretStore)
-            let googleCalendarSync = try GoogleCalendarAppRuntimeFactory.makeSyncController(
+            let googleCalendarSync = try makeGoogleCalendarSyncController(
+                connection: connection,
                 entitlementStore: entitlementStore,
                 store: projectBoardStore,
                 linkStore: externalTaskLinkStore,
-                secretStore: secretStore,
-                connection: connection,
-                idempotencyNamespaceStore: SQLiteGoogleCalendarIdempotencyNamespaceStore(connection: connection),
-                calendarID: "primary",
-                timeZoneIdentifier: TimeZone.current.identifier
+                secretStore: secretStore
             )
             return ProjectBoardViewModel(
                 store: projectBoardStore,
@@ -3667,6 +3766,28 @@ private enum AppRuntimeFactory {
                 networkClient: UnavailableSyncNetworkClient()
             )
         )
+    }
+
+    static func makeGoogleCalendarRuntimeSyncStatus() -> GoogleCalendarRuntimeSyncStatus {
+        do {
+            let connection = try migratedConnection()
+            let secretStore = makeSecretStore()
+            return try GoogleCalendarAppRuntimeFactory.syncStatus(
+                entitlementStore: KeychainEntitlementStore(secretStore: secretStore),
+                secretStore: secretStore,
+                connection: connection,
+                calendarID: "primary",
+                timeZoneIdentifier: TimeZone.current.identifier
+            )
+        } catch {
+            return GoogleCalendarRuntimeSyncStatus(
+                plan: .free,
+                state: .failed(message: UserFacingErrorMessageSanitizer.message(
+                    from: error,
+                    fallback: "Google Calendar sync status is unavailable."
+                ))
+            )
+        }
     }
 
     static func makeIntegrationPermissionSnapshot() -> PermissionSnapshot {
@@ -3907,6 +4028,25 @@ private enum AppRuntimeFactory {
         // Runtime surfaces can be recreated as windows open and close. Sharing the store keeps
         // successful Keychain reads in one process-local cache instead of prompting per surface.
         return sharedSecretStore
+    }
+
+    private static func makeGoogleCalendarSyncController(
+        connection: SQLiteConnection,
+        entitlementStore: any EntitlementStore,
+        store: any ProjectBoardStore,
+        linkStore: any ExternalTaskLinkStore,
+        secretStore: any SecretStore
+    ) throws -> GoogleCalendarRuntimeSyncController {
+        try GoogleCalendarAppRuntimeFactory.makeSyncController(
+            entitlementStore: entitlementStore,
+            store: store,
+            linkStore: linkStore,
+            secretStore: secretStore,
+            connection: connection,
+            idempotencyNamespaceStore: SQLiteGoogleCalendarIdempotencyNamespaceStore(connection: connection),
+            calendarID: "primary",
+            timeZoneIdentifier: TimeZone.current.identifier
+        )
     }
 
     private static func makeAuditLogger() throws -> any AuditLogger {

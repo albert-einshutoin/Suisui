@@ -226,6 +226,33 @@ final class GoogleCalendarAppRuntimeTests: XCTestCase {
         XCTAssertEqual(try controller.status(now: Date(timeIntervalSince1970: 4_000)).state, .tokenExpiredWithoutRefresh)
     }
 
+    func testAppRuntimeStatusCheckDoesNotCreateIdempotencyNamespace() throws {
+        let secretStore = InMemorySecretStore()
+        let connection = try migratedConnection()
+        let metadataStore = SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        try GoogleCalendarOAuthCredentialStore(secretStore: secretStore, metadataStore: metadataStore).saveTokens(
+            accessToken: "calendar-access-token",
+            refreshToken: nil,
+            grantedScopes: [GoogleCalendarRuntimeOAuthScope.eventsWrite],
+            expiresAt: Date(timeIntervalSince1970: 5_000)
+        )
+
+        let status = try GoogleCalendarAppRuntimeFactory.syncStatus(
+            entitlementStore: GoogleCalendarRuntimeStaticEntitlementStore(plan: .pro),
+            secretStore: secretStore,
+            connection: connection,
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo",
+            now: Date(timeIntervalSince1970: 4_000)
+        )
+        let namespaceRows = try connection.queryRows(
+            "SELECT value FROM settings WHERE key = 'google_calendar.idempotency_namespace.v1';"
+        )
+
+        XCTAssertEqual(status.state, .ready)
+        XCTAssertTrue(namespaceRows.isEmpty)
+    }
+
     private func makeController(
         secretStore: any SecretStore,
         connection: SQLiteConnection

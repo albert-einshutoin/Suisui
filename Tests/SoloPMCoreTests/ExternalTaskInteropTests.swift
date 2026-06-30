@@ -263,6 +263,58 @@ final class ExternalTaskInteropTests: XCTestCase {
         XCTAssertTrue(readyStatus.canSync)
     }
 
+    func testGoogleCalendarSettingsReadinessRowKeepsOAuthActionsSeparateFromAPIKeys() {
+        let notChecked = GoogleCalendarSettingsReadinessRow(status: nil)
+        XCTAssertEqual(notChecked.statusLabel, "Not checked")
+        XCTAssertEqual(notChecked.detailLabel, "Check local OAuth, plan, and calendar readiness before syncing.")
+        XCTAssertEqual(notChecked.nextActionLabel, "Check Status")
+        XCTAssertFalse(notChecked.isReady)
+
+        let upgradeRequired = GoogleCalendarSettingsReadinessRow(
+            status: GoogleCalendarRuntimeSyncStatus(plan: .free, state: .upgradeRequired(requiredPlan: .pro))
+        )
+        XCTAssertEqual(upgradeRequired.statusLabel, "Upgrade required")
+        XCTAssertEqual(upgradeRequired.nextActionLabel, "Connect with OAuth authorization")
+
+        let disconnected = GoogleCalendarSettingsReadinessRow(
+            status: GoogleCalendarRuntimeSyncStatus(plan: .pro, state: .oauthDisconnected)
+        )
+        XCTAssertEqual(disconnected.statusLabel, "OAuth required")
+        XCTAssertEqual(disconnected.detailLabel, "Connect Google Calendar with OAuth before syncing due tasks.")
+        XCTAssertEqual(disconnected.nextActionLabel, "Connect with OAuth authorization")
+        XCTAssertEqual(disconnected.statusCheckActionLabel, "Check Status")
+        XCTAssertEqual(disconnected.privacyBoundaryLabel, "Tokens stay in Keychain; Settings uses OAuth only.")
+        XCTAssertFalse(disconnected.isReady)
+
+        let ready = GoogleCalendarSettingsReadinessRow(
+            status: GoogleCalendarRuntimeSyncStatus(plan: .pro, state: .ready)
+        )
+        XCTAssertEqual(ready.statusLabel, "Ready")
+        XCTAssertEqual(ready.nextActionLabel, "Sync due tasks from Project Board")
+        XCTAssertTrue(ready.isReady)
+
+        let renderedLabels = [
+            notChecked.statusLabel,
+            notChecked.detailLabel,
+            notChecked.nextActionLabel,
+            upgradeRequired.statusLabel,
+            upgradeRequired.detailLabel,
+            upgradeRequired.nextActionLabel,
+            disconnected.statusLabel,
+            disconnected.detailLabel,
+            disconnected.nextActionLabel,
+            disconnected.statusCheckActionLabel,
+            disconnected.privacyBoundaryLabel,
+            ready.statusLabel,
+            ready.detailLabel,
+            ready.nextActionLabel
+        ].joined(separator: "\n")
+        XCTAssertFalse(renderedLabels.localizedCaseInsensitiveContains("api key"))
+        XCTAssertFalse(renderedLabels.contains("calendar-access-token"))
+        XCTAssertFalse(renderedLabels.contains("calendar-refresh-token"))
+        XCTAssertFalse(renderedLabels.localizedCaseInsensitiveContains("bearer "))
+    }
+
     @MainActor
     func testProjectBoardViewModelGoogleCalendarSyncUsesReadinessAndApprovalGate() throws {
         let store = InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
