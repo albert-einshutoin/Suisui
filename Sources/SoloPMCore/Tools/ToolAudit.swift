@@ -78,6 +78,12 @@ public struct AuditedTool: Tool {
 
     private static func isSensitiveArgumentKey(_ key: String) -> Bool {
         let normalized = key.lowercased()
+        // Free-form bodies can contain proprietary code, customer notes, or long
+        // prompts even when they do not match token regexes, so audit only records
+        // that such fields were present.
+        if ["body", "content", "contents", "markdown", "text"].contains(normalized) {
+            return true
+        }
         return [
             "api_key",
             "apikey",

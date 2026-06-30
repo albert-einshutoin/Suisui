@@ -166,7 +166,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     public func generatePlan(
         currentDate: Date = Date(),
         timeZoneIdentifier: String = TimeZone.current.identifier,
-        availableTools: [ActionTool] = ActionTool.allCases,
+        availableTools: [ActionTool] = ActionTool.defaultPlanningTools,
         knowledgeFrameCandidates: [KnowledgeFrameCandidate] = []
     ) async {
         guard draft.canGeneratePlan else {
@@ -210,7 +210,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         inputMode: ClarificationInputMode = .typed,
         currentDate: Date = Date(),
         timeZoneIdentifier: String = TimeZone.current.identifier,
-        availableTools: [ActionTool] = ActionTool.allCases,
+        availableTools: [ActionTool] = ActionTool.defaultPlanningTools,
         knowledgeFrameCandidates: [KnowledgeFrameCandidate] = []
     ) async {
         guard var session = clarificationSession else {

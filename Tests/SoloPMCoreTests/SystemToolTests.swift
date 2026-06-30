@@ -511,6 +511,35 @@ final class SystemToolTests: XCTestCase {
         XCTAssertTrue(arguments.contains("title=string(\"Secret task\")"))
     }
 
+    func testAuditedToolRedactsFreeformContentArguments() throws {
+        let logger = InMemoryAuditLogger()
+        let base = StaticTool(
+            name: .taskCreate,
+            description: "Create task",
+            inputSchema: ToolInputSchema(required: ["title"]),
+            permissionLevel: .writeWithApproval
+        ) { _, _ in
+            ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created")
+        }
+        let audited = AuditedTool(base: base, logger: logger)
+        let sourceBody = "public struct InternalPlan { let value = 1 }"
+
+        XCTAssertThrowsError(
+            try audited.execute(
+                arguments: [
+                    "title": .string("Create repo file"),
+                    "contents": .string(sourceBody)
+                ],
+                context: ToolExecutionContext(source: .developerTool)
+            )
+        )
+
+        let arguments = try XCTUnwrap(logger.recordedEvents.last?.metadata["arguments"])
+        XCTAssertFalse(arguments.contains(sourceBody))
+        XCTAssertTrue(arguments.contains("contents=[REDACTED_SECRET]"))
+        XCTAssertTrue(arguments.contains("title=string(\"Create repo file\")"))
+    }
+
     func testPhase2MVPRegistryContainsSystemTools() throws {
         let stores = try makeStores()
         let registry = try ToolRegistry.phase2MVP(

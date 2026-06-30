@@ -38,6 +38,36 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(logger.recordedEvents.map(\.status), [.started, .succeeded])
     }
 
+    func testGeneratePlanDefaultsToNonDeveloperPlanningTools() async {
+        let response = PlanningResponse(
+            providerID: "recording",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-default-tools",
+                userInput: "Create a task",
+                summary: "Create task",
+                actions: [PlanAction(id: "action-1", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        )
+        let provider = RecordingVoiceLLMProvider(response: response)
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("Create a task")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertEqual(provider.requests.first?.availableTools, ActionTool.defaultPlanningTools)
+        XCTAssertFalse(provider.requests.first?.availableTools.contains(.developmentRepositoryReadFile) ?? true)
+        XCTAssertFalse(provider.requests.first?.availableTools.contains(.developmentRepositoryCreateFile) ?? true)
+        XCTAssertFalse(provider.requests.first?.availableTools.contains(.developmentRepositoryUpdateFile) ?? true)
+    }
+
     func testGeneratePlanPersistsAssistantQueueItemWhenStoreIsConfigured() async {
         let store = RecordingAssistantQueueStore()
         let response = PlanningResponse(

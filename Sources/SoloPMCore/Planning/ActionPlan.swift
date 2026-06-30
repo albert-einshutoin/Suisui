@@ -131,6 +131,9 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
     case gitLogSummary = "git.log_summary"
     case gitDiffSummary = "git.diff_summary"
     case developmentPreparePullRequestWorkflow = "development.pr_workflow.prepare"
+    case developmentRepositoryReadFile = "development.repository.read_file"
+    case developmentRepositoryCreateFile = "development.repository.create_file"
+    case developmentRepositoryUpdateFile = "development.repository.update_file"
 
     public var defaultRiskLevel: RiskLevel {
         switch self {
@@ -148,7 +151,8 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
              .gitStatus,
              .gitBranch,
              .gitLogSummary,
-             .gitDiffSummary:
+             .gitDiffSummary,
+             .developmentRepositoryReadFile:
             .read
         case .mailDraftCreateText:
             .draft
@@ -177,7 +181,9 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
              .frameCreate,
              .frameUpdate,
              .frameDelete,
-             .developmentPreparePullRequestWorkflow:
+             .developmentPreparePullRequestWorkflow,
+             .developmentRepositoryCreateFile,
+             .developmentRepositoryUpdateFile:
             .write
         }
     }
@@ -203,7 +209,14 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
             .knowledgeFrame
         case .mailDraftCreateText:
             .mailDraft
-        case .gitStatus, .gitBranch, .gitLogSummary, .gitDiffSummary, .developmentPreparePullRequestWorkflow:
+        case .gitStatus,
+             .gitBranch,
+             .gitLogSummary,
+             .gitDiffSummary,
+             .developmentPreparePullRequestWorkflow,
+             .developmentRepositoryReadFile,
+             .developmentRepositoryCreateFile,
+             .developmentRepositoryUpdateFile:
             .developer
         }
     }
@@ -227,7 +240,16 @@ public extension ActionTool {
     }
 
     static var developerModePlanningTools: [ActionTool] {
-        [.gitStatus, .gitBranch, .gitLogSummary, .gitDiffSummary, .developmentPreparePullRequestWorkflow]
+        [
+            .gitStatus,
+            .gitBranch,
+            .gitLogSummary,
+            .gitDiffSummary,
+            .developmentPreparePullRequestWorkflow,
+            .developmentRepositoryReadFile,
+            .developmentRepositoryCreateFile,
+            .developmentRepositoryUpdateFile
+        ]
     }
 }
 
