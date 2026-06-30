@@ -610,8 +610,7 @@ private struct VoiceCaptureView: View {
         openWindow(id: "project-board")
         NotificationCenter.default.post(
             name: .soloPMVoiceDailyPlanningReviewRequested,
-            object: nil,
-            userInfo: [SoloPMVoiceDailyPlanningReviewBridge.sourceTranscriptUserInfoKey: request.sourceTranscript]
+            object: nil
         )
     }
 
@@ -4122,31 +4121,8 @@ private enum AppRuntimeFactory {
         }
     }
 
-    private static func makeTextToSpeechProvider(settings: AppSettings, outputURL: URL? = nil) -> any TextToSpeechProvider {
-        let normalizedSettings = settings.normalizedForRuntime
-        switch normalizedSettings.ttsProvider {
-        case .systemSpeech, .localKokoro:
-            let configuration = KokoroLocalTTSConfiguration(
-                executablePath: normalizedSettings.kokoroExecutablePath ?? "",
-                languageCode: normalizedSettings.ttsLanguageCode,
-                voiceID: normalizedSettings.ttsVoiceID,
-                outputURL: outputURL
-            )
-            return KokoroLocalTTSProvider(configuration: configuration)
-        }
-    }
-
     static func makeTextToSpeechPreviewer(settings: AppSettings) -> any TextToSpeechPreviewing {
-        let temporaryDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("solopm-tts-preview-\(UUID().uuidString)", isDirectory: true)
-        let outputURL = temporaryDirectory.appendingPathComponent("preview.wav", isDirectory: false)
-        return TemporaryDirectoryTextToSpeechPreviewer(
-            previewer: TextToSpeechPreviewService(
-                provider: makeTextToSpeechProvider(settings: settings, outputURL: outputURL),
-                audioPlayer: AVFoundationSpeechAudioPlayer()
-            ),
-            temporaryDirectory: temporaryDirectory
-        )
+        AppTextToSpeechRuntimeFactory.makePreviewer(settings: settings)
     }
 
     @MainActor
@@ -4314,6 +4290,39 @@ private enum AppRuntimeFactory {
 
     private static func applicationSupportDirectoryURL() throws -> URL {
         try SoloPMAppDatabaseLocation.applicationSupportDirectoryURL(createDirectory: true)
+    }
+}
+
+enum AppTextToSpeechRuntimeFactory {
+    static func makeProvider(settings: AppSettings, outputURL: URL? = nil) -> any TextToSpeechProvider {
+        let normalizedSettings = settings.normalizedForRuntime
+        switch normalizedSettings.ttsProvider {
+        case .systemSpeech, .localKokoro:
+            let configuration = KokoroLocalTTSConfiguration(
+                executablePath: normalizedSettings.kokoroExecutablePath ?? "",
+                languageCode: normalizedSettings.ttsLanguageCode,
+                voiceID: normalizedSettings.ttsVoiceID,
+                outputURL: outputURL
+            )
+            return KokoroLocalTTSProvider(configuration: configuration)
+        }
+    }
+
+    static func makePreviewer(
+        settings: AppSettings,
+        temporaryDirectoryPrefix: String = "solopm-tts-preview",
+        outputFilename: String = "preview.wav"
+    ) -> any TextToSpeechPreviewing {
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(temporaryDirectoryPrefix)-\(UUID().uuidString)", isDirectory: true)
+        let outputURL = temporaryDirectory.appendingPathComponent(outputFilename, isDirectory: false)
+        return TemporaryDirectoryTextToSpeechPreviewer(
+            previewer: TextToSpeechPreviewService(
+                provider: makeProvider(settings: settings, outputURL: outputURL),
+                audioPlayer: AVFoundationSpeechAudioPlayer()
+            ),
+            temporaryDirectory: temporaryDirectory
+        )
     }
 }
 

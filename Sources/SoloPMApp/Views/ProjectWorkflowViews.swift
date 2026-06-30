@@ -31,6 +31,7 @@ struct TodayWorkflowView: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
     var selectTodayTask: (ProjectBoardTask) -> Void = { _ in }
     var openInspectorForTodayRailTask: (Int64) -> Void = { _ in }
+    var playDailyPlanningReadout: () -> Void = {}
     @State private var commandTitle = ""
 
     private var plan: TodayWorkflowPlan {
@@ -89,7 +90,12 @@ struct TodayWorkflowView: View {
             viewModel: viewModel,
             onSelectTask: selectTodayTask,
             headerAccessory: {
-                TodayCommandPanel(commandTitle: $commandTitle, plan: plan, viewModel: viewModel)
+                TodayCommandPanel(
+                    commandTitle: $commandTitle,
+                    plan: plan,
+                    viewModel: viewModel,
+                    playDailyPlanningReadout: playDailyPlanningReadout
+                )
             },
             footer: {
                 TodaySuggestionPanel(plan: plan, viewModel: viewModel)
@@ -1206,6 +1212,7 @@ private struct ScheduleStatusBanner: View {
 
 private struct TodayDailyPlanningReviewPanel: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
+    let playDailyPlanningReadout: () -> Void
 
     private var review: DailyPlanningReview {
         viewModel.dailyPlanningReview
@@ -1264,6 +1271,16 @@ private struct TodayDailyPlanningReviewPanel: View {
 
             HStack(spacing: 8) {
                 Button {
+                    playDailyPlanningReadout()
+                } label: {
+                    Label("Read Aloud", systemImage: "speaker.wave.2")
+                }
+                .controlSize(.small)
+                .help("Reads this daily planning review with the configured local TTS provider.")
+                .accessibilityIdentifier("today-daily-planning-readout")
+                .accessibilityHint("Uses local TTS to read the review without changing tasks or writing Calendar.")
+
+                Button {
                     viewModel.enqueueDailyPlanningActionDraft(kind: .startRecommended)
                 } label: {
                     Label("Draft Start", systemImage: "play.circle")
@@ -1303,10 +1320,14 @@ private struct TodayCommandPanel: View {
     @Binding var commandTitle: String
     let plan: TodayWorkflowPlan
     @ObservedObject var viewModel: ProjectBoardViewModel
+    let playDailyPlanningReadout: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            TodayDailyPlanningReviewPanel(viewModel: viewModel)
+            TodayDailyPlanningReviewPanel(
+                viewModel: viewModel,
+                playDailyPlanningReadout: playDailyPlanningReadout
+            )
             TodayBriefingPanel(commandTitle: $commandTitle, plan: plan, viewModel: viewModel)
         }
     }

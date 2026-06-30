@@ -1926,6 +1926,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-focus-"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-draft-start\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-draft-defer\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-daily-planning-readout\")"))
+        XCTAssertTrue(workflowSource.contains("playDailyPlanningReadout()"))
         XCTAssertTrue(workflowSource.contains("viewModel.enqueueDailyPlanningActionDraft(kind: .startRecommended)"))
         XCTAssertTrue(workflowSource.contains("viewModel.enqueueDailyPlanningActionDraft(kind: .deferRecommendedToTomorrow)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-assistant-rail\")"))
@@ -1951,6 +1953,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("public struct TodayTimeBlock"))
         XCTAssertTrue(dailyPlanningSource.contains("public struct DailyPlanningReview"))
         XCTAssertTrue(dailyPlanningSource.contains("public enum DailyPlanningReviewBoundary"))
+        XCTAssertTrue(coreSource.contains("DailyPlanningReviewReadoutBuilder.makeRequest"))
         XCTAssertTrue(dailyPlanningDraftSource.contains("public enum DailyPlanningActionDraftKind"))
         XCTAssertTrue(dailyPlanningDraftSource.contains("DailyPlanningActionDraftBuilder"))
         XCTAssertTrue(dailyPlanningDraftSource.contains("tool: .taskUpdate"))
@@ -1981,6 +1984,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let reviewPanelSource = String(workflowSource[reviewPanelStart.lowerBound..<commandPanelStart.lowerBound])
         XCTAssertFalse(reviewPanelSource.contains("applyScheduleDraftToCalendar"))
         XCTAssertFalse(reviewPanelSource.contains("startFocus("))
+        XCTAssertFalse(reviewPanelSource.contains("AVSpeechSynthesizer"))
     }
 
     func testVoiceDailyPlanningReviewBridgeUsesLocalProjectBoardReview() throws {
@@ -1995,15 +1999,24 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("viewModel.dailyPlanningReviewRequest"))
         XCTAssertTrue(appSource.contains("SoloPMVoiceDailyPlanningReviewBridge.storePendingSourceTranscript"))
         XCTAssertTrue(appSource.contains("name: .soloPMVoiceDailyPlanningReviewRequested"))
+        XCTAssertFalse(appSource.contains("sourceTranscriptUserInfoKey"))
         XCTAssertTrue(boardSource.contains(".onReceive(NotificationCenter.default.publisher(for: .soloPMVoiceDailyPlanningReviewRequested))"))
         XCTAssertTrue(boardSource.contains("consumePendingVoiceDailyPlanningReviewRequestIfNeeded"))
         XCTAssertTrue(boardSource.contains("SoloPMVoiceDailyPlanningReviewBridge.consumePendingSourceTranscript()"))
         XCTAssertTrue(boardSource.contains("handleVoiceDailyPlanningReviewRequest"))
         XCTAssertTrue(boardSource.contains("viewModel.prepareDailyPlanningReview(transcript:"))
+        XCTAssertTrue(boardSource.contains("playDailyPlanningReadoutFromSettings()"))
+        XCTAssertTrue(boardSource.contains("viewModel.playDailyPlanningReviewReadout("))
+        XCTAssertTrue(boardSource.contains("AppTextToSpeechRuntimeFactory.makePreviewer("))
+        XCTAssertTrue(boardSource.contains("temporaryDirectoryPrefix: \"solopm-daily-planning-readout\""))
+        XCTAssertTrue(boardSource.contains("outputFilename: \"readout.wav\""))
         XCTAssertTrue(boardSource.contains("selectedDestination = summary.newlyMissedCount > 0 ? .catchUp : .today"))
         XCTAssertTrue(boardSource.contains("static let soloPMVoiceDailyPlanningReviewRequested"))
+        XCTAssertTrue(boardSource.contains("guard let transcript = SoloPMVoiceDailyPlanningReviewBridge.consumePendingSourceTranscript()"))
+        XCTAssertFalse(boardSource.contains("sourceTranscript(from: notification)"))
         XCTAssertFalse(appSource.contains("calendarClient.create"))
         XCTAssertFalse(appSource.contains("reminderClient.create"))
+        XCTAssertFalse(boardSource.contains("AVSpeechSynthesizer"))
     }
 
     func testVoiceInboxTriageBridgeUsesLocalProjectBoardInboxCommands() throws {
@@ -3050,21 +3063,22 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testRuntimeTTSFactoryUsesKokoroProviderWithoutSystemSpeechFallback() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
-        let factoryStart = try XCTUnwrap(appSource.range(of: "private static func makeTextToSpeechProvider"))
-        let factorySource = String(appSource[factoryStart.lowerBound..<appSource.endIndex])
+        let runtimeFactoryStart = try XCTUnwrap(appSource.range(of: "enum AppTextToSpeechRuntimeFactory"))
+        let runtimeFactorySource = String(appSource[runtimeFactoryStart.lowerBound..<appSource.endIndex])
 
-        XCTAssertTrue(factorySource.contains("case .systemSpeech, .localKokoro:"))
-        XCTAssertTrue(factorySource.contains("KokoroLocalTTSConfiguration("))
-        XCTAssertTrue(factorySource.contains("normalizedSettings.kokoroExecutablePath ?? \"\""))
-        XCTAssertTrue(factorySource.contains("normalizedSettings.ttsLanguageCode"))
-        XCTAssertTrue(factorySource.contains("normalizedSettings.ttsVoiceID"))
-        XCTAssertTrue(factorySource.contains("KokoroLocalTTSProvider(configuration: configuration)"))
-        XCTAssertTrue(factorySource.contains("static func makeTextToSpeechPreviewer(settings: AppSettings) -> any TextToSpeechPreviewing"))
-        XCTAssertTrue(factorySource.contains("TemporaryDirectoryTextToSpeechPreviewer("))
-        XCTAssertTrue(factorySource.contains("TextToSpeechPreviewService("))
-        XCTAssertTrue(factorySource.contains("AVFoundationSpeechAudioPlayer()"))
-        XCTAssertTrue(factorySource.contains("temporaryDirectory: temporaryDirectory"))
-        XCTAssertFalse(factorySource.contains("AVSpeechSynthesizer"))
+        XCTAssertTrue(appSource.contains("static func makeTextToSpeechPreviewer(settings: AppSettings) -> any TextToSpeechPreviewing"))
+        XCTAssertTrue(appSource.contains("AppTextToSpeechRuntimeFactory.makePreviewer(settings: settings)"))
+        XCTAssertTrue(runtimeFactorySource.contains("case .systemSpeech, .localKokoro:"))
+        XCTAssertTrue(runtimeFactorySource.contains("KokoroLocalTTSConfiguration("))
+        XCTAssertTrue(runtimeFactorySource.contains("normalizedSettings.kokoroExecutablePath ?? \"\""))
+        XCTAssertTrue(runtimeFactorySource.contains("normalizedSettings.ttsLanguageCode"))
+        XCTAssertTrue(runtimeFactorySource.contains("normalizedSettings.ttsVoiceID"))
+        XCTAssertTrue(runtimeFactorySource.contains("KokoroLocalTTSProvider(configuration: configuration)"))
+        XCTAssertTrue(runtimeFactorySource.contains("TemporaryDirectoryTextToSpeechPreviewer("))
+        XCTAssertTrue(runtimeFactorySource.contains("TextToSpeechPreviewService("))
+        XCTAssertTrue(runtimeFactorySource.contains("AVFoundationSpeechAudioPlayer()"))
+        XCTAssertTrue(runtimeFactorySource.contains("temporaryDirectory: temporaryDirectory"))
+        XCTAssertFalse(runtimeFactorySource.contains("AVSpeechSynthesizer"))
     }
 
     func testAVFoundationSpeechAudioPlayerUsesAudioPlayerInsteadOfSystemSpeech() throws {

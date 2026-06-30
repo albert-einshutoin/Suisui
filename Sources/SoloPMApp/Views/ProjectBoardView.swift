@@ -186,7 +186,8 @@ struct ProjectBoardView: View {
                             TodayWorkflowView(
                                 viewModel: viewModel,
                                 selectTodayTask: selectTodayTask,
-                                openInspectorForTodayRailTask: openInspectorForTodayRailTask
+                                openInspectorForTodayRailTask: openInspectorForTodayRailTask,
+                                playDailyPlanningReadout: playDailyPlanningReadoutFromSettings
                             )
                         case .catchUp:
                             CatchUpWorkflowView(viewModel: viewModel)
@@ -536,7 +537,9 @@ struct ProjectBoardView: View {
         guard let transcript = SoloPMVoiceDailyPlanningReviewBridge.consumePendingSourceTranscript() else {
             return
         }
-        handleVoiceDailyPlanningReviewRequest(sourceTranscript: transcript)
+        handleVoiceDailyPlanningReviewRequest(
+            sourceTranscript: normalizedVoiceDailyPlanningReviewTranscript(transcript)
+        )
     }
 
     private func consumePendingVoiceInboxTriageRequestIfNeeded() {
@@ -554,15 +557,17 @@ struct ProjectBoardView: View {
     }
 
     private func handleVoiceDailyPlanningReviewRequest(_ notification: Notification) {
-        let transcript = SoloPMVoiceDailyPlanningReviewBridge.consumePendingSourceTranscript()
-            ?? SoloPMVoiceDailyPlanningReviewBridge.sourceTranscript(from: notification)
-        let sourceTranscript: String
-        if let transcript, !transcript.isEmpty {
-            sourceTranscript = transcript
-        } else {
-            sourceTranscript = String(localized: "Today daily planning review")
+        guard let transcript = SoloPMVoiceDailyPlanningReviewBridge.consumePendingSourceTranscript() else {
+            return
         }
-        handleVoiceDailyPlanningReviewRequest(sourceTranscript: sourceTranscript)
+        handleVoiceDailyPlanningReviewRequest(
+            sourceTranscript: normalizedVoiceDailyPlanningReviewTranscript(transcript)
+        )
+    }
+
+    private func normalizedVoiceDailyPlanningReviewTranscript(_ transcript: String) -> String {
+        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? String(localized: "Today daily planning review") : trimmed
     }
 
     private func handleVoiceDailyPlanningReviewRequest(sourceTranscript: String) {
@@ -572,6 +577,22 @@ struct ProjectBoardView: View {
         selectedDestination = summary.newlyMissedCount > 0 ? .catchUp : .today
         persistSelectedDestination(selectedDestination)
         applySelectedDestination(selectedDestination)
+        playDailyPlanningReadoutFromSettings()
+    }
+
+    private func playDailyPlanningReadoutFromSettings() {
+        Task {
+            let settings = appSettings().normalizedForRuntime
+            _ = await viewModel.playDailyPlanningReviewReadout(
+                using: AppTextToSpeechRuntimeFactory.makePreviewer(
+                    settings: settings,
+                    temporaryDirectoryPrefix: "solopm-daily-planning-readout",
+                    outputFilename: "readout.wav"
+                ),
+                languageCode: settings.ttsLanguageCode,
+                voiceID: settings.ttsVoiceID
+            )
+        }
     }
 
     private func handleVoiceInboxTriageRequest(_ notification: Notification) {
@@ -1047,7 +1068,6 @@ enum SoloPMAssistantQueueBridge {
 
 @MainActor
 enum SoloPMVoiceDailyPlanningReviewBridge {
-    static let sourceTranscriptUserInfoKey = "sourceTranscript"
     private static var pendingSourceTranscript: String?
 
     static func storePendingSourceTranscript(_ sourceTranscript: String) {
@@ -1057,13 +1077,6 @@ enum SoloPMVoiceDailyPlanningReviewBridge {
     static func consumePendingSourceTranscript() -> String? {
         defer { pendingSourceTranscript = nil }
         return pendingSourceTranscript
-    }
-
-    static func sourceTranscript(from notification: Notification) -> String? {
-        guard let value = notification.userInfo?[sourceTranscriptUserInfoKey] as? String else {
-            return nil
-        }
-        return normalized(value)
     }
 
     private static func normalized(_ sourceTranscript: String) -> String {

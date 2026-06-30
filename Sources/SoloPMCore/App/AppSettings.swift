@@ -1630,18 +1630,7 @@ public final class AppSettingsViewModel: ObservableObject {
             from: rawMessage,
             fallback: "Playback failed."
         )
-        return redactedLocalFilePaths(in: redactedSecrets)
-    }
-
-    private static func redactedLocalFilePaths(in text: String) -> String {
-        let pattern = #"(?:(?:~|/Users|/Volumes|/private|/tmp|/var)/[^\s,;)]+)"#
-        guard let expression = try? NSRegularExpression(pattern: pattern) else {
-            return text
-        }
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        // Preview playback errors can include generated audio/model paths. Those paths may expose
-        // customer names or project directories, so the Settings UI shows only a stable placeholder.
-        return expression.stringByReplacingMatches(in: text, range: range, withTemplate: "[REDACTED_PATH]")
+        return LocalPathRedactor.redact(redactedSecrets)
     }
 
     private func unavailableMessage(for provider: AIProvider) -> String {
