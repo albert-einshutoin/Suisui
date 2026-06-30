@@ -67,7 +67,10 @@ final class DeveloperModeTests: XCTestCase {
             .gitBranch,
             .gitLogSummary,
             .gitDiffSummary,
-            .developmentPreparePullRequestWorkflow
+            .developmentPreparePullRequestWorkflow,
+            .developmentRepositoryReadFile,
+            .developmentRepositoryCreateFile,
+            .developmentRepositoryUpdateFile
         ])
     }
 

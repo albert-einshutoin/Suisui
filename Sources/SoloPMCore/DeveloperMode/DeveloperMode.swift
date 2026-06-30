@@ -5,6 +5,7 @@ public enum DeveloperModeCapability: String, CaseIterable, Equatable, Hashable, 
     case githubIssues
     case codebaseMemory
     case developmentPRWorkflow
+    case developmentRepositoryFiles
 }
 
 public struct DeveloperModePermissionDisclosure: Equatable, Sendable {
@@ -79,6 +80,12 @@ public extension DeveloperModeCapability {
                 title: "Development PR workflow",
                 summary: "Creates local branches only inside an approved project directory and keeps push or PR creation behind a separate approval."
             )
+        case .developmentRepositoryFiles:
+            return DeveloperModePermissionDisclosure(
+                capability: self,
+                title: "Development repository files",
+                summary: "Reads, creates, and updates supported text files only inside the approved project directory; create and update require explicit approval."
+            )
         }
     }
 }
@@ -119,6 +126,17 @@ public extension ToolRegistryFactory {
                 taskStore: taskStore,
                 gitRunner: gitRunner
             ))
+        }
+
+        if settings.enabledCapabilities.contains(.developmentRepositoryFiles) {
+            guard let projectStore else {
+                throw DeveloperModeError.projectStoresRequired
+            }
+            tools.append(contentsOf: [
+                DevelopmentRepositoryFileTool(name: .developmentRepositoryReadFile, projectStore: projectStore),
+                DevelopmentRepositoryFileTool(name: .developmentRepositoryCreateFile, projectStore: projectStore),
+                DevelopmentRepositoryFileTool(name: .developmentRepositoryUpdateFile, projectStore: projectStore)
+            ])
         }
 
         return try ToolRegistry(tools: tools)
