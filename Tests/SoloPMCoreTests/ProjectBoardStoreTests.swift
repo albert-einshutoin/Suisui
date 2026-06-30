@@ -2476,6 +2476,49 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testSyncAutomationRequestIngestQueuesDevelopmentPullRequestReviewForReview() throws {
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Dev Workflow"))
+        let request = SyncAutomationRequestPayload(
+            id: "relay-pr-review",
+            source: .cloudRelay,
+            approvalState: .pendingApproval,
+            sourceClientID: "web",
+            toolName: ActionTool.developmentReviewPullRequestGate.rawValue,
+            redactedArgumentSummary: "Review PR before merge",
+            developmentPullRequest: SyncDevelopmentPullRequestPayload(
+                projectID: project.id,
+                operation: .reviewGate,
+                pullRequestURL: "https://github.com/albert-einshutoin/soloPM/pull/116",
+                branchName: "feature/solopm-\(project.id)-merge-gate",
+                baseBranch: "feature/phase14-product-completion"
+            )
+        )
+
+        XCTAssertTrue(viewModel.ingestAssistantQueueAutomationRequests([request]))
+
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        let item = try assistantQueueStore.get(id: itemID)
+        let row = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first { $0.id == itemID })
+        XCTAssertEqual(item.state, .waitingReview)
+        XCTAssertNil(item.blockingReason)
+        XCTAssertEqual(row.state, .waitingReview)
+        XCTAssertEqual(row.canApprove, true)
+        guard case .automationRequest(let storedRequest) = item.payload else {
+            return XCTFail("Expected automation request payload")
+        }
+        XCTAssertEqual(storedRequest.developmentPullRequest, request.developmentPullRequest)
+        XCTAssertNil(storedRequest.taskMutation)
+        XCTAssertTrue(item.redactedSummary.contains("Development PR: operation=reviewGate"))
+    }
+
+    @MainActor
     func testSyncAutomationRequestIngestRedactsExternalMetadataBeforePersistence() throws {
         let bundle = try makeStoreBundle()
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
@@ -2520,6 +2563,46 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testSyncAutomationRequestIngestRedactsMalformedDevelopmentPullRequestPayloadBeforePersistence() throws {
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let secret = "sk-pr-payload-secret123"
+        let localPath = "/Users/shutoide/private/soloPM"
+        let request = SyncAutomationRequestPayload(
+            id: "relay-pr-raw-secret",
+            source: .cloudRelay,
+            approvalState: .pendingApproval,
+            sourceClientID: "web",
+            toolName: ActionTool.developmentReviewPullRequestGate.rawValue,
+            redactedArgumentSummary: "Review PR \(secret)",
+            developmentPullRequest: SyncDevelopmentPullRequestPayload(
+                projectID: 42,
+                operation: .reviewGate,
+                pullRequestURL: "https://github.com/albert-einshutoin/soloPM/pull/116?token=\(secret)",
+                branchName: "feature/solopm-42-\(secret)",
+                baseBranch: localPath
+            )
+        )
+
+        XCTAssertTrue(viewModel.ingestAssistantQueueAutomationRequests([request]))
+
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        let item = try assistantQueueStore.get(id: itemID)
+        let payloadData = try JSONEncoder().encode(item.payload)
+        let payloadJSON = try XCTUnwrap(String(data: payloadData, encoding: .utf8))
+        XCTAssertEqual(item.state, .blocked)
+        XCTAssertFalse(payloadJSON.contains(secret))
+        XCTAssertFalse(payloadJSON.contains(localPath))
+        XCTAssertFalse(item.redactedSummary.contains(secret))
+        XCTAssertFalse(item.redactedSummary.contains(localPath))
+    }
+
+    @MainActor
     func testSyncAutomationRequestIngestBlocksMalformedTaskMutationBeforeApproval() throws {
         let bundle = try makeStoreBundle()
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
@@ -2549,7 +2632,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         let item = try assistantQueueStore.get(id: itemID)
         let row = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first { $0.id == itemID })
         XCTAssertEqual(item.state, .blocked)
-        XCTAssertEqual(item.blockingReason, "Remote automation request is missing executable task mutation details.")
+        XCTAssertEqual(item.blockingReason, "Remote automation request is missing executable task or development PR details.")
         XCTAssertEqual(row.state, .blocked)
         XCTAssertEqual(row.canApprove, false)
         XCTAssertEqual(row.canRun, false)

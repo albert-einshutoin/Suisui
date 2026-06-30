@@ -296,6 +296,293 @@ final class AssistantQueueExecutionTests: XCTestCase {
         XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .task, id: String(task.id))))
     }
 
+    func testExecutableFactoryBuildsDevelopmentPullRequestReviewGatePlanFromAutomationRequest() throws {
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        let request = SyncAutomationRequestPayload(
+            id: "automation-pr-review",
+            source: .cloudRelay,
+            approvalState: .pendingApproval,
+            sourceClientID: "web",
+            toolName: ActionTool.developmentReviewPullRequestGate.rawValue,
+            redactedArgumentSummary: "Review PR #116 before merge",
+            developmentPullRequest: SyncDevelopmentPullRequestPayload(
+                projectID: 7,
+                operation: .reviewGate,
+                pullRequestURL: pullRequestURL,
+                branchName: "feature/solopm-7-merge-gate",
+                baseBranch: "feature/phase14-product-completion"
+            )
+        )
+
+        let plan = try XCTUnwrap(AssistantQueueExecutableActionPlanFactory.actionPlan(for: .automationRequest(request)))
+
+        XCTAssertEqual(plan.id, "automation-request:automation-pr-review")
+        XCTAssertEqual(plan.requiresApproval, true)
+        XCTAssertEqual(plan.actions.map(\.tool), [.developmentReviewPullRequestGate])
+        XCTAssertEqual(plan.actions.first?.arguments["projectId"], .number(7))
+        XCTAssertEqual(plan.actions.first?.arguments["pullRequestURL"], .string(pullRequestURL))
+        XCTAssertEqual(plan.actions.first?.arguments["branchName"], .string("feature/solopm-7-merge-gate"))
+        XCTAssertEqual(plan.actions.first?.arguments["baseBranch"], .string("feature/phase14-product-completion"))
+        XCTAssertTrue(plan.summary.contains("Review PR #116 before merge"))
+        XCTAssertTrue(plan.summary.contains("operation=reviewGate"))
+    }
+
+    func testExecutableFactoryBuildsDevelopmentPullRequestMergePlanFromAutomationRequest() throws {
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        let request = SyncAutomationRequestPayload(
+            id: "automation-pr-merge",
+            source: .cloudRelay,
+            approvalState: .pendingApproval,
+            sourceClientID: "web",
+            toolName: ActionTool.developmentMergePullRequest.rawValue,
+            redactedArgumentSummary: "Merge PR #116 after checks pass",
+            developmentPullRequest: SyncDevelopmentPullRequestPayload(
+                projectID: 7,
+                operation: .merge,
+                pullRequestURL: pullRequestURL,
+                branchName: "feature/solopm-7-merge-gate",
+                baseBranch: "feature/phase14-product-completion"
+            )
+        )
+
+        let plan = try XCTUnwrap(AssistantQueueExecutableActionPlanFactory.actionPlan(for: .automationRequest(request)))
+
+        XCTAssertEqual(plan.id, "automation-request:automation-pr-merge")
+        XCTAssertEqual(plan.requiresApproval, true)
+        XCTAssertEqual(plan.actions.map(\.tool), [.developmentMergePullRequest])
+        XCTAssertEqual(plan.actions.first?.arguments["projectId"], .number(7))
+        XCTAssertEqual(plan.actions.first?.arguments["pullRequestURL"], .string(pullRequestURL))
+        XCTAssertTrue(plan.summary.contains("operation=merge"))
+    }
+
+    func testCoordinatorRunsQueuedDevelopmentPullRequestReviewThenMergeRequestsAndPersistsReceipts() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let queueStore = SQLiteAssistantQueueStore(connection: connection)
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let projectStore = SQLiteProjectStore(connection: connection)
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let workspace = temporaryDirectory()
+        let project = try projectStore.create(title: "SoloPM", workspacePath: workspace.path)
+        let branchName = "feature/solopm-\(project.id)-merge-gate"
+        let baseBranch = "feature/phase14-product-completion"
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        let headRefOID = "0123456789abcdef0123456789abcdef01234567"
+
+        let reviewItem = try AssistantQueueStateMachine.approve(
+            AssistantQueueAdapter.makeItem(automationRequest: developmentPullRequestAutomationRequest(
+                id: "automation-pr-review",
+                projectID: project.id,
+                operation: .reviewGate,
+                pullRequestURL: pullRequestURL,
+                branchName: branchName,
+                baseBranch: baseBranch
+            )),
+            reviewerID: "local-user"
+        )
+        let mergeItem = try AssistantQueueStateMachine.approve(
+            AssistantQueueAdapter.makeItem(automationRequest: developmentPullRequestAutomationRequest(
+                id: "automation-pr-merge",
+                projectID: project.id,
+                operation: .merge,
+                pullRequestURL: pullRequestURL,
+                branchName: branchName,
+                baseBranch: baseBranch
+            )),
+            reviewerID: "local-user"
+        )
+        try queueStore.save(reviewItem)
+        try queueStore.save(mergeItem)
+
+        let gitRunner = RecordingAssistantQueueGitRunner()
+        gitRunner.stub(
+            arguments: ["remote", "get-url", "origin"],
+            output: GitCommandOutput(
+                standardOutput: "https://github.com/albert-einshutoin/soloPM.git\n",
+                standardError: "",
+                exitCode: 0
+            )
+        )
+        let githubRunner = RecordingAssistantQueueGitHubRunner(outputs: [
+            GitHubCLICommandOutput(
+                standardOutput: pullRequestStatusJSON(
+                    url: pullRequestURL,
+                    headBranch: branchName,
+                    baseBranch: baseBranch,
+                    headRefOID: headRefOID
+                ),
+                standardError: "",
+                exitCode: 0
+            ),
+            GitHubCLICommandOutput(
+                standardOutput: reviewThreadsJSON(totalCount: 0, unresolvedCount: 0),
+                standardError: "",
+                exitCode: 0
+            ),
+            GitHubCLICommandOutput(
+                standardOutput: pullRequestStatusJSON(
+                    url: pullRequestURL,
+                    headBranch: branchName,
+                    baseBranch: baseBranch,
+                    headRefOID: headRefOID
+                ),
+                standardError: "",
+                exitCode: 0
+            ),
+            GitHubCLICommandOutput(
+                standardOutput: reviewThreadsJSON(totalCount: 0, unresolvedCount: 0),
+                standardError: "",
+                exitCode: 0
+            ),
+            GitHubCLICommandOutput(
+                standardOutput: "Merged pull request #116 token=merge-secret\n",
+                standardError: "",
+                exitCode: 0
+            )
+        ])
+        let registry = try ToolRegistryFactory.developerMode(
+            settings: DeveloperModeSettings(
+                isEnabled: true,
+                workspaceRoot: workspace,
+                enabledCapabilities: [.developmentPRWorkflow]
+            ),
+            gitRunner: gitRunner,
+            githubRunner: githubRunner,
+            projectStore: projectStore,
+            taskStore: taskStore
+        )
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-\(UUID().uuidString)" },
+            now: { Date(timeIntervalSince1970: 180) }
+        )
+
+        let reviewResult = try coordinator.execute(id: reviewItem.id)
+        let mergeResult = try coordinator.execute(id: mergeItem.id)
+
+        XCTAssertEqual(reviewResult.item.state, .done)
+        XCTAssertEqual(mergeResult.item.state, .done)
+        XCTAssertEqual(receiptStore.receipts.map(\.status), [.succeeded, .succeeded])
+        XCTAssertEqual(receiptStore.receipts.map(\.primaryToolName), [
+            ActionTool.developmentReviewPullRequestGate.rawValue,
+            ActionTool.developmentMergePullRequest.rawValue
+        ])
+        for receipt in receiptStore.receipts {
+            XCTAssertEqual(receipt.assistantQueueItemID?.hasPrefix("automation-request:"), true)
+            XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .project, id: String(project.id))))
+            XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBranch, id: branchName)))
+            XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentCommit, id: headRefOID)))
+            XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .pullRequest, id: pullRequestURL)))
+            XCTAssertEqual(receipt.visibleSurfaces, [.assistantQueue, .projectDetail, .auditLog])
+        }
+        XCTAssertTrue(receiptStore.receipts[0].actions.first?.outputSummary?.contains("Review, CI, and mergeability gates passed") == true)
+        XCTAssertTrue(receiptStore.receipts[1].actions.first?.outputSummary?.contains("Merged pull request") == true)
+        XCTAssertFalse(
+            String(data: try JSONEncoder().encode(receiptStore.receipts), encoding: .utf8)?
+                .contains("merge-secret") ?? true
+        )
+        XCTAssertEqual(gitRunner.recordedInvocations.map(\.arguments), [
+            ["remote", "get-url", "origin"],
+            ["remote", "get-url", "origin"]
+        ])
+        XCTAssertEqual(githubRunner.recordedInvocations.map(\.arguments), [
+            ["pr", "view", pullRequestURL, "--json", DevelopmentGitHubPRCommandPolicy.statusJSONFields],
+            DevelopmentGitHubPRCommandPolicy.reviewThreadsArguments(
+                owner: "albert-einshutoin",
+                repository: "soloPM",
+                number: 116
+            ),
+            ["pr", "view", pullRequestURL, "--json", DevelopmentGitHubPRCommandPolicy.statusJSONFields],
+            DevelopmentGitHubPRCommandPolicy.reviewThreadsArguments(
+                owner: "albert-einshutoin",
+                repository: "soloPM",
+                number: 116
+            ),
+            [
+                "pr", "merge", pullRequestURL,
+                "--merge", "--delete-branch",
+                "--match-head-commit", headRefOID
+            ]
+        ])
+        XCTAssertEqual(
+            try receiptStore.list(referenceKind: .pullRequest, referenceID: pullRequestURL, visibleSurface: .auditLog, limit: 5)
+                .map(\.primaryToolName),
+            [
+                ActionTool.developmentMergePullRequest.rawValue,
+                ActionTool.developmentReviewPullRequestGate.rawValue
+            ]
+        )
+    }
+
+    func testCoordinatorPersistsDevelopmentPullRequestReferencesWhenGitHubStatusThrows() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let queueStore = SQLiteAssistantQueueStore(connection: connection)
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let projectStore = SQLiteProjectStore(connection: connection)
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let workspace = temporaryDirectory()
+        let project = try projectStore.create(title: "SoloPM", workspacePath: workspace.path)
+        let branchName = "feature/solopm-\(project.id)-merge-gate"
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        let item = try AssistantQueueStateMachine.approve(
+            AssistantQueueAdapter.makeItem(automationRequest: developmentPullRequestAutomationRequest(
+                id: "automation-pr-review-invalid-json",
+                projectID: project.id,
+                operation: .reviewGate,
+                pullRequestURL: pullRequestURL,
+                branchName: branchName,
+                baseBranch: "feature/phase14-product-completion"
+            )),
+            reviewerID: "local-user"
+        )
+        try queueStore.save(item)
+        let gitRunner = RecordingAssistantQueueGitRunner()
+        gitRunner.stub(
+            arguments: ["remote", "get-url", "origin"],
+            output: GitCommandOutput(
+                standardOutput: "https://github.com/albert-einshutoin/soloPM.git\n",
+                standardError: "",
+                exitCode: 0
+            )
+        )
+        let githubRunner = RecordingAssistantQueueGitHubRunner(outputs: [
+            GitHubCLICommandOutput(standardOutput: "not-json", standardError: "", exitCode: 0)
+        ])
+        let registry = try ToolRegistryFactory.developerMode(
+            settings: DeveloperModeSettings(
+                isEnabled: true,
+                workspaceRoot: workspace,
+                enabledCapabilities: [.developmentPRWorkflow]
+            ),
+            gitRunner: gitRunner,
+            githubRunner: githubRunner,
+            projectStore: projectStore,
+            taskStore: taskStore
+        )
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-pr-status-failure" },
+            now: { Date(timeIntervalSince1970: 190) }
+        )
+
+        let result = try coordinator.execute(id: item.id)
+
+        XCTAssertEqual(result.item.state, .failed)
+        let receipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receipt.status, .failed)
+        XCTAssertEqual(receipt.assistantQueueItemID, item.id)
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .project, id: String(project.id))))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBranch, id: branchName)))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .pullRequest, id: pullRequestURL)))
+        XCTAssertEqual(receipt.visibleSurfaces, [.assistantQueue, .projectDetail, .auditLog])
+        XCTAssertTrue(receipt.actions.first?.errorSummary?.contains("unreadable pull request status") == true)
+    }
+
     func testCoordinatorRejectsMalformedAutomationRequestBeforeRunning() throws {
         let queueStore = try makeQueueStore()
         let missingTaskID = try AssistantQueueStateMachine.approve(
@@ -310,16 +597,105 @@ final class AssistantQueueExecutionTests: XCTestCase {
             makeTaskMutationItem(id: "automation-mismatched-tool", toolName: HostedMCPTaskToolName.taskCreate.rawValue),
             reviewerID: "local-user"
         )
+        let malformedPullRequest = try AssistantQueueStateMachine.approve(
+            AssistantQueueAdapter.makeItem(automationRequest: SyncAutomationRequestPayload(
+                id: "automation-pr-malformed",
+                source: .cloudRelay,
+                approvalState: .pendingApproval,
+                sourceClientID: "web",
+                toolName: ActionTool.developmentReviewPullRequestGate.rawValue,
+                redactedArgumentSummary: "Malformed PR review request",
+                developmentPullRequest: SyncDevelopmentPullRequestPayload(
+                    projectID: 7,
+                    operation: .reviewGate,
+                    pullRequestURL: "https://example.com/not-github",
+                    branchName: "main",
+                    baseBranch: "main"
+                )
+            )),
+            reviewerID: "local-user"
+        )
+        let ambiguousPayload = try AssistantQueueStateMachine.approve(
+            AssistantQueueAdapter.makeItem(automationRequest: SyncAutomationRequestPayload(
+                id: "automation-ambiguous-payload",
+                source: .cloudRelay,
+                approvalState: .pendingApproval,
+                sourceClientID: "web",
+                toolName: ActionTool.developmentReviewPullRequestGate.rawValue,
+                redactedArgumentSummary: "Ambiguous remote request",
+                taskMutation: SyncTaskMutationPayload(
+                    taskID: 42,
+                    operation: .complete,
+                    source: .cloudRelay,
+                    approvalState: .pendingApproval
+                ),
+                developmentPullRequest: SyncDevelopmentPullRequestPayload(
+                    projectID: 7,
+                    operation: .reviewGate,
+                    pullRequestURL: "https://github.com/albert-einshutoin/soloPM/pull/116",
+                    branchName: "feature/solopm-7-merge-gate",
+                    baseBranch: "feature/phase14-product-completion"
+                )
+            )),
+            reviewerID: "local-user"
+        )
+        let missingToolName = try AssistantQueueStateMachine.approve(
+            AssistantQueueAdapter.makeItem(automationRequest: SyncAutomationRequestPayload(
+                id: "automation-pr-missing-tool-name",
+                source: .cloudRelay,
+                approvalState: .pendingApproval,
+                sourceClientID: "web",
+                redactedArgumentSummary: "PR review without tool name",
+                developmentPullRequest: SyncDevelopmentPullRequestPayload(
+                    projectID: 7,
+                    operation: .reviewGate,
+                    pullRequestURL: "https://github.com/albert-einshutoin/soloPM/pull/116",
+                    branchName: "feature/solopm-7-merge-gate",
+                    baseBranch: "feature/phase14-product-completion"
+                )
+            )),
+            reviewerID: "local-user"
+        )
+        let mismatchedPullRequestTool = try AssistantQueueStateMachine.approve(
+            AssistantQueueAdapter.makeItem(automationRequest: SyncAutomationRequestPayload(
+                id: "automation-pr-mismatched-tool",
+                source: .cloudRelay,
+                approvalState: .pendingApproval,
+                sourceClientID: "web",
+                toolName: ActionTool.developmentMergePullRequest.rawValue,
+                redactedArgumentSummary: "PR review with mismatched merge tool",
+                developmentPullRequest: SyncDevelopmentPullRequestPayload(
+                    projectID: 7,
+                    operation: .reviewGate,
+                    pullRequestURL: "https://github.com/albert-einshutoin/soloPM/pull/116",
+                    branchName: "feature/solopm-7-merge-gate",
+                    baseBranch: "feature/phase14-product-completion"
+                )
+            )),
+            reviewerID: "local-user"
+        )
         try queueStore.save(missingTaskID)
         try queueStore.save(noOpUpdate)
         try queueStore.save(mismatchedTool)
+        try queueStore.save(malformedPullRequest)
+        try queueStore.save(ambiguousPayload)
+        try queueStore.save(missingToolName)
+        try queueStore.save(mismatchedPullRequestTool)
         let coordinator = AssistantQueueExecutionCoordinator(
             queueStore: queueStore,
             executor: ActionExecutor(registry: ToolRegistry()),
             executionReceiptStore: InMemoryExecutionReceiptStore()
         )
 
-        for item in [missingTaskID, noOpUpdate, mismatchedTool] {
+        for item in [
+            missingTaskID,
+            noOpUpdate,
+            mismatchedTool,
+            malformedPullRequest,
+            ambiguousPayload,
+            missingToolName,
+            mismatchedPullRequestTool
+        ] {
             XCTAssertThrowsError(try coordinator.execute(id: item.id)) { error in
                 XCTAssertEqual(error as? AssistantQueueExecutionError, .unsupportedPayload)
             }
@@ -768,6 +1144,116 @@ final class AssistantQueueExecutionTests: XCTestCase {
         ))
     }
 
+    private func developmentPullRequestAutomationRequest(
+        id: String,
+        projectID: Int64,
+        operation: SyncDevelopmentPullRequestOperation,
+        pullRequestURL: String,
+        branchName: String,
+        baseBranch: String
+    ) -> SyncAutomationRequestPayload {
+        SyncAutomationRequestPayload(
+            id: id,
+            source: .cloudRelay,
+            approvalState: .pendingApproval,
+            sourceClientID: "web",
+            toolName: actionTool(for: operation).rawValue,
+            redactedArgumentSummary: "PR \(operation.rawValue) \(pullRequestURL)",
+            developmentPullRequest: SyncDevelopmentPullRequestPayload(
+                projectID: projectID,
+                operation: operation,
+                pullRequestURL: pullRequestURL,
+                branchName: branchName,
+                baseBranch: baseBranch
+            )
+        )
+    }
+
+    private func actionTool(for operation: SyncDevelopmentPullRequestOperation) -> ActionTool {
+        switch operation {
+        case .reviewGate:
+            return .developmentReviewPullRequestGate
+        case .merge:
+            return .developmentMergePullRequest
+        }
+    }
+
+    private func temporaryDirectory() -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SoloPMAssistantQueueExecutionTests")
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    private func pullRequestStatusJSON(
+        url: String,
+        headBranch: String,
+        baseBranch: String,
+        headRefOID: String = "0123456789abcdef0123456789abcdef01234567"
+    ) -> String {
+        """
+        {
+          "url": "\(url)",
+          "headRefName": "\(headBranch)",
+          "headRefOid": "\(headRefOID)",
+          "baseRefName": "\(baseBranch)",
+          "headRepository": {
+            "name": "soloPM",
+            "nameWithOwner": "albert-einshutoin/soloPM"
+          },
+          "headRepositoryOwner": {
+            "login": "albert-einshutoin"
+          },
+          "isCrossRepository": false,
+          "reviewDecision": "APPROVED",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "SwiftPM macOS",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS"
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "GitGuardian Security Checks",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS"
+            }
+          ]
+        }
+        """
+    }
+
+    private func reviewThreadsJSON(
+        totalCount: Int,
+        unresolvedCount: Int,
+        hasNextPage: Bool = false
+    ) -> String {
+        let resolvedCount = max(0, totalCount - unresolvedCount)
+        let nodes = Array(repeating: #"{"isResolved": false}"#, count: unresolvedCount)
+            + Array(repeating: #"{"isResolved": true}"#, count: resolvedCount)
+        return """
+        {
+          "data": {
+            "repository": {
+              "pullRequest": {
+                "reviewThreads": {
+                  "totalCount": \(totalCount),
+                  "nodes": [\(nodes.joined(separator: ","))],
+                  "pageInfo": {
+                    "hasNextPage": \(hasNextPage ? "true" : "false")
+                  }
+                }
+              }
+            }
+          }
+        }
+        """
+    }
+
     private func hostedToolName(for operation: SyncTaskMutationOperation) -> String {
         switch operation {
         case .create:
@@ -808,5 +1294,44 @@ private final class FailingExecutionReceiptStore: ExecutionReceiptStore, @unchec
         limit: Int
     ) throws -> [ExecutionReceipt] {
         []
+    }
+}
+
+private final class RecordingAssistantQueueGitRunner: GitCommandRunner, @unchecked Sendable {
+    private var stubs: [String: GitCommandOutput] = [:]
+    private(set) var recordedInvocations: [GitCommandInvocation] = []
+
+    func stub(arguments: [String], output: GitCommandOutput) {
+        stubs[arguments.joined(separator: "\u{1f}")] = output
+    }
+
+    func runGit(arguments: [String], workingDirectory: URL) throws -> GitCommandOutput {
+        recordedInvocations.append(GitCommandInvocation(arguments: arguments, workingDirectory: workingDirectory))
+        return stubs[arguments.joined(separator: "\u{1f}")] ?? GitCommandOutput(
+            standardOutput: "",
+            standardError: "unexpected command",
+            exitCode: 127
+        )
+    }
+}
+
+private final class RecordingAssistantQueueGitHubRunner: GitHubCLICommandRunner, @unchecked Sendable {
+    private var outputs: [GitHubCLICommandOutput]
+    private(set) var recordedInvocations: [GitHubCLICommandInvocation] = []
+
+    init(outputs: [GitHubCLICommandOutput]) {
+        self.outputs = outputs
+    }
+
+    func runGitHub(arguments: [String], workingDirectory: URL) throws -> GitHubCLICommandOutput {
+        recordedInvocations.append(GitHubCLICommandInvocation(arguments: arguments, workingDirectory: workingDirectory))
+        if outputs.count > 1 {
+            return outputs.removeFirst()
+        }
+        return outputs.first ?? GitHubCLICommandOutput(
+            standardOutput: "",
+            standardError: "unexpected command",
+            exitCode: 127
+        )
     }
 }

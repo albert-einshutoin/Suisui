@@ -126,6 +126,57 @@ final class SyncDomainContractTests: XCTestCase {
         XCTAssertEqual(completion.source, .hostedMCP)
     }
 
+    func testAutomationRequestDecodesLegacyTaskMutationPayloadWithoutDevelopmentPullRequest() throws {
+        let json = """
+        {
+          "id": "legacy-task-mutation",
+          "source": "cloudRelay",
+          "approvalState": "pendingApproval",
+          "sourceClientID": "web",
+          "toolName": "task_due_date_update",
+          "redactedArgumentSummary": "taskID=42",
+          "taskMutation": {
+            "taskID": 42,
+            "operation": "updateDueDate",
+            "dueAt": "2026-07-03T09:00:00Z",
+            "source": "cloudRelay",
+            "approvalState": "pendingApproval"
+          }
+        }
+        """.data(using: .utf8)!
+
+        let request = try JSONDecoder().decode(SyncAutomationRequestPayload.self, from: json)
+
+        XCTAssertEqual(request.id, "legacy-task-mutation")
+        XCTAssertEqual(request.taskMutation?.operation, .updateDueDate)
+        XCTAssertNil(request.developmentPullRequest)
+    }
+
+    func testDevelopmentPullRequestAutomationPayloadRoundTripsThroughJSON() throws {
+        let request = SyncAutomationRequestPayload(
+            id: "pr-review",
+            source: .cloudRelay,
+            approvalState: .pendingApproval,
+            sourceClientID: "web",
+            toolName: ActionTool.developmentReviewPullRequestGate.rawValue,
+            redactedArgumentSummary: "Review PR",
+            developmentPullRequest: SyncDevelopmentPullRequestPayload(
+                projectID: 7,
+                operation: .reviewGate,
+                pullRequestURL: "https://github.com/albert-einshutoin/soloPM/pull/116",
+                branchName: "feature/solopm-7-merge-gate",
+                baseBranch: "feature/phase14-product-completion"
+            )
+        )
+
+        let data = try JSONEncoder().encode(request)
+        let decoded = try JSONDecoder().decode(SyncAutomationRequestPayload.self, from: data)
+
+        XCTAssertEqual(decoded, request)
+        XCTAssertNil(decoded.taskMutation)
+        XCTAssertEqual(decoded.developmentPullRequest?.operation, .reviewGate)
+    }
+
     func testSyncDomainPayloadRoundTripsAsStableJSON() throws {
         let payload = SyncDomainPayload(
             schemaVersion: 1,

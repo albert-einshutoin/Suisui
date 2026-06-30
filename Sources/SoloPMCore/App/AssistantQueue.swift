@@ -275,7 +275,8 @@ public enum AssistantQueueAdapter {
         automationRequest: SyncAutomationRequestPayload,
         costPreview: AssistantQueueCostPreview = .localOnly(note: "Local Mac execution preview only. No SoloPM managed charge before run.")
     ) -> AssistantQueueItem {
-        AssistantQueueItem(
+        let actionPlan = AssistantQueueExecutableActionPlanFactory.actionPlan(for: .automationRequest(automationRequest))
+        return AssistantQueueItem(
             id: "automation-request:\(automationRequest.id)",
             state: state(for: automationRequest),
             payload: .automationRequest(automationRequest),
@@ -284,7 +285,7 @@ public enum AssistantQueueAdapter {
             interpretationSummary: automationRequest.toolName,
             reviewReason: reviewReason(for: automationRequest),
             redactedSummary: AssistantQueueExecutableActionPlanFactory.reviewSummary(for: automationRequest),
-            requiredCapabilities: [.connectedMacRequired, .providerExecutionApproval],
+            requiredCapabilities: requiredCapabilities(for: actionPlan),
             costPreview: costPreview
         )
     }
@@ -305,6 +306,13 @@ public enum AssistantQueueAdapter {
             capabilities.append(.providerExecutionApproval)
         }
         return unique(capabilities)
+    }
+
+    private static func requiredCapabilities(for actionPlan: ActionPlan?) -> [AssistantQueueRequiredCapability] {
+        guard let actionPlan else {
+            return [.connectedMacRequired, .providerExecutionApproval]
+        }
+        return unique([.connectedMacRequired] + requiredCapabilities(for: actionPlan, riskLevel: maxRiskLevel(for: actionPlan)))
     }
 
     private static func state(for request: SyncAutomationRequestPayload) -> AssistantQueueState {

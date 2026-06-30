@@ -80,6 +80,7 @@ public enum DevelopmentPRPublishWorkflowError: Error, Equatable, Sendable {
     case invalidGitHubOriginRemote
     case pullRequestRepositoryMismatch(expected: String, actual: String)
     case invalidPullRequestStatusJSON
+    case invalidPullRequestReviewThreadsJSON
     case missingPullRequestURL
     case commandNotAllowed(tool: ActionTool, command: [String])
     case commandFailed(tool: ActionTool, command: [String], exitCode: Int32, standardError: String)
@@ -110,6 +111,8 @@ public enum DevelopmentPRPublishWorkflowError: Error, Equatable, Sendable {
             return "Pull request repository \(actual) does not match origin repository \(expected)."
         case .invalidPullRequestStatusJSON:
             return "GitHub CLI returned an unreadable pull request status response."
+        case .invalidPullRequestReviewThreadsJSON:
+            return "GitHub CLI returned an unreadable pull request review thread response."
         case .missingPullRequestURL:
             return "GitHub CLI did not return a pull request URL."
         case .commandNotAllowed:
@@ -174,11 +177,35 @@ struct DevelopmentGitHubRepositoryIdentity: Equatable, Sendable {
     }
 }
 
+struct DevelopmentGitHubPullRequestIdentity: Equatable, Sendable {
+    var repository: DevelopmentGitHubRepositoryIdentity
+    var number: Int
+}
+
 public enum DevelopmentGitHubPRCommandPolicy {
-    public static let statusJSONFields = "reviewDecision,statusCheckRollup,mergeable,mergeStateStatus,url,headRefName,baseRefName,headRepository,headRepositoryOwner,isCrossRepository"
+    public static let statusJSONFields = "reviewDecision,statusCheckRollup,mergeable,mergeStateStatus,url,headRefName,headRefOid,baseRefName,headRepository,headRepositoryOwner,isCrossRepository"
+    public static let reviewThreadsQuery = """
+    query($owner: String!, $repo: String!, $number: Int!) {
+      repository(owner: $owner, name: $repo) {
+        pullRequest(number: $number) {
+          reviewThreads(first: 100) {
+            totalCount
+            nodes {
+              isResolved
+            }
+            pageInfo {
+              hasNextPage
+            }
+          }
+        }
+      }
+    }
+    """
 
     public static func isAllowed(arguments: [String]) -> Bool {
-        if isAllowedStatusView(arguments: arguments) || isAllowedMerge(arguments: arguments) {
+        if isAllowedStatusView(arguments: arguments)
+            || isAllowedReviewThreadsQuery(arguments: arguments)
+            || isAllowedMerge(arguments: arguments) {
             return true
         }
 
@@ -222,7 +249,37 @@ public enum DevelopmentGitHubPRCommandPolicy {
         return pullRequestURL
     }
 
+    public static func reviewThreadsArguments(
+        owner: String,
+        repository: String,
+        number: Int
+    ) -> [String] {
+        [
+            "api", "graphql",
+            "-f", "query=\(reviewThreadsQuery)",
+            "-F", "owner=\(owner)",
+            "-F", "repo=\(repository)",
+            "-F", "number=\(number)"
+        ]
+    }
+
+    public static func validatedHeadCommitOID(_ rawOID: String) throws -> String {
+        let oid = rawOID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard [40, 64].contains(oid.count),
+              !oid.contains("\u{0}"),
+              oid.unicodeScalars.allSatisfy({ scalar in
+                (48...57).contains(scalar.value) || (97...102).contains(scalar.value)
+              }) else {
+            throw DevelopmentPRPublishWorkflowError.invalidPullRequestStatusJSON
+        }
+        return oid
+    }
+
     static func repositoryIdentity(fromPullRequestURL pullRequestURL: String) throws -> DevelopmentGitHubRepositoryIdentity {
+        try pullRequestIdentity(fromPullRequestURL: pullRequestURL).repository
+    }
+
+    static func pullRequestIdentity(fromPullRequestURL pullRequestURL: String) throws -> DevelopmentGitHubPullRequestIdentity {
         guard let components = URLComponents(string: pullRequestURL),
               components.scheme == "https",
               components.host?.lowercased() == "github.com",
@@ -240,11 +297,15 @@ public enum DevelopmentGitHubPRCommandPolicy {
               isValidGitHubOwner(parts[0]),
               isValidGitHubRepositoryName(parts[1]),
               !parts[3].isEmpty,
-              parts[3].allSatisfy(\.isNumber) else {
+              parts[3].allSatisfy(\.isNumber),
+              let number = Int(parts[3]) else {
             throw DevelopmentPRPublishWorkflowError.invalidPullRequestURL
         }
 
-        return DevelopmentGitHubRepositoryIdentity(owner: parts[0], name: parts[1])
+        return DevelopmentGitHubPullRequestIdentity(
+            repository: DevelopmentGitHubRepositoryIdentity(owner: parts[0], name: parts[1]),
+            number: number
+        )
     }
 
     static func repositoryIdentity(fromRemoteURL rawRemoteURL: String) throws -> DevelopmentGitHubRepositoryIdentity {
@@ -406,12 +467,40 @@ public enum DevelopmentGitHubPRCommandPolicy {
         return (try? validatedPullRequestURL(arguments[2], redactor: DeveloperSecretRedactor())) != nil
     }
 
+    private static func isAllowedReviewThreadsQuery(arguments: [String]) -> Bool {
+        guard arguments.count == 10,
+              arguments[0] == "api",
+              arguments[1] == "graphql",
+              arguments[2] == "-f",
+              arguments[3] == "query=\(reviewThreadsQuery)",
+              arguments[4] == "-F",
+              arguments[5].hasPrefix("owner="),
+              arguments[6] == "-F",
+              arguments[7].hasPrefix("repo="),
+              arguments[8] == "-F",
+              arguments[9].hasPrefix("number=") else {
+            return false
+        }
+        let owner = String(arguments[5].dropFirst("owner=".count))
+        let repository = String(arguments[7].dropFirst("repo=".count))
+        let numberRaw = String(arguments[9].dropFirst("number=".count))
+        guard isValidGitHubOwner(owner),
+              isValidGitHubRepositoryName(repository),
+              let number = Int(numberRaw),
+              number > 0 else {
+            return false
+        }
+        return true
+    }
+
     private static func isAllowedMerge(arguments: [String]) -> Bool {
-        guard arguments.count == 5,
+        guard arguments.count == 7,
               arguments[0] == "pr",
               arguments[1] == "merge",
               arguments[3] == "--merge",
-              arguments[4] == "--delete-branch" else {
+              arguments[4] == "--delete-branch",
+              arguments[5] == "--match-head-commit",
+              (try? validatedHeadCommitOID(arguments[6])) != nil else {
             return false
         }
         return (try? validatedPullRequestURL(arguments[2], redactor: DeveloperSecretRedactor())) != nil
@@ -466,6 +555,7 @@ private struct DevelopmentPullRequestRepositoryOwnerStatus: Decodable, Equatable
 private struct DevelopmentPullRequestGateStatus: Decodable, Equatable, Sendable {
     var url: String
     var headRefName: String
+    var headRefOid: String?
     var baseRefName: String
     var headRepository: DevelopmentPullRequestRepositoryStatus?
     var headRepositoryOwner: DevelopmentPullRequestRepositoryOwnerStatus?
@@ -487,6 +577,13 @@ private struct DevelopmentPullRequestGateStatus: Decodable, Equatable, Sendable 
         normalized(mergeStateStatus)
     }
 
+    var validatedHeadRefOID: String? {
+        guard let headRefOid else {
+            return nil
+        }
+        return try? DevelopmentGitHubPRCommandPolicy.validatedHeadCommitOID(headRefOid)
+    }
+
     func blockingReasons(
         expectedURL: String,
         expectedHeadBranch: String,
@@ -500,6 +597,9 @@ private struct DevelopmentPullRequestGateStatus: Decodable, Equatable, Sendable 
         }
         if headRefName != expectedHeadBranch {
             reasons.append("head branch is \(headRefName), expected \(expectedHeadBranch)")
+        }
+        if validatedHeadRefOID == nil {
+            reasons.append("head commit is missing")
         }
         if baseRefName != expectedBaseBranch {
             reasons.append("base branch is \(baseRefName), expected \(expectedBaseBranch)")
@@ -587,8 +687,64 @@ private struct DevelopmentPullRequestGateStatus: Decodable, Equatable, Sendable 
     }
 }
 
+private struct DevelopmentPullRequestReviewThreadStatus: Decodable, Equatable, Sendable {
+    struct ResponseData: Decodable, Equatable, Sendable {
+        var repository: Repository?
+    }
+
+    struct Repository: Decodable, Equatable, Sendable {
+        var pullRequest: PullRequest?
+    }
+
+    struct PullRequest: Decodable, Equatable, Sendable {
+        var reviewThreads: ReviewThreads
+    }
+
+    struct ReviewThreads: Decodable, Equatable, Sendable {
+        var totalCount: Int
+        var nodes: [ReviewThread]
+        var pageInfo: PageInfo
+    }
+
+    struct ReviewThread: Decodable, Equatable, Sendable {
+        var isResolved: Bool?
+    }
+
+    struct PageInfo: Decodable, Equatable, Sendable {
+        var hasNextPage: Bool
+    }
+
+    var data: ResponseData
+}
+
+private struct DevelopmentPullRequestReviewThreadSummary: Equatable, Sendable {
+    var totalCount: Int
+    var unresolvedCount: Int
+    var hasNextPage: Bool
+
+    static let notChecked = DevelopmentPullRequestReviewThreadSummary(
+        totalCount: 0,
+        unresolvedCount: 0,
+        hasNextPage: false
+    )
+
+    var blockingReasons: [String] {
+        var reasons: [String] = []
+        if hasNextPage {
+            reasons.append("review thread count exceeds verification limit")
+        }
+        if unresolvedCount == 1 {
+            reasons.append("1 review thread is unresolved")
+        } else if unresolvedCount > 1 {
+            reasons.append("\(unresolvedCount) review threads are unresolved")
+        }
+        return reasons
+    }
+}
+
 private struct DevelopmentPullRequestGateDecision: Equatable, Sendable {
     var status: DevelopmentPullRequestGateStatus
+    var reviewThreads: DevelopmentPullRequestReviewThreadSummary
     var blockingReasons: [String]
 
     var isReadyToMerge: Bool {
@@ -603,7 +759,7 @@ private struct DevelopmentPullRequestGateDecision: Equatable, Sendable {
     }
 
     func output(projectID: Int64, pullRequestURL: String, branchName: String, baseBranch: String) -> [String: JSONValue] {
-        [
+        var output: [String: JSONValue] = [
             "projectId": .number(Double(projectID)),
             "pullRequestURL": .string(pullRequestURL),
             "branchName": .string(branchName),
@@ -613,8 +769,15 @@ private struct DevelopmentPullRequestGateDecision: Equatable, Sendable {
             "mergeable": .string(status.normalizedMergeable),
             "mergeStateStatus": .string(status.normalizedMergeStateStatus),
             "statusCheckCount": .number(Double(status.statusCheckRollup.count)),
+            "reviewThreadCount": .number(Double(reviewThreads.totalCount)),
+            "unresolvedReviewThreadCount": .number(Double(reviewThreads.unresolvedCount)),
+            "reviewThreadPageTruncated": .bool(reviewThreads.hasNextPage),
             "blockingReasons": .array(blockingReasons.map(JSONValue.string))
         ]
+        if let headRefOID = status.validatedHeadRefOID {
+            output["headRefOid"] = .string(headRefOID)
+        }
+        return output
     }
 }
 
@@ -659,12 +822,20 @@ private struct DevelopmentPullRequestGateEvaluator {
             workingDirectory: scope.rootURL,
             tool: tool
         )
-        let blockingReasons = status.blockingReasons(
+        let preliminaryBlockingReasons = status.blockingReasons(
             expectedURL: pullRequestURL,
             expectedHeadBranch: branchName,
             expectedBaseBranch: baseBranch,
             expectedRepository: originRepository
         ).map(redacted)
+        let reviewThreads = preliminaryBlockingReasons.isEmpty
+            ? try fetchReviewThreads(
+                pullRequestURL: pullRequestURL,
+                workingDirectory: scope.rootURL,
+                tool: tool
+            )
+            : .notChecked
+        let blockingReasons = preliminaryBlockingReasons + reviewThreads.blockingReasons.map(redacted)
 
         return DevelopmentPullRequestGateContext(
             projectID: project.id,
@@ -674,6 +845,7 @@ private struct DevelopmentPullRequestGateEvaluator {
             workingDirectory: scope.rootURL,
             decision: DevelopmentPullRequestGateDecision(
                 status: status,
+                reviewThreads: reviewThreads,
                 blockingReasons: blockingReasons
             )
         )
@@ -727,6 +899,47 @@ private struct DevelopmentPullRequestGateEvaluator {
         return status
     }
 
+    private func fetchReviewThreads(
+        pullRequestURL: String,
+        workingDirectory: URL,
+        tool: ActionTool
+    ) throws -> DevelopmentPullRequestReviewThreadSummary {
+        let identity = try DevelopmentGitHubPRCommandPolicy.pullRequestIdentity(
+            fromPullRequestURL: pullRequestURL
+        )
+        let arguments = DevelopmentGitHubPRCommandPolicy.reviewThreadsArguments(
+            owner: identity.repository.owner,
+            repository: identity.repository.name,
+            number: identity.number
+        )
+        guard DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: arguments) else {
+            throw DevelopmentPRPublishWorkflowError.commandNotAllowed(tool: tool, command: arguments)
+        }
+        let output = try githubRunner.runGitHub(arguments: arguments, workingDirectory: workingDirectory)
+        guard output.exitCode == 0 else {
+            throw DevelopmentPRPublishWorkflowError.commandFailed(
+                tool: tool,
+                command: arguments,
+                exitCode: output.exitCode,
+                standardError: redacted(output.standardError.trimmingCharacters(in: .whitespacesAndNewlines))
+            )
+        }
+        guard let data = output.standardOutput.data(using: .utf8),
+              let response = try? JSONDecoder().decode(DevelopmentPullRequestReviewThreadStatus.self, from: data),
+              let threads = response.data.repository?.pullRequest?.reviewThreads else {
+            throw DevelopmentPRPublishWorkflowError.invalidPullRequestReviewThreadsJSON
+        }
+        let unresolvedCount = threads.nodes.filter { $0.isResolved != true }.count
+        // We intentionally fail closed when more than the first page exists:
+        // a merge-capable local agent must not assume comments beyond the
+        // fetched page are resolved.
+        return DevelopmentPullRequestReviewThreadSummary(
+            totalCount: threads.totalCount,
+            unresolvedCount: unresolvedCount,
+            hasNextPage: threads.pageInfo.hasNextPage
+        )
+    }
+
     private func validateRequiredArguments(_ arguments: [String: JSONValue], tool: ActionTool) throws {
         let required = ["projectId", "pullRequestURL", "branchName", "baseBranch"]
         for key in required where arguments[key] == nil {
@@ -746,6 +959,18 @@ private struct DevelopmentPullRequestGateContext: Equatable, Sendable {
     var baseBranch: String
     var workingDirectory: URL
     var decision: DevelopmentPullRequestGateDecision
+
+    var headRefOID: String? {
+        decision.status.validatedHeadRefOID
+    }
+
+    var mergeArguments: [String] {
+        [
+            "pr", "merge", pullRequestURL,
+            "--merge", "--delete-branch",
+            "--match-head-commit", headRefOID ?? ""
+        ]
+    }
 }
 
 public struct DevelopmentPullRequestReviewGateTool: Tool {
@@ -875,7 +1100,7 @@ public struct DevelopmentPullRequestMergeTool: Tool {
                 )
             }
 
-            let mergeArguments = ["pr", "merge", gate.pullRequestURL, "--merge", "--delete-branch"]
+            let mergeArguments = gate.mergeArguments
             guard DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: mergeArguments) else {
                 throw DevelopmentPRPublishWorkflowError.commandNotAllowed(tool: name, command: mergeArguments)
             }
@@ -902,7 +1127,8 @@ public struct DevelopmentPullRequestMergeTool: Tool {
                 output: output,
                 rollbackMetadata: [
                     "pullRequestURL": .string(gate.pullRequestURL),
-                    "branchName": .string(gate.branchName)
+                    "branchName": .string(gate.branchName),
+                    "headRefOid": .string(gate.headRefOID ?? "")
                 ],
                 compensationHint: "Pull the base branch after merge and continue from the updated base."
             )
@@ -926,7 +1152,7 @@ public struct DevelopmentPullRequestMergeTool: Tool {
     ) -> ToolResult {
         let error = DevelopmentPRPublishWorkflowError.commandFailed(
             tool: name,
-            command: ["pr", "merge", gate.pullRequestURL, "--merge", "--delete-branch"],
+            command: gate.mergeArguments,
             exitCode: exitCode,
             standardError: redacted(standardError.trimmingCharacters(in: .whitespacesAndNewlines))
         )

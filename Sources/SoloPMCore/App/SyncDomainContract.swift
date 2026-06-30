@@ -200,6 +200,33 @@ public struct SyncActionPlanPayload: Codable, Equatable, Sendable {
     }
 }
 
+public enum SyncDevelopmentPullRequestOperation: String, Codable, Equatable, Sendable {
+    case reviewGate
+    case merge
+}
+
+public struct SyncDevelopmentPullRequestPayload: Codable, Equatable, Sendable {
+    public var projectID: Int64
+    public var operation: SyncDevelopmentPullRequestOperation
+    public var pullRequestURL: String
+    public var branchName: String
+    public var baseBranch: String
+
+    public init(
+        projectID: Int64,
+        operation: SyncDevelopmentPullRequestOperation,
+        pullRequestURL: String,
+        branchName: String,
+        baseBranch: String
+    ) {
+        self.projectID = projectID
+        self.operation = operation
+        self.pullRequestURL = pullRequestURL
+        self.branchName = branchName
+        self.baseBranch = baseBranch
+    }
+}
+
 public struct SyncAutomationRequestPayload: Codable, Equatable, Sendable {
     public var id: String
     public var source: SyncMutationSource
@@ -208,6 +235,7 @@ public struct SyncAutomationRequestPayload: Codable, Equatable, Sendable {
     public var toolName: String?
     public var redactedArgumentSummary: String
     public var taskMutation: SyncTaskMutationPayload?
+    public var developmentPullRequest: SyncDevelopmentPullRequestPayload?
 
     public init(
         id: String,
@@ -216,7 +244,8 @@ public struct SyncAutomationRequestPayload: Codable, Equatable, Sendable {
         sourceClientID: String? = nil,
         toolName: String? = nil,
         redactedArgumentSummary: String = "",
-        taskMutation: SyncTaskMutationPayload? = nil
+        taskMutation: SyncTaskMutationPayload? = nil,
+        developmentPullRequest: SyncDevelopmentPullRequestPayload? = nil
     ) {
         self.id = id
         self.source = source
@@ -225,6 +254,7 @@ public struct SyncAutomationRequestPayload: Codable, Equatable, Sendable {
         self.toolName = toolName
         self.redactedArgumentSummary = redactedArgumentSummary
         self.taskMutation = taskMutation
+        self.developmentPullRequest = developmentPullRequest
     }
 }
 

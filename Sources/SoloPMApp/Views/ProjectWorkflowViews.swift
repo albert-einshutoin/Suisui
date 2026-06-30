@@ -928,6 +928,8 @@ struct DoneWorkflowView: View {
             return "Reminder"
         case .developmentBranch:
             return "Development Branch"
+        case .developmentCommit:
+            return "Development Commit"
         case .file:
             return "File"
         case .pullRequest:
