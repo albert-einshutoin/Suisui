@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import SoloPMCore
 
@@ -135,6 +136,294 @@ public final class GoogleCalendarOAuthCredentialStore: @unchecked Sendable {
             }
         }
         try metadataStore.deleteMetadata()
+    }
+}
+
+public struct GoogleCalendarOAuthAuthorizationConfiguration: Equatable, Sendable {
+    public var clientID: String
+    public var redirectURI: String
+    public var authorizationEndpoint: URL
+    public var tokenEndpoint: URL
+    public var scopes: Set<String>
+
+    public init(
+        clientID: String,
+        redirectURI: String,
+        authorizationEndpoint: URL = URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!,
+        tokenEndpoint: URL = URL(string: "https://oauth2.googleapis.com/token")!,
+        scopes: Set<String> = [GoogleCalendarRuntimeOAuthScope.eventsWrite]
+    ) {
+        self.clientID = clientID
+        self.redirectURI = redirectURI
+        self.authorizationEndpoint = authorizationEndpoint
+        self.tokenEndpoint = tokenEndpoint
+        self.scopes = scopes
+    }
+}
+
+public struct GoogleCalendarOAuthAuthorizationRequest: Equatable, Sendable {
+    public var authorizationURL: URL
+    public var state: String
+    public var codeVerifier: String
+    public var codeChallenge: String
+
+    public init(
+        authorizationURL: URL,
+        state: String,
+        codeVerifier: String,
+        codeChallenge: String
+    ) {
+        self.authorizationURL = authorizationURL
+        self.state = state
+        self.codeVerifier = codeVerifier
+        self.codeChallenge = codeChallenge
+    }
+}
+
+public enum GoogleCalendarOAuthAuthorizationError: Error, Equatable, Sendable {
+    case missingClientID
+    case invalidRedirectURI
+    case invalidState
+    case invalidCodeVerifier
+    case missingTokenExchangeRuntime
+    case callbackRedirectMismatch
+    case callbackInvalidQuery
+    case callbackStateMismatch
+    case callbackMissingCode
+    case callbackError(String)
+    case invalidTokenResponse
+    case missingRequiredScope(String)
+    case tokenExchangeFailed(String)
+}
+
+public enum GoogleCalendarOAuthPKCE {
+    public static func makeCodeChallenge(for verifier: String) throws -> String {
+        guard (43...128).contains(verifier.count),
+              verifier.range(of: #"^[A-Za-z0-9._~-]+$"#, options: .regularExpression) != nil else {
+            throw GoogleCalendarOAuthAuthorizationError.invalidCodeVerifier
+        }
+        let digest = SHA256.hash(data: Data(verifier.utf8))
+        return Data(digest).base64URLEncodedString()
+    }
+}
+
+public struct GoogleCalendarOAuthAuthorizationService: Sendable {
+    private let configuration: GoogleCalendarOAuthAuthorizationConfiguration
+    private let httpClient: (any SynchronousHTTPDataClient)?
+    private let credentialStore: GoogleCalendarOAuthCredentialStore?
+
+    public init(
+        configuration: GoogleCalendarOAuthAuthorizationConfiguration,
+        httpClient: (any SynchronousHTTPDataClient)? = nil,
+        credentialStore: GoogleCalendarOAuthCredentialStore? = nil
+    ) {
+        self.configuration = configuration
+        self.httpClient = httpClient
+        self.credentialStore = credentialStore
+    }
+
+    public func makeAuthorizationRequest() throws -> GoogleCalendarOAuthAuthorizationRequest {
+        try makeAuthorizationRequest(
+            state: UUID().uuidString,
+            codeVerifier: Self.makeCodeVerifier()
+        )
+    }
+
+    public func makeAuthorizationRequest(state: String) throws -> GoogleCalendarOAuthAuthorizationRequest {
+        try makeAuthorizationRequest(
+            state: state,
+            codeVerifier: Self.makeCodeVerifier()
+        )
+    }
+
+    public func makeAuthorizationRequest(
+        state: String,
+        codeVerifier: String
+    ) throws -> GoogleCalendarOAuthAuthorizationRequest {
+        let normalizedClientID = configuration.clientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedClientID.isEmpty == false else {
+            throw GoogleCalendarOAuthAuthorizationError.missingClientID
+        }
+        let normalizedState = state.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedState.isEmpty == false else {
+            throw GoogleCalendarOAuthAuthorizationError.invalidState
+        }
+        let requiredScope = GoogleCalendarRuntimeOAuthScope.eventsWrite
+        guard configuration.scopes.contains(requiredScope) else {
+            throw GoogleCalendarOAuthAuthorizationError.missingRequiredScope(requiredScope)
+        }
+        guard redirectComponents != nil else {
+            throw GoogleCalendarOAuthAuthorizationError.invalidRedirectURI
+        }
+        let codeChallenge = try GoogleCalendarOAuthPKCE.makeCodeChallenge(for: codeVerifier)
+        var components = URLComponents(url: configuration.authorizationEndpoint, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "client_id", value: normalizedClientID),
+            URLQueryItem(name: "redirect_uri", value: configuration.redirectURI),
+            URLQueryItem(name: "response_type", value: "code"),
+            URLQueryItem(name: "scope", value: configuration.scopes.sorted().joined(separator: " ")),
+            URLQueryItem(name: "state", value: normalizedState),
+            URLQueryItem(name: "code_challenge", value: codeChallenge),
+            URLQueryItem(name: "code_challenge_method", value: "S256"),
+            URLQueryItem(name: "access_type", value: "offline"),
+            URLQueryItem(name: "prompt", value: "consent")
+        ]
+        guard let authorizationURL = components?.url else {
+            throw GoogleCalendarOAuthAuthorizationError.invalidRedirectURI
+        }
+        return GoogleCalendarOAuthAuthorizationRequest(
+            authorizationURL: authorizationURL,
+            state: normalizedState,
+            codeVerifier: codeVerifier,
+            codeChallenge: codeChallenge
+        )
+    }
+
+    public func completeAuthorization(
+        callbackURL: URL,
+        pendingRequest: GoogleCalendarOAuthAuthorizationRequest,
+        now: Date = Date()
+    ) throws -> GoogleCalendarOAuthCredentialMetadata {
+        guard let httpClient, let credentialStore else {
+            throw GoogleCalendarOAuthAuthorizationError.missingTokenExchangeRuntime
+        }
+        let code = try authorizationCode(
+            from: callbackURL,
+            pendingRequest: pendingRequest
+        )
+        let request = try makeTokenExchangeRequest(
+            code: code,
+            codeVerifier: pendingRequest.codeVerifier
+        )
+        let (data, response) = try httpClient.data(for: request)
+        guard (200..<300).contains(response.statusCode) else {
+            throw GoogleCalendarOAuthAuthorizationError.tokenExchangeFailed(
+                "Google OAuth token exchange failed with HTTP \(response.statusCode)."
+            )
+        }
+
+        let tokenResponse: GoogleCalendarOAuthTokenResponse
+        do {
+            tokenResponse = try JSONDecoder().decode(GoogleCalendarOAuthTokenResponse.self, from: data)
+        } catch {
+            throw GoogleCalendarOAuthAuthorizationError.invalidTokenResponse
+        }
+
+        let accessToken = tokenResponse.accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard accessToken.isEmpty == false else {
+            throw GoogleCalendarOAuthAuthorizationError.invalidTokenResponse
+        }
+
+        let grantedScopes = tokenResponse.grantedScopes(defaultScopes: configuration.scopes)
+        let missingScopes = configuration.scopes.subtracting(grantedScopes)
+        guard missingScopes.isEmpty else {
+            throw GoogleCalendarOAuthAuthorizationError.missingRequiredScope(
+                missingScopes.sorted().joined(separator: ",")
+            )
+        }
+
+        let expiresAt = tokenResponse.expiresIn.map { now.addingTimeInterval(TimeInterval($0)) }
+        try credentialStore.saveTokens(
+            accessToken: accessToken,
+            refreshToken: tokenResponse.refreshToken,
+            grantedScopes: grantedScopes,
+            expiresAt: expiresAt
+        )
+        guard let metadata = try credentialStore.loadMetadata() else {
+            throw GoogleCalendarOAuthAuthorizationError.invalidTokenResponse
+        }
+        return metadata
+    }
+
+    private var redirectComponents: URLComponents? {
+        guard let components = URLComponents(string: configuration.redirectURI),
+              let scheme = components.scheme,
+              scheme.isEmpty == false,
+              (components.queryItems ?? []).isEmpty,
+              components.fragment == nil else {
+            return nil
+        }
+        return components
+    }
+
+    private static func makeCodeVerifier(length: Int = 64) -> String {
+        let characters = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        var generator = SystemRandomNumberGenerator()
+        return String((0..<length).map { _ in characters.randomElement(using: &generator)! })
+    }
+
+    private func authorizationCode(
+        from callbackURL: URL,
+        pendingRequest: GoogleCalendarOAuthAuthorizationRequest
+    ) throws -> String {
+        guard callbackURLMatchesRedirect(callbackURL) else {
+            throw GoogleCalendarOAuthAuthorizationError.callbackRedirectMismatch
+        }
+        let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)
+        let queryItems = components?.queryItems ?? []
+        let query = try validatedOAuthCallbackQuery(queryItems)
+        if let callbackError = query["error"],
+           callbackError.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            throw GoogleCalendarOAuthAuthorizationError.callbackError(callbackError)
+        }
+        guard query["state"] == pendingRequest.state else {
+            throw GoogleCalendarOAuthAuthorizationError.callbackStateMismatch
+        }
+        guard let code = query["code"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              code.isEmpty == false else {
+            throw GoogleCalendarOAuthAuthorizationError.callbackMissingCode
+        }
+        return code
+    }
+
+    private func validatedOAuthCallbackQuery(_ queryItems: [URLQueryItem]) throws -> [String: String] {
+        var query: [String: String] = [:]
+        for item in queryItems {
+            guard let value = item.value,
+                  query[item.name] == nil else {
+                throw GoogleCalendarOAuthAuthorizationError.callbackInvalidQuery
+            }
+            query[item.name] = value
+        }
+        return query
+    }
+
+    private func callbackURLMatchesRedirect(_ callbackURL: URL) -> Bool {
+        guard let expected = redirectComponents,
+              let actual = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false) else {
+            return false
+        }
+        return expected.scheme == actual.scheme
+            && expected.user == actual.user
+            && expected.password == actual.password
+            && expected.host == actual.host
+            && expected.port == actual.port
+            && expected.path == actual.path
+    }
+
+    private func makeTokenExchangeRequest(
+        code: String,
+        codeVerifier: String
+    ) throws -> URLRequest {
+        var request = URLRequest(url: configuration.tokenEndpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        let normalizedClientID = configuration.clientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        request.httpBody = formURLEncoded([
+            "client_id": normalizedClientID,
+            "code": code,
+            "code_verifier": codeVerifier,
+            "grant_type": "authorization_code",
+            "redirect_uri": configuration.redirectURI
+        ]).data(using: .utf8)
+        return request
+    }
+
+    private func formURLEncoded(_ values: [String: String]) -> String {
+        values
+            .sorted { $0.key < $1.key }
+            .map { key, value in "\(key.formEncoded)=\(value.formEncoded)" }
+            .joined(separator: "&")
     }
 }
 
@@ -613,5 +902,47 @@ private final class LockedResultBox: @unchecked Sendable {
         return try result?.get() ?? {
             throw GoogleCalendarRuntimeError.apiFailure("HTTP request did not complete.")
         }()
+    }
+}
+
+private struct GoogleCalendarOAuthTokenResponse: Decodable {
+    var accessToken: String
+    var refreshToken: String?
+    var expiresIn: Int?
+    var scope: String?
+
+    enum CodingKeys: String, CodingKey {
+        case accessToken = "access_token"
+        case refreshToken = "refresh_token"
+        case expiresIn = "expires_in"
+        case scope
+    }
+
+    func grantedScopes(defaultScopes: Set<String>) -> Set<String> {
+        guard let scope,
+              scope.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            return defaultScopes
+        }
+        return Set(
+            scope
+                .split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" })
+                .map(String.init)
+        )
+    }
+}
+
+private extension Data {
+    func base64URLEncodedString() -> String {
+        base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+}
+
+private extension String {
+    var formEncoded: String {
+        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._*")
+        return addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
     }
 }
