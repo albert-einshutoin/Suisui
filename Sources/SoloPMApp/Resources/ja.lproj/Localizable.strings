@@ -622,6 +622,7 @@
 "Approval token" = "承認トークン";
 "Schedule approval token" = "予定承認トークン";
 "Apply to Calendar" = "カレンダーへ適用";
+"Approve Google Calendar Sync" = "Googleカレンダー同期を承認";
 "Schedule block %@" = "予定枠 %@";
 "Generate a draft from Today time blocks." = "Todayの時間枠からドラフトを生成します。";
 "No unscheduled open tasks." = "未スケジュールの未完了タスクはありません。";
@@ -629,6 +630,8 @@
 "Calendar is not configured." = "カレンダーは未設定です。";
 "Create a schedule draft first." = "先に予定ドラフトを作成してください。";
 "External Calendar writes require review approval." = "外部カレンダーへの書き込みには確認と承認が必要です。";
+"SoloPM will create Google Calendar events for due, unfinished tasks. Existing linked tasks are skipped." = "SoloPMは期限付きの未完了タスクをGoogleカレンダーの予定として作成します。既にリンク済みのタスクはスキップされます。";
+"Sync due tasks to Google Calendar?" = "期限付きタスクをGoogleカレンダーへ同期しますか?";
 "Prepared schedule draft with %d time blocks and %d unscheduled tasks." = "%d件の時間枠と%d件の未スケジュールタスクで予定ドラフトを作成しました。";
 "Schedule review approval is required before Calendar write." = "カレンダーへ書き込む前に予定レビューの承認が必要です。";
 "Create a schedule draft before applying to Calendar." = "カレンダーへ適用する前に予定ドラフトを作成してください。";
