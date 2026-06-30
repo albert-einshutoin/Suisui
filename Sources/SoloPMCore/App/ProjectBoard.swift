@@ -2106,6 +2106,55 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    private func saveScheduleDraftApplyReceipt(
+        writeCandidates: [ScheduleDraftApplyWriteCandidate],
+        unscheduledTaskCount: Int,
+        createdEvents: [ScheduleDraftApplyCreatedEvent],
+        approvalID: String?,
+        status: ExecutionReceiptStatus,
+        errorSummary: String? = nil
+    ) -> String? {
+        guard let executionReceiptStore else {
+            refreshExecutionReceiptHistorySnapshot()
+            return nil
+        }
+
+        let projectTitlesByID = Dictionary(uniqueKeysWithValues: snapshot.projects.map { ($0.id, $0.title) })
+        let receipt = ExecutionReceiptFactory.makeScheduleDraftApplyReceipt(
+            writeCandidates: writeCandidates,
+            unscheduledTaskCount: unscheduledTaskCount,
+            createdEvents: createdEvents,
+            projectTitlesByID: projectTitlesByID,
+            runID: "schedule-draft-apply-run:\(UUID().uuidString)",
+            approvalID: approvalID,
+            status: status,
+            errorSummary: errorSummary,
+            createdAt: Date()
+        )
+        do {
+            try executionReceiptStore.save(receipt)
+            refreshExecutionReceiptHistorySnapshot()
+            return nil
+        } catch {
+            refreshExecutionReceiptHistorySnapshot()
+            if status == .failed {
+                return String(localized: "Calendar apply failed, and the execution receipt could not be saved.")
+            }
+            if status == .skipped {
+                return String(localized: "Schedule apply was skipped, and the execution receipt could not be saved.")
+            }
+            return String(localized: "Schedule applied to Calendar, but the execution receipt could not be saved.")
+        }
+    }
+
+    private static func scheduleDraftApplyApprovalID() -> String {
+        "schedule-draft-apply-approval:\(UUID().uuidString)"
+    }
+
+    private func scheduleDraftWriteCandidates(for draft: ScheduleDraft) -> [ScheduleDraftApplyWriteCandidate] {
+        draft.timeBlocks.compactMap(ScheduleDraftApplyWriteCandidate.init(block:))
+    }
+
     private func isEligibleForTaskAutomation(_ task: ProjectBoardTask) -> Bool {
         task.status != .blocked && task.status != .done
     }
@@ -2230,44 +2279,75 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     @discardableResult
     public func applyScheduleDraftToCalendar(approvalToken: String?) -> ScheduleApplyResult {
-        guard let approvalToken, !approvalToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard approvalToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
             scheduleApplyResult = .approvalRequired
             todayCommandFeedback = String(localized: "Schedule review approval is required before Calendar write.")
             return .approvalRequired
         }
+        let executionApprovalID = Self.scheduleDraftApplyApprovalID()
         guard let draft = scheduleDraft else {
             scheduleApplyResult = .noDraft
             todayCommandFeedback = String(localized: "Create a schedule draft before applying to Calendar.")
+            errorMessage = saveScheduleDraftApplyReceipt(
+                writeCandidates: [],
+                unscheduledTaskCount: 0,
+                createdEvents: [],
+                approvalID: executionApprovalID,
+                status: .skipped
+            )
             return .noDraft
         }
+        let writeCandidates = scheduleDraftWriteCandidates(for: draft)
         guard let scheduleCalendarClient else {
             scheduleApplyResult = .calendarNotConfigured
             todayCommandFeedback = String(localized: "Calendar is not configured. No external write was performed.")
+            errorMessage = saveScheduleDraftApplyReceipt(
+                writeCandidates: writeCandidates,
+                unscheduledTaskCount: draft.unscheduledTasks.count,
+                createdEvents: [],
+                approvalID: executionApprovalID,
+                status: .skipped
+            )
             return .calendarNotConfigured
         }
 
+        var createdEvents: [ScheduleDraftApplyCreatedEvent] = []
         do {
-            var eventCount = 0
-            for block in draft.timeBlocks {
-                guard let startAt = block.startAt, let endAt = block.endAt else {
-                    continue
-                }
-                _ = try scheduleCalendarClient.createEvent(CalendarEventDraft(
-                    title: block.task.title,
-                    startAt: startAt,
-                    endAt: endAt,
+            for candidate in writeCandidates {
+                let event = try scheduleCalendarClient.createEvent(CalendarEventDraft(
+                    title: candidate.taskTitle,
+                    startAt: candidate.startAt,
+                    endAt: candidate.endAt,
                     notes: String(localized: "Created from a reviewed SoloPM schedule draft.")
                 ))
-                eventCount += 1
+                createdEvents.append(ScheduleDraftApplyCreatedEvent(candidate: candidate, record: event))
             }
-            let result = ScheduleApplyResult.applied(eventCount: eventCount)
+            let result = ScheduleApplyResult.applied(eventCount: createdEvents.count)
             scheduleApplyResult = result
-            todayCommandFeedback = String(format: String(localized: "Applied %d Calendar events."), eventCount)
+            todayCommandFeedback = String(format: String(localized: "Applied %d Calendar events."), createdEvents.count)
+            errorMessage = saveScheduleDraftApplyReceipt(
+                writeCandidates: writeCandidates,
+                unscheduledTaskCount: draft.unscheduledTasks.count,
+                createdEvents: createdEvents,
+                approvalID: executionApprovalID,
+                status: .succeeded
+            )
             return result
         } catch {
-            let result = ScheduleApplyResult.failed(Self.userFacingMessage(for: error))
+            let message = Self.userFacingMessage(for: error)
+            let result = ScheduleApplyResult.failed(message)
             scheduleApplyResult = result
             todayCommandFeedback = String(localized: "Calendar apply failed.")
+            // The Calendar client does not expose rollback, so preserve partial
+            // write evidence in a failed receipt instead of hiding the attempt.
+            errorMessage = saveScheduleDraftApplyReceipt(
+                writeCandidates: writeCandidates,
+                unscheduledTaskCount: draft.unscheduledTasks.count,
+                createdEvents: createdEvents,
+                approvalID: executionApprovalID,
+                status: .failed,
+                errorSummary: message
+            )
             return result
         }
     }

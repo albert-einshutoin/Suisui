@@ -592,6 +592,59 @@ public struct ExecutionReceiptRedactor: Sendable {
     }
 }
 
+public struct ScheduleDraftApplyWriteCandidate: Equatable, Sendable {
+    public var taskID: Int64
+    public var projectID: Int64
+    public var taskTitle: String
+    public var startAt: String
+    public var endAt: String
+
+    public init(taskID: Int64, projectID: Int64, taskTitle: String, startAt: String, endAt: String) {
+        self.taskID = taskID
+        self.projectID = projectID
+        self.taskTitle = taskTitle
+        self.startAt = startAt
+        self.endAt = endAt
+    }
+
+    public init?(block: TodayTimeBlock) {
+        guard let startAt = block.startAt, let endAt = block.endAt else {
+            return nil
+        }
+        self.init(
+            taskID: block.task.id,
+            projectID: block.task.projectID,
+            taskTitle: block.task.title,
+            startAt: startAt,
+            endAt: endAt
+        )
+    }
+}
+
+public struct ScheduleDraftApplyCreatedEvent: Equatable, Sendable {
+    public var candidate: ScheduleDraftApplyWriteCandidate
+    public var calendarEventID: String
+    public var calendarEventTitle: String
+
+    public init(
+        candidate: ScheduleDraftApplyWriteCandidate,
+        calendarEventID: String,
+        calendarEventTitle: String
+    ) {
+        self.candidate = candidate
+        self.calendarEventID = calendarEventID
+        self.calendarEventTitle = calendarEventTitle
+    }
+
+    public init(candidate: ScheduleDraftApplyWriteCandidate, record: CalendarEventRecord) {
+        self.init(
+            candidate: candidate,
+            calendarEventID: record.id,
+            calendarEventTitle: record.draft.title
+        )
+    }
+}
+
 public enum ExecutionReceiptFactory {
     public static func makeReviewReceipt(
         session: ReviewSession,
@@ -693,6 +746,74 @@ public enum ExecutionReceiptFactory {
                 )
             ],
             visibleSurfaces: [.doneList, .taskDetail, .projectDetail, .auditLog],
+            redactionPolicy: redactionPolicy
+        )
+    }
+
+    public static func makeScheduleDraftApplyReceipt(
+        writeCandidates: [ScheduleDraftApplyWriteCandidate],
+        unscheduledTaskCount: Int,
+        createdEvents: [ScheduleDraftApplyCreatedEvent],
+        projectTitlesByID: [Int64: String] = [:],
+        runID: String,
+        approvalID: String? = nil,
+        status: ExecutionReceiptStatus,
+        errorSummary: String? = nil,
+        createdAt: Date = Date(),
+        redactionPolicy: ExecutionReceiptRedactionPolicy = ExecutionReceiptRedactionPolicy()
+    ) -> ExecutionReceipt {
+        let redactor = ExecutionReceiptRedactor(policy: redactionPolicy)
+        // The approval token comes from a SecureField, so the receipt proves the
+        // reviewed write outcome using a separate non-secret approval ID.
+        let inputPreview = [
+            "calendarWriteCandidates: \(writeCandidates.count)",
+            "unscheduledTasks: \(unscheduledTaskCount)"
+        ].joined(separator: ", ")
+        let outputSummary = scheduleDraftApplyOutputSummary(
+            status: status,
+            createdEventCount: createdEvents.count
+        )
+        let references = scheduleDraftApplyReferences(
+            writeCandidates: writeCandidates,
+            createdEvents: createdEvents,
+            projectTitlesByID: projectTitlesByID,
+            redactor: redactor
+        )
+        var actions = createdEvents.map { event in
+            ExecutionReceiptActionSummary(
+                id: "calendar-event:\(event.calendarEventID)",
+                toolName: ActionTool.calendarCreateWorkBlock.rawValue,
+                status: .succeeded,
+                inputPreview: redactor.redact(scheduleDraftApplyActionInput(for: event.candidate)),
+                outputSummary: redactor.redact("Created Calendar event \(event.calendarEventID).")
+            )
+        }
+        if status == .failed || actions.isEmpty {
+            actions.append(ExecutionReceiptActionSummary(
+                id: "schedule-draft-apply",
+                toolName: ActionTool.calendarCreateWorkBlock.rawValue,
+                status: status,
+                inputPreview: inputPreview,
+                outputSummary: status == .failed ? nil : outputSummary,
+                errorSummary: errorSummary.map { redactor.redact($0) }
+            ))
+        }
+
+        return ExecutionReceipt(
+            id: "receipt:\(runID):schedule-draft-apply",
+            runID: runID,
+            approvalID: approvalID,
+            createdAt: createdAt,
+            startedAt: createdAt,
+            finishedAt: createdAt,
+            status: status,
+            inputPreview: inputPreview,
+            outputSummary: outputSummary,
+            primaryToolName: ActionTool.calendarCreateWorkBlock.rawValue,
+            usage: .unavailable,
+            references: references,
+            actions: actions,
+            visibleSurfaces: [.taskDetail, .projectDetail, .auditLog],
             redactionPolicy: redactionPolicy
         )
     }
@@ -860,6 +981,81 @@ public enum ExecutionReceiptFactory {
         case nil:
             nil
         }
+    }
+
+    private static func scheduleDraftApplyOutputSummary(
+        status: ExecutionReceiptStatus,
+        createdEventCount: Int
+    ) -> String {
+        let eventLabel = createdEventCount == 1 ? "Calendar event" : "Calendar events"
+        switch status {
+        case .succeeded:
+            return "Created \(createdEventCount) \(eventLabel) from a reviewed schedule draft."
+        case .failed:
+            return "Calendar schedule apply failed after creating \(createdEventCount) \(eventLabel)."
+        case .running:
+            return "Calendar schedule apply is running."
+        case .notStarted:
+            return "Calendar schedule apply has not started."
+        case .skipped:
+            return "Calendar schedule apply was skipped."
+        case .canceled:
+            return "Calendar schedule apply was canceled."
+        }
+    }
+
+    private static func scheduleDraftApplyActionInput(for candidate: ScheduleDraftApplyWriteCandidate) -> String {
+        [
+            "taskID: \(candidate.taskID)",
+            "startAt: \(candidate.startAt)",
+            "endAt: \(candidate.endAt)"
+        ].joined(separator: ", ")
+    }
+
+    private static func scheduleDraftApplyReferences(
+        writeCandidates: [ScheduleDraftApplyWriteCandidate],
+        createdEvents: [ScheduleDraftApplyCreatedEvent],
+        projectTitlesByID: [Int64: String],
+        redactor: ExecutionReceiptRedactor
+    ) -> [ExecutionReceiptReference] {
+        var references: [ExecutionReceiptReference] = []
+        for candidate in writeCandidates {
+            appendReference(
+                kind: .task,
+                id: String(candidate.taskID),
+                label: redactor.redact(candidate.taskTitle, maxLength: 300),
+                references: &references
+            )
+        }
+        for projectID in Set(writeCandidates.map(\.projectID)).sorted() {
+            appendReference(
+                kind: .project,
+                id: String(projectID),
+                label: projectTitlesByID[projectID].map { redactor.redact($0, maxLength: 300) },
+                references: &references
+            )
+        }
+        for event in createdEvents {
+            appendReference(
+                kind: .calendarEvent,
+                id: event.calendarEventID,
+                label: redactor.redact(event.calendarEventTitle, maxLength: 300),
+                references: &references
+            )
+        }
+        return references
+    }
+
+    private static func appendReference(
+        kind: ExecutionReceiptReferenceKind,
+        id: String,
+        label: String? = nil,
+        references: inout [ExecutionReceiptReference]
+    ) {
+        guard !references.contains(where: { $0.kind == kind && $0.id == id }) else {
+            return
+        }
+        references.append(ExecutionReceiptReference(kind: kind, id: id, label: label))
     }
 
     private static func references(for session: ReviewSession) -> [ExecutionReceiptReference] {

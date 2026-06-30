@@ -1998,7 +1998,12 @@ final class ProjectBoardStoreTests: XCTestCase {
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let referenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 21, hour: 9).date)
         let calendarClient = InMemoryCalendarClient()
-        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore(), scheduleCalendarClient: calendarClient)
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: receiptStore,
+            scheduleCalendarClient: calendarClient
+        )
         viewModel.load()
         let project = try XCTUnwrap(viewModel.createProject(title: "Approval Schedule"))
         _ = try XCTUnwrap(viewModel.createTask(title: "Calendar block", projectID: project.id, status: .planned, dueAt: "2026-06-21"))
@@ -2009,6 +2014,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(result, .approvalRequired)
         XCTAssertTrue(try calendarClient.listEvents().isEmpty)
         XCTAssertEqual(viewModel.scheduleApplyResult, .approvalRequired)
+        XCTAssertTrue(receiptStore.receipts.isEmpty)
     }
 
     @MainActor
@@ -2016,7 +2022,11 @@ final class ProjectBoardStoreTests: XCTestCase {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let referenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 21, hour: 9).date)
-        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: receiptStore
+        )
         viewModel.load()
         let project = try XCTUnwrap(viewModel.createProject(title: "No Calendar"))
         _ = try XCTUnwrap(viewModel.createTask(title: "Calendar block", projectID: project.id, status: .planned, dueAt: "2026-06-21"))
@@ -2026,6 +2036,145 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         XCTAssertEqual(result, .calendarNotConfigured)
         XCTAssertEqual(viewModel.scheduleApplyResult, .calendarNotConfigured)
+        let receipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receipt.status, .skipped)
+        XCTAssertEqual(receipt.primaryToolName, ActionTool.calendarCreateWorkBlock.rawValue)
+        XCTAssertTrue(receipt.approvalID?.hasPrefix("schedule-draft-apply-approval:") ?? false)
+        XCTAssertEqual(receipt.references.map(\.kind), [.task, .project])
+    }
+
+    @MainActor
+    func testScheduleApplyWithoutDraftPersistsSkippedReceiptAfterApproval() throws {
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: receiptStore,
+            scheduleCalendarClient: InMemoryCalendarClient()
+        )
+        viewModel.load()
+
+        let result = viewModel.applyScheduleDraftToCalendar(approvalToken: "approved")
+
+        XCTAssertEqual(result, .noDraft)
+        let receipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receipt.status, .skipped)
+        XCTAssertTrue(receipt.approvalID?.hasPrefix("schedule-draft-apply-approval:") ?? false)
+        XCTAssertTrue(receipt.references.isEmpty)
+    }
+
+    @MainActor
+    func testScheduleApplyPersistsExecutionReceiptForCreatedCalendarEvents() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 21, hour: 9).date)
+        let calendarClient = InMemoryCalendarClient()
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: receiptStore,
+            scheduleCalendarClient: calendarClient
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Schedule Project token=project-secret"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Calendar block token=task-secret",
+            projectID: project.id,
+            status: .planned,
+            dueAt: "2026-06-21"
+        ))
+        _ = viewModel.prepareScheduleDraft(on: referenceDate, calendar: calendar)
+
+        let result = viewModel.applyScheduleDraftToCalendar(approvalToken: "approval-token-secret")
+
+        XCTAssertEqual(result, .applied(eventCount: 1))
+        XCTAssertEqual(try calendarClient.listEvents().count, 1)
+        let receipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receipt.status, .succeeded)
+        XCTAssertTrue(receipt.approvalID?.hasPrefix("schedule-draft-apply-approval:") ?? false)
+        XCTAssertEqual(receipt.primaryToolName, ActionTool.calendarCreateWorkBlock.rawValue)
+        XCTAssertEqual(receipt.references.map(\.kind), [.task, .project, .calendarEvent])
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .task, id: String(task.id), label: "Calendar block [REDACTED_SECRET]")))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .project, id: String(project.id), label: "Schedule Project [REDACTED_SECRET]")))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .calendarEvent, id: "calendar-event-1", label: "Calendar block [REDACTED_SECRET]")))
+        XCTAssertEqual(receipt.visibleSurfaces, [.taskDetail, .projectDetail, .auditLog])
+        let encodedReceipt = try XCTUnwrap(String(data: JSONEncoder().encode(receipt), encoding: .utf8))
+        XCTAssertFalse(encodedReceipt.contains("approval-token-secret"))
+        XCTAssertFalse(encodedReceipt.contains("task-secret"))
+        XCTAssertFalse(encodedReceipt.contains("project-secret"))
+
+        let globalRow = try XCTUnwrap(viewModel.executionReceiptHistorySnapshot.rows.first)
+        XCTAssertEqual(globalRow.status, .succeeded)
+        XCTAssertEqual(globalRow.toolLabel, ActionTool.calendarCreateWorkBlock.rawValue)
+        XCTAssertTrue(globalRow.referenceSummary.contains("Calendar Event 1"))
+        XCTAssertEqual(viewModel.executionReceiptHistorySnapshot(forTaskID: task.id).rows.map(\.toolLabel), [ActionTool.calendarCreateWorkBlock.rawValue])
+        XCTAssertEqual(viewModel.executionReceiptHistorySnapshot(forProjectID: project.id).rows.map(\.toolLabel), [ActionTool.calendarCreateWorkBlock.rawValue])
+    }
+
+    @MainActor
+    func testScheduleApplyPersistsFailedExecutionReceiptWhenCalendarWriteFails() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 21, hour: 9).date)
+        let calendarClient = InMemoryCalendarClient(authorizationStatus: .denied)
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: receiptStore,
+            scheduleCalendarClient: calendarClient
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Denied Calendar"))
+        let task = try XCTUnwrap(viewModel.createTask(title: "Calendar block", projectID: project.id, status: .planned, dueAt: "2026-06-21"))
+        _ = viewModel.prepareScheduleDraft(on: referenceDate, calendar: calendar)
+
+        let result = viewModel.applyScheduleDraftToCalendar(approvalToken: "approved")
+
+        guard case .failed(let message) = result else {
+            return XCTFail("Expected a failed schedule apply result.")
+        }
+        XCTAssertTrue(message.contains("Calendar permission is denied"))
+        XCTAssertTrue(try calendarClient.listEvents().isEmpty)
+        let receipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receipt.status, .failed)
+        XCTAssertEqual(receipt.primaryToolName, ActionTool.calendarCreateWorkBlock.rawValue)
+        XCTAssertEqual(receipt.references.map(\.kind), [.task, .project])
+        XCTAssertTrue(receipt.actions.contains { $0.status == .failed && ($0.errorSummary?.contains("Calendar permission is denied") ?? false) })
+        XCTAssertEqual(viewModel.executionReceiptHistorySnapshot.rows.first?.status, .failed)
+        XCTAssertEqual(viewModel.executionReceiptHistorySnapshot(forTaskID: task.id).rows.map(\.status), [.failed])
+    }
+
+    @MainActor
+    func testScheduleApplyPersistsPartialFailureReceiptAfterCreatedCalendarEvent() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 21, hour: 9).date)
+        let calendarClient = FailingAfterFirstCalendarClient()
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: receiptStore,
+            scheduleCalendarClient: calendarClient
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Partial Calendar"))
+        let firstTask = try XCTUnwrap(viewModel.createTask(title: "First calendar block", projectID: project.id, status: .planned, dueAt: "2026-06-21"))
+        let secondTask = try XCTUnwrap(viewModel.createTask(title: "Second calendar block", projectID: project.id, status: .planned, dueAt: "2026-06-21"))
+        _ = viewModel.prepareScheduleDraft(on: referenceDate, calendar: calendar)
+
+        let result = viewModel.applyScheduleDraftToCalendar(approvalToken: "approved")
+
+        guard case .failed(let message) = result else {
+            return XCTFail("Expected a failed schedule apply result.")
+        }
+        XCTAssertTrue(message.contains("Calendar write failed after the first event"))
+        XCTAssertEqual(try calendarClient.listEvents().count, 1)
+        let receipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receipt.status, .failed)
+        XCTAssertEqual(receipt.references.filter { $0.kind == .calendarEvent }.map(\.id), ["calendar-event-1"])
+        XCTAssertEqual(receipt.actions.map(\.status), [.succeeded, .failed])
+        XCTAssertTrue(receipt.references.contains { $0.kind == .task && $0.id == String(firstTask.id) })
+        XCTAssertTrue(receipt.references.contains { $0.kind == .task && $0.id == String(secondTask.id) })
+        XCTAssertEqual(viewModel.executionReceiptHistorySnapshot(forProjectID: project.id).rows.map(\.status), [.failed])
     }
 
     @MainActor
@@ -3596,6 +3745,29 @@ private enum ProjectBoardStoreTestError: Error, CustomStringConvertible {
 
     var description: String {
         "Project board unavailable"
+    }
+}
+
+private final class FailingAfterFirstCalendarClient: CalendarClient, @unchecked Sendable {
+    private var records: [CalendarEventRecord] = []
+    private let lock = NSLock()
+
+    func createEvent(_ draft: CalendarEventDraft) throws -> CalendarEventRecord {
+        lock.lock()
+        defer { lock.unlock() }
+        guard records.isEmpty else {
+            throw ToolClientError.invalidRequest("Calendar write failed after the first event.")
+        }
+
+        let record = CalendarEventRecord(id: "calendar-event-1", draft: draft)
+        records.append(record)
+        return record
+    }
+
+    func listEvents() throws -> [CalendarEventRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+        return records
     }
 }
 
