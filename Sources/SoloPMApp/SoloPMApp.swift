@@ -443,6 +443,7 @@ private struct MenuBarPanel: View {
 }
 
 private struct VoiceCaptureView: View {
+    @Environment(\.openWindow) private var openWindow
     @StateObject private var viewModel: VoiceCaptureViewModel
     @State private var clarificationAnswer = ""
 
@@ -510,6 +511,12 @@ private struct VoiceCaptureView: View {
                     )
                 }
 
+                if let request = viewModel.dailyPlanningReviewRequest {
+                    VoiceDailyPlanningReviewRequestPanel(request: request) {
+                        postDailyPlanningReviewRequest(request)
+                    }
+                }
+
                 HStack {
                     Button {
                         if viewModel.isRecording {
@@ -569,11 +576,62 @@ private struct VoiceCaptureView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityIdentifier("voice-command-root")
+        .onChange(of: viewModel.dailyPlanningReviewRequest) { _, request in
+            guard let request else {
+                return
+            }
+            postDailyPlanningReviewRequest(request)
+        }
     }
 
     private func recordingOutputURL() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("solopm-recording-\(UUID().uuidString).m4a")
+    }
+
+    private func postDailyPlanningReviewRequest(_ request: VoiceDailyPlanningReviewRequest) {
+        SoloPMVoiceDailyPlanningReviewBridge.storePendingSourceTranscript(request.sourceTranscript)
+        openWindow(id: "project-board")
+        NotificationCenter.default.post(
+            name: .soloPMVoiceDailyPlanningReviewRequested,
+            object: nil,
+            userInfo: [SoloPMVoiceDailyPlanningReviewBridge.sourceTranscriptUserInfoKey: request.sourceTranscript]
+        )
+    }
+}
+
+private struct VoiceDailyPlanningReviewRequestPanel: View {
+    let request: VoiceDailyPlanningReviewRequest
+    let onOpen: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(localizedSettingsDisplay("Daily Planning Review"), systemImage: "sun.max")
+                .font(.subheadline)
+
+            Text(localizedSettingsDisplay("Opening a local Today review. No provider, Calendar, Reminder, connector, or file write is run."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !request.sourceTranscript.isEmpty {
+                Label(request.sourceTranscript, systemImage: "quote.bubble")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button {
+                onOpen()
+            } label: {
+                Label(localizedSettingsDisplay("Open Today Review"), systemImage: "arrow.forward.circle")
+            }
+            .accessibilityIdentifier("voice-daily-planning-open-board")
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+        .accessibilityIdentifier("voice-daily-planning-request")
     }
 }
 

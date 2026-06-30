@@ -28,6 +28,23 @@ final class VoiceCommandRouterTests: XCTestCase {
         XCTAssertEqual(result.decision, .reviewOnly)
     }
 
+    func testRoutesNaturalTodayReviewCommandsToDailyPlanningReview() {
+        let transcripts = [
+            "Open Today Review",
+            "today review",
+            "日次計画レビューを開いて",
+            "今日のレビューを開いて"
+        ]
+
+        for transcript in transcripts {
+            let result = router.route(transcript: transcript)
+
+            XCTAssertEqual(result.intent, .dailyPlanningReview, transcript)
+            XCTAssertGreaterThanOrEqual(result.confidence, 0.7, transcript)
+            XCTAssertEqual(result.decision, .reviewOnly, transcript)
+        }
+    }
+
     func testRoutesJapaneseTaskCreateCommand() {
         let result = router.route(transcript: "リリースメモのタスクを作成して")
 
