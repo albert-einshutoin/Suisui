@@ -259,7 +259,7 @@ public enum AssistantQueueAdapter {
             sourceTranscript: nil,
             interpretationSummary: automationRequest.toolName,
             reviewReason: reviewReason(for: automationRequest),
-            redactedSummary: automationRequest.redactedArgumentSummary,
+            redactedSummary: AssistantQueueExecutableActionPlanFactory.reviewSummary(for: automationRequest),
             requiredCapabilities: [.connectedMacRequired, .providerExecutionApproval]
         )
     }
