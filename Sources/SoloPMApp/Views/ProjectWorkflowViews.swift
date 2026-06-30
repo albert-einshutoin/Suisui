@@ -1227,6 +1227,266 @@ struct InboxWorkflowView: View {
     }
 }
 
+struct AssistantQueueWorkflowView: View {
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    private var snapshot: AssistantQueueSnapshot {
+        viewModel.assistantQueueSnapshot
+    }
+
+    private var subtitle: String {
+        String(
+            format: String(localized: "%d waiting, %d blocked"),
+            snapshot.waitingReviewCount,
+            snapshot.blockedCount
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 12) {
+                WorkflowHeader(
+                    title: "Assistant Queue",
+                    subtitle: subtitle,
+                    systemImage: "tray.full"
+                )
+                Spacer(minLength: 12)
+                AssistantQueueCountStrip(snapshot: snapshot)
+            }
+
+            Text("Review AI-generated work before anything runs. Approval here records intent only; execution still requires the existing review gate.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("assistant-queue-boundary-note")
+
+            if snapshot.rows.isEmpty {
+                ContentUnavailableView(
+                    "Assistant Queue is clear",
+                    systemImage: "tray.full",
+                    description: Text("Voice plans, automation drafts, and connector writes appear here before execution.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(snapshot.rows) { row in
+                            AssistantQueueRow(row: row, viewModel: viewModel)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("assistant-queue-workflow")
+        .accessibilityLabel("Assistant Queue")
+        .accessibilityValue(subtitle)
+        .accessibilityHint("Reviews AI-generated drafts before execution.")
+    }
+}
+
+private struct AssistantQueueCountStrip: View {
+    let snapshot: AssistantQueueSnapshot
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                badge(title: "Waiting", value: snapshot.waitingReviewCount, tint: .orange)
+                badge(title: "Blocked", value: snapshot.blockedCount, tint: .red)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                badge(title: "Waiting", value: snapshot.waitingReviewCount, tint: .orange)
+                badge(title: "Blocked", value: snapshot.blockedCount, tint: .red)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("assistant-queue-count-strip")
+        .accessibilityLabel("Assistant Queue counts")
+    }
+
+    private func badge(title: LocalizedStringKey, value: Int, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(value)")
+                .font(.headline.monospacedDigit())
+                .foregroundStyle(tint)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(minWidth: 72, alignment: .leading)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct AssistantQueueRow: View {
+    let row: AssistantQueueReadModelRow
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: stateSystemImage)
+                    .foregroundStyle(stateTint)
+                    .frame(width: 22, height: 22)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(row.title)
+                        .font(.headline)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 8) {
+                        Text(LocalizedStringKey(row.stateLabel))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(stateTint)
+                        Label(row.riskLabel, systemImage: "shield")
+                        if !row.capabilityLabels.isEmpty {
+                            Label(row.capabilityLabels.joined(separator: ", "), systemImage: "key")
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+
+                    Text(row.reviewReason)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let sourcePreview = row.sourcePreview, !sourcePreview.isEmpty {
+                        Label(sourcePreview, systemImage: "quote.bubble")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if let blockingReason = row.blockingReason {
+                        Label(blockingReason, systemImage: "exclamationmark.octagon")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                Spacer(minLength: 8)
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    _ = viewModel.approveAssistantQueueItem(id: row.id)
+                } label: {
+                    Label("Approve", systemImage: "checkmark.seal")
+                }
+                .disabled(!row.canApprove)
+                .controlSize(.small)
+                .help("Approve this queue item without running it")
+                .accessibilityIdentifier("assistant-queue-approve-\(row.id)")
+                .accessibilityHint("Records approval intent. Execution still requires the review gate.")
+
+                Button {
+                    _ = viewModel.deferAssistantQueueItem(id: row.id)
+                } label: {
+                    Label("Defer", systemImage: "clock")
+                }
+                .disabled(!row.canDefer)
+                .controlSize(.small)
+                .help("Review this queue item later")
+                .accessibilityIdentifier("assistant-queue-defer-\(row.id)")
+                .accessibilityHint("Keeps this generated work in the local queue for later review.")
+
+                Button {
+                    _ = viewModel.rejectAssistantQueueItem(id: row.id)
+                } label: {
+                    Label("Reject", systemImage: "xmark.circle")
+                }
+                .disabled(!row.canReject)
+                .controlSize(.small)
+                .help("Reject this queue item")
+                .accessibilityIdentifier("assistant-queue-reject-\(row.id)")
+                .accessibilityHint("Marks this generated work rejected without running it.")
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.secondary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(row.state == .blocked ? Color.red.opacity(0.35) : Color.secondary.opacity(0.12))
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("assistant-queue-row-\(row.id)")
+        .accessibilityLabel(row.title)
+        .accessibilityValue(accessibilityValue)
+        .accessibilityHint("Review this Assistant Queue item before execution.")
+    }
+
+    private var stateSystemImage: String {
+        switch row.state {
+        case .blocked:
+            "exclamationmark.octagon"
+        case .approved:
+            "checkmark.seal"
+        case .rejected:
+            "xmark.circle"
+        case .deferred:
+            "clock"
+        case .done:
+            "checkmark.circle"
+        case .running:
+            "arrow.triangle.2.circlepath"
+        case .captured, .interpreted, .drafted, .waitingReview:
+            "tray.full"
+        }
+    }
+
+    private var stateTint: Color {
+        switch row.state {
+        case .blocked:
+            .red
+        case .approved:
+            .green
+        case .rejected:
+            .secondary
+        case .deferred:
+            .blue
+        case .done:
+            .green
+        case .running:
+            .orange
+        case .captured, .interpreted, .drafted, .waitingReview:
+            .orange
+        }
+    }
+
+    private var accessibilityValue: String {
+        var values = [
+            "State: \(row.stateLabel)",
+            "Risk: \(row.riskLabel)",
+            "Reason: \(row.reviewReason)"
+        ]
+        if let sourcePreview = row.sourcePreview {
+            values.append("Source: \(sourcePreview)")
+        }
+        if !row.capabilityLabels.isEmpty {
+            values.append("Capabilities: \(row.capabilityLabels.joined(separator: ", "))")
+        }
+        if let blockingReason = row.blockingReason {
+            values.append("Blocked: \(blockingReason)")
+        }
+        return values.joined(separator: ", ")
+    }
+}
+
 private struct InboxHeaderControls: View {
     @Binding var quickTitle: String
     @ObservedObject var viewModel: ProjectBoardViewModel

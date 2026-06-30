@@ -106,6 +106,30 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("AssistantQueueReadModel.snapshot("))
     }
 
+    func testAssistantQueueWorkflowIsReachableFromProjectBoardSidebar() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let persistenceSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+
+        XCTAssertTrue(persistenceSource.contains("case assistantQueue"))
+        XCTAssertTrue(persistenceSource.contains("return \"assistant-queue\""))
+        XCTAssertTrue(boardSource.contains("ProjectBoardSidebarDestinationRow(destination: .assistantQueue, count: viewModel.assistantQueueSnapshot.reviewableCount)"))
+        XCTAssertTrue(boardSource.contains("AssistantQueueWorkflowView(viewModel: viewModel)"))
+        XCTAssertTrue(workflowSource.contains("struct AssistantQueueWorkflowView"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-workflow\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-row-\\(row.id)\")"))
+        XCTAssertTrue(workflowSource.contains("viewModel.approveAssistantQueueItem(id: row.id)"))
+        XCTAssertTrue(workflowSource.contains("viewModel.deferAssistantQueueItem(id: row.id)"))
+        XCTAssertTrue(workflowSource.contains("viewModel.rejectAssistantQueueItem(id: row.id)"))
+        XCTAssertTrue(workflowSource.contains(".disabled(!row.canApprove)"))
+        XCTAssertTrue(workflowSource.contains(".disabled(!row.canDefer)"))
+        XCTAssertTrue(workflowSource.contains(".disabled(!row.canReject)"))
+        XCTAssertTrue(coreSource.contains("public func approveAssistantQueueItem(id: String) -> Bool"))
+        XCTAssertTrue(coreSource.contains("public func deferAssistantQueueItem(id: String) -> Bool"))
+        XCTAssertTrue(coreSource.contains("public func rejectAssistantQueueItem(id: String) -> Bool"))
+    }
+
     func testProjectBoardExposesPortableTaskImportExportFileActions() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
