@@ -780,6 +780,9 @@
 "What scope should SoloPM prepare for review?" = "What scope should SoloPM prepare for review?";
 "Should SoloPM keep this as a reviewed draft?" = "Should SoloPM keep this as a reviewed draft?";
 "Assistant Queue" = "Assistant Queue";
+"Open Assistant Queue" = "Open Assistant Queue";
+"Opens the Assistant Queue without running the item." = "Opens the Assistant Queue without running the item.";
+"Assistant Queue item is no longer available." = "Assistant Queue item is no longer available.";
 "Assistant Queue counts" = "Assistant Queue counts";
 "Assistant Queue is clear" = "Assistant Queue is clear";
 "Assistant Queue batch toolbar" = "Assistant Queue batch toolbar";

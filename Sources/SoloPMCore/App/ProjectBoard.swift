@@ -2820,7 +2820,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                 receipts = try executionReceiptStore?.list(limit: 100) ?? []
             } catch {
                 receipts = []
-                receiptErrorMessage = String(localized: "Assistant Queue execution receipts are unavailable. Queue state is still shown.")
+                receiptErrorMessage = assistantQueueReceiptUnavailableMessage
             }
             assistantQueueSnapshot = AssistantQueueReadModel.snapshot(
                 from: visibleItems,
@@ -2874,6 +2874,61 @@ public final class ProjectBoardViewModel: ObservableObject {
             assistantQueueSelectedItemIDs.remove(id)
         }
         return true
+    }
+
+    private var assistantQueueItemUnavailableMessage: String {
+        String(localized: "Assistant Queue item is no longer available.")
+    }
+
+    private var assistantQueueReceiptUnavailableMessage: String {
+        String(localized: "Assistant Queue execution receipts are unavailable. Queue state is still shown.")
+    }
+
+    @discardableResult
+    public func focusAssistantQueueExecutionHandoff(id: String) -> Bool {
+        let itemID = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !itemID.isEmpty else {
+            errorMessage = assistantQueueItemUnavailableMessage
+            integrationStatusMessage = nil
+            return false
+        }
+
+        // Voice handoff targets already-approved work. Force the narrow
+        // runnable filter so stale persisted filters such as Done or Deferred
+        // do not hide the item the user just approved.
+        assistantQueueViewFilter = .approved
+        assistantQueueSelectedItemIDs = []
+        let approvedRefreshMessage = refreshAssistantQueueSnapshot()
+        if setAssistantQueueSelection(id: itemID, selected: true) {
+            errorMessage = nil
+            integrationStatusMessage = nil
+            return true
+        }
+        if let approvedRefreshMessage,
+           approvedRefreshMessage != assistantQueueReceiptUnavailableMessage {
+            errorMessage = approvedRefreshMessage
+            integrationStatusMessage = nil
+            return false
+        }
+
+        assistantQueueViewFilter = .all
+        assistantQueueSelectedItemIDs = []
+        let allRefreshMessage = refreshAssistantQueueSnapshot()
+        if setAssistantQueueSelection(id: itemID, selected: true) {
+            errorMessage = nil
+            integrationStatusMessage = nil
+            return true
+        }
+        if let allRefreshMessage,
+           allRefreshMessage != assistantQueueReceiptUnavailableMessage {
+            errorMessage = allRefreshMessage
+            integrationStatusMessage = nil
+            return false
+        }
+
+        errorMessage = assistantQueueItemUnavailableMessage
+        integrationStatusMessage = nil
+        return false
     }
 
     @discardableResult

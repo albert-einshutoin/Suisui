@@ -473,6 +473,40 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.assistantQueueItem?.approval)
     }
 
+    func testAssistantQueueApprovalCreatesCentralExecutionHandoff() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-queue-handoff",
+                userInput: "Create a task",
+                summary: "Create task",
+                actions: [PlanAction(id: "action-1", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("Create a task")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertNil(viewModel.assistantQueueExecutionHandoffItemID)
+
+        XCTAssertTrue(viewModel.approveAssistantQueueItem(reviewerID: "local-user"))
+        XCTAssertEqual(viewModel.assistantQueueItem?.state, .approved)
+        XCTAssertEqual(viewModel.assistantQueueExecutionHandoffItemID, "action-plan:plan-queue-handoff")
+
+        viewModel.deferAssistantQueueItem()
+
+        XCTAssertNil(viewModel.assistantQueueExecutionHandoffItemID)
+    }
+
     func testRecordingDuringClarificationUsesTranscriptAsAnswerWithoutReplacingOriginalDraft() async {
         let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
             providerID: "fake",

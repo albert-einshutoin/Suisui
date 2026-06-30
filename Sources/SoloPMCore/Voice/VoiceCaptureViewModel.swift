@@ -114,6 +114,15 @@ public final class VoiceCaptureViewModel: ObservableObject {
             && phase != .transcribing
     }
 
+    public var assistantQueueExecutionHandoffItemID: String? {
+        // Voice capture stops at approval so execution, receipts, and cost
+        // gates stay on the centralized Assistant Queue path.
+        guard let assistantQueueItem, assistantQueueItem.state == .approved else {
+            return nil
+        }
+        return assistantQueueItem.id
+    }
+
     public var isRecording: Bool {
         if case .recording = phase {
             return true
