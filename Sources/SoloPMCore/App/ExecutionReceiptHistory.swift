@@ -221,6 +221,8 @@ public enum ExecutionReceiptHistoryReadModel {
             return String(localized: "Calendar Event")
         case .notification:
             return String(localized: "Notification")
+        case .reminder:
+            return String(localized: "Reminder")
         case .file:
             return String(localized: "File")
         case .pullRequest:

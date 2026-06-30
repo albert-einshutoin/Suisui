@@ -171,6 +171,155 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .notification, id: "notification-standup")))
     }
 
+    func testReviewExecutionReceiptLinksReminderReferenceFromToolOutput() throws {
+        var session = ReviewSession(
+            id: "review-reminder",
+            plan: ActionPlan(
+                id: "plan-reminder",
+                userInput: "Remind me to send the launch notes",
+                summary: "Create a reminder",
+                actions: [
+                    PlanAction(
+                        id: "action-reminder",
+                        tool: .remindersCreate,
+                        arguments: [
+                            "title": .string("Send launch notes"),
+                            "dueAt": .string("2026-07-01T09:00:00Z")
+                        ],
+                        riskLevel: .write
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+        )
+        try session.approve(token: ApprovalToken(id: "approval-reminder", sessionID: session.id))
+        session.executionStatus = .completed
+        session.markAction(
+            id: "action-reminder",
+            status: .succeeded,
+            result: ToolResult(
+                tool: .remindersCreate,
+                status: .succeeded,
+                summary: "Created reminder Send launch notes",
+                output: ["reminderId": .string("reminder-launch")]
+            )
+        )
+
+        let receipt = ExecutionReceiptFactory.makeReviewReceipt(
+            session: session,
+            runID: "run-reminder",
+            model: nil,
+            usage: .unavailable,
+            startedAt: Date(timeIntervalSince1970: 32),
+            finishedAt: Date(timeIntervalSince1970: 33)
+        )
+
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .reminder, id: "reminder-launch")))
+    }
+
+    func testReviewExecutionReceiptLinksBulkReminderReferencesFromToolOutput() throws {
+        var session = ReviewSession(
+            id: "review-reminder-bulk",
+            plan: ActionPlan(
+                id: "plan-reminder-bulk",
+                userInput: "Create reminder checklist",
+                summary: "Create reminders",
+                actions: [
+                    PlanAction(
+                        id: "action-reminder-bulk",
+                        tool: .remindersBulkCreate,
+                        arguments: [
+                            "reminders": .array([
+                                .object(["title": .string("Send agenda")]),
+                                .object(["title": .string("Book room")])
+                            ])
+                        ],
+                        riskLevel: .write
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+        )
+        try session.approve(token: ApprovalToken(id: "approval-reminder-bulk", sessionID: session.id))
+        session.executionStatus = .completed
+        session.markAction(
+            id: "action-reminder-bulk",
+            status: .succeeded,
+            result: ToolResult(
+                tool: .remindersBulkCreate,
+                status: .succeeded,
+                summary: "Created 2 reminders",
+                output: ["reminderIds": .array([.string("reminder-agenda"), .string("reminder-room")])]
+            )
+        )
+
+        let receipt = ExecutionReceiptFactory.makeReviewReceipt(
+            session: session,
+            runID: "run-reminder-bulk",
+            model: nil,
+            usage: .unavailable,
+            startedAt: Date(timeIntervalSince1970: 34),
+            finishedAt: Date(timeIntervalSince1970: 35)
+        )
+
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .reminder, id: "reminder-agenda")))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .reminder, id: "reminder-room")))
+    }
+
+    func testReviewExecutionReceiptDeduplicatesBulkReminderReferencesFromToolOutput() throws {
+        var session = ReviewSession(
+            id: "review-reminder-bulk-duplicate",
+            plan: ActionPlan(
+                id: "plan-reminder-bulk-duplicate",
+                userInput: "Create reminder checklist",
+                summary: "Create reminders",
+                actions: [
+                    PlanAction(
+                        id: "action-reminder-bulk-duplicate",
+                        tool: .remindersBulkCreate,
+                        arguments: [
+                            "reminders": .array([
+                                .object(["title": .string("Send agenda")]),
+                                .object(["title": .string("Send agenda again")])
+                            ])
+                        ],
+                        riskLevel: .write
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+        )
+        try session.approve(token: ApprovalToken(id: "approval-reminder-bulk-duplicate", sessionID: session.id))
+        session.executionStatus = .completed
+        session.markAction(
+            id: "action-reminder-bulk-duplicate",
+            status: .succeeded,
+            result: ToolResult(
+                tool: .remindersBulkCreate,
+                status: .succeeded,
+                summary: "Created 2 reminders",
+                output: ["reminderIds": .array([.string("reminder-agenda"), .string("reminder-agenda")])]
+            )
+        )
+
+        let receipt = ExecutionReceiptFactory.makeReviewReceipt(
+            session: session,
+            runID: "run-reminder-bulk-duplicate",
+            model: nil,
+            usage: .unavailable,
+            startedAt: Date(timeIntervalSince1970: 36),
+            finishedAt: Date(timeIntervalSince1970: 37)
+        )
+
+        XCTAssertEqual(
+            receipt.references.filter { $0 == ExecutionReceiptReference(kind: .reminder, id: "reminder-agenda") }.count,
+            1
+        )
+    }
+
     func testReviewReceiptKeepsNotStartedAndRunningDistinctFromStarted() {
         var session = ReviewSession(
             id: "review-pending",
@@ -544,6 +693,7 @@ final class ExecutionReceiptTests: XCTestCase {
         let argumentSecret = "token" + "=" + "argument-secret"
         let outputSecret = "secret" + "=" + "output-secret"
         let rawReceiptID = "receipt:https://docs.example.com/raw-id?token=receipt-id-secret"
+        let reminderID = "reminder-raw-id-secret"
         let receipt = ExecutionReceipt(
             id: rawReceiptID,
             runID: "run-history-safe",
@@ -564,7 +714,8 @@ final class ExecutionReceiptTests: XCTestCase {
             ),
             references: [
                 ExecutionReceiptReference(kind: .task, id: "42", label: "Launch task \(argumentSecret)"),
-                ExecutionReceiptReference(kind: .project, id: "7", label: "Release Project")
+                ExecutionReceiptReference(kind: .project, id: "7", label: "Release Project"),
+                ExecutionReceiptReference(kind: .reminder, id: reminderID)
             ],
             sourceLinks: [
                 ExecutionReceiptSourceLink(
@@ -610,6 +761,7 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertTrue(row.usageLabel.contains("USD"))
         XCTAssertTrue(row.referenceSummary.contains("Task"))
         XCTAssertTrue(row.referenceSummary.contains("Project"))
+        XCTAssertTrue(row.referenceSummary.contains("Reminder"))
         XCTAssertTrue(row.sourceSummary.contains("Document"))
         XCTAssertFalse(displayedText.contains(promptSecret))
         XCTAssertFalse(displayedText.contains("argument-secret"))
@@ -620,6 +772,7 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertFalse(displayedText.contains("title:"))
         XCTAssertFalse(displayedText.contains(rawReceiptID))
         XCTAssertFalse(displayedText.contains("receipt-id-secret"))
+        XCTAssertFalse(displayedText.contains(reminderID))
     }
 
     func testExecutionReceiptHistorySortsByOutcomeTimeAndIncludesFailureCanceledAndUsageStates() {

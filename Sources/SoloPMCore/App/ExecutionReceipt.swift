@@ -26,6 +26,7 @@ public enum ExecutionReceiptReferenceKind: String, Codable, Equatable, Sendable 
     case document
     case calendarEvent = "calendar_event"
     case notification
+    case reminder
     case file
     case pullRequest = "pull_request"
 }
@@ -1090,6 +1091,13 @@ public enum ExecutionReceiptFactory {
             appendReference(kind: .task, keys: ["taskId", "taskID"], output: output, references: &references)
             appendReference(kind: .project, keys: ["projectId", "projectID"], output: output, references: &references)
             appendReference(kind: .notification, keys: ["notificationId", "notificationID"], output: output, references: &references)
+            // Keep connector references stable and low-disclosure; reminder titles stay in redacted summaries.
+            appendReference(
+                kind: .reminder,
+                keys: ["reminderId", "reminderID", "reminderIds", "reminderIDs"],
+                output: output,
+                references: &references
+            )
         }
         return references
     }
@@ -1101,12 +1109,11 @@ public enum ExecutionReceiptFactory {
         references: inout [ExecutionReceiptReference]
     ) {
         for key in keys {
-            guard let id = output[key]?.receiptIDValue else {
+            guard let ids = output[key]?.receiptIDValues, !ids.isEmpty else {
                 continue
             }
-            let reference = ExecutionReceiptReference(kind: kind, id: id)
-            if !references.contains(reference) {
-                references.append(reference)
+            for id in ids {
+                appendReference(kind: kind, id: id, references: &references)
             }
             return
         }
@@ -1143,6 +1150,16 @@ private extension JSONValue {
             String(value)
         case .object, .array, .null:
             nil
+        }
+    }
+
+    var receiptIDValues: [String]? {
+        switch self {
+        case .array(let values):
+            let ids = values.compactMap(\.receiptIDValue)
+            return ids.isEmpty ? nil : ids
+        default:
+            return receiptIDValue.map { [$0] }
         }
     }
 }
