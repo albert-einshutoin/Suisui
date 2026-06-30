@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-public enum ExecutionReceiptStatus: String, Codable, Equatable, Sendable {
+public enum ExecutionReceiptStatus: String, Codable, Equatable, Hashable, Sendable {
     case notStarted = "not_started"
     case running
     case succeeded
@@ -17,7 +17,7 @@ public enum ExecutionReceiptUsageState: String, Codable, Equatable, Sendable {
     case unavailable
 }
 
-public enum ExecutionReceiptReferenceKind: String, Codable, Equatable, Sendable {
+public enum ExecutionReceiptReferenceKind: String, Codable, Equatable, Hashable, Sendable {
     case unknown
     case assistantQueue = "assistant_queue"
     case actionPlan = "action_plan"
@@ -44,7 +44,7 @@ public enum ExecutionReceiptReferenceKind: String, Codable, Equatable, Sendable 
     }
 }
 
-public enum ExecutionReceiptSurface: String, Codable, Equatable, Sendable {
+public enum ExecutionReceiptSurface: String, Codable, Equatable, Hashable, Sendable {
     case assistantQueue = "assistant_queue"
     case doneList = "done_list"
     case taskDetail = "task_detail"
@@ -309,6 +309,7 @@ public struct ExecutionReceipt: Codable, Equatable, Sendable {
 public protocol ExecutionReceiptStore: Sendable {
     func save(_ receipt: ExecutionReceipt) throws
     func list(limit: Int) throws -> [ExecutionReceipt]
+    func list(matching filter: ExecutionReceiptSearchFilter, limit: Int) throws -> [ExecutionReceipt]
     func list(
         referenceKind: ExecutionReceiptReferenceKind,
         referenceID: String,
@@ -319,6 +320,102 @@ public protocol ExecutionReceiptStore: Sendable {
 
 public enum ExecutionReceiptStoreError: Error, Equatable, Sendable {
     case duplicateReceiptID(String)
+}
+
+public struct ExecutionReceiptSearchFilter: Equatable, Sendable {
+    public var query: String
+    public var statuses: Set<ExecutionReceiptStatus>
+    public var toolNames: Set<String>
+    public var referenceKinds: Set<ExecutionReceiptReferenceKind>
+    public var visibleSurface: ExecutionReceiptSurface?
+
+    public init(
+        query: String = "",
+        statuses: Set<ExecutionReceiptStatus> = [],
+        toolNames: Set<String> = [],
+        referenceKinds: Set<ExecutionReceiptReferenceKind> = [],
+        visibleSurface: ExecutionReceiptSurface? = nil
+    ) {
+        self.query = query
+        self.statuses = statuses
+        self.toolNames = Set(toolNames.map(Self.normalizedIdentifier).filter { !$0.isEmpty })
+        self.referenceKinds = referenceKinds
+        self.visibleSurface = visibleSurface
+    }
+
+    public var isEmpty: Bool {
+        Self.searchTokens(in: query).isEmpty
+            && statuses.isEmpty
+            && toolNames.isEmpty
+            && referenceKinds.isEmpty
+            && visibleSurface == nil
+    }
+
+    public func matches(_ receipt: ExecutionReceipt) -> Bool {
+        if !statuses.isEmpty && !statuses.contains(receipt.status) {
+            return false
+        }
+        if let visibleSurface, !receipt.visibleSurfaces.contains(visibleSurface) {
+            return false
+        }
+        if !toolNames.isEmpty && toolNames.isDisjoint(with: toolNames(in: receipt)) {
+            return false
+        }
+        if !referenceKinds.isEmpty && referenceKinds.isDisjoint(with: Set(receipt.references.map(\.kind))) {
+            return false
+        }
+
+        let tokens = Self.searchTokens(in: query)
+        guard !tokens.isEmpty else {
+            return true
+        }
+        let searchableText = Self.normalizedSearchText(safeSearchParts(in: receipt).joined(separator: " "))
+        return tokens.allSatisfy { searchableText.contains($0) }
+    }
+
+    private func toolNames(in receipt: ExecutionReceipt) -> Set<String> {
+        Set(([receipt.primaryToolName].compactMap { $0 } + receipt.actions.map(\.toolName))
+            .map(Self.normalizedIdentifier)
+            .filter { !$0.isEmpty })
+    }
+
+    private func safeSearchParts(in receipt: ExecutionReceipt) -> [String] {
+        // Search deliberately uses the redacted audit row vocabulary instead of
+        // prompt/action inputs so querying cannot become a side channel for secrets.
+        var parts = [
+            receipt.status.rawValue,
+            receipt.outputSummary,
+            receipt.usage.state.rawValue
+        ]
+        if let primaryToolName = receipt.primaryToolName {
+            parts.append(primaryToolName)
+        }
+        if let model = receipt.model {
+            parts.append(model.provider)
+            parts.append(model.name)
+        }
+        parts.append(contentsOf: receipt.references.map { $0.kind.rawValue })
+        parts.append(contentsOf: receipt.sourceLinks.map { $0.kind.rawValue })
+        parts.append(contentsOf: receipt.visibleSurfaces.map(\.rawValue))
+        parts.append(contentsOf: receipt.actions.map(\.toolName))
+        parts.append(contentsOf: receipt.actions.map { $0.status.rawValue })
+        return parts
+    }
+
+    private static func searchTokens(in query: String) -> [String] {
+        normalizedSearchText(query)
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+    }
+
+    private static func normalizedIdentifier(_ value: String) -> String {
+        normalizedSearchText(value.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private static func normalizedSearchText(_ value: String) -> String {
+        value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+    }
 }
 
 public final class InMemoryExecutionReceiptStore: ExecutionReceiptStore, @unchecked Sendable {
@@ -346,6 +443,18 @@ public final class InMemoryExecutionReceiptStore: ExecutionReceiptStore, @unchec
         defer { lock.unlock() }
         let boundedLimit = max(1, min(limit, 500))
         return Array(storage.suffix(boundedLimit).reversed())
+    }
+
+    public func list(matching filter: ExecutionReceiptSearchFilter, limit: Int = 100) throws -> [ExecutionReceipt] {
+        lock.lock()
+        defer { lock.unlock() }
+        let boundedLimit = max(1, min(limit, 500))
+        // Filter before limiting so an admin search can still find older
+        // relevant receipts even when recent automation generated many rows.
+        return Array(storage.reversed())
+            .filter { filter.matches($0) }
+            .prefix(boundedLimit)
+            .map { $0 }
     }
 
     public func list(
@@ -407,6 +516,26 @@ public final class FileExecutionReceiptStore: ExecutionReceiptStore, @unchecked 
             .map { url in
                 try loadReceipt(from: url)
             }
+    }
+
+    public func list(matching filter: ExecutionReceiptSearchFilter, limit: Int = 100) throws -> [ExecutionReceipt] {
+        lock.lock()
+        defer { lock.unlock() }
+        let boundedLimit = max(1, min(limit, 500))
+        var matches: [ExecutionReceipt] = []
+        // Filter before limiting so an admin search can still find older
+        // relevant receipts even when recent automation generated many rows.
+        for url in try sortedReceiptURLs() {
+            let receipt = try loadReceipt(from: url)
+            guard filter.matches(receipt) else {
+                continue
+            }
+            matches.append(receipt)
+            if matches.count >= boundedLimit {
+                break
+            }
+        }
+        return matches
     }
 
     public func list(

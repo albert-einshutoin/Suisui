@@ -1071,4 +1071,189 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertFalse(taskRow.accessibilityValue.contains("file:///Users/alice/private.md"))
         XCTAssertEqual(projectSnapshot.rows.map(\.toolLabel), [ActionTool.taskUpdate.rawValue])
     }
+
+    func testExecutionReceiptStoreSearchFiltersBeforeLimitForAuditRows() throws {
+        let matchingReceipt = ExecutionReceipt(
+            id: "receipt-audit-match",
+            runID: "run-audit-match",
+            createdAt: Date(timeIntervalSince1970: 10),
+            finishedAt: Date(timeIntervalSince1970: 20),
+            status: .failed,
+            inputPreview: "Raw launch prompt token=search-secret",
+            outputSummary: "Recovered launch audit row",
+            primaryToolName: ActionTool.taskUpdate.rawValue,
+            references: [
+                ExecutionReceiptReference(kind: .task, id: "42"),
+                ExecutionReceiptReference(kind: .project, id: "7")
+            ],
+            visibleSurfaces: [.auditLog, .taskDetail]
+        )
+        let newerUnrelatedReceipts = (0..<120).map { index in
+            ExecutionReceipt(
+                id: "receipt-audit-unrelated-\(index)",
+                runID: "run-audit-unrelated-\(index)",
+                createdAt: Date(timeIntervalSince1970: 1_000 + TimeInterval(index)),
+                finishedAt: Date(timeIntervalSince1970: 1_010 + TimeInterval(index)),
+                status: .succeeded,
+                inputPreview: "New unrelated prompt",
+                outputSummary: "Calendar row that should not match",
+                primaryToolName: ActionTool.calendarCreateWorkBlock.rawValue,
+                references: [ExecutionReceiptReference(kind: .calendarEvent, id: "event-\(index)")],
+                visibleSurfaces: [.doneList]
+            )
+        }
+        let filter = ExecutionReceiptSearchFilter(
+            query: "launch",
+            statuses: [.failed],
+            toolNames: [ActionTool.taskUpdate.rawValue],
+            referenceKinds: [.task],
+            visibleSurface: .auditLog
+        )
+
+        let memoryStore = InMemoryExecutionReceiptStore(receipts: [matchingReceipt] + newerUnrelatedReceipts)
+        XCTAssertEqual(try memoryStore.list(matching: filter, limit: 5).map(\.id), ["receipt-audit-match"])
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileStore = try FileExecutionReceiptStore(directoryURL: directory)
+        try fileStore.save(matchingReceipt)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 10)],
+            ofItemAtPath: directory.appendingPathComponent("receipt-audit-match.json").path
+        )
+        for receipt in newerUnrelatedReceipts {
+            try fileStore.save(receipt)
+        }
+
+        XCTAssertEqual(try fileStore.list(matching: filter, limit: 5).map(\.id), ["receipt-audit-match"])
+    }
+
+    func testExecutionReceiptHistorySearchAndExportExposeOnlyRedactedAuditFields() throws {
+        let promptSecret = "sk-" + "proj-export-secret"
+        let argumentSecret = "token" + "=" + "argument-export-secret"
+        let outputSecret = "secret" + "=" + "output-export-secret"
+        let rawReceiptID = "receipt:https://docs.example.com/raw-id?token=receipt-export-secret"
+        let taskReferenceID = "task-raw-reference-secret"
+        let receipt = ExecutionReceipt(
+            id: rawReceiptID,
+            runID: "run-export-safe",
+            createdAt: Date(timeIntervalSince1970: 10),
+            finishedAt: Date(timeIntervalSince1970: 30),
+            status: .succeeded,
+            inputPreview: "Raw provider prompt \(promptSecret) from /Users/alice/private-export.md",
+            outputSummary: "Created launch audit summary",
+            primaryToolName: ActionTool.taskCreate.rawValue,
+            usage: ExecutionReceiptUsage(
+                inputTokens: 20,
+                outputTokens: 5,
+                estimatedCostCents: 2.4,
+                currencyCode: "USD",
+                isEstimated: true
+            ),
+            references: [
+                ExecutionReceiptReference(kind: .task, id: taskReferenceID, label: "Launch \(argumentSecret)")
+            ],
+            sourceLinks: [
+                ExecutionReceiptSourceLink(
+                    kind: .document,
+                    title: "Spec \(promptSecret)",
+                    url: "file:///Users/alice/private-export.md"
+                )
+            ],
+            actions: [
+                ExecutionReceiptActionSummary(
+                    id: "action-export-safe",
+                    toolName: ActionTool.taskCreate.rawValue,
+                    status: .succeeded,
+                    inputPreview: "title: \(argumentSecret)",
+                    outputSummary: "Created with \(outputSecret)"
+                )
+            ],
+            visibleSurfaces: [.auditLog]
+        )
+        let wrongReceipt = ExecutionReceipt(
+            id: "receipt-export-wrong",
+            runID: "run-export-wrong",
+            createdAt: Date(timeIntervalSince1970: 40),
+            finishedAt: Date(timeIntervalSince1970: 50),
+            status: .failed,
+            inputPreview: "Wrong prompt",
+            outputSummary: "Unrelated row",
+            primaryToolName: ActionTool.calendarCreateWorkBlock.rawValue,
+            references: [ExecutionReceiptReference(kind: .calendarEvent, id: "event-1")],
+            visibleSurfaces: [.auditLog]
+        )
+        let filter = ExecutionReceiptSearchFilter(
+            query: "launch audit",
+            statuses: [.succeeded],
+            toolNames: [ActionTool.taskCreate.rawValue],
+            referenceKinds: [.task],
+            visibleSurface: .auditLog
+        )
+
+        let snapshot = ExecutionReceiptHistoryReadModel.snapshot(
+            from: [wrongReceipt, receipt],
+            matching: filter,
+            limit: 10
+        )
+        let exportData = try ExecutionReceiptHistoryExporter.exportJSON(
+            snapshot: snapshot,
+            exportedAt: Date(timeIntervalSince1970: 100)
+        )
+        let exportText = try XCTUnwrap(String(data: exportData, encoding: .utf8))
+
+        XCTAssertEqual(snapshot.rows.map(\.toolLabel), [ActionTool.taskCreate.rawValue])
+        XCTAssertTrue(exportText.contains("receipt-"))
+        XCTAssertTrue(exportText.contains("Created launch audit summary"))
+        XCTAssertTrue(exportText.contains(ActionTool.taskCreate.rawValue))
+        XCTAssertTrue(exportText.contains("Estimated"))
+        XCTAssertFalse(exportText.contains(promptSecret))
+        XCTAssertFalse(exportText.contains("argument-export-secret"))
+        XCTAssertFalse(exportText.contains("output-export-secret"))
+        XCTAssertFalse(exportText.contains(rawReceiptID))
+        XCTAssertFalse(exportText.contains(taskReferenceID))
+        XCTAssertFalse(exportText.contains("file://"))
+        XCTAssertFalse(exportText.contains("/Users/alice/private-export.md"))
+        XCTAssertFalse(exportText.contains("Raw provider prompt"))
+        XCTAssertFalse(exportText.contains("title:"))
+        XCTAssertFalse(exportText.contains("action-export-safe"))
+    }
+
+    func testExecutionReceiptSearchDoesNotMatchRawInputsURLsOrReferenceIDs() throws {
+        let promptSecret = "sk-" + "proj-search-secret"
+        let argumentSecret = "token" + "=" + "argument-search-secret"
+        let referenceID = "task-reference-search-secret"
+        let sourceURL = "file:///Users/alice/search-secret.md"
+        let receipt = ExecutionReceipt(
+            id: "receipt-search-safe",
+            runID: "run-search-safe",
+            status: .succeeded,
+            inputPreview: "Raw provider prompt \(promptSecret)",
+            outputSummary: "Created safe searchable launch summary",
+            primaryToolName: ActionTool.taskCreate.rawValue,
+            references: [
+                ExecutionReceiptReference(kind: .task, id: referenceID, label: "Search label")
+            ],
+            sourceLinks: [
+                ExecutionReceiptSourceLink(kind: .document, title: "Search doc", url: sourceURL)
+            ],
+            actions: [
+                ExecutionReceiptActionSummary(
+                    id: "action-search-safe",
+                    toolName: ActionTool.taskCreate.rawValue,
+                    status: .succeeded,
+                    inputPreview: "title: \(argumentSecret)"
+                )
+            ],
+            visibleSurfaces: [.auditLog]
+        )
+
+        XCTAssertTrue(ExecutionReceiptSearchFilter(query: "safe searchable launch").matches(receipt))
+        XCTAssertFalse(ExecutionReceiptSearchFilter(query: promptSecret).matches(receipt))
+        XCTAssertFalse(ExecutionReceiptSearchFilter(query: "argument-search-secret").matches(receipt))
+        XCTAssertFalse(ExecutionReceiptSearchFilter(query: referenceID).matches(receipt))
+        XCTAssertFalse(ExecutionReceiptSearchFilter(query: sourceURL).matches(receipt))
+        XCTAssertFalse(ExecutionReceiptSearchFilter(query: "action-search-safe").matches(receipt))
+    }
 }

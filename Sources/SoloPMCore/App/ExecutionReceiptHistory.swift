@@ -73,6 +73,17 @@ public enum ExecutionReceiptHistoryReadModel {
 
     public static func snapshot(
         from receipts: [ExecutionReceipt],
+        matching filter: ExecutionReceiptSearchFilter,
+        limit: Int = 10
+    ) -> ExecutionReceiptHistorySnapshot {
+        snapshot(
+            from: receipts.filter { filter.matches($0) },
+            limit: limit
+        )
+    }
+
+    public static func snapshot(
+        from receipts: [ExecutionReceipt],
         referenceKind: ExecutionReceiptReferenceKind,
         referenceID: String,
         visibleSurface: ExecutionReceiptSurface,
@@ -248,5 +259,61 @@ public enum ExecutionReceiptHistoryReadModel {
         let digest = SHA256.hash(data: Data(digestInput.utf8))
         let hex = digest.map { String(format: "%02x", $0) }.joined().prefix(16)
         return "receipt-\(hex)"
+    }
+}
+
+public struct ExecutionReceiptHistoryExportDocument: Codable, Equatable, Sendable {
+    public var schemaVersion: Int
+    public var exportedAt: Date
+    public var rowCount: Int
+    public var rows: [ExecutionReceiptHistoryExportRow]
+
+    public init(snapshot: ExecutionReceiptHistorySnapshot, exportedAt: Date) {
+        self.schemaVersion = 1
+        self.exportedAt = exportedAt
+        self.rowCount = snapshot.rows.count
+        self.rows = snapshot.rows.map(ExecutionReceiptHistoryExportRow.init(row:))
+    }
+}
+
+public struct ExecutionReceiptHistoryExportRow: Codable, Equatable, Sendable {
+    public var receiptDigest: String
+    public var status: ExecutionReceiptStatus
+    public var statusLabel: String
+    public var toolLabel: String
+    public var outcomeSummary: String
+    public var usageLabel: String
+    public var referenceSummary: String
+    public var sourceSummary: String
+    public var occurredAt: Date
+    public var occurredAtLabel: String
+
+    public init(row: ExecutionReceiptHistoryRow) {
+        self.receiptDigest = row.id
+        self.status = row.status
+        self.statusLabel = row.statusLabel
+        self.toolLabel = row.toolLabel
+        self.outcomeSummary = row.outcomeSummary
+        self.usageLabel = row.usageLabel
+        self.referenceSummary = row.referenceSummary
+        self.sourceSummary = row.sourceSummary
+        self.occurredAt = row.occurredAt
+        self.occurredAtLabel = row.occurredAtLabel
+    }
+}
+
+public enum ExecutionReceiptHistoryExporter {
+    public static func exportJSON(
+        snapshot: ExecutionReceiptHistorySnapshot,
+        exportedAt: Date = Date()
+    ) throws -> Data {
+        let document = ExecutionReceiptHistoryExportDocument(
+            snapshot: snapshot,
+            exportedAt: exportedAt
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(document)
     }
 }
