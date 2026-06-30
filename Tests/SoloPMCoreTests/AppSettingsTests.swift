@@ -1,3 +1,4 @@
+import Darwin
 import XCTest
 @testable import SoloPMCore
 
@@ -27,9 +28,10 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.validate().first?.field, "defaultWorkspacePath")
     }
 
-    func testReleaseReadySTTProvidersOnlyExposeImplementedRuntimeProvider() {
-        XCTAssertEqual(STTProvider.releaseReadyCases, [.openAITranscribe])
+    func testReleaseReadySTTProvidersExposeImplementedRuntimeProviders() {
+        XCTAssertEqual(STTProvider.releaseReadyCases, [.openAITranscribe, .localWhisperCpp])
         XCTAssertTrue(STTProvider.openAITranscribe.isReleaseReady)
+        XCTAssertTrue(STTProvider.localWhisperCpp.isReleaseReady)
         XCTAssertFalse(STTProvider.localWhisperKit.isReleaseReady)
     }
 
@@ -555,6 +557,7 @@ final class AppSettingsTests: XCTestCase {
         viewModel.setOpenCodeWorkspacePath(" /tmp ")
         viewModel.setOpenCodeModelID(" opencode-go/kimi-k2.7-code ")
         viewModel.setOpenCodeLocalExecutionApproved(true)
+        viewModel.setWhisperCppExecutablePath(" /opt/homebrew/bin/whisper-cli ")
         viewModel.saveSettings()
 
         let loaded = try store.load()
@@ -567,6 +570,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(loaded.openCodeWorkspacePath, "/tmp")
         XCTAssertEqual(loaded.openCodeModelID, "opencode-go/kimi-k2.7-code")
         XCTAssertTrue(loaded.isOpenCodeLocalExecutionApproved)
+        XCTAssertEqual(loaded.whisperCppExecutablePath, "/opt/homebrew/bin/whisper-cli")
     }
 
     @MainActor
@@ -676,6 +680,20 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(whitespaceModel.validate().first?.message, "OpenCode model id cannot contain whitespace.")
     }
 
+    func testAppSettingsValidatesWhisperCppExecutablePathOnlyWhenSelected() {
+        let inactive = AppSettings(sttProvider: .openAITranscribe, whisperCppExecutablePath: nil)
+        let missingConfig = AppSettings(sttProvider: .localWhisperCpp, whisperCppExecutablePath: nil)
+        let relativeExecutable = AppSettings(sttProvider: .localWhisperCpp, whisperCppExecutablePath: "whisper-cli")
+        let credentialPath = AppSettings(sttProvider: .localWhisperCpp, whisperCppExecutablePath: "/tmp/token.json")
+        let valid = AppSettings(sttProvider: .localWhisperCpp, whisperCppExecutablePath: "/opt/homebrew/bin/whisper-cli")
+
+        XCTAssertTrue(inactive.validate().isEmpty)
+        XCTAssertEqual(missingConfig.validate().first?.field, "whisperCppExecutablePath")
+        XCTAssertEqual(relativeExecutable.validate().first?.message, "whisper.cpp executable path must be absolute.")
+        XCTAssertEqual(credentialPath.validate().first?.message, "whisper.cpp executable path must not point to a credential or token file.")
+        XCTAssertFalse(valid.validate().contains { $0.field == "whisperCppExecutablePath" })
+    }
+
     func testRuntimeNormalizationPreservesUnavailableProviderForFailClosedRuntime() {
         let settings = AppSettings(aiProvider: .geminiOpenAICompatible)
 
@@ -701,6 +719,52 @@ final class AppSettingsTests: XCTestCase {
 
         XCTAssertEqual(loaded.aiProvider, .groqOpenAICompatible)
         XCTAssertEqual(loaded.sttProvider, .openAITranscribe)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelSelectsWhisperCppOnlyWhenExecutableAndModelAreReady() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelWhisperCppReady.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let executableURL = try writeExecutable(named: "whisper-cli")
+        let viewModel = AppSettingsViewModel(
+            settingsStore: store,
+            secretStore: InMemorySecretStore(),
+            voiceModelManager: StaticAppSettingsVoiceModelManager(statuses: [.whisperCppTinyMultilingual: .installed])
+        )
+
+        viewModel.setWhisperCppExecutablePath(executableURL.path)
+
+        XCTAssertEqual(viewModel.selectableSTTProviders, [.openAITranscribe, .localWhisperCpp])
+
+        viewModel.setSTTProvider(.localWhisperCpp)
+        viewModel.saveSettings()
+
+        XCTAssertEqual(viewModel.settings.sttProvider, .localWhisperCpp)
+        XCTAssertEqual(try store.load().sttProvider, .localWhisperCpp)
+        XCTAssertEqual(try store.load().whisperCppExecutablePath, executableURL.path)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelRejectsWhisperCppSelectionUntilModelAndExecutableAreReady() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelWhisperCppUnavailable.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let executableURL = try writeExecutable(named: "whisper-cli")
+        let viewModel = AppSettingsViewModel(
+            settingsStore: store,
+            secretStore: InMemorySecretStore(),
+            voiceModelManager: StaticAppSettingsVoiceModelManager(statuses: [.whisperCppTinyMultilingual: .notInstalled])
+        )
+
+        viewModel.setWhisperCppExecutablePath(executableURL.path)
+        viewModel.setSTTProvider(.localWhisperCpp)
+
+        XCTAssertEqual(viewModel.selectableSTTProviders, [.openAITranscribe])
+        XCTAssertEqual(viewModel.settings.sttProvider, .openAITranscribe)
+        XCTAssertEqual(viewModel.errorMessage, "Install the whisper.cpp model and configure the executable before selecting offline speech to text.")
     }
 
     @MainActor
@@ -887,6 +951,34 @@ final class AppSettingsTests: XCTestCase {
         let suiteName = "SoloPM.AppSettingsTests.\(label).\(UUID().uuidString)"
         return try XCTUnwrap(UserDefaults(suiteName: suiteName))
     }
+
+    private func writeExecutable(named name: String) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("solopm-settings-executable-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent(name)
+        try Data("#!/bin/sh\n".utf8).write(to: url)
+        chmod(url.path, 0o755)
+        return url
+    }
+}
+
+private struct StaticAppSettingsVoiceModelManager: VoiceModelManaging {
+    var statuses: [VoiceModelID: VoiceModelInstallStatus]
+
+    func status(for model: VoiceModelDescriptor) -> VoiceModelInstallStatus {
+        statuses[model.id] ?? .notInstalled
+    }
+
+    func install(_ model: VoiceModelDescriptor) async throws -> VoiceModelInstall {
+        VoiceModelInstall(
+            modelID: model.id,
+            status: status(for: model),
+            localURL: URL(filePath: "/tmp/\(model.cacheFileName)")
+        )
+    }
+
+    func removeFromCache(_ model: VoiceModelDescriptor) throws {}
 }
 
 private struct FailingSaveAppSettingsStore: AppSettingsStore {

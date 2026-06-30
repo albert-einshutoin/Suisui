@@ -190,7 +190,7 @@ final class VoiceModelManagerTests: XCTestCase {
     }
 
     @MainActor
-    func testSettingsReadinessRowsExposeInstallStateWithoutMakingLocalProvidersReleaseReady() throws {
+    func testSettingsReadinessRowsExposeInstallStateWhileGatingLocalProviderSelection() throws {
         let installedModel = VoiceModelCatalog.phase1Default.model(for: .whisperCppTinyMultilingual)!
         let suiteName = "SoloPM.VoiceModelSettings.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -207,7 +207,8 @@ final class VoiceModelManagerTests: XCTestCase {
         XCTAssertEqual(viewModel.voiceModelReadinessRows.map(\.modelID), [.whisperCppTinyMultilingual, .kokoro82M])
         XCTAssertEqual(viewModel.voiceModelReadinessRows[0].statusLabel, "Installed")
         XCTAssertEqual(viewModel.voiceModelReadinessRows[1].statusLabel, "Not installed")
-        XCTAssertEqual(STTProvider.releaseReadyCases, [.openAITranscribe])
+        XCTAssertEqual(STTProvider.releaseReadyCases, [.openAITranscribe, .localWhisperCpp])
+        XCTAssertEqual(viewModel.selectableSTTProviders, [.openAITranscribe])
         XCTAssertTrue(TTSProvider.releaseReadyCases.isEmpty)
     }
 

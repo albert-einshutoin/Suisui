@@ -33,7 +33,26 @@ Settings can show:
 - `Failed`
 - `Needs reinstall`
 
-Local STT and TTS providers must not be marked release-ready just because a model is present. Provider-specific runtime smoke checks remain part of #13 and #14.
+The whisper.cpp STT provider is selectable only when both local runtime requirements are ready:
+
+- The `ggml-tiny.bin` model is installed and checksum-verified.
+- Settings has an absolute, executable `whisper-cli` path.
+
+Transcription re-verifies the model checksum before launching `whisper-cli`, runs the local process without a shell or PATH lookup, and never downloads a model during transcription. Non-WAV recordings are converted locally with `/usr/bin/afconvert` into a temporary 16-bit 16 kHz WAV file, then the temporary directory is removed after the attempt.
+
+The current invocation follows the whisper.cpp CLI shape documented upstream:
+
+```text
+whisper-cli -m <model> -f <prepared-audio.wav> -l auto|ja|en -np -nt
+```
+
+References:
+
+- whisper.cpp README: https://github.com/ggml-org/whisper.cpp
+- whisper.cpp CLI README: https://github.com/ggml-org/whisper.cpp/tree/master/examples/cli
+- whisper.cpp model catalog: https://github.com/ggml-org/whisper.cpp/tree/master/models
+
+Local TTS remains disabled in the release surface until a TTS runtime has the same model, executable, and smoke-test gates.
 
 ## Accessibility Boundary
 

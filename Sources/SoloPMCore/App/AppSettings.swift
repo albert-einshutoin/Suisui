@@ -9,6 +9,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var timeZoneIdentifier: String
     public var geminiModelID: String?
     public var groqBaseURLString: String?
+    public var whisperCppExecutablePath: String?
     public var openCodeExecutablePath: String?
     public var openCodeWorkspacePath: String?
     public var openCodeModelID: String?
@@ -23,6 +24,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case timeZoneIdentifier
         case geminiModelID
         case groqBaseURLString
+        case whisperCppExecutablePath
         case openCodeExecutablePath
         case openCodeWorkspacePath
         case openCodeModelID
@@ -38,6 +40,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         timeZoneIdentifier: String = TimeZone.current.identifier,
         geminiModelID: String? = nil,
         groqBaseURLString: String? = nil,
+        whisperCppExecutablePath: String? = nil,
         openCodeExecutablePath: String? = nil,
         openCodeWorkspacePath: String? = nil,
         openCodeModelID: String? = nil,
@@ -51,6 +54,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.timeZoneIdentifier = timeZoneIdentifier
         self.geminiModelID = geminiModelID
         self.groqBaseURLString = groqBaseURLString
+        self.whisperCppExecutablePath = whisperCppExecutablePath
         self.openCodeExecutablePath = openCodeExecutablePath
         self.openCodeWorkspacePath = openCodeWorkspacePath
         self.openCodeModelID = openCodeModelID
@@ -67,6 +71,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.timeZoneIdentifier = try container.decode(String.self, forKey: .timeZoneIdentifier)
         self.geminiModelID = try container.decodeIfPresent(String.self, forKey: .geminiModelID)
         self.groqBaseURLString = try container.decodeIfPresent(String.self, forKey: .groqBaseURLString)
+        self.whisperCppExecutablePath = try container.decodeIfPresent(String.self, forKey: .whisperCppExecutablePath)
         self.openCodeExecutablePath = try container.decodeIfPresent(String.self, forKey: .openCodeExecutablePath)
         self.openCodeWorkspacePath = try container.decodeIfPresent(String.self, forKey: .openCodeWorkspacePath)
         self.openCodeModelID = try container.decodeIfPresent(String.self, forKey: .openCodeModelID)
@@ -83,6 +88,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(timeZoneIdentifier, forKey: .timeZoneIdentifier)
         try container.encodeIfPresent(geminiModelID, forKey: .geminiModelID)
         try container.encodeIfPresent(groqBaseURLString, forKey: .groqBaseURLString)
+        try container.encodeIfPresent(whisperCppExecutablePath, forKey: .whisperCppExecutablePath)
         try container.encodeIfPresent(openCodeExecutablePath, forKey: .openCodeExecutablePath)
         try container.encodeIfPresent(openCodeWorkspacePath, forKey: .openCodeWorkspacePath)
         try container.encodeIfPresent(openCodeModelID, forKey: .openCodeModelID)
@@ -102,6 +108,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         }
         if let groqBaseURLString = copy.groqBaseURLString?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.groqBaseURLString = groqBaseURLString.isEmpty ? nil : groqBaseURLString
+        }
+        if let whisperCppExecutablePath = copy.whisperCppExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            copy.whisperCppExecutablePath = whisperCppExecutablePath.isEmpty ? nil : whisperCppExecutablePath
         }
         if let openCodeExecutablePath = copy.openCodeExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.openCodeExecutablePath = openCodeExecutablePath.isEmpty ? nil : openCodeExecutablePath
@@ -199,6 +208,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         } else {
             appendOptionalOpenCodeLocalIssues(to: &issues)
         }
+        appendWhisperCppExecutablePathIssue(to: &issues, isRequired: sttProvider == .localWhisperCpp)
         issues.append(contentsOf: taskAutoExecution.validationIssues())
 
         return issues
@@ -334,6 +344,49 @@ public struct AppSettings: Codable, Equatable, Sendable {
             )
         }
     }
+
+    private func appendWhisperCppExecutablePathIssue(to issues: inout [ValidationIssue], isRequired: Bool) {
+        let trimmed = whisperCppExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else {
+            if isRequired {
+                issues.append(
+                    ValidationIssue(
+                        field: "whisperCppExecutablePath",
+                        message: "whisper.cpp executable path is required.",
+                        severity: .error
+                    )
+                )
+            }
+            return
+        }
+
+        let expandedPath = NSString(string: trimmed).expandingTildeInPath
+        guard NSString(string: expandedPath).isAbsolutePath else {
+            issues.append(
+                ValidationIssue(
+                    field: "whisperCppExecutablePath",
+                    message: "whisper.cpp executable path must be absolute.",
+                    severity: .error
+                )
+            )
+            return
+        }
+
+        let url = URL(fileURLWithPath: expandedPath)
+        let fileName = url.lastPathComponent.lowercased()
+        let sensitiveSignals = ["credential", "credentials", "secret", "token", "api-key", "apikey", "auth"]
+        let sensitiveFileNames = [".env", "credentials.json", "token.json", "auth.json"]
+        if sensitiveFileNames.contains(fileName)
+            || sensitiveSignals.contains(where: { fileName.contains($0) }) {
+            issues.append(
+                ValidationIssue(
+                    field: "whisperCppExecutablePath",
+                    message: "whisper.cpp executable path must not point to a credential or token file.",
+                    severity: .error
+                )
+            )
+        }
+    }
 }
 
 private extension URL {
@@ -348,7 +401,7 @@ public enum STTProvider: String, CaseIterable, Codable, Equatable, Sendable {
     case localWhisperCpp
     case openAITranscribe
 
-    public static let releaseReadyCases: [STTProvider] = [.openAITranscribe]
+    public static let releaseReadyCases: [STTProvider] = [.openAITranscribe, .localWhisperCpp]
 
     public var isReleaseReady: Bool {
         Self.releaseReadyCases.contains(self)
@@ -548,7 +601,11 @@ public final class AppSettingsViewModel: ObservableObject {
             loadedSettings = .default
             initialErrorMessage = "App settings could not be loaded. Defaults are shown until settings are saved again."
         }
-        self.settings = loadedSettings.normalizedForRuntime
+        self.settings = Self.normalizedSettings(
+            loadedSettings,
+            voiceModelStatuses: initialVoiceModelStatuses,
+            voiceModelCatalog: voiceModelCatalog
+        )
         self.openAIAPIKeyInput = ""
         self.openAIAPIKeyStatusLabel = "Not configured"
         self.openAIProviderSmokeStatusLabel = "notConfigured"
@@ -580,6 +637,12 @@ public final class AppSettingsViewModel: ObservableObject {
         LLMProviderCatalog.settingsSelectableIDs
     }
 
+    public var selectableSTTProviders: [STTProvider] {
+        STTProvider.releaseReadyCases.filter { provider in
+            provider != .localWhisperCpp || isLocalWhisperCppReady
+        }
+    }
+
     public var providerReadinessRows: [AIProviderReadinessRow] {
         selectableAIProviders.map { providerReadinessRow(for: $0) }
     }
@@ -605,6 +668,7 @@ public final class AppSettingsViewModel: ObservableObject {
         do {
             _ = try await voiceModelManager.install(model)
             voiceModelStatusOverrides[modelID] = .installed
+            normalizeSTTProviderSelection()
             successMessage = "Voice model is installed."
             errorMessage = nil
         } catch let error as VoiceModelManagerError {
@@ -630,6 +694,7 @@ public final class AppSettingsViewModel: ObservableObject {
         do {
             try voiceModelManager.removeFromCache(model)
             voiceModelStatusOverrides[modelID] = .notInstalled
+            normalizeSTTProviderSelection()
             successMessage = "Voice model cache entry was removed."
             errorMessage = nil
         } catch let error as VoiceModelManagerError {
@@ -681,7 +746,18 @@ public final class AppSettingsViewModel: ObservableObject {
     }
 
     public func setSTTProvider(_ provider: STTProvider) {
-        settings.sttProvider = provider.isReleaseReady ? provider : .openAITranscribe
+        guard provider.isReleaseReady else {
+            settings.sttProvider = .openAITranscribe
+            clearMessages()
+            return
+        }
+        guard provider != .localWhisperCpp || isLocalWhisperCppReady else {
+            settings.sttProvider = .openAITranscribe
+            errorMessage = "Install the whisper.cpp model and configure the executable before selecting offline speech to text."
+            successMessage = nil
+            return
+        }
+        settings.sttProvider = provider
         clearMessages()
     }
 
@@ -706,6 +782,13 @@ public final class AppSettingsViewModel: ObservableObject {
     public func setGroqBaseURLString(_ baseURLString: String) {
         let trimmed = baseURLString.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.groqBaseURLString = trimmed.isEmpty ? nil : trimmed
+        clearMessages()
+    }
+
+    public func setWhisperCppExecutablePath(_ path: String) {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.whisperCppExecutablePath = trimmed.isEmpty ? nil : trimmed
+        normalizeSTTProviderSelection()
         clearMessages()
     }
 
@@ -1161,6 +1244,68 @@ public final class AppSettingsViewModel: ObservableObject {
             errorMessage = "API key status could not be read from Keychain."
             successMessage = nil
             return false
+        }
+    }
+
+    private static func normalizedSettings(
+        _ settings: AppSettings,
+        voiceModelStatuses: [VoiceModelID: VoiceModelInstallStatus],
+        voiceModelCatalog: VoiceModelCatalog
+    ) -> AppSettings {
+        var normalized = settings.normalizedForRuntime
+        if normalized.sttProvider == .localWhisperCpp,
+           !isLocalWhisperCppReady(
+                settings: normalized,
+                voiceModelStatuses: voiceModelStatuses,
+                voiceModelCatalog: voiceModelCatalog
+           ) {
+            normalized.sttProvider = .openAITranscribe
+        }
+        return normalized
+    }
+
+    private var isLocalWhisperCppReady: Bool {
+        Self.isLocalWhisperCppReady(
+            settings: settings,
+            voiceModelStatuses: voiceModelStatusOverrides,
+            voiceModelCatalog: voiceModelCatalog
+        )
+    }
+
+    private static func isLocalWhisperCppReady(
+        settings: AppSettings,
+        voiceModelStatuses: [VoiceModelID: VoiceModelInstallStatus],
+        voiceModelCatalog: VoiceModelCatalog
+    ) -> Bool {
+        guard isWhisperCppExecutableReady(settings.whisperCppExecutablePath),
+              let model = voiceModelCatalog.model(for: .whisperCppTinyMultilingual),
+              voiceModelStatuses[model.id] == .installed else {
+            return false
+        }
+        return true
+    }
+
+    private static func isWhisperCppExecutableReady(_ path: String?) -> Bool {
+        let trimmed = path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else {
+            return false
+        }
+
+        let expandedPath = NSString(string: trimmed).expandingTildeInPath
+        guard NSString(string: expandedPath).isAbsolutePath else {
+            return false
+        }
+
+        var isDirectory = ObjCBool(false)
+        guard FileManager.default.fileExists(atPath: expandedPath, isDirectory: &isDirectory), !isDirectory.boolValue else {
+            return false
+        }
+        return FileManager.default.isExecutableFile(atPath: expandedPath)
+    }
+
+    private func normalizeSTTProviderSelection() {
+        if settings.sttProvider == .localWhisperCpp, !isLocalWhisperCppReady {
+            settings.sttProvider = .openAITranscribe
         }
     }
 

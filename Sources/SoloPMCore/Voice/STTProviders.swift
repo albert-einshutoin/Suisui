@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 public struct OpenAITranscribeProvider: SpeechToTextProvider {
@@ -60,6 +61,417 @@ public struct OpenAITranscribeProvider: SpeechToTextProvider {
         return try responseParser.parse(data: data, audio: audio)
     }
 }
+
+public struct WhisperCppLocalSTTConfiguration: Equatable, Sendable {
+    public var executablePath: String
+    public var model: VoiceModelDescriptor
+    public var cache: VoiceModelCache
+    public var languageCode: String
+    public var timeoutInterval: TimeInterval
+
+    public init(
+        executablePath: String,
+        model: VoiceModelDescriptor,
+        cache: VoiceModelCache = VoiceModelCache(),
+        languageCode: String = "auto",
+        timeoutInterval: TimeInterval = 120
+    ) {
+        self.executablePath = executablePath
+        self.model = model
+        self.cache = cache
+        self.languageCode = languageCode
+        self.timeoutInterval = timeoutInterval
+    }
+
+    public init(
+        executablePath: String,
+        cache: VoiceModelCache = VoiceModelCache(),
+        languageCode: String = "auto",
+        timeoutInterval: TimeInterval = 120
+    ) {
+        self.init(
+            executablePath: executablePath,
+            model: VoiceModelCatalog.phase1Default.model(for: .whisperCppTinyMultilingual)!,
+            cache: cache,
+            languageCode: languageCode,
+            timeoutInterval: timeoutInterval
+        )
+    }
+
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.executablePath == rhs.executablePath
+            && lhs.model == rhs.model
+            && lhs.cache.rootDirectory == rhs.cache.rootDirectory
+            && lhs.languageCode == rhs.languageCode
+            && lhs.timeoutInterval == rhs.timeoutInterval
+    }
+}
+
+public struct WhisperCppInvocation: Equatable, Sendable {
+    public var executableURL: URL
+    public var modelURL: URL
+    public var audioURL: URL
+    public var languageCode: String
+    public var timeoutInterval: TimeInterval
+    public var arguments: [String]
+
+    public init(
+        executableURL: URL,
+        modelURL: URL,
+        audioURL: URL,
+        languageCode: String,
+        timeoutInterval: TimeInterval
+    ) {
+        self.executableURL = executableURL
+        self.modelURL = modelURL
+        self.audioURL = audioURL
+        self.languageCode = languageCode
+        self.timeoutInterval = timeoutInterval
+        self.arguments = [
+            "-m", modelURL.path,
+            "-f", audioURL.path,
+            "-l", languageCode,
+            "-np",
+            "-nt"
+        ]
+    }
+}
+
+public struct WhisperCppCommandOutput: Equatable, Sendable {
+    public var standardOutput: String
+    public var standardError: String
+    public var exitCode: Int32
+    public var timedOut: Bool
+
+    public init(
+        standardOutput: String,
+        standardError: String,
+        exitCode: Int32,
+        timedOut: Bool
+    ) {
+        self.standardOutput = standardOutput
+        self.standardError = standardError
+        self.exitCode = exitCode
+        self.timedOut = timedOut
+    }
+}
+
+public protocol WhisperCppCommandRunning: Sendable {
+    func run(_ invocation: WhisperCppInvocation) async throws -> WhisperCppCommandOutput
+}
+
+public struct WhisperCppPreparedAudio: Equatable, Sendable {
+    public var audioURL: URL
+    public var temporaryDirectory: URL?
+
+    public init(audioURL: URL, temporaryDirectory: URL?) {
+        self.audioURL = audioURL
+        self.temporaryDirectory = temporaryDirectory
+    }
+}
+
+public protocol WhisperCppAudioPreparing: Sendable {
+    func prepare(_ audio: RecordedAudio) async throws -> WhisperCppPreparedAudio
+}
+
+public struct WhisperCppLocalSTTProvider: SpeechToTextProvider {
+    public static let defaultAvailability = STTProviderAvailability(
+        providerID: .whisperCpp,
+        isAvailable: true,
+        requiresModelDownload: true
+    )
+
+    public let id: STTProviderID = .whisperCpp
+    public var availability: STTProviderAvailability
+    private let configuration: WhisperCppLocalSTTConfiguration
+    private let commandRunner: any WhisperCppCommandRunning
+    private let audioPreparer: any WhisperCppAudioPreparing
+
+    public init(
+        availability: STTProviderAvailability = Self.defaultAvailability,
+        configuration: WhisperCppLocalSTTConfiguration,
+        commandRunner: any WhisperCppCommandRunning = ProcessWhisperCppCommandRunner(),
+        audioPreparer: any WhisperCppAudioPreparing = AfconvertWhisperCppAudioPreparer()
+    ) {
+        self.availability = availability
+        self.configuration = configuration
+        self.commandRunner = commandRunner
+        self.audioPreparer = audioPreparer
+    }
+
+    public func transcribe(_ audio: RecordedAudio) async throws -> STTTranscript {
+        guard availability.isAvailable else {
+            throw STTProviderError.unavailable(availability.reason ?? "whisper.cpp transcription is unavailable.")
+        }
+
+        let executableURL = try validatedExecutableURL()
+        let modelURL = try verifiedModelURL()
+        let languageCode = try normalizedLanguageCode()
+        let preparedAudio: WhisperCppPreparedAudio
+        do {
+            preparedAudio = try await audioPreparer.prepare(audio)
+        } catch let error as STTProviderError {
+            throw error
+        } catch {
+            throw STTProviderError.transcriptionFailed("whisper.cpp audio preparation failed. \(ProviderErrorMessageSanitizer.message(from: error))")
+        }
+        defer {
+            if let temporaryDirectory = preparedAudio.temporaryDirectory {
+                try? FileManager.default.removeItem(at: temporaryDirectory)
+            }
+        }
+
+        let invocation = WhisperCppInvocation(
+            executableURL: executableURL,
+            modelURL: modelURL,
+            audioURL: preparedAudio.audioURL,
+            languageCode: languageCode,
+            timeoutInterval: configuration.timeoutInterval
+        )
+        let output: WhisperCppCommandOutput
+        do {
+            output = try await commandRunner.run(invocation)
+        } catch let error as STTProviderError {
+            throw error
+        } catch {
+            throw STTProviderError.transcriptionFailed("whisper.cpp execution failed to start. \(ProviderErrorMessageSanitizer.message(from: error))")
+        }
+
+        if output.timedOut {
+            throw STTProviderError.transcriptionFailed("whisper.cpp transcription timed out.")
+        }
+        guard output.exitCode == 0 else {
+            throw STTProviderError.transcriptionFailed("whisper.cpp transcription failed with exit code \(output.exitCode).")
+        }
+
+        let transcript = output.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !transcript.isEmpty else {
+            throw STTProviderError.transcriptionFailed("whisper.cpp transcription did not return text.")
+        }
+
+        return STTTranscript(
+            text: transcript,
+            languageCode: languageCode == "auto" ? nil : languageCode,
+            duration: audio.duration
+        )
+    }
+
+    private func validatedExecutableURL() throws -> URL {
+        let trimmedPath = configuration.executablePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPath.isEmpty else {
+            throw STTProviderError.unavailable("whisper.cpp executable path is required.")
+        }
+
+        let expandedPath = NSString(string: trimmedPath).expandingTildeInPath
+        guard NSString(string: expandedPath).isAbsolutePath else {
+            throw STTProviderError.unavailable("whisper.cpp executable path must be absolute.")
+        }
+
+        var isDirectory = ObjCBool(false)
+        guard FileManager.default.fileExists(atPath: expandedPath, isDirectory: &isDirectory), !isDirectory.boolValue else {
+            throw STTProviderError.unavailable("whisper.cpp executable is unavailable.")
+        }
+        guard FileManager.default.isExecutableFile(atPath: expandedPath) else {
+            throw STTProviderError.unavailable("whisper.cpp executable is not executable.")
+        }
+
+        return URL(fileURLWithPath: expandedPath).resolvingSymlinksInPath()
+    }
+
+    private func verifiedModelURL() throws -> URL {
+        let modelURL = configuration.cache.localURL(for: configuration.model)
+        guard FileManager.default.fileExists(atPath: modelURL.path) else {
+            throw STTProviderError.modelMissing("whisper.cpp model is not installed. Download the model in Settings before offline transcription.")
+        }
+
+        let actualDigest: String
+        do {
+            actualDigest = try configuration.model.checksum.hexDigest(forFileAt: modelURL)
+        } catch {
+            throw STTProviderError.modelMissing("whisper.cpp model checksum verification failed. Reinstall the model in Settings.")
+        }
+        guard actualDigest == configuration.model.checksum.value else {
+            throw STTProviderError.modelMissing("whisper.cpp model checksum verification failed. Reinstall the model in Settings.")
+        }
+        return modelURL
+    }
+
+    private func normalizedLanguageCode() throws -> String {
+        let languageCode = configuration.languageCode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalized = languageCode.isEmpty ? "auto" : languageCode
+        guard ["auto", "ja", "en"].contains(normalized) else {
+            throw STTProviderError.unavailable("whisper.cpp language must be auto, ja, or en.")
+        }
+        return normalized
+    }
+}
+
+public struct ProcessWhisperCppCommandRunner: WhisperCppCommandRunning {
+    public init() {}
+
+    public func run(_ invocation: WhisperCppInvocation) async throws -> WhisperCppCommandOutput {
+        #if os(iOS) || targetEnvironment(macCatalyst)
+        throw STTProviderError.unavailable("whisper.cpp local transcription is available only on macOS.")
+        #else
+        let process = Process()
+        let standardOutput = ProcessPipeCollector(maxBytes: 1024 * 1024)
+        let standardError = ProcessPipeCollector(maxBytes: 64 * 1024)
+
+        process.executableURL = invocation.executableURL
+        process.arguments = invocation.arguments
+        process.currentDirectoryURL = invocation.audioURL.deletingLastPathComponent()
+        process.standardOutput = standardOutput.pipe
+        process.standardError = standardError.pipe
+        process.environment = [
+            "LANG": "C",
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin"
+        ]
+
+        try process.run()
+
+        let deadline = Date().addingTimeInterval(invocation.timeoutInterval)
+        var didTimeOut = false
+        while process.isRunning {
+            if Date() >= deadline {
+                didTimeOut = true
+                process.terminate()
+                try? await Task.sleep(nanoseconds: 150_000_000)
+                if process.isRunning {
+                    Darwin.kill(process.processIdentifier, SIGKILL)
+                }
+                break
+            }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+
+        process.waitUntilExit()
+        let stdoutText = standardOutput.finish()
+        let stderrText = standardError.finish()
+
+        return WhisperCppCommandOutput(
+            standardOutput: stdoutText,
+            standardError: DeveloperSecretRedactor()
+                .redact(stderrText)
+                .text,
+            exitCode: process.terminationStatus,
+            timedOut: didTimeOut
+        )
+        #endif
+    }
+}
+
+public struct AfconvertWhisperCppAudioPreparer: WhisperCppAudioPreparing {
+    public init() {}
+
+    public func prepare(_ audio: RecordedAudio) async throws -> WhisperCppPreparedAudio {
+        switch audio.format {
+        case .wav:
+            return WhisperCppPreparedAudio(audioURL: audio.fileURL, temporaryDirectory: nil)
+        case .m4a, .caf:
+            return try await convertToWAV(audio)
+        }
+    }
+
+    private func convertToWAV(_ audio: RecordedAudio) async throws -> WhisperCppPreparedAudio {
+        #if os(iOS) || targetEnvironment(macCatalyst)
+        throw STTProviderError.unavailable("whisper.cpp audio conversion is available only on macOS.")
+        #else
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("solopm-whisper-prepared-\(UUID().uuidString)", isDirectory: true)
+        let preparedURL = temporaryDirectory.appendingPathComponent("prepared.wav", isDirectory: false)
+        do {
+            try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+            try await runAfconvert(inputURL: audio.fileURL, outputURL: preparedURL)
+            return WhisperCppPreparedAudio(audioURL: preparedURL, temporaryDirectory: temporaryDirectory)
+        } catch let error as STTProviderError {
+            try? FileManager.default.removeItem(at: temporaryDirectory)
+            throw error
+        } catch {
+            try? FileManager.default.removeItem(at: temporaryDirectory)
+            throw STTProviderError.transcriptionFailed("Audio could not be converted for whisper.cpp. \(ProviderErrorMessageSanitizer.message(from: error))")
+        }
+        #endif
+    }
+
+    #if !(os(iOS) || targetEnvironment(macCatalyst))
+    private func runAfconvert(inputURL: URL, outputURL: URL) async throws {
+        let process = Process()
+        let standardOutput = ProcessPipeCollector(maxBytes: 1024)
+        let standardError = ProcessPipeCollector(maxBytes: 16 * 1024)
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/afconvert")
+        process.arguments = [
+            "-f", "WAVE",
+            "-d", "LEI16@16000",
+            "-c", "1",
+            inputURL.path,
+            outputURL.path
+        ]
+        process.standardError = standardError.pipe
+        process.standardOutput = standardOutput.pipe
+        process.environment = [
+            "LANG": "C",
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin"
+        ]
+
+        try process.run()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            throw STTProviderError.transcriptionFailed("Audio conversion failed with exit code \(process.terminationStatus).")
+        }
+        guard FileManager.default.fileExists(atPath: outputURL.path) else {
+            throw STTProviderError.transcriptionFailed("Audio conversion did not create a WAV file.")
+        }
+        _ = standardOutput.finish()
+        _ = standardError.finish()
+    }
+    #endif
+}
+
+#if !(os(iOS) || targetEnvironment(macCatalyst))
+private final class ProcessPipeCollector: @unchecked Sendable {
+    let pipe = Pipe()
+    private let maxBytes: Int
+    private let lock = NSLock()
+    private var data = Data()
+
+    init(maxBytes: Int) {
+        self.maxBytes = maxBytes
+        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            self?.append(handle.availableData)
+        }
+    }
+
+    func finish() -> String {
+        pipe.fileHandleForReading.readabilityHandler = nil
+        append(pipe.fileHandleForReading.readDataToEndOfFile())
+        return lock.withLock {
+            String(data: data, encoding: .utf8) ?? ""
+        }
+    }
+
+    private func append(_ chunk: Data) {
+        guard !chunk.isEmpty else {
+            return
+        }
+        lock.withLock {
+            let remainingBytes = maxBytes - data.count
+            guard remainingBytes > 0 else {
+                return
+            }
+            data.append(chunk.prefix(remainingBytes))
+        }
+    }
+}
+
+private extension NSLock {
+    func withLock<T>(_ operation: () throws -> T) rethrows -> T {
+        lock()
+        defer { unlock() }
+        return try operation()
+    }
+}
+#endif
 
 public struct OpenAITranscriptionConfiguration: Equatable, Sendable {
     public var baseURL: URL
@@ -168,7 +580,13 @@ private extension AudioFileFormat {
 public extension STTProviderCatalog {
     static let phase1Default = STTProviderCatalog(
         availabilities: [
-            OpenAITranscribeProvider.defaultAvailability
+            OpenAITranscribeProvider.defaultAvailability,
+            STTProviderAvailability(
+                providerID: .whisperCpp,
+                isAvailable: false,
+                reason: "Install the whisper.cpp model and configure the executable in Settings.",
+                requiresModelDownload: true
+            )
         ]
     )
 }
