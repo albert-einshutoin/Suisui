@@ -3642,6 +3642,82 @@ public final class ProjectBoardViewModel: ObservableObject {
         )
     }
 
+    @discardableResult
+    public func applyInboxVoiceTriageCommand(
+        _ command: InboxVoiceTriageCommand,
+        referenceDate: Date = Date()
+    ) -> Bool {
+        switch command.action {
+        case .selectNext:
+            return selectNextInboxTaskFromVoiceTriage()
+        case .undo:
+            guard lastInboxClassificationUndo != nil else {
+                errorMessage = "There is no Inbox voice triage action to undo."
+                return false
+            }
+            undoLastInboxClassification()
+            return errorMessage == nil
+        case .scheduleToday:
+            guard let selectedTask = selectedInboxTaskForVoiceTriage() else {
+                return false
+            }
+            scheduleSelectedTaskForToday(referenceDate: referenceDate)
+            return snapshot.projects.flatMap(\.tasks).first { $0.id == selectedTask.id }?.dueAt != selectedTask.dueAt
+                && errorMessage == nil
+        case .reviewLater:
+            guard let selectedTask = selectedInboxTaskForVoiceTriage() else {
+                return false
+            }
+            deferSelectedTaskForLater()
+            let updatedTask = snapshot.projects.flatMap(\.tasks).first { $0.id == selectedTask.id }
+            return updatedTask?.status == .backlog && updatedTask?.dueAt == nil && errorMessage == nil
+        case .complete:
+            guard let selectedTask = selectedInboxTaskForVoiceTriage() else {
+                return false
+            }
+            applyInboxTaskUpdate(
+                originalTask: selectedTask,
+                draft: ProjectBoardTaskDraft(
+                    projectID: selectedTask.projectID,
+                    title: selectedTask.title,
+                    detail: selectedTask.detail,
+                    status: .done,
+                    priority: selectedTask.priority,
+                    dueAt: selectedTask.dueAt
+                ),
+                feedback: InboxClassificationFeedback(
+                    message: String(format: String(localized: "Completed \"%@\"."), selectedTask.title),
+                    systemImage: "checkmark.circle.fill",
+                    canUndo: true
+                )
+            )
+            return snapshot.projects.flatMap(\.tasks).first { $0.id == selectedTask.id }?.status == .done
+                && errorMessage == nil
+        case .setPriority(let priority):
+            guard let selectedTask = selectedInboxTaskForVoiceTriage() else {
+                return false
+            }
+            applyInboxTaskUpdate(
+                originalTask: selectedTask,
+                draft: ProjectBoardTaskDraft(
+                    projectID: selectedTask.projectID,
+                    title: selectedTask.title,
+                    detail: selectedTask.detail,
+                    status: selectedTask.status,
+                    priority: priority,
+                    dueAt: selectedTask.dueAt
+                ),
+                feedback: InboxClassificationFeedback(
+                    message: String(format: String(localized: "Set \"%@\" to %@ priority."), selectedTask.title, priority.label),
+                    systemImage: "flag",
+                    canUndo: true
+                )
+            )
+            return snapshot.projects.flatMap(\.tasks).first { $0.id == selectedTask.id }?.priority == priority
+                && errorMessage == nil
+        }
+    }
+
     public func undoLastInboxClassification() {
         guard let undo = lastInboxClassificationUndo else {
             return
@@ -4101,6 +4177,44 @@ public final class ProjectBoardViewModel: ObservableObject {
 
         selectedProjectID = visibleTasks.first?.projectID ?? inboxProject?.id
         self.selectedTaskID = visibleTasks.first?.id
+    }
+
+    private func selectedInboxTaskForVoiceTriage() -> ProjectBoardTask? {
+        guard let selectedTask,
+              inboxProject?.id == selectedTask.projectID,
+              filteredInboxTasks.contains(where: { $0.id == selectedTask.id }) else {
+            errorMessage = "Select an Inbox item before using voice triage."
+            return nil
+        }
+        return selectedTask
+    }
+
+    private func selectNextInboxTaskFromVoiceTriage() -> Bool {
+        let visibleTasks = filteredInboxTasks
+        guard let selectedTaskID,
+              let currentIndex = visibleTasks.firstIndex(where: { $0.id == selectedTaskID }) else {
+            errorMessage = "Select an Inbox item before using voice triage."
+            return false
+        }
+
+        let nextIndex = visibleTasks.index(after: currentIndex)
+        guard nextIndex < visibleTasks.endIndex else {
+            errorMessage = "There is no next Inbox item."
+            return false
+        }
+
+        let nextTask = visibleTasks[nextIndex]
+        // Voice triage changes only local UI selection here. It deliberately
+        // avoids store writes so "next" cannot accidentally mutate task data.
+        selectedProjectID = nextTask.projectID
+        self.selectedTaskID = nextTask.id
+        inboxClassificationFeedback = InboxClassificationFeedback(
+            message: String(format: String(localized: "Selected \"%@\"."), nextTask.title),
+            systemImage: "arrow.down.circle",
+            canUndo: false
+        )
+        errorMessage = nil
+        return true
     }
 
     private func matchesInboxTriageFilter(_ task: ProjectBoardTask, filter: InboxTriageFilter) -> Bool {

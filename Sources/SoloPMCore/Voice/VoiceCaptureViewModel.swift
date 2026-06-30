@@ -30,6 +30,28 @@ public struct VoiceDailyPlanningReviewRequest: Equatable, Sendable, Identifiable
     }
 }
 
+public struct VoiceInboxTriageRequest: Equatable, Sendable, Identifiable {
+    public var id: UUID
+    public var command: InboxVoiceTriageCommand
+    public var sourceTranscript: String
+    public var routedIntent: VoiceCommandRoutingResult
+    public var requestedAt: Date
+
+    public init(
+        id: UUID = UUID(),
+        command: InboxVoiceTriageCommand,
+        sourceTranscript: String,
+        routedIntent: VoiceCommandRoutingResult,
+        requestedAt: Date = Date()
+    ) {
+        self.id = id
+        self.command = command
+        self.sourceTranscript = sourceTranscript
+        self.routedIntent = routedIntent
+        self.requestedAt = requestedAt
+    }
+}
+
 @MainActor
 public final class VoiceCaptureViewModel: ObservableObject {
     @Published public private(set) var draft: TranscriptDraft
@@ -42,6 +64,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     @Published public private(set) var clarificationSession: ClarificationSession?
     @Published public private(set) var assistantQueueItem: AssistantQueueItem?
     @Published public private(set) var dailyPlanningReviewRequest: VoiceDailyPlanningReviewRequest?
+    @Published public private(set) var inboxTriageRequest: VoiceInboxTriageRequest?
 
     private var audioRecorder: any AudioRecorder
     private let sttProvider: any SpeechToTextProvider
@@ -50,6 +73,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private let runtimeValidationMessage: String?
     private let assistantQueueStore: (any AssistantQueueStore)?
     private let commandRouter: any VoiceCommandRouting
+    private let inboxTriageCommandParser: InboxVoiceTriageCommandParser
 
     public init(
         draft: TranscriptDraft = TranscriptDraft(),
@@ -77,6 +101,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.clarificationSession = nil
         self.assistantQueueItem = nil
         self.dailyPlanningReviewRequest = nil
+        self.inboxTriageRequest = nil
+        self.inboxTriageCommandParser = InboxVoiceTriageCommandParser()
     }
 
     public var canGeneratePlan: Bool {
@@ -108,6 +134,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         clarificationSession = nil
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
+        inboxTriageRequest = nil
         refreshRoutingResult()
         if shouldResetPhaseAfterDraftChange, runtimeValidationMessage == nil {
             phase = .idle
@@ -124,6 +151,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         clarificationSession = nil
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
+        inboxTriageRequest = nil
         recordingState = audioRecorder.state
         phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
     }
@@ -155,6 +183,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             clarificationSession = nil
             assistantQueueItem = nil
             dailyPlanningReviewRequest = nil
+            inboxTriageRequest = nil
             refreshRoutingResult()
             phase = .idle
         } catch {
@@ -182,10 +211,21 @@ public final class VoiceCaptureViewModel: ObservableObject {
         let routedCommand = commandRouter.route(transcript: draft.normalizedText)
         let plannedTranscript = routedCommand.normalizedTranscript
         routingResult = routedCommand
+
+        if let inboxTriageCommand = inboxTriageCommandParser.parseVoiceCommand(draft.normalizedText) {
+            beginInboxTriageRequest(
+                command: inboxTriageCommand,
+                routedIntent: makeInboxTriageRoute(for: inboxTriageCommand, fallbackRoute: routedCommand),
+                requestedAt: currentDate
+            )
+            return
+        }
+
         guard !routedCommand.needsClarification else {
             planningResponse = nil
             assistantQueueItem = nil
             dailyPlanningReviewRequest = nil
+            inboxTriageRequest = nil
             beginClarification(for: routedCommand)
             return
         }
@@ -229,6 +269,14 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 return
             }
             routingResult = result.resolvedRoute
+            if let inboxTriageCommand = inboxTriageCommandParser.parseVoiceCommand(result.resolvedRoute.normalizedTranscript) {
+                beginInboxTriageRequest(
+                    command: inboxTriageCommand,
+                    routedIntent: makeInboxTriageRoute(for: inboxTriageCommand, fallbackRoute: result.resolvedRoute),
+                    requestedAt: currentDate
+                )
+                return
+            }
             guard result.resolvedRoute.intent != .dailyPlanningReview else {
                 beginDailyPlanningReviewRequest(for: result.resolvedRoute, requestedAt: currentDate)
                 return
@@ -301,12 +349,51 @@ public final class VoiceCaptureViewModel: ObservableObject {
         planningResponse = nil
         assistantQueueItem = nil
         clarificationSession = nil
+        inboxTriageRequest = nil
         dailyPlanningReviewRequest = VoiceDailyPlanningReviewRequest(
             sourceTranscript: route.originalTranscript,
             routedIntent: route,
             requestedAt: requestedAt
         )
         phase = .reviewReady
+    }
+
+    private func beginInboxTriageRequest(
+        command: InboxVoiceTriageCommand,
+        routedIntent: VoiceCommandRoutingResult,
+        requestedAt: Date
+    ) {
+        planningResponse = nil
+        assistantQueueItem = nil
+        clarificationSession = nil
+        dailyPlanningReviewRequest = nil
+        routingResult = routedIntent
+        inboxTriageRequest = VoiceInboxTriageRequest(
+            command: command,
+            sourceTranscript: command.sourceTranscript,
+            routedIntent: routedIntent,
+            requestedAt: requestedAt
+        )
+        phase = .reviewReady
+    }
+
+    private func makeInboxTriageRoute(
+        for command: InboxVoiceTriageCommand,
+        fallbackRoute: VoiceCommandRoutingResult
+    ) -> VoiceCommandRoutingResult {
+        // The deterministic Inbox path gets its own local route because
+        // explicitly scoped commands like "inbox today" are local UI commands,
+        // not provider planning prompts.
+        VoiceCommandRoutingResult(
+            originalTranscript: fallbackRoute.originalTranscript,
+            normalizedTranscript: fallbackRoute.normalizedTranscript,
+            intent: .taskTriage,
+            interpretationSummary: "Route as local Inbox voice triage command: \(command.action.accessibilityLabel).",
+            confidence: 0.94,
+            decision: .reviewOnly,
+            reviewOnly: true,
+            matchedSignals: [command.action.accessibilityLabel]
+        )
     }
 
     private func generatePlan(
@@ -329,6 +416,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         auditErrorMessage = nil
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
+        inboxTriageRequest = nil
 
         do {
             try auditRecorder?.recordStarted(input: request.userInput, providerID: llmProvider.providerID)
@@ -470,6 +558,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         clarificationSession = nil
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
+        inboxTriageRequest = nil
         refreshRoutingResult()
         if let routingResult, routingResult.needsClarification {
             beginClarification(for: routingResult)

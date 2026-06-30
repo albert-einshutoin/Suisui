@@ -278,6 +278,7 @@ struct ProjectBoardView: View {
             viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
             restoreSelectedDestinationIfNeeded()
             consumePendingVoiceDailyPlanningReviewRequestIfNeeded()
+            consumePendingVoiceInboxTriageRequestIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
             viewModel.load()
@@ -286,6 +287,9 @@ struct ProjectBoardView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .soloPMVoiceDailyPlanningReviewRequested)) { notification in
             handleVoiceDailyPlanningReviewRequest(notification)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .soloPMVoiceInboxTriageRequested)) { notification in
+            handleVoiceInboxTriageRequest(notification)
         }
         .onChange(of: selectedDestination) { _, destination in
             persistSelectedDestination(destination)
@@ -531,6 +535,13 @@ struct ProjectBoardView: View {
         handleVoiceDailyPlanningReviewRequest(sourceTranscript: transcript)
     }
 
+    private func consumePendingVoiceInboxTriageRequestIfNeeded() {
+        guard let request = SoloPMVoiceInboxTriageBridge.consumePendingRequest() else {
+            return
+        }
+        handleVoiceInboxTriageRequest(request: request)
+    }
+
     private func handleVoiceDailyPlanningReviewRequest(_ notification: Notification) {
         let transcript = SoloPMVoiceDailyPlanningReviewBridge.consumePendingSourceTranscript()
             ?? SoloPMVoiceDailyPlanningReviewBridge.sourceTranscript(from: notification)
@@ -550,6 +561,35 @@ struct ProjectBoardView: View {
         selectedDestination = summary.newlyMissedCount > 0 ? .catchUp : .today
         persistSelectedDestination(selectedDestination)
         applySelectedDestination(selectedDestination)
+    }
+
+    private func handleVoiceInboxTriageRequest(_ notification: Notification) {
+        let request: SoloPMVoiceInboxTriageBridge.Request?
+        if SoloPMVoiceInboxTriageBridge.hasRequestPayload(notification) {
+            request = SoloPMVoiceInboxTriageBridge.consumeRequest(from: notification)
+        } else {
+            request = SoloPMVoiceInboxTriageBridge.consumePendingRequest()
+        }
+
+        guard let request else {
+            return
+        }
+        handleVoiceInboxTriageRequest(request: request)
+    }
+
+    private func handleVoiceInboxTriageRequest(request: SoloPMVoiceInboxTriageBridge.Request) {
+        viewModel.load()
+        openInboxForVoiceTriage()
+        _ = viewModel.applyInboxVoiceTriageCommand(request.command)
+    }
+
+    private func openInboxForVoiceTriage() {
+        if selectedDestination != .inbox {
+            selectedDestination = .inbox
+            persistSelectedDestination(selectedDestination)
+            applySelectedDestination(selectedDestination)
+        }
+        isInspectorPresented = false
     }
 
     private func applySelectedTaskOverrideIfNeeded() {
@@ -926,6 +966,7 @@ private struct ProjectBoardToolbarLayoutBridge: View {
 extension Notification.Name {
     static let soloPMProjectBoardDidChange = Notification.Name("dev.solopm.projectBoardDidChange")
     static let soloPMVoiceDailyPlanningReviewRequested = Notification.Name("dev.solopm.voiceDailyPlanningReviewRequested")
+    static let soloPMVoiceInboxTriageRequested = Notification.Name("dev.solopm.voiceInboxTriageRequested")
 }
 
 @MainActor
@@ -951,6 +992,59 @@ enum SoloPMVoiceDailyPlanningReviewBridge {
 
     private static func normalized(_ sourceTranscript: String) -> String {
         sourceTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+@MainActor
+enum SoloPMVoiceInboxTriageBridge {
+    struct Request: Equatable {
+        var id: UUID
+        var command: InboxVoiceTriageCommand
+    }
+
+    static let requestUserInfoKey = "request"
+    private static var pendingRequest: Request?
+    private static var consumedRequestIDs: Set<UUID> = []
+
+    static func storePendingRequest(_ request: VoiceInboxTriageRequest) -> Request? {
+        guard !consumedRequestIDs.contains(request.id) else {
+            return nil
+        }
+        let bridgeRequest = Request(id: request.id, command: request.command)
+        pendingRequest = bridgeRequest
+        return bridgeRequest
+    }
+
+    static func consumePendingRequest() -> Request? {
+        guard let request = pendingRequest else {
+            return nil
+        }
+        return consume(request)
+    }
+
+    static func consumeRequest(from notification: Notification) -> Request? {
+        guard let request = notification.userInfo?[requestUserInfoKey] as? Request else {
+            return nil
+        }
+        return consume(request)
+    }
+
+    static func hasRequestPayload(_ notification: Notification) -> Bool {
+        notification.userInfo?[requestUserInfoKey] is Request
+    }
+
+    private static func consume(_ request: Request) -> Request? {
+        // A voice request can be posted by both onChange and the visible panel.
+        // The request id is the boundary that prevents the same command from
+        // advancing selection and mutating two Inbox items.
+        guard !consumedRequestIDs.contains(request.id) else {
+            return nil
+        }
+        if pendingRequest?.id == request.id {
+            pendingRequest = nil
+        }
+        consumedRequestIDs.insert(request.id)
+        return request
     }
 }
 

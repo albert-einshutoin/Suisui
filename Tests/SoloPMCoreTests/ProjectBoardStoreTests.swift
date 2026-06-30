@@ -3572,6 +3572,80 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelAppliesInboxVoiceTriageCommandsToSelectedInboxTask() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let inboxID = try XCTUnwrap(viewModel.inboxProject?.id)
+        let first = try XCTUnwrap(viewModel.createTask(title: "First capture", projectID: inboxID))
+        let second = try XCTUnwrap(viewModel.createTask(title: "Second capture", projectID: inboxID))
+
+        viewModel.selectedTaskID = second.id
+
+        XCTAssertTrue(viewModel.applyInboxVoiceTriageCommand(
+            InboxVoiceTriageCommand(action: .scheduleToday, sourceTranscript: "today"),
+            referenceDate: try isoDate("2026-06-19T09:00:00Z")
+        ))
+        XCTAssertEqual(viewModel.selectedTaskID, first.id)
+        XCTAssertEqual(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == second.id }?.dueAt, "2026-06-19T09:00:00Z")
+
+        XCTAssertTrue(viewModel.applyInboxVoiceTriageCommand(
+            InboxVoiceTriageCommand(action: .undo, sourceTranscript: "undo")
+        ))
+        XCTAssertEqual(viewModel.selectedTaskID, second.id)
+        XCTAssertNil(viewModel.selectedTask?.dueAt)
+
+        XCTAssertTrue(viewModel.applyInboxVoiceTriageCommand(
+            InboxVoiceTriageCommand(action: .setPriority(.high), sourceTranscript: "優先度高")
+        ))
+        XCTAssertEqual(viewModel.selectedTaskID, first.id)
+        XCTAssertEqual(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == second.id }?.priority, .high)
+
+        viewModel.selectedTaskID = second.id
+        XCTAssertTrue(viewModel.applyInboxVoiceTriageCommand(
+            InboxVoiceTriageCommand(action: .complete, sourceTranscript: "完了")
+        ))
+        XCTAssertEqual(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == second.id }?.status, .done)
+        XCTAssertFalse(viewModel.inboxTasks.contains { $0.id == second.id })
+    }
+
+    @MainActor
+    func testProjectBoardViewModelInboxVoiceTriageCanSelectNextVisibleInboxTask() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let inboxID = try XCTUnwrap(viewModel.inboxProject?.id)
+        let first = try XCTUnwrap(viewModel.createTask(title: "First capture", projectID: inboxID))
+        let second = try XCTUnwrap(viewModel.createTask(title: "Second capture", projectID: inboxID))
+
+        viewModel.selectedTaskID = second.id
+
+        XCTAssertTrue(viewModel.applyInboxVoiceTriageCommand(
+            InboxVoiceTriageCommand(action: .selectNext, sourceTranscript: "次")
+        ))
+        XCTAssertEqual(viewModel.selectedTaskID, first.id)
+        XCTAssertEqual(viewModel.inboxClassificationFeedback?.canUndo, false)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelInboxVoiceTriageFailsClosedWithoutSelectedInboxItem() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Client Work"))
+        let projectTask = try XCTUnwrap(viewModel.createTask(title: "Project task", projectID: project.id))
+
+        viewModel.selectedTaskID = nil
+        XCTAssertFalse(viewModel.applyInboxVoiceTriageCommand(
+            InboxVoiceTriageCommand(action: .scheduleToday, sourceTranscript: "today")
+        ))
+        XCTAssertEqual(viewModel.errorMessage, "Select an Inbox item before using voice triage.")
+
+        viewModel.selectedTaskID = projectTask.id
+        XCTAssertFalse(viewModel.applyInboxVoiceTriageCommand(
+            InboxVoiceTriageCommand(action: .complete, sourceTranscript: "done")
+        ))
+        XCTAssertEqual(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == projectTask.id }?.status, .backlog)
+    }
+
+    @MainActor
     func testSQLiteBoardStorePersistsInboxClassificationUndo() throws {
         let store = try makeStore()
         let viewModel = ProjectBoardViewModel(store: store)

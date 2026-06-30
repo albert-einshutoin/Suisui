@@ -527,6 +527,12 @@ private struct VoiceCaptureView: View {
                     }
                 }
 
+                if let request = viewModel.inboxTriageRequest {
+                    VoiceInboxTriageRequestPanel(request: request) {
+                        postInboxTriageRequest(request)
+                    }
+                }
+
                 HStack {
                     Button {
                         if viewModel.isRecording {
@@ -592,6 +598,12 @@ private struct VoiceCaptureView: View {
             }
             postDailyPlanningReviewRequest(request)
         }
+        .onChange(of: viewModel.inboxTriageRequest) { _, request in
+            guard let request else {
+                return
+            }
+            postInboxTriageRequest(request)
+        }
     }
 
     private func recordingOutputURL() -> URL {
@@ -606,6 +618,18 @@ private struct VoiceCaptureView: View {
             name: .soloPMVoiceDailyPlanningReviewRequested,
             object: nil,
             userInfo: [SoloPMVoiceDailyPlanningReviewBridge.sourceTranscriptUserInfoKey: request.sourceTranscript]
+        )
+    }
+
+    private func postInboxTriageRequest(_ request: VoiceInboxTriageRequest) {
+        openWindow(id: "project-board")
+        guard let bridgeRequest = SoloPMVoiceInboxTriageBridge.storePendingRequest(request) else {
+            return
+        }
+        NotificationCenter.default.post(
+            name: .soloPMVoiceInboxTriageRequested,
+            object: nil,
+            userInfo: [SoloPMVoiceInboxTriageBridge.requestUserInfoKey: bridgeRequest]
         )
     }
 }
@@ -642,6 +666,47 @@ private struct VoiceDailyPlanningReviewRequestPanel: View {
         .padding(10)
         .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
         .accessibilityIdentifier("voice-daily-planning-request")
+    }
+}
+
+private struct VoiceInboxTriageRequestPanel: View {
+    let request: VoiceInboxTriageRequest
+    let onOpen: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(localizedSettingsDisplay("Inbox Voice Triage"), systemImage: "tray.and.arrow.down")
+                .font(.subheadline)
+
+            Text(localizedSettingsDisplay("Applying a local Inbox command. No provider, Calendar, Reminder, connector, or file write is run."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Label(localizedSettingsDisplay(request.command.action.accessibilityLabel), systemImage: "waveform")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !request.sourceTranscript.isEmpty {
+                Label(request.sourceTranscript, systemImage: "quote.bubble")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button {
+                onOpen()
+            } label: {
+                Label(localizedSettingsDisplay("Open Inbox"), systemImage: "arrow.forward.circle")
+            }
+            .accessibilityIdentifier("voice-inbox-triage-open-board")
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+        .accessibilityIdentifier("voice-inbox-triage-request")
     }
 }
 
