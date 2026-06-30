@@ -1141,9 +1141,11 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var taskAutomationDocumentDeliverableReviews: [TaskAutomationDocumentDeliverableReview]
     @Published public private(set) var lastApprovedAutomationExecutionReceipt: ApprovedAutomationExecutionReceipt?
     @Published public private(set) var approvedAutomationExecutionReceipts: [ApprovedAutomationExecutionReceipt]
+    @Published public private(set) var assistantQueueSnapshot: AssistantQueueSnapshot
 
     private let store: any ProjectBoardStore
     private let inboxCaptureStore: (any InboxCaptureStore)?
+    private let assistantQueueStore: (any AssistantQueueStore)?
     private let missedTaskReviewStateStore: any MissedTaskReviewStateStore
     private let externalTaskLinkStore: (any ExternalTaskLinkStore)?
     private let scheduleCalendarClient: (any CalendarClient)?
@@ -1157,6 +1159,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     public init(
         store: any ProjectBoardStore,
         inboxCaptureStore: (any InboxCaptureStore)? = nil,
+        assistantQueueStore: (any AssistantQueueStore)? = nil,
         missedTaskReviewStateStore: any MissedTaskReviewStateStore = InMemoryMissedTaskReviewStateStore(),
         externalTaskLinkStore: (any ExternalTaskLinkStore)? = nil,
         scheduleCalendarClient: (any CalendarClient)? = nil,
@@ -1165,6 +1168,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     ) {
         self.store = store
         self.inboxCaptureStore = inboxCaptureStore
+        self.assistantQueueStore = assistantQueueStore
         self.missedTaskReviewStateStore = missedTaskReviewStateStore
         self.externalTaskLinkStore = externalTaskLinkStore
         self.scheduleCalendarClient = scheduleCalendarClient
@@ -1187,6 +1191,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.taskAutomationDocumentDeliverableReviews = []
         self.lastApprovedAutomationExecutionReceipt = nil
         self.approvedAutomationExecutionReceipts = []
+        self.assistantQueueSnapshot = .empty
         self.taskAutomationSessionHistory = .empty
     }
 
@@ -2243,6 +2248,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         do {
             let loadedSnapshot = try store.loadSnapshot(includeArchived: showsArchivedProjects)
             let captureCacheErrorMessage = refreshInboxCaptureCache(for: loadedSnapshot)
+            let assistantQueueErrorMessage = refreshAssistantQueueSnapshot()
             snapshot = loadedSnapshot
             if selectedProjectID == nil || !snapshot.projects.contains(where: { $0.id == selectedProjectID }) {
                 selectedProjectID = snapshot.projects.first?.id
@@ -2250,9 +2256,28 @@ public final class ProjectBoardViewModel: ObservableObject {
             if selectedTaskID != nil, selectedTask == nil {
                 self.selectedTaskID = nil
             }
-            errorMessage = captureCacheErrorMessage
+            errorMessage = assistantQueueErrorMessage ?? captureCacheErrorMessage
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
+    private func refreshAssistantQueueSnapshot() -> String? {
+        guard let assistantQueueStore else {
+            assistantQueueSnapshot = .empty
+            return nil
+        }
+
+        do {
+            // Project Board owns the central task cockpit, so it reads a compact
+            // queue snapshot instead of querying SQLite from SwiftUI views.
+            assistantQueueSnapshot = AssistantQueueReadModel.snapshot(
+                from: try assistantQueueStore.list(filter: .all(limit: 50))
+            )
+            return nil
+        } catch {
+            assistantQueueSnapshot = .empty
+            return AssistantQueueStoreError.userMessage(for: error)
         }
     }
 

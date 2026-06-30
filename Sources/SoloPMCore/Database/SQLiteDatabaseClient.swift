@@ -563,6 +563,35 @@ public enum CoreMigrations {
                     ON missed_task_review_state(last_notified_day);
                     """
                 )
+            },
+            DatabaseMigration(id: "0014_create_assistant_queue_items") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS assistant_queue_items (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        schema_version INTEGER NOT NULL DEFAULT 1,
+                        payload_kind TEXT NOT NULL,
+                        payload_json TEXT NOT NULL,
+                        state TEXT NOT NULL,
+                        risk_level TEXT NOT NULL,
+                        source_transcript TEXT,
+                        interpretation_summary TEXT,
+                        review_reason TEXT NOT NULL,
+                        redacted_summary TEXT NOT NULL,
+                        required_capabilities_json TEXT NOT NULL DEFAULT '[]',
+                        approval_json TEXT,
+                        blocking_reason TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_assistant_queue_items_state_updated_at
+                    ON assistant_queue_items(state, updated_at);
+
+                    CREATE INDEX IF NOT EXISTS idx_assistant_queue_items_payload_kind
+                    ON assistant_queue_items(payload_kind);
+                    """
+                )
             }
         ]
     }
