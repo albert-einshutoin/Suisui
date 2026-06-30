@@ -1314,9 +1314,13 @@ public final class ProjectBoardViewModel: ObservableObject {
             return nil
         }
 
-        return snapshot.projects
+        return task(id: selectedTaskID)
+    }
+
+    private func task(id: Int64) -> ProjectBoardTask? {
+        snapshot.projects
             .flatMap(\.tasks)
-            .first { $0.id == selectedTaskID }
+            .first { $0.id == id }
     }
 
     public var canSyncGoogleCalendar: Bool {
@@ -1573,6 +1577,84 @@ public final class ProjectBoardViewModel: ObservableObject {
         dailyPlanningReview = review
         todayCommandFeedback = String(localized: "Prepared daily planning review.")
         return review
+    }
+
+    @discardableResult
+    public func enqueueDailyPlanningActionDraft(
+        kind: DailyPlanningActionDraftKind,
+        transcript: String = "Today daily planning review",
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Bool {
+        guard let assistantQueueStore else {
+            assistantQueueSnapshot = .empty
+            assistantQueueSelectedItemIDs = []
+            errorMessage = String(localized: "Assistant Queue is unavailable in this build.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        let review = dailyPlanningReview ?? makeDailyPlanningReview(
+            transcript: transcript,
+            on: referenceDate,
+            calendar: calendar
+        )
+        dailyPlanningReview = review
+
+        guard let recommendedTaskID = review.recommendedTaskID,
+              let recommendedTask = task(id: recommendedTaskID),
+              let draft = DailyPlanningActionDraftBuilder.makeDraft(
+                kind: kind,
+                review: review,
+                task: recommendedTask,
+                referenceDate: referenceDate,
+                calendar: calendar
+              ) else {
+            errorMessage = String(localized: "Daily Planning Review has no recommended task to queue.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        let validation = ActionPlanValidator().validate(draft.actionPlan)
+        guard validation.isValid else {
+            errorMessage = String(localized: "Daily Planning Review generated an invalid action plan.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        let item = AssistantQueueAdapter.makeItem(
+            actionPlan: draft.actionPlan,
+            sourceTranscript: review.sourceTranscript,
+            interpretationSummary: review.headline,
+            reason: draft.queueReason,
+            costPreview: .localOnly()
+        )
+
+        do {
+            do {
+                _ = try assistantQueueStore.get(id: item.id)
+                focusAssistantQueueItem(id: item.id)
+                errorMessage = nil
+                integrationStatusMessage = String(localized: "Daily Planning Review action is already in Assistant Queue.")
+                todayCommandFeedback = integrationStatusMessage
+                return true
+            } catch AssistantQueueStoreError.notFound {
+                // Continue to save the new item below.
+            }
+
+            _ = try assistantQueueStore.save(item)
+            focusAssistantQueueItem(id: item.id)
+            errorMessage = nil
+            integrationStatusMessage = String(localized: "Queued Daily Planning Review action for approval.")
+            todayCommandFeedback = integrationStatusMessage
+            onChange()
+            return true
+        } catch {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = AssistantQueueStoreError.userMessage(for: error)
+            integrationStatusMessage = nil
+            return false
+        }
     }
 
     public func todayAssistantRailContext(
@@ -2853,6 +2935,20 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
         assistantQueueSort = sort
         _ = refreshAssistantQueueSnapshot()
+    }
+
+    private func focusAssistantQueueItem(id: String) {
+        assistantQueueViewFilter = .needsAttention
+        assistantQueueSelectedItemIDs = []
+        _ = refreshAssistantQueueSnapshot()
+        if setAssistantQueueSelection(id: id, selected: true) {
+            return
+        }
+
+        assistantQueueViewFilter = .all
+        assistantQueueSelectedItemIDs = []
+        _ = refreshAssistantQueueSnapshot()
+        _ = setAssistantQueueSelection(id: id, selected: true)
     }
 
     @discardableResult

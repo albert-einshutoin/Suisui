@@ -1261,6 +1261,30 @@ private struct TodayDailyPlanningReviewPanel: View {
                     }
                 }
             }
+
+            HStack(spacing: 8) {
+                Button {
+                    viewModel.enqueueDailyPlanningActionDraft(kind: .startRecommended)
+                } label: {
+                    Label("Draft Start", systemImage: "play.circle")
+                }
+                .controlSize(.small)
+                .disabled(review.recommendedTaskID == nil)
+                .help("Queue the recommended task status update for review.")
+                .accessibilityIdentifier("today-daily-planning-draft-start")
+                .accessibilityHint("Creates an Assistant Queue approval item without changing the task.")
+
+                Button {
+                    viewModel.enqueueDailyPlanningActionDraft(kind: .deferRecommendedToTomorrow)
+                } label: {
+                    Label("Draft Defer", systemImage: "calendar.badge.clock")
+                }
+                .controlSize(.small)
+                .disabled(review.recommendedTaskID == nil)
+                .help("Queue a tomorrow due-date update for review.")
+                .accessibilityIdentifier("today-daily-planning-draft-defer")
+                .accessibilityHint("Creates an Assistant Queue approval item without writing Calendar.")
+            }
         }
         .padding(10)
         .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))

@@ -2200,6 +2200,211 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDailyPlanningReviewQueuesStartDraftWithoutMutatingStoreOrCalendar() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-30T09:10:00Z")
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let calendarClient = InMemoryCalendarClient()
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore,
+            scheduleCalendarClient: calendarClient
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Daily Queue"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Clear overdue blocker",
+            projectID: project.id,
+            status: .blocked,
+            priority: .high,
+            dueAt: "2026-06-29"
+        ))
+        _ = viewModel.prepareDailyPlanningReview(
+            transcript: "今日やることを確認して",
+            on: referenceDate,
+            calendar: calendar
+        )
+
+        let queued = viewModel.enqueueDailyPlanningActionDraft(
+            kind: .startRecommended,
+            on: referenceDate,
+            calendar: calendar
+        )
+
+        let itemID = "action-plan:daily-planning:2026-06-30:startRecommended:task:\(task.id)"
+        XCTAssertTrue(queued)
+        XCTAssertEqual(viewModel.errorMessage, nil)
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Queued Daily Planning Review action for approval.")
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.map(\.id), [itemID])
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, [itemID])
+        let item = try assistantQueueStore.get(id: itemID)
+        XCTAssertEqual(item.state, .waitingReview)
+        XCTAssertEqual(item.riskLevel, .write)
+        XCTAssertEqual(item.costPreview?.billingMode, .localOnly)
+        XCTAssertEqual(item.reviewReason, "Daily Planning Review suggested starting Clear overdue blocker.")
+        guard case .actionPlan(let plan) = item.payload else {
+            return XCTFail("Expected action plan payload")
+        }
+        let action = try XCTUnwrap(plan.actions.first)
+        XCTAssertEqual(action.tool, .taskUpdate)
+        XCTAssertEqual(action.arguments["status"], .string(ProjectTaskStatus.inProgress.rawValue))
+        XCTAssertEqual(viewModel.snapshot.projects.first { $0.id == project.id }?.column(.blocked)?.tasks.map(\.id), [task.id])
+        XCTAssertTrue(try calendarClient.listEvents().isEmpty)
+    }
+
+    @MainActor
+    func testDailyPlanningReviewQueuesDeferDraftForTomorrowWithoutCalendarWrite() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-30T09:10:00Z")
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let calendarClient = InMemoryCalendarClient()
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore,
+            scheduleCalendarClient: calendarClient
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Daily Queue"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Send status draft",
+            projectID: project.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-29"
+        ))
+
+        let queued = viewModel.enqueueDailyPlanningActionDraft(
+            kind: .deferRecommendedToTomorrow,
+            transcript: "明日に回す候補を確認して",
+            on: referenceDate,
+            calendar: calendar
+        )
+
+        let itemID = "action-plan:daily-planning:2026-06-30:deferRecommendedToTomorrow:task:\(task.id)"
+        XCTAssertTrue(queued)
+        let item = try assistantQueueStore.get(id: itemID)
+        guard case .actionPlan(let plan) = item.payload else {
+            return XCTFail("Expected action plan payload")
+        }
+        let action = try XCTUnwrap(plan.actions.first)
+        XCTAssertEqual(action.tool, .taskUpdate)
+        XCTAssertEqual(action.arguments["dueAt"], .string("2026-07-01"))
+        XCTAssertEqual(viewModel.snapshot.projects.first { $0.id == project.id }?.column(.planned)?.tasks.first?.dueAt, "2026-06-29")
+        XCTAssertTrue(try calendarClient.listEvents().isEmpty)
+    }
+
+    @MainActor
+    func testDailyPlanningReviewDoesNotOverwriteExistingAssistantQueueItem() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-30T09:10:00Z")
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Daily Queue"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Clear overdue blocker",
+            projectID: project.id,
+            status: .blocked,
+            priority: .high,
+            dueAt: "2026-06-29"
+        ))
+        let draft = try XCTUnwrap(DailyPlanningActionDraftBuilder.makeDraft(
+            kind: .startRecommended,
+            review: viewModel.makeDailyPlanningReview(
+                transcript: "今日やることを確認して",
+                on: referenceDate,
+                calendar: calendar
+            ),
+            task: task,
+            referenceDate: referenceDate,
+            calendar: calendar
+        ))
+        let itemID = "action-plan:\(draft.id)"
+        var existing = AssistantQueueAdapter.makeItem(
+            actionPlan: draft.actionPlan,
+            sourceTranscript: "existing transcript",
+            interpretationSummary: "Existing summary",
+            reason: "Existing approved review.",
+            costPreview: .localOnly()
+        )
+        existing = try AssistantQueueStateMachine.approve(existing, reviewerID: "tester")
+        try assistantQueueStore.save(existing)
+
+        let queued = viewModel.enqueueDailyPlanningActionDraft(
+            kind: .startRecommended,
+            transcript: "今日やることを確認して",
+            on: referenceDate,
+            calendar: calendar
+        )
+
+        let stored = try assistantQueueStore.get(id: itemID)
+        XCTAssertTrue(queued)
+        XCTAssertEqual(stored.state, .approved)
+        XCTAssertEqual(stored.reviewReason, "Existing approved review.")
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Daily Planning Review action is already in Assistant Queue.")
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, [itemID])
+    }
+
+    @MainActor
+    func testDailyPlanningReviewQueueDraftRequiresAssistantQueueStore() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+
+        let queued = viewModel.enqueueDailyPlanningActionDraft(kind: .startRecommended)
+
+        XCTAssertFalse(queued)
+        XCTAssertEqual(viewModel.errorMessage, "Assistant Queue is unavailable in this build.")
+        XCTAssertTrue(viewModel.assistantQueueSnapshot.rows.isEmpty)
+    }
+
+    @MainActor
+    func testDailyPlanningReviewQueueDraftReportsAssistantQueueSaveFailure() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-30T09:10:00Z")
+        let calendarClient = InMemoryCalendarClient()
+        let assistantQueueStore = SaveFailingProjectBoardAssistantQueueStore(error: AssistantQueueStoreError.saveFailed)
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            assistantQueueStore: assistantQueueStore,
+            scheduleCalendarClient: calendarClient
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Daily Queue"))
+        _ = try XCTUnwrap(viewModel.createTask(
+            title: "Clear overdue blocker",
+            projectID: project.id,
+            status: .blocked,
+            priority: .high,
+            dueAt: "2026-06-29"
+        ))
+
+        let queued = viewModel.enqueueDailyPlanningActionDraft(
+            kind: .startRecommended,
+            transcript: "今日やることを確認して",
+            on: referenceDate,
+            calendar: calendar
+        )
+
+        XCTAssertFalse(queued)
+        XCTAssertEqual(assistantQueueStore.saveAttempts, 1)
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Assistant Queue could not save generated work. Confirm local data storage is available, then try again."
+        )
+        XCTAssertTrue(try calendarClient.listEvents().isEmpty)
+    }
+
+    @MainActor
     func testScheduleApplyRequiresApprovalBeforeCalendarWrite() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
@@ -3817,6 +4022,40 @@ final class ProjectBoardStoreTests: XCTestCase {
 private extension ProjectBoardProject {
     func column(_ status: ProjectTaskStatus) -> ProjectBoardColumn? {
         columns.first { $0.status == status }
+    }
+}
+
+private final class SaveFailingProjectBoardAssistantQueueStore: AssistantQueueStore, @unchecked Sendable {
+    let error: Error
+    private(set) var saveAttempts: Int
+
+    init(error: Error) {
+        self.error = error
+        self.saveAttempts = 0
+    }
+
+    func save(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
+        saveAttempts += 1
+        throw error
+    }
+
+    func get(id: String) throws -> AssistantQueueItem {
+        throw AssistantQueueStoreError.notFound(id)
+    }
+
+    func list(filter: AssistantQueueFilter) throws -> [AssistantQueueItem] {
+        []
+    }
+
+    func stateCounts() throws -> AssistantQueueStateCounts {
+        .empty
+    }
+
+    func transition(
+        id: String,
+        _ transform: (AssistantQueueItem) throws -> AssistantQueueItem
+    ) throws -> AssistantQueueItem {
+        throw AssistantQueueStoreError.notFound(id)
     }
 }
 
