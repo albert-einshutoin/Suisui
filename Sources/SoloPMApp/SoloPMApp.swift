@@ -760,6 +760,8 @@ private struct AssistantQueuePanel: View {
             "Blocked"
         case .done:
             "Done"
+        case .failed:
+            "Failed"
         case .rejected:
             "Rejected"
         case .deferred:
@@ -769,7 +771,7 @@ private struct AssistantQueuePanel: View {
 
     private var stateColor: Color {
         switch item.state {
-        case .blocked, .rejected:
+        case .blocked, .failed, .rejected:
             .red
         case .approved, .done:
             .green
@@ -3447,16 +3449,53 @@ private enum AppRuntimeFactory {
     static func makeProjectBoardViewModel() -> ProjectBoardViewModel {
         do {
             let connection = try migratedConnection()
+            let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
             return ProjectBoardViewModel(
                 store: SQLiteProjectBoardStore(connection: connection),
                 inboxCaptureStore: SQLiteInboxCaptureStore(connection: connection),
-                assistantQueueStore: SQLiteAssistantQueueStore(connection: connection),
+                assistantQueueStore: assistantQueueStore,
+                assistantQueueExecutionCoordinator: makeAssistantQueueExecutionCoordinator(
+                    connection: connection,
+                    assistantQueueStore: assistantQueueStore
+                ),
                 missedTaskReviewStateStore: SQLiteMissedTaskReviewStateStore(connection: connection),
                 externalTaskLinkStore: SQLiteExternalTaskLinkStore(connection: connection),
                 onChange: postProjectBoardDidChange
             )
         } catch {
             return ProjectBoardViewModel(store: UnavailableProjectBoardStore(error: error))
+        }
+    }
+
+    private static func makeAssistantQueueExecutionCoordinator(
+        connection: SQLiteConnection,
+        assistantQueueStore: any AssistantQueueStore
+    ) -> AssistantQueueExecutionCoordinator? {
+        do {
+            let auditLogger = try makeAuditLogger()
+            let registry = try ToolRegistry.phase2MVP(
+                projectStore: SQLiteProjectStore(connection: connection),
+                taskStore: SQLiteTaskStore(connection: connection),
+                knowledgeStore: SQLiteKnowledgeFrameStore(connection: connection),
+                notificationClient: UserNotificationsNotificationClient(),
+                calendarClient: EventKitCalendarClient(),
+                reminderClient: EventKitReminderClient(),
+                fileAccessClient: LocalFileAccessClient(workspaceRoot: try workspaceRootURL()),
+                mailDraftClient: UnavailableMailDraftClient(),
+                notificationRequestStore: SQLiteNotificationRequestStore(connection: connection),
+                calendarLinkStore: SQLiteCalendarLinkStore(connection: connection),
+                reminderLinkStore: SQLiteReminderLinkStore(connection: connection),
+                artifactStore: SQLiteArtifactStore(connection: connection),
+                auditLogger: auditLogger
+            )
+            let receiptStore = try makeExecutionReceiptStore()
+            return AssistantQueueExecutionCoordinator(
+                queueStore: assistantQueueStore,
+                executor: ActionExecutor(registry: registry, auditLogger: auditLogger),
+                executionReceiptStore: receiptStore
+            )
+        } catch {
+            return nil
         }
     }
 

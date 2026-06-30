@@ -852,6 +852,10 @@
 "Shows a local proposal for today's focus without changing tasks or writing Calendar." = "Shows a local proposal for today's focus without changing tasks or writing Calendar.";
 "Today daily planning review" = "Today daily planning review";
 "Unscheduled tasks" = "Unscheduled tasks";
+"Review AI-generated work before anything runs. Approval records intent; Run uses the existing execution gate and creates a receipt." = "Review AI-generated work before anything runs. Approval records intent; Run uses the existing execution gate and creates a receipt.";
+"Run" = "Run";
+"Run this approved item through the execution gate" = "Run this approved item through the execution gate";
+"Executes approved generated work through the review gate and records a receipt." = "Executes approved generated work through the review gate and records a receipt.";
 "Project Directory" = "Project Directory";
 "Selected directory" = "Selected directory";
 "Choose Directory" = "Choose Directory";

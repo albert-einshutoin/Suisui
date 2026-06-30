@@ -1,8 +1,8 @@
 # MCP Inspector Evidence
 
-Generated: 2026-06-30T00:59:16Z
+Generated: 2026-06-30T01:55:58Z
 
-- Source commit: `e96e666f`
+- Source commit: `620c2246`
 
 Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and SoloPM's local JSON-RPC smoke checks.
 

@@ -69,22 +69,36 @@ final class AssistantQueueStoreTests: XCTestCase {
         )
         let blocked = makeItem(id: "queue-read-model-blocked", state: .blocked, summary: "Blocked task")
         let done = makeItem(id: "queue-read-model-done", state: .done, summary: "Done task")
+        let approved = try AssistantQueueStateMachine.approve(
+            makeItem(id: "queue-read-model-approved", state: .waitingReview, summary: "Approved task"),
+            reviewerID: "local-user"
+        )
+        let failed = makeItem(id: "queue-read-model-failed", state: .failed, summary: "Failed task")
 
-        let snapshot = AssistantQueueReadModel.snapshot(from: [done, blocked, waiting])
+        let snapshot = AssistantQueueReadModel.snapshot(from: [done, blocked, waiting, approved, failed])
 
         XCTAssertEqual(snapshot.waitingReviewCount, 1)
         XCTAssertEqual(snapshot.blockedCount, 1)
         XCTAssertEqual(snapshot.reviewableCount, 2)
-        XCTAssertEqual(snapshot.rows.map(\.id), [blocked.id, waiting.id, done.id])
+        XCTAssertEqual(snapshot.rows.map(\.id), [blocked.id, waiting.id, approved.id, failed.id, done.id])
         let waitingRow = try XCTUnwrap(snapshot.rows.first { $0.id == waiting.id })
         XCTAssertFalse(waitingRow.title.contains("sk-assistantQueueStoreSecret"))
         XCTAssertFalse(waitingRow.sourcePreview?.contains("sk-assistantQueueStoreSecret") ?? true)
         XCTAssertTrue(waitingRow.canApprove)
+        XCTAssertFalse(waitingRow.canRun)
         XCTAssertTrue(waitingRow.canDefer)
         XCTAssertTrue(waitingRow.canReject)
+        let approvedRow = try XCTUnwrap(snapshot.rows.first { $0.id == approved.id })
+        XCTAssertFalse(approvedRow.canApprove)
+        XCTAssertTrue(approvedRow.canRun)
         let blockedRow = try XCTUnwrap(snapshot.rows.first { $0.id == blocked.id })
         XCTAssertFalse(blockedRow.canApprove)
+        XCTAssertFalse(blockedRow.canRun)
         XCTAssertTrue(blockedRow.canReject)
+        let failedRow = try XCTUnwrap(snapshot.rows.first { $0.id == failed.id })
+        XCTAssertEqual(failedRow.stateLabel, "Failed")
+        XCTAssertFalse(failedRow.canRun)
+        XCTAssertFalse(failedRow.canReject)
     }
 
     @MainActor
@@ -144,6 +158,53 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first { $0.id == blocked.id }?.state, .rejected)
     }
 
+    @MainActor
+    func testProjectBoardViewModelRunsApprovedAssistantQueueItemThroughExecutionCoordinator() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let approved = try AssistantQueueStateMachine.approve(
+            makeItem(id: "queue-visible-run", state: .waitingReview, summary: "Create runnable task"),
+            reviewerID: "local-user"
+        )
+        try assistantQueueStore.save(approved)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, context in
+                XCTAssertNotNil(context.approvalToken)
+                return ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created runnable task")
+            }
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: assistantQueueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-board-queue" },
+            now: { Date(timeIntervalSince1970: 500) }
+        )
+        let viewModel = ProjectBoardViewModel(
+            store: boardStore,
+            assistantQueueStore: assistantQueueStore,
+            assistantQueueExecutionCoordinator: coordinator
+        )
+
+        viewModel.load()
+
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first { $0.id == approved.id }?.canRun, true)
+        XCTAssertTrue(viewModel.runAssistantQueueItem(id: approved.id))
+        XCTAssertEqual(try assistantQueueStore.get(id: approved.id).state, .done)
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first { $0.id == approved.id }?.state, .done)
+        XCTAssertEqual(receiptStore.receipts.first?.assistantQueueItemID, approved.id)
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Executed Assistant Queue item.")
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
     private func makeItem(
         id: String = "queue-item",
         state: AssistantQueueState = .waitingReview,
@@ -157,7 +218,14 @@ final class AssistantQueueStoreTests: XCTestCase {
                 id: "\(id)-plan",
                 userInput: sourceTranscript,
                 summary: summary,
-                actions: [PlanAction(id: "\(id)-action", tool: .taskCreate, riskLevel: .write)],
+                actions: [
+                    PlanAction(
+                        id: "\(id)-action",
+                        tool: .taskCreate,
+                        arguments: ["title": .string(summary)],
+                        riskLevel: .write
+                    )
+                ],
                 riskLevel: .write,
                 requiresApproval: true
             )),

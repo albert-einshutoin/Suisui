@@ -10,6 +10,7 @@ public enum AssistantQueueState: String, Codable, Equatable, Hashable, Sendable 
     case running
     case blocked
     case done
+    case failed
     case rejected
     case deferred
 }
@@ -92,6 +93,7 @@ public enum AssistantQueueTransitionError: Error, Equatable, Sendable {
     case dangerousPayloadCannotBeApproved
     case approvalRequiredBeforeRunning
     case approvedPayloadChanged
+    case runningRequiredBeforeCompletion
     case terminalItemCannotTransition
 }
 
@@ -107,7 +109,7 @@ public enum AssistantQueueStateMachine {
         guard !item.containsDangerousPayload else {
             throw AssistantQueueTransitionError.dangerousPayloadCannotBeApproved
         }
-        guard item.state != .done, item.state != .rejected else {
+        guard item.state != .done, item.state != .failed, item.state != .rejected else {
             throw AssistantQueueTransitionError.terminalItemCannotTransition
         }
 
@@ -135,6 +137,28 @@ public enum AssistantQueueStateMachine {
         var running = item
         running.state = .running
         return running
+    }
+
+    public static func markDone(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
+        guard item.state == .running else {
+            throw AssistantQueueTransitionError.runningRequiredBeforeCompletion
+        }
+
+        var done = item
+        done.state = .done
+        done.blockingReason = nil
+        return done
+    }
+
+    public static func markFailed(_ item: AssistantQueueItem, reason: String) throws -> AssistantQueueItem {
+        guard item.state == .running else {
+            throw AssistantQueueTransitionError.runningRequiredBeforeCompletion
+        }
+
+        var failed = item
+        failed.state = .failed
+        failed.blockingReason = reason
+        return failed
     }
 
     public static func reject(_ item: AssistantQueueItem) -> AssistantQueueItem {

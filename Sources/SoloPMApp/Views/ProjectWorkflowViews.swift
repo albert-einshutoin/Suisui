@@ -1254,7 +1254,7 @@ struct AssistantQueueWorkflowView: View {
                 AssistantQueueCountStrip(snapshot: snapshot)
             }
 
-            Text("Review AI-generated work before anything runs. Approval here records intent only; execution still requires the existing review gate.")
+            Text("Review AI-generated work before anything runs. Approval records intent; Run uses the existing execution gate and creates a receipt.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1383,6 +1383,17 @@ private struct AssistantQueueRow: View {
 
             HStack(spacing: 8) {
                 Button {
+                    _ = viewModel.runAssistantQueueItem(id: row.id)
+                } label: {
+                    Label("Run", systemImage: "play.fill")
+                }
+                .disabled(!row.canRun)
+                .controlSize(.small)
+                .help("Run this approved item through the execution gate")
+                .accessibilityIdentifier("assistant-queue-run-\(row.id)")
+                .accessibilityHint("Executes approved generated work through the review gate and records a receipt.")
+
+                Button {
                     _ = viewModel.approveAssistantQueueItem(id: row.id)
                 } label: {
                     Label("Approve", systemImage: "checkmark.seal")
@@ -1434,6 +1445,8 @@ private struct AssistantQueueRow: View {
         switch row.state {
         case .blocked:
             "exclamationmark.octagon"
+        case .failed:
+            "exclamationmark.triangle"
         case .approved:
             "checkmark.seal"
         case .rejected:
@@ -1451,7 +1464,7 @@ private struct AssistantQueueRow: View {
 
     private var stateTint: Color {
         switch row.state {
-        case .blocked:
+        case .blocked, .failed:
             .red
         case .approved:
             .green
