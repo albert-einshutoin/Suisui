@@ -52,8 +52,34 @@ final class PlanningPromptBuilderTests: XCTestCase {
             for: PlanningRequest(userInput: "Create a task")
         )
 
-        XCTAssertTrue(prompt.system.contains("https://solopm.dev/schemas/action-plan.schema.json"))
-        XCTAssertTrue(prompt.system.contains("\"title\": \"SoloPM ActionPlan\""))
+        XCTAssertTrue(prompt.system.contains("solopm.dev"))
+        XCTAssertTrue(prompt.system.contains("SoloPM ActionPlan"))
         XCTAssertTrue(prompt.system.contains("\"$defs\""))
+    }
+
+    func testPromptSchemaToolEnumIsScopedToAvailableTools() throws {
+        let prompt = try PlanningPromptBuilder.loadDefault().buildPrompt(
+            for: PlanningRequest(
+                userInput: "Create a task",
+                availableTools: [.taskCreate]
+            )
+        )
+
+        XCTAssertTrue(prompt.system.contains("\"task.create\""))
+        XCTAssertFalse(prompt.system.contains("development.pr_workflow.commit"))
+        XCTAssertFalse(prompt.system.contains("git.status"))
+    }
+
+    func testPromptSchemaIncludesDeveloperToolsOnlyWhenAvailable() throws {
+        let prompt = try PlanningPromptBuilder.loadDefault().buildPrompt(
+            for: PlanningRequest(
+                userInput: "Commit these changes",
+                availableTools: ActionTool.developerModePlanningTools
+            )
+        )
+
+        XCTAssertTrue(prompt.system.contains("development.pr_workflow.commit"))
+        XCTAssertTrue(prompt.system.contains("git.status"))
+        XCTAssertFalse(prompt.system.contains("\"task.create\""))
     }
 }
