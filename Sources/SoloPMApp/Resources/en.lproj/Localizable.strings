@@ -8,6 +8,7 @@
 "Automation document source" = "Automation document source";
 "Approve" = "Approve";
 "Approved execution receipt" = "Approved execution receipt";
+"Assistant Queue execution receipt" = "Assistant Queue execution receipt";
 "Approve Local Shell Execution" = "Approve Local Shell Execution";
 "Approve OpenCode Local Execution" = "Approve OpenCode Local Execution";
 "Backlog" = "Backlog";
@@ -767,6 +768,10 @@
 "Voice planning draft needs review." = "Voice planning draft needs review.";
 "Dangerous action plans cannot be approved from Assistant Queue." = "Dangerous action plans cannot be approved from Assistant Queue.";
 "Execution receipt" = "Execution receipt";
+"Receipt ID: %@" = "Receipt ID: %@";
+"Receipt: %@" = "Receipt: %@";
+"Usage unavailable" = "Usage unavailable";
+"Usage unknown" = "Usage unknown";
 "%d actions recorded" = "%d actions recorded";
 "Not started" = "Not started";
 "Succeeded" = "Succeeded";

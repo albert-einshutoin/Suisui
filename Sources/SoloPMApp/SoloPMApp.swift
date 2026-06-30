@@ -3450,14 +3450,17 @@ private enum AppRuntimeFactory {
         do {
             let connection = try migratedConnection()
             let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+            let executionReceiptStore = try? makeExecutionReceiptStore()
             return ProjectBoardViewModel(
                 store: SQLiteProjectBoardStore(connection: connection),
                 inboxCaptureStore: SQLiteInboxCaptureStore(connection: connection),
                 assistantQueueStore: assistantQueueStore,
                 assistantQueueExecutionCoordinator: makeAssistantQueueExecutionCoordinator(
                     connection: connection,
-                    assistantQueueStore: assistantQueueStore
+                    assistantQueueStore: assistantQueueStore,
+                    executionReceiptStore: executionReceiptStore
                 ),
+                executionReceiptStore: executionReceiptStore,
                 missedTaskReviewStateStore: SQLiteMissedTaskReviewStateStore(connection: connection),
                 externalTaskLinkStore: SQLiteExternalTaskLinkStore(connection: connection),
                 onChange: postProjectBoardDidChange
@@ -3469,8 +3472,12 @@ private enum AppRuntimeFactory {
 
     private static func makeAssistantQueueExecutionCoordinator(
         connection: SQLiteConnection,
-        assistantQueueStore: any AssistantQueueStore
+        assistantQueueStore: any AssistantQueueStore,
+        executionReceiptStore: (any ExecutionReceiptStore)?
     ) -> AssistantQueueExecutionCoordinator? {
+        guard let executionReceiptStore else {
+            return nil
+        }
         do {
             let auditLogger = try makeAuditLogger()
             let registry = try ToolRegistry.phase2MVP(
@@ -3488,11 +3495,10 @@ private enum AppRuntimeFactory {
                 artifactStore: SQLiteArtifactStore(connection: connection),
                 auditLogger: auditLogger
             )
-            let receiptStore = try makeExecutionReceiptStore()
             return AssistantQueueExecutionCoordinator(
                 queueStore: assistantQueueStore,
                 executor: ActionExecutor(registry: registry, auditLogger: auditLogger),
-                executionReceiptStore: receiptStore
+                executionReceiptStore: executionReceiptStore
             )
         } catch {
             return nil

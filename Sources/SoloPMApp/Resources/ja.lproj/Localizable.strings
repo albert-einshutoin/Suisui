@@ -8,6 +8,7 @@
 "Automation document source" = "自動化の文書ソース";
 "Approve" = "承認";
 "Approved execution receipt" = "承認済み実行レシート";
+"Assistant Queue execution receipt" = "Assistant Queue 実行レシート";
 "Approve Local Shell Execution" = "ローカルシェル実行を承認";
 "Approve OpenCode Local Execution" = "OpenCodeローカル実行を承認";
 "Backlog" = "バックログ";
@@ -767,6 +768,10 @@
 "Voice planning draft needs review." = "音声から作成した計画案はレビューが必要です。";
 "Dangerous action plans cannot be approved from Assistant Queue." = "危険なアクション計画はアシスタントキューから承認できません。";
 "Execution receipt" = "実行レシート";
+"Receipt ID: %@" = "レシートID: %@";
+"Receipt: %@" = "レシート: %@";
+"Usage unavailable" = "使用量は対象外";
+"Usage unknown" = "使用量は不明";
 "%d actions recorded" = "%d件のアクションを記録済み";
 "Not started" = "未開始";
 "Succeeded" = "成功";

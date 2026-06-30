@@ -67,6 +67,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
     public var reviewReason: String
     public var capabilityLabels: [String]
     public var blockingReason: String?
+    public var latestReceipt: AssistantQueueReceiptSummary?
     public var canApprove: Bool
     public var canRun: Bool
     public var canDefer: Bool
@@ -82,6 +83,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
         reviewReason: String,
         capabilityLabels: [String],
         blockingReason: String?,
+        latestReceipt: AssistantQueueReceiptSummary? = nil,
         canApprove: Bool,
         canRun: Bool,
         canDefer: Bool,
@@ -96,10 +98,42 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
         self.reviewReason = reviewReason
         self.capabilityLabels = capabilityLabels
         self.blockingReason = blockingReason
+        self.latestReceipt = latestReceipt
         self.canApprove = canApprove
         self.canRun = canRun
         self.canDefer = canDefer
         self.canReject = canReject
+    }
+}
+
+public struct AssistantQueueReceiptSummary: Identifiable, Equatable, Sendable {
+    public var id: String
+    public var runID: String
+    public var status: ExecutionReceiptStatus
+    public var statusLabel: String
+    public var outputSummary: String
+    public var usageLabel: String
+    public var actionCount: Int
+    public var finishedAt: Date?
+
+    public init(
+        id: String,
+        runID: String,
+        status: ExecutionReceiptStatus,
+        statusLabel: String,
+        outputSummary: String,
+        usageLabel: String,
+        actionCount: Int,
+        finishedAt: Date?
+    ) {
+        self.id = id
+        self.runID = runID
+        self.status = status
+        self.statusLabel = statusLabel
+        self.outputSummary = outputSummary
+        self.usageLabel = usageLabel
+        self.actionCount = actionCount
+        self.finishedAt = finishedAt
     }
 }
 
@@ -126,10 +160,14 @@ public struct AssistantQueueSnapshot: Equatable, Sendable {
 }
 
 public enum AssistantQueueReadModel {
-    public static func snapshot(from items: [AssistantQueueItem]) -> AssistantQueueSnapshot {
+    public static func snapshot(
+        from items: [AssistantQueueItem],
+        receipts: [ExecutionReceipt] = []
+    ) -> AssistantQueueSnapshot {
+        let latestReceipts = latestAssistantQueueReceiptsByItemID(receipts)
         let rows = items
             .sorted(by: sortForReview)
-            .map(row)
+            .map { item in row(from: item, receipt: latestReceipts[item.id]) }
         return AssistantQueueSnapshot(
             rows: rows,
             waitingReviewCount: items.filter { $0.state == .waitingReview }.count,
@@ -137,7 +175,10 @@ public enum AssistantQueueReadModel {
         )
     }
 
-    private static func row(from item: AssistantQueueItem) -> AssistantQueueReadModelRow {
+    private static func row(
+        from item: AssistantQueueItem,
+        receipt: ExecutionReceipt? = nil
+    ) -> AssistantQueueReadModelRow {
         AssistantQueueReadModelRow(
             id: item.id,
             state: item.state,
@@ -148,11 +189,47 @@ public enum AssistantQueueReadModel {
             reviewReason: item.reviewReason,
             capabilityLabels: item.requiredCapabilities.map { redactedPreview(label(for: $0)) },
             blockingReason: item.blockingReason,
+            latestReceipt: receipt.map(receiptSummary),
             canApprove: canApprove(item),
             canRun: canRun(item),
             canDefer: canDefer(item),
             canReject: canReject(item)
         )
+    }
+
+    private static func latestAssistantQueueReceiptsByItemID(_ receipts: [ExecutionReceipt]) -> [String: ExecutionReceipt] {
+        receipts.reduce(into: [:]) { partialResult, receipt in
+            guard let itemID = receipt.assistantQueueItemID else {
+                return
+            }
+            guard receipt.visibleSurfaces.contains(.assistantQueue) else {
+                return
+            }
+            guard let existing = partialResult[itemID] else {
+                partialResult[itemID] = receipt
+                return
+            }
+            if receiptSortDate(receipt) > receiptSortDate(existing) {
+                partialResult[itemID] = receipt
+            }
+        }
+    }
+
+    private static func receiptSummary(_ receipt: ExecutionReceipt) -> AssistantQueueReceiptSummary {
+        AssistantQueueReceiptSummary(
+            id: receipt.id,
+            runID: receipt.runID,
+            status: receipt.status,
+            statusLabel: label(for: receipt.status),
+            outputSummary: redactedPreview(receipt.outputSummary),
+            usageLabel: usageLabel(for: receipt.usage),
+            actionCount: receipt.actions.count,
+            finishedAt: receipt.finishedAt
+        )
+    }
+
+    private static func receiptSortDate(_ receipt: ExecutionReceipt) -> Date {
+        receipt.finishedAt ?? receipt.startedAt ?? receipt.createdAt
     }
 
     private static func sortForReview(_ lhs: AssistantQueueItem, _ rhs: AssistantQueueItem) -> Bool {
@@ -197,7 +274,13 @@ public enum AssistantQueueReadModel {
     }
 
     private static func canRun(_ item: AssistantQueueItem) -> Bool {
-        item.state == .approved
+        guard item.state == .approved else {
+            return false
+        }
+        if case .actionPlan = item.payload {
+            return true
+        }
+        return false
     }
 
     private static func canDefer(_ item: AssistantQueueItem) -> Bool {
@@ -247,6 +330,43 @@ public enum AssistantQueueReadModel {
         case .deferred:
             return "Deferred"
         }
+    }
+
+    private static func label(for status: ExecutionReceiptStatus) -> String {
+        switch status {
+        case .notStarted:
+            return "Not Started"
+        case .running:
+            return "Running"
+        case .succeeded:
+            return "Succeeded"
+        case .failed:
+            return "Failed"
+        case .skipped:
+            return "Skipped"
+        case .canceled:
+            return "Canceled"
+        }
+    }
+
+    private static func usageLabel(for usage: ExecutionReceiptUsage) -> String {
+        switch usage.state {
+        case .measured:
+            return tokenUsageLabel(prefix: "Measured", usage: usage)
+        case .estimated:
+            return tokenUsageLabel(prefix: "Estimated", usage: usage)
+        case .unknown:
+            return "Usage unknown"
+        case .unavailable:
+            return "Usage unavailable"
+        }
+    }
+
+    private static func tokenUsageLabel(prefix: String, usage: ExecutionReceiptUsage) -> String {
+        guard let totalTokens = usage.totalTokens else {
+            return "\(prefix) usage"
+        }
+        return "\(prefix): \(totalTokens) tokens"
     }
 
     private static func label(for capability: AssistantQueueRequiredCapability) -> String {

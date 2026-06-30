@@ -104,9 +104,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)"))
         XCTAssertTrue(appSource.contains("assistantQueueStore: assistantQueueStore"))
         XCTAssertTrue(appSource.contains("assistantQueueExecutionCoordinator: makeAssistantQueueExecutionCoordinator("))
+        XCTAssertTrue(appSource.contains("let executionReceiptStore = try? makeExecutionReceiptStore()"))
+        XCTAssertTrue(appSource.contains("executionReceiptStore: executionReceiptStore"))
         XCTAssertTrue(appSource.contains("return AssistantQueueExecutionCoordinator("))
         XCTAssertTrue(coreSource.contains("@Published public private(set) var assistantQueueSnapshot: AssistantQueueSnapshot"))
         XCTAssertTrue(coreSource.contains("AssistantQueueReadModel.snapshot("))
+        XCTAssertTrue(coreSource.contains("executionReceiptStore?.list(limit: 100)"))
     }
 
     func testAssistantQueueWorkflowIsReachableFromProjectBoardSidebar() throws {
@@ -131,6 +134,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".disabled(!row.canDefer)"))
         XCTAssertTrue(workflowSource.contains(".disabled(!row.canReject)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-run-\\(row.id)\")"))
+        XCTAssertTrue(workflowSource.contains("if let receipt = row.latestReceipt"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-receipt-\\(row.id)\")"))
+        XCTAssertTrue(workflowSource.contains("localizedDisplay(\"Receipt: %@\", localizedDisplay(receipt.statusLabel))"))
         XCTAssertTrue(coreSource.contains("public func runAssistantQueueItem(id: String) -> Bool"))
         XCTAssertTrue(coreSource.contains("public func approveAssistantQueueItem(id: String) -> Bool"))
         XCTAssertTrue(coreSource.contains("public func deferAssistantQueueItem(id: String) -> Bool"))
