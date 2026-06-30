@@ -995,6 +995,70 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelShowsExternalMCPReceiptsOnlyInGlobalAuditHistory() throws {
+        let externalMCPReceipt = ExecutionReceiptFactory.makeExternalMCPReceipt(
+            serverID: "/Users/alice/private-mcp-server",
+            serverName: "Private MCP token=mcp-server-secret",
+            toolName: "read_status",
+            permissionLevel: .read,
+            redactedArgumentSummary: "project=string(\"/Users/alice/mcp-input.md\"),api_key=[REDACTED_SECRET]",
+            approvalID: "approved",
+            source: .developerTool,
+            result: MCPToolCallResult(content: [
+                MCPContentItem(type: "text", text: "status: ok secret=mcp-output-secret /Users/alice/mcp-output.md")
+            ]),
+            error: nil,
+            runID: "run-board-mcp",
+            startedAt: Date(timeIntervalSince1970: 100),
+            finishedAt: Date(timeIntervalSince1970: 120)
+        )
+        let receiptStore = InMemoryExecutionReceiptStore(receipts: [externalMCPReceipt])
+        let task = ProjectBoardTask(
+            id: 42,
+            projectID: 7,
+            title: "Scoped history task",
+            detail: "Inspect scoped receipt history.",
+            status: .planned,
+            priority: .medium,
+            dueAt: nil
+        )
+        let project = ProjectBoardProject(
+            id: 7,
+            title: "Scoped history project",
+            status: "active",
+            subtitle: "1 open / 1 total",
+            columns: ProjectTaskStatus.allCases.map { status in
+                ProjectBoardColumn(status: status, tasks: status == .planned ? [task] : [])
+            }
+        )
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [project])),
+            executionReceiptStore: receiptStore
+        )
+
+        viewModel.load()
+        viewModel.prepareExecutionReceiptHistoryExport(exportedAt: Date(timeIntervalSince1970: 200))
+
+        let globalRow = try XCTUnwrap(viewModel.executionReceiptHistorySnapshot.rows.first)
+        XCTAssertEqual(globalRow.toolLabel, "external_mcp.read_status")
+        XCTAssertEqual(globalRow.referenceSummary, "References: External MCP 1")
+        XCTAssertTrue(globalRow.outcomeSummary.contains("succeeded"))
+        XCTAssertTrue(viewModel.executionReceiptHistorySnapshot(forTaskID: task.id).rows.isEmpty)
+        XCTAssertTrue(viewModel.executionReceiptHistorySnapshot(forProjectID: project.id).rows.isEmpty)
+
+        let exportData = try XCTUnwrap(viewModel.executionReceiptHistoryExportData)
+        let exportText = String(decoding: exportData, as: UTF8.self)
+        XCTAssertTrue(exportText.contains("external_mcp.read_status"))
+        XCTAssertFalse(exportText.contains("private-mcp-server"))
+        XCTAssertFalse(exportText.contains("mcp-server-secret"))
+        XCTAssertFalse(exportText.contains("mcp-input.md"))
+        XCTAssertFalse(exportText.contains("mcp-output-secret"))
+        XCTAssertFalse(exportText.contains("mcp-output.md"))
+        XCTAssertFalse(exportText.contains(externalMCPReceipt.id))
+        XCTAssertFalse(exportText.contains(externalMCPReceipt.references.first?.id ?? "missing-reference-id"))
+    }
+
+    @MainActor
     func testProjectBoardViewModelHidesNonAuditReceiptsFromDoneHistoryAndExport() throws {
         let receiptStore = InMemoryExecutionReceiptStore(receipts: [
             ExecutionReceipt(

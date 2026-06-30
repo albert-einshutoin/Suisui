@@ -233,6 +233,8 @@ public final class MCPClient: @unchecked Sendable {
             return result
         } catch let error as MCPClientError {
             throw error
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw MCPClientError.transportFailed(serverID: serverID, method: request.method, message: "transport request failed.")
         }

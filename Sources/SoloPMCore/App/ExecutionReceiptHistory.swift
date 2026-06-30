@@ -242,6 +242,8 @@ public enum ExecutionReceiptHistoryReadModel {
             return String(localized: "File")
         case .pullRequest:
             return String(localized: "Pull Request")
+        case .externalMCP:
+            return String(localized: "External MCP")
         }
     }
 

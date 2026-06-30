@@ -225,4 +225,19 @@ extension ExternalMCPToolPermission {
             return false
         }
     }
+
+    var rawValueForAudit: String {
+        switch self {
+        case .read:
+            return "read"
+        case .draft:
+            return "draft"
+        case .writeWithApproval:
+            return "writeWithApproval"
+        case .dangerous:
+            return "dangerous"
+        case .disabled:
+            return "disabled"
+        }
+    }
 }

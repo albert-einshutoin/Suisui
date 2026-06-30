@@ -31,6 +31,7 @@ public enum ExecutionReceiptReferenceKind: String, Codable, Equatable, Hashable,
     case developmentBranch = "development_branch"
     case file
     case pullRequest = "pull_request"
+    case externalMCP = "external_mcp"
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
@@ -1114,6 +1115,77 @@ public enum ExecutionReceiptFactory {
         )
     }
 
+    public static func makeExternalMCPReceipt(
+        serverID: String,
+        serverName: String,
+        toolName: String,
+        permissionLevel: ExternalMCPToolPermission,
+        redactedArgumentSummary: String,
+        approvalID: String?,
+        source: ToolExecutionSource,
+        result: MCPToolCallResult?,
+        error: Error?,
+        runID: String,
+        startedAt: Date,
+        finishedAt: Date,
+        redactionPolicy: ExecutionReceiptRedactionPolicy = ExecutionReceiptRedactionPolicy()
+    ) -> ExecutionReceipt {
+        let redactor = ExecutionReceiptRedactor(policy: redactionPolicy)
+        let primaryToolName = externalMCPToolName(toolName)
+        let status = externalMCPStatus(result: result, error: error)
+        let inputPreview = [
+            "server: \(serverName)",
+            "tool: \(toolName)",
+            "permission: \(permissionLevel.rawValueForAudit)",
+            "source: \(source.rawValue)",
+            "approval: \(approvalID == nil ? "missing" : "present")",
+            "arguments: \(redactedArgumentSummary)"
+        ].joined(separator: ", ")
+        let outputSummary = externalMCPOutputSummary(
+            serverName: serverName,
+            toolName: toolName,
+            result: result,
+            error: error
+        )
+        let actionErrorSummary = externalMCPActionErrorSummary(result: result, error: error, redactor: redactor)
+        // Server IDs are user-configured and can accidentally include local
+        // paths or customer names, so durable receipt identifiers use a digest.
+        let externalMCPDigest = ExecutionReceiptDigest.normalizedDigest("\(serverID):\(toolName)")
+
+        return ExecutionReceipt(
+            id: "receipt:\(runID):external-mcp:\(externalMCPDigest)",
+            runID: runID,
+            approvalID: approvalID,
+            createdAt: finishedAt,
+            startedAt: startedAt,
+            finishedAt: finishedAt,
+            status: status,
+            inputPreview: inputPreview,
+            outputSummary: outputSummary,
+            primaryToolName: primaryToolName,
+            usage: .unavailable,
+            references: [
+                ExecutionReceiptReference(
+                    kind: .externalMCP,
+                    id: externalMCPDigest,
+                    label: redactor.redact("\(serverName) / \(toolName)", maxLength: 300)
+                )
+            ],
+            actions: [
+                ExecutionReceiptActionSummary(
+                    id: "external-mcp:\(externalMCPDigest)",
+                    toolName: primaryToolName,
+                    status: status,
+                    inputPreview: inputPreview,
+                    outputSummary: outputSummary,
+                    errorSummary: actionErrorSummary
+                )
+            ],
+            visibleSurfaces: [.auditLog],
+            redactionPolicy: redactionPolicy
+        )
+    }
+
     private static func executionReceiptStatus(for status: ReviewExecutionStatus) -> ExecutionReceiptStatus {
         switch status {
         case .notStarted:
@@ -1172,6 +1244,62 @@ public enum ExecutionReceiptFactory {
     }
 
     private static let documentDeliverablePrepareToolName = "document.deliverable.prepare"
+
+    private static func externalMCPToolName(_ toolName: String) -> String {
+        "external_mcp.\(toolName)"
+    }
+
+    private static func externalMCPStatus(
+        result: MCPToolCallResult?,
+        error: Error?
+    ) -> ExecutionReceiptStatus {
+        if error is CancellationError {
+            return .canceled
+        }
+        if error != nil || result?.isError == true {
+            return .failed
+        }
+        return .succeeded
+    }
+
+    private static func externalMCPOutputSummary(
+        serverName: String,
+        toolName: String,
+        result: MCPToolCallResult?,
+        error: Error?
+    ) -> String {
+        if error is CancellationError {
+            return "External MCP tool \(toolName) was canceled on \(serverName)."
+        }
+        if error != nil {
+            return "External MCP tool \(toolName) failed on \(serverName)."
+        }
+        guard let result else {
+            return "External MCP tool \(toolName) did not return a result on \(serverName)."
+        }
+        let contentItemLabel = result.content.count == 1 ? "content item" : "content items"
+        let structuredLabel = result.structuredContent == nil ? "" : " with structured output"
+        // MCP servers can echo credentials, files, or customer data in results, so
+        // receipts record result shape and outcome instead of raw response bodies.
+        if result.isError {
+            return "External MCP tool \(toolName) returned a tool error on \(serverName) with \(result.content.count) \(contentItemLabel)\(structuredLabel)."
+        }
+        return "External MCP tool \(toolName) succeeded on \(serverName) with \(result.content.count) \(contentItemLabel)\(structuredLabel)."
+    }
+
+    private static func externalMCPActionErrorSummary(
+        result: MCPToolCallResult?,
+        error: Error?,
+        redactor: ExecutionReceiptRedactor
+    ) -> String? {
+        if let error {
+            return redactor.redact(String(describing: error))
+        }
+        guard result?.isError == true else {
+            return nil
+        }
+        return "MCP tool returned an error result. Raw tool output is omitted from the receipt."
+    }
 
     private static func documentDeliverableInputPreview(
         deliverables: [TaskAutomationDocumentDeliverableReview],
