@@ -2378,7 +2378,7 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
-    func testPublicAlphaAppDoesNotLinkExternalSaaSConnectorTarget() throws {
+    func testPublicAlphaAppLinksOnlyNarrowGoogleCalendarRuntimeTarget() throws {
         let packageSource = try readPackageFile("Package.swift")
         let appTarget = try XCTUnwrap(packageSource.range(of: ".executableTarget(\n            name: \"SoloPM\","))
         let cliTarget = try XCTUnwrap(packageSource.range(of: ".executableTarget(\n            name: \"SoloPMCLI\","))
@@ -2386,8 +2386,10 @@ final class AppExperienceSourceTests: XCTestCase {
         let appTargetBlock = String(packageSource[appTarget.lowerBound..<cliTarget.lowerBound])
         let cliTargetBlock = String(packageSource[cliTarget.lowerBound..<testsTarget.lowerBound])
 
+        XCTAssertTrue(packageSource.contains("name: \"SoloPMGoogleCalendarRuntime\""))
         XCTAssertTrue(packageSource.contains("name: \"SoloPMExternalConnectors\""))
         XCTAssertTrue(packageSource.contains("dependencies: [\"SoloPMCore\"]"))
+        XCTAssertTrue(appTargetBlock.contains("SoloPMGoogleCalendarRuntime"))
         XCTAssertFalse(appTargetBlock.contains("SoloPMExternalConnectors"))
         XCTAssertFalse(cliTargetBlock.contains("SoloPMExternalConnectors"))
     }
@@ -2984,6 +2986,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(syncSource.contains("name: \"GitHub Issues\""))
         XCTAssertTrue(syncSource.contains("Pro unlocks external sync; import/export JSON stays local."))
         XCTAssertFalse(appSource.contains("import SoloPMExternalConnectors"))
+    }
+
+    func testAppRuntimeWiresGoogleCalendarSyncWithoutFakeUnavailableStore() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let factoryStart = try XCTUnwrap(appSource.range(of: "let googleCalendarSync ="))
+        let factoryEnd = try XCTUnwrap(appSource.range(of: "return ProjectBoardViewModel(", range: factoryStart.lowerBound..<appSource.endIndex))
+        let factorySource = String(appSource[factoryStart.lowerBound..<factoryEnd.lowerBound])
+
+        XCTAssertTrue(appSource.contains("import SoloPMGoogleCalendarRuntime"))
+        XCTAssertTrue(factorySource.contains("GoogleCalendarAppRuntimeFactory.makeSyncController("))
+        XCTAssertTrue(factorySource.contains("idempotencyNamespaceStore:"))
+        XCTAssertFalse(factorySource.contains("UnavailableGoogleCalendarRuntimeCredentialStatusStore()"))
+        XCTAssertFalse(factorySource.contains("taskSyncService: nil"))
     }
 
     func testProjectBoardGoogleCalendarSyncMenuUsesRuntimeReadinessInsteadOfHardcodedDisabled() throws {
