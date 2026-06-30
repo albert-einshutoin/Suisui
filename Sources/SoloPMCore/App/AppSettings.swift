@@ -513,17 +513,32 @@ public final class AppSettingsViewModel: ObservableObject {
     @Published public private(set) var keychainSecretStatusLabel: String
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var successMessage: String?
+    @Published private var voiceModelStatusOverrides: [VoiceModelID: VoiceModelInstallStatus]
 
     private let settingsStore: any AppSettingsStore
     private let secretStore: any SecretStore
+    private let voiceModelCatalog: VoiceModelCatalog
+    private let voiceModelManager: any VoiceModelManaging
     private var rejectedAIProvider: AIProvider?
     private static let settingsSaveFailureMessage = "App settings could not be saved."
     private static let apiKeySaveFailureMessage = "API key could not be saved to Keychain."
     private static let apiKeyDeleteFailureMessage = "API key could not be removed from Keychain."
 
-    public init(settingsStore: any AppSettingsStore, secretStore: any SecretStore) {
+    public init(
+        settingsStore: any AppSettingsStore,
+        secretStore: any SecretStore,
+        voiceModelCatalog: VoiceModelCatalog = .phase1Default,
+        voiceModelManager: any VoiceModelManaging = VoiceModelManager()
+    ) {
+        let initialVoiceModelStatuses = Dictionary(
+            uniqueKeysWithValues: voiceModelCatalog.models.map { model in
+                (model.id, voiceModelManager.status(for: model))
+            }
+        )
         self.settingsStore = settingsStore
         self.secretStore = secretStore
+        self.voiceModelCatalog = voiceModelCatalog
+        self.voiceModelManager = voiceModelManager
         let loadedSettings: AppSettings
         let initialErrorMessage: String?
         do {
@@ -552,6 +567,7 @@ public final class AppSettingsViewModel: ObservableObject {
         self.keychainSecretStatusLabel = "Enter a secret key"
         self.errorMessage = initialErrorMessage
         self.successMessage = nil
+        self.voiceModelStatusOverrides = initialVoiceModelStatuses
         self.rejectedAIProvider = nil
         refreshOpenAIAPIKeyStatus()
         refreshAnthropicAPIKeyStatus()
@@ -566,6 +582,67 @@ public final class AppSettingsViewModel: ObservableObject {
 
     public var providerReadinessRows: [AIProviderReadinessRow] {
         selectableAIProviders.map { providerReadinessRow(for: $0) }
+    }
+
+    public var voiceModelReadinessRows: [VoiceModelReadinessRow] {
+        voiceModelCatalog.models.map { model in
+            VoiceModelReadinessRow(
+                model: model,
+                status: voiceModelStatusOverrides[model.id] ?? voiceModelManager.status(for: model)
+            )
+        }
+    }
+
+    public func installVoiceModel(_ modelID: VoiceModelID) async {
+        guard let model = voiceModelCatalog.model(for: modelID) else {
+            errorMessage = "Voice model is not registered."
+            successMessage = nil
+            return
+        }
+
+        voiceModelStatusOverrides[modelID] = .downloading
+        clearMessages()
+        do {
+            _ = try await voiceModelManager.install(model)
+            voiceModelStatusOverrides[modelID] = .installed
+            successMessage = "Voice model is installed."
+            errorMessage = nil
+        } catch let error as VoiceModelManagerError {
+            let message = error.userMessage
+            voiceModelStatusOverrides[modelID] = .failed(message)
+            errorMessage = message
+            successMessage = nil
+        } catch {
+            let message = UserFacingErrorMessageSanitizer.message(from: error)
+            voiceModelStatusOverrides[modelID] = .failed(message)
+            errorMessage = message
+            successMessage = nil
+        }
+    }
+
+    public func removeVoiceModelFromCache(_ modelID: VoiceModelID) {
+        guard let model = voiceModelCatalog.model(for: modelID) else {
+            errorMessage = "Voice model is not registered."
+            successMessage = nil
+            return
+        }
+
+        do {
+            try voiceModelManager.removeFromCache(model)
+            voiceModelStatusOverrides[modelID] = .notInstalled
+            successMessage = "Voice model cache entry was removed."
+            errorMessage = nil
+        } catch let error as VoiceModelManagerError {
+            let message = error.userMessage
+            voiceModelStatusOverrides[modelID] = .failed(message)
+            errorMessage = message
+            successMessage = nil
+        } catch {
+            let message = UserFacingErrorMessageSanitizer.message(from: error)
+            voiceModelStatusOverrides[modelID] = .failed(message)
+            errorMessage = message
+            successMessage = nil
+        }
     }
 
     public func providerReadinessRow(for provider: AIProvider) -> AIProviderReadinessRow {
