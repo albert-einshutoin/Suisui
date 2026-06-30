@@ -1379,6 +1379,19 @@ public final class ProjectBoardViewModel: ObservableObject {
             }
     }
 
+    public func dailyWorkloadOverview(
+        around referenceDate: Date = Date(),
+        calendar: Calendar = .current,
+        visibleDayCount: Int = 7
+    ) -> DailyWorkloadOverview {
+        DailyWorkloadDashboardBuilder.overview(
+            from: snapshot,
+            around: referenceDate,
+            calendar: calendar,
+            visibleDayCount: visibleDayCount
+        )
+    }
+
     public func todayPlan(
         on referenceDate: Date = Date(),
         calendar: Calendar = .current

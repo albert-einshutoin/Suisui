@@ -815,3 +815,16 @@
 "%d missed tasks need review" = "確認が必要な見逃しタスク %d 件";
 "%d new" = "新規 %d 件";
 "%@ tasks" = "%@ タスク";
+"Daily Workload" = "日次ワークロード";
+"Daily progress" = "日次進捗";
+"Inbox Triage" = "Inbox整理";
+"Inbox captures are shown separately until moved into a project." = "Inboxキャプチャは、プロジェクトへ移動するまで別枠で表示します。";
+"Inbox triage captures" = "Inbox整理待ちキャプチャ";
+"Local task counts and progress. External Calendar writes require review approval." = "ローカルタスクの件数と進捗です。外部カレンダーへの書き込みにはレビュー承認が必要です。";
+"Next Week" = "翌週";
+"No scheduled tasks for this day." = "この日に予定されたタスクはありません。";
+"Previous Week" = "前週";
+"Selected Day" = "選択中の日";
+"Selected workload day detail" = "選択中ワークロード日の詳細";
+"Shows local per-day task counts, progress, unscheduled tasks, and Inbox triage without writing Calendar." = "カレンダーへ書き込まず、ローカルの日別タスク件数、進捗、未スケジュール、Inbox整理待ちを表示します。";
+"Unscheduled tasks" = "未スケジュールタスク";
