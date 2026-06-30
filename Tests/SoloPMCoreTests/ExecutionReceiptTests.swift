@@ -1068,6 +1068,53 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertEqual(decoded.queueApproval?.approvalID, "queue-approval-json")
     }
 
+    func testExternalMCPReceiptSummarizesOutcomeWithoutRawArgumentsOrResultBody() throws {
+        let argumentSecret = "token" + "=" + "mcp-argument-secret"
+        let resultSecret = "secret" + "=" + "mcp-result-secret"
+        let receipt = ExecutionReceiptFactory.makeExternalMCPReceipt(
+            serverID: "fake",
+            serverName: "Fake MCP",
+            toolName: "read_status",
+            permissionLevel: .read,
+            redactedArgumentSummary: "project=string(\"/Users/alice/private-plan.md\"),token=[REDACTED_SECRET] \(argumentSecret)",
+            approvalID: "approved",
+            source: .developerTool,
+            result: MCPToolCallResult(content: [
+                MCPContentItem(type: "text", text: "status: ok \(resultSecret) /Users/alice/result.md")
+            ]),
+            error: nil,
+            runID: "run-mcp",
+            startedAt: Date(timeIntervalSince1970: 10),
+            finishedAt: Date(timeIntervalSince1970: 12)
+        )
+
+        XCTAssertTrue(receipt.id.hasPrefix("receipt:run-mcp:external-mcp:"))
+        XCTAssertFalse(receipt.id.contains("fake:read_status"))
+        XCTAssertEqual(receipt.approvalID, "approved")
+        XCTAssertEqual(receipt.status, .succeeded)
+        XCTAssertEqual(receipt.primaryToolName, "external_mcp.read_status")
+        XCTAssertEqual(receipt.usage, .unavailable)
+        XCTAssertEqual(receipt.visibleSurfaces, [.auditLog])
+        let reference = try XCTUnwrap(receipt.references.first)
+        XCTAssertEqual(reference.kind, .externalMCP)
+        XCTAssertEqual(reference.id.count, 64)
+        XCTAssertFalse(reference.id.contains("fake"))
+        XCTAssertEqual(reference.label, "Fake MCP / read_status")
+        XCTAssertEqual(receipt.actions.first?.id.count, "external-mcp:".count + 64)
+        XCTAssertTrue(receipt.inputPreview.contains("[REDACTED_SECRET]"))
+        XCTAssertTrue(receipt.inputPreview.contains("[REDACTED_LOCAL_PATH]"))
+        XCTAssertTrue(receipt.outputSummary.contains("succeeded"))
+        XCTAssertTrue(receipt.outputSummary.contains("1 content item"))
+        XCTAssertFalse(receipt.inputPreview.contains("mcp-argument-secret"))
+        XCTAssertFalse(receipt.inputPreview.contains("private-plan.md"))
+        XCTAssertFalse(receipt.outputSummary.contains("mcp-result-secret"))
+        XCTAssertFalse(receipt.outputSummary.contains("result.md"))
+
+        let row = try XCTUnwrap(ExecutionReceiptHistoryReadModel.snapshot(from: [receipt], limit: 1).rows.first)
+        XCTAssertEqual(row.toolLabel, "external_mcp.read_status")
+        XCTAssertEqual(row.referenceSummary, "References: External MCP 1")
+    }
+
     func testExecutionReceiptDecodesUnknownReferenceKindsWithoutDroppingReceipt() throws {
         let json = """
         {

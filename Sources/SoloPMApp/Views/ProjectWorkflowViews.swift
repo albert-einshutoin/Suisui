@@ -933,6 +933,8 @@ struct DoneWorkflowView: View {
             return "File"
         case .pullRequest:
             return "Pull Request"
+        case .externalMCP:
+            return "External MCP"
         }
     }
 
