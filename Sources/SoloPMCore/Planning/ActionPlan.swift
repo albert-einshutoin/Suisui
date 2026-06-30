@@ -134,6 +134,7 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
     case developmentRepositoryReadFile = "development.repository.read_file"
     case developmentRepositoryCreateFile = "development.repository.create_file"
     case developmentRepositoryUpdateFile = "development.repository.update_file"
+    case developmentRunVerification = "development.verification.run"
 
     public var defaultRiskLevel: RiskLevel {
         switch self {
@@ -183,7 +184,8 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
              .frameDelete,
              .developmentPreparePullRequestWorkflow,
              .developmentRepositoryCreateFile,
-             .developmentRepositoryUpdateFile:
+             .developmentRepositoryUpdateFile,
+             .developmentRunVerification:
             .write
         }
     }
@@ -216,7 +218,8 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
              .developmentPreparePullRequestWorkflow,
              .developmentRepositoryReadFile,
              .developmentRepositoryCreateFile,
-             .developmentRepositoryUpdateFile:
+             .developmentRepositoryUpdateFile,
+             .developmentRunVerification:
             .developer
         }
     }
@@ -248,7 +251,8 @@ public extension ActionTool {
             .developmentPreparePullRequestWorkflow,
             .developmentRepositoryReadFile,
             .developmentRepositoryCreateFile,
-            .developmentRepositoryUpdateFile
+            .developmentRepositoryUpdateFile,
+            .developmentRunVerification
         ]
     }
 }

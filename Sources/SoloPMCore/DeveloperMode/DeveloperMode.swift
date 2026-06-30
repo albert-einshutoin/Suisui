@@ -6,6 +6,7 @@ public enum DeveloperModeCapability: String, CaseIterable, Equatable, Hashable, 
     case codebaseMemory
     case developmentPRWorkflow
     case developmentRepositoryFiles
+    case developmentVerificationCommands
 }
 
 public struct DeveloperModePermissionDisclosure: Equatable, Sendable {
@@ -86,6 +87,12 @@ public extension DeveloperModeCapability {
                 title: "Development repository files",
                 summary: "Reads, creates, and updates supported text files only inside the approved project directory; create and update require explicit approval."
             )
+        case .developmentVerificationCommands:
+            return DeveloperModePermissionDisclosure(
+                capability: self,
+                title: "Development verification commands",
+                summary: "Runs approved local test, lint, and security commands only inside the approved project directory after explicit approval."
+            )
         }
     }
 }
@@ -94,6 +101,7 @@ public extension ToolRegistryFactory {
     static func developerMode(
         settings: DeveloperModeSettings,
         gitRunner: any GitCommandRunner = ProcessGitCommandRunner(),
+        developmentCommandRunner: any DevelopmentCommandRunner = ProcessDevelopmentCommandRunner(),
         projectStore: SQLiteProjectStore? = nil,
         taskStore: SQLiteTaskStore? = nil
     ) throws -> ToolRegistry {
@@ -137,6 +145,16 @@ public extension ToolRegistryFactory {
                 DevelopmentRepositoryFileTool(name: .developmentRepositoryCreateFile, projectStore: projectStore),
                 DevelopmentRepositoryFileTool(name: .developmentRepositoryUpdateFile, projectStore: projectStore)
             ])
+        }
+
+        if settings.enabledCapabilities.contains(.developmentVerificationCommands) {
+            guard let projectStore else {
+                throw DeveloperModeError.projectStoresRequired
+            }
+            tools.append(DevelopmentVerificationCommandTool(
+                projectStore: projectStore,
+                commandRunner: developmentCommandRunner
+            ))
         }
 
         return try ToolRegistry(tools: tools)

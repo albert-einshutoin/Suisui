@@ -15,6 +15,7 @@ final class ActionPlanDomainTests: XCTestCase {
         XCTAssertEqual(ActionTool.developmentRepositoryReadFile.actionType, .developer)
         XCTAssertEqual(ActionTool.developmentRepositoryCreateFile.actionType, .developer)
         XCTAssertEqual(ActionTool.developmentRepositoryUpdateFile.actionType, .developer)
+        XCTAssertEqual(ActionTool.developmentRunVerification.actionType, .developer)
     }
 
     func testLocalReadAndDeleteToolsUseExpectedRiskLevels() {
@@ -26,6 +27,7 @@ final class ActionPlanDomainTests: XCTestCase {
         XCTAssertEqual(ActionTool.developmentRepositoryReadFile.defaultRiskLevel, .read)
         XCTAssertEqual(ActionTool.developmentRepositoryCreateFile.defaultRiskLevel, .write)
         XCTAssertEqual(ActionTool.developmentRepositoryUpdateFile.defaultRiskLevel, .write)
+        XCTAssertEqual(ActionTool.developmentRunVerification.defaultRiskLevel, .write)
     }
 
     func testApprovalRequirementUsesHighestActionRisk() {

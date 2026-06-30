@@ -159,6 +159,34 @@ final class ActionExecutorTests: XCTestCase {
         XCTAssertEqual(executed.items[1].failureRecovery, .retryable)
     }
 
+    func testExecutorTreatsFailedToolResultAsActionFailure() throws {
+        let registry = try ToolRegistry(tools: [
+            StaticTool(name: .projectList, description: "verification", inputSchema: ToolInputSchema(), permissionLevel: .read) { _, _ in
+                ToolResult(
+                    tool: .projectList,
+                    status: .failed,
+                    summary: "Verification failed",
+                    output: ["passed": .bool(false)]
+                )
+            },
+            StaticTool(name: .taskListDue, description: "after", inputSchema: ToolInputSchema(), permissionLevel: .read) { _, _ in
+                ToolResult(tool: .taskListDue, status: .succeeded, summary: "should not run")
+            }
+        ])
+        let session = ReviewSession(plan: .reviewFixture(actions: [
+            PlanAction(id: "verification", tool: .projectList),
+            PlanAction(id: "after", tool: .taskListDue)
+        ]))
+
+        let executed = try ActionExecutor(registry: registry).execute(session)
+
+        XCTAssertEqual(executed.executionStatus, .failed)
+        XCTAssertEqual(executed.items.map(\.executionStatus), [.failed, .skipped])
+        XCTAssertEqual(executed.items.first?.result?.status, .failed)
+        XCTAssertEqual(executed.items.first?.errorMessage, "Verification failed")
+        XCTAssertEqual(executed.items.first?.failureRecovery, .retryable)
+    }
+
     func testExecutorClassifiesValidationFailureAsNotRetryable() throws {
         let registry = try ToolRegistry(tools: [
             StaticTool(name: .taskCreate, description: "write", inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]), permissionLevel: .writeWithApproval) { _, _ in
