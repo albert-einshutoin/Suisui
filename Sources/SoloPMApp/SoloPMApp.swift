@@ -571,21 +571,15 @@ private struct VoiceCaptureView: View {
                     if let item = viewModel.assistantQueueItem {
                         AssistantQueuePanel(
                             item: item,
+                            executionHandoffItemID: viewModel.assistantQueueExecutionHandoffItemID,
                             onApprove: { viewModel.approveAssistantQueueItem() },
                             onDefer: { viewModel.deferAssistantQueueItem() },
-                            onReject: { viewModel.rejectAssistantQueueItem() }
+                            onReject: { viewModel.rejectAssistantQueueItem() },
+                            onOpenQueue: { postAssistantQueueOpenRequest() }
                         )
                     }
 
-                    if let plan = response.actionPlan,
-                       response.validationResult.isValid,
-                       viewModel.assistantQueueItem?.state == .approved {
-                        ActionReviewPanel(viewModel: AppRuntimeFactory.makeReviewSessionViewModel(plan: plan)) {
-                            NotificationCenter.default.post(name: .soloPMProjectBoardDidChange, object: nil)
-                        }
-                    } else {
-                        ActionPlanPreview(response: response)
-                    }
+                    ActionPlanPreview(response: response)
                 }
             }
             .padding(16)
@@ -630,6 +624,18 @@ private struct VoiceCaptureView: View {
             name: .soloPMVoiceInboxTriageRequested,
             object: nil,
             userInfo: [SoloPMVoiceInboxTriageBridge.requestUserInfoKey: bridgeRequest]
+        )
+    }
+
+    private func postAssistantQueueOpenRequest() {
+        guard let bridgeRequest = SoloPMAssistantQueueBridge.storePendingOpen(itemID: viewModel.assistantQueueExecutionHandoffItemID) else {
+            return
+        }
+        openWindow(id: "project-board")
+        NotificationCenter.default.post(
+            name: .soloPMAssistantQueueRequested,
+            object: nil,
+            userInfo: [SoloPMAssistantQueueBridge.requestUserInfoKey: bridgeRequest]
         )
     }
 }
@@ -712,9 +718,11 @@ private struct VoiceInboxTriageRequestPanel: View {
 
 private struct AssistantQueuePanel: View {
     let item: AssistantQueueItem
+    let executionHandoffItemID: String?
     let onApprove: () -> Void
     let onDefer: () -> Void
     let onReject: () -> Void
+    let onOpenQueue: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -794,6 +802,17 @@ private struct AssistantQueuePanel: View {
                 .disabled(item.state == .done || item.state == .rejected)
                 .accessibilityIdentifier("voice-assistant-queue-reject")
             }
+
+            if canOpenQueueForExecution {
+                Button {
+                    onOpenQueue()
+                } label: {
+                    Label(localizedSettingsDisplay("Open Assistant Queue"), systemImage: "arrow.forward.circle")
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("voice-assistant-queue-open-board")
+                .accessibilityHint(localizedSettingsDisplay("Opens the Assistant Queue without running the item."))
+            }
         }
         .padding(10)
         .background(Color.secondary.opacity(0.08))
@@ -815,6 +834,10 @@ private struct AssistantQueuePanel: View {
             .foregroundStyle(.secondary)
             .lineLimit(1)
             .accessibilityIdentifier("voice-assistant-queue-risk")
+    }
+
+    private var canOpenQueueForExecution: Bool {
+        executionHandoffItemID == item.id
     }
 
     private var stateLabel: String {

@@ -754,6 +754,76 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertNil(viewModel.errorMessage)
     }
 
+    @MainActor
+    func testProjectBoardViewModelFocusesVoiceHandoffApprovedQueueItemDespiteStaleFilter() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+        let approved = try AssistantQueueStateMachine.approve(
+            makeItem(id: "queue-voice-handoff-approved", state: .waitingReview, summary: "Create voice handoff task"),
+            reviewerID: "local-user"
+        )
+        try assistantQueueStore.save(approved)
+        let viewModel = ProjectBoardViewModel(
+            store: boardStore,
+            assistantQueueStore: assistantQueueStore
+        )
+
+        viewModel.load()
+        viewModel.setAssistantQueueViewFilter(.done)
+
+        XCTAssertFalse(viewModel.assistantQueueSnapshot.rows.contains { $0.id == approved.id })
+
+        XCTAssertTrue(viewModel.focusAssistantQueueExecutionHandoff(id: approved.id))
+
+        XCTAssertEqual(viewModel.assistantQueueViewFilter, .approved)
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, Set([approved.id]))
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.first { $0.id == approved.id }?.state, .approved)
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertNil(viewModel.integrationStatusMessage)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelReportsMissingVoiceHandoffQueueItem() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+        let viewModel = ProjectBoardViewModel(
+            store: boardStore,
+            assistantQueueStore: assistantQueueStore
+        )
+
+        viewModel.load()
+
+        XCTAssertFalse(viewModel.focusAssistantQueueExecutionHandoff(id: "missing-voice-handoff"))
+
+        XCTAssertEqual(viewModel.assistantQueueViewFilter, .all)
+        XCTAssertTrue(viewModel.assistantQueueSelectedItemIDs.isEmpty)
+        XCTAssertEqual(viewModel.errorMessage, "Assistant Queue item is no longer available.")
+        XCTAssertNil(viewModel.integrationStatusMessage)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelReportsVoiceHandoffStoreFailureBeforeMissingItem() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let viewModel = ProjectBoardViewModel(
+            store: boardStore,
+            assistantQueueStore: FailingAssistantQueueStore(error: AssistantQueueStoreError.saveFailed)
+        )
+
+        XCTAssertFalse(viewModel.focusAssistantQueueExecutionHandoff(id: "queue-store-failure"))
+
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Assistant Queue could not save generated work. Confirm local data storage is available, then try again."
+        )
+        XCTAssertNil(viewModel.integrationStatusMessage)
+    }
+
     private func makeItem(
         id: String = "queue-item",
         state: AssistantQueueState = .waitingReview,
@@ -852,5 +922,32 @@ final class AssistantQueueStoreTests: XCTestCase {
             },
             visibleSurfaces: visibleSurfaces
         )
+    }
+}
+
+private struct FailingAssistantQueueStore: AssistantQueueStore {
+    let error: Error
+
+    func save(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
+        throw error
+    }
+
+    func get(id: String) throws -> AssistantQueueItem {
+        throw error
+    }
+
+    func list(filter: AssistantQueueFilter) throws -> [AssistantQueueItem] {
+        throw error
+    }
+
+    func stateCounts() throws -> AssistantQueueStateCounts {
+        throw error
+    }
+
+    func transition(
+        id: String,
+        _ transform: (AssistantQueueItem) throws -> AssistantQueueItem
+    ) throws -> AssistantQueueItem {
+        throw error
     }
 }

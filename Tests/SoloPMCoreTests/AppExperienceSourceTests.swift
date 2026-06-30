@@ -2019,6 +2019,36 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains("reminderClient.create"))
     }
 
+    func testVoiceAssistantQueueApprovalHandoffsExecutionToProjectBoardQueue() throws {
+        let voiceSource = try readPackageFile("Sources/SoloPMCore/Voice/VoiceCaptureViewModel.swift")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let englishStrings = try readPackageFile("Sources/SoloPMApp/Resources/en.lproj/Localizable.strings")
+        let japaneseStrings = try readPackageFile("Sources/SoloPMApp/Resources/ja.lproj/Localizable.strings")
+
+        XCTAssertTrue(voiceSource.contains("assistantQueueExecutionHandoffItemID"))
+        XCTAssertTrue(appSource.contains("executionHandoffItemID: viewModel.assistantQueueExecutionHandoffItemID"))
+        XCTAssertTrue(appSource.contains("onOpenQueue: { postAssistantQueueOpenRequest() }"))
+        XCTAssertTrue(appSource.contains("SoloPMAssistantQueueBridge.storePendingOpen(itemID: viewModel.assistantQueueExecutionHandoffItemID)"))
+        XCTAssertTrue(appSource.contains("userInfo: [SoloPMAssistantQueueBridge.requestUserInfoKey: bridgeRequest]"))
+        XCTAssertTrue(appSource.contains("name: .soloPMAssistantQueueRequested"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-assistant-queue-open-board\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityHint(localizedSettingsDisplay(\"Opens the Assistant Queue without running the item.\"))"))
+        XCTAssertTrue(boardSource.contains(".onReceive(NotificationCenter.default.publisher(for: .soloPMAssistantQueueRequested))"))
+        XCTAssertTrue(boardSource.contains("consumePendingAssistantQueueRequestIfNeeded"))
+        XCTAssertTrue(boardSource.contains("SoloPMAssistantQueueBridge.consumePendingOpen()"))
+        XCTAssertTrue(boardSource.contains("SoloPMAssistantQueueBridge.consumeRequest(from: notification)"))
+        XCTAssertTrue(boardSource.contains("selectedDestination = .assistantQueue"))
+        XCTAssertTrue(boardSource.contains("viewModel.focusAssistantQueueExecutionHandoff(id: request.itemID)"))
+        XCTAssertTrue(englishStrings.contains("\"Open Assistant Queue\""))
+        XCTAssertTrue(englishStrings.contains("\"Opens the Assistant Queue without running the item.\""))
+        XCTAssertTrue(englishStrings.contains("\"Assistant Queue item is no longer available.\""))
+        XCTAssertTrue(japaneseStrings.contains("\"Open Assistant Queue\""))
+        XCTAssertTrue(japaneseStrings.contains("\"Opens the Assistant Queue without running the item.\""))
+        XCTAssertTrue(japaneseStrings.contains("\"Assistant Queue item is no longer available.\""))
+        XCTAssertFalse(appSource.contains("ActionReviewPanel(viewModel: AppRuntimeFactory.makeReviewSessionViewModel(plan: plan))"))
+    }
+
     func testTodayWorkflowUsesSampleInspiredBriefingAndFlowRail() throws {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
 

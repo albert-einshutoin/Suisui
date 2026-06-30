@@ -279,6 +279,7 @@ struct ProjectBoardView: View {
             restoreSelectedDestinationIfNeeded()
             consumePendingVoiceDailyPlanningReviewRequestIfNeeded()
             consumePendingVoiceInboxTriageRequestIfNeeded()
+            consumePendingAssistantQueueRequestIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
             viewModel.load()
@@ -290,6 +291,9 @@ struct ProjectBoardView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .soloPMVoiceInboxTriageRequested)) { notification in
             handleVoiceInboxTriageRequest(notification)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .soloPMAssistantQueueRequested)) { notification in
+            handleAssistantQueueOpenRequest(notification)
         }
         .onChange(of: selectedDestination) { _, destination in
             persistSelectedDestination(destination)
@@ -542,6 +546,13 @@ struct ProjectBoardView: View {
         handleVoiceInboxTriageRequest(request: request)
     }
 
+    private func consumePendingAssistantQueueRequestIfNeeded() {
+        guard let request = SoloPMAssistantQueueBridge.consumePendingOpen() else {
+            return
+        }
+        handleAssistantQueueOpenRequest(request: request)
+    }
+
     private func handleVoiceDailyPlanningReviewRequest(_ notification: Notification) {
         let transcript = SoloPMVoiceDailyPlanningReviewBridge.consumePendingSourceTranscript()
             ?? SoloPMVoiceDailyPlanningReviewBridge.sourceTranscript(from: notification)
@@ -590,6 +601,28 @@ struct ProjectBoardView: View {
             applySelectedDestination(selectedDestination)
         }
         isInspectorPresented = false
+    }
+
+    private func handleAssistantQueueOpenRequest(_ notification: Notification) {
+        let request: SoloPMAssistantQueueBridge.Request?
+        if SoloPMAssistantQueueBridge.hasRequestPayload(notification) {
+            request = SoloPMAssistantQueueBridge.consumeRequest(from: notification)
+        } else {
+            request = SoloPMAssistantQueueBridge.consumePendingOpen()
+        }
+
+        guard let request else {
+            return
+        }
+        handleAssistantQueueOpenRequest(request: request)
+    }
+
+    private func handleAssistantQueueOpenRequest(request: SoloPMAssistantQueueBridge.Request) {
+        viewModel.load()
+        selectedDestination = .assistantQueue
+        persistSelectedDestination(selectedDestination)
+        applySelectedDestination(selectedDestination)
+        _ = viewModel.focusAssistantQueueExecutionHandoff(id: request.itemID)
     }
 
     private func applySelectedTaskOverrideIfNeeded() {
@@ -967,6 +1000,49 @@ extension Notification.Name {
     static let soloPMProjectBoardDidChange = Notification.Name("dev.solopm.projectBoardDidChange")
     static let soloPMVoiceDailyPlanningReviewRequested = Notification.Name("dev.solopm.voiceDailyPlanningReviewRequested")
     static let soloPMVoiceInboxTriageRequested = Notification.Name("dev.solopm.voiceInboxTriageRequested")
+    static let soloPMAssistantQueueRequested = Notification.Name("dev.solopm.assistantQueueRequested")
+}
+
+@MainActor
+enum SoloPMAssistantQueueBridge {
+    struct Request: Equatable {
+        var itemID: String
+    }
+
+    static let requestUserInfoKey = "request"
+    private static var pendingRequest: Request?
+
+    static func storePendingOpen(itemID: String?) -> Request? {
+        guard let itemID = itemID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !itemID.isEmpty else {
+            return nil
+        }
+        let request = Request(itemID: itemID)
+        pendingRequest = request
+        return request
+    }
+
+    static func consumePendingOpen() -> Request? {
+        guard let request = pendingRequest else {
+            return nil
+        }
+        pendingRequest = nil
+        return request
+    }
+
+    static func consumeRequest(from notification: Notification) -> Request? {
+        guard let request = notification.userInfo?[requestUserInfoKey] as? Request else {
+            return nil
+        }
+        if pendingRequest == request {
+            pendingRequest = nil
+        }
+        return request
+    }
+
+    static func hasRequestPayload(_ notification: Notification) -> Bool {
+        notification.userInfo?[requestUserInfoKey] is Request
+    }
 }
 
 @MainActor

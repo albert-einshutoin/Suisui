@@ -780,6 +780,9 @@
 "What scope should SoloPM prepare for review?" = "SoloPMがレビュー用に準備する範囲はどこまでですか?";
 "Should SoloPM keep this as a reviewed draft?" = "SoloPMはこれを確認済み下書きとして保持しますか?";
 "Assistant Queue" = "アシスタントキュー";
+"Open Assistant Queue" = "アシスタントキューを開く";
+"Opens the Assistant Queue without running the item." = "項目を実行せずにアシスタントキューを開きます。";
+"Assistant Queue item is no longer available." = "アシスタントキュー項目はもう利用できません。";
 "Assistant Queue counts" = "アシスタントキュー件数";
 "Assistant Queue is clear" = "アシスタントキューは空です";
 "Assistant Queue batch toolbar" = "アシスタントキュー一括操作";
