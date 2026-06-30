@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-public enum AssistantQueueState: String, Codable, Equatable, Hashable, Sendable {
+public enum AssistantQueueState: String, Codable, CaseIterable, Equatable, Hashable, Sendable {
     case captured
     case interpreted
     case drafted

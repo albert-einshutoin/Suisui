@@ -44,11 +44,114 @@ public struct AssistantQueueFilter: Equatable, Sendable {
     }
 }
 
+public enum AssistantQueueViewFilter: String, CaseIterable, Identifiable, Equatable, Sendable {
+    case needsAttention
+    case waiting
+    case approved
+    case failed
+    case deferred
+    case done
+    case all
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .needsAttention:
+            return "Needs attention"
+        case .waiting:
+            return "Waiting"
+        case .approved:
+            return "Approved"
+        case .failed:
+            return "Failed"
+        case .deferred:
+            return "Deferred"
+        case .done:
+            return "Done"
+        case .all:
+            return "All"
+        }
+    }
+
+    public var states: Set<AssistantQueueState> {
+        switch self {
+        case .needsAttention:
+            return [.blocked, .captured, .interpreted, .drafted, .waitingReview, .approved, .failed]
+        case .waiting:
+            return [.captured, .interpreted, .drafted, .waitingReview, .blocked]
+        case .approved:
+            return [.approved, .running]
+        case .failed:
+            return [.failed]
+        case .deferred:
+            return [.deferred]
+        case .done:
+            return [.done]
+        case .all:
+            return Set(AssistantQueueState.allCases)
+        }
+    }
+
+    public func storeFilter(limit: Int = 100) -> AssistantQueueFilter {
+        self == .all ? .all(limit: limit) : .states(states, limit: limit)
+    }
+}
+
+public enum AssistantQueueSort: String, CaseIterable, Identifiable, Equatable, Sendable {
+    case needsActionFirst
+    case riskHighFirst
+    case titleAscending
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .needsActionFirst:
+            return "Needs action first"
+        case .riskHighFirst:
+            return "Risk high first"
+        case .titleAscending:
+            return "Title A-Z"
+        }
+    }
+}
+
+public struct AssistantQueueStateCounts: Equatable, Sendable {
+    public var total: Int
+    public var byState: [AssistantQueueState: Int]
+
+    public static let empty = AssistantQueueStateCounts(total: 0, byState: [:])
+
+    public init(total: Int, byState: [AssistantQueueState: Int]) {
+        self.total = total
+        self.byState = byState
+    }
+
+    public init(items: [AssistantQueueItem]) {
+        self.total = items.count
+        self.byState = items.reduce(into: [:]) { counts, item in
+            counts[item.state, default: 0] += 1
+        }
+    }
+
+    public func count(for state: AssistantQueueState) -> Int {
+        byState[state, default: 0]
+    }
+
+    public func count(in states: Set<AssistantQueueState>) -> Int {
+        states.reduce(0) { partialResult, state in
+            partialResult + count(for: state)
+        }
+    }
+}
+
 public protocol AssistantQueueStore {
     @discardableResult
     func save(_ item: AssistantQueueItem) throws -> AssistantQueueItem
     func get(id: String) throws -> AssistantQueueItem
     func list(filter: AssistantQueueFilter) throws -> [AssistantQueueItem]
+    func stateCounts() throws -> AssistantQueueStateCounts
 
     @discardableResult
     func transition(
@@ -148,39 +251,76 @@ public struct AssistantQueueReceiptSummary: Identifiable, Equatable, Sendable {
 
 public struct AssistantQueueSnapshot: Equatable, Sendable {
     public var rows: [AssistantQueueReadModelRow]
+    public var totalCount: Int
+    public var needsAttentionCount: Int
     public var waitingReviewCount: Int
     public var blockedCount: Int
+    public var approvedCount: Int
+    public var failedCount: Int
+    public var deferredCount: Int
+    public var doneCount: Int
 
-    public static let empty = AssistantQueueSnapshot(rows: [], waitingReviewCount: 0, blockedCount: 0)
+    public static let empty = AssistantQueueSnapshot(
+        rows: [],
+        totalCount: 0,
+        needsAttentionCount: 0,
+        waitingReviewCount: 0,
+        blockedCount: 0
+    )
 
     public init(
         rows: [AssistantQueueReadModelRow],
+        totalCount: Int? = nil,
+        needsAttentionCount: Int? = nil,
         waitingReviewCount: Int,
-        blockedCount: Int
+        blockedCount: Int,
+        approvedCount: Int = 0,
+        failedCount: Int = 0,
+        deferredCount: Int = 0,
+        doneCount: Int = 0
     ) {
         self.rows = rows
+        self.totalCount = totalCount ?? rows.count
+        self.needsAttentionCount = needsAttentionCount
+            ?? rows.filter { AssistantQueueViewFilter.needsAttention.states.contains($0.state) }.count
         self.waitingReviewCount = waitingReviewCount
         self.blockedCount = blockedCount
+        self.approvedCount = approvedCount
+        self.failedCount = failedCount
+        self.deferredCount = deferredCount
+        self.doneCount = doneCount
     }
 
     public var reviewableCount: Int {
-        waitingReviewCount + blockedCount
+        needsAttentionCount
     }
 }
 
 public enum AssistantQueueReadModel {
     public static func snapshot(
         from items: [AssistantQueueItem],
-        receipts: [ExecutionReceipt] = []
+        receipts: [ExecutionReceipt] = [],
+        viewFilter: AssistantQueueViewFilter = .all,
+        sort: AssistantQueueSort = .needsActionFirst,
+        allItemsForCounts: [AssistantQueueItem]? = nil,
+        stateCounts: AssistantQueueStateCounts? = nil
     ) -> AssistantQueueSnapshot {
         let latestReceipts = latestAssistantQueueReceiptsByItemID(receipts)
+        let counts = stateCounts ?? AssistantQueueStateCounts(items: allItemsForCounts ?? items)
         let rows = items
-            .sorted(by: sortForReview)
+            .filter { viewFilter.states.contains($0.state) }
+            .sorted { sortItems($0, $1, sort: sort) }
             .map { item in row(from: item, receipt: latestReceipts[item.id]) }
         return AssistantQueueSnapshot(
             rows: rows,
-            waitingReviewCount: items.filter { $0.state == .waitingReview }.count,
-            blockedCount: items.filter { $0.state == .blocked }.count
+            totalCount: counts.total,
+            needsAttentionCount: counts.count(in: AssistantQueueViewFilter.needsAttention.states),
+            waitingReviewCount: counts.count(for: .waitingReview),
+            blockedCount: counts.count(for: .blocked),
+            approvedCount: counts.count(for: .approved) + counts.count(for: .running),
+            failedCount: counts.count(for: .failed),
+            deferredCount: counts.count(for: .deferred),
+            doneCount: counts.count(for: .done)
         )
     }
 
@@ -252,6 +392,28 @@ public enum AssistantQueueReadModel {
             return leftRank < rightRank
         }
         return lhs.id < rhs.id
+    }
+
+    private static func sortItems(
+        _ lhs: AssistantQueueItem,
+        _ rhs: AssistantQueueItem,
+        sort: AssistantQueueSort
+    ) -> Bool {
+        switch sort {
+        case .needsActionFirst:
+            return sortForReview(lhs, rhs)
+        case .riskHighFirst:
+            if lhs.riskLevel != rhs.riskLevel {
+                return lhs.riskLevel > rhs.riskLevel
+            }
+            return sortForReview(lhs, rhs)
+        case .titleAscending:
+            let leftTitle = redactedText(lhs.redactedSummary).localizedCaseInsensitiveCompare(redactedText(rhs.redactedSummary))
+            if leftTitle != .orderedSame {
+                return leftTitle == .orderedAscending
+            }
+            return sortForReview(lhs, rhs)
+        }
     }
 
     private static func reviewRank(_ state: AssistantQueueState) -> Int {
@@ -470,6 +632,38 @@ public final class SQLiteAssistantQueueStore: AssistantQueueStore, @unchecked Se
             LIMIT \(filter.limit);
             """
         ).map(item(row:))
+    }
+
+    public func stateCounts() throws -> AssistantQueueStateCounts {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let rows = try connection.queryRows(
+            """
+            SELECT state, COUNT(*) AS count
+            FROM assistant_queue_items
+            GROUP BY state;
+            """
+        )
+        var byState: [AssistantQueueState: Int] = [:]
+        var total = 0
+        for row in rows {
+            guard let rawState = row["state"], let state = AssistantQueueState(rawValue: rawState) else {
+                throw AssistantQueueStoreError.invalidStoredValue(
+                    column: "assistant_queue_items.state",
+                    value: row["state"] ?? ""
+                )
+            }
+            guard let rawCount = row["count"], let count = Int(rawCount) else {
+                throw AssistantQueueStoreError.invalidStoredValue(
+                    column: "assistant_queue_items.count",
+                    value: row["count"] ?? ""
+                )
+            }
+            byState[state] = count
+            total += count
+        }
+        return AssistantQueueStateCounts(total: total, byState: byState)
     }
 
     @discardableResult

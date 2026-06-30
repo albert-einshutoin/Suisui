@@ -917,6 +917,10 @@ private final class RecordingAssistantQueueStore: AssistantQueueStore {
             .map { $0 }
     }
 
+    func stateCounts() throws -> AssistantQueueStateCounts {
+        AssistantQueueStateCounts(items: Array(items.values))
+    }
+
     @discardableResult
     func transition(
         id: String,

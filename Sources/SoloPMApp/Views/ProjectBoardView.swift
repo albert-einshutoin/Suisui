@@ -58,7 +58,7 @@ struct ProjectBoardView: View {
                     Section {
                         ProjectBoardSidebarDestinationRow(destination: .inbox, count: viewModel.inboxTasks.count)
                             .tag(ProjectBoardSidebarDestination.inbox)
-                        ProjectBoardSidebarDestinationRow(destination: .assistantQueue, count: viewModel.assistantQueueSnapshot.reviewableCount)
+                        ProjectBoardSidebarDestinationRow(destination: .assistantQueue, count: viewModel.assistantQueueSnapshot.needsAttentionCount)
                             .tag(ProjectBoardSidebarDestination.assistantQueue)
                         ProjectBoardSidebarDestinationRow(destination: .today, count: viewModel.todayTasks().count)
                             .tag(ProjectBoardSidebarDestination.today)
