@@ -936,6 +936,9 @@
 "Prepared daily planning review." = "日次計画レビューを準備しました。";
 "Proposal only" = "提案のみ";
 "Queued Daily Planning Review action for approval." = "日次計画レビューのアクションを承認待ちとしてQueueに追加しました。";
+"Read Aloud" = "読み上げ";
+"Read daily planning review aloud." = "日次計画レビューを読み上げました。";
+"Reads this daily planning review with the configured local TTS provider." = "設定済みのローカルTTSプロバイダーで、この日次計画レビューを読み上げます。";
 "Queue a tomorrow due-date update for review." = "明日への期限変更をレビュー用にQueueへ追加します。";
 "Queue the recommended task status update for review." = "推奨タスクのステータス更新をレビュー用にQueueへ追加します。";
 "Selected Day" = "選択中の日";
@@ -944,7 +947,9 @@
 "Shows a local proposal for today's focus without changing tasks or writing Calendar." = "タスク変更やカレンダー書き込みをせず、今日の集中対象のローカル提案を表示します。";
 "Creates an Assistant Queue approval item without changing the task." = "タスクを変更せず、Assistant Queueの承認項目を作成します。";
 "Creates an Assistant Queue approval item without writing Calendar." = "カレンダーへ書き込まず、Assistant Queueの承認項目を作成します。";
+"Daily Planning readout failed. %@" = "日次計画レビューの読み上げに失敗しました。%@";
 "Today daily planning review" = "今日の日次計画レビュー";
+"Uses local TTS to read the review without changing tasks or writing Calendar." = "タスク変更やカレンダー書き込みをせず、ローカルTTSでレビューを読み上げます。";
 "Unscheduled tasks" = "未スケジュールタスク";
 "Review AI-generated work before anything runs. Approval records intent; Run uses the existing execution gate and creates a receipt." = "AIが生成した作業は実行前に確認します。承認は意図を記録し、実行は既存の実行ゲートを通してレシートを作成します。";
 "Run" = "実行";
