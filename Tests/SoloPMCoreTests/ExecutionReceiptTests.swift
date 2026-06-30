@@ -237,6 +237,7 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertEqual(receipt.assistantQueueItemID, approvedQueueItem.id)
         XCTAssertEqual(receipt.approvalID, "execution-approval-1")
         XCTAssertEqual(receipt.queueApproval?.reviewerID, "user-1")
+        XCTAssertEqual(receipt.queueApproval?.approvalID, approvedQueueItem.approval?.approvalID)
         XCTAssertEqual(receipt.queueApproval?.reviewedContentDigest, approvedQueueItem.approval?.reviewedContentFingerprint)
         XCTAssertEqual(receipt.queueApproval?.reviewedContentDigest.count, 64)
         XCTAssertEqual(approvedQueueItem.approval?.executionTokenID, nil)
@@ -260,6 +261,7 @@ final class ExecutionReceiptTests: XCTestCase {
             approvalID: "approval-json",
             assistantQueueItemID: "queue-json",
             queueApproval: ExecutionReceiptQueueApproval(
+                approvalID: "queue-approval-json",
                 reviewerID: "reviewer-json",
                 note: "Looks good",
                 reviewedContentFingerprint: "fingerprint-json"
@@ -294,6 +296,7 @@ final class ExecutionReceiptTests: XCTestCase {
 
         XCTAssertEqual(decoded, receipt)
         XCTAssertEqual(decoded.schemaVersion, 1)
+        XCTAssertEqual(decoded.queueApproval?.approvalID, "queue-approval-json")
     }
 
     func testFileExecutionReceiptStorePersistsRedactedReceipts() throws {
@@ -336,5 +339,38 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertFalse(rawContent.contains("private.md"))
         XCTAssertFalse(rawContent.contains("argument-secret"))
         XCTAssertFalse(rawContent.contains("tool-secret"))
+    }
+
+    func testFileExecutionReceiptStoreKeepsMultipleAssistantQueueReceiptsAndRejectsDuplicateIDs() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try FileExecutionReceiptStore(directoryURL: directory)
+        let failed = ExecutionReceipt(
+            id: "receipt-run-1",
+            runID: "run-1",
+            assistantQueueItemID: "queue-1",
+            status: .failed,
+            inputPreview: "Input 1",
+            outputSummary: "Failed"
+        )
+        let succeeded = ExecutionReceipt(
+            id: "receipt-run-2",
+            runID: "run-2",
+            assistantQueueItemID: "queue-1",
+            status: .succeeded,
+            inputPreview: "Input 2",
+            outputSummary: "Succeeded"
+        )
+
+        try store.save(failed)
+        try store.save(succeeded)
+
+        let loaded = try store.list(limit: 10)
+        XCTAssertEqual(Set(loaded.map(\.id)), Set(["receipt-run-1", "receipt-run-2"]))
+        XCTAssertEqual(loaded.filter { $0.assistantQueueItemID == "queue-1" }.count, 2)
+        XCTAssertThrowsError(try store.save(failed)) { error in
+            XCTAssertEqual(error as? ExecutionReceiptStoreError, .duplicateReceiptID("receipt-run-1"))
+        }
     }
 }

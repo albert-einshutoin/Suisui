@@ -679,6 +679,9 @@
 "Wait" = "待機";
 "Remove from cache" = "キャッシュから削除";
 "Retry" = "再試行";
+"Reopen" = "再レビュー";
+"Reopen this failed item for review before running it again" = "この失敗項目を再実行前のレビューに戻します";
+"Returns failed generated work to review. It does not run until approved again." = "失敗した生成作業をレビューに戻します。再承認されるまで実行されません。";
 "Not configured" = "未設定";
 "Task Automation" = "タスク自動化";
 "Review task automation" = "タスク自動化を確認";

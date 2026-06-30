@@ -104,6 +104,70 @@ final class AssistantQueueExecutionTests: XCTestCase {
         XCTAssertFalse(receipt.actions.first?.errorSummary?.contains("queue-secret") ?? true)
     }
 
+    func testCoordinatorCanRunReapprovedFailedItemAfterRetryReviewAndKeepsSeparateReceipts() throws {
+        let queueStore = try makeQueueStore()
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let approved = try AssistantQueueStateMachine.approve(makeActionPlanItem(), reviewerID: "local-user")
+        try queueStore.save(approved)
+        let failingRegistry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                throw ToolExecutionError.executionFailed(.taskCreate, "provider failed")
+            }
+        ])
+        let failingCoordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: failingRegistry),
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-queue-retry-failure" },
+            now: { Date(timeIntervalSince1970: 200) }
+        )
+
+        _ = try failingCoordinator.execute(id: approved.id)
+        XCTAssertEqual(try queueStore.get(id: approved.id).state, .failed)
+
+        let reopened = try queueStore.transition(id: approved.id) { item in
+            try AssistantQueueStateMachine.reopenFailedForReview(item)
+        }
+        XCTAssertEqual(reopened.state, .waitingReview)
+        XCTAssertNil(reopened.approval)
+        let reapproved = try queueStore.transition(id: approved.id) { item in
+            try AssistantQueueStateMachine.approve(item, reviewerID: "local-user")
+        }
+        let successRegistry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, context in
+                XCTAssertNotNil(context.approvalToken)
+                return ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created after retry")
+            }
+        ])
+        let successCoordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: successRegistry),
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-queue-retry-success" },
+            now: { Date(timeIntervalSince1970: 300) }
+        )
+
+        let result = try successCoordinator.execute(id: reapproved.id)
+
+        XCTAssertEqual(result.item.state, .done)
+        XCTAssertEqual(try queueStore.get(id: approved.id).state, .done)
+        XCTAssertEqual(receiptStore.receipts.map(\.assistantQueueItemID), [approved.id, approved.id])
+        XCTAssertEqual(receiptStore.receipts.map(\.status), [.failed, .succeeded])
+        XCTAssertEqual(receiptStore.receipts.map(\.runID), ["run-queue-retry-failure", "run-queue-retry-success"])
+        XCTAssertEqual(receiptStore.receipts[0].queueApproval?.reviewedContentDigest, receiptStore.receipts[1].queueApproval?.reviewedContentDigest)
+        XCTAssertNotEqual(receiptStore.receipts[0].queueApproval?.approvalID, receiptStore.receipts[1].queueApproval?.approvalID)
+    }
+
     func testCoordinatorDoesNotMarkDoneWhenReceiptCannotBePersisted() throws {
         let queueStore = try makeQueueStore()
         let approved = try AssistantQueueStateMachine.approve(makeActionPlanItem(), reviewerID: "local-user")
