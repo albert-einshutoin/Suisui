@@ -779,3 +779,14 @@
 "Direct external sending must become a reviewed draft before any external action." = "外部送信は、実行前に確認済みの下書きにする必要があります。";
 "The transcript does not contain enough task, schedule, document, development, notification, or status signal." = "文字起こしに、タスク・予定・資料・開発・通知・状況確認の十分な手がかりがありません。";
 "The transcript has overlapping intent signals and needs a clearer target." = "複数の意図が重なっているため、対象をもう少し明確にする必要があります。";
+"00:00" = "00:00";
+"Inbox source and interpretation" = "Inboxの入力元と解釈";
+"Inbox voice note" = "Inbox音声メモ";
+"Note" = "メモ";
+"Play" = "再生";
+"Save Note" = "メモを保存";
+"Save the note on this Inbox voice capture" = "このInbox音声キャプチャにメモを保存します";
+"Stores this note locally on the selected voice capture." = "このメモを選択中の音声キャプチャへローカル保存します。";
+"Voice Intake" = "音声取り込み";
+"Voice playback" = "音声再生";
+"Voice waveform" = "音声波形";
