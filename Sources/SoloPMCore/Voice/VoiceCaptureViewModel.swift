@@ -48,6 +48,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private let llmProvider: any LLMProvider
     private let auditRecorder: PlanningAuditRecorder?
     private let runtimeValidationMessage: String?
+    private let assistantQueueStore: (any AssistantQueueStore)?
     private let commandRouter: any VoiceCommandRouting
 
     public init(
@@ -58,6 +59,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         llmProvider: any LLMProvider,
         auditRecorder: PlanningAuditRecorder? = nil,
         runtimeValidationMessage: String? = nil,
+        assistantQueueStore: (any AssistantQueueStore)? = nil,
         commandRouter: any VoiceCommandRouting = VoiceCommandRouter()
     ) {
         self.draft = draft
@@ -67,6 +69,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.llmProvider = llmProvider
         self.auditRecorder = auditRecorder
         self.runtimeValidationMessage = runtimeValidationMessage
+        self.assistantQueueStore = assistantQueueStore
         self.commandRouter = commandRouter
         self.recordingState = audioRecorder.state
         self.auditErrorMessage = nil
@@ -255,7 +258,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
 
         do {
-            self.assistantQueueItem = try AssistantQueueStateMachine.approve(assistantQueueItem, reviewerID: reviewerID)
+            let approved = try AssistantQueueStateMachine.approve(assistantQueueItem, reviewerID: reviewerID)
+            self.assistantQueueItem = try persistAssistantQueueItemIfNeeded(approved)
             return true
         } catch {
             auditErrorMessage = userMessage(for: error)
@@ -267,14 +271,24 @@ public final class VoiceCaptureViewModel: ObservableObject {
         guard let assistantQueueItem else {
             return
         }
-        self.assistantQueueItem = AssistantQueueStateMachine.deferItem(assistantQueueItem)
+        let deferred = AssistantQueueStateMachine.deferItem(assistantQueueItem)
+        do {
+            self.assistantQueueItem = try persistAssistantQueueItemIfNeeded(deferred)
+        } catch {
+            auditErrorMessage = userMessage(for: error)
+        }
     }
 
     public func rejectAssistantQueueItem() {
         guard let assistantQueueItem else {
             return
         }
-        self.assistantQueueItem = AssistantQueueStateMachine.reject(assistantQueueItem)
+        let rejected = AssistantQueueStateMachine.reject(assistantQueueItem)
+        do {
+            self.assistantQueueItem = try persistAssistantQueueItemIfNeeded(rejected)
+        } catch {
+            auditErrorMessage = userMessage(for: error)
+        }
     }
 
     private func beginClarification(for route: VoiceCommandRoutingResult) {
@@ -338,9 +352,17 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 return
             }
             planningResponse = response
-            assistantQueueItem = makeAssistantQueueItem(from: response, routedCommand: routedCommand)
             recordPlanningAudit {
                 try auditRecorder?.recordCompleted(response: response)
+            }
+            do {
+                if let queueItem = makeAssistantQueueItem(from: response, routedCommand: routedCommand) {
+                    assistantQueueItem = try persistAssistantQueueItemIfNeeded(queueItem)
+                }
+            } catch {
+                assistantQueueItem = nil
+                phase = .failed(userMessage(for: error))
+                return
             }
             phase = response.validationResult.isValid ? .reviewReady : .failed("ActionPlan validation failed.")
         } catch {
@@ -403,7 +425,24 @@ public final class VoiceCaptureViewModel: ObservableObject {
             return UserFacingErrorMessageSanitizer.message(from: llmError.userMessage)
         }
 
+        if error is AssistantQueueStoreError {
+            return AssistantQueueStoreError.userMessage(for: error)
+        }
+
         return UserFacingErrorMessageSanitizer.message(from: error)
+    }
+
+    private func persistAssistantQueueItemIfNeeded(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
+        guard let assistantQueueStore else {
+            return item
+        }
+        do {
+            return try assistantQueueStore.save(item)
+        } catch {
+            // Queue persistence is fail-closed because review approval must not
+            // happen against work that disappears after a restart.
+            throw AssistantQueueStoreError.saveFailed
+        }
     }
 
     private var shouldResetPhaseAfterDraftChange: Bool {

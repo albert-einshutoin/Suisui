@@ -38,6 +38,104 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(logger.recordedEvents.map(\.status), [.started, .succeeded])
     }
 
+    func testGeneratePlanPersistsAssistantQueueItemWhenStoreIsConfigured() async {
+        let store = RecordingAssistantQueueStore()
+        let response = PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-persisted",
+                userInput: "Create a persisted task",
+                summary: "Create persisted task",
+                actions: [PlanAction(id: "action-1", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        )
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: response),
+            assistantQueueStore: store
+        )
+
+        viewModel.updateDraftText("Create a persisted task")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+        XCTAssertEqual(store.savedItems.map(\.id), ["action-plan:plan-persisted"])
+        XCTAssertEqual(store.savedItems.map(\.state), [.waitingReview])
+        XCTAssertEqual(try? store.get(id: "action-plan:plan-persisted"), viewModel.assistantQueueItem)
+    }
+
+    func testAssistantQueueTransitionsPersistThroughConfiguredStore() async {
+        let store = RecordingAssistantQueueStore()
+        let response = PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-transition-persisted",
+                userInput: "Create a task",
+                summary: "Create task",
+                actions: [PlanAction(id: "action-1", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        )
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: response),
+            assistantQueueStore: store
+        )
+
+        viewModel.updateDraftText("Create a task")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertTrue(viewModel.approveAssistantQueueItem(reviewerID: "local-user"))
+        viewModel.deferAssistantQueueItem()
+        viewModel.rejectAssistantQueueItem()
+
+        XCTAssertEqual(store.savedItems.map(\.state), [.waitingReview, .approved, .deferred, .rejected])
+        XCTAssertEqual((try? store.get(id: "action-plan:plan-transition-persisted"))?.state, .rejected)
+    }
+
+    func testAssistantQueueStoreSaveFailureKeepsGeneratedWorkOutOfReview() async {
+        let store = RecordingAssistantQueueStore(saveError: SecretVoiceTestError(message: "disk full sk-store-secret"))
+        let response = PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-store-failure",
+                userInput: "Create a task",
+                summary: "Create task",
+                actions: [PlanAction(id: "action-1", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        )
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: response),
+            assistantQueueStore: store
+        )
+
+        viewModel.updateDraftText("Create a task")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertNil(viewModel.assistantQueueItem)
+        if case .failed(let message) = viewModel.phase {
+            XCTAssertTrue(message.contains("Assistant Queue could not save generated work"))
+            XCTAssertFalse(message.contains("sk-store-secret"))
+        } else {
+            XCTFail("Expected queue persistence failure to fail closed before review.")
+        }
+    }
+
     func testGeneratePlanRoutesTranscriptIntoStructuredVoiceIntent() async {
         let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
             providerID: "fake",
@@ -752,5 +850,49 @@ private final class SequencedVoiceAuditLogger: AuditLogger, @unchecked Sendable 
         if callCount >= failOnCall {
             throw VoiceAuditTestError.unavailable
         }
+    }
+}
+
+private final class RecordingAssistantQueueStore: AssistantQueueStore {
+    private(set) var savedItems: [AssistantQueueItem] = []
+    private var items: [String: AssistantQueueItem] = [:]
+    private let saveError: Error?
+
+    init(saveError: Error? = nil) {
+        self.saveError = saveError
+    }
+
+    @discardableResult
+    func save(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
+        if let saveError {
+            throw saveError
+        }
+        items[item.id] = item
+        savedItems.append(item)
+        return item
+    }
+
+    func get(id: String) throws -> AssistantQueueItem {
+        guard let item = items[id] else {
+            throw AssistantQueueStoreError.notFound(id)
+        }
+        return item
+    }
+
+    func list(filter: AssistantQueueFilter) throws -> [AssistantQueueItem] {
+        items.values
+            .filter { filter.includes($0.state) }
+            .sorted { $0.id < $1.id }
+            .prefix(filter.limit)
+            .map { $0 }
+    }
+
+    @discardableResult
+    func transition(
+        id: String,
+        _ transform: (AssistantQueueItem) throws -> AssistantQueueItem
+    ) throws -> AssistantQueueItem {
+        let item = try get(id: id)
+        return try save(transform(item))
     }
 }

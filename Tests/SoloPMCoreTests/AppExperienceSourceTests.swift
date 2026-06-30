@@ -97,6 +97,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("createTask("))
     }
 
+    func testProjectBoardRuntimeLoadsAssistantQueueReadModel() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
+
+        XCTAssertTrue(appSource.contains("assistantQueueStore: SQLiteAssistantQueueStore(connection: connection)"))
+        XCTAssertTrue(coreSource.contains("@Published public private(set) var assistantQueueSnapshot: AssistantQueueSnapshot"))
+        XCTAssertTrue(coreSource.contains("AssistantQueueReadModel.snapshot("))
+    }
+
     func testProjectBoardExposesPortableTaskImportExportFileActions() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
@@ -2449,6 +2458,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceFactory.contains("auditLogger = try makeAuditLogger()"))
         XCTAssertTrue(voiceFactory.contains("runtimeValidationMessage: runtimeValidationMessage"))
         XCTAssertTrue(voiceFactory.contains("Voice planning is unavailable because audit logging or local data stores could not be opened."))
+    }
+
+    func testVoiceRuntimePersistsAssistantQueueToSQLite() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let voiceFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeVoiceCaptureViewModel()"))
+        let nextFactoryStart = try XCTUnwrap(appSource.range(of: "private static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
+        let voiceFactory = String(appSource[voiceFactoryStart.lowerBound..<nextFactoryStart.lowerBound])
+
+        XCTAssertTrue(voiceFactory.contains("assistantQueueStore = try SQLiteAssistantQueueStore(connection: migratedConnection())"))
+        XCTAssertTrue(voiceFactory.contains("assistantQueueStore: assistantQueueStore"))
+        XCTAssertFalse(voiceFactory.contains("assistantQueueStore: nil"))
     }
 
     func testReviewActionButtonsDoNotDropViewModelErrors() throws {
