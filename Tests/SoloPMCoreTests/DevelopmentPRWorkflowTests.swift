@@ -303,6 +303,30 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         ])
     }
 
+    func testPushBranchRejectsProtectedHeadBranchBeforeRunningGit() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let runner = RecordingDevelopmentGitRunner()
+        let tool = DevelopmentPushWorkflowTool(projectStore: stores.projects, gitRunner: runner)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string("main")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentPushBranch, "Publish head branch must use a reviewed feature branch.")
+            )
+        }
+        XCTAssertEqual(runner.recordedInvocations, [])
+    }
+
     func testPushBranchRejectsDirtyOrWrongBranchBeforeRunningExternalWrite() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
@@ -394,6 +418,39 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         XCTAssertEqual(githubRunner.recordedBodyFiles, [body])
     }
 
+    func testCreatePullRequestRejectsProtectedOrMatchingHeadBeforeGitHubCommand() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let gitRunner = RecordingDevelopmentGitRunner()
+        let githubRunner = RecordingGitHubCLICommandRunner()
+        let tool = DevelopmentPullRequestCreationTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string("main"),
+                    "baseBranch": .string("main"),
+                    "title": .string("Add publish gate"),
+                    "body": .string("Reviewed body")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentCreatePullRequest, "Publish head branch must use a reviewed feature branch.")
+            )
+        }
+        XCTAssertEqual(gitRunner.recordedInvocations, [])
+        XCTAssertEqual(githubRunner.recordedInvocations, [])
+    }
+
     func testCreatePullRequestRejectsSecretLikeTitleOrBodyBeforeGitHubCommand() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
@@ -426,6 +483,43 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
             XCTAssertEqual(
                 error as? ToolExecutionError,
                 .executionFailed(.developmentCreatePullRequest, "Pull request title or body looks like it contains credentials or secrets.")
+            )
+        }
+        XCTAssertEqual(githubRunner.recordedInvocations, [])
+    }
+
+    func testCreatePullRequestRejectsLocalPathsInTitleOrBodyBeforeGitHubCommand() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let branchName = "feature/solopm-\(project.id)-publish-gate"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        gitRunner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
+        )
+        let githubRunner = RecordingGitHubCLICommandRunner()
+        let tool = DevelopmentPullRequestCreationTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string(branchName),
+                    "baseBranch": .string("main"),
+                    "title": .string("Add publish gate"),
+                    "body": .string("See /Volumes/Satechi/Developer/soloPM/Sources/SoloPMCore/App.swift")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentCreatePullRequest, "Pull request title or body includes a local filesystem path.")
             )
         }
         XCTAssertEqual(githubRunner.recordedInvocations, [])
@@ -485,12 +579,21 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push", "--mirror"]))
         XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push", "--tags"]))
         XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["reset", "--hard"]))
+        XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push", "-u", "origin", "main"]))
+        XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push", "-u", "origin", "develop"]))
 
         let bodyFile = FileManager.default.temporaryDirectory.appendingPathComponent("solopm-pr-body-test.md").path
         XCTAssertTrue(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
             "pr", "create",
             "--base", "main",
             "--head", "feature/solopm-1-task",
+            "--title", "Add publish gate",
+            "--body-file", bodyFile
+        ]))
+        XCTAssertFalse(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
+            "pr", "create",
+            "--base", "main",
+            "--head", "main",
             "--title", "Add publish gate",
             "--body-file", bodyFile
         ]))

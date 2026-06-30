@@ -1445,6 +1445,9 @@ public enum ExecutionReceiptFactory {
         guard let branchName = result.output["branchName"]?.receiptIDValue else {
             return nil
         }
+        guard result.status == .succeeded else {
+            return "Push did not run for development branch \(redactor.redact(branchName, maxLength: 240)). \(redactor.redact(result.summary))"
+        }
         var parts = [
             "Pushed development branch \(redactor.redact(branchName, maxLength: 240))."
         ]

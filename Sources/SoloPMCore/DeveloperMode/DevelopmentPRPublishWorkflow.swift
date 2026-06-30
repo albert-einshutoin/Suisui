@@ -72,7 +72,10 @@ public enum DevelopmentPRPublishWorkflowError: Error, Equatable, Sendable {
     case dirtyWorkspace(changedPathCount: Int)
     case invalidPullRequestTitle
     case invalidPullRequestBody
+    case invalidPublishHeadBranch
+    case sameBaseAndHeadBranch
     case secretLikePullRequestContent
+    case localPathInPullRequestContent
     case missingPullRequestURL
     case commandNotAllowed(tool: ActionTool, command: [String])
     case commandFailed(tool: ActionTool, command: [String], exitCode: Int32, standardError: String)
@@ -87,8 +90,14 @@ public enum DevelopmentPRPublishWorkflowError: Error, Equatable, Sendable {
             return "Pull request title must be non-blank, single-line text under 200 characters."
         case .invalidPullRequestBody:
             return "Pull request body must be non-blank UTF-8 text under 20000 bytes."
+        case .invalidPublishHeadBranch:
+            return "Publish head branch must use a reviewed feature branch."
+        case .sameBaseAndHeadBranch:
+            return "Pull request base and head branches must be different."
         case .secretLikePullRequestContent:
             return "Pull request title or body looks like it contains credentials or secrets."
+        case .localPathInPullRequestContent:
+            return "Pull request title or body includes a local filesystem path."
         case .missingPullRequestURL:
             return "GitHub CLI did not return a pull request URL."
         case .commandNotAllowed:
@@ -115,7 +124,17 @@ public enum DevelopmentPublishGitCommandPolicy {
               arguments[2] == "origin" else {
             return false
         }
-        return (try? DevelopmentBranchNamePolicy.validated(arguments[3])) != nil
+        return (try? validatedPublishHeadBranch(arguments[3])) != nil
+    }
+
+    public static func validatedPublishHeadBranch(_ rawBranch: String) throws -> String {
+        let branch = try DevelopmentBranchNamePolicy.validated(rawBranch)
+        let lowercased = branch.lowercased()
+        guard branch.hasPrefix("feature/"),
+              !["main", "master", "develop"].contains(lowercased) else {
+            throw DevelopmentPRPublishWorkflowError.invalidPublishHeadBranch
+        }
+        return branch
     }
 }
 
@@ -132,7 +151,8 @@ public enum DevelopmentGitHubPRCommandPolicy {
         }
 
         guard (try? DevelopmentBranchNamePolicy.validated(arguments[3])) != nil,
-              (try? DevelopmentBranchNamePolicy.validated(arguments[5])) != nil,
+              (try? DevelopmentPublishGitCommandPolicy.validatedPublishHeadBranch(arguments[5])) != nil,
+              arguments[3] != arguments[5],
               isValidPullRequestTitle(arguments[7]) else {
             return false
         }
@@ -154,6 +174,9 @@ public enum DevelopmentGitHubPRCommandPolicy {
         guard redactor.redact(title).report.replacementCount == 0 else {
             throw DevelopmentPRPublishWorkflowError.secretLikePullRequestContent
         }
+        guard !containsLocalPath(title) else {
+            throw DevelopmentPRPublishWorkflowError.localPathInPullRequestContent
+        }
         return title
     }
 
@@ -169,7 +192,16 @@ public enum DevelopmentGitHubPRCommandPolicy {
         guard redactor.redact(rawBody).report.replacementCount == 0 else {
             throw DevelopmentPRPublishWorkflowError.secretLikePullRequestContent
         }
+        guard !containsLocalPath(rawBody) else {
+            throw DevelopmentPRPublishWorkflowError.localPathInPullRequestContent
+        }
         return rawBody
+    }
+
+    public static func validateBaseAndHead(baseBranch: String, headBranch: String) throws {
+        guard baseBranch != headBranch else {
+            throw DevelopmentPRPublishWorkflowError.sameBaseAndHeadBranch
+        }
     }
 
     private static func isValidPullRequestTitle(_ title: String) -> Bool {
@@ -178,6 +210,10 @@ public enum DevelopmentGitHubPRCommandPolicy {
             && !title.contains("\u{0}")
             && !title.contains("\n")
             && !title.contains("\r")
+    }
+
+    private static func containsLocalPath(_ value: String) -> Bool {
+        LocalPathRedactor.redact(value) != value
     }
 }
 
@@ -218,7 +254,9 @@ public struct DevelopmentPushWorkflowTool: Tool {
         do {
             let project = try projectStore.get(id: projectID)
             let scope = try ProjectWorkspaceScope(project: project)
-            let branchName = try DevelopmentBranchNamePolicy.validated(args.requiredTrimmedString("branchName"))
+            let branchName = try DevelopmentPublishGitCommandPolicy.validatedPublishHeadBranch(
+                args.requiredTrimmedString("branchName")
+            )
 
             let readiness = try workspacePublishReadiness(branchName: branchName, scope: scope)
             guard readiness.isReady else {
@@ -402,8 +440,14 @@ public struct DevelopmentPullRequestCreationTool: Tool {
         let projectID = try args.requiredInt64("projectId")
 
         do {
-            let branchName = try DevelopmentBranchNamePolicy.validated(args.requiredTrimmedString("branchName"))
+            let branchName = try DevelopmentPublishGitCommandPolicy.validatedPublishHeadBranch(
+                args.requiredTrimmedString("branchName")
+            )
             let baseBranch = try DevelopmentBranchNamePolicy.validated(args.requiredTrimmedString("baseBranch"))
+            try DevelopmentGitHubPRCommandPolicy.validateBaseAndHead(
+                baseBranch: baseBranch,
+                headBranch: branchName
+            )
             let title = try DevelopmentGitHubPRCommandPolicy.validatedPullRequestTitle(
                 args.requiredString("title"),
                 redactor: redactor

@@ -560,6 +560,62 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertFalse(displayedText.contains("--body-file"))
     }
 
+    func testFailedDevelopmentPushReceiptDoesNotClaimBranchWasPushed() throws {
+        let branchName = "feature/solopm-7-publish-gate"
+        var session = ReviewSession(
+            id: "review-development-push-failed",
+            plan: ActionPlan(
+                id: "plan-development-push-failed",
+                userInput: "Push the branch.",
+                summary: "Publish a reviewed development branch.",
+                actions: [
+                    PlanAction(
+                        id: "action-development-push-failed",
+                        tool: .developmentPushBranch,
+                        arguments: [
+                            "projectId": .number(7),
+                            "branchName": .string(branchName)
+                        ],
+                        riskLevel: .write
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+        )
+        try session.approve(token: ApprovalToken(id: "approval-development-push-failed", sessionID: session.id))
+        session.executionStatus = .failed
+        session.markAction(
+            id: "action-development-push-failed",
+            status: .failed,
+            result: ToolResult(
+                tool: .developmentPushBranch,
+                status: .failed,
+                summary: "Workspace has 1 changed path(s); push and PR creation require a clean reviewed commit.",
+                output: [
+                    "projectId": .number(7),
+                    "branchName": .string(branchName),
+                    "workspaceClean": .bool(false),
+                    "changedPathCount": .number(1)
+                ]
+            )
+        )
+
+        let receipt = ExecutionReceiptFactory.makeReviewReceipt(
+            session: session,
+            runID: "run-development-push-failed",
+            model: nil,
+            usage: .unavailable,
+            startedAt: Date(timeIntervalSince1970: 44),
+            finishedAt: Date(timeIntervalSince1970: 45)
+        )
+
+        XCTAssertEqual(receipt.status, .failed)
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBranch, id: branchName)))
+        XCTAssertFalse(receipt.actions.first?.outputSummary?.contains("Pushed development branch") == true)
+        XCTAssertTrue(receipt.actions.first?.outputSummary?.contains("Push did not run") == true)
+    }
+
     func testFailedDevelopmentPRWorkflowReceiptKeepsBranchEvidenceFromToolOutput() throws {
         let branchName = "feature/solopm-7-42-fix-calendar-sync"
         let gitSecret = "token" + "=" + "git-secret"
