@@ -325,12 +325,45 @@ final class AssistantQueueTests: XCTestCase {
         XCTAssertEqual(retry.requiredCapabilities, failed.requiredCapabilities)
         XCTAssertNil(retry.approval)
         XCTAssertNil(retry.blockingReason)
-        XCTAssertEqual(retry.reviewReason, "Retry after failed execution. Review the action plan before running it again.")
+        XCTAssertEqual(retry.reviewReason, "Retry after failed execution. Review this Assistant Queue item before running it again.")
         XCTAssertEqual(failed.state, .failed)
         XCTAssertNotNil(failed.approval)
     }
 
-    func testRetryReviewRequiresSafeFailedActionPlan() throws {
+    func testFailedTaskMutationAutomationRequestCanReopenForRetryReview() throws {
+        let item = AssistantQueueAdapter.makeItem(automationRequest: SyncAutomationRequestPayload(
+            id: "automation-retry-task-mutation",
+            source: .cloudRelay,
+            approvalState: .pendingApproval,
+            sourceClientID: "web",
+            toolName: HostedMCPTaskToolName.taskDueDateUpdate.rawValue,
+            redactedArgumentSummary: "taskID=42, dueAt=2026-07-01T09:00:00Z",
+            taskMutation: SyncTaskMutationPayload(
+                taskID: 42,
+                operation: .updateDueDate,
+                dueAt: "2026-07-01T09:00:00Z",
+                source: .cloudRelay,
+                approvalState: .pendingApproval
+            )
+        ))
+        let approved = try AssistantQueueStateMachine.approve(item, reviewerID: "user-1")
+        let running = try AssistantQueueStateMachine.startRunning(approved)
+        let failed = try AssistantQueueStateMachine.markFailed(running, reason: "Remote task update failed.")
+
+        let retry = try AssistantQueueStateMachine.reopenFailedForReview(failed)
+
+        XCTAssertEqual(retry.id, failed.id)
+        XCTAssertEqual(retry.state, .waitingReview)
+        XCTAssertEqual(retry.payload, failed.payload)
+        XCTAssertEqual(retry.riskLevel, failed.riskLevel)
+        XCTAssertNil(retry.approval)
+        XCTAssertNil(retry.blockingReason)
+        XCTAssertEqual(retry.reviewReason, "Retry after failed execution. Review this Assistant Queue item before running it again.")
+        XCTAssertEqual(failed.state, .failed)
+        XCTAssertNotNil(failed.approval)
+    }
+
+    func testRetryReviewRequiresSafeFailedRunnablePayload() throws {
         let waiting = AssistantQueueAdapter.makeItem(
             actionPlan: makePlan(),
             sourceTranscript: "Create a task",
@@ -357,6 +390,33 @@ final class AssistantQueueTests: XCTestCase {
             approval: automation.approval,
             blockingReason: "Remote execution failed."
         )
+        let runnableAutomation = AssistantQueueAdapter.makeItem(automationRequest: SyncAutomationRequestPayload(
+            id: "automation-danger-runnable",
+            source: .cloudRelay,
+            approvalState: .pendingApproval,
+            toolName: HostedMCPTaskToolName.taskDueDateUpdate.rawValue,
+            redactedArgumentSummary: "taskID=42, dueAt=2026-07-01T09:00:00Z",
+            taskMutation: SyncTaskMutationPayload(
+                taskID: 42,
+                operation: .updateDueDate,
+                dueAt: "2026-07-01T09:00:00Z",
+                source: .cloudRelay,
+                approvalState: .pendingApproval
+            )
+        ))
+        let dangerousAutomation = AssistantQueueItem(
+            id: runnableAutomation.id,
+            state: .failed,
+            payload: runnableAutomation.payload,
+            riskLevel: .danger,
+            sourceTranscript: runnableAutomation.sourceTranscript,
+            interpretationSummary: runnableAutomation.interpretationSummary,
+            reviewReason: runnableAutomation.reviewReason,
+            redactedSummary: runnableAutomation.redactedSummary,
+            requiredCapabilities: runnableAutomation.requiredCapabilities,
+            approval: runnableAutomation.approval,
+            blockingReason: "Dangerous automation requests cannot be retried."
+        )
         let danger = AssistantQueueItem(
             id: "danger-retry",
             state: .failed,
@@ -372,10 +432,13 @@ final class AssistantQueueTests: XCTestCase {
         )
 
         XCTAssertThrowsError(try AssistantQueueStateMachine.reopenFailedForReview(waiting)) { error in
-            XCTAssertEqual(error as? AssistantQueueTransitionError, .retryRequiresFailedActionPlan)
+            XCTAssertEqual(error as? AssistantQueueTransitionError, .retryRequiresFailedRunnablePayload)
         }
         XCTAssertThrowsError(try AssistantQueueStateMachine.reopenFailedForReview(failedAutomation)) { error in
-            XCTAssertEqual(error as? AssistantQueueTransitionError, .retryRequiresFailedActionPlan)
+            XCTAssertEqual(error as? AssistantQueueTransitionError, .retryRequiresFailedRunnablePayload)
+        }
+        XCTAssertThrowsError(try AssistantQueueStateMachine.reopenFailedForReview(dangerousAutomation)) { error in
+            XCTAssertEqual(error as? AssistantQueueTransitionError, .dangerousPayloadCannotBeApproved)
         }
         XCTAssertThrowsError(try AssistantQueueStateMachine.reopenFailedForReview(danger)) { error in
             XCTAssertEqual(error as? AssistantQueueTransitionError, .dangerousPayloadCannotBeApproved)

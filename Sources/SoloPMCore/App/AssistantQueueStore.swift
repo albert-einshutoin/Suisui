@@ -491,12 +491,10 @@ public enum AssistantQueueReadModel {
         guard item.state == .failed else {
             return false
         }
-        guard case .actionPlan(let plan) = item.payload else {
+        guard !item.containsDangerousPayload else {
             return false
         }
-        return item.riskLevel != .danger
-            && plan.riskLevel != .danger
-            && !plan.actions.contains { $0.riskLevel == .danger }
+        return AssistantQueueExecutableActionPlanFactory.actionPlan(for: item.payload) != nil
     }
 
     private static func canEdit(_ item: AssistantQueueItem) -> Bool {

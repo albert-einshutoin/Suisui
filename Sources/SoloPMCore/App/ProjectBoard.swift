@@ -3348,9 +3348,9 @@ public final class ProjectBoardViewModel: ObservableObject {
             errorMessage = "Assistant Queue item was already reviewed."
             integrationStatusMessage = nil
             return false
-        } catch AssistantQueueTransitionError.retryRequiresFailedActionPlan {
+        } catch AssistantQueueTransitionError.retryRequiresFailedRunnablePayload {
             _ = refreshAssistantQueueSnapshot()
-            errorMessage = "Only failed action-plan Assistant Queue items can be retried."
+            errorMessage = "Only failed runnable Assistant Queue items can be retried."
             integrationStatusMessage = nil
             return false
         } catch AssistantQueueTransitionError.editRequiresReviewableItem {

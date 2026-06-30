@@ -497,6 +497,75 @@ final class AssistantQueueExecutionTests: XCTestCase {
         XCTAssertNotEqual(receiptStore.receipts[0].queueApproval?.approvalID, receiptStore.receipts[1].queueApproval?.approvalID)
     }
 
+    func testCoordinatorCanRunReapprovedFailedTaskMutationAutomationRequestAfterRetryReview() throws {
+        let queueStore = try makeQueueStore()
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let approved = try AssistantQueueStateMachine.approve(makeTaskMutationItem(), reviewerID: "local-user")
+        try queueStore.save(approved)
+        let failingRegistry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskUpdate,
+                description: "update task",
+                inputSchema: ToolInputSchema(required: ["id"], properties: ["id": "integer", "dueAt": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                throw ToolExecutionError.executionFailed(.taskUpdate, "provider failed")
+            }
+        ])
+        let failingCoordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: failingRegistry),
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-queue-automation-retry-failure" },
+            now: { Date(timeIntervalSince1970: 200) }
+        )
+
+        _ = try failingCoordinator.execute(id: approved.id)
+        XCTAssertEqual(try queueStore.get(id: approved.id).state, .failed)
+
+        let reopened = try queueStore.transition(id: approved.id) { item in
+            try AssistantQueueStateMachine.reopenFailedForReview(item)
+        }
+        XCTAssertEqual(reopened.state, .waitingReview)
+        XCTAssertNil(reopened.approval)
+        let reapproved = try queueStore.transition(id: approved.id) { item in
+            try AssistantQueueStateMachine.approve(item, reviewerID: "local-user")
+        }
+        let successRegistry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskUpdate,
+                description: "update task",
+                inputSchema: ToolInputSchema(required: ["id"], properties: ["id": "integer", "dueAt": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { arguments, context in
+                XCTAssertNotNil(context.approvalToken)
+                XCTAssertEqual(arguments["id"], .number(42))
+                XCTAssertEqual(arguments["dueAt"], .string("2026-07-01T09:00:00Z"))
+                return ToolResult(tool: .taskUpdate, status: .succeeded, summary: "Updated after retry")
+            }
+        ])
+        let successCoordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: successRegistry),
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-queue-automation-retry-success" },
+            now: { Date(timeIntervalSince1970: 300) }
+        )
+
+        let result = try successCoordinator.execute(id: reapproved.id)
+
+        XCTAssertEqual(result.item.state, .done)
+        XCTAssertEqual(try queueStore.get(id: approved.id).state, .done)
+        XCTAssertEqual(receiptStore.receipts.map(\.assistantQueueItemID), [approved.id, approved.id])
+        XCTAssertEqual(receiptStore.receipts.map(\.status), [.failed, .succeeded])
+        XCTAssertEqual(receiptStore.receipts.map(\.runID), [
+            "run-queue-automation-retry-failure",
+            "run-queue-automation-retry-success"
+        ])
+        XCTAssertEqual(receiptStore.receipts[0].queueApproval?.reviewedContentDigest, receiptStore.receipts[1].queueApproval?.reviewedContentDigest)
+        XCTAssertNotEqual(receiptStore.receipts[0].queueApproval?.approvalID, receiptStore.receipts[1].queueApproval?.approvalID)
+    }
+
     func testCoordinatorDoesNotMarkDoneWhenReceiptCannotBePersisted() throws {
         let queueStore = try makeQueueStore()
         let approved = try AssistantQueueStateMachine.approve(makeActionPlanItem(), reviewerID: "local-user")
