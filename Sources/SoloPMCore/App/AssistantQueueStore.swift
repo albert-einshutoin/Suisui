@@ -63,6 +63,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
     public var stateLabel: String
     public var riskLabel: String
     public var title: String
+    public var redactedSummary: String
     public var sourcePreview: String?
     public var reviewReason: String
     public var capabilityLabels: [String]
@@ -71,6 +72,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
     public var canApprove: Bool
     public var canRun: Bool
     public var canDefer: Bool
+    public var canEdit: Bool
     public var canRetry: Bool
     public var canReject: Bool
 
@@ -80,6 +82,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
         stateLabel: String,
         riskLabel: String,
         title: String,
+        redactedSummary: String,
         sourcePreview: String?,
         reviewReason: String,
         capabilityLabels: [String],
@@ -88,6 +91,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
         canApprove: Bool,
         canRun: Bool,
         canDefer: Bool,
+        canEdit: Bool,
         canRetry: Bool,
         canReject: Bool
     ) {
@@ -96,6 +100,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
         self.stateLabel = stateLabel
         self.riskLabel = riskLabel
         self.title = title
+        self.redactedSummary = redactedSummary
         self.sourcePreview = sourcePreview
         self.reviewReason = reviewReason
         self.capabilityLabels = capabilityLabels
@@ -104,6 +109,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
         self.canApprove = canApprove
         self.canRun = canRun
         self.canDefer = canDefer
+        self.canEdit = canEdit
         self.canRetry = canRetry
         self.canReject = canReject
     }
@@ -182,12 +188,14 @@ public enum AssistantQueueReadModel {
         from item: AssistantQueueItem,
         receipt: ExecutionReceipt? = nil
     ) -> AssistantQueueReadModelRow {
-        AssistantQueueReadModelRow(
+        let redactedSummary = redactedText(item.redactedSummary)
+        return AssistantQueueReadModelRow(
             id: item.id,
             state: item.state,
             stateLabel: label(for: item.state),
             riskLabel: item.riskLevel.rawValue.capitalized,
-            title: redactedPreview(item.redactedSummary),
+            title: redactedSummary.assistantQueuePreview(maxLength: 160),
+            redactedSummary: redactedSummary,
             sourcePreview: item.sourceTranscript.map(redactedPreview),
             reviewReason: item.reviewReason,
             capabilityLabels: item.requiredCapabilities.map { redactedPreview(label(for: $0)) },
@@ -196,6 +204,7 @@ public enum AssistantQueueReadModel {
             canApprove: canApprove(item),
             canRun: canRun(item),
             canDefer: canDefer(item),
+            canEdit: canEdit(item),
             canRetry: canRetry(item),
             canReject: canReject(item)
         )
@@ -308,6 +317,10 @@ public enum AssistantQueueReadModel {
             && !plan.actions.contains { $0.riskLevel == .danger }
     }
 
+    private static func canEdit(_ item: AssistantQueueItem) -> Bool {
+        item.isEditableForReview
+    }
+
     private static func canReject(_ item: AssistantQueueItem) -> Bool {
         switch item.state {
         case .done, .failed, .rejected:
@@ -318,7 +331,11 @@ public enum AssistantQueueReadModel {
     }
 
     private static func redactedPreview(_ value: String) -> String {
-        DeveloperSecretRedactor().redact(value).text.assistantQueuePreview(maxLength: 160)
+        redactedText(value).assistantQueuePreview(maxLength: 160)
+    }
+
+    private static func redactedText(_ value: String) -> String {
+        DeveloperSecretRedactor().redact(value).text
     }
 
     private static func label(for state: AssistantQueueState) -> String {

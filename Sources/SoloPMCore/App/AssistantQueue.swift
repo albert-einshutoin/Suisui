@@ -99,6 +99,7 @@ public enum AssistantQueueTransitionError: Error, Equatable, Sendable {
     case runningRequiredBeforeCompletion
     case terminalItemCannotTransition
     case retryRequiresFailedActionPlan
+    case editRequiresReviewableItem
 }
 
 public enum AssistantQueueStateMachine {
@@ -196,13 +197,32 @@ public enum AssistantQueueStateMachine {
         return deferred
     }
 
-    public static func markEdited(_ item: AssistantQueueItem, reason: String) -> AssistantQueueItem {
+    public static func markEdited(_ item: AssistantQueueItem, reason: String) throws -> AssistantQueueItem {
+        try editReviewDetails(item, reviewReason: reason, redactedSummary: item.redactedSummary)
+    }
+
+    public static func editReviewDetails(
+        _ item: AssistantQueueItem,
+        reviewReason: String,
+        redactedSummary: String
+    ) throws -> AssistantQueueItem {
+        guard item.isEditableForReview else {
+            throw AssistantQueueTransitionError.editRequiresReviewableItem
+        }
+        let redactor = ExecutionReceiptRedactor()
+        let sanitizedReason = redactor.redact(reviewReason).trimmingCharacters(in: .whitespacesAndNewlines)
+        // This edit field is the review surface of record, not a receipt preview,
+        // so keep the caller's full summary while still redacting secrets and paths.
+        let summaryRedactionLimit = max(redactedSummary.count, 1_200)
+        let sanitizedSummary = redactor.redact(redactedSummary, maxLength: summaryRedactionLimit)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         var edited = item
         edited.state = .waitingReview
         // Any post-approval edit changes the reviewed surface, so the queue
         // must drop approval and ask the user to review the edited item again.
         edited.approval = nil
-        edited.reviewReason = reason
+        edited.reviewReason = sanitizedReason.isEmpty ? "Edited Assistant Queue item requires review." : sanitizedReason
+        edited.redactedSummary = sanitizedSummary.isEmpty ? item.redactedSummary : sanitizedSummary
         return edited
     }
 }
@@ -319,6 +339,17 @@ private extension AssistantQueueItem {
         case .actionPlan(let plan):
             return plan.riskLevel == .danger || plan.actions.contains { $0.riskLevel == .danger }
         case .automationRequest:
+            return false
+        }
+    }
+}
+
+extension AssistantQueueItem {
+    var isEditableForReview: Bool {
+        switch state {
+        case .captured, .interpreted, .drafted, .waitingReview, .approved, .deferred:
+            return riskLevel != .danger
+        case .blocked, .running, .done, .failed, .rejected:
             return false
         }
     }

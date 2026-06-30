@@ -361,11 +361,75 @@ final class AssistantQueueTests: XCTestCase {
         )
         let approved = try AssistantQueueStateMachine.approve(item, reviewerID: "user-1")
 
-        let edited = AssistantQueueStateMachine.markEdited(approved, reason: "User changed the action scope.")
+        let edited = try AssistantQueueStateMachine.markEdited(approved, reason: "User changed the action scope.")
 
         XCTAssertEqual(edited.state, .waitingReview)
         XCTAssertNil(edited.approval)
         XCTAssertEqual(edited.reviewReason, "User changed the action scope.")
+    }
+
+    func testEditReviewDetailsRedactsTextAndRejectsNonEditableStates() throws {
+        let approved = try AssistantQueueStateMachine.approve(
+            AssistantQueueAdapter.makeItem(
+                actionPlan: makePlan(summary: "Create a launch task"),
+                sourceTranscript: "Create a task",
+                interpretationSummary: "Routed as task intent.",
+                reason: "Needs review."
+            ),
+            reviewerID: "user-1"
+        )
+
+        let edited = try AssistantQueueStateMachine.editReviewDetails(
+            approved,
+            reviewReason: "Use safer scope with sk-proj-secret",
+            redactedSummary: "Create launch task in /Users/alice/private-roadmap.md"
+        )
+
+        XCTAssertEqual(edited.state, .waitingReview)
+        XCTAssertNil(edited.approval)
+        XCTAssertFalse(edited.reviewReason.contains("sk-proj-secret"))
+        XCTAssertFalse(edited.redactedSummary.contains("/Users/alice/private-roadmap.md"))
+        XCTAssertEqual(edited.redactedSummary, "Create launch task in [REDACTED_LOCAL_PATH]")
+        XCTAssertEqual(edited.payload, approved.payload)
+        XCTAssertEqual(edited.requiredCapabilities, approved.requiredCapabilities)
+
+        let longSummary = String(repeating: "Detailed review surface. ", count: 80) + "Final detail."
+        XCTAssertGreaterThan(longSummary.count, 1_200)
+        let longEdited = try AssistantQueueStateMachine.editReviewDetails(
+            approved,
+            reviewReason: "Keep full review surface",
+            redactedSummary: longSummary
+        )
+        XCTAssertEqual(longEdited.redactedSummary, longSummary)
+
+        let running = try AssistantQueueStateMachine.startRunning(approved)
+        let failed = try AssistantQueueStateMachine.markFailed(running, reason: "Tool failed.")
+        for item in [
+            running,
+            failed,
+            try AssistantQueueStateMachine.markDone(running),
+            AssistantQueueStateMachine.reject(approved),
+            AssistantQueueItem(
+                id: "blocked-edit",
+                state: .blocked,
+                payload: .actionPlan(makePlan(summary: "Danger", actions: [
+                    PlanAction(id: "danger", tool: .taskDelete, riskLevel: .danger)
+                ])),
+                riskLevel: .danger,
+                sourceTranscript: nil,
+                interpretationSummary: nil,
+                reviewReason: "Dangerous item.",
+                redactedSummary: "Danger",
+                requiredCapabilities: [.tool(.taskDelete), .providerExecutionApproval],
+                blockingReason: "Dangerous action plans cannot be approved from Assistant Queue."
+            )
+        ] {
+            XCTAssertThrowsError(
+                try AssistantQueueStateMachine.editReviewDetails(item, reviewReason: "Edit", redactedSummary: "Edit")
+            ) { error in
+                XCTAssertEqual(error as? AssistantQueueTransitionError, .editRequiresReviewableItem)
+            }
+        }
     }
 
     private func makePlan(
