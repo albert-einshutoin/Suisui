@@ -320,6 +320,149 @@ final class ExecutionReceiptTests: XCTestCase {
         )
     }
 
+    func testReviewExecutionReceiptLinksDevelopmentBranchEvidenceFromPRWorkflowOutput() throws {
+        let branchName = "feature/solopm-7-42-fix-calendar-sync"
+        let privateWorkspacePath = "/Users/alice/private-work/soloPM"
+        let gitSecret = "token" + "=" + "git-secret"
+        var session = ReviewSession(
+            id: "review-development-pr",
+            plan: ActionPlan(
+                id: "plan-development-pr",
+                userInput: "Prepare a PR workflow for the calendar sync task.",
+                summary: "Create a local development branch before any push or PR.",
+                actions: [
+                    PlanAction(
+                        id: "action-development-pr",
+                        tool: .developmentPreparePullRequestWorkflow,
+                        arguments: [
+                            "projectId": .number(7),
+                            "taskId": .number(42),
+                            "branchName": .string(branchName)
+                        ],
+                        riskLevel: .write
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+        )
+        try session.approve(token: ApprovalToken(id: "approval-development-pr", sessionID: session.id))
+        session.executionStatus = .completed
+        session.markAction(
+            id: "action-development-pr",
+            status: .succeeded,
+            result: ToolResult(
+                tool: .developmentPreparePullRequestWorkflow,
+                status: .succeeded,
+                summary: "Prepared local development branch \(branchName). Push and PR creation require a separate approval gate.",
+                output: [
+                    "projectId": .number(7),
+                    "taskId": .number(42),
+                    "branchName": .string(branchName),
+                    "workspacePath": .string(privateWorkspacePath),
+                    "status": .string("## \(branchName)\n M Sources/Secret.swift \(gitSecret)"),
+                    "diffStat": .string("\(privateWorkspacePath)/Sources/Secret.swift | 1 +"),
+                    "requiresPushApproval": .bool(true),
+                    "requiresPullRequestApproval": .bool(true),
+                    "externalWritePreview": .string("git push -u origin \(branchName) && gh pr create --fill")
+                ]
+            )
+        )
+
+        let receipt = ExecutionReceiptFactory.makeReviewReceipt(
+            session: session,
+            runID: "run-development-pr",
+            model: nil,
+            usage: .unavailable,
+            startedAt: Date(timeIntervalSince1970: 38),
+            finishedAt: Date(timeIntervalSince1970: 39)
+        )
+        let displayedText = [
+            receipt.outputSummary,
+            receipt.actions.first?.outputSummary ?? "",
+            ExecutionReceiptHistoryReadModel.snapshot(from: [receipt]).rows.first?.referenceSummary ?? ""
+        ].joined(separator: " ")
+
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .project, id: "7")))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .task, id: "42")))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBranch, id: branchName)))
+        XCTAssertEqual(receipt.visibleSurfaces, [.taskDetail, .projectDetail, .auditLog])
+        XCTAssertTrue(receipt.actions.first?.outputSummary?.contains(branchName) == true)
+        XCTAssertTrue(receipt.actions.first?.outputSummary?.contains("Push approval required") == true)
+        XCTAssertTrue(receipt.actions.first?.outputSummary?.contains("Pull request approval required") == true)
+        XCTAssertTrue(displayedText.contains("Development Branch"))
+        XCTAssertFalse(displayedText.contains(privateWorkspacePath))
+        XCTAssertFalse(displayedText.contains("Sources/Secret.swift"))
+        XCTAssertFalse(displayedText.contains(gitSecret))
+        XCTAssertFalse(displayedText.contains("gh pr create"))
+    }
+
+    func testFailedDevelopmentPRWorkflowReceiptKeepsBranchEvidenceFromToolOutput() throws {
+        let branchName = "feature/solopm-7-42-fix-calendar-sync"
+        let gitSecret = "token" + "=" + "git-secret"
+        var session = ReviewSession(
+            id: "review-development-pr-failed",
+            plan: ActionPlan(
+                id: "plan-development-pr-failed",
+                userInput: "Prepare a PR workflow for the calendar sync task.",
+                summary: "Create a local development branch before any push or PR.",
+                actions: [
+                    PlanAction(
+                        id: "action-development-pr-failed",
+                        tool: .developmentPreparePullRequestWorkflow,
+                        arguments: [
+                            "projectId": .number(7),
+                            "taskId": .number(42),
+                            "branchName": .string(branchName)
+                        ],
+                        riskLevel: .write
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+        )
+        try session.approve(token: ApprovalToken(id: "approval-development-pr-failed", sessionID: session.id))
+        session.executionStatus = .failed
+        session.markAction(
+            id: "action-development-pr-failed",
+            status: .failed,
+            result: ToolResult(
+                tool: .developmentPreparePullRequestWorkflow,
+                status: .failed,
+                summary: "Prepared local development branch \(branchName), but could not capture git evidence. Push and PR creation require a separate approval gate.",
+                output: [
+                    "projectId": .number(7),
+                    "taskId": .number(42),
+                    "branchName": .string(branchName),
+                    "gitEvidenceError": .string("git status failed [REDACTED_SECRET]"),
+                    "requiresPushApproval": .bool(true),
+                    "requiresPullRequestApproval": .bool(true)
+                ]
+            ),
+            errorMessage: "git status failed \(gitSecret)",
+            failureRecovery: .retryable
+        )
+
+        let receipt = ExecutionReceiptFactory.makeReviewReceipt(
+            session: session,
+            runID: "run-development-pr-failed",
+            model: nil,
+            usage: .unavailable,
+            startedAt: Date(timeIntervalSince1970: 40),
+            finishedAt: Date(timeIntervalSince1970: 41)
+        )
+
+        XCTAssertEqual(receipt.status, .failed)
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .project, id: "7")))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .task, id: "42")))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBranch, id: branchName)))
+        XCTAssertEqual(receipt.visibleSurfaces, [.taskDetail, .projectDetail, .auditLog])
+        XCTAssertTrue(receipt.actions.first?.outputSummary?.contains("No git status or diff-stat evidence was returned.") == true)
+        XCTAssertTrue(receipt.actions.first?.errorSummary?.contains("[REDACTED_SECRET]") == true)
+        XCTAssertFalse(receipt.actions.first?.errorSummary?.contains(gitSecret) == true)
+    }
+
     func testReviewReceiptKeepsNotStartedAndRunningDistinctFromStarted() {
         var session = ReviewSession(
             id: "review-pending",
@@ -561,6 +704,32 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertEqual(decoded, receipt)
         XCTAssertEqual(decoded.schemaVersion, 1)
         XCTAssertEqual(decoded.queueApproval?.approvalID, "queue-approval-json")
+    }
+
+    func testExecutionReceiptDecodesUnknownReferenceKindsWithoutDroppingReceipt() throws {
+        let json = """
+        {
+          "schemaVersion": 1,
+          "id": "receipt-unknown-reference-kind",
+          "runID": "run-unknown-reference-kind",
+          "createdAt": 100,
+          "status": "succeeded",
+          "inputPreview": "Input",
+          "outputSummary": "Output",
+          "usage": { "state": "unknown" },
+          "references": [
+            { "kind": "future_connector_record", "id": "future-1" }
+          ],
+          "sourceLinks": [],
+          "actions": [],
+          "visibleSurfaces": []
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(ExecutionReceipt.self, from: json)
+
+        XCTAssertEqual(decoded.id, "receipt-unknown-reference-kind")
+        XCTAssertEqual(decoded.references, [ExecutionReceiptReference(kind: .unknown, id: "future-1")])
     }
 
     func testFileExecutionReceiptStorePersistsRedactedReceipts() throws {

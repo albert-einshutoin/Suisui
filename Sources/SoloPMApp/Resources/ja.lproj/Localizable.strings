@@ -962,6 +962,7 @@
 "Approved automation ran, but the execution receipt could not be saved." = "承認済み自動化は実行されましたが、実行レシートを保存できませんでした。";
 "Calendar Event" = "カレンダー予定";
 "Document" = "文書";
+"Development Branch" = "開発ブランチ";
 "Estimated" = "推定";
 "Execution receipts are unavailable." = "実行レシートを利用できません。";
 "Measured" = "実測";
@@ -972,6 +973,7 @@
 "References" = "参照";
 "Review Session" = "レビューセッション";
 "Sources" = "ソース";
+"Unknown" = "不明";
 "Usage Unknown" = "使用状況不明";
 "Usage Unavailable" = "使用状況なし";
 "%d tokens" = "%d トークン";

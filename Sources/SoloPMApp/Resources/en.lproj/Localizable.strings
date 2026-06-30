@@ -962,6 +962,7 @@
 "Approved automation ran, but the execution receipt could not be saved." = "Approved automation ran, but the execution receipt could not be saved.";
 "Calendar Event" = "Calendar Event";
 "Document" = "Document";
+"Development Branch" = "Development Branch";
 "Estimated" = "Estimated";
 "Execution receipts are unavailable." = "Execution receipts are unavailable.";
 "Measured" = "Measured";
@@ -972,6 +973,7 @@
 "References" = "References";
 "Review Session" = "Review Session";
 "Sources" = "Sources";
+"Unknown" = "Unknown";
 "Usage Unknown" = "Usage Unknown";
 "Usage Unavailable" = "Usage Unavailable";
 "%d tokens" = "%d tokens";

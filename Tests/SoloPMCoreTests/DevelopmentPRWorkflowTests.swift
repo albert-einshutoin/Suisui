@@ -100,6 +100,110 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         ])
     }
 
+    func testPreparePullRequestWorkflowReturnsFailedResultWithBranchEvidenceWhenPostSwitchGitEvidenceFails() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let task = try stores.tasks.create(
+            title: "Fix calendar sync",
+            projectID: project.id,
+            sourceCommand: "voice"
+        )
+        let branchName = "feature/solopm-\(project.id)-\(task.id)-fix-calendar-sync"
+        let runner = RecordingDevelopmentGitRunner()
+        runner.stub(
+            arguments: ["switch", "-c", branchName],
+            output: GitCommandOutput(standardOutput: "", standardError: "", exitCode: 0)
+        )
+        runner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(standardOutput: "", standardError: "fatal token=git-secret", exitCode: 128)
+        )
+        let tool = DevelopmentPRWorkflowTool(
+            projectStore: stores.projects,
+            taskStore: stores.tasks,
+            gitRunner: runner
+        )
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "taskId": .number(Double(task.id))
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .failed)
+        XCTAssertEqual(result.output["branchName"], .string(branchName))
+        XCTAssertEqual(result.output["projectId"], .number(Double(project.id)))
+        XCTAssertEqual(result.output["taskId"], .number(Double(task.id)))
+        XCTAssertEqual(result.output["requiresPushApproval"], .bool(true))
+        XCTAssertEqual(result.output["requiresPullRequestApproval"], .bool(true))
+        XCTAssertTrue(result.summary.contains(branchName))
+        XCTAssertTrue(result.summary.contains("could not capture git evidence"))
+        XCTAssertFalse(result.summary.contains("git-secret"))
+        XCTAssertEqual(runner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["switch", "-c", branchName], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
+        ])
+    }
+
+    func testPreparePullRequestWorkflowKeepsPartialGitEvidenceWhenDiffStatFails() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let task = try stores.tasks.create(
+            title: "Fix calendar sync",
+            projectID: project.id,
+            sourceCommand: "voice"
+        )
+        let branchName = "feature/solopm-\(project.id)-\(task.id)-fix-calendar-sync"
+        let runner = RecordingDevelopmentGitRunner()
+        runner.stub(
+            arguments: ["switch", "-c", branchName],
+            output: GitCommandOutput(standardOutput: "", standardError: "", exitCode: 0)
+        )
+        runner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(standardOutput: "## \(branchName)\n M Package.swift\n", standardError: "", exitCode: 0)
+        )
+        runner.stub(
+            arguments: ["diff", "--stat"],
+            output: GitCommandOutput(standardOutput: "", standardError: "fatal token=diff-secret", exitCode: 128)
+        )
+        let tool = DevelopmentPRWorkflowTool(
+            projectStore: stores.projects,
+            taskStore: stores.tasks,
+            gitRunner: runner
+        )
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "taskId": .number(Double(task.id))
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .failed)
+        XCTAssertEqual(result.output["branchName"], .string(branchName))
+        XCTAssertEqual(result.output["status"], .string("## \(branchName)\n M Package.swift\n"))
+        XCTAssertEqual(result.output["diffStat"], nil)
+        XCTAssertEqual(result.output["requiresPushApproval"], .bool(true))
+        XCTAssertEqual(result.output["requiresPullRequestApproval"], .bool(true))
+        guard case .string(let gitEvidenceError)? = result.output["gitEvidenceError"] else {
+            return XCTFail("Expected redacted git evidence error")
+        }
+        XCTAssertTrue(gitEvidenceError.contains("[REDACTED_SECRET]"))
+        XCTAssertFalse(gitEvidenceError.contains("diff-secret"))
+        XCTAssertFalse(result.summary.contains("diff-secret"))
+        XCTAssertEqual(runner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["switch", "-c", branchName], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["diff", "--stat"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
+        ])
+    }
+
     func testPreparePullRequestWorkflowRejectsUnsafeBranchNameBeforeRunningGit() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()

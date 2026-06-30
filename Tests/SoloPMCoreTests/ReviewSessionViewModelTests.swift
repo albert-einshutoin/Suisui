@@ -102,6 +102,70 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .reminder, id: "reminder-1")))
     }
 
+    func testDevelopmentPRWorkflowExecutionReceiptIncludesBranchEvidenceAndScopedVisibility() throws {
+        let branchName = "feature/solopm-7-42-fix-calendar-sync"
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .developmentPreparePullRequestWorkflow,
+                description: "prepare PR",
+                inputSchema: ToolInputSchema(
+                    required: ["projectId"],
+                    properties: [
+                        "projectId": "integer",
+                        "taskId": "integer",
+                        "branchName": "string"
+                    ],
+                    nonBlank: ["branchName"]
+                ),
+                permissionLevel: .writeWithApproval
+            ) { _, context in
+                XCTAssertNotNil(context.approvalToken)
+                return ToolResult(
+                    tool: .developmentPreparePullRequestWorkflow,
+                    status: .succeeded,
+                    summary: "Prepared local development branch \(branchName). Push and PR creation require a separate approval gate.",
+                    output: [
+                        "projectId": .number(7),
+                        "taskId": .number(42),
+                        "branchName": .string(branchName),
+                        "status": .string("## \(branchName)\n"),
+                        "diffStat": .string("README.md | 1 +"),
+                        "requiresPushApproval": .bool(true),
+                        "requiresPullRequestApproval": .bool(true)
+                    ]
+                )
+            }
+        ])
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(
+                    id: "development-pr",
+                    tool: .developmentPreparePullRequestWorkflow,
+                    arguments: [
+                        "projectId": .number(7),
+                        "taskId": .number(42),
+                        "branchName": .string(branchName)
+                    ],
+                    riskLevel: .write
+                )
+            ]),
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore
+        )
+
+        try viewModel.approve()
+        try viewModel.execute()
+
+        let receipt = try XCTUnwrap(viewModel.lastExecutionReceipt)
+        XCTAssertEqual(receiptStore.receipts, [receipt])
+        XCTAssertEqual(receipt.actions.first?.toolName, ActionTool.developmentPreparePullRequestWorkflow.rawValue)
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBranch, id: branchName)))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .task, id: "42")))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .project, id: "7")))
+        XCTAssertEqual(receipt.visibleSurfaces, [.taskDetail, .projectDetail, .auditLog])
+    }
+
     func testApproveOrReportErrorSurfacesDisabledApprovalFailure() throws {
         let registry = try ToolRegistry(tools: [
             StaticTool(name: .projectList, description: "read", inputSchema: ToolInputSchema(), permissionLevel: .read) { _, _ in
