@@ -11,6 +11,25 @@ public enum VoiceCapturePhase: Equatable, Sendable {
     case failed(String)
 }
 
+public struct VoiceDailyPlanningReviewRequest: Equatable, Sendable, Identifiable {
+    public var id: UUID
+    public var sourceTranscript: String
+    public var routedIntent: VoiceCommandRoutingResult
+    public var requestedAt: Date
+
+    public init(
+        id: UUID = UUID(),
+        sourceTranscript: String,
+        routedIntent: VoiceCommandRoutingResult,
+        requestedAt: Date = Date()
+    ) {
+        self.id = id
+        self.sourceTranscript = sourceTranscript
+        self.routedIntent = routedIntent
+        self.requestedAt = requestedAt
+    }
+}
+
 @MainActor
 public final class VoiceCaptureViewModel: ObservableObject {
     @Published public private(set) var draft: TranscriptDraft
@@ -22,6 +41,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     @Published public private(set) var routingResult: VoiceCommandRoutingResult?
     @Published public private(set) var clarificationSession: ClarificationSession?
     @Published public private(set) var assistantQueueItem: AssistantQueueItem?
+    @Published public private(set) var dailyPlanningReviewRequest: VoiceDailyPlanningReviewRequest?
 
     private var audioRecorder: any AudioRecorder
     private let sttProvider: any SpeechToTextProvider
@@ -53,6 +73,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.routingResult = draft.canGeneratePlan ? commandRouter.route(transcript: draft.normalizedText) : nil
         self.clarificationSession = nil
         self.assistantQueueItem = nil
+        self.dailyPlanningReviewRequest = nil
     }
 
     public var canGeneratePlan: Bool {
@@ -83,6 +104,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         planningResponse = nil
         clarificationSession = nil
         assistantQueueItem = nil
+        dailyPlanningReviewRequest = nil
         refreshRoutingResult()
         if shouldResetPhaseAfterDraftChange, runtimeValidationMessage == nil {
             phase = .idle
@@ -98,6 +120,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         routingResult = nil
         clarificationSession = nil
         assistantQueueItem = nil
+        dailyPlanningReviewRequest = nil
         recordingState = audioRecorder.state
         phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
     }
@@ -128,6 +151,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             planningResponse = nil
             clarificationSession = nil
             assistantQueueItem = nil
+            dailyPlanningReviewRequest = nil
             refreshRoutingResult()
             phase = .idle
         } catch {
@@ -158,7 +182,13 @@ public final class VoiceCaptureViewModel: ObservableObject {
         guard !routedCommand.needsClarification else {
             planningResponse = nil
             assistantQueueItem = nil
+            dailyPlanningReviewRequest = nil
             beginClarification(for: routedCommand)
+            return
+        }
+
+        guard routedCommand.intent != .dailyPlanningReview else {
+            beginDailyPlanningReviewRequest(for: routedCommand, requestedAt: currentDate)
             return
         }
 
@@ -196,6 +226,10 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 return
             }
             routingResult = result.resolvedRoute
+            guard result.resolvedRoute.intent != .dailyPlanningReview else {
+                beginDailyPlanningReviewRequest(for: result.resolvedRoute, requestedAt: currentDate)
+                return
+            }
             await generatePlan(
                 for: result.resolvedRoute,
                 plannedTranscript: result.resolvedRoute.normalizedTranscript,
@@ -249,6 +283,18 @@ public final class VoiceCaptureViewModel: ObservableObject {
         phase = .needsClarification(session.currentQuestion?.prompt ?? route.clarificationReason ?? "Voice command needs clarification.")
     }
 
+    private func beginDailyPlanningReviewRequest(for route: VoiceCommandRoutingResult, requestedAt: Date) {
+        planningResponse = nil
+        assistantQueueItem = nil
+        clarificationSession = nil
+        dailyPlanningReviewRequest = VoiceDailyPlanningReviewRequest(
+            sourceTranscript: route.originalTranscript,
+            routedIntent: route,
+            requestedAt: requestedAt
+        )
+        phase = .reviewReady
+    }
+
     private func generatePlan(
         for routedCommand: VoiceCommandRoutingResult,
         plannedTranscript: String,
@@ -268,6 +314,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         phase = .generatingPlan
         auditErrorMessage = nil
         assistantQueueItem = nil
+        dailyPlanningReviewRequest = nil
 
         do {
             try auditRecorder?.recordStarted(input: request.userInput, providerID: llmProvider.providerID)
@@ -383,6 +430,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         planningResponse = nil
         clarificationSession = nil
         assistantQueueItem = nil
+        dailyPlanningReviewRequest = nil
         refreshRoutingResult()
         if let routingResult, routingResult.needsClarification {
             beginClarification(for: routingResult)
