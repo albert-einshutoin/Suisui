@@ -1067,6 +1067,8 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(message.contains("[REDACTED_PATH]"))
         XCTAssertTrue(message.contains("[REDACTED_SECRET]"))
         XCTAssertFalse(message.contains(localPath))
+        XCTAssertFalse(message.contains("Application Support"))
+        XCTAssertFalse(message.contains("speech.wav"))
         XCTAssertFalse(message.contains(secret))
         XCTAssertNil(viewModel.successMessage)
     }
