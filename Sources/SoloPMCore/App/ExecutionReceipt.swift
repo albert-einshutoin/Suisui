@@ -18,6 +18,7 @@ public enum ExecutionReceiptUsageState: String, Codable, Equatable, Sendable {
 }
 
 public enum ExecutionReceiptReferenceKind: String, Codable, Equatable, Sendable {
+    case unknown
     case assistantQueue = "assistant_queue"
     case actionPlan = "action_plan"
     case reviewSession = "review_session"
@@ -27,8 +28,20 @@ public enum ExecutionReceiptReferenceKind: String, Codable, Equatable, Sendable 
     case calendarEvent = "calendar_event"
     case notification
     case reminder
+    case developmentBranch = "development_branch"
     case file
     case pullRequest = "pull_request"
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        self = Self(rawValue: rawValue) ?? .unknown
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 public enum ExecutionReceiptSurface: String, Codable, Equatable, Sendable {
@@ -658,17 +671,7 @@ public enum ExecutionReceiptFactory {
         redactionPolicy: ExecutionReceiptRedactionPolicy = ExecutionReceiptRedactionPolicy()
     ) -> ExecutionReceipt {
         let redactor = ExecutionReceiptRedactor(policy: redactionPolicy)
-        let actions = session.items.map { item in
-            ExecutionReceiptActionSummary(
-                id: item.id,
-                toolName: item.editedAction.tool.rawValue,
-                status: executionReceiptStatus(for: item.executionStatus),
-                inputPreview: redactor.redact(item.argumentDisplaySummary(maxFields: 12, maxValueLength: 300).fullText),
-                outputSummary: item.result.map { redactor.redact($0.summary) },
-                errorSummary: item.errorMessage.map { redactor.redact($0) },
-                failureRecovery: executionReceiptFailureRecovery(for: item.failureRecovery)
-            )
-        }
+        let actions = session.items.map { actionSummary(for: $0, redactor: redactor) }
         let sanitizedSourceLinks = sourceLinks.map { link in
             ExecutionReceiptSourceLink(
                 kind: link.kind,
@@ -676,6 +679,7 @@ public enum ExecutionReceiptFactory {
                 url: redactor.redact(link.url, maxLength: 600)
             )
         }
+        let references = references(for: session)
 
         // Receipts are user-facing accountability records, so they carry a
         // compact redacted view instead of raw prompts or document bodies.
@@ -692,9 +696,10 @@ public enum ExecutionReceiptFactory {
             model: model,
             primaryToolName: actions.first?.toolName,
             usage: usage,
-            references: references(for: session),
+            references: references,
             sourceLinks: sanitizedSourceLinks,
             actions: actions,
+            visibleSurfaces: reviewVisibleSurfaces(for: references),
             redactionPolicy: redactionPolicy
         )
     }
@@ -838,17 +843,7 @@ public enum ExecutionReceiptFactory {
             session.originalPlan.userInput,
             session.originalPlan.summary
         ].compactMap { $0 }.joined(separator: "\n")
-        let actions = session.items.map { item in
-            ExecutionReceiptActionSummary(
-                id: item.id,
-                toolName: item.editedAction.tool.rawValue,
-                status: executionReceiptStatus(for: item.executionStatus),
-                inputPreview: redactor.redact(item.argumentDisplaySummary(maxFields: 12, maxValueLength: 300).fullText),
-                outputSummary: item.result.map { redactor.redact($0.summary) },
-                errorSummary: item.errorMessage.map { redactor.redact($0) },
-                failureRecovery: executionReceiptFailureRecovery(for: item.failureRecovery)
-            )
-        }
+        let actions = session.items.map { actionSummary(for: $0, redactor: redactor) }
         let queueReference = ExecutionReceiptReference(
             kind: .assistantQueue,
             id: item.id,
@@ -991,6 +986,79 @@ public enum ExecutionReceiptFactory {
         return surfaces
     }
 
+    private static func reviewVisibleSurfaces(
+        for references: [ExecutionReceiptReference]
+    ) -> [ExecutionReceiptSurface] {
+        guard references.contains(where: { $0.kind == .developmentBranch }) else {
+            return []
+        }
+        var surfaces: [ExecutionReceiptSurface] = []
+        if references.contains(where: { $0.kind == .task }) {
+            surfaces.append(.taskDetail)
+        }
+        if references.contains(where: { $0.kind == .project }) {
+            surfaces.append(.projectDetail)
+        }
+        surfaces.append(.auditLog)
+        return surfaces
+    }
+
+    private static func actionSummary(
+        for item: ReviewActionItem,
+        redactor: ExecutionReceiptRedactor
+    ) -> ExecutionReceiptActionSummary {
+        ExecutionReceiptActionSummary(
+            id: item.id,
+            toolName: item.editedAction.tool.rawValue,
+            status: executionReceiptStatus(for: item.executionStatus),
+            inputPreview: redactor.redact(item.argumentDisplaySummary(maxFields: 12, maxValueLength: 300).fullText),
+            outputSummary: actionOutputSummary(for: item, redactor: redactor),
+            errorSummary: item.errorMessage.map { redactor.redact($0) },
+            failureRecovery: executionReceiptFailureRecovery(for: item.failureRecovery)
+        )
+    }
+
+    private static func actionOutputSummary(
+        for item: ReviewActionItem,
+        redactor: ExecutionReceiptRedactor
+    ) -> String? {
+        guard let result = item.result else {
+            return nil
+        }
+        guard item.editedAction.tool == .developmentPreparePullRequestWorkflow else {
+            return redactor.redact(result.summary)
+        }
+        return developmentPRWorkflowOutputSummary(for: result, redactor: redactor)
+            ?? redactor.redact(result.summary)
+    }
+
+    private static func developmentPRWorkflowOutputSummary(
+        for result: ToolResult,
+        redactor: ExecutionReceiptRedactor
+    ) -> String? {
+        guard let branchName = result.output["branchName"]?.receiptIDValue else {
+            return nil
+        }
+        var parts = [
+            "Prepared development branch \(redactor.redact(branchName, maxLength: 240))."
+        ]
+        if result.output["requiresPushApproval"]?.receiptBoolValue == true {
+            parts.append("Push approval required.")
+        }
+        if result.output["requiresPullRequestApproval"]?.receiptBoolValue == true {
+            parts.append("Pull request approval required.")
+        }
+        // Git status/diff-stat can include local paths or file names, so the
+        // receipt records their presence without copying the raw command output.
+        if result.output["status"]?.receiptNonEmptyString == nil,
+           result.output["diffStat"]?.receiptNonEmptyString == nil {
+            parts.append("No git status or diff-stat evidence was returned.")
+        } else {
+            parts.append("Git evidence captured.")
+        }
+        return parts.joined(separator: " ")
+    }
+
     private static func executionReceiptFailureRecovery(
         for recovery: ReviewActionFailureRecovery?
     ) -> ExecutionReceiptFailureRecovery? {
@@ -1098,6 +1166,9 @@ public enum ExecutionReceiptFactory {
                 output: output,
                 references: &references
             )
+            if item.editedAction.tool == .developmentPreparePullRequestWorkflow {
+                appendReference(kind: .developmentBranch, keys: ["branchName"], output: output, references: &references)
+            }
         }
         return references
     }
@@ -1160,6 +1231,25 @@ private extension JSONValue {
             return ids.isEmpty ? nil : ids
         default:
             return receiptIDValue.map { [$0] }
+        }
+    }
+
+    var receiptBoolValue: Bool? {
+        switch self {
+        case .bool(let value):
+            value
+        default:
+            nil
+        }
+    }
+
+    var receiptNonEmptyString: String? {
+        switch self {
+        case .string(let value):
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        default:
+            return nil
         }
     }
 }

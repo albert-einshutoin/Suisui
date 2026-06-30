@@ -176,27 +176,38 @@ public struct DevelopmentPRWorkflowTool: Tool {
                     ?? DevelopmentBranchNamePolicy.deterministicBranchName(project: project, task: task)
             )
 
-            _ = try runGit(arguments: ["switch", "-c", branchName], workingDirectory: scope.rootURL)
-            let status = try runGit(arguments: ["status", "--short", "--branch"], workingDirectory: scope.rootURL)
-            let diff = try runGit(arguments: ["diff", "--stat"], workingDirectory: scope.rootURL)
-
             // Push and PR creation intentionally stay preview-only here. They are
             // external writes and must get a separate review gate after the user
             // sees the local branch, status, and diff preview in the receipt.
             let externalWritePreview = "git push -u origin \(branchName) && gh pr create --fill"
-
             var output: [String: JSONValue] = [
                 "projectId": .number(Double(project.id)),
                 "branchName": .string(branchName),
                 "workspacePath": .string(scope.rootURL.path),
-                "status": .string(redacted(status.standardOutput)),
-                "diffStat": .string(redacted(diff.standardOutput)),
                 "requiresPushApproval": .bool(true),
                 "requiresPullRequestApproval": .bool(true),
                 "externalWritePreview": .string(externalWritePreview)
             ]
             if let task {
                 output["taskId"] = .number(Double(task.id))
+            }
+
+            _ = try runGit(arguments: ["switch", "-c", branchName], workingDirectory: scope.rootURL)
+            do {
+                let status = try runGit(arguments: ["status", "--short", "--branch"], workingDirectory: scope.rootURL)
+                output["status"] = .string(redacted(status.standardOutput))
+                let diff = try runGit(arguments: ["diff", "--stat"], workingDirectory: scope.rootURL)
+                output["diffStat"] = .string(redacted(diff.standardOutput))
+            } catch {
+                output["gitEvidenceError"] = .string(redacted(developmentPRWorkflowErrorMessage(for: error)))
+                return ToolResult(
+                    tool: name,
+                    status: .failed,
+                    summary: "Prepared local development branch \(branchName), but could not capture git evidence. Push and PR creation require a separate approval gate.",
+                    output: output,
+                    rollbackMetadata: ["branchName": .string(branchName)],
+                    compensationHint: "Review the local branch manually before any push or PR creation."
+                )
             }
 
             return ToolResult(
@@ -234,5 +245,15 @@ public struct DevelopmentPRWorkflowTool: Tool {
 
     private func redacted(_ value: String) -> String {
         redactor.redact(value).text
+    }
+
+    private func developmentPRWorkflowErrorMessage(for error: Error) -> String {
+        if let error = error as? DevelopmentPRWorkflowError {
+            return error.userMessage
+        }
+        if let error = error as? GitReadOnlyError {
+            return String(describing: error)
+        }
+        return String(describing: error)
     }
 }

@@ -205,6 +205,8 @@ public enum ExecutionReceiptHistoryReadModel {
 
     private static func label(for kind: ExecutionReceiptReferenceKind) -> String {
         switch kind {
+        case .unknown:
+            return String(localized: "Unknown")
         case .assistantQueue:
             return String(localized: "Assistant Queue")
         case .actionPlan:
@@ -223,6 +225,8 @@ public enum ExecutionReceiptHistoryReadModel {
             return String(localized: "Notification")
         case .reminder:
             return String(localized: "Reminder")
+        case .developmentBranch:
+            return String(localized: "Development Branch")
         case .file:
             return String(localized: "File")
         case .pullRequest:
