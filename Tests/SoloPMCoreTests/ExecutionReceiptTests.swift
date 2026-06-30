@@ -124,6 +124,53 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertFalse(receipt.actions[0].errorSummary?.contains("calendar-secret") ?? true)
     }
 
+    func testReviewExecutionReceiptLinksNotificationReferencesFromToolOutput() throws {
+        var session = ReviewSession(
+            id: "review-notification",
+            plan: ActionPlan(
+                id: "plan-notification",
+                userInput: "Remind me about standup",
+                summary: "Schedule a notification",
+                actions: [
+                    PlanAction(
+                        id: "action-notification",
+                        tool: .notificationSchedule,
+                        arguments: [
+                            "title": .string("Standup"),
+                            "scheduledAt": .string("2026-07-01T09:00:00Z")
+                        ],
+                        riskLevel: .write
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+        )
+        try session.approve(token: ApprovalToken(id: "approval-notification", sessionID: session.id))
+        session.executionStatus = .completed
+        session.markAction(
+            id: "action-notification",
+            status: .succeeded,
+            result: ToolResult(
+                tool: .notificationSchedule,
+                status: .succeeded,
+                summary: "Scheduled notification Standup",
+                output: ["notificationId": .string("notification-standup")]
+            )
+        )
+
+        let receipt = ExecutionReceiptFactory.makeReviewReceipt(
+            session: session,
+            runID: "run-notification",
+            model: nil,
+            usage: .unknown,
+            startedAt: Date(timeIntervalSince1970: 30),
+            finishedAt: Date(timeIntervalSince1970: 31)
+        )
+
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .notification, id: "notification-standup")))
+    }
+
     func testReviewReceiptKeepsNotStartedAndRunningDistinctFromStarted() {
         var session = ReviewSession(
             id: "review-pending",
