@@ -209,7 +209,9 @@ final class VoiceModelManagerTests: XCTestCase {
         XCTAssertEqual(viewModel.voiceModelReadinessRows[1].statusLabel, "Not installed")
         XCTAssertEqual(STTProvider.releaseReadyCases, [.openAITranscribe, .localWhisperCpp])
         XCTAssertEqual(viewModel.selectableSTTProviders, [.openAITranscribe])
-        XCTAssertTrue(TTSProvider.releaseReadyCases.isEmpty)
+        XCTAssertEqual(TTSProvider.releaseReadyCases, [.localKokoro])
+        XCTAssertEqual(viewModel.selectableTTSProviders, [.localKokoro])
+        XCTAssertEqual(viewModel.ttsProviderReadinessRow.statusLabel, "Model not installed")
     }
 
     @MainActor

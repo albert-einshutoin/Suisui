@@ -52,7 +52,12 @@ References:
 - whisper.cpp CLI README: https://github.com/ggml-org/whisper.cpp/tree/master/examples/cli
 - whisper.cpp model catalog: https://github.com/ggml-org/whisper.cpp/tree/master/models
 
-Local TTS remains disabled in the release surface until a TTS runtime has the same model, executable, and smoke-test gates.
+Local TTS now exposes a ready-gated Kokoro surface in Settings. The provider is visible as `Local Kokoro`, but speech synthesis and Test Play remain blocked until both local runtime requirements are ready:
+
+- The `kokoro-v1_0.pth` model is installed and checksum-verified.
+- Settings has an absolute, executable Kokoro runtime path.
+
+The first Kokoro provider slice is intentionally short-prompt only. It re-verifies the cached model before local synthesis and passes prompt text through a short-lived UTF-8 file instead of command-line arguments so task details are not exposed through process inspection. Settings Test Play uses fixed Japanese/English sample prompts, plays the generated WAV through the app's AVFoundation audio adapter, and removes the preview-owned output directory after playback. Long-form document read-aloud, bundled runtime packaging, and signed/notarized smoke evidence remain follow-up work.
 
 ## Accessibility Boundary
 

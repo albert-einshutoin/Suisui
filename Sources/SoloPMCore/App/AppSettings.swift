@@ -4,12 +4,16 @@ import Foundation
 public struct AppSettings: Codable, Equatable, Sendable {
     public var aiProvider: AIProvider
     public var sttProvider: STTProvider
+    public var ttsProvider: TTSProvider
     public var notificationsEnabled: Bool
     public var defaultWorkspacePath: String?
     public var timeZoneIdentifier: String
     public var geminiModelID: String?
     public var groqBaseURLString: String?
     public var whisperCppExecutablePath: String?
+    public var kokoroExecutablePath: String?
+    public var ttsLanguageCode: String
+    public var ttsVoiceID: String
     public var openCodeExecutablePath: String?
     public var openCodeWorkspacePath: String?
     public var openCodeModelID: String?
@@ -19,12 +23,16 @@ public struct AppSettings: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case aiProvider
         case sttProvider
+        case ttsProvider
         case notificationsEnabled
         case defaultWorkspacePath
         case timeZoneIdentifier
         case geminiModelID
         case groqBaseURLString
         case whisperCppExecutablePath
+        case kokoroExecutablePath
+        case ttsLanguageCode
+        case ttsVoiceID
         case openCodeExecutablePath
         case openCodeWorkspacePath
         case openCodeModelID
@@ -35,12 +43,16 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public init(
         aiProvider: AIProvider = .openaiResponses,
         sttProvider: STTProvider = .openAITranscribe,
+        ttsProvider: TTSProvider = .localKokoro,
         notificationsEnabled: Bool = false,
         defaultWorkspacePath: String? = nil,
         timeZoneIdentifier: String = TimeZone.current.identifier,
         geminiModelID: String? = nil,
         groqBaseURLString: String? = nil,
         whisperCppExecutablePath: String? = nil,
+        kokoroExecutablePath: String? = nil,
+        ttsLanguageCode: String = "en",
+        ttsVoiceID: String = "af_heart",
         openCodeExecutablePath: String? = nil,
         openCodeWorkspacePath: String? = nil,
         openCodeModelID: String? = nil,
@@ -49,12 +61,16 @@ public struct AppSettings: Codable, Equatable, Sendable {
     ) {
         self.aiProvider = aiProvider
         self.sttProvider = sttProvider
+        self.ttsProvider = ttsProvider
         self.notificationsEnabled = notificationsEnabled
         self.defaultWorkspacePath = defaultWorkspacePath
         self.timeZoneIdentifier = timeZoneIdentifier
         self.geminiModelID = geminiModelID
         self.groqBaseURLString = groqBaseURLString
         self.whisperCppExecutablePath = whisperCppExecutablePath
+        self.kokoroExecutablePath = kokoroExecutablePath
+        self.ttsLanguageCode = ttsLanguageCode
+        self.ttsVoiceID = ttsVoiceID
         self.openCodeExecutablePath = openCodeExecutablePath
         self.openCodeWorkspacePath = openCodeWorkspacePath
         self.openCodeModelID = openCodeModelID
@@ -66,12 +82,16 @@ public struct AppSettings: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.aiProvider = try container.decode(AIProvider.self, forKey: .aiProvider)
         self.sttProvider = try container.decode(STTProvider.self, forKey: .sttProvider)
+        self.ttsProvider = try container.decodeIfPresent(TTSProvider.self, forKey: .ttsProvider) ?? .localKokoro
         self.notificationsEnabled = try container.decode(Bool.self, forKey: .notificationsEnabled)
         self.defaultWorkspacePath = try container.decodeIfPresent(String.self, forKey: .defaultWorkspacePath)
         self.timeZoneIdentifier = try container.decode(String.self, forKey: .timeZoneIdentifier)
         self.geminiModelID = try container.decodeIfPresent(String.self, forKey: .geminiModelID)
         self.groqBaseURLString = try container.decodeIfPresent(String.self, forKey: .groqBaseURLString)
         self.whisperCppExecutablePath = try container.decodeIfPresent(String.self, forKey: .whisperCppExecutablePath)
+        self.kokoroExecutablePath = try container.decodeIfPresent(String.self, forKey: .kokoroExecutablePath)
+        self.ttsLanguageCode = try container.decodeIfPresent(String.self, forKey: .ttsLanguageCode) ?? "en"
+        self.ttsVoiceID = try container.decodeIfPresent(String.self, forKey: .ttsVoiceID) ?? "af_heart"
         self.openCodeExecutablePath = try container.decodeIfPresent(String.self, forKey: .openCodeExecutablePath)
         self.openCodeWorkspacePath = try container.decodeIfPresent(String.self, forKey: .openCodeWorkspacePath)
         self.openCodeModelID = try container.decodeIfPresent(String.self, forKey: .openCodeModelID)
@@ -83,12 +103,16 @@ public struct AppSettings: Codable, Equatable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(aiProvider, forKey: .aiProvider)
         try container.encode(sttProvider, forKey: .sttProvider)
+        try container.encode(ttsProvider, forKey: .ttsProvider)
         try container.encode(notificationsEnabled, forKey: .notificationsEnabled)
         try container.encodeIfPresent(defaultWorkspacePath, forKey: .defaultWorkspacePath)
         try container.encode(timeZoneIdentifier, forKey: .timeZoneIdentifier)
         try container.encodeIfPresent(geminiModelID, forKey: .geminiModelID)
         try container.encodeIfPresent(groqBaseURLString, forKey: .groqBaseURLString)
         try container.encodeIfPresent(whisperCppExecutablePath, forKey: .whisperCppExecutablePath)
+        try container.encodeIfPresent(kokoroExecutablePath, forKey: .kokoroExecutablePath)
+        try container.encode(ttsLanguageCode, forKey: .ttsLanguageCode)
+        try container.encode(ttsVoiceID, forKey: .ttsVoiceID)
         try container.encodeIfPresent(openCodeExecutablePath, forKey: .openCodeExecutablePath)
         try container.encodeIfPresent(openCodeWorkspacePath, forKey: .openCodeWorkspacePath)
         try container.encodeIfPresent(openCodeModelID, forKey: .openCodeModelID)
@@ -103,6 +127,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         if !copy.sttProvider.isReleaseReady {
             copy.sttProvider = .openAITranscribe
         }
+        if !copy.ttsProvider.isReleaseReady {
+            copy.ttsProvider = .localKokoro
+        }
         if let geminiModelID = copy.geminiModelID?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.geminiModelID = geminiModelID.isEmpty ? nil : geminiModelID
         }
@@ -112,6 +139,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
         if let whisperCppExecutablePath = copy.whisperCppExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.whisperCppExecutablePath = whisperCppExecutablePath.isEmpty ? nil : whisperCppExecutablePath
         }
+        if let kokoroExecutablePath = copy.kokoroExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            copy.kokoroExecutablePath = kokoroExecutablePath.isEmpty ? nil : kokoroExecutablePath
+        }
+        copy.ttsLanguageCode = Self.normalizedTTSLanguageCode(copy.ttsLanguageCode)
+        copy.ttsVoiceID = Self.normalizedTTSVoiceID(copy.ttsVoiceID, languageCode: copy.ttsLanguageCode)
         if let openCodeExecutablePath = copy.openCodeExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.openCodeExecutablePath = openCodeExecutablePath.isEmpty ? nil : openCodeExecutablePath
         }
@@ -209,9 +241,30 @@ public struct AppSettings: Codable, Equatable, Sendable {
             appendOptionalOpenCodeLocalIssues(to: &issues)
         }
         appendWhisperCppExecutablePathIssue(to: &issues, isRequired: sttProvider == .localWhisperCpp)
+        appendKokoroExecutablePathIssue(to: &issues)
+        appendTTSSelectionIssues(to: &issues)
         issues.append(contentsOf: taskAutoExecution.validationIssues())
 
         return issues
+    }
+
+    public static func normalizedTTSLanguageCode(_ languageCode: String) -> String {
+        let normalized = languageCode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return ["ja", "en"].contains(normalized) ? normalized : "en"
+    }
+
+    public static func defaultTTSVoiceID(for languageCode: String) -> String {
+        normalizedTTSLanguageCode(languageCode) == "ja" ? "jf_alpha" : "af_heart"
+    }
+
+    public static func normalizedTTSVoiceID(_ voiceID: String, languageCode: String) -> String {
+        let normalized = voiceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty,
+              normalized.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
+            return defaultTTSVoiceID(for: languageCode)
+        }
+        let expectedPrefix = normalizedTTSLanguageCode(languageCode) == "ja" ? "j" : "a"
+        return normalized.hasPrefix(expectedPrefix) ? normalized : defaultTTSVoiceID(for: languageCode)
     }
 
     private func appendOpenCodeLocalIssues(to issues: inout [ValidationIssue]) {
@@ -387,6 +440,70 @@ public struct AppSettings: Codable, Equatable, Sendable {
             )
         }
     }
+
+    private func appendKokoroExecutablePathIssue(to issues: inout [ValidationIssue]) {
+        let trimmed = kokoroExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else {
+            return
+        }
+
+        let expandedPath = NSString(string: trimmed).expandingTildeInPath
+        guard NSString(string: expandedPath).isAbsolutePath else {
+            issues.append(
+                ValidationIssue(
+                    field: "kokoroExecutablePath",
+                    message: "Kokoro executable path must be absolute.",
+                    severity: .error
+                )
+            )
+            return
+        }
+
+        let url = URL(fileURLWithPath: expandedPath)
+        let fileName = url.lastPathComponent.lowercased()
+        let sensitiveSignals = ["credential", "credentials", "secret", "token", "api-key", "apikey", "auth"]
+        let sensitiveFileNames = [".env", "credentials.json", "token.json", "auth.json"]
+        if sensitiveFileNames.contains(fileName)
+            || sensitiveSignals.contains(where: { fileName.contains($0) }) {
+            issues.append(
+                ValidationIssue(
+                    field: "kokoroExecutablePath",
+                    message: "Kokoro executable path must not point to a credential or token file.",
+                    severity: .error
+                )
+            )
+        }
+    }
+
+    private func appendTTSSelectionIssues(to issues: inout [ValidationIssue]) {
+        if !ttsProvider.isReleaseReady {
+            issues.append(
+                ValidationIssue(
+                    field: "ttsProvider",
+                    message: "\(ttsProvider.displayName) is not available in this build.",
+                    severity: .error
+                )
+            )
+        }
+        if ttsLanguageCode != Self.normalizedTTSLanguageCode(ttsLanguageCode) {
+            issues.append(
+                ValidationIssue(
+                    field: "ttsLanguageCode",
+                    message: "TTS language must be ja or en.",
+                    severity: .error
+                )
+            )
+        }
+        if ttsVoiceID != Self.normalizedTTSVoiceID(ttsVoiceID, languageCode: ttsLanguageCode) {
+            issues.append(
+                ValidationIssue(
+                    field: "ttsVoiceID",
+                    message: "TTS voice must match the selected language.",
+                    severity: .error
+                )
+            )
+        }
+    }
 }
 
 private extension URL {
@@ -423,8 +540,9 @@ public enum STTProvider: String, CaseIterable, Codable, Equatable, Sendable {
 
 public enum TTSProvider: String, CaseIterable, Codable, Equatable, Sendable {
     case systemSpeech
+    case localKokoro
 
-    public static let releaseReadyCases: [TTSProvider] = []
+    public static let releaseReadyCases: [TTSProvider] = [.localKokoro]
 
     public var isReleaseReady: Bool {
         Self.releaseReadyCases.contains(self)
@@ -434,11 +552,18 @@ public enum TTSProvider: String, CaseIterable, Codable, Equatable, Sendable {
         switch self {
         case .systemSpeech:
             "System Speech"
+        case .localKokoro:
+            "Local Kokoro"
         }
     }
 
     public var unavailableReason: String {
-        "TTS is not supported in this release."
+        switch self {
+        case .systemSpeech:
+            "System Speech is kept only for legacy settings and is not product TTS."
+        case .localKokoro:
+            "Install the Kokoro model and configure the executable in Settings."
+        }
     }
 }
 
@@ -545,6 +670,33 @@ public struct AIProviderReadinessRow: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct TTSProviderReadinessRow: Identifiable, Equatable, Sendable {
+    public var provider: TTSProvider
+    public var statusLabel: String
+    public var detailLabel: String
+    public var nextActionLabel: String
+    public var isReady: Bool
+    public var isSelected: Bool
+
+    public var id: TTSProvider { provider }
+
+    public init(
+        provider: TTSProvider,
+        statusLabel: String,
+        detailLabel: String,
+        nextActionLabel: String,
+        isReady: Bool,
+        isSelected: Bool
+    ) {
+        self.provider = provider
+        self.statusLabel = statusLabel
+        self.detailLabel = detailLabel
+        self.nextActionLabel = nextActionLabel
+        self.isReady = isReady
+        self.isSelected = isSelected
+    }
+}
+
 @MainActor
 public final class AppSettingsViewModel: ObservableObject {
     @Published public private(set) var settings: AppSettings
@@ -643,8 +795,16 @@ public final class AppSettingsViewModel: ObservableObject {
         }
     }
 
+    public var selectableTTSProviders: [TTSProvider] {
+        TTSProvider.releaseReadyCases
+    }
+
     public var providerReadinessRows: [AIProviderReadinessRow] {
         selectableAIProviders.map { providerReadinessRow(for: $0) }
+    }
+
+    public var ttsProviderReadinessRow: TTSProviderReadinessRow {
+        makeTTSProviderReadinessRow(for: settings.ttsProvider)
     }
 
     public var voiceModelReadinessRows: [VoiceModelReadinessRow] {
@@ -720,6 +880,62 @@ public final class AppSettingsViewModel: ObservableObject {
         )
     }
 
+    private func makeTTSProviderReadinessRow(for provider: TTSProvider) -> TTSProviderReadinessRow {
+        guard provider == .localKokoro else {
+            return TTSProviderReadinessRow(
+                provider: provider,
+                statusLabel: "Unsupported",
+                detailLabel: provider.unavailableReason,
+                nextActionLabel: "Select Local Kokoro",
+                isReady: false,
+                isSelected: settings.ttsProvider == provider
+            )
+        }
+
+        guard let model = voiceModelCatalog.model(for: .kokoro82M) else {
+            return TTSProviderReadinessRow(
+                provider: provider,
+                statusLabel: "Model unavailable",
+                detailLabel: "Kokoro model metadata is not registered.",
+                nextActionLabel: "Update voice model catalog",
+                isReady: false,
+                isSelected: settings.ttsProvider == provider
+            )
+        }
+
+        let status = voiceModelStatusOverrides[model.id] ?? voiceModelManager.status(for: model)
+        guard status == .installed else {
+            return TTSProviderReadinessRow(
+                provider: provider,
+                statusLabel: "Model not installed",
+                detailLabel: "\(model.displayName) - \(model.licenseName) - \(model.sourceURL.host ?? "unknown source")",
+                nextActionLabel: "Download Kokoro model",
+                isReady: false,
+                isSelected: settings.ttsProvider == provider
+            )
+        }
+
+        guard Self.isKokoroExecutableReady(settings.kokoroExecutablePath) else {
+            return TTSProviderReadinessRow(
+                provider: provider,
+                statusLabel: "Runtime pending",
+                detailLabel: "Kokoro executable path is required for offline speech.",
+                nextActionLabel: "Configure Kokoro executable",
+                isReady: false,
+                isSelected: settings.ttsProvider == provider
+            )
+        }
+
+        return TTSProviderReadinessRow(
+            provider: provider,
+            statusLabel: "Ready",
+            detailLabel: "\(settings.ttsLanguageCode.uppercased()) / \(settings.ttsVoiceID) short prompts",
+            nextActionLabel: "Test play",
+            isReady: true,
+            isSelected: settings.ttsProvider == provider
+        )
+    }
+
     public func setNotificationsEnabled(_ isEnabled: Bool) {
         settings.notificationsEnabled = isEnabled
         clearMessages()
@@ -761,6 +977,16 @@ public final class AppSettingsViewModel: ObservableObject {
         clearMessages()
     }
 
+    public func setTTSProvider(_ provider: TTSProvider) {
+        guard provider.isReleaseReady else {
+            settings.ttsProvider = .localKokoro
+            clearMessages()
+            return
+        }
+        settings.ttsProvider = provider
+        clearMessages()
+    }
+
     public func setDefaultWorkspacePath(_ path: String) {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.defaultWorkspacePath = trimmed.isEmpty ? nil : trimmed
@@ -771,6 +997,40 @@ public final class AppSettingsViewModel: ObservableObject {
         rejectedAIProvider = nil
         errorMessage = message
         successMessage = nil
+    }
+
+    public func testTTSPlayback(using previewer: any TextToSpeechPreviewing) async {
+        let readinessRow = ttsProviderReadinessRow
+        guard readinessRow.isReady else {
+            rejectedAIProvider = nil
+            errorMessage = "\(readinessRow.nextActionLabel) before test play."
+            successMessage = nil
+            return
+        }
+
+        let issues = settings.validate().filter { $0.severity == .error }
+        guard issues.isEmpty else {
+            rejectedAIProvider = nil
+            errorMessage = issues.map(\.message).joined(separator: " ")
+            successMessage = nil
+            return
+        }
+
+        let request = TextToSpeechRequest(
+            text: Self.ttsPreviewText(for: settings.ttsLanguageCode),
+            languageCode: settings.ttsLanguageCode,
+            voiceID: settings.ttsVoiceID
+        )
+
+        clearMessages()
+        do {
+            try await previewer.playPreview(request)
+            errorMessage = nil
+            successMessage = "TTS test play completed."
+        } catch {
+            errorMessage = "TTS test play failed. \(Self.sanitizedTTSPreviewFailureMessage(from: error))"
+            successMessage = nil
+        }
     }
 
     public func setGeminiModelID(_ modelID: String) {
@@ -789,6 +1049,24 @@ public final class AppSettingsViewModel: ObservableObject {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.whisperCppExecutablePath = trimmed.isEmpty ? nil : trimmed
         normalizeSTTProviderSelection()
+        clearMessages()
+    }
+
+    public func setKokoroExecutablePath(_ path: String) {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.kokoroExecutablePath = trimmed.isEmpty ? nil : trimmed
+        clearMessages()
+    }
+
+    public func setTTSLanguageCode(_ languageCode: String) {
+        let normalized = AppSettings.normalizedTTSLanguageCode(languageCode)
+        settings.ttsLanguageCode = normalized
+        settings.ttsVoiceID = AppSettings.normalizedTTSVoiceID(settings.ttsVoiceID, languageCode: normalized)
+        clearMessages()
+    }
+
+    public func setTTSVoiceID(_ voiceID: String) {
+        settings.ttsVoiceID = AppSettings.normalizedTTSVoiceID(voiceID, languageCode: settings.ttsLanguageCode)
         clearMessages()
     }
 
@@ -1303,6 +1581,24 @@ public final class AppSettingsViewModel: ObservableObject {
         return FileManager.default.isExecutableFile(atPath: expandedPath)
     }
 
+    private static func isKokoroExecutableReady(_ path: String?) -> Bool {
+        let trimmed = path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else {
+            return false
+        }
+
+        let expandedPath = NSString(string: trimmed).expandingTildeInPath
+        guard NSString(string: expandedPath).isAbsolutePath else {
+            return false
+        }
+
+        var isDirectory = ObjCBool(false)
+        guard FileManager.default.fileExists(atPath: expandedPath, isDirectory: &isDirectory), !isDirectory.boolValue else {
+            return false
+        }
+        return FileManager.default.isExecutableFile(atPath: expandedPath)
+    }
+
     private func normalizeSTTProviderSelection() {
         if settings.sttProvider == .localWhisperCpp, !isLocalWhisperCppReady {
             settings.sttProvider = .openAITranscribe
@@ -1313,6 +1609,39 @@ public final class AppSettingsViewModel: ObservableObject {
         rejectedAIProvider = nil
         errorMessage = nil
         successMessage = nil
+    }
+
+    private static func ttsPreviewText(for languageCode: String) -> String {
+        AppSettings.normalizedTTSLanguageCode(languageCode) == "ja"
+            ? "SoloPMのローカル音声テストです。"
+            : "SoloPM local voice test is ready."
+    }
+
+    private static func sanitizedTTSPreviewFailureMessage(from error: Error) -> String {
+        let rawMessage: String
+        if let error = error as? TTSProviderError {
+            rawMessage = error.userMessage
+        } else if let error = error as? SpeechAudioPlaybackError {
+            rawMessage = error.userMessage
+        } else {
+            rawMessage = UserFacingErrorMessageSanitizer.message(from: error)
+        }
+        let redactedSecrets = UserFacingErrorMessageSanitizer.message(
+            from: rawMessage,
+            fallback: "Playback failed."
+        )
+        return redactedLocalFilePaths(in: redactedSecrets)
+    }
+
+    private static func redactedLocalFilePaths(in text: String) -> String {
+        let pattern = #"(?:(?:~|/Users|/Volumes|/private|/tmp|/var)/[^\s,;)]+)"#
+        guard let expression = try? NSRegularExpression(pattern: pattern) else {
+            return text
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        // Preview playback errors can include generated audio/model paths. Those paths may expose
+        // customer names or project directories, so the Settings UI shows only a stable placeholder.
+        return expression.stringByReplacingMatches(in: text, range: range, withTemplate: "[REDACTED_PATH]")
     }
 
     private func unavailableMessage(for provider: AIProvider) -> String {
