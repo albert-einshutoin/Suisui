@@ -243,6 +243,7 @@ public enum CoreMigrations {
                         priority TEXT,
                         deadline TEXT,
                         workspace_path TEXT,
+                        workspace_bookmark TEXT,
                         tags_json TEXT NOT NULL DEFAULT '[]',
                         source_command TEXT,
                         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -564,7 +565,14 @@ public enum CoreMigrations {
                     """
                 )
             },
-            DatabaseMigration(id: "0014_create_assistant_queue_items") { connection in
+            DatabaseMigration(id: "0014_add_project_workspace_bookmark") { connection in
+                let columns = try connection.queryRows("PRAGMA table_info(projects);").compactMap { $0["name"] }
+                guard !columns.contains("workspace_bookmark") else {
+                    return
+                }
+                try connection.execute("ALTER TABLE projects ADD COLUMN workspace_bookmark TEXT;")
+            },
+            DatabaseMigration(id: "0015_create_assistant_queue_items") { connection in
                 try connection.execute(
                     """
                     CREATE TABLE IF NOT EXISTS assistant_queue_items (

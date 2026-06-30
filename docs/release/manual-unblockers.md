@@ -197,4 +197,4 @@ Expected final state:
 - `swift test` passes.
 - `release_readiness_report.sh` reports ready.
 - no pending/template/manual placeholder text remains in tracked evidence.
-- release commits are pushed to `develop`.
+- release commits are pushed to the active release target branch.

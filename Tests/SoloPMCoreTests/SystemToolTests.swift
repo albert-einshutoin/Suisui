@@ -297,6 +297,39 @@ final class SystemToolTests: XCTestCase {
         )
     }
 
+    func testFileSystemToolRejectsSymlinkEscapeBeforeWriting() throws {
+        let root = temporaryDirectory()
+        let outsideRoot = temporaryDirectory()
+        let symlinkURL = root.appendingPathComponent("linked-outside")
+        try FileManager.default.createSymbolicLink(at: symlinkURL, withDestinationURL: outsideRoot)
+        let tool = FileSystemTool(
+            name: .filesystemCreateMarkdownFile,
+            client: LocalFileAccessClient(workspaceRoot: root)
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "relativePath": .string("linked-outside/escape.md"),
+                    "contents": .string("# Escape")
+                ],
+                context: approvedContext()
+            )
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outsideRoot.appendingPathComponent("escape.md").path))
+    }
+
+    func testFilesystemToolsDoNotExposeDeleteCapability() throws {
+        XCTAssertTrue(ActionTool.allCases.filter { tool in
+            tool.rawValue.hasPrefix("filesystem.") && tool.rawValue.localizedCaseInsensitiveContains("delete")
+        }.isEmpty)
+
+        let registry = try ToolRegistryTestFactory.inMemoryPhase2MVP(workspaceRoot: temporaryDirectory())
+        XCTAssertTrue(registry.registeredTools.filter { tool in
+            tool.rawValue.hasPrefix("filesystem.") && tool.rawValue.localizedCaseInsensitiveContains("delete")
+        }.isEmpty)
+    }
+
     func testFileSystemToolPersistsCreatedArtifactLinkWhenProjectIDIsProvided() throws {
         let root = temporaryDirectory()
         let connection = try currentMigratedConnection()
