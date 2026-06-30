@@ -243,6 +243,7 @@ public enum CoreMigrations {
                         priority TEXT,
                         deadline TEXT,
                         workspace_path TEXT,
+                        workspace_bookmark TEXT,
                         tags_json TEXT NOT NULL DEFAULT '[]',
                         source_command TEXT,
                         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -563,6 +564,13 @@ public enum CoreMigrations {
                     ON missed_task_review_state(last_notified_day);
                     """
                 )
+            },
+            DatabaseMigration(id: "0014_add_project_workspace_bookmark") { connection in
+                let columns = try connection.queryRows("PRAGMA table_info(projects);").compactMap { $0["name"] }
+                guard !columns.contains("workspace_bookmark") else {
+                    return
+                }
+                try connection.execute("ALTER TABLE projects ADD COLUMN workspace_bookmark TEXT;")
             }
         ]
     }

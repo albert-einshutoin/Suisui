@@ -220,6 +220,69 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(loadedProject.artifacts, [artifact])
     }
 
+    func testProjectWorkspacePathCanBeAssignedAndCleared() throws {
+        let stores = try makeStoreBundle()
+        let project = try stores.board.createProject(title: "Launch Readiness")
+        let bookmarkData = Data("local-bookmark".utf8)
+
+        let assigned = try stores.board.setProjectWorkspacePath(
+            id: project.id,
+            path: "/tmp/solopm-launch",
+            bookmarkData: bookmarkData
+        )
+
+        XCTAssertTrue(assigned.hasWorkspaceDirectory)
+        XCTAssertEqual(assigned.workspaceDisplayName, "solopm-launch")
+        XCTAssertEqual(try stores.projects.get(id: project.id).workspacePath, "/tmp/solopm-launch")
+        XCTAssertEqual(try stores.projects.get(id: project.id).workspaceBookmarkData, bookmarkData)
+        let loadedProject = try XCTUnwrap(stores.board.loadSnapshot().projects.first { $0.id == project.id })
+        XCTAssertTrue(loadedProject.hasWorkspaceDirectory)
+        XCTAssertEqual(loadedProject.workspaceDisplayName, "solopm-launch")
+        XCTAssertNotEqual(loadedProject.workspaceDisplayName, "/tmp/solopm-launch")
+
+        let cleared = try stores.board.setProjectWorkspacePath(id: project.id, path: nil)
+
+        XCTAssertFalse(cleared.hasWorkspaceDirectory)
+        XCTAssertNil(cleared.workspaceDisplayName)
+        XCTAssertNil(try stores.projects.get(id: project.id).workspacePath)
+        XCTAssertNil(try stores.projects.get(id: project.id).workspaceBookmarkData)
+        XCTAssertFalse(try XCTUnwrap(stores.board.loadSnapshot().projects.first { $0.id == project.id }).hasWorkspaceDirectory)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelAssignsProjectWorkspacePathWithoutChangingTasks() throws {
+        let stores = try makeStoreBundle()
+        let viewModel = ProjectBoardViewModel(store: stores.board)
+        let project = try XCTUnwrap(viewModel.createProject(title: "Launch Readiness"))
+        let task = try XCTUnwrap(viewModel.createTask(title: "Keep task", projectID: project.id))
+
+        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
+            "/tmp/solopm-launch",
+            bookmarkData: Data("local-bookmark".utf8),
+            projectID: project.id
+        ))
+
+        let loadedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        XCTAssertTrue(loadedProject.hasWorkspaceDirectory)
+        XCTAssertEqual(loadedProject.workspaceDisplayName, "solopm-launch")
+        XCTAssertNotEqual(loadedProject.workspaceDisplayName, "/tmp/solopm-launch")
+        XCTAssertEqual(loadedProject.tasks.map(\.id), [task.id])
+
+        XCTAssertTrue(viewModel.clearProjectWorkspacePath(projectID: project.id))
+        XCTAssertFalse(try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id }).hasWorkspaceDirectory)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelRejectsWorkspacePathWithoutBookmark() throws {
+        let stores = try makeStoreBundle()
+        let viewModel = ProjectBoardViewModel(store: stores.board)
+        let project = try XCTUnwrap(viewModel.createProject(title: "Launch Readiness"))
+
+        XCTAssertFalse(viewModel.assignProjectWorkspacePath("/tmp/solopm-launch", projectID: project.id))
+        XCTAssertEqual(viewModel.errorMessage, "Project directory permission could not be saved. Choose the directory again.")
+        XCTAssertNil(try stores.projects.get(id: project.id).workspacePath)
+    }
+
     func testCreateProjectArtifactRejectsRelativePathWithoutMutating() throws {
         let stores = try makeStoreBundle()
         let project = try stores.board.createProject(title: "Launch Readiness")

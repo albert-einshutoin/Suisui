@@ -7,8 +7,31 @@ public struct ProjectRecord: Equatable, Sendable {
     public var priority: String?
     public var deadline: String?
     public var workspacePath: String?
+    public var workspaceBookmarkData: Data?
     public var tags: [String]
     public var sourceCommand: String?
+
+    public init(
+        id: Int64,
+        title: String,
+        status: String,
+        priority: String? = nil,
+        deadline: String? = nil,
+        workspacePath: String? = nil,
+        workspaceBookmarkData: Data? = nil,
+        tags: [String] = [],
+        sourceCommand: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.status = status
+        self.priority = priority
+        self.deadline = deadline
+        self.workspacePath = workspacePath
+        self.workspaceBookmarkData = workspaceBookmarkData
+        self.tags = tags
+        self.sourceCommand = sourceCommand
+    }
 }
 
 public struct ProjectDeletionResult: Equatable, Sendable {
@@ -289,6 +312,7 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         priority: String? = nil,
         deadline: String? = nil,
         workspacePath: String? = nil,
+        workspaceBookmarkData: Data? = nil,
         tags: [String] = [],
         sourceCommand: String? = nil
     ) throws -> ProjectRecord {
@@ -299,13 +323,14 @@ public final class SQLiteProjectStore: @unchecked Sendable {
 
         try connection.execute(
             """
-            INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command)
+            INSERT INTO projects (title, status, priority, deadline, workspace_path, workspace_bookmark, tags_json, source_command)
             VALUES (
               '\(SQL.escape(normalizedTitle))',
               'active',
               \(SQL.optional(priority)),
               \(SQL.optional(deadline)),
               \(SQL.optional(workspacePath)),
+              \(SQL.optional(workspaceBookmarkData?.base64EncodedString())),
               '\(SQL.escape(tagsJSON))',
               \(SQL.optional(sourceCommand))
             );
@@ -358,6 +383,7 @@ public final class SQLiteProjectStore: @unchecked Sendable {
         priority: NullableFieldUpdate<String> = .unchanged,
         deadline: NullableFieldUpdate<String> = .unchanged,
         workspacePath: NullableFieldUpdate<String> = .unchanged,
+        workspaceBookmarkData: NullableFieldUpdate<Data> = .unchanged,
         tags: NullableFieldUpdate<[String]> = .unchanged
     ) throws -> ProjectRecord {
         lock.lock()
@@ -398,6 +424,14 @@ public final class SQLiteProjectStore: @unchecked Sendable {
             assignments.append("workspace_path = '\(SQL.escape(normalizedWorkspacePath))'")
         case .clear:
             assignments.append("workspace_path = NULL")
+        }
+        switch workspaceBookmarkData {
+        case .unchanged:
+            break
+        case .set(let workspaceBookmarkData):
+            assignments.append("workspace_bookmark = '\(SQL.escape(workspaceBookmarkData.base64EncodedString()))'")
+        case .clear:
+            assignments.append("workspace_bookmark = NULL")
         }
         switch tags {
         case .unchanged:
@@ -1188,6 +1222,7 @@ private extension ProjectRecord {
             priority: SQL.nilIfEmpty(row["priority"]),
             deadline: SQL.nilIfEmpty(row["deadline"]),
             workspacePath: SQL.nilIfEmpty(row["workspace_path"]),
+            workspaceBookmarkData: ProjectRecord.decodeBookmarkData(row["workspace_bookmark"]),
             tags: try SQL.parseStringArray(
                 try SQL.requiredString(row["tags_json"], column: "projects.tags_json"),
                 column: "projects.tags_json"
@@ -1208,9 +1243,17 @@ private extension ProjectRecord {
             priority: SQL.nilIfEmpty(row["priority"]),
             deadline: SQL.nilIfEmpty(row["deadline"]),
             workspacePath: SQL.nilIfEmpty(row["workspace_path"]),
+            workspaceBookmarkData: ProjectRecord.decodeBookmarkData(row["workspace_bookmark"]),
             tags: [],
             sourceCommand: SQL.nilIfEmpty(row["source_command"])
         )
+    }
+
+    private static func decodeBookmarkData(_ value: String?) -> Data? {
+        guard let value = SQL.nilIfEmpty(value) else {
+            return nil
+        }
+        return Data(base64Encoded: value)
     }
 }
 
