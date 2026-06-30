@@ -189,6 +189,11 @@ final class ExternalTaskInteropTests: XCTestCase {
             timeZoneIdentifier: "Asia/Tokyo"
         )
 
+        XCTAssertThrowsError(try proService.syncDueTasks(context: ToolExecutionContext(source: .reviewUI))) { error in
+            XCTAssertEqual(error as? GoogleCalendarRuntimeSyncError, .approvalRequired)
+        }
+        XCTAssertEqual(calendarSink.createdDrafts.count, 0)
+
         let result = try proService.syncDueTasks(context: approvedContext())
         let secondResult = try proService.syncDueTasks(context: approvedContext())
 
@@ -198,6 +203,113 @@ final class ExternalTaskInteropTests: XCTestCase {
         XCTAssertEqual(secondResult.skippedAlreadyLinkedCount, 1)
         XCTAssertEqual(calendarSink.createdDrafts.map(\.title), ["Due task"])
         XCTAssertEqual(calendarSink.createdDrafts.first?.isAllDay, true)
+        XCTAssertEqual(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 1)?.externalID, "calendar-event-1")
+    }
+
+    func testGoogleCalendarRuntimeReadinessSurfacesPlanOAuthScopeTokenAndCalendarStates() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let credentialStore = MutableGoogleCalendarRuntimeCredentialStatusStore()
+        let controller = makeGoogleCalendarRuntimeSyncController(
+            plan: .free,
+            credentialStore: credentialStore,
+            calendarID: "primary"
+        )
+
+        XCTAssertEqual(try controller.status(now: now).state, .upgradeRequired(requiredPlan: .pro))
+
+        let proControllerWithoutCalendar = makeGoogleCalendarRuntimeSyncController(
+            plan: .pro,
+            credentialStore: credentialStore,
+            calendarID: nil
+        )
+        XCTAssertEqual(try proControllerWithoutCalendar.status(now: now).state, .calendarNotConfigured)
+
+        let proController = makeGoogleCalendarRuntimeSyncController(
+            plan: .pro,
+            credentialStore: credentialStore,
+            calendarID: "primary"
+        )
+        XCTAssertEqual(try proController.status(now: now).state, .oauthDisconnected)
+
+        credentialStore.status = GoogleCalendarRuntimeCredentialStatus(
+            grantedScopes: ["https://www.googleapis.com/auth/calendar.readonly"],
+            expiresAt: now.addingTimeInterval(600),
+            hasRefreshToken: true
+        )
+        XCTAssertEqual(
+            try proController.status(now: now).state,
+            .missingRequiredScope(requiredScope: GoogleCalendarRuntimeCredentialStatus.eventsWriteScope)
+        )
+
+        credentialStore.status = GoogleCalendarRuntimeCredentialStatus(
+            grantedScopes: [GoogleCalendarRuntimeCredentialStatus.eventsWriteScope],
+            expiresAt: now.addingTimeInterval(-1),
+            hasRefreshToken: false
+        )
+        XCTAssertEqual(try proController.status(now: now).state, .tokenExpiredWithoutRefresh)
+
+        credentialStore.status = GoogleCalendarRuntimeCredentialStatus(
+            grantedScopes: [GoogleCalendarRuntimeCredentialStatus.eventsWriteScope],
+            expiresAt: now.addingTimeInterval(-1),
+            hasRefreshToken: true
+        )
+        let readyStatus = try proController.status(now: now)
+        XCTAssertEqual(readyStatus.state, .ready)
+        XCTAssertTrue(readyStatus.canSync)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelGoogleCalendarSyncUsesReadinessAndApprovalGate() throws {
+        let store = InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
+            makeProject(
+                id: 42,
+                title: "Launch",
+                tasks: [
+                    ProjectBoardTask(id: 1, projectID: 42, title: "Due task", detail: "Schedule me", status: .planned, priority: .high, dueAt: "2026-07-04")
+                ]
+            )
+        ]))
+        let linkStore = InMemoryExternalTaskLinkStore()
+        let calendarSink = RecordingExternalCalendarEventSink()
+        let credentialStore = MutableGoogleCalendarRuntimeCredentialStatusStore(status: GoogleCalendarRuntimeCredentialStatus(
+            grantedScopes: [GoogleCalendarRuntimeCredentialStatus.eventsWriteScope],
+            expiresAt: Date(timeIntervalSince1970: 1_800_000_600),
+            hasRefreshToken: false
+        ))
+        let service = GoogleCalendarTaskSyncService(
+            entitlementStore: StaticEntitlementStore(plan: .pro),
+            store: store,
+            linkStore: linkStore,
+            calendarSink: calendarSink,
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo"
+        )
+        let controller = GoogleCalendarRuntimeSyncController(
+            entitlementStore: StaticEntitlementStore(plan: .pro),
+            credentialStatusStore: credentialStore,
+            configuration: GoogleCalendarRuntimeSyncConfiguration(calendarID: "primary", timeZoneIdentifier: "Asia/Tokyo"),
+            taskSyncService: service
+        )
+        let viewModel = ProjectBoardViewModel(
+            store: store,
+            externalTaskLinkStore: linkStore,
+            googleCalendarSync: controller
+        )
+        viewModel.load()
+
+        XCTAssertTrue(viewModel.canSyncGoogleCalendar)
+        XCTAssertEqual(viewModel.googleCalendarSyncStatus.state, .ready)
+
+        XCTAssertNil(viewModel.syncDueTasksToGoogleCalendar(approvalToken: nil))
+        XCTAssertEqual(calendarSink.createdDrafts.count, 0)
+        XCTAssertEqual(viewModel.errorMessage, "Google Calendar sync requires approval before writing events.")
+
+        let result = try XCTUnwrap(viewModel.syncDueTasksToGoogleCalendar(approvalToken: "approved"))
+
+        XCTAssertEqual(result.createdEventCount, 1)
+        XCTAssertEqual(result.skippedAlreadyLinkedCount, 0)
+        XCTAssertEqual(calendarSink.createdDrafts.map(\.title), ["Due task"])
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Created 1 Google Calendar event.")
         XCTAssertEqual(try linkStore.link(providerID: ExternalTaskSource.googleCalendar.rawValue, taskID: 1)?.externalID, "calendar-event-1")
     }
 
@@ -219,6 +331,29 @@ final class ExternalTaskInteropTests: XCTestCase {
             source: .developerTool
         )
     }
+
+    private func makeGoogleCalendarRuntimeSyncController(
+        plan: SubscriptionPlan,
+        credentialStore: MutableGoogleCalendarRuntimeCredentialStatusStore,
+        calendarID: String?
+    ) -> GoogleCalendarRuntimeSyncController {
+        let store = InMemoryProjectBoardStore()
+        let linkStore = InMemoryExternalTaskLinkStore()
+        let service = GoogleCalendarTaskSyncService(
+            entitlementStore: StaticEntitlementStore(plan: plan),
+            store: store,
+            linkStore: linkStore,
+            calendarSink: RecordingExternalCalendarEventSink(),
+            calendarID: calendarID ?? "primary",
+            timeZoneIdentifier: "Asia/Tokyo"
+        )
+        return GoogleCalendarRuntimeSyncController(
+            entitlementStore: StaticEntitlementStore(plan: plan),
+            credentialStatusStore: credentialStore,
+            configuration: GoogleCalendarRuntimeSyncConfiguration(calendarID: calendarID, timeZoneIdentifier: "Asia/Tokyo"),
+            taskSyncService: service
+        )
+    }
 }
 
 private struct StaticEntitlementStore: EntitlementStore {
@@ -226,6 +361,28 @@ private struct StaticEntitlementStore: EntitlementStore {
 
     func snapshot() throws -> EntitlementSnapshot {
         EntitlementSnapshot(plan: plan, source: .localLicense)
+    }
+}
+
+private final class MutableGoogleCalendarRuntimeCredentialStatusStore: GoogleCalendarRuntimeCredentialStatusStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedStatus: GoogleCalendarRuntimeCredentialStatus?
+
+    var status: GoogleCalendarRuntimeCredentialStatus? {
+        get {
+            lock.withLock { storedStatus }
+        }
+        set {
+            lock.withLock { storedStatus = newValue }
+        }
+    }
+
+    init(status: GoogleCalendarRuntimeCredentialStatus? = nil) {
+        self.storedStatus = status
+    }
+
+    func loadGoogleCalendarCredentialStatus() throws -> GoogleCalendarRuntimeCredentialStatus? {
+        lock.withLock { storedStatus }
     }
 }
 

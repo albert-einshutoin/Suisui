@@ -3552,10 +3552,23 @@ private enum AppRuntimeFactory {
     static func makeProjectBoardViewModel() -> ProjectBoardViewModel {
         do {
             let connection = try migratedConnection()
+            let projectBoardStore = SQLiteProjectBoardStore(connection: connection)
+            let externalTaskLinkStore = SQLiteExternalTaskLinkStore(connection: connection)
             let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
             let executionReceiptStore = try? makeExecutionReceiptStore()
+            let googleCalendarSync = GoogleCalendarRuntimeSyncController(
+                entitlementStore: KeychainEntitlementStore(secretStore: makeSecretStore()),
+                credentialStatusStore: UnavailableGoogleCalendarRuntimeCredentialStatusStore(),
+                configuration: GoogleCalendarRuntimeSyncConfiguration(
+                    calendarID: "primary",
+                    timeZoneIdentifier: TimeZone.current.identifier
+                ),
+                // The personal MVP keeps optional SaaS connector code out of the app target;
+                // this readiness path prevents mock success until the OAuth adapter PR supplies a sink.
+                taskSyncService: nil
+            )
             return ProjectBoardViewModel(
-                store: SQLiteProjectBoardStore(connection: connection),
+                store: projectBoardStore,
                 inboxCaptureStore: SQLiteInboxCaptureStore(connection: connection),
                 assistantQueueStore: assistantQueueStore,
                 assistantQueueExecutionCoordinator: makeAssistantQueueExecutionCoordinator(
@@ -3565,7 +3578,8 @@ private enum AppRuntimeFactory {
                 ),
                 executionReceiptStore: executionReceiptStore,
                 missedTaskReviewStateStore: SQLiteMissedTaskReviewStateStore(connection: connection),
-                externalTaskLinkStore: SQLiteExternalTaskLinkStore(connection: connection),
+                externalTaskLinkStore: externalTaskLinkStore,
+                googleCalendarSync: googleCalendarSync,
                 onChange: postProjectBoardDidChange
             )
         } catch {

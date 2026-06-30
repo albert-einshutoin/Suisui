@@ -1206,6 +1206,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var dailyPlanningReview: DailyPlanningReview?
     @Published public private(set) var scheduleDraft: ScheduleDraft?
     @Published public private(set) var scheduleApplyResult: ScheduleApplyResult?
+    @Published public private(set) var googleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus
     @Published public private(set) var projectAssistantAnswer: ProjectAssistantAnswer?
     @Published public private(set) var projectAssistantReviewDraft: ProjectAssistantReviewDraft?
     @Published public private(set) var taskAutomationReviewDecision: TaskAutoExecutionDecision?
@@ -1222,6 +1223,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     private let missedTaskReviewStateStore: any MissedTaskReviewStateStore
     private let externalTaskLinkStore: (any ExternalTaskLinkStore)?
     private let scheduleCalendarClient: (any CalendarClient)?
+    private let googleCalendarSync: (any GoogleCalendarRuntimeSyncing)?
     private let onChange: () -> Void
     private var lastInboxClassificationUndo: InboxClassificationUndo?
     // Inbox rows render often during filtering and selection changes, so capture
@@ -1238,6 +1240,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         missedTaskReviewStateStore: any MissedTaskReviewStateStore = InMemoryMissedTaskReviewStateStore(),
         externalTaskLinkStore: (any ExternalTaskLinkStore)? = nil,
         scheduleCalendarClient: (any CalendarClient)? = nil,
+        googleCalendarSync: (any GoogleCalendarRuntimeSyncing)? = nil,
         snapshot: ProjectBoardSnapshot = .empty,
         onChange: @escaping () -> Void = {}
     ) {
@@ -1249,6 +1252,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.missedTaskReviewStateStore = missedTaskReviewStateStore
         self.externalTaskLinkStore = externalTaskLinkStore
         self.scheduleCalendarClient = scheduleCalendarClient
+        self.googleCalendarSync = googleCalendarSync
         self.snapshot = snapshot
         self.onChange = onChange
         self.selectedProjectID = snapshot.projects.first?.id
@@ -1262,6 +1266,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.dailyPlanningReview = nil
         self.scheduleDraft = nil
         self.scheduleApplyResult = nil
+        self.googleCalendarSyncStatus = .runtimeNotConfigured
         self.projectAssistantAnswer = nil
         self.projectAssistantReviewDraft = nil
         self.taskAutomationReviewDecision = nil
@@ -1270,6 +1275,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.approvedAutomationExecutionReceipts = []
         self.assistantQueueSnapshot = .empty
         self.taskAutomationSessionHistory = .empty
+        refreshGoogleCalendarSyncStatus()
     }
 
     public var selectedProject: ProjectBoardProject? {
@@ -1284,6 +1290,14 @@ public final class ProjectBoardViewModel: ObservableObject {
         return snapshot.projects
             .flatMap(\.tasks)
             .first { $0.id == selectedTaskID }
+    }
+
+    public var canSyncGoogleCalendar: Bool {
+        googleCalendarSyncStatus.canSync
+    }
+
+    public var googleCalendarSyncHelp: String {
+        googleCalendarSyncStatus.detailLabel
     }
 
     public var selectedInboxCaptureRecords: [InboxCaptureRecord] {
@@ -2220,6 +2234,75 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    public func refreshGoogleCalendarSyncStatus(now: Date = Date()) {
+        guard let googleCalendarSync else {
+            googleCalendarSyncStatus = .runtimeNotConfigured
+            return
+        }
+
+        do {
+            googleCalendarSyncStatus = try googleCalendarSync.status(now: now)
+        } catch {
+            googleCalendarSyncStatus = GoogleCalendarRuntimeSyncStatus(
+                plan: googleCalendarSyncStatus.plan,
+                state: .failed(message: Self.userFacingMessage(for: error, fallback: "Google Calendar sync status is unavailable."))
+            )
+        }
+    }
+
+    @discardableResult
+    public func syncDueTasksToGoogleCalendar(approvalToken: String?) -> GoogleCalendarTaskSyncResult? {
+        refreshGoogleCalendarSyncStatus()
+        guard let googleCalendarSync else {
+            errorMessage = GoogleCalendarRuntimeSyncStatus.runtimeNotConfigured.detailLabel
+            return nil
+        }
+        guard googleCalendarSyncStatus.canSync else {
+            errorMessage = googleCalendarSyncStatus.detailLabel
+            return nil
+        }
+        guard let approvalToken,
+              !approvalToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "Google Calendar sync requires approval before writing events."
+            return nil
+        }
+
+        do {
+            let context = ToolExecutionContext(
+                approvalToken: ApprovalToken(id: approvalToken, sessionID: "project-board-google-calendar-sync"),
+                source: .reviewUI
+            )
+            let result = try googleCalendarSync.syncDueTasks(context: context)
+            integrationStatusMessage = Self.googleCalendarSyncStatusMessage(for: result)
+            errorMessage = nil
+            refreshGoogleCalendarSyncStatus()
+            onChange()
+            return result
+        } catch GoogleCalendarRuntimeSyncError.approvalRequired {
+            errorMessage = "Google Calendar sync requires approval before writing events."
+            return nil
+        } catch GoogleCalendarRuntimeSyncError.notReady(let state) {
+            googleCalendarSyncStatus = GoogleCalendarRuntimeSyncStatus(plan: googleCalendarSyncStatus.plan, state: state)
+            errorMessage = googleCalendarSyncStatus.detailLabel
+            return nil
+        } catch SyncServiceError.upgradeRequired(let requiredPlan) {
+            googleCalendarSyncStatus = GoogleCalendarRuntimeSyncStatus(
+                plan: googleCalendarSyncStatus.plan,
+                state: .upgradeRequired(requiredPlan: requiredPlan)
+            )
+            errorMessage = googleCalendarSyncStatus.detailLabel
+            return nil
+        } catch {
+            let message = Self.userFacingMessage(for: error, fallback: "Google Calendar sync failed.")
+            googleCalendarSyncStatus = GoogleCalendarRuntimeSyncStatus(
+                plan: googleCalendarSyncStatus.plan,
+                state: .failed(message: message)
+            )
+            errorMessage = message
+            return nil
+        }
+    }
+
     public func projectPortfolioSummaries(
         on referenceDate: Date = Date(),
         calendar: Calendar = .current
@@ -2620,6 +2703,22 @@ public final class ProjectBoardViewModel: ObservableObject {
             )
         }
         return String(format: String(localized: "Imported %@ from JSON."), taskLabel)
+    }
+
+    private static func googleCalendarSyncStatusMessage(for result: GoogleCalendarTaskSyncResult) -> String {
+        let createdLabel = String(
+            format: String(localized: result.createdEventCount == 1 ? "%d Google Calendar event" : "%d Google Calendar events"),
+            result.createdEventCount
+        )
+        guard result.skippedAlreadyLinkedCount > 0 else {
+            return String(format: String(localized: "Created %@."), createdLabel)
+        }
+
+        let skippedLabel = String(
+            format: String(localized: result.skippedAlreadyLinkedCount == 1 ? "%d already-linked task" : "%d already-linked tasks"),
+            result.skippedAlreadyLinkedCount
+        )
+        return String(format: String(localized: "Created %@. Skipped %@."), createdLabel, skippedLabel)
     }
 
     @discardableResult
