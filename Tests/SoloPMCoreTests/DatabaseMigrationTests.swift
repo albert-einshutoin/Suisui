@@ -179,4 +179,31 @@ final class DatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(projectColumns.contains("workspace_bookmark"))
         XCTAssertTrue(try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;").contains("0014_add_project_workspace_bookmark"))
     }
+
+    func testCurrentMigrationsCreateAssistantQueueItemsTable() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+
+        XCTAssertTrue(try connection.tableExists("assistant_queue_items"))
+        XCTAssertTrue(try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;").contains("0015_create_assistant_queue_items"))
+
+        let columns = Set(try connection.queryRows("PRAGMA table_info(assistant_queue_items);").compactMap { $0["name"] })
+        XCTAssertTrue(columns.contains("id"))
+        XCTAssertTrue(columns.contains("state"))
+        XCTAssertTrue(columns.contains("risk_level"))
+        XCTAssertTrue(columns.contains("payload_kind"))
+        XCTAssertTrue(columns.contains("payload_json"))
+        XCTAssertTrue(columns.contains("redacted_summary"))
+        XCTAssertTrue(columns.contains("review_reason"))
+        XCTAssertTrue(columns.contains("required_capabilities_json"))
+        XCTAssertTrue(columns.contains("approval_json"))
+        XCTAssertTrue(columns.contains("created_at"))
+        XCTAssertTrue(columns.contains("updated_at"))
+
+        let indexes = Set(try connection.queryRows("PRAGMA index_list(assistant_queue_items);").compactMap { $0["name"] })
+        XCTAssertTrue(indexes.contains("idx_assistant_queue_items_state_updated_at"))
+        XCTAssertTrue(indexes.contains("idx_assistant_queue_items_payload_kind"))
+    }
 }

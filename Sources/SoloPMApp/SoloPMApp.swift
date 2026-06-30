@@ -3450,6 +3450,7 @@ private enum AppRuntimeFactory {
             return ProjectBoardViewModel(
                 store: SQLiteProjectBoardStore(connection: connection),
                 inboxCaptureStore: SQLiteInboxCaptureStore(connection: connection),
+                assistantQueueStore: SQLiteAssistantQueueStore(connection: connection),
                 missedTaskReviewStateStore: SQLiteMissedTaskReviewStateStore(connection: connection),
                 externalTaskLinkStore: SQLiteExternalTaskLinkStore(connection: connection),
                 onChange: postProjectBoardDidChange
@@ -3552,15 +3553,18 @@ private enum AppRuntimeFactory {
     static func makeVoiceCaptureViewModel() -> VoiceCaptureViewModel {
         let secretStore = makeSecretStore()
         let settingsResult = loadRuntimeSettings()
-        let auditLogger: (any AuditLogger)?
-        let runtimeValidationMessage: String?
-        let initialFailureMessage: String?
+        var auditLogger: (any AuditLogger)?
+        var assistantQueueStore: (any AssistantQueueStore)?
+        var runtimeValidationMessage: String?
+        var initialFailureMessage: String?
         do {
             auditLogger = try makeAuditLogger()
+            assistantQueueStore = try SQLiteAssistantQueueStore(connection: migratedConnection())
             runtimeValidationMessage = nil
             initialFailureMessage = settingsResult.errorMessage
         } catch {
             auditLogger = nil
+            assistantQueueStore = nil
             runtimeValidationMessage = "Voice planning is unavailable because audit logging or local data stores could not be opened."
             initialFailureMessage = runtimeValidationMessage
         }
@@ -3570,7 +3574,8 @@ private enum AppRuntimeFactory {
             sttProvider: makeSpeechToTextProvider(settings: settingsResult.settings, secretStore: secretStore),
             llmProvider: makeLLMProvider(settings: settingsResult.settings, secretStore: secretStore),
             auditRecorder: auditLogger.map { PlanningAuditRecorder(logger: $0) },
-            runtimeValidationMessage: runtimeValidationMessage
+            runtimeValidationMessage: runtimeValidationMessage,
+            assistantQueueStore: assistantQueueStore
         )
     }
 
