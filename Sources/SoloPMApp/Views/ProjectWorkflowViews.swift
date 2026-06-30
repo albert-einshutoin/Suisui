@@ -154,7 +154,6 @@ struct CatchUpWorkflowView: View {
 
 struct ScheduleWorkflowView: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
-    @State private var approvalToken = ""
     @State private var workloadReferenceDate = Date()
     @State private var selectedWorkloadDayKey: String?
 
@@ -189,19 +188,19 @@ struct ScheduleWorkflowView: View {
                 }
 
                 HStack(spacing: 8) {
-                    SecureField("Approval token", text: $approvalToken)
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityIdentifier("schedule-approval-token")
-                        .accessibilityLabel("Schedule approval token")
-                        .accessibilityHint("Required before writing reviewed schedule blocks to Calendar.")
                     Button {
-                        _ = viewModel.applyScheduleDraftToCalendar(approvalToken: approvalToken)
+                        _ = viewModel.enqueueScheduleDraftCalendarApply()
                     } label: {
-                        Label("Apply to Calendar", systemImage: "calendar.badge.checkmark")
+                        Label("Queue Calendar Apply", systemImage: "tray.and.arrow.down")
                     }
                     .disabled(viewModel.scheduleDraft == nil)
                     .accessibilityIdentifier("schedule-apply-calendar")
-                    .accessibilityHint("Requires approval and a configured Calendar backend before any external write.")
+                    .accessibilityHint("Adds reviewed schedule blocks to Assistant Queue before any external Calendar write.")
+                    Text("External Calendar writes run from Assistant Queue after approval.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("schedule-queue-approval-note")
                 }
 
                 if let feedback = viewModel.todayCommandFeedback {

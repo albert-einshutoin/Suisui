@@ -2651,6 +2651,172 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testScheduleDraftQueuesCalendarWorkBlocksForReviewWithoutCalendarWrite() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-30T09:10:00Z")
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let calendarClient = InMemoryCalendarClient()
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore,
+            scheduleCalendarClient: calendarClient
+        )
+        viewModel.load()
+        let titleSecret = "calendar-secret"
+        let project = try XCTUnwrap(viewModel.createProject(title: "Schedule Queue"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Review calendar plan token=\(titleSecret)",
+            projectID: project.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-30"
+        ))
+        _ = viewModel.prepareScheduleDraft(on: referenceDate, calendar: calendar)
+
+        let queued = viewModel.enqueueScheduleDraftCalendarApply(
+            sourceTranscript: "カレンダーへ入れて",
+            on: referenceDate,
+            calendar: calendar
+        )
+
+        XCTAssertTrue(queued)
+        XCTAssertEqual(viewModel.errorMessage, nil)
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Queued Schedule draft Calendar apply for approval.")
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Queued Schedule draft Calendar apply for approval.")
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        XCTAssertTrue(itemID.hasPrefix("action-plan:schedule-draft-calendar-apply:2026-06-30:"))
+        XCTAssertTrue(itemID.hasSuffix(":task:\(task.id)"))
+        let idParts = itemID.split(separator: ":").map(String.init)
+        XCTAssertEqual(idParts.count, 6)
+        XCTAssertEqual(idParts[3].count, 16)
+        XCTAssertTrue(idParts[3].allSatisfy(\.isHexDigit))
+        XCTAssertFalse(itemID.contains("Review calendar plan"))
+        XCTAssertFalse(itemID.contains(titleSecret))
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.map(\.id), [itemID])
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, [itemID])
+        XCTAssertTrue(try calendarClient.listEvents().isEmpty)
+
+        let item = try assistantQueueStore.get(id: itemID)
+        XCTAssertEqual(item.state, .waitingReview)
+        XCTAssertEqual(item.riskLevel, .write)
+        XCTAssertEqual(item.reviewReason, "Schedule draft suggested 1 Calendar work block.")
+        XCTAssertEqual(item.requiredCapabilities, [.tool(.calendarCreateWorkBlock), .appPermission(.calendar), .providerExecutionApproval])
+        guard case .actionPlan(let plan) = item.payload else {
+            return XCTFail("Expected action plan payload")
+        }
+        XCTAssertEqual("action-plan:\(plan.id)", itemID)
+        XCTAssertFalse(plan.id.contains("Review calendar plan"))
+        XCTAssertFalse(plan.id.contains(titleSecret))
+        XCTAssertEqual(plan.actions.map(\.tool), [.calendarCreateWorkBlock])
+        XCTAssertEqual(plan.actions.first?.arguments["taskId"], .number(Double(task.id)))
+        XCTAssertEqual(plan.actions.first?.arguments["projectId"], .number(Double(project.id)))
+        XCTAssertEqual(plan.actions.first?.arguments["title"], .string("Review calendar plan token=\(titleSecret)"))
+        XCTAssertEqual(plan.actions.first?.arguments["startAt"], .string("2026-06-30T09:30:00Z"))
+        XCTAssertEqual(plan.actions.first?.arguments["durationMinutes"], .number(30))
+        XCTAssertEqual(plan.actions.first?.arguments["notes"], .string("Created from a reviewed SoloPM schedule draft."))
+    }
+
+    @MainActor
+    func testScheduleDraftCalendarQueueRequiresAssistantQueueStore() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+
+        let queued = viewModel.enqueueScheduleDraftCalendarApply()
+
+        XCTAssertFalse(queued)
+        XCTAssertEqual(viewModel.errorMessage, "Assistant Queue is unavailable in this build.")
+        XCTAssertTrue(viewModel.assistantQueueSnapshot.rows.isEmpty)
+    }
+
+    @MainActor
+    func testScheduleDraftCalendarQueueUsesContentDigestSoUpdatedDraftDoesNotReuseStalePayload() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let firstReferenceDate = try isoDate("2026-06-30T09:10:00Z")
+        let secondReferenceDate = try isoDate("2026-06-30T11:10:00Z")
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Schedule Queue"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Review calendar plan",
+            projectID: project.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-30"
+        ))
+
+        _ = viewModel.prepareScheduleDraft(on: firstReferenceDate, calendar: calendar)
+        XCTAssertTrue(viewModel.enqueueScheduleDraftCalendarApply(on: firstReferenceDate, calendar: calendar))
+        let firstItemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        let firstItem = try assistantQueueStore.get(id: firstItemID)
+
+        _ = viewModel.prepareScheduleDraft(on: secondReferenceDate, calendar: calendar)
+        XCTAssertTrue(viewModel.enqueueScheduleDraftCalendarApply(on: secondReferenceDate, calendar: calendar))
+        let ids = viewModel.assistantQueueSnapshot.rows.map(\.id).sorted()
+        XCTAssertEqual(ids.count, 2)
+        guard ids.count == 2 else {
+            return
+        }
+        XCTAssertTrue(ids.allSatisfy { $0.hasPrefix("action-plan:schedule-draft-calendar-apply:2026-06-30:") })
+        XCTAssertTrue(ids.allSatisfy { $0.hasSuffix(":task:\(task.id)") })
+        XCTAssertNotEqual(ids[0], ids[1])
+
+        guard case .actionPlan(let firstPlan) = firstItem.payload else {
+            return XCTFail("Expected first action plan payload")
+        }
+        let secondItemID = try XCTUnwrap(ids.first { $0 != firstItemID })
+        let secondItem = try assistantQueueStore.get(id: secondItemID)
+        guard case .actionPlan(let secondPlan) = secondItem.payload else {
+            return XCTFail("Expected second action plan payload")
+        }
+        XCTAssertEqual(firstPlan.actions.first?.arguments["startAt"], .string("2026-06-30T09:30:00Z"))
+        XCTAssertEqual(secondPlan.actions.first?.arguments["startAt"], .string("2026-06-30T11:30:00Z"))
+    }
+
+    @MainActor
+    func testScheduleDraftCalendarQueueRedactsSourceTranscriptBeforePersistence() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-30T09:10:00Z")
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Schedule Queue"))
+        _ = try XCTUnwrap(viewModel.createTask(
+            title: "Review calendar plan",
+            projectID: project.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-30"
+        ))
+        _ = viewModel.prepareScheduleDraft(on: referenceDate, calendar: calendar)
+
+        XCTAssertTrue(viewModel.enqueueScheduleDraftCalendarApply(
+            sourceTranscript: "カレンダーに入れて token=voice-secret",
+            on: referenceDate,
+            calendar: calendar
+        ))
+
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        let item = try assistantQueueStore.get(id: itemID)
+        XCTAssertTrue(item.sourceTranscript?.contains("[REDACTED_SECRET]") ?? false)
+        XCTAssertFalse(item.sourceTranscript?.contains("voice-secret") ?? true)
+        let encodedItem = try XCTUnwrap(String(data: JSONEncoder().encode(item), encoding: .utf8))
+        XCTAssertFalse(encodedItem.contains("voice-secret"))
+    }
+
+    @MainActor
     func testDailyPlanningReviewQueueDraftReportsAssistantQueueSaveFailure() throws {
         var calendar = utcCalendar()
         calendar.firstWeekday = 2

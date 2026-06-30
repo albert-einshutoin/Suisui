@@ -58,6 +58,69 @@ final class AssistantQueueExecutionTests: XCTestCase {
         )
     }
 
+    func testCoordinatorRunsScheduleDraftCalendarApplyAndKeepsScopedReceiptReferences() throws {
+        let queueStore = try makeQueueStore()
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let calendarClient = InMemoryCalendarClient()
+        let item = AssistantQueueAdapter.makeItem(
+            actionPlan: ActionPlan(
+                id: "schedule-draft-calendar-apply:2026-06-30:digest:task:42",
+                userInput: "Queue reviewed Schedule draft for Calendar apply",
+                summary: "Schedule draft Calendar apply for 1 work block.",
+                actions: [
+                    PlanAction(
+                        id: "calendar-work-block-1-task-42",
+                        tool: .calendarCreateWorkBlock,
+                        arguments: [
+                            "title": .string("Calendar block token=task-secret"),
+                            "startAt": .string("2026-06-30T09:30:00Z"),
+                            "durationMinutes": .number(30),
+                            "notes": .string("Created from a reviewed SoloPM schedule draft."),
+                            "taskId": .number(42),
+                            "projectId": .number(7)
+                        ],
+                        riskLevel: .write
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            sourceTranscript: "Schedule draft Calendar apply",
+            interpretationSummary: "Schedule draft Calendar apply",
+            reason: "Schedule draft suggested 1 Calendar work block."
+        )
+        let approved = try AssistantQueueStateMachine.approve(item, reviewerID: "local-user")
+        try queueStore.save(approved)
+        let registry = try ToolRegistry(tools: [
+            CalendarTool(name: .calendarCreateWorkBlock, client: calendarClient)
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-schedule-queue" },
+            now: { Date(timeIntervalSince1970: 160) }
+        )
+
+        let result = try coordinator.execute(id: approved.id)
+
+        XCTAssertEqual(result.item.state, .done)
+        let events = try calendarClient.listEvents()
+        XCTAssertEqual(events.map(\.id), ["calendar-event-1"])
+        XCTAssertEqual(events.first?.draft.title, "Calendar block token=task-secret")
+        let receipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receipt.status, .succeeded)
+        XCTAssertEqual(receipt.primaryToolName, ActionTool.calendarCreateWorkBlock.rawValue)
+        XCTAssertEqual(receipt.assistantQueueItemID, approved.id)
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .task, id: "42")))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .project, id: "7")))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .calendarEvent, id: "calendar-event-1")))
+        XCTAssertEqual(receipt.visibleSurfaces, [.assistantQueue, .taskDetail, .projectDetail, .auditLog])
+        XCTAssertTrue(receipt.actions.first?.inputPreview.contains("[REDACTED_SECRET]") ?? false)
+        let encodedReceipt = try XCTUnwrap(String(data: JSONEncoder().encode(receipt), encoding: .utf8))
+        XCTAssertFalse(encodedReceipt.contains("task-secret"))
+    }
+
     func testCoordinatorCopiesCostPreviewIntoEstimatedReceiptUsage() throws {
         let queueStore = try makeQueueStore()
         let receiptStore = InMemoryExecutionReceiptStore()

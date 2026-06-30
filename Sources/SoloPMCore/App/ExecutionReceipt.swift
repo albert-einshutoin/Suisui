@@ -1775,6 +1775,7 @@ public enum ExecutionReceiptFactory {
             }
             appendReference(kind: .task, keys: ["taskId", "taskID"], output: output, references: &references)
             appendReference(kind: .project, keys: ["projectId", "projectID"], output: output, references: &references)
+            appendReference(kind: .calendarEvent, keys: ["calendarEventId", "calendarEventID", "eventId", "eventID"], output: output, references: &references)
             appendReference(kind: .notification, keys: ["notificationId", "notificationID"], output: output, references: &references)
             // Keep connector references stable and low-disclosure; reminder titles stay in redacted summaries.
             appendReference(

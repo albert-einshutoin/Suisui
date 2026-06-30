@@ -146,7 +146,7 @@ final class SystemToolTests: XCTestCase {
         let linkStore = SQLiteCalendarLinkStore(connection: connection)
         let tool = CalendarTool(name: .calendarCreateEvent, client: InMemoryCalendarClient(), linkStore: linkStore)
 
-        _ = try tool.execute(
+        let result = try tool.execute(
             arguments: [
                 "title": .string("Deep work"),
                 "startAt": .string("2026-06-18T09:00:00Z"),
@@ -161,6 +161,9 @@ final class SystemToolTests: XCTestCase {
         XCTAssertEqual(link.eventID, "calendar-event-1")
         XCTAssertEqual(link.projectID, 10)
         XCTAssertEqual(link.taskID, 20)
+        XCTAssertEqual(result.output["calendarEventId"], .string("calendar-event-1"))
+        XCTAssertEqual(result.output["projectId"], .number(10))
+        XCTAssertEqual(result.output["taskId"], .number(20))
     }
 
     func testCalendarLinkStoreRejectsCorruptedTaskIDInsteadOfDroppingLink() throws {

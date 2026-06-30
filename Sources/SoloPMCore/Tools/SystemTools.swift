@@ -143,6 +143,7 @@ public struct CalendarTool: Tool {
         try validateRequiredArguments(arguments)
 
         let args = ToolArguments(arguments, tool: name)
+        let entityReferences = try calendarEntityReferences(args: args)
         do {
             let draft: CalendarEventDraft
             switch name {
@@ -166,12 +167,12 @@ public struct CalendarTool: Tool {
             }
 
             let record = try client.createEvent(draft)
-            try linkCalendarEventIfNeeded(record: record, args: args)
+            try linkCalendarEventIfNeeded(record: record, entityReferences: entityReferences)
             return ToolResult(
                 tool: name,
                 status: .succeeded,
                 summary: "Created calendar event \(record.draft.title)",
-                output: ["eventId": .string(record.id)],
+                output: calendarToolOutput(record: record, entityReferences: entityReferences),
                 rollbackMetadata: ["eventId": .string(record.id)]
             )
         } catch let error as ToolClientError {
@@ -179,14 +180,43 @@ public struct CalendarTool: Tool {
         }
     }
 
-    private func linkCalendarEventIfNeeded(record: CalendarEventRecord, args: ToolArguments) throws {
-        let projectID = try args.optionalInt64("projectId")
-        let taskID = try args.optionalInt64("taskId")
+    private func calendarEntityReferences(args: ToolArguments) throws -> (projectID: Int64?, taskID: Int64?) {
+        (
+            projectID: try args.optionalInt64("projectId"),
+            taskID: try args.optionalInt64("taskId")
+        )
+    }
+
+    private func linkCalendarEventIfNeeded(
+        record: CalendarEventRecord,
+        entityReferences: (projectID: Int64?, taskID: Int64?)
+    ) throws {
+        let projectID = entityReferences.projectID
+        let taskID = entityReferences.taskID
         guard projectID != nil || taskID != nil else {
             return
         }
 
         try linkStore?.link(eventID: record.id, projectID: projectID, taskID: taskID, title: record.draft.title)
+    }
+
+    private func calendarToolOutput(
+        record: CalendarEventRecord,
+        entityReferences: (projectID: Int64?, taskID: Int64?)
+    ) -> [String: JSONValue] {
+        // Assistant Queue receipts derive task/project/calendar visibility from
+        // tool output, so Calendar writes must return non-secret entity IDs.
+        var output: [String: JSONValue] = [
+            "eventId": .string(record.id),
+            "calendarEventId": .string(record.id)
+        ]
+        if let projectID = entityReferences.projectID {
+            output["projectId"] = .number(Double(projectID))
+        }
+        if let taskID = entityReferences.taskID {
+            output["taskId"] = .number(Double(taskID))
+        }
+        return output
     }
 
     private func makeEventDraft(args: ToolArguments) throws -> CalendarEventDraft {
