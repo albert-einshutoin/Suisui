@@ -41,6 +41,37 @@ final class ReviewSessionViewModelTests: XCTestCase {
         XCTAssertEqual(receiptAudit.metadata["session_id"], viewModel.session.id)
     }
 
+    func testNotificationExecutionReceiptIncludesScheduledNotificationReference() throws {
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let registry = try ToolRegistry(tools: [
+            NotificationTool(name: .notificationSchedule, client: InMemoryNotificationClient())
+        ])
+        let viewModel = ReviewSessionViewModel(
+            plan: ActionPlan.reviewViewModelFixture(actions: [
+                PlanAction(
+                    id: "notify",
+                    tool: .notificationSchedule,
+                    arguments: [
+                        "id": .string("notification-standup"),
+                        "title": .string("Standup"),
+                        "scheduledAt": .string("2026-07-01T09:00:00Z")
+                    ],
+                    riskLevel: .write
+                )
+            ]),
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore
+        )
+
+        try viewModel.approve()
+        try viewModel.execute()
+
+        let receipt = try XCTUnwrap(viewModel.lastExecutionReceipt)
+        XCTAssertEqual(receiptStore.receipts, [receipt])
+        XCTAssertEqual(receipt.actions.first?.toolName, ActionTool.notificationSchedule.rawValue)
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .notification, id: "notification-standup")))
+    }
+
     func testApproveOrReportErrorSurfacesDisabledApprovalFailure() throws {
         let registry = try ToolRegistry(tools: [
             StaticTool(name: .projectList, description: "read", inputSchema: ToolInputSchema(), permissionLevel: .read) { _, _ in

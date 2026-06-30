@@ -1089,6 +1089,7 @@ public enum ExecutionReceiptFactory {
             }
             appendReference(kind: .task, keys: ["taskId", "taskID"], output: output, references: &references)
             appendReference(kind: .project, keys: ["projectId", "projectID"], output: output, references: &references)
+            appendReference(kind: .notification, keys: ["notificationId", "notificationID"], output: output, references: &references)
         }
         return references
     }
