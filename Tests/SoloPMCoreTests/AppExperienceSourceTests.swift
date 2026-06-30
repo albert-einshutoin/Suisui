@@ -2963,6 +2963,32 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(syncSource.contains("return SyncStartResult(startedAt: Date())"))
     }
 
+    func testSettingsGoogleCalendarRowUsesRuntimeReadinessAndOAuthActions() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let syncStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
+        let providerStart = try XCTUnwrap(appSource.range(of: "@ViewBuilder\n    private var selectedProviderConfigurationFields"))
+        let syncSource = String(appSource[syncStart.lowerBound..<providerStart.lowerBound])
+
+        XCTAssertTrue(appSource.contains("let googleCalendarStatusProvider: () -> GoogleCalendarRuntimeSyncStatus"))
+        XCTAssertTrue(appSource.contains("@State private var googleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus?"))
+        XCTAssertTrue(appSource.contains("@State private var googleCalendarSetupMessage: String?"))
+        XCTAssertTrue(appSource.contains("_googleCalendarSyncStatus = State(initialValue: nil)"))
+        XCTAssertTrue(appSource.contains("private var googleCalendarSettingsReadinessRow: GoogleCalendarSettingsReadinessRow"))
+        XCTAssertTrue(appSource.contains("GoogleCalendarSettingsReadinessRow(status: googleCalendarSyncStatus)"))
+        XCTAssertTrue(syncSource.contains("status: googleCalendarSettingsReadinessRow.statusLabel"))
+        XCTAssertTrue(syncSource.contains("detail: googleCalendarSettingsReadinessRow.detailLabel"))
+        XCTAssertTrue(syncSource.contains("nextAction: googleCalendarSettingsReadinessRow.nextActionLabel"))
+        XCTAssertTrue(syncSource.contains("privacyBoundary: googleCalendarSettingsReadinessRow.privacyBoundaryLabel"))
+        XCTAssertTrue(syncSource.contains("statusActionLabel: googleCalendarSettingsReadinessRow.statusCheckActionLabel"))
+        XCTAssertTrue(syncSource.contains("onStatusAction: refreshGoogleCalendarSettingsStatus"))
+        XCTAssertTrue(syncSource.contains("Connect with OAuth authorization"))
+        XCTAssertTrue(syncSource.contains("OAuth authorization opens in the system browser"))
+        XCTAssertTrue(syncSource.contains("settings-google-calendar-oauth-setup-message"))
+        XCTAssertFalse(syncSource.contains("settingsViewModel.setTransientErrorMessage"))
+        XCTAssertFalse(syncSource.contains("Google Calendar API Key"))
+        XCTAssertFalse(syncSource.contains("geminiAPIKeyInput"))
+    }
+
     func testSyncSettingsTabSurfacesPaidValueAndLocalBoundaryBeforeToggle() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
@@ -3006,12 +3032,18 @@ final class AppExperienceSourceTests: XCTestCase {
         let factoryStart = try XCTUnwrap(appSource.range(of: "let googleCalendarSync ="))
         let factoryEnd = try XCTUnwrap(appSource.range(of: "return ProjectBoardViewModel(", range: factoryStart.lowerBound..<appSource.endIndex))
         let factorySource = String(appSource[factoryStart.lowerBound..<factoryEnd.lowerBound])
+        let helperStart = try XCTUnwrap(appSource.range(of: "private static func makeGoogleCalendarSyncController("))
+        let helperEnd = try XCTUnwrap(appSource.range(of: "private static func makeAuditLogger()", range: helperStart.lowerBound..<appSource.endIndex))
+        let helperSource = String(appSource[helperStart.lowerBound..<helperEnd.lowerBound])
 
         XCTAssertTrue(appSource.contains("import SoloPMGoogleCalendarRuntime"))
-        XCTAssertTrue(factorySource.contains("GoogleCalendarAppRuntimeFactory.makeSyncController("))
-        XCTAssertTrue(factorySource.contains("idempotencyNamespaceStore:"))
+        XCTAssertTrue(factorySource.contains("makeGoogleCalendarSyncController("))
+        XCTAssertTrue(helperSource.contains("GoogleCalendarAppRuntimeFactory.makeSyncController("))
+        XCTAssertTrue(helperSource.contains("idempotencyNamespaceStore:"))
         XCTAssertFalse(factorySource.contains("UnavailableGoogleCalendarRuntimeCredentialStatusStore()"))
         XCTAssertFalse(factorySource.contains("taskSyncService: nil"))
+        XCTAssertFalse(helperSource.contains("UnavailableGoogleCalendarRuntimeCredentialStatusStore()"))
+        XCTAssertFalse(helperSource.contains("taskSyncService: nil"))
     }
 
     func testProjectBoardGoogleCalendarSyncMenuUsesRuntimeReadinessInsteadOfHardcodedDisabled() throws {

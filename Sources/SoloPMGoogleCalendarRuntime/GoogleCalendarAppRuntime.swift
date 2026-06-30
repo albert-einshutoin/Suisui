@@ -401,6 +401,50 @@ public struct GoogleCalendarHTTPEventSink: ExternalCalendarEventSink {
 }
 
 public enum GoogleCalendarAppRuntimeFactory {
+    public static func syncStatus(
+        entitlementStore: any EntitlementStore,
+        secretStore: any SecretStore,
+        metadataStore: any GoogleCalendarOAuthCredentialMetadataStore,
+        calendarID: String = "primary",
+        timeZoneIdentifier: String = TimeZone.current.identifier,
+        now: Date = Date()
+    ) throws -> GoogleCalendarRuntimeSyncStatus {
+        let credentialStore = GoogleCalendarOAuthCredentialStore(
+            secretStore: secretStore,
+            metadataStore: metadataStore
+        )
+        // Settings needs a read-only readiness check: app composition proves the write runtime
+        // exists, while this path avoids constructing idempotency state or calendar write sinks.
+        return try GoogleCalendarRuntimeSyncReadiness.status(
+            entitlementStore: entitlementStore,
+            credentialStatusStore: GoogleCalendarOAuthCredentialStatusStore(credentialStore: credentialStore),
+            configuration: GoogleCalendarRuntimeSyncConfiguration(
+                calendarID: calendarID,
+                timeZoneIdentifier: timeZoneIdentifier
+            ),
+            isWriteRuntimeConfigured: true,
+            now: now
+        )
+    }
+
+    public static func syncStatus(
+        entitlementStore: any EntitlementStore,
+        secretStore: any SecretStore,
+        connection: SQLiteConnection,
+        calendarID: String = "primary",
+        timeZoneIdentifier: String = TimeZone.current.identifier,
+        now: Date = Date()
+    ) throws -> GoogleCalendarRuntimeSyncStatus {
+        try syncStatus(
+            entitlementStore: entitlementStore,
+            secretStore: secretStore,
+            metadataStore: SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection),
+            calendarID: calendarID,
+            timeZoneIdentifier: timeZoneIdentifier,
+            now: now
+        )
+    }
+
     public static func makeSyncController(
         entitlementStore: any EntitlementStore,
         store: any ProjectBoardStore,

@@ -448,6 +448,61 @@ public struct GoogleCalendarRuntimeSyncStatus: Equatable, Sendable {
     }
 }
 
+public struct GoogleCalendarSettingsReadinessRow: Equatable, Sendable {
+    public var statusLabel: String
+    public var detailLabel: String
+    public var nextActionLabel: String
+    public var statusCheckActionLabel: String
+    public var privacyBoundaryLabel: String
+    public var isReady: Bool
+
+    public init(status: GoogleCalendarRuntimeSyncStatus) {
+        self.init(status: Optional(status))
+    }
+
+    public init(status: GoogleCalendarRuntimeSyncStatus?) {
+        guard let status else {
+            self.statusLabel = "Not checked"
+            self.detailLabel = "Check local OAuth, plan, and calendar readiness before syncing."
+            self.nextActionLabel = "Check Status"
+            self.statusCheckActionLabel = "Check Status"
+            self.privacyBoundaryLabel = "Tokens stay in Keychain; Settings uses OAuth only."
+            self.isReady = false
+            return
+        }
+
+        self.statusLabel = status.statusLabel
+        self.detailLabel = status.detailLabel
+        self.nextActionLabel = Self.nextActionLabel(for: status.state)
+        self.statusCheckActionLabel = "Check Status"
+        // Google Calendar uses OAuth tokens, not provider API keys. Keeping this label in
+        // the shared row model makes every Settings surface repeat the same non-secret boundary.
+        self.privacyBoundaryLabel = "Tokens stay in Keychain; Settings uses OAuth only."
+        self.isReady = status.canSync
+    }
+
+    private static func nextActionLabel(for state: GoogleCalendarRuntimeSyncState) -> String {
+        switch state {
+        case .upgradeRequired:
+            "Upgrade to Pro before OAuth authorization"
+        case .calendarNotConfigured, .invalidCalendarID:
+            "Choose a calendar before syncing"
+        case .oauthDisconnected:
+            "Connect with OAuth authorization"
+        case .missingRequiredScope:
+            "Reconnect with Calendar events scope"
+        case .tokenExpiredWithoutRefresh:
+            "Reconnect with OAuth authorization"
+        case .runtimeNotConfigured:
+            "Update SoloPM runtime configuration"
+        case .ready:
+            "Sync due tasks from Project Board"
+        case .failed:
+            "Check status again"
+        }
+    }
+}
+
 public enum GoogleCalendarRuntimeSyncError: Error, Equatable, Sendable {
     case approvalRequired
     case invalidDueDate(String)
@@ -459,25 +514,14 @@ public protocol GoogleCalendarRuntimeSyncing: Sendable {
     func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult
 }
 
-public final class GoogleCalendarRuntimeSyncController: GoogleCalendarRuntimeSyncing, @unchecked Sendable {
-    private let entitlementStore: any EntitlementStore
-    private let credentialStatusStore: any GoogleCalendarRuntimeCredentialStatusStore
-    private let configuration: GoogleCalendarRuntimeSyncConfiguration
-    private let taskSyncService: GoogleCalendarTaskSyncService?
-
-    public init(
+public enum GoogleCalendarRuntimeSyncReadiness {
+    public static func status(
         entitlementStore: any EntitlementStore,
         credentialStatusStore: any GoogleCalendarRuntimeCredentialStatusStore,
         configuration: GoogleCalendarRuntimeSyncConfiguration,
-        taskSyncService: GoogleCalendarTaskSyncService?
-    ) {
-        self.entitlementStore = entitlementStore
-        self.credentialStatusStore = credentialStatusStore
-        self.configuration = configuration
-        self.taskSyncService = taskSyncService
-    }
-
-    public func status(now: Date = Date()) throws -> GoogleCalendarRuntimeSyncStatus {
+        isWriteRuntimeConfigured: Bool,
+        now: Date = Date()
+    ) throws -> GoogleCalendarRuntimeSyncStatus {
         let entitlement = try entitlementStore.snapshot()
         guard entitlement.plan.allows(.externalConnectorWrite) else {
             return GoogleCalendarRuntimeSyncStatus(
@@ -505,13 +549,42 @@ public final class GoogleCalendarRuntimeSyncController: GoogleCalendarRuntimeSyn
         if let expiresAt = credentialStatus.expiresAt, expiresAt <= now, !credentialStatus.hasRefreshToken {
             return GoogleCalendarRuntimeSyncStatus(plan: entitlement.plan, state: .tokenExpiredWithoutRefresh)
         }
-        guard taskSyncService != nil else {
+        guard isWriteRuntimeConfigured else {
             // Readiness must account for the local app boundary: metadata alone is not enough
             // unless a write sink is present, otherwise the UI could imply a fake success path.
             return GoogleCalendarRuntimeSyncStatus(plan: entitlement.plan, state: .runtimeNotConfigured)
         }
 
         return GoogleCalendarRuntimeSyncStatus(plan: entitlement.plan, state: .ready)
+    }
+}
+
+public final class GoogleCalendarRuntimeSyncController: GoogleCalendarRuntimeSyncing, @unchecked Sendable {
+    private let entitlementStore: any EntitlementStore
+    private let credentialStatusStore: any GoogleCalendarRuntimeCredentialStatusStore
+    private let configuration: GoogleCalendarRuntimeSyncConfiguration
+    private let taskSyncService: GoogleCalendarTaskSyncService?
+
+    public init(
+        entitlementStore: any EntitlementStore,
+        credentialStatusStore: any GoogleCalendarRuntimeCredentialStatusStore,
+        configuration: GoogleCalendarRuntimeSyncConfiguration,
+        taskSyncService: GoogleCalendarTaskSyncService?
+    ) {
+        self.entitlementStore = entitlementStore
+        self.credentialStatusStore = credentialStatusStore
+        self.configuration = configuration
+        self.taskSyncService = taskSyncService
+    }
+
+    public func status(now: Date = Date()) throws -> GoogleCalendarRuntimeSyncStatus {
+        try GoogleCalendarRuntimeSyncReadiness.status(
+            entitlementStore: entitlementStore,
+            credentialStatusStore: credentialStatusStore,
+            configuration: configuration,
+            isWriteRuntimeConfigured: taskSyncService != nil,
+            now: now
+        )
     }
 
     public func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult {
