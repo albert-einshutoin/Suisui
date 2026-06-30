@@ -68,6 +68,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
     public var capabilityLabels: [String]
     public var blockingReason: String?
     public var canApprove: Bool
+    public var canRun: Bool
     public var canDefer: Bool
     public var canReject: Bool
 
@@ -82,6 +83,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
         capabilityLabels: [String],
         blockingReason: String?,
         canApprove: Bool,
+        canRun: Bool,
         canDefer: Bool,
         canReject: Bool
     ) {
@@ -95,6 +97,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
         self.capabilityLabels = capabilityLabels
         self.blockingReason = blockingReason
         self.canApprove = canApprove
+        self.canRun = canRun
         self.canDefer = canDefer
         self.canReject = canReject
     }
@@ -146,6 +149,7 @@ public enum AssistantQueueReadModel {
             capabilityLabels: item.requiredCapabilities.map { redactedPreview(label(for: $0)) },
             blockingReason: item.blockingReason,
             canApprove: canApprove(item),
+            canRun: canRun(item),
             canDefer: canDefer(item),
             canReject: canReject(item)
         )
@@ -172,12 +176,14 @@ public enum AssistantQueueReadModel {
             return 3
         case .running:
             return 4
-        case .deferred:
+        case .failed:
             return 5
-        case .rejected:
+        case .deferred:
             return 6
-        case .done:
+        case .rejected:
             return 7
+        case .done:
+            return 8
         }
     }
 
@@ -185,23 +191,27 @@ public enum AssistantQueueReadModel {
         switch item.state {
         case .waitingReview, .captured, .interpreted, .drafted, .deferred:
             return item.riskLevel != .danger
-        case .approved, .running, .blocked, .done, .rejected:
+        case .approved, .running, .blocked, .done, .failed, .rejected:
             return false
         }
+    }
+
+    private static func canRun(_ item: AssistantQueueItem) -> Bool {
+        item.state == .approved
     }
 
     private static func canDefer(_ item: AssistantQueueItem) -> Bool {
         switch item.state {
         case .waitingReview, .captured, .interpreted, .drafted, .approved:
             return true
-        case .running, .blocked, .done, .rejected, .deferred:
+        case .running, .blocked, .done, .failed, .rejected, .deferred:
             return false
         }
     }
 
     private static func canReject(_ item: AssistantQueueItem) -> Bool {
         switch item.state {
-        case .done, .rejected:
+        case .done, .failed, .rejected:
             return false
         case .captured, .interpreted, .drafted, .waitingReview, .approved, .running, .blocked, .deferred:
             return true
@@ -230,6 +240,8 @@ public enum AssistantQueueReadModel {
             return "Blocked"
         case .done:
             return "Done"
+        case .failed:
+            return "Failed"
         case .rejected:
             return "Rejected"
         case .deferred:

@@ -620,6 +620,70 @@ public enum ExecutionReceiptFactory {
 
     public static func makeAssistantQueueReceipt(
         item: AssistantQueueItem,
+        session: ReviewSession,
+        runID: String,
+        model: ExecutionReceiptModel? = nil,
+        usage: ExecutionReceiptUsage = .unknown,
+        startedAt: Date?,
+        finishedAt: Date?,
+        redactionPolicy: ExecutionReceiptRedactionPolicy = ExecutionReceiptRedactionPolicy()
+    ) -> ExecutionReceipt {
+        let redactor = ExecutionReceiptRedactor(policy: redactionPolicy)
+        let inputPreview = [
+            item.sourceTranscript,
+            item.interpretationSummary,
+            item.reviewReason,
+            item.redactedSummary,
+            session.originalPlan.userInput,
+            session.originalPlan.summary
+        ].compactMap { $0 }.joined(separator: "\n")
+        let actions = session.items.map { item in
+            ExecutionReceiptActionSummary(
+                id: item.id,
+                toolName: item.editedAction.tool.rawValue,
+                status: executionReceiptStatus(for: item.executionStatus),
+                inputPreview: redactor.redact(item.argumentDisplaySummary(maxFields: 12, maxValueLength: 300).fullText),
+                outputSummary: item.result.map { redactor.redact($0.summary) },
+                errorSummary: item.errorMessage.map { redactor.redact($0) },
+                failureRecovery: executionReceiptFailureRecovery(for: item.failureRecovery)
+            )
+        }
+        let queueReference = ExecutionReceiptReference(
+            kind: .assistantQueue,
+            id: item.id,
+            label: redactor.redact(item.redactedSummary, maxLength: 300)
+        )
+
+        return ExecutionReceipt(
+            id: "receipt:\(runID):\(item.id):\(session.id)",
+            runID: runID,
+            approvalID: session.approvalToken?.id,
+            assistantQueueItemID: item.id,
+            queueApproval: item.approval.map { approval in
+                ExecutionReceiptQueueApproval(
+                    reviewerID: approval.reviewerID,
+                    note: approval.note,
+                    reviewedContentFingerprint: approval.reviewedContentFingerprint
+                )
+            },
+            createdAt: finishedAt ?? startedAt ?? Date(),
+            startedAt: startedAt,
+            finishedAt: finishedAt,
+            status: executionReceiptStatus(for: session.executionStatus),
+            inputPreview: redactor.redact(inputPreview),
+            outputSummary: redactor.redact(outcomeSummary(for: actions)),
+            model: model,
+            primaryToolName: actions.first?.toolName,
+            usage: usage,
+            references: [queueReference] + references(for: session),
+            actions: actions,
+            visibleSurfaces: [.assistantQueue],
+            redactionPolicy: redactionPolicy
+        )
+    }
+
+    public static func makeAssistantQueueReceipt(
+        item: AssistantQueueItem,
         runID: String,
         executionApprovalID: String?,
         status: ExecutionReceiptStatus,

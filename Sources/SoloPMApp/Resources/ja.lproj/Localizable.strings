@@ -852,3 +852,7 @@
 "Shows a local proposal for today's focus without changing tasks or writing Calendar." = "タスク変更やカレンダー書き込みをせず、今日の集中対象のローカル提案を表示します。";
 "Today daily planning review" = "今日の日次計画レビュー";
 "Unscheduled tasks" = "未スケジュールタスク";
+"Review AI-generated work before anything runs. Approval records intent; Run uses the existing execution gate and creates a receipt." = "AIが生成した作業は実行前に確認します。承認は意図を記録し、実行は既存の実行ゲートを通してレシートを作成します。";
+"Run" = "実行";
+"Run this approved item through the execution gate" = "承認済み項目を実行ゲート経由で実行します";
+"Executes approved generated work through the review gate and records a receipt." = "承認済みの生成作業をレビューゲート経由で実行し、レシートを記録します。";

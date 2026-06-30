@@ -165,6 +165,49 @@ final class AssistantQueueTests: XCTestCase {
         }
     }
 
+    func testRunningItemCanCompleteOrFailAndThenBecomesTerminal() throws {
+        let item = AssistantQueueAdapter.makeItem(
+            actionPlan: makePlan(),
+            sourceTranscript: "Create a task",
+            interpretationSummary: "Routed as task intent.",
+            reason: "Needs review."
+        )
+        let approved = try AssistantQueueStateMachine.approve(item, reviewerID: "user-1")
+        let running = try AssistantQueueStateMachine.startRunning(approved)
+
+        let done = try AssistantQueueStateMachine.markDone(running)
+        XCTAssertEqual(done.state, .done)
+        XCTAssertNil(done.blockingReason)
+        XCTAssertEqual(done.approval, approved.approval)
+        XCTAssertThrowsError(try AssistantQueueStateMachine.approve(done, reviewerID: "user-1")) { error in
+            XCTAssertEqual(error as? AssistantQueueTransitionError, .terminalItemCannotTransition)
+        }
+
+        let failed = try AssistantQueueStateMachine.markFailed(running, reason: "Tool failed.")
+        XCTAssertEqual(failed.state, .failed)
+        XCTAssertEqual(failed.blockingReason, "Tool failed.")
+        XCTAssertEqual(failed.approval, approved.approval)
+        XCTAssertThrowsError(try AssistantQueueStateMachine.approve(failed, reviewerID: "user-1")) { error in
+            XCTAssertEqual(error as? AssistantQueueTransitionError, .terminalItemCannotTransition)
+        }
+    }
+
+    func testDoneAndFailedRequireRunningState() throws {
+        let item = AssistantQueueAdapter.makeItem(
+            actionPlan: makePlan(),
+            sourceTranscript: "Create a task",
+            interpretationSummary: "Routed as task intent.",
+            reason: "Needs review."
+        )
+
+        XCTAssertThrowsError(try AssistantQueueStateMachine.markDone(item)) { error in
+            XCTAssertEqual(error as? AssistantQueueTransitionError, .runningRequiredBeforeCompletion)
+        }
+        XCTAssertThrowsError(try AssistantQueueStateMachine.markFailed(item, reason: "No run.")) { error in
+            XCTAssertEqual(error as? AssistantQueueTransitionError, .runningRequiredBeforeCompletion)
+        }
+    }
+
     func testAutomationRequestAdapterPreservesPendingApprovalAndRedactedSummary() {
         let request = SyncAutomationRequestPayload(
             id: "request-1",

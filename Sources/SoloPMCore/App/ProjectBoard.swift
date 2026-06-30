@@ -1146,6 +1146,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     private let store: any ProjectBoardStore
     private let inboxCaptureStore: (any InboxCaptureStore)?
     private let assistantQueueStore: (any AssistantQueueStore)?
+    private let assistantQueueExecutionCoordinator: AssistantQueueExecutionCoordinator?
     private let missedTaskReviewStateStore: any MissedTaskReviewStateStore
     private let externalTaskLinkStore: (any ExternalTaskLinkStore)?
     private let scheduleCalendarClient: (any CalendarClient)?
@@ -1160,6 +1161,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         store: any ProjectBoardStore,
         inboxCaptureStore: (any InboxCaptureStore)? = nil,
         assistantQueueStore: (any AssistantQueueStore)? = nil,
+        assistantQueueExecutionCoordinator: AssistantQueueExecutionCoordinator? = nil,
         missedTaskReviewStateStore: any MissedTaskReviewStateStore = InMemoryMissedTaskReviewStateStore(),
         externalTaskLinkStore: (any ExternalTaskLinkStore)? = nil,
         scheduleCalendarClient: (any CalendarClient)? = nil,
@@ -1169,6 +1171,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.store = store
         self.inboxCaptureStore = inboxCaptureStore
         self.assistantQueueStore = assistantQueueStore
+        self.assistantQueueExecutionCoordinator = assistantQueueExecutionCoordinator
         self.missedTaskReviewStateStore = missedTaskReviewStateStore
         self.externalTaskLinkStore = externalTaskLinkStore
         self.scheduleCalendarClient = scheduleCalendarClient
@@ -2302,6 +2305,36 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    @discardableResult
+    public func runAssistantQueueItem(id: String) -> Bool {
+        guard let assistantQueueExecutionCoordinator else {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = "Assistant Queue execution is unavailable in this build."
+            integrationStatusMessage = nil
+            return false
+        }
+
+        do {
+            let result = try assistantQueueExecutionCoordinator.execute(id: id)
+            _ = refreshAssistantQueueSnapshot()
+            if result.item.state == .done {
+                errorMessage = nil
+                integrationStatusMessage = "Executed Assistant Queue item."
+                onChange()
+                return true
+            }
+            errorMessage = "Assistant Queue execution failed. Review the receipt before retrying."
+            integrationStatusMessage = nil
+            onChange()
+            return false
+        } catch {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = Self.assistantQueueExecutionMessage(for: error)
+            integrationStatusMessage = nil
+            return false
+        }
+    }
+
     private func transitionAssistantQueueItem(
         id: String,
         _ transform: (AssistantQueueItem) throws -> AssistantQueueItem
@@ -2334,6 +2367,26 @@ public final class ProjectBoardViewModel: ObservableObject {
             _ = refreshAssistantQueueSnapshot()
             errorMessage = AssistantQueueStoreError.userMessage(for: error)
             return false
+        }
+    }
+
+    private static func assistantQueueExecutionMessage(for error: Error) -> String {
+        switch error {
+        case AssistantQueueExecutionError.unsupportedPayload:
+            return "This Assistant Queue item cannot run from Project Board yet."
+        case AssistantQueueTransitionError.approvalRequiredBeforeRunning:
+            return "Approve this Assistant Queue item before running it."
+        case AssistantQueueTransitionError.approvedPayloadChanged:
+            return "Review this Assistant Queue item again because it changed after approval."
+        case AssistantQueueTransitionError.runningRequiredBeforeCompletion:
+            return "Assistant Queue execution is not in a runnable state."
+        case AssistantQueueTransitionError.blockedItemCannotBeApproved,
+             AssistantQueueTransitionError.dangerousPayloadCannotBeApproved:
+            return "Dangerous Assistant Queue items cannot be executed."
+        case AssistantQueueTransitionError.terminalItemCannotTransition:
+            return "Assistant Queue item was already reviewed."
+        default:
+            return "Assistant Queue execution could not be completed."
         }
     }
 
