@@ -11,6 +11,7 @@ final class ActionPlanDomainTests: XCTestCase {
         XCTAssertEqual(ActionTool.frameDelete.actionType, .knowledgeFrame)
         XCTAssertEqual(ActionTool.mailDraftCreateText.actionType, .mailDraft)
         XCTAssertEqual(ActionTool.gitStatus.actionType, .developer)
+        XCTAssertEqual(ActionTool.developmentPreparePullRequestWorkflow.actionType, .developer)
     }
 
     func testLocalReadAndDeleteToolsUseExpectedRiskLevels() {
@@ -18,6 +19,7 @@ final class ActionPlanDomainTests: XCTestCase {
         XCTAssertEqual(ActionTool.projectDelete.defaultRiskLevel, .write)
         XCTAssertEqual(ActionTool.taskDelete.defaultRiskLevel, .write)
         XCTAssertEqual(ActionTool.frameDelete.defaultRiskLevel, .write)
+        XCTAssertEqual(ActionTool.developmentPreparePullRequestWorkflow.defaultRiskLevel, .write)
     }
 
     func testApprovalRequirementUsesHighestActionRisk() {

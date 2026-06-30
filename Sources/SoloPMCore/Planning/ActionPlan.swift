@@ -130,6 +130,7 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
     case gitBranch = "git.branch"
     case gitLogSummary = "git.log_summary"
     case gitDiffSummary = "git.diff_summary"
+    case developmentPreparePullRequestWorkflow = "development.pr_workflow.prepare"
 
     public var defaultRiskLevel: RiskLevel {
         switch self {
@@ -175,7 +176,8 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
              .filesystemCreateArtifactsFromFrame,
              .frameCreate,
              .frameUpdate,
-             .frameDelete:
+             .frameDelete,
+             .developmentPreparePullRequestWorkflow:
             .write
         }
     }
@@ -201,7 +203,7 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
             .knowledgeFrame
         case .mailDraftCreateText:
             .mailDraft
-        case .gitStatus, .gitBranch, .gitLogSummary, .gitDiffSummary:
+        case .gitStatus, .gitBranch, .gitLogSummary, .gitDiffSummary, .developmentPreparePullRequestWorkflow:
             .developer
         }
     }
@@ -225,7 +227,7 @@ public extension ActionTool {
     }
 
     static var developerModePlanningTools: [ActionTool] {
-        [.gitStatus, .gitBranch, .gitLogSummary, .gitDiffSummary]
+        [.gitStatus, .gitBranch, .gitLogSummary, .gitDiffSummary, .developmentPreparePullRequestWorkflow]
     }
 }
 

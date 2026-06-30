@@ -62,7 +62,59 @@ final class DeveloperModeTests: XCTestCase {
         XCTAssertFalse(request.availableTools.contains(.gitBranch))
         XCTAssertFalse(request.availableTools.contains(.gitLogSummary))
         XCTAssertFalse(request.availableTools.contains(.gitDiffSummary))
-        XCTAssertEqual(ActionTool.developerModePlanningTools, [.gitStatus, .gitBranch, .gitLogSummary, .gitDiffSummary])
+        XCTAssertEqual(ActionTool.developerModePlanningTools, [
+            .gitStatus,
+            .gitBranch,
+            .gitLogSummary,
+            .gitDiffSummary,
+            .developmentPreparePullRequestWorkflow
+        ])
+    }
+
+    func testDevelopmentPRWorkflowToolRequiresExplicitOptInAndProjectStores() throws {
+        let root = temporaryDirectory()
+        let connection = try SQLiteConnection(path: ":memory:")
+        try DeveloperModeTestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let projectStore = SQLiteProjectStore(connection: connection)
+        let taskStore = SQLiteTaskStore(connection: connection)
+
+        let gitOnlyRegistry = try ToolRegistryFactory.developerMode(
+            settings: DeveloperModeSettings(
+                isEnabled: true,
+                workspaceRoot: root,
+                enabledCapabilities: [.gitReadOnly]
+            ),
+            gitRunner: RecordingGitCommandRunner(),
+            projectStore: projectStore,
+            taskStore: taskStore
+        )
+
+        XCTAssertFalse(gitOnlyRegistry.contains(.developmentPreparePullRequestWorkflow))
+
+        XCTAssertThrowsError(try ToolRegistryFactory.developerMode(
+            settings: DeveloperModeSettings(
+                isEnabled: true,
+                workspaceRoot: root,
+                enabledCapabilities: [.developmentPRWorkflow]
+            ),
+            gitRunner: RecordingGitCommandRunner()
+        )) { error in
+            XCTAssertEqual(error as? DeveloperModeError, .projectStoresRequired)
+        }
+
+        let developmentRegistry = try ToolRegistryFactory.developerMode(
+            settings: DeveloperModeSettings(
+                isEnabled: true,
+                workspaceRoot: root,
+                enabledCapabilities: [.developmentPRWorkflow]
+            ),
+            gitRunner: RecordingGitCommandRunner(),
+            projectStore: projectStore,
+            taskStore: taskStore
+        )
+
+        XCTAssertTrue(developmentRegistry.contains(.developmentPreparePullRequestWorkflow))
+        XCTAssertTrue(DeveloperModeCapability.developmentPRWorkflow.disclosure.summary.contains("separate approval"))
     }
 
     func testGitStatusToolParsesBranchAndDirtyEntries() throws {
@@ -176,6 +228,24 @@ private final class RecordingGitCommandRunner: GitCommandRunner, @unchecked Send
             standardError: "unexpected command",
             exitCode: 127
         )
+    }
+}
+
+private enum DeveloperModeTestMigrationRunner {
+    static func migrate(connection: SQLiteConnection, migrations: [DatabaseMigration]) throws {
+        try connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                id TEXT PRIMARY KEY NOT NULL,
+                applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        let alreadyApplied = Set(try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;"))
+        for migration in migrations where !alreadyApplied.contains(migration.id) {
+            try migration.apply(connection)
+            try connection.execute("INSERT INTO schema_migrations (id) VALUES ('\(migration.id)');")
+        }
     }
 }
 
