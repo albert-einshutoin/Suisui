@@ -40,6 +40,7 @@ struct ProjectBoardView: View {
     @State private var isTerminalPanelPresented = false
     @State private var isExportingTaskInterop = false
     @State private var isImportingTaskInterop = false
+    @State private var isGoogleCalendarSyncApprovalPresented = false
     @State private var taskInteropExportDocument = TaskInteropFileDocument(data: Data())
 
     init(
@@ -314,6 +315,23 @@ struct ProjectBoardView: View {
         ) { result in
             handleTaskInteropImport(result)
         }
+        .confirmationDialog(
+            "Sync due tasks to Google Calendar?",
+            isPresented: $isGoogleCalendarSyncApprovalPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Approve Google Calendar Sync") {
+                approveGoogleCalendarSync()
+            }
+            .accessibilityIdentifier("project-board-google-calendar-sync-approval-confirm")
+
+            Button("Cancel", role: .cancel) {
+                isGoogleCalendarSyncApprovalPresented = false
+            }
+            .accessibilityIdentifier("project-board-google-calendar-sync-approval-cancel")
+        } message: {
+            Text("SoloPM will create Google Calendar events for due, unfinished tasks. Existing linked tasks are skipped.")
+        }
     }
 
     private var inspectorBinding: Binding<Bool> {
@@ -354,7 +372,7 @@ struct ProjectBoardView: View {
                 Divider()
 
                 Button {
-                    viewModel.syncDueTasksToGoogleCalendar(approvalToken: nil)
+                    isGoogleCalendarSyncApprovalPresented = true
                 } label: {
                     Label("Google Calendar Sync", systemImage: "calendar.badge.plus")
                 }
@@ -567,6 +585,11 @@ struct ProjectBoardView: View {
         }
         taskInteropExportDocument = TaskInteropFileDocument(data: data)
         isExportingTaskInterop = true
+    }
+
+    private func approveGoogleCalendarSync() {
+        isGoogleCalendarSyncApprovalPresented = false
+        _ = viewModel.syncDueTasksToGoogleCalendar(approvalToken: UUID().uuidString)
     }
 
     private func handleTaskInteropImport(_ result: Result<[URL], Error>) {

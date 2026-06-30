@@ -2391,7 +2391,7 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
-    func testPublicAlphaAppDoesNotLinkExternalSaaSConnectorTarget() throws {
+    func testPublicAlphaAppLinksOnlyNarrowGoogleCalendarRuntimeTarget() throws {
         let packageSource = try readPackageFile("Package.swift")
         let appTarget = try XCTUnwrap(packageSource.range(of: ".executableTarget(\n            name: \"SoloPM\","))
         let cliTarget = try XCTUnwrap(packageSource.range(of: ".executableTarget(\n            name: \"SoloPMCLI\","))
@@ -2399,8 +2399,10 @@ final class AppExperienceSourceTests: XCTestCase {
         let appTargetBlock = String(packageSource[appTarget.lowerBound..<cliTarget.lowerBound])
         let cliTargetBlock = String(packageSource[cliTarget.lowerBound..<testsTarget.lowerBound])
 
+        XCTAssertTrue(packageSource.contains("name: \"SoloPMGoogleCalendarRuntime\""))
         XCTAssertTrue(packageSource.contains("name: \"SoloPMExternalConnectors\""))
         XCTAssertTrue(packageSource.contains("dependencies: [\"SoloPMCore\"]"))
+        XCTAssertTrue(appTargetBlock.contains("SoloPMGoogleCalendarRuntime"))
         XCTAssertFalse(appTargetBlock.contains("SoloPMExternalConnectors"))
         XCTAssertFalse(cliTargetBlock.contains("SoloPMExternalConnectors"))
     }
@@ -2999,17 +3001,47 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains("import SoloPMExternalConnectors"))
     }
 
+    func testAppRuntimeWiresGoogleCalendarSyncWithoutFakeUnavailableStore() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let factoryStart = try XCTUnwrap(appSource.range(of: "let googleCalendarSync ="))
+        let factoryEnd = try XCTUnwrap(appSource.range(of: "return ProjectBoardViewModel(", range: factoryStart.lowerBound..<appSource.endIndex))
+        let factorySource = String(appSource[factoryStart.lowerBound..<factoryEnd.lowerBound])
+
+        XCTAssertTrue(appSource.contains("import SoloPMGoogleCalendarRuntime"))
+        XCTAssertTrue(factorySource.contains("GoogleCalendarAppRuntimeFactory.makeSyncController("))
+        XCTAssertTrue(factorySource.contains("idempotencyNamespaceStore:"))
+        XCTAssertFalse(factorySource.contains("UnavailableGoogleCalendarRuntimeCredentialStatusStore()"))
+        XCTAssertFalse(factorySource.contains("taskSyncService: nil"))
+    }
+
     func testProjectBoardGoogleCalendarSyncMenuUsesRuntimeReadinessInsteadOfHardcodedDisabled() throws {
         let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
-        let menuStart = try XCTUnwrap(boardSource.range(of: "Button {\n                    viewModel.syncDueTasksToGoogleCalendar(approvalToken: nil)"))
+        let menuStart = try XCTUnwrap(boardSource.range(of: "Button {\n                    isGoogleCalendarSyncApprovalPresented = true"))
         let menuEnd = try XCTUnwrap(boardSource.range(of: "} label: {\n                Label(\"Integrations\"", range: menuStart.lowerBound..<boardSource.endIndex))
         let googleCalendarMenuSource = String(boardSource[menuStart.lowerBound..<menuEnd.lowerBound])
 
-        XCTAssertTrue(googleCalendarMenuSource.contains("viewModel.syncDueTasksToGoogleCalendar"))
+        XCTAssertTrue(boardSource.contains("@State private var isGoogleCalendarSyncApprovalPresented = false"))
+        XCTAssertTrue(googleCalendarMenuSource.contains("isGoogleCalendarSyncApprovalPresented = true"))
         XCTAssertTrue(googleCalendarMenuSource.contains(".disabled(!viewModel.canSyncGoogleCalendar)"))
         XCTAssertTrue(googleCalendarMenuSource.contains(".help(viewModel.googleCalendarSyncHelp)"))
         XCTAssertFalse(googleCalendarMenuSource.contains(".disabled(true)"))
+        XCTAssertFalse(boardSource.contains("syncDueTasksToGoogleCalendar(approvalToken: nil)"))
         XCTAssertFalse(boardSource.contains("ProjectBoardIntegrationUnavailableError.googleCalendarOAuthNotConfigured"))
+    }
+
+    func testProjectBoardGoogleCalendarSyncRequiresDialogApprovalToken() throws {
+        let boardSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectBoardView.swift")
+        let dialogStart = try XCTUnwrap(boardSource.range(of: ".confirmationDialog(\n            \"Sync due tasks to Google Calendar?\""))
+        let dialogEnd = try XCTUnwrap(boardSource.range(of: "private var inspectorBinding", range: dialogStart.lowerBound..<boardSource.endIndex))
+        let dialogSource = String(boardSource[dialogStart.lowerBound..<dialogEnd.lowerBound])
+
+        XCTAssertTrue(dialogSource.contains("isPresented: $isGoogleCalendarSyncApprovalPresented"))
+        XCTAssertTrue(dialogSource.contains("Button(\"Approve Google Calendar Sync\")"))
+        XCTAssertTrue(dialogSource.contains("approveGoogleCalendarSync()"))
+        XCTAssertTrue(dialogSource.contains("Button(\"Cancel\", role: .cancel)"))
+        XCTAssertTrue(dialogSource.contains("project-board-google-calendar-sync-approval-confirm"))
+        XCTAssertTrue(dialogSource.contains("project-board-google-calendar-sync-approval-cancel"))
+        XCTAssertTrue(boardSource.contains("viewModel.syncDueTasksToGoogleCalendar(approvalToken: UUID().uuidString)"))
     }
 
     func testSettingsSurfaceShowsInlineMCPServerRowsWithCheckActions() throws {

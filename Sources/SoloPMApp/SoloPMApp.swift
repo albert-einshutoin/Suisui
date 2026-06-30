@@ -1,4 +1,5 @@
 import SoloPMCore
+import SoloPMGoogleCalendarRuntime
 import SwiftUI
 import UniformTypeIdentifiers
 #if canImport(AppKit)
@@ -3556,16 +3557,17 @@ private enum AppRuntimeFactory {
             let externalTaskLinkStore = SQLiteExternalTaskLinkStore(connection: connection)
             let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
             let executionReceiptStore = try? makeExecutionReceiptStore()
-            let googleCalendarSync = GoogleCalendarRuntimeSyncController(
-                entitlementStore: KeychainEntitlementStore(secretStore: makeSecretStore()),
-                credentialStatusStore: UnavailableGoogleCalendarRuntimeCredentialStatusStore(),
-                configuration: GoogleCalendarRuntimeSyncConfiguration(
-                    calendarID: "primary",
-                    timeZoneIdentifier: TimeZone.current.identifier
-                ),
-                // The personal MVP keeps optional SaaS connector code out of the app target;
-                // this readiness path prevents mock success until the OAuth adapter PR supplies a sink.
-                taskSyncService: nil
+            let secretStore = makeSecretStore()
+            let entitlementStore = KeychainEntitlementStore(secretStore: secretStore)
+            let googleCalendarSync = try GoogleCalendarAppRuntimeFactory.makeSyncController(
+                entitlementStore: entitlementStore,
+                store: projectBoardStore,
+                linkStore: externalTaskLinkStore,
+                secretStore: secretStore,
+                connection: connection,
+                idempotencyNamespaceStore: SQLiteGoogleCalendarIdempotencyNamespaceStore(connection: connection),
+                calendarID: "primary",
+                timeZoneIdentifier: TimeZone.current.identifier
             )
             return ProjectBoardViewModel(
                 store: projectBoardStore,

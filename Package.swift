@@ -50,6 +50,10 @@ let package = Package(
             dependencies: ["SoloPMCore"]
         ),
         .target(
+            name: "SoloPMGoogleCalendarRuntime",
+            dependencies: ["SoloPMCore"]
+        ),
+        .target(
             name: "SoloPMiOS",
             dependencies: ["SoloPMCore"],
             path: "Sources/SoloPMiOS"
@@ -63,6 +67,7 @@ let package = Package(
             name: "SoloPM",
             dependencies: [
                 "SoloPMCore",
+                "SoloPMGoogleCalendarRuntime",
                 .product(name: "Sparkle", package: "Sparkle"),
                 .product(name: "SwiftTerm", package: "SwiftTerm")
             ],
@@ -77,7 +82,7 @@ let package = Package(
         ),
         .testTarget(
             name: "SoloPMCoreTests",
-            dependencies: ["SoloPMCore", "SoloPMExternalConnectors", "SoloPMWeb"],
+            dependencies: ["SoloPMCore", "SoloPMExternalConnectors", "SoloPMGoogleCalendarRuntime", "SoloPMWeb"],
             resources: [
                 .process("Fixtures")
             ]

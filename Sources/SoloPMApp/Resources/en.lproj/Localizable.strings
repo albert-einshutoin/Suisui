@@ -622,6 +622,7 @@
 "Approval token" = "Approval token";
 "Schedule approval token" = "Schedule approval token";
 "Apply to Calendar" = "Apply to Calendar";
+"Approve Google Calendar Sync" = "Approve Google Calendar Sync";
 "Schedule block %@" = "Schedule block %@";
 "Generate a draft from Today time blocks." = "Generate a draft from Today time blocks.";
 "No unscheduled open tasks." = "No unscheduled open tasks.";
@@ -629,6 +630,8 @@
 "Calendar is not configured." = "Calendar is not configured.";
 "Create a schedule draft first." = "Create a schedule draft first.";
 "External Calendar writes require review approval." = "External Calendar writes require review approval.";
+"SoloPM will create Google Calendar events for due, unfinished tasks. Existing linked tasks are skipped." = "SoloPM will create Google Calendar events for due, unfinished tasks. Existing linked tasks are skipped.";
+"Sync due tasks to Google Calendar?" = "Sync due tasks to Google Calendar?";
 "Prepared schedule draft with %d time blocks and %d unscheduled tasks." = "Prepared schedule draft with %d time blocks and %d unscheduled tasks.";
 "Schedule review approval is required before Calendar write." = "Schedule review approval is required before Calendar write.";
 "Create a schedule draft before applying to Calendar." = "Create a schedule draft before applying to Calendar.";
