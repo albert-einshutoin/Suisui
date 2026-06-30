@@ -856,3 +856,11 @@
 "Run" = "実行";
 "Run this approved item through the execution gate" = "承認済み項目を実行ゲート経由で実行します";
 "Executes approved generated work through the review gate and records a receipt." = "承認済みの生成作業をレビューゲート経由で実行し、レシートを記録します。";
+"Project Directory" = "プロジェクトディレクトリ";
+"Selected directory" = "選択済みディレクトリ";
+"Choose Directory" = "ディレクトリを選択";
+"Choose the local folder SoloPM can use for this project" = "このプロジェクトでSoloPMが使用できるローカルフォルダを選択します";
+"Clear Directory" = "ディレクトリを解除";
+"Clear this project's local directory permission" = "このプロジェクトのローカルディレクトリ権限を解除します";
+"Opens a folder picker and stores the selected project directory locally." = "フォルダ選択を開き、選択したプロジェクトディレクトリをローカルに保存します。";
+"Removes the stored project directory from SoloPM without deleting files." = "ファイルは削除せず、SoloPMに保存したプロジェクトディレクトリだけを削除します。";

@@ -856,3 +856,11 @@
 "Run" = "Run";
 "Run this approved item through the execution gate" = "Run this approved item through the execution gate";
 "Executes approved generated work through the review gate and records a receipt." = "Executes approved generated work through the review gate and records a receipt.";
+"Project Directory" = "Project Directory";
+"Selected directory" = "Selected directory";
+"Choose Directory" = "Choose Directory";
+"Choose the local folder SoloPM can use for this project" = "Choose the local folder SoloPM can use for this project";
+"Clear Directory" = "Clear Directory";
+"Clear this project's local directory permission" = "Clear this project's local directory permission";
+"Opens a folder picker and stores the selected project directory locally." = "Opens a folder picker and stores the selected project directory locally.";
+"Removes the stored project directory from SoloPM without deleting files." = "Removes the stored project directory from SoloPM without deleting files.";

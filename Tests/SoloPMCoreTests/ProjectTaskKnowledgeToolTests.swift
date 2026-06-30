@@ -84,7 +84,6 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
                 "id": .number(Double(project.id)),
                 "priority": .string("high"),
                 "deadline": .string("2026-06-30"),
-                "workspacePath": .string("/tmp/solopm-launch"),
                 "tags": .array([.string("release"), .string("alpha")])
             ],
             context: approvedContext()
@@ -93,7 +92,7 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         let updated = try stores.projects.get(id: project.id)
         XCTAssertEqual(updated.priority, "high")
         XCTAssertEqual(updated.deadline, "2026-06-30")
-        XCTAssertEqual(updated.workspacePath, "/tmp/solopm-launch")
+        XCTAssertNil(updated.workspacePath)
         XCTAssertEqual(updated.tags, ["release", "alpha"])
     }
 
@@ -103,7 +102,6 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
             title: "Launch Readiness",
             priority: "high",
             deadline: "2026-06-30",
-            workspacePath: "/tmp/solopm-launch",
             tags: ["release", "alpha"]
         )
         let tool = ProjectTool(name: .projectUpdate, store: stores.projects)
@@ -113,7 +111,6 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
                 "id": .number(Double(project.id)),
                 "priority": .null,
                 "deadline": .null,
-                "workspacePath": .null,
                 "tags": .null
             ],
             context: approvedContext()
@@ -132,7 +129,7 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
 
         XCTAssertEqual(update.inputSchema.properties["priority"], "string|null")
         XCTAssertEqual(update.inputSchema.properties["deadline"], "string|null")
-        XCTAssertEqual(update.inputSchema.properties["workspacePath"], "string|null")
+        XCTAssertNil(update.inputSchema.properties["workspacePath"])
         XCTAssertEqual(update.inputSchema.properties["tags"], "array|null")
 
         let issues = update.inputSchema.validate(
@@ -140,7 +137,6 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
                 "id": .number(1),
                 "priority": .null,
                 "deadline": .null,
-                "workspacePath": .null,
                 "tags": .null
             ],
             tool: .projectUpdate
@@ -174,7 +170,8 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(project["status"], .string("active"))
         XCTAssertEqual(project["priority"], .string("medium"))
         XCTAssertEqual(project["deadline"], .string("2026-06-30"))
-        XCTAssertEqual(project["workspacePath"], .string("/tmp/inbox"))
+        XCTAssertNil(project["workspacePath"])
+        XCTAssertEqual(project["workspaceDirectoryStatus"], .string("selected"))
         XCTAssertEqual(project["tags"], .array([.string("local"), .string("triage")]))
         XCTAssertNil(project["sourceCommand"])
     }

@@ -28,7 +28,6 @@ public struct ProjectTool: Tool {
                 title: try args.requiredTrimmedString("title"),
                 priority: try args.optionalTrimmedString("priority"),
                 deadline: try args.optionalTrimmedString("deadline"),
-                workspacePath: try args.optionalTrimmedString("workspacePath"),
                 tags: try args.trimmedStringArray("tags"),
                 sourceCommand: try args.optionalTrimmedString("sourceCommand")
             )
@@ -47,7 +46,6 @@ public struct ProjectTool: Tool {
                 status: try args.optionalTrimmedString("status"),
                 priority: try args.nullableTrimmedString("priority"),
                 deadline: try args.nullableTrimmedString("deadline"),
-                workspacePath: try args.nullableTrimmedString("workspacePath"),
                 tags: try args.nullableTrimmedStringArray("tags")
             )
             return ToolResult(tool: name, status: .succeeded, summary: "Updated project \(record.title)", output: ["projectId": .number(Double(record.id))])
@@ -96,14 +94,14 @@ public struct ProjectTool: Tool {
         case .projectCreate:
             ToolInputSchema(
                 required: ["title"],
-                properties: ["title": "string", "priority": "string", "deadline": "string", "workspacePath": "string", "tags": "array", "sourceCommand": "string"],
-                nonBlank: ["priority", "deadline", "workspacePath", "sourceCommand"]
+                properties: ["title": "string", "priority": "string", "deadline": "string", "tags": "array", "sourceCommand": "string"],
+                nonBlank: ["priority", "deadline", "sourceCommand"]
             )
         case .projectUpdate:
             ToolInputSchema(
                 required: ["id"],
-                properties: ["id": "integer", "title": "string", "status": "string", "priority": "string|null", "deadline": "string|null", "workspacePath": "string|null", "tags": "array|null"],
-                nonBlank: ["title", "status", "priority", "deadline", "workspacePath"]
+                properties: ["id": "integer", "title": "string", "status": "string", "priority": "string|null", "deadline": "string|null", "tags": "array|null"],
+                nonBlank: ["title", "status", "priority", "deadline"]
             )
         case .projectGet, .projectComplete, .projectDelete:
             ToolInputSchema(required: ["id"], properties: ["id": "integer"])
@@ -514,8 +512,8 @@ private extension ProjectRecord {
         if let deadline {
             values["deadline"] = .string(deadline)
         }
-        if let workspacePath {
-            values["workspacePath"] = .string(workspacePath)
+        if workspacePath != nil {
+            values["workspaceDirectoryStatus"] = .string("selected")
         }
         return values
     }

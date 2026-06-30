@@ -80,6 +80,8 @@ public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
     public var title: String
     public var status: String
     public var subtitle: String
+    public var hasWorkspaceDirectory: Bool
+    public var workspaceDisplayName: String?
     public var columns: [ProjectBoardColumn]
     public var artifacts: [ProjectBoardArtifact]
     public var milestones: [ProjectBoardMilestone]
@@ -89,6 +91,8 @@ public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
         title: String,
         status: String = "active",
         subtitle: String,
+        hasWorkspaceDirectory: Bool = false,
+        workspaceDisplayName: String? = nil,
         columns: [ProjectBoardColumn],
         artifacts: [ProjectBoardArtifact] = [],
         milestones: [ProjectBoardMilestone] = []
@@ -97,6 +101,8 @@ public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
         self.title = title
         self.status = status
         self.subtitle = subtitle
+        self.hasWorkspaceDirectory = hasWorkspaceDirectory
+        self.workspaceDisplayName = workspaceDisplayName
         self.columns = columns
         self.artifacts = artifacts
         self.milestones = milestones
@@ -617,6 +623,8 @@ public enum ProjectBoardStoreError: Error, Equatable, Sendable {
     case emptyProjectTitle
     case emptyArtifactPath
     case nonAbsoluteArtifactPath
+    case nonAbsoluteWorkspacePath
+    case missingWorkspaceBookmark
     case archivedProjectCannotAcceptTasks
     case archivedProjectCannotAcceptArtifacts
 }
@@ -629,6 +637,7 @@ public protocol ProjectBoardStore {
     func completeProject(id: Int64) throws -> ProjectBoardProject
     func archiveProject(id: Int64) throws -> ProjectBoardProject
     func restoreProject(id: Int64) throws -> ProjectBoardProject
+    func setProjectWorkspacePath(id: Int64, path: String?, bookmarkData: Data?) throws -> ProjectBoardProject
     func deleteProject(id: Int64) throws
     func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask
     func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask
@@ -644,6 +653,14 @@ public protocol ProjectBoardStore {
 }
 
 public extension ProjectBoardStore {
+    func setProjectWorkspacePath(id: Int64, path: String?, bookmarkData: Data?) throws -> ProjectBoardProject {
+        throw ProjectBoardStoreError.nonAbsoluteWorkspacePath
+    }
+
+    func setProjectWorkspacePath(id: Int64, path: String?) throws -> ProjectBoardProject {
+        try setProjectWorkspacePath(id: id, path: path, bookmarkData: nil)
+    }
+
     @discardableResult
     func createInboxTask(title: String) throws -> ProjectBoardTask {
         let snapshot = try loadSnapshot()
@@ -733,6 +750,29 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     @discardableResult
     public func restoreProject(id: Int64) throws -> ProjectBoardProject {
         let record = try projectStore.updateStatusForProjectBoard(id: id, status: "active")
+        let boardData = try loadBoardData(includeArchived: true)
+        return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts, milestones: boardData.milestones)
+    }
+
+    @discardableResult
+    public func setProjectWorkspacePath(id: Int64, path: String?, bookmarkData: Data? = nil) throws -> ProjectBoardProject {
+        let workspacePath = try normalizedWorkspacePath(path)
+        let workspaceBookmarkData: NullableFieldUpdate<Data>
+        if workspacePath == nil {
+            workspaceBookmarkData = .clear
+        } else if let bookmarkData, !bookmarkData.isEmpty {
+            workspaceBookmarkData = .set(bookmarkData)
+        } else {
+            throw ProjectBoardStoreError.missingWorkspaceBookmark
+        }
+        let record = try projectStore.updateFields(
+            id: id,
+            workspacePath: workspacePath.map { .set($0) } ?? .clear,
+            // Security-scoped bookmarks are local-only permission material. Keeping
+            // them in SQLite, not the UI snapshot, lets SoloPM restore access later
+            // without syncing or displaying raw bookmark bytes.
+            workspaceBookmarkData: workspaceBookmarkData
+        )
         let boardData = try loadBoardData(includeArchived: true)
         return makeBoardProject(project: record, tasks: boardData.tasks, artifacts: boardData.artifacts, milestones: boardData.milestones)
     }
@@ -982,6 +1022,35 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         return URL(fileURLWithPath: expandedPath).standardizedFileURL.path
     }
 
+    private func normalizedWorkspacePath(_ path: String?) throws -> String? {
+        guard let path else {
+            return nil
+        }
+        let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPath.isEmpty else {
+            return nil
+        }
+
+        let expandedPath = NSString(string: trimmedPath).expandingTildeInPath
+        guard NSString(string: expandedPath).isAbsolutePath else {
+            throw ProjectBoardStoreError.nonAbsoluteWorkspacePath
+        }
+
+        return URL(fileURLWithPath: expandedPath, isDirectory: true).standardizedFileURL.path
+    }
+
+    private func workspaceDisplayName(for path: String?) -> String? {
+        guard let path else {
+            return nil
+        }
+
+        let lastComponent = URL(fileURLWithPath: path, isDirectory: true).lastPathComponent
+        guard !lastComponent.isEmpty else {
+            return String(localized: "Selected directory")
+        }
+        return lastComponent
+    }
+
     private func makeBoardProject(
         project: ProjectRecord,
         tasks: [ProjectBoardTask],
@@ -1008,6 +1077,8 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             title: project.title,
             status: project.status,
             subtitle: subtitle,
+            hasWorkspaceDirectory: project.workspacePath != nil,
+            workspaceDisplayName: workspaceDisplayName(for: project.workspacePath),
             columns: columns,
             artifacts: projectArtifacts,
             milestones: milestones.filter { $0.projectID == project.id }
@@ -2642,6 +2713,58 @@ public final class ProjectBoardViewModel: ObservableObject {
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
         }
+    }
+
+    @discardableResult
+    public func assignProjectWorkspacePath(_ path: String, bookmarkData: Data? = nil, projectID: Int64? = nil) -> Bool {
+        guard let targetProjectID = projectID ?? selectedProject?.id else {
+            errorMessage = "Project is required."
+            return false
+        }
+
+        do {
+            _ = try store.setProjectWorkspacePath(id: targetProjectID, path: path, bookmarkData: bookmarkData)
+            load()
+            selectedProjectID = targetProjectID
+            selectedTaskID = nil
+            errorMessage = nil
+            onChange()
+            return true
+        } catch ProjectBoardStoreError.nonAbsoluteWorkspacePath {
+            errorMessage = "Project directory must be an absolute local path."
+            return false
+        } catch ProjectBoardStoreError.missingWorkspaceBookmark {
+            errorMessage = "Project directory permission could not be saved. Choose the directory again."
+            return false
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+            return false
+        }
+    }
+
+    @discardableResult
+    public func clearProjectWorkspacePath(projectID: Int64? = nil) -> Bool {
+        guard let targetProjectID = projectID ?? selectedProject?.id else {
+            errorMessage = "Project is required."
+            return false
+        }
+
+        do {
+            _ = try store.setProjectWorkspacePath(id: targetProjectID, path: nil, bookmarkData: nil)
+            load()
+            selectedProjectID = targetProjectID
+            selectedTaskID = nil
+            errorMessage = nil
+            onChange()
+            return true
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+            return false
+        }
+    }
+
+    public func reportProjectWorkspaceSelectionFailure() {
+        errorMessage = "Project directory permission could not be saved. Choose the directory again."
     }
 
     public func completeSelectedProject() {

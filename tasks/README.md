@@ -31,14 +31,14 @@ Issue起票時は [Product-Out Issue Seeds](./ProductOut-IssueSeeds.md) を入�
 
 ## 開発原則
 
-### Gitflow
+### GitHub Flow
 
 - `main` は常にリリース可能な状態に保つ。
-- `develop` は次リリースの統合ブランチにする。
-- 作業ブランチは `feature/phaseN-short-name`、修正は `fix/phaseN-short-name`、ドキュメントは `docs/phaseN-short-name` とする。
+- 作業は現在の target branch から短命ブランチを切る。通常は `main`、release candidate や大きな統合PRの途中ではその active target branch を使う。
+- 作業ブランチは `feature/short-name`、修正は `fix/short-name`、ドキュメントは `docs/short-name` とする。
 - 原則として 1 タスク 1 PR。複数タスクをまとめる場合は、同じ責務境界かつレビューが容易な範囲に限る。
-- Phase 完了時は `release/vX.Y.Z-alpha.N` を切り、動作確認後に `main` へ merge して tag を打つ。
 - `main` への直接 push は禁止。PR にはテスト結果、手動確認結果、残リスクを書く。
+- release branch が必要な場合は、配布直前の安定化に限って短命で使い、完了後は `main` へ戻す。
 
 ### TDD
 

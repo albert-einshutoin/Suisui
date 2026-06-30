@@ -207,7 +207,40 @@ public final class LocalFileAccessClient: FileAccessClient, @unchecked Sendable 
             throw ToolClientError.invalidRequest("Path escapes the workspace: \(relativePath)")
         }
 
+        try validateSymlinkResolvedPathStaysInsideWorkspace(target, relativePath: relativePath)
         return target
+    }
+
+    private func validateSymlinkResolvedPathStaysInsideWorkspace(_ target: URL, relativePath: String) throws {
+        let resolvedRoot = workspaceRoot.resolvingSymlinksInPath().standardizedFileURL
+        let resolvedRootPath = resolvedRoot.path
+        var nearestExistingAncestor = target.standardizedFileURL
+        var unresolvedComponents: [String] = []
+
+        while !fileManager.fileExists(atPath: nearestExistingAncestor.path),
+              nearestExistingAncestor.path != workspaceRoot.path,
+              nearestExistingAncestor.path != "/" {
+            unresolvedComponents.insert(nearestExistingAncestor.lastPathComponent, at: 0)
+            nearestExistingAncestor.deleteLastPathComponent()
+        }
+
+        let resolvedAncestor = nearestExistingAncestor.resolvingSymlinksInPath().standardizedFileURL
+        guard isPathInsideWorkspace(resolvedAncestor.path, rootPath: resolvedRootPath) else {
+            throw ToolClientError.invalidRequest("Path escapes the workspace: \(relativePath)")
+        }
+
+        var resolvedTarget = resolvedAncestor
+        for component in unresolvedComponents {
+            resolvedTarget.appendPathComponent(component)
+        }
+
+        guard isPathInsideWorkspace(resolvedTarget.standardizedFileURL.path, rootPath: resolvedRootPath) else {
+            throw ToolClientError.invalidRequest("Path escapes the workspace: \(relativePath)")
+        }
+    }
+
+    private func isPathInsideWorkspace(_ path: String, rootPath: String) -> Bool {
+        path == rootPath || path.hasPrefix(rootPath + "/")
     }
 
     private func normalizedRelativePath(for url: URL) -> String {

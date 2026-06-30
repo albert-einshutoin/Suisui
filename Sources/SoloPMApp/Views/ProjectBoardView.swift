@@ -2916,6 +2916,23 @@ private struct ProjectInspectorView: View {
                 LabeledContent("Artifacts", value: "\(project.artifacts.count)")
             }
 
+            Section("Project Directory") {
+                LabeledContent("Current", value: project.workspaceDisplayName ?? "Not set")
+                    .accessibilityIdentifier("project-workspace-current")
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        chooseProjectDirectoryButton
+                        clearProjectDirectoryButton
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        chooseProjectDirectoryButton
+                        clearProjectDirectoryButton
+                    }
+                }
+            }
+
             Section("Save") {
                 Button {
                     viewModel.updateSelectedProject(title: title)
@@ -3020,6 +3037,63 @@ private struct ProjectInspectorView: View {
 
     private func refreshFields(from project: ProjectBoardProject) {
         title = project.title
+    }
+
+    private var chooseProjectDirectoryButton: some View {
+        Button {
+            chooseProjectDirectory()
+        } label: {
+            Label("Choose Directory", systemImage: "folder.badge.plus")
+        }
+        .disabled(project.isArchived)
+        .help("Choose the local folder SoloPM can use for this project")
+        .accessibilityIdentifier("project-workspace-choose")
+        .accessibilityHint("Opens a folder picker and stores the selected project directory locally.")
+    }
+
+    private var clearProjectDirectoryButton: some View {
+        Button {
+            _ = viewModel.clearProjectWorkspacePath(projectID: project.id)
+        } label: {
+            Label("Clear Directory", systemImage: "xmark.circle")
+        }
+        .disabled(project.isArchived || !project.hasWorkspaceDirectory)
+        .help("Clear this project's local directory permission")
+        .accessibilityIdentifier("project-workspace-clear")
+        .accessibilityHint("Removes the stored project directory from SoloPM without deleting files.")
+    }
+
+    private func chooseProjectDirectory() {
+        #if canImport(AppKit)
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.prompt = String(localized: "Choose")
+        panel.message = String(localized: "Choose the local folder SoloPM can use for this project")
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else {
+                return
+            }
+            let bookmarkData: Data
+            do {
+                bookmarkData = try url.bookmarkData(
+                    options: [.withSecurityScope],
+                    includingResourceValuesForKeys: nil,
+                    relativeTo: nil
+                )
+            } catch {
+                DispatchQueue.main.async {
+                    viewModel.reportProjectWorkspaceSelectionFailure()
+                }
+                return
+            }
+            DispatchQueue.main.async {
+                _ = viewModel.assignProjectWorkspacePath(url.path, bookmarkData: bookmarkData, projectID: project.id)
+            }
+        }
+        #endif
     }
 
     private func archiveSelectedProjectAfterConfirmationDismissal() {
