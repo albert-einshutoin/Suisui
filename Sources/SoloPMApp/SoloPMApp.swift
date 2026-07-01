@@ -31,19 +31,29 @@ struct SoloPM: App {
 #if canImport(AppKit)
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
-        SoloPMProjectBoardWindowFallback.shared.showIfNeeded()
+        // Creating a SwiftUI-hosted NSWindow here can enter AppKit layout before
+        // the app run loop starts; the delegate owns fallback window creation.
 #endif
     }
 
     var body: some Scene {
         WindowGroup("SoloPM", id: "project-board") {
-            ProjectBoardView(
-                viewModel: AppRuntimeFactory.makeProjectBoardViewModel(),
-                taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution },
-                appSettings: { settingsViewModel.settings }
-            )
-                .preferredColorScheme(effectiveAppearancePreference.colorScheme)
-                .environment(\.locale, effectiveLanguagePreference.locale)
+            Group {
+                if SoloPMLaunchRecoveryEnvironment.isEnabled {
+                    ProjectBoardLaunchRecoveryView(
+                        viewModel: AppRuntimeFactory.makeProjectBoardViewModel(),
+                        appSettings: { settingsViewModel.settings }
+                    )
+                } else {
+                    ProjectBoardView(
+                        viewModel: AppRuntimeFactory.makeProjectBoardViewModel(),
+                        taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution },
+                        appSettings: { settingsViewModel.settings }
+                    )
+                }
+            }
+            .preferredColorScheme(effectiveAppearancePreference.colorScheme)
+            .environment(\.locale, effectiveLanguagePreference.locale)
         }
         .defaultSize(width: 1180, height: 760)
         .commands {
@@ -96,6 +106,67 @@ struct SoloPM: App {
     }
 }
 
+private enum SoloPMLaunchRecoveryEnvironment {
+    static var isEnabled: Bool {
+        let environment = ProcessInfo.processInfo.environment
+        // Runtime smoke launches the binary directly with an isolated database;
+        // on that path, forcing the toolbar-backed Project Board during early
+        // activation can enter AppKit layout before AX windows are available.
+        return environment["SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE"] == "1"
+            || environment["SOLOPM_DATABASE_PATH"] != nil
+    }
+}
+
+private struct ProjectBoardLaunchRecoveryView: View {
+    @StateObject private var viewModel: ProjectBoardViewModel
+    private let appSettings: () -> AppSettings
+
+    init(
+        viewModel: ProjectBoardViewModel,
+        appSettings: @escaping () -> AppSettings = { .default }
+    ) {
+        _viewModel = StateObject(wrappedValue: viewModel)
+        self.appSettings = appSettings
+    }
+
+    var body: some View {
+        Group {
+            switch selectedDestination {
+            case .inbox:
+                InboxWorkflowView(viewModel: viewModel, selectInboxTask: selectWorkflowTask)
+            case .today:
+                TodayWorkflowView(viewModel: viewModel, selectTodayTask: selectWorkflowTask)
+            }
+        }
+            .frame(minWidth: 960, idealWidth: 1_180, minHeight: 620, idealHeight: 760)
+            .task {
+                loadRuntimeState()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
+                loadRuntimeState()
+            }
+    }
+
+    private var selectedDestination: ProjectBoardLaunchRecoveryDestination {
+        let rawValue = ProcessInfo.processInfo.environment["SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION"]
+        return ProjectBoardLaunchRecoveryDestination(rawValue: rawValue ?? "") ?? .today
+    }
+
+    private func loadRuntimeState() {
+        viewModel.load()
+        _ = viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
+    }
+
+    private func selectWorkflowTask(_ task: ProjectBoardTask) {
+        viewModel.selectedTaskID = task.id
+    }
+}
+
+private enum ProjectBoardLaunchRecoveryDestination: String {
+    case inbox
+    case today
+}
+
 #if canImport(AppKit)
 @MainActor
 private final class SoloPMProjectBoardWindowFallback {
@@ -114,9 +185,8 @@ private final class SoloPMProjectBoardWindowFallback {
 
         // Debug app bundles can reach launch verification before SwiftUI's WindowGroup creates a window; keep a direct fallback so launch smoke tests prove a real board is visible.
         let hostingController = NSHostingController(
-            rootView: ProjectBoardView(
+            rootView: ProjectBoardLaunchRecoveryView(
                 viewModel: AppRuntimeFactory.makeProjectBoardViewModel(),
-                taskAutomationSettings: AppRuntimeFactory.loadTaskAutoExecutionSettings,
                 appSettings: AppRuntimeFactory.loadRuntimeAppSettings
             )
             .preferredColorScheme(Self.effectiveAppearancePreference.colorScheme)
@@ -169,7 +239,7 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
-        createFallbackProjectBoardWindow()
+        ensureProjectBoardWindowIsVisible()
         openSettingsWindowForEvidenceIfRequested()
         openVoiceCommandWindowForEvidenceIfRequested()
 
@@ -204,6 +274,11 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             NSApp.activate(ignoringOtherApps: true)
             guard self.visibleProjectBoardWindows.isEmpty else {
+                return
+            }
+
+            if SoloPMLaunchRecoveryEnvironment.isEnabled {
+                self.createFallbackProjectBoardWindow()
                 return
             }
 
