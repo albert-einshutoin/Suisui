@@ -3079,6 +3079,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("title: \"Reminder\""))
         XCTAssertTrue(appSource.contains("title: \"Data Location\""))
         XCTAssertTrue(appSource.contains("settingsViewModel.settings.sttProvider.displayName"))
+        XCTAssertTrue(appSource.contains("Local whisper.cpp: %@"))
+        XCTAssertTrue(appSource.contains("settingsViewModel.localSTTProviderReadinessRow.statusLabel"))
         XCTAssertTrue(appSource.contains("settingsViewModel.settings.ttsProvider.displayName"))
         XCTAssertTrue(appSource.contains("settingsViewModel.ttsProviderReadinessRow.statusLabel"))
         XCTAssertTrue(appSource.contains("integrationPermissionSnapshot.status(for: .calendar)"))
@@ -3106,6 +3108,21 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(aiTabSource.contains("TTS playback adapter is not connected in this slice."))
         XCTAssertFalse(aiTabSource.contains("TTSProvider.systemSpeech.unavailableReason"))
         XCTAssertFalse(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-unavailable\")"))
+    }
+
+    func testSettingsExposesLocalSTTReadinessBeforeRuntimeSelection() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let coreSource = try readPackageFile("Sources/SoloPMCore/App/AppSettings.swift")
+        let aiTabStart = try XCTUnwrap(appSource.range(of: "private var aiSettingsTab: some View"))
+        let syncTabStart = try XCTUnwrap(appSource.range(of: "private var syncSettingsTab: some View"))
+        let aiTabSource = String(appSource[aiTabStart.lowerBound..<syncTabStart.lowerBound])
+
+        XCTAssertTrue(aiTabSource.contains("LocalSTTProviderStatusRow(row: settingsViewModel.localSTTProviderReadinessRow)"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-local-stt-readiness-row\")"))
+        XCTAssertTrue(appSource.contains("Text(localizedSettingsDisplay(row.statusLabel))"))
+        XCTAssertTrue(appSource.contains("private struct LocalSTTProviderStatusRow"))
+        XCTAssertTrue(appSource.contains("STT provider readiness"))
+        XCTAssertTrue(coreSource.contains("run the local voice runtime smoke"))
     }
 
     func testSettingsOverviewSurfacesProValueWithoutOpeningSyncOrMCPTabs() throws {
