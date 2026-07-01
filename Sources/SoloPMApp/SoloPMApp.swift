@@ -667,6 +667,12 @@ private struct VoiceCaptureView: View {
                     }
                 }
 
+                if let result = viewModel.inboxCaptureResult {
+                    VoiceInboxCaptureSavedPanel(result: result) {
+                        openWindow(id: "project-board")
+                    }
+                }
+
                 HStack {
                     Button {
                         if viewModel.isRecording {
@@ -685,6 +691,17 @@ private struct VoiceCaptureView: View {
                     }
                     .disabled(viewModel.phase == .generatingPlan || viewModel.phase == .transcribing)
                     .accessibilityIdentifier("voice-command-record")
+
+                    Button {
+                        viewModel.saveDraftToInbox()
+                        if viewModel.inboxCaptureResult != nil {
+                            NotificationCenter.default.post(name: .soloPMProjectBoardDidChange, object: nil)
+                        }
+                    } label: {
+                        Label("Save to Inbox", systemImage: "tray.and.arrow.down")
+                    }
+                    .disabled(!viewModel.canSaveDraftToInbox)
+                    .accessibilityIdentifier("voice-command-save-to-inbox")
 
                     Spacer()
 
@@ -774,6 +791,42 @@ private struct VoiceCaptureView: View {
             object: nil,
             userInfo: [SoloPMAssistantQueueBridge.requestUserInfoKey: bridgeRequest]
         )
+    }
+}
+
+private struct VoiceInboxCaptureSavedPanel: View {
+    let result: InboxVoiceCaptureResult
+    let onOpen: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(localizedSettingsDisplay("Saved to Inbox"), systemImage: "tray.full")
+                .font(.subheadline)
+
+            Label(result.task.title, systemImage: "checkmark.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let summary = result.capture.interpretationSummary {
+                Label(summary, systemImage: "sparkles")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button {
+                onOpen()
+            } label: {
+                Label(localizedSettingsDisplay("Open Inbox"), systemImage: "arrow.forward.circle")
+            }
+            .accessibilityIdentifier("voice-inbox-capture-open-board")
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+        .accessibilityIdentifier("voice-inbox-capture-saved")
     }
 }
 
@@ -4226,8 +4279,12 @@ private enum AppRuntimeFactory {
     static func makeVoiceCaptureViewModel() -> VoiceCaptureViewModel {
         let secretStore = makeSecretStore()
         let settingsResult = loadRuntimeSettings()
+        let audioRecorder = AVFoundationAudioRecorder()
+        let sttProvider = makeSpeechToTextProvider(settings: settingsResult.settings, secretStore: secretStore)
+        let llmProvider = makeLLMProvider(settings: settingsResult.settings, secretStore: secretStore)
         var auditLogger: (any AuditLogger)?
         var assistantQueueStore: (any AssistantQueueStore)?
+        var inboxCaptureService: InboxVoiceCaptureService?
         var developmentProjectProvider: () -> ProjectRecord? = { nil }
         var runtimeValidationMessage: String?
         var initialFailureMessage: String?
@@ -4236,6 +4293,14 @@ private enum AppRuntimeFactory {
             let connection = try migratedConnection()
             assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
             let projectStore = SQLiteProjectStore(connection: connection)
+            let projectBoardStore = SQLiteProjectBoardStore(connection: connection)
+            let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)
+            inboxCaptureService = InboxVoiceCaptureService(
+                audioRecorder: audioRecorder,
+                sttProvider: sttProvider,
+                projectBoardStore: projectBoardStore,
+                inboxCaptureStore: inboxCaptureStore
+            )
             developmentProjectProvider = {
                 approvedDevelopmentProject(from: projectStore)
             }
@@ -4249,12 +4314,13 @@ private enum AppRuntimeFactory {
         }
         return VoiceCaptureViewModel(
             phase: initialFailureMessage.map(VoiceCapturePhase.failed) ?? .idle,
-            audioRecorder: AVFoundationAudioRecorder(),
-            sttProvider: makeSpeechToTextProvider(settings: settingsResult.settings, secretStore: secretStore),
-            llmProvider: makeLLMProvider(settings: settingsResult.settings, secretStore: secretStore),
+            audioRecorder: audioRecorder,
+            sttProvider: sttProvider,
+            llmProvider: llmProvider,
             auditRecorder: auditLogger.map { PlanningAuditRecorder(logger: $0) },
             runtimeValidationMessage: runtimeValidationMessage,
             assistantQueueStore: assistantQueueStore,
+            inboxCaptureSaver: inboxCaptureService,
             developmentProjectProvider: developmentProjectProvider
         )
     }

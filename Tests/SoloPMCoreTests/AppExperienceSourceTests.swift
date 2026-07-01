@@ -2816,6 +2816,23 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("VoiceDevelopmentProjectSelection.uniqueApprovedActiveProject(from: projects)"))
     }
 
+    func testVoiceCommandCanPersistRecordedTranscriptToInboxRuntimeStores() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let voiceFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeVoiceCaptureViewModel()"))
+        let nextFactoryStart = try XCTUnwrap(appSource.range(of: "private static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
+        let voiceFactory = String(appSource[voiceFactoryStart.lowerBound..<nextFactoryStart.lowerBound])
+
+        XCTAssertTrue(appSource.contains("viewModel.saveDraftToInbox()"))
+        XCTAssertTrue(appSource.contains("Save to Inbox"))
+        XCTAssertTrue(appSource.contains(".disabled(!viewModel.canSaveDraftToInbox)"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-save-to-inbox\")"))
+        XCTAssertTrue(appSource.contains("VoiceInboxCaptureSavedPanel("))
+        XCTAssertTrue(voiceFactory.contains("let projectBoardStore = SQLiteProjectBoardStore(connection: connection)"))
+        XCTAssertTrue(voiceFactory.contains("let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)"))
+        XCTAssertTrue(voiceFactory.contains("inboxCaptureService = InboxVoiceCaptureService("))
+        XCTAssertTrue(voiceFactory.contains("inboxCaptureSaver: inboxCaptureService"))
+    }
+
     func testVoiceAssistantQueuePanelRendersWithoutPlanningResponse() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let queuePanelStart = try XCTUnwrap(appSource.range(of: "if let item = viewModel.assistantQueueItem"))

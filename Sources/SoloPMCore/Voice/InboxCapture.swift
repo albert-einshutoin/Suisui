@@ -408,22 +408,36 @@ public struct InboxVoiceCaptureResult: Equatable, Sendable {
 }
 
 @MainActor
-public final class InboxVoiceCaptureService {
+public protocol InboxVoiceCaptureSaving: AnyObject {
+    func saveTranscribedCapture(
+        audio: RecordedAudio,
+        transcript: STTTranscript?,
+        transcriptionErrorMessage: String?,
+        at date: Date,
+        createdAt: String?
+    ) throws -> InboxVoiceCaptureResult
+}
+
+@MainActor
+public final class InboxVoiceCaptureService: InboxVoiceCaptureSaving {
     private var audioRecorder: any AudioRecorder
     private let sttProvider: any SpeechToTextProvider
     private let projectBoardStore: any ProjectBoardStore
     private let inboxCaptureStore: any InboxCaptureStore
+    private let commandRouter: any VoiceCommandRouting
 
     public init(
         audioRecorder: any AudioRecorder,
         sttProvider: any SpeechToTextProvider,
         projectBoardStore: any ProjectBoardStore,
-        inboxCaptureStore: any InboxCaptureStore
+        inboxCaptureStore: any InboxCaptureStore,
+        commandRouter: any VoiceCommandRouting = VoiceCommandRouter()
     ) {
         self.audioRecorder = audioRecorder
         self.sttProvider = sttProvider
         self.projectBoardStore = projectBoardStore
         self.inboxCaptureStore = inboxCaptureStore
+        self.commandRouter = commandRouter
     }
 
     public func startRecording(at date: Date = Date()) async throws {
@@ -437,25 +451,43 @@ public final class InboxVoiceCaptureService {
     ) async throws -> InboxVoiceCaptureResult {
         let audio = try audioRecorder.stop(outputURL: outputURL, at: date)
         let transcription = await transcribe(audio)
-        let title = transcription.transcript?.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return try saveTranscribedCapture(
+            audio: audio,
+            transcript: transcription.transcript,
+            transcriptionErrorMessage: transcription.errorMessage,
+            at: date,
+            createdAt: createdAt
+        )
+    }
+
+    public func saveTranscribedCapture(
+        audio: RecordedAudio,
+        transcript: STTTranscript?,
+        transcriptionErrorMessage: String? = nil,
+        at date: Date = Date(),
+        createdAt: String? = nil
+    ) throws -> InboxVoiceCaptureResult {
+        let title = normalizedTranscriptText(transcript)
+        let interpretation = makeInterpretation(for: title)
         let captureCreatedAt = createdAt ?? ISO8601DateFormatter().string(from: date)
         let task = try projectBoardStore.createInboxTask(title: title?.isEmpty == false ? title! : "Voice memo")
+        let transcriptionStatus: InboxCaptureTranscriptionStatus = title == nil ? .failed : .succeeded
         let capture = try inboxCaptureStore.createVoiceCapture(InboxVoiceCaptureDraft(
             taskID: task.id,
             audioFilePath: audio.fileURL.path,
-            durationSeconds: audio.duration ?? transcription.transcript?.duration ?? 0,
-            transcript: transcription.transcript?.text,
-            interpretationSummary: nil,
-            memo: nil,
+            durationSeconds: audio.duration ?? transcript?.duration ?? 0,
+            transcript: title,
+            interpretationSummary: interpretation?.summary,
+            memo: interpretation?.memo,
             classificationStatus: .unclassified,
-            transcriptionStatus: transcription.transcript == nil ? .failed : .succeeded,
+            transcriptionStatus: transcriptionStatus,
             createdAt: captureCreatedAt
         ))
 
         return InboxVoiceCaptureResult(
             task: task,
             capture: capture,
-            transcriptionErrorMessage: transcription.errorMessage
+            transcriptionErrorMessage: transcriptionErrorMessage
         )
     }
 
@@ -465,6 +497,32 @@ public final class InboxVoiceCaptureService {
         } catch {
             return (nil, sanitizedTranscriptionMessage(error))
         }
+    }
+
+    private func makeInterpretation(for transcript: String?) -> (summary: String, memo: String)? {
+        guard let transcript,
+              !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        let route = commandRouter.route(transcript: transcript)
+        let summary = ExecutionReceiptRedactor()
+            .redact(route.interpretationSummary)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !summary.isEmpty else {
+            return nil
+        }
+        return (
+            summary,
+            String(format: "Confidence: %.2f", route.confidence)
+        )
+    }
+
+    private func normalizedTranscriptText(_ transcript: STTTranscript?) -> String? {
+        guard let text = transcript?.text.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty else {
+            return nil
+        }
+        return text
     }
 
     private func sanitizedTranscriptionMessage(_ error: Error) -> String {
