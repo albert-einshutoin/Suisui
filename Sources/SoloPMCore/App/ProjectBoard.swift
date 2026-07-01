@@ -1881,7 +1881,7 @@ public final class ProjectBoardViewModel: ObservableObject {
 
         let item = AssistantQueueAdapter.makeItem(
             actionPlan: draft.actionPlan,
-            sourceTranscript: review.sourceTranscript,
+            sourceTranscript: Self.sanitizedDailyPlanningSourceTranscript(review.sourceTranscript),
             interpretationSummary: review.headline,
             reason: draft.queueReason,
             costPreview: .localOnly()
@@ -2920,6 +2920,23 @@ public final class ProjectBoardViewModel: ObservableObject {
         guard !redacted.isEmpty else {
             return fallback
         }
+        let maxLength = 300
+        guard redacted.count > maxLength else {
+            return redacted
+        }
+        return "\(redacted.prefix(maxLength))..."
+    }
+
+    private static func sanitizedDailyPlanningSourceTranscript(_ sourceTranscript: String) -> String {
+        let trimmed = sourceTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let redactedSecrets = DeveloperSecretRedactor().redact(trimmed).text
+        let redacted = LocalPathRedactor.redact(redactedSecrets)
+        let fallback = String(localized: "Today daily planning review")
+        guard !redacted.isEmpty else {
+            return fallback
+        }
+        // Daily planning transcripts are durable Queue audit context, so keep
+        // enough intent for review while avoiding secret/path retention.
         let maxLength = 300
         guard redacted.count > maxLength else {
             return redacted

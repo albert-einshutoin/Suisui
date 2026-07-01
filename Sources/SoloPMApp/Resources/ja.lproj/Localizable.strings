@@ -948,6 +948,7 @@
 "Schedule draft generated an invalid Calendar action plan." = "予定ドラフトが無効なカレンダーアクションプランを生成しました。";
 "Daily progress" = "日次進捗";
 "Draft Defer" = "延期を下書き";
+"Draft Move to Today" = "今日へ移動を下書き";
 "Draft Start" = "開始を下書き";
 "Inbox Triage" = "Inbox整理";
 "Inbox captures are shown separately until moved into a project." = "Inboxキャプチャは、プロジェクトへ移動するまで別枠で表示します。";
@@ -976,6 +977,8 @@
 "Read daily planning review aloud." = "日次計画レビューを読み上げました。";
 "Reads this daily planning review with the configured local TTS provider." = "設定済みのローカルTTSプロバイダーで、この日次計画レビューを読み上げます。";
 "Queue a tomorrow due-date update for review." = "明日への期限変更をレビュー用にQueueへ追加します。";
+"Queue a today due-date update for review without creating a Calendar event." = "カレンダー予定は作成せず、今日への期限変更をレビュー用にQueueへ追加します。";
+"Queue a move-to-today draft for approval" = "今日へ移動する下書きを承認用にQueueへ追加";
 "Queue the recommended task status update for review." = "推奨タスクのステータス更新をレビュー用にQueueへ追加します。";
 "Selected Day" = "選択中の日";
 "Selected workload day detail" = "選択中ワークロード日の詳細";
@@ -999,6 +1002,7 @@
 "%d unscheduled tasks need placement" = "%d件の未スケジュールタスクの配置が必要";
 "Creates an Assistant Queue approval item without changing the task." = "タスクを変更せず、Assistant Queueの承認項目を作成します。";
 "Creates an Assistant Queue approval item without writing Calendar." = "カレンダーへ書き込まず、Assistant Queueの承認項目を作成します。";
+"Creates an Assistant Queue approval item; task due date and Calendar stay unchanged until approval." = "Assistant Queueの承認項目を作成します。承認までタスク期限もカレンダーも変更しません。";
 "Daily Planning readout failed. %@" = "日次計画レビューの読み上げに失敗しました。%@";
 "Today daily planning review" = "今日の日次計画レビュー";
 "Uses local TTS to read the review without changing tasks or writing Calendar." = "タスク変更やカレンダー書き込みをせず、ローカルTTSでレビューを読み上げます。";

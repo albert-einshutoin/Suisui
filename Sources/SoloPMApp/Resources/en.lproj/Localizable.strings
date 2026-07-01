@@ -948,6 +948,7 @@
 "Schedule draft generated an invalid Calendar action plan." = "Schedule draft generated an invalid Calendar action plan.";
 "Daily progress" = "Daily progress";
 "Draft Defer" = "Draft Defer";
+"Draft Move to Today" = "Draft Move to Today";
 "Draft Start" = "Draft Start";
 "Inbox Triage" = "Inbox Triage";
 "Inbox captures are shown separately until moved into a project." = "Inbox captures are shown separately until moved into a project.";
@@ -976,6 +977,8 @@
 "Read daily planning review aloud." = "Read daily planning review aloud.";
 "Reads this daily planning review with the configured local TTS provider." = "Reads this daily planning review with the configured local TTS provider.";
 "Queue a tomorrow due-date update for review." = "Queue a tomorrow due-date update for review.";
+"Queue a today due-date update for review without creating a Calendar event." = "Queue a today due-date update for review without creating a Calendar event.";
+"Queue a move-to-today draft for approval" = "Queue a move-to-today draft for approval";
 "Queue the recommended task status update for review." = "Queue the recommended task status update for review.";
 "Selected Day" = "Selected Day";
 "Selected workload day detail" = "Selected workload day detail";
@@ -999,6 +1002,7 @@
 "%d unscheduled tasks need placement" = "%d unscheduled tasks need placement";
 "Creates an Assistant Queue approval item without changing the task." = "Creates an Assistant Queue approval item without changing the task.";
 "Creates an Assistant Queue approval item without writing Calendar." = "Creates an Assistant Queue approval item without writing Calendar.";
+"Creates an Assistant Queue approval item; task due date and Calendar stay unchanged until approval." = "Creates an Assistant Queue approval item; task due date and Calendar stay unchanged until approval.";
 "Daily Planning readout failed. %@" = "Daily Planning readout failed. %@";
 "Today daily planning review" = "Today daily planning review";
 "Uses local TTS to read the review without changing tasks or writing Calendar." = "Uses local TTS to read the review without changing tasks or writing Calendar.";

@@ -450,8 +450,27 @@ public final class VoiceCaptureViewModel: ObservableObject {
             ],
             in: folded
         )
+        let requestsReschedule = containsAnyExplicitPhrase(
+            [
+                "reschedule recommended to today",
+                "reschedule recommended task to today",
+                "reschedule the recommended task to today",
+                "move recommended to today",
+                "move recommended task to today",
+                "move the recommended task to today",
+                "おすすめを今日にリスケ",
+                "おすすめを今日へリスケ",
+                "おすすめを今日に移動",
+                "おすすめを今日へ移動",
+                "推奨タスクを今日にリスケ",
+                "推奨タスクを今日へリスケ",
+                "推奨タスクを今日に移動",
+                "推奨タスクを今日へ移動"
+            ],
+            in: folded
+        )
         let rejectsAction = containsAny(
-            ["do not", "don't", "dont", "not start", "not defer", "cancel", "しない", "始めない", "開始しない", "延期しない", "やめ"],
+            ["do not", "don't", "dont", "not start", "not defer", "not reschedule", "cancel", "しない", "始めない", "開始しない", "延期しない", "リスケしない", "やめ"],
             in: folded
         )
         let asksForAdvice = containsAnyExplicitPhrase(
@@ -465,10 +484,18 @@ public final class VoiceCaptureViewModel: ObservableObject {
         // Voice Daily Planning may prefill an approval item, but ambiguous
         // phrases must stay as a read-only review so the assistant never turns
         // a vague planning prompt into a write-capable Queue action.
-        guard rejectsAction == false, asksForAdvice == false, requestsStart != requestsDefer else {
+        let requestedKinds = [
+            (requestsStart, DailyPlanningActionDraftKind.startRecommended),
+            (requestsDefer, DailyPlanningActionDraftKind.deferRecommendedToTomorrow),
+            (requestsReschedule, DailyPlanningActionDraftKind.moveRecommendedDueDateToToday)
+        ].compactMap { isRequested, kind in
+            isRequested ? kind : nil
+        }
+
+        guard rejectsAction == false, asksForAdvice == false, requestedKinds.count == 1 else {
             return nil
         }
-        return requestsStart ? .startRecommended : .deferRecommendedToTomorrow
+        return requestedKinds[0]
     }
 
     private static func containsAnyExplicitPhrase(_ phrases: [String], in foldedTranscript: String) -> Bool {

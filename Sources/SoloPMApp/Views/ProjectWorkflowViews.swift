@@ -1500,6 +1500,9 @@ private struct ScheduleStatusBanner: View {
 private struct TodayDailyPlanningReviewPanel: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
     let playDailyPlanningReadout: () -> Void
+    private let actionButtonColumns = [
+        GridItem(.adaptive(minimum: 130), spacing: 8, alignment: .leading)
+    ]
 
     private var review: DailyPlanningReview {
         viewModel.dailyPlanningReview
@@ -1556,13 +1559,14 @@ private struct TodayDailyPlanningReviewPanel: View {
                 }
             }
 
-            HStack(spacing: 8) {
+            LazyVGrid(columns: actionButtonColumns, alignment: .leading, spacing: 8) {
                 Button {
                     playDailyPlanningReadout()
                 } label: {
                     Label("Read Aloud", systemImage: "speaker.wave.2")
                 }
                 .controlSize(.small)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .help("Reads this daily planning review with the configured local TTS provider.")
                 .accessibilityIdentifier("today-daily-planning-readout")
                 .accessibilityHint("Uses local TTS to read the review without changing tasks or writing Calendar.")
@@ -1573,6 +1577,7 @@ private struct TodayDailyPlanningReviewPanel: View {
                     Label("Draft Start", systemImage: "play.circle")
                 }
                 .controlSize(.small)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .disabled(review.recommendedTaskID == nil)
                 .help("Queue the recommended task status update for review.")
                 .accessibilityIdentifier("today-daily-planning-draft-start")
@@ -1584,10 +1589,23 @@ private struct TodayDailyPlanningReviewPanel: View {
                     Label("Draft Defer", systemImage: "calendar.badge.clock")
                 }
                 .controlSize(.small)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .disabled(review.recommendedTaskID == nil)
                 .help("Queue a tomorrow due-date update for review.")
                 .accessibilityIdentifier("today-daily-planning-draft-defer")
                 .accessibilityHint("Creates an Assistant Queue approval item without writing Calendar.")
+
+                Button {
+                    viewModel.enqueueDailyPlanningActionDraft(kind: .moveRecommendedDueDateToToday)
+                } label: {
+                    Label("Draft Move to Today", systemImage: "arrow.right.circle")
+                }
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .disabled(review.recommendedTaskID == nil)
+                .help("Queue a today due-date update for review without creating a Calendar event.")
+                .accessibilityIdentifier("today-daily-planning-draft-move-today")
+                .accessibilityHint("Creates an Assistant Queue approval item; task due date and Calendar stay unchanged until approval.")
             }
         }
         .padding(10)

@@ -3,6 +3,7 @@ import Foundation
 public enum DailyPlanningActionDraftKind: String, Codable, CaseIterable, Equatable, Sendable {
     case startRecommended
     case deferRecommendedToTomorrow
+    case moveRecommendedDueDateToToday
 }
 
 public struct DailyPlanningActionDraft: Equatable, Sendable {
@@ -75,6 +76,18 @@ public enum DailyPlanningActionDraftBuilder {
                 arguments: [
                     "id": .number(Double(task.id)),
                     "dueAt": .string(tomorrowKey)
+                ],
+                riskLevel: .write
+            )
+        case .moveRecommendedDueDateToToday:
+            summary = "Move \(taskTitle) due date to \(dateKey) from Daily Planning Review."
+            queueReason = "Daily Planning Review suggested moving \(taskTitle) due date to today."
+            action = PlanAction(
+                id: "\(draftID):move-today",
+                tool: .taskUpdate,
+                arguments: [
+                    "id": .number(Double(task.id)),
+                    "dueAt": .string(dateKey)
                 ],
                 riskLevel: .write
             )
