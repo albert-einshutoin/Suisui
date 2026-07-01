@@ -1191,7 +1191,7 @@ INBOX_TARGET_MARKERS="sidebar-destination-inbox=>Inbox|inbox-action-panel=>Inbox
 TODAY_TARGET_MARKERS="sidebar-destination-today=>Today|today-briefing-panel=>Today|today-assistant-rail=>Today"
 P0_INBOX_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Inbox"
 P0_TODAY_TARGET_MARKERS="today-workflow=>Today|today-briefing-panel=>Today|today-assistant-rail=>Today"
-P0_INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-make-task=>Classifies the selected Inbox item as a task"
+P0_INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-make-task=>Inbox classification actions"
 PROJECTS_TARGET_MARKERS="sidebar-destination-projects=>Projects|projects-portfolio-overview=>Projects"
 SCHEDULE_TARGET_MARKERS="sidebar-destination-schedule=>Schedule|schedule-workflow=>Schedule"
 DONE_TARGET_MARKERS="sidebar-destination-done=>Done|done-workflow=>Done"
