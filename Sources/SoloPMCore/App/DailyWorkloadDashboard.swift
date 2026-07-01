@@ -69,6 +69,24 @@ public struct DailyWorkloadOverview: Equatable, Sendable {
     public var unscheduledTasks: [ProjectBoardTask]
     public var inboxUntriagedCount: Int
 
+    public var inProgressTaskCount: Int {
+        days.reduce(0) { $0 + $1.inProgressTaskCount }
+    }
+
+    public var blockedTaskCount: Int {
+        days.reduce(0) { $0 + $1.blockedTaskCount }
+    }
+
+    public var missedTaskCount: Int {
+        days.reduce(0) { $0 + $1.overdueTaskCount }
+    }
+
+    public var attentionSignalCount: Int {
+        // Inbox captures stay out of committed workload progress, but they are
+        // still attention signals because untriaged intake is how work gets lost.
+        missedTaskCount + blockedTaskCount + unscheduledTasks.count + inboxUntriagedCount
+    }
+
     public init(
         days: [DailyWorkloadDay],
         unscheduledTasks: [ProjectBoardTask],
