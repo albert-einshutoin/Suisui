@@ -8,6 +8,7 @@ public enum VoiceCommandIntentKind: String, Codable, CaseIterable, Equatable, Se
     case documentBrief = "document.brief"
     case developmentPRWorkflow = "development.pr_workflow"
     case notificationDraft = "notification.draft"
+    case connectorSendGate = "connector.send_gate"
     case statusAsk = "status.ask"
     case clarify
 
@@ -27,6 +28,8 @@ public enum VoiceCommandIntentKind: String, Codable, CaseIterable, Equatable, Se
             "Prepare PR workflow"
         case .notificationDraft:
             "Draft notification"
+        case .connectorSendGate:
+            "Review connector send"
         case .statusAsk:
             "Ask status"
         case .clarify:
@@ -361,11 +364,18 @@ public struct VoiceCommandRouter: VoiceCommandRouting {
 
         if containsExternalDestination(folded),
            let unsafeSignal = firstMatchedSignal(in: folded, from: unsafeExternalSignals) {
-            return clarify(
+            // Direct external delivery is intentionally represented as a
+            // review-visible queue gate instead of a clarification loop. That
+            // leaves an auditable "not sent" item and prevents users from
+            // believing Slack/LINE/Discord delivery happened.
+            return VoiceCommandRoutingResult(
                 originalTranscript: transcript,
                 normalizedTranscript: normalized,
-                confidence: 0.28,
-                reason: "Direct external sending must become a reviewed draft before any external action.",
+                intent: .connectorSendGate,
+                interpretationSummary: "Route as connector.send_gate without sending to external services.",
+                confidence: 0.86,
+                decision: .reviewOnly,
+                reviewOnly: true,
                 matchedSignals: [unsafeSignal]
             )
         }

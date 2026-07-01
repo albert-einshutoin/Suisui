@@ -224,6 +224,8 @@ public struct ClarificationSession: Codable, Equatable, Sendable {
             return [.repository, .executionScope]
         case .notificationDraft:
             return [.destination]
+        case .connectorSendGate:
+            return [.destination, .executionApproval]
         case .statusAsk:
             return [.project]
         case .clarify:

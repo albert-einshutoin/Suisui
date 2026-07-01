@@ -205,6 +205,29 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertFalse(snapshot.rows.first { $0.id == approvedWithoutMutation.id }?.canRun ?? true)
     }
 
+    func testReadModelShowsBlockedConnectorSendGateAsNonRunnable() throws {
+        let item = AssistantQueueAdapter.makeConnectorSendGateItem(
+            serviceID: "slack",
+            serviceDisplayName: "Slack",
+            redactedSourceTranscript: "Slackに今すぐ送信して",
+            redactedArgumentSummary: "Connector send requested for Slack.",
+            routeSummary: "Route as connector.send_gate without sending.",
+            requestIDProvider: { "connector-send-test" }
+        )
+
+        let row = try XCTUnwrap(AssistantQueueReadModel.snapshot(from: [item]).rows.first)
+
+        XCTAssertEqual(row.id, "automation-request:connector-send-test")
+        XCTAssertEqual(row.state, .blocked)
+        XCTAssertEqual(row.stateLabel, "Blocked")
+        XCTAssertEqual(row.capabilityLabels, ["connector.slack.message.send", "provider_execution_approval"])
+        XCTAssertEqual(row.blockingReason, "Slack connector send is not configured. Create a reviewed draft instead; no external message was sent.")
+        XCTAssertFalse(row.canApprove)
+        XCTAssertFalse(row.canRun)
+        XCTAssertFalse(row.canDefer)
+        XCTAssertTrue(row.canReject)
+    }
+
     func testReadModelDoesNotMarkMalformedTaskMutationAutomationRequestRunnable() throws {
         let missingTaskID = try AssistantQueueStateMachine.approve(
             makeAutomationRequestItem(

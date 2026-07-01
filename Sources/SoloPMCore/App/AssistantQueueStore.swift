@@ -620,6 +620,8 @@ public enum AssistantQueueReadModel {
             return "provider_execution_approval"
         case .externalMCP(let serverID, let toolName):
             return "mcp.\(serverID).\(toolName)"
+        case .externalConnector(let serviceID, let action):
+            return "connector.\(serviceID).\(action)"
         }
     }
 }

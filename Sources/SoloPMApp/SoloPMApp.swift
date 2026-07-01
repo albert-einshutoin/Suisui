@@ -912,6 +912,8 @@ private struct AssistantQueuePanel: View {
             return localizedSettingsDisplay("Execution approval")
         case .externalMCP(let serverID, let toolName):
             return "\(serverID):\(toolName)"
+        case .externalConnector(let serviceID, let action):
+            return "\(serviceID):\(action)"
         }
     }
 }
@@ -1105,6 +1107,8 @@ private struct VoiceIntentPreview: View {
             "terminal"
         case .notificationDraft:
             "bell"
+        case .connectorSendGate:
+            "paperplane"
         case .statusAsk:
             "chart.bar"
         case .clarify:
