@@ -82,6 +82,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private let inboxTriageCommandParser: InboxVoiceTriageCommandParser
     private let developmentProjectProvider: () -> ProjectRecord?
     private let developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder
+    private let appSettingsProvider: @Sendable () -> AppSettings
+    private let managedCostRateCardProvider: @Sendable (PlanningResponse) -> AssistantQueueCostRateCard?
     // Save-to-Inbox must be tied to the audio that produced the current
     // transcript so a failed new recording cannot reuse stale typed text.
     private var lastTranscribedAudioURL: URL?
@@ -99,7 +101,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
         commandRouter: any VoiceCommandRouting = VoiceCommandRouter(),
         inboxCaptureSaver: (any InboxVoiceCaptureSaving)? = nil,
         developmentProjectProvider: @escaping () -> ProjectRecord? = { nil },
-        developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder = VoiceDevelopmentPullRequestAutomationRequestBuilder()
+        developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder = VoiceDevelopmentPullRequestAutomationRequestBuilder(),
+        appSettingsProvider: @escaping @Sendable () -> AppSettings = { .default },
+        managedCostRateCardProvider: @escaping @Sendable (PlanningResponse) -> AssistantQueueCostRateCard? = { _ in nil }
     ) {
         self.draft = draft
         self.phase = phase
@@ -113,6 +117,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.inboxCaptureSaver = inboxCaptureSaver
         self.developmentProjectProvider = developmentProjectProvider
         self.developmentPullRequestAutomationRequestBuilder = developmentPullRequestAutomationRequestBuilder
+        self.appSettingsProvider = appSettingsProvider
+        self.managedCostRateCardProvider = managedCostRateCardProvider
         self.recordingState = audioRecorder.state
         self.auditErrorMessage = nil
         self.routingResult = draft.canGeneratePlan ? commandRouter.route(transcript: draft.normalizedText) : nil
@@ -1150,6 +1156,17 @@ public final class VoiceCaptureViewModel: ObservableObject {
         let model = response.model ?? ExecutionReceiptModel(provider: response.providerID, name: "unknown")
         if isLocalProvider(response.providerID) {
             return .localOnly(model: model, observedUsage: observedUsage)
+        }
+        if let rateCard = managedCostRateCardProvider(response) {
+            let managedBilling = appSettingsProvider().normalizedForRuntime.managedAIBilling
+            // Managed previews are the only path where SoloPM can enforce a
+            // local hard cap before queue approval; BYOK/provider-billed calls
+            // remain audit telemetry because their billing happens upstream.
+            return rateCard.preview(
+                inputTokens: response.usage.inputTokens,
+                outputTokens: response.usage.outputTokens,
+                hardCapCents: managedBilling.hardCapCentsForPreview
+            )
         }
 
         // Provider planning usage is already incurred before local execution.

@@ -101,6 +101,13 @@ public struct ExecutionUsageMeterSummary: Equatable, Sendable {
         return costTotals.map(\.displayLabel).joined(separator: ", ")
     }
 
+    public func totalCostCents(currencyCode: String) -> Double {
+        let normalizedCurrencyCode = currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return costTotals
+            .filter { $0.currencyCode == normalizedCurrencyCode }
+            .reduce(0) { $0 + $1.totalCostCents }
+    }
+
     fileprivate static func formattedInteger(_ value: Int) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
@@ -124,6 +131,10 @@ public struct ExecutionUsageMeterCostTotal: Equatable, Sendable {
         let measured = Self.majorCurrencyLabel(fromCents: measuredCostCents)
         let estimated = Self.majorCurrencyLabel(fromCents: estimatedCostCents)
         return String(format: String(localized: "%@ %@ measured / %@ estimated"), currencyCode, measured, estimated)
+    }
+
+    public var totalCostCents: Double {
+        measuredCostCents + estimatedCostCents
     }
 
     private static func normalizedCurrencyCode(_ value: String) -> String {

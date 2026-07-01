@@ -1049,8 +1049,14 @@ private struct CatchUpReasonPills: View {
 
 struct DoneWorkflowView: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
+    let appSettings: AppSettings
     @State private var isExportingExecutionReceipts = false
     @State private var executionReceiptExportDocument = ExecutionReceiptHistoryFileDocument(data: Data())
+
+    init(viewModel: ProjectBoardViewModel, appSettings: AppSettings = .default) {
+        self.viewModel = viewModel
+        self.appSettings = appSettings
+    }
 
     private var analytics: DoneAnalyticsSummary {
         viewModel.doneAnalytics()
@@ -1101,7 +1107,10 @@ struct DoneWorkflowView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Label("AI Usage Meter", systemImage: "chart.bar.xaxis")
                         .font(.headline)
-                    ExecutionUsageMeterSummaryView(snapshot: viewModel.executionUsageMeterSnapshot)
+                    ExecutionUsageMeterSummaryView(
+                        snapshot: viewModel.executionUsageMeterSnapshot,
+                        managedAIBilling: appSettings.managedAIBilling
+                    )
                 }
                 .accessibilityIdentifier("ai-usage-meter-summary")
 
@@ -1306,6 +1315,11 @@ struct DoneWorkflowView: View {
 
 private struct ExecutionUsageMeterSummaryView: View {
     let snapshot: ExecutionUsageMeterSnapshot
+    let managedAIBilling: ManagedAIBillingSettings
+
+    private var usageThresholdRows: [ManagedAIUsageThresholdRow] {
+        managedAIBilling.usageThresholdRows(for: snapshot)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1337,6 +1351,17 @@ private struct ExecutionUsageMeterSummaryView: View {
                 if let topProject = snapshot.projectRows.first {
                     ExecutionUsageMeterBucketRowView(title: "Top Project", row: topProject)
                 }
+                if !usageThresholdRows.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Usage Threshold Status")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        ForEach(usageThresholdRows) { row in
+                            ManagedAIUsageThresholdRowView(row: row)
+                        }
+                    }
+                    .accessibilityIdentifier("ai-usage-threshold-status")
+                }
             }
         }
         .accessibilityElement(children: .contain)
@@ -1367,6 +1392,32 @@ private struct ExecutionUsageMeterSummaryView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
         .accessibilityValue(value)
+    }
+}
+
+private struct ManagedAIUsageThresholdRowView: View {
+    let row: ManagedAIUsageThresholdRow
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(row.title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            Text(row.usedLabel)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+            Text(row.capLabel)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+            Text(row.statusLabel)
+                .font(.caption2.weight(.semibold).monospacedDigit())
+                .foregroundStyle(row.status == .exceeded ? .red : .green)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(row.title)
+        .accessibilityValue(row.accessibilityValue)
+        .accessibilityIdentifier("ai-usage-threshold-row-\(row.scope.rawValue)")
     }
 }
 

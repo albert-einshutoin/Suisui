@@ -74,6 +74,40 @@ final class ExecutionUsageMeterTests: XCTestCase {
         XCTAssertFalse(projectRow.accessibilityValue.contains("task-secret"))
     }
 
+    func testManagedAIBillingUsageThresholdRowsCompareConfiguredCapsWithReceiptUsageBuckets() throws {
+        let snapshot = ExecutionUsageMeterReadModel.snapshot(from: [
+            receipt(
+                id: "first-day",
+                finishedAt: "2026-06-18T09:00:00Z",
+                usage: ExecutionReceiptUsage(inputTokens: 100, outputTokens: 50, estimatedCostCents: 30, currencyCode: "USD")
+            ),
+            receipt(
+                id: "latest-day",
+                finishedAt: "2026-06-19T09:00:00Z",
+                usage: ExecutionReceiptUsage(inputTokens: 200, outputTokens: 50, estimatedCostCents: 80, currencyCode: "USD")
+            )
+        ])
+        let billing = ManagedAIBillingSettings(
+            isEnabled: true,
+            perRunCapCents: 25,
+            dailyCapCents: 75,
+            monthlyCapCents: 200,
+            workspaceCapCents: 100
+        )
+
+        let rows = billing.usageThresholdRows(for: snapshot)
+
+        XCTAssertEqual(rows.map(\.scope), [.daily, .monthly, .workspace])
+        XCTAssertEqual(rows.map(\.title), ["Latest Daily Usage", "Latest Monthly Usage", "Workspace Receipt Usage"])
+        XCTAssertEqual(rows.map(\.status), [.exceeded, .withinLimit, .exceeded])
+        XCTAssertEqual(rows[0].usedCents, 80)
+        XCTAssertEqual(rows[1].usedCents, 110)
+        XCTAssertEqual(rows[2].usedCents, 110)
+        XCTAssertTrue(rows[0].statusLabel.contains("exceeded"))
+        XCTAssertTrue(rows[1].statusLabel.contains("remaining"))
+        XCTAssertTrue(rows[2].accessibilityValue.contains("USD 1.10 used"))
+    }
+
     private func receipt(
         id: String,
         finishedAt: String,
