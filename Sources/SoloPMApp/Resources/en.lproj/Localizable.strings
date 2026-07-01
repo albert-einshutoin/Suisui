@@ -1004,6 +1004,7 @@
 "Development Branch" = "Development Branch";
 "Development Commit" = "Development Commit";
 "Estimated" = "Estimated";
+"Execution receipt storage is unavailable. Fix receipt storage before running approved AI work." = "Execution receipt storage is unavailable. Fix receipt storage before running approved AI work.";
 "Execution receipts are unavailable." = "Execution receipts are unavailable.";
 "Measured" = "Measured";
 "Not Started" = "Not Started";

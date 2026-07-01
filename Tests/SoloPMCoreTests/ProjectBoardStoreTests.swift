@@ -871,6 +871,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         var changeCount = 0
         let viewModel = ProjectBoardViewModel(
             store: InMemoryProjectBoardStore(),
+            executionReceiptStore: InMemoryExecutionReceiptStore(),
             onChange: { changeCount += 1 }
         )
         viewModel.load()
@@ -907,7 +908,10 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     @MainActor
     func testProjectBoardViewModelRecordsTaskContentExecutionWhenApprovedAutomationRuns() throws {
-        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: InMemoryExecutionReceiptStore()
+        )
         viewModel.load()
         let task = try XCTUnwrap(viewModel.createTask(
             title: "Run release note task",
@@ -929,8 +933,74 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testProjectBoardViewModelRecordsRedactedApprovedAutomationExecutionReceipt() throws {
+    func testApprovedAutomationRequiresExecutionReceiptStoreBeforeTaskMutation() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Run receipt-gated task",
+            detail: "Do not mutate this task without durable audit evidence.",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-22"
+        ))
+        viewModel.prepareAutomationReviewForSelectedTask()
+
+        viewModel.runApprovedAutomationForSelectedTask()
+
+        let unchangedTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+        XCTAssertEqual(unchangedTask.status, .planned)
+        XCTAssertFalse(unchangedTask.detail.contains("SoloPM approved automation execution"))
+        XCTAssertNil(viewModel.lastApprovedAutomationExecutionReceipt)
+        XCTAssertTrue(viewModel.approvedAutomationExecutionReceipts.isEmpty)
+        XCTAssertEqual(
+            viewModel.todayCommandFeedback,
+            "Execution receipt storage is unavailable. Fix receipt storage before running approved AI work."
+        )
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Execution receipt storage is unavailable. Fix receipt storage before running approved AI work."
+        )
+    }
+
+    @MainActor
+    func testApprovedAutomationRequiresWritableExecutionReceiptStoreBeforeTaskMutation() throws {
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: FailingProjectBoardExecutionReceiptStore()
+        )
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Run writable receipt-gated task",
+            detail: "Do not mutate this task when receipt persistence fails.",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-22"
+        ))
+        viewModel.prepareAutomationReviewForSelectedTask()
+
+        viewModel.runApprovedAutomationForSelectedTask()
+
+        let unchangedTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+        XCTAssertEqual(unchangedTask.status, .planned)
+        XCTAssertFalse(unchangedTask.detail.contains("SoloPM approved automation execution"))
+        XCTAssertNil(viewModel.lastApprovedAutomationExecutionReceipt)
+        XCTAssertTrue(viewModel.approvedAutomationExecutionReceipts.isEmpty)
+        XCTAssertEqual(
+            viewModel.todayCommandFeedback,
+            "Execution receipt storage is unavailable. Fix receipt storage before running approved AI work."
+        )
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Execution receipt storage is unavailable. Fix receipt storage before running approved AI work."
+        )
+    }
+
+    @MainActor
+    func testProjectBoardViewModelRecordsRedactedApprovedAutomationExecutionReceipt() throws {
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: InMemoryExecutionReceiptStore()
+        )
         viewModel.load()
         let task = try XCTUnwrap(viewModel.createTask(
             title: "Run provider handoff token=secret-title",
@@ -1201,7 +1271,8 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         viewModel.runApprovedAutomationForSelectedTask()
 
-        let storedReceipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receiptStore.receipts.map(\.status), [.running, .succeeded])
+        let storedReceipt = try XCTUnwrap(receiptStore.receipts.last { $0.status == .succeeded })
         XCTAssertEqual(storedReceipt.status, .succeeded)
         XCTAssertEqual(storedReceipt.primaryToolName, ActionTool.taskUpdate.rawValue)
         XCTAssertEqual(storedReceipt.visibleSurfaces, [.doneList, .taskDetail, .projectDetail, .auditLog])
@@ -1271,7 +1342,8 @@ final class ProjectBoardStoreTests: XCTestCase {
             documentDeliverableDrafts: drafts
         )
 
-        let storedReceipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receiptStore.receipts.map(\.status), [.running, .succeeded])
+        let storedReceipt = try XCTUnwrap(receiptStore.receipts.last { $0.status == .succeeded })
         XCTAssertEqual(storedReceipt.status, .succeeded)
         XCTAssertEqual(storedReceipt.primaryToolName, "document.deliverable.prepare")
         XCTAssertEqual(storedReceipt.visibleSurfaces, [.taskDetail, .projectDetail, .auditLog])
@@ -1508,7 +1580,10 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     @MainActor
     func testProjectBoardViewModelPreservesBatchReviewAndReceiptHistoryAcrossApprovedTaskExecution() throws {
-        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: InMemoryExecutionReceiptStore()
+        )
         viewModel.load()
         _ = viewModel.createTask(title: "Low future", status: .planned, priority: .low, dueAt: "2026-06-24T08:00:00Z")
         let first = try XCTUnwrap(viewModel.createTask(
@@ -1568,7 +1643,10 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     @MainActor
     func testProjectBoardViewModelBuildsTaskAutomationPlanningRequestWithDocumentDeliverables() throws {
-        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: InMemoryExecutionReceiptStore()
+        )
         viewModel.load()
         _ = viewModel.createTask(title: "Low future", status: .planned, priority: .low, dueAt: "2026-06-24T08:00:00Z")
         _ = viewModel.createTask(
@@ -1642,7 +1720,10 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     @MainActor
     func testProjectBoardViewModelExposesDocumentDeliverableSourcesForAutomationReviewUI() throws {
-        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: InMemoryExecutionReceiptStore()
+        )
         viewModel.load()
         _ = viewModel.createTask(
             title: "High release documentation task",
@@ -1703,7 +1784,10 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     @MainActor
     func testProjectBoardViewModelShowsOnlyProviderReviewableDocumentDeliverables() throws {
-        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: InMemoryExecutionReceiptStore()
+        )
         viewModel.load()
         _ = viewModel.createTask(
             title: "High document automation task",
@@ -1813,6 +1897,117 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertFalse(viewModel.taskAutomationDocumentDeliverableReviews.contains { $0.title == "Duplicate path PR plan" })
         XCTAssertFalse(viewModel.taskAutomationDocumentDeliverableReviews.contains { $0.title == "Mismatched source checklist" })
         XCTAssertFalse(viewModel.taskAutomationDocumentDeliverableReviews.contains { $0.title == "Write-risk release notes" })
+    }
+
+    @MainActor
+    func testDocumentDeliverablesRequireExecutionReceiptStoreBeforeReviewEvidenceIsPrepared() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        _ = viewModel.createTask(
+            title: "High receipt-gated documentation task",
+            detail: "Prepare reviewed document evidence only when receipts are durable.",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-21T08:00:00Z"
+        )
+        let drafts = DocumentAutomationArtifactPlanner().deliverableDrafts(
+            userRequest: "Prepare release notes from selected docs.",
+            documents: [
+                ScopedAutomationDocument(
+                    id: "release",
+                    title: "Release source",
+                    scope: .appDocs,
+                    redactedSummary: "Release evidence.",
+                    inclusionReason: "Selected for release notes."
+                )
+            ]
+        )
+
+        XCTAssertThrowsError(
+            try viewModel.makeTaskAutomationPlanningRequest(
+                settings: .init(
+                    isEnabled: true,
+                    mode: .reviewOnly,
+                    cadence: .hourly,
+                    maxTasksPerRun: 1,
+                    dailyLLMCallLimit: 3,
+                    lookaheadHours: 72
+                ),
+                history: .empty,
+                referenceDate: try isoDate("2026-06-22T09:00:00Z"),
+                calendar: utcCalendar(),
+                timeZoneIdentifier: "UTC",
+                documentDeliverableDrafts: drafts
+            )
+        ) { error in
+            XCTAssertEqual(error as? TaskAutoExecutionPlanningRequestError, .executionReceiptStoreUnavailable)
+        }
+        XCTAssertTrue(viewModel.taskAutomationDocumentDeliverableReviews.isEmpty)
+        XCTAssertEqual(
+            viewModel.todayCommandFeedback,
+            "Execution receipt storage is unavailable. Fix receipt storage before running approved AI work."
+        )
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Execution receipt storage is unavailable. Fix receipt storage before running approved AI work."
+        )
+    }
+
+    @MainActor
+    func testDocumentDeliverablesRequireWritableExecutionReceiptStoreBeforeReviewEvidenceIsPrepared() throws {
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: FailingProjectBoardExecutionReceiptStore()
+        )
+        viewModel.load()
+        _ = viewModel.createTask(
+            title: "High writable receipt-gated documentation task",
+            detail: "Prepare reviewed document evidence only when receipts are durable.",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-21T08:00:00Z"
+        )
+        let drafts = DocumentAutomationArtifactPlanner().deliverableDrafts(
+            userRequest: "Prepare release notes from selected docs.",
+            documents: [
+                ScopedAutomationDocument(
+                    id: "release",
+                    title: "Release source",
+                    scope: .appDocs,
+                    redactedSummary: "Release evidence.",
+                    inclusionReason: "Selected for release notes."
+                )
+            ]
+        )
+
+        XCTAssertThrowsError(
+            try viewModel.makeTaskAutomationPlanningRequest(
+                settings: .init(
+                    isEnabled: true,
+                    mode: .reviewOnly,
+                    cadence: .hourly,
+                    maxTasksPerRun: 1,
+                    dailyLLMCallLimit: 3,
+                    lookaheadHours: 72
+                ),
+                history: .empty,
+                referenceDate: try isoDate("2026-06-22T09:00:00Z"),
+                calendar: utcCalendar(),
+                timeZoneIdentifier: "UTC",
+                documentDeliverableDrafts: drafts
+            )
+        ) { error in
+            XCTAssertEqual(error as? TaskAutoExecutionPlanningRequestError, .executionReceiptStoreUnavailable)
+        }
+        XCTAssertTrue(viewModel.taskAutomationDocumentDeliverableReviews.isEmpty)
+        XCTAssertEqual(
+            viewModel.todayCommandFeedback,
+            "Execution receipt storage is unavailable. Fix receipt storage before running approved AI work."
+        )
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Execution receipt storage is unavailable. Fix receipt storage before running approved AI work."
+        )
     }
 
     @MainActor
@@ -3193,6 +3388,114 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testScheduleApplyRequiresExecutionReceiptStoreBeforeCalendarWrite() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 21, hour: 9).date)
+        let calendarClient = InMemoryCalendarClient()
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            scheduleCalendarClient: calendarClient
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Receipt Gated Schedule"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Calendar block", projectID: project.id, status: .planned, dueAt: "2026-06-21"))
+        _ = viewModel.prepareScheduleDraft(on: referenceDate, calendar: calendar)
+
+        let result = viewModel.applyScheduleDraftToCalendar(approvalToken: "approved")
+
+        XCTAssertEqual(
+            result,
+            .failed("Execution receipt storage is unavailable. Fix receipt storage before running approved AI work.")
+        )
+        XCTAssertTrue(try calendarClient.listEvents().isEmpty)
+        XCTAssertEqual(viewModel.scheduleApplyResult, result)
+        XCTAssertEqual(
+            viewModel.todayCommandFeedback,
+            "Execution receipt storage is unavailable. Fix receipt storage before running approved AI work."
+        )
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Execution receipt storage is unavailable. Fix receipt storage before running approved AI work."
+        )
+    }
+
+    @MainActor
+    func testScheduleApplyRequiresWritableExecutionReceiptStoreBeforeCalendarWrite() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 21, hour: 9).date)
+        let calendarClient = InMemoryCalendarClient()
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: FailingProjectBoardExecutionReceiptStore(),
+            scheduleCalendarClient: calendarClient
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Writable Receipt Gated Schedule"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Calendar block", projectID: project.id, status: .planned, dueAt: "2026-06-21"))
+        _ = viewModel.prepareScheduleDraft(on: referenceDate, calendar: calendar)
+
+        let result = viewModel.applyScheduleDraftToCalendar(approvalToken: "approved")
+
+        XCTAssertEqual(
+            result,
+            .failed("Execution receipt storage is unavailable. Fix receipt storage before running approved AI work.")
+        )
+        XCTAssertTrue(try calendarClient.listEvents().isEmpty)
+        XCTAssertEqual(viewModel.scheduleApplyResult, result)
+        XCTAssertEqual(
+            viewModel.todayCommandFeedback,
+            "Execution receipt storage is unavailable. Fix receipt storage before running approved AI work."
+        )
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Execution receipt storage is unavailable. Fix receipt storage before running approved AI work."
+        )
+    }
+
+    @MainActor
+    func testScheduleApplyWithoutDraftPreservesValidationResultWhenReceiptStoreIsUnavailable() throws {
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            scheduleCalendarClient: InMemoryCalendarClient()
+        )
+        viewModel.load()
+
+        let result = viewModel.applyScheduleDraftToCalendar(approvalToken: "approved")
+
+        XCTAssertEqual(result, .noDraft)
+        XCTAssertEqual(viewModel.scheduleApplyResult, .noDraft)
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Create a schedule draft before applying to Calendar.")
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Execution receipt storage is unavailable. Fix receipt storage before running approved AI work."
+        )
+    }
+
+    @MainActor
+    func testScheduleApplyWithoutCalendarPreservesValidationResultWhenReceiptStoreIsUnavailable() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 21, hour: 9).date)
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "No Calendar Receipt Unavailable"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Calendar block", projectID: project.id, status: .planned, dueAt: "2026-06-21"))
+        _ = viewModel.prepareScheduleDraft(on: referenceDate, calendar: calendar)
+
+        let result = viewModel.applyScheduleDraftToCalendar(approvalToken: "approved")
+
+        XCTAssertEqual(result, .calendarNotConfigured)
+        XCTAssertEqual(viewModel.scheduleApplyResult, .calendarNotConfigured)
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Calendar is not configured. No external write was performed.")
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Execution receipt storage is unavailable. Fix receipt storage before running approved AI work."
+        )
+    }
+
+    @MainActor
     func testScheduleApplyWithoutCalendarBackendDoesNotReturnMockSuccess() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
@@ -3263,7 +3566,8 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         XCTAssertEqual(result, .applied(eventCount: 1))
         XCTAssertEqual(try calendarClient.listEvents().count, 1)
-        let receipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receiptStore.receipts.map(\.status), [.running, .succeeded])
+        let receipt = try XCTUnwrap(receiptStore.receipts.last { $0.status == .succeeded })
         XCTAssertEqual(receipt.status, .succeeded)
         XCTAssertTrue(receipt.approvalID?.hasPrefix("schedule-draft-apply-approval:") ?? false)
         XCTAssertEqual(receipt.primaryToolName, ActionTool.calendarCreateWorkBlock.rawValue)
@@ -3281,8 +3585,16 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(globalRow.status, .succeeded)
         XCTAssertEqual(globalRow.toolLabel, ActionTool.calendarCreateWorkBlock.rawValue)
         XCTAssertTrue(globalRow.referenceSummary.contains("Calendar Event 1"))
-        XCTAssertEqual(viewModel.executionReceiptHistorySnapshot(forTaskID: task.id).rows.map(\.toolLabel), [ActionTool.calendarCreateWorkBlock.rawValue])
-        XCTAssertEqual(viewModel.executionReceiptHistorySnapshot(forProjectID: project.id).rows.map(\.toolLabel), [ActionTool.calendarCreateWorkBlock.rawValue])
+        XCTAssertEqual(viewModel.executionReceiptHistorySnapshot(forTaskID: task.id).rows.map(\.status), [.succeeded, .running])
+        XCTAssertEqual(viewModel.executionReceiptHistorySnapshot(forProjectID: project.id).rows.map(\.status), [.succeeded, .running])
+        XCTAssertEqual(viewModel.executionReceiptHistorySnapshot(forTaskID: task.id).rows.map(\.toolLabel), [
+            ActionTool.calendarCreateWorkBlock.rawValue,
+            ActionTool.calendarCreateWorkBlock.rawValue
+        ])
+        XCTAssertEqual(viewModel.executionReceiptHistorySnapshot(forProjectID: project.id).rows.map(\.toolLabel), [
+            ActionTool.calendarCreateWorkBlock.rawValue,
+            ActionTool.calendarCreateWorkBlock.rawValue
+        ])
     }
 
     @MainActor
@@ -3309,13 +3621,14 @@ final class ProjectBoardStoreTests: XCTestCase {
         }
         XCTAssertTrue(message.contains("Calendar permission is denied"))
         XCTAssertTrue(try calendarClient.listEvents().isEmpty)
-        let receipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receiptStore.receipts.map(\.status), [.running, .failed])
+        let receipt = try XCTUnwrap(receiptStore.receipts.last { $0.status == .failed })
         XCTAssertEqual(receipt.status, .failed)
         XCTAssertEqual(receipt.primaryToolName, ActionTool.calendarCreateWorkBlock.rawValue)
         XCTAssertEqual(receipt.references.map(\.kind), [.task, .project])
         XCTAssertTrue(receipt.actions.contains { $0.status == .failed && ($0.errorSummary?.contains("Calendar permission is denied") ?? false) })
         XCTAssertEqual(viewModel.executionReceiptHistorySnapshot.rows.first?.status, .failed)
-        XCTAssertEqual(viewModel.executionReceiptHistorySnapshot(forTaskID: task.id).rows.map(\.status), [.failed])
+        XCTAssertEqual(viewModel.executionReceiptHistorySnapshot(forTaskID: task.id).rows.map(\.status), [.failed, .running])
     }
 
     @MainActor
@@ -3343,13 +3656,14 @@ final class ProjectBoardStoreTests: XCTestCase {
         }
         XCTAssertTrue(message.contains("Calendar write failed after the first event"))
         XCTAssertEqual(try calendarClient.listEvents().count, 1)
-        let receipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receiptStore.receipts.map(\.status), [.running, .failed])
+        let receipt = try XCTUnwrap(receiptStore.receipts.last { $0.status == .failed })
         XCTAssertEqual(receipt.status, .failed)
         XCTAssertEqual(receipt.references.filter { $0.kind == .calendarEvent }.map(\.id), ["calendar-event-1"])
         XCTAssertEqual(receipt.actions.map(\.status), [.succeeded, .failed])
         XCTAssertTrue(receipt.references.contains { $0.kind == .task && $0.id == String(firstTask.id) })
         XCTAssertTrue(receipt.references.contains { $0.kind == .task && $0.id == String(secondTask.id) })
-        XCTAssertEqual(viewModel.executionReceiptHistorySnapshot(forProjectID: project.id).rows.map(\.status), [.failed])
+        XCTAssertEqual(viewModel.executionReceiptHistorySnapshot(forProjectID: project.id).rows.map(\.status), [.failed, .running])
     }
 
     @MainActor
@@ -5291,6 +5605,29 @@ private enum ProjectBoardStoreTestError: Error, CustomStringConvertible {
 
     var description: String {
         "Project board unavailable"
+    }
+}
+
+private final class FailingProjectBoardExecutionReceiptStore: ExecutionReceiptStore, @unchecked Sendable {
+    func save(_ receipt: ExecutionReceipt) throws {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func list(limit: Int) throws -> [ExecutionReceipt] {
+        []
+    }
+
+    func list(matching filter: ExecutionReceiptSearchFilter, limit: Int) throws -> [ExecutionReceipt] {
+        []
+    }
+
+    func list(
+        referenceKind: ExecutionReceiptReferenceKind,
+        referenceID: String,
+        visibleSurface: ExecutionReceiptSurface,
+        limit: Int
+    ) throws -> [ExecutionReceipt] {
+        []
     }
 }
 

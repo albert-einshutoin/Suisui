@@ -454,6 +454,7 @@ public struct TaskAutoExecutionPlanner: Sendable {
 
 public enum TaskAutoExecutionPlanningRequestError: Error, Equatable, Sendable {
     case noReviewableTasks
+    case executionReceiptStoreUnavailable
 }
 
 struct TaskAutomationReviewableDocumentDeliverable: Equatable, Sendable {
