@@ -1319,6 +1319,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var executionReceiptHistoryReferenceKindFilter: ExecutionReceiptReferenceKind?
     @Published public private(set) var executionReceiptHistoryExportData: Data?
     @Published public private(set) var executionReceiptHistoryExportMessage: String?
+    @Published public private(set) var executionUsageMeterSnapshot: ExecutionUsageMeterSnapshot
 
     private let store: any ProjectBoardStore
     private let inboxCaptureStore: (any InboxCaptureStore)?
@@ -1395,6 +1396,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.executionReceiptHistoryReferenceKindFilter = nil
         self.executionReceiptHistoryExportData = nil
         self.executionReceiptHistoryExportMessage = nil
+        self.executionUsageMeterSnapshot = .empty
         self.executionReceiptHistorySnapshotsByTaskID = [:]
         self.executionReceiptHistorySnapshotsByProjectID = [:]
         self.taskAutomationSessionHistory = .empty
@@ -3591,6 +3593,9 @@ public final class ProjectBoardViewModel: ObservableObject {
     private func refreshExecutionReceiptHistorySnapshot(for snapshot: ProjectBoardSnapshot) {
         guard let executionReceiptStore else {
             executionReceiptHistorySnapshot = .empty
+            executionUsageMeterSnapshot = ExecutionUsageMeterSnapshot(
+                unavailableMessage: String(localized: "Execution usage meter is unavailable")
+            )
             executionReceiptHistorySnapshotsByTaskID = [:]
             executionReceiptHistorySnapshotsByProjectID = [:]
             return
@@ -3598,6 +3603,7 @@ public final class ProjectBoardViewModel: ObservableObject {
 
         do {
             executionReceiptHistorySnapshot = try globalExecutionReceiptHistorySnapshot(store: executionReceiptStore)
+            executionUsageMeterSnapshot = try executionUsageMeterSnapshot(store: executionReceiptStore)
             executionReceiptHistorySnapshotsByTaskID = try scopedExecutionReceiptSnapshotsByTaskID(
                 in: snapshot,
                 store: executionReceiptStore
@@ -3613,7 +3619,24 @@ public final class ProjectBoardViewModel: ObservableObject {
                 rows: [],
                 unavailableMessage: String(localized: "Execution receipts are unavailable.")
             )
+            executionUsageMeterSnapshot = ExecutionUsageMeterSnapshot(
+                unavailableMessage: String(localized: "Execution usage meter is unavailable")
+            )
         }
+    }
+
+    private func executionUsageMeterSnapshot(
+        store: any ExecutionReceiptStore
+    ) throws -> ExecutionUsageMeterSnapshot {
+        let receiptLimit = 500
+        let receipts = try store.list(
+            matching: ExecutionReceiptSearchFilter(visibleSurface: .auditLog),
+            limit: receiptLimit
+        )
+        return ExecutionUsageMeterReadModel.snapshot(
+            from: receipts,
+            scopeLabel: String(format: String(localized: "Recent audit receipts (UTC buckets, up to %d receipts)"), receiptLimit)
+        )
     }
 
     public func executionReceiptHistorySnapshot(forTaskID taskID: Int64) -> ExecutionReceiptHistorySnapshot {

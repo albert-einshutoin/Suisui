@@ -1099,6 +1099,13 @@ struct DoneWorkflowView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
+                    Label("AI Usage Meter", systemImage: "chart.bar.xaxis")
+                        .font(.headline)
+                    ExecutionUsageMeterSummaryView(snapshot: viewModel.executionUsageMeterSnapshot)
+                }
+                .accessibilityIdentifier("ai-usage-meter-summary")
+
+                VStack(alignment: .leading, spacing: 10) {
                     Label("Recent AI Receipts", systemImage: "doc.text.magnifyingglass")
                         .font(.headline)
                     HStack(spacing: 8) {
@@ -1295,6 +1302,99 @@ struct DoneWorkflowView: View {
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         return formatter
     }()
+}
+
+private struct ExecutionUsageMeterSummaryView: View {
+    let snapshot: ExecutionUsageMeterSnapshot
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let unavailableMessage = snapshot.unavailableMessage {
+                ContentUnavailableView(
+                    "Execution usage meter is unavailable",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(unavailableMessage)
+                )
+            } else {
+                Text(snapshot.scopeLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("ai-usage-meter-scope")
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: 10)], spacing: 10) {
+                    usageMetric("Total Tokens", snapshot.summary.totalTokenLabel, "number")
+                    usageMetric("Tracked Runs", snapshot.summary.receiptCountLabel, "checklist")
+                    usageMetric("Cost", snapshot.summary.costLabel, "creditcard")
+                }
+
+                if let latestDay = snapshot.dailyRows.first {
+                    ExecutionUsageMeterBucketRowView(title: "Latest Day", row: latestDay)
+                }
+                if let latestMonth = snapshot.monthlyRows.first {
+                    ExecutionUsageMeterBucketRowView(title: "Latest Month", row: latestMonth)
+                }
+                if let topProject = snapshot.projectRows.first {
+                    ExecutionUsageMeterBucketRowView(title: "Top Project", row: topProject)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("AI Usage Meter")
+        .accessibilityValue(snapshot.accessibilityValue)
+        .accessibilityHint("Shows receipt-derived token and cost usage without raw prompts, receipt identifiers, or provider secrets.")
+    }
+
+    private func usageMetric(_ title: LocalizedStringKey, _ value: String, _ systemImage: String) -> some View {
+        Label {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Text(value)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } icon: {
+            Image(systemName: systemImage)
+                .foregroundStyle(.secondary)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
+        .accessibilityValue(value)
+    }
+}
+
+private struct ExecutionUsageMeterBucketRowView: View {
+    let title: LocalizedStringKey
+    let row: ExecutionUsageMeterBucketRow
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(row.title)
+                .font(.caption.weight(.medium))
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(row.summary.totalTokenLabel)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+            Text(row.summary.costLabel)
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(row.accessibilityValue)
+    }
 }
 
 private struct ExecutionReceiptHistoryFileDocument: FileDocument {
