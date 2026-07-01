@@ -253,6 +253,37 @@ final class GoogleCalendarAppRuntimeTests: XCTestCase {
         XCTAssertTrue(namespaceRows.isEmpty)
     }
 
+    func testTaskSyncServiceUsesConfiguredCalendarID() throws {
+        let connection = try migratedConnection()
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let linkStore = SQLiteExternalTaskLinkStore(connection: connection)
+        let calendarSink = GoogleCalendarRecordingEventSink()
+        let project = try boardStore.createProject(title: "Client Launch")
+        _ = try boardStore.createTask(ProjectBoardTaskDraft(
+            projectID: project.id,
+            title: "Send launch brief",
+            dueAt: "2026-07-07"
+        ))
+        let service = GoogleCalendarTaskSyncService(
+            entitlementStore: GoogleCalendarRuntimeStaticEntitlementStore(plan: .pro),
+            store: boardStore,
+            linkStore: linkStore,
+            calendarSink: calendarSink,
+            calendarID: "team-calendar@example.com",
+            timeZoneIdentifier: "Asia/Tokyo",
+            idempotencyNamespace: "test-namespace"
+        )
+
+        let result = try service.syncDueTasks(context: ToolExecutionContext(
+            approvalToken: ApprovalToken(id: "approved", sessionID: "google-calendar-test"),
+            source: .reviewUI
+        ))
+
+        XCTAssertEqual(result, GoogleCalendarTaskSyncResult(createdEventCount: 1, skippedAlreadyLinkedCount: 0))
+        XCTAssertEqual(calendarSink.records.map(\.calendarID), ["team-calendar@example.com"])
+        XCTAssertEqual(calendarSink.records.map(\.timeZoneIdentifier), ["Asia/Tokyo"])
+    }
+
     func testOAuthPKCEBuildsGoogleAuthorizationURLWithoutClientSecret() throws {
         let configuration = GoogleCalendarOAuthAuthorizationConfiguration(
             clientID: "google-client-id.apps.googleusercontent.com",
@@ -624,5 +655,38 @@ private final class GoogleCalendarRecordingHTTPDataClient: SynchronousHTTPDataCl
             headerFields: nil
         )!
         return (responseBody, response)
+    }
+}
+
+private final class GoogleCalendarRecordingEventSink: ExternalCalendarEventSink, @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedRecords: [ExternalCalendarEventRecord] = []
+
+    var records: [ExternalCalendarEventRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedRecords
+    }
+
+    func createEvent(
+        _ draft: CalendarEventDraft,
+        calendarID: String,
+        timeZoneIdentifier: String,
+        context: ToolExecutionContext
+    ) throws -> ExternalCalendarEventRecord {
+        guard context.approvalToken != nil else {
+            throw GoogleCalendarRuntimeSyncError.approvalRequired
+        }
+        lock.lock()
+        let record = ExternalCalendarEventRecord(
+            providerID: ExternalTaskSource.googleCalendar.rawValue,
+            externalID: "event-\(recordedRecords.count + 1)",
+            calendarID: calendarID,
+            timeZoneIdentifier: timeZoneIdentifier,
+            title: draft.title
+        )
+        recordedRecords.append(record)
+        lock.unlock()
+        return record
     }
 }

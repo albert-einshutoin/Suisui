@@ -44,6 +44,7 @@
 "Generate Plan" = "計画生成";
 "GitHub Issues" = "GitHub Issues";
 "Google Calendar" = "Google Calendar";
+"Google Calendar ID" = "Google Calendar ID";
 "Google Calendar Sync" = "Googleカレンダー同期";
 "Google Calendar sync requires Pro and OAuth authorization." = "Googleカレンダー同期にはProとOAuth認証が必要です。";
 "Check Status" = "状態確認";
@@ -76,6 +77,9 @@
 "Reconnect with Calendar events scope" = "Calendar eventsスコープ付きで再接続";
 "Reconnect with OAuth authorization" = "OAuth認証で再接続";
 "Runtime not configured" = "ランタイム未設定";
+"Save Calendar" = "カレンダーを保存";
+"Persists the selected Google Calendar id before checking sync readiness." = "選択したGoogle Calendar IDを保存してから同期準備状況を確認します。";
+"Sets the Google Calendar id used for approved due-task sync." = "承認済み期限付きタスク同期に使うGoogle Calendar IDを設定します。";
 "Sync failed" = "同期失敗";
 "Sync due tasks from Project Board" = "Project Boardから期限付きタスクを同期";
 "Tokens stay in Keychain; Settings uses OAuth only." = "トークンはKeychainに保存され、SettingsはOAuthのみを使用します。";

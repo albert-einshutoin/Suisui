@@ -514,6 +514,40 @@ public protocol GoogleCalendarRuntimeSyncing: Sendable {
     func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult
 }
 
+public final class SettingsBackedGoogleCalendarRuntimeSync: GoogleCalendarRuntimeSyncing, @unchecked Sendable {
+    public typealias StatusFactory = (AppSettings, Date) throws -> GoogleCalendarRuntimeSyncStatus
+    public typealias SyncFactory = (AppSettings) throws -> any GoogleCalendarRuntimeSyncing
+
+    private let settingsStore: any AppSettingsStore
+    private let statusFactory: StatusFactory
+    private let syncFactory: SyncFactory
+
+    public init(
+        settingsStore: any AppSettingsStore,
+        statusFactory: @escaping StatusFactory,
+        syncFactory: @escaping SyncFactory
+    ) {
+        self.settingsStore = settingsStore
+        self.statusFactory = statusFactory
+        self.syncFactory = syncFactory
+    }
+
+    public func status(now: Date) throws -> GoogleCalendarRuntimeSyncStatus {
+        try statusFactory(loadRuntimeSettings(), now)
+    }
+
+    public func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult {
+        try syncFactory(loadRuntimeSettings()).syncDueTasks(context: context)
+    }
+
+    private func loadRuntimeSettings() throws -> AppSettings {
+        // The selected calendar is an external write target, so long-lived UI
+        // surfaces must not cache it. Reload before each status/write path so
+        // Settings changes cannot write approved events to a stale calendar.
+        try settingsStore.load().normalizedForRuntime
+    }
+}
+
 public enum GoogleCalendarRuntimeSyncReadiness {
     public static func status(
         entitlementStore: any EntitlementStore,

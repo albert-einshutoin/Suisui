@@ -2243,6 +2243,24 @@ private struct SettingsView: View {
                     statusActionLabel: googleCalendarSettingsReadinessRow.statusCheckActionLabel,
                     onStatusAction: refreshGoogleCalendarSettingsStatus
                 )
+                TextField(
+                    "Google Calendar ID",
+                    text: Binding(
+                        get: { settingsViewModel.settings.googleCalendarID },
+                        set: { settingsViewModel.setGoogleCalendarID($0) }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("settings-google-calendar-id")
+                .accessibilityHint("Sets the Google Calendar id used for approved due-task sync.")
+                .onSubmit(saveGoogleCalendarIDSetting)
+                Button {
+                    saveGoogleCalendarIDSetting()
+                } label: {
+                    Label("Save Calendar", systemImage: "square.and.arrow.down")
+                }
+                .accessibilityIdentifier("settings-google-calendar-id-save")
+                .accessibilityHint("Persists the selected Google Calendar id before checking sync readiness.")
                 Button(localizedSettingsDisplay(googleCalendarOAuthActionLabel)) {
                     startGoogleCalendarOAuthAuthorization()
                 }
@@ -2896,6 +2914,14 @@ private struct SettingsView: View {
     private func refreshGoogleCalendarSettingsStatus() {
         googleCalendarSetupMessage = nil
         googleCalendarSyncStatus = googleCalendarStatusProvider()
+    }
+
+    private func saveGoogleCalendarIDSetting() {
+        settingsViewModel.saveSettings()
+        guard settingsViewModel.errorMessage == nil else {
+            return
+        }
+        refreshGoogleCalendarSettingsStatus()
     }
 
     private func startGoogleCalendarOAuthAuthorization() {
@@ -3972,7 +3998,7 @@ private enum AppRuntimeFactory {
             let executionReceiptStore = try? makeExecutionReceiptStore()
             let secretStore = makeSecretStore()
             let entitlementStore = KeychainEntitlementStore(secretStore: secretStore)
-            let googleCalendarSync = try makeGoogleCalendarSyncController(
+            let googleCalendarSync = makeSettingsBackedGoogleCalendarSyncController(
                 connection: connection,
                 entitlementStore: entitlementStore,
                 store: projectBoardStore,
@@ -4117,12 +4143,13 @@ private enum AppRuntimeFactory {
         do {
             let connection = try migratedConnection()
             let secretStore = makeSecretStore()
+            let runtimeSettings = loadRuntimeAppSettings()
             return try GoogleCalendarAppRuntimeFactory.syncStatus(
                 entitlementStore: KeychainEntitlementStore(secretStore: secretStore),
                 secretStore: secretStore,
                 connection: connection,
-                calendarID: "primary",
-                timeZoneIdentifier: TimeZone.current.identifier
+                calendarID: runtimeSettings.googleCalendarID,
+                timeZoneIdentifier: runtimeSettings.timeZoneIdentifier
             )
         } catch {
             return GoogleCalendarRuntimeSyncStatus(
@@ -4380,12 +4407,47 @@ private enum AppRuntimeFactory {
         return sharedSecretStore
     }
 
-    private static func makeGoogleCalendarSyncController(
+    private static func makeSettingsBackedGoogleCalendarSyncController(
         connection: SQLiteConnection,
         entitlementStore: any EntitlementStore,
         store: any ProjectBoardStore,
         linkStore: any ExternalTaskLinkStore,
         secretStore: any SecretStore
+    ) -> any GoogleCalendarRuntimeSyncing {
+        SettingsBackedGoogleCalendarRuntimeSync(
+            settingsStore: UserDefaultsAppSettingsStore(),
+            statusFactory: { settings, now in
+                try GoogleCalendarAppRuntimeFactory.syncStatus(
+                    entitlementStore: entitlementStore,
+                    secretStore: secretStore,
+                    connection: connection,
+                    calendarID: settings.googleCalendarID,
+                    timeZoneIdentifier: settings.timeZoneIdentifier,
+                    now: now
+                )
+            },
+            syncFactory: { settings in
+                try makeGoogleCalendarSyncController(
+                    connection: connection,
+                    entitlementStore: entitlementStore,
+                    store: store,
+                    linkStore: linkStore,
+                    secretStore: secretStore,
+                    calendarID: settings.googleCalendarID,
+                    timeZoneIdentifier: settings.timeZoneIdentifier
+                )
+            }
+        )
+    }
+
+    private static func makeGoogleCalendarSyncController(
+        connection: SQLiteConnection,
+        entitlementStore: any EntitlementStore,
+        store: any ProjectBoardStore,
+        linkStore: any ExternalTaskLinkStore,
+        secretStore: any SecretStore,
+        calendarID: String,
+        timeZoneIdentifier: String
     ) throws -> GoogleCalendarRuntimeSyncController {
         try GoogleCalendarAppRuntimeFactory.makeSyncController(
             entitlementStore: entitlementStore,
@@ -4394,8 +4456,8 @@ private enum AppRuntimeFactory {
             secretStore: secretStore,
             connection: connection,
             idempotencyNamespaceStore: SQLiteGoogleCalendarIdempotencyNamespaceStore(connection: connection),
-            calendarID: "primary",
-            timeZoneIdentifier: TimeZone.current.identifier
+            calendarID: calendarID,
+            timeZoneIdentifier: timeZoneIdentifier
         )
     }
 

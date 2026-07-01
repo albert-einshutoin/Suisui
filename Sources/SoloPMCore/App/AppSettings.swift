@@ -8,6 +8,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var notificationsEnabled: Bool
     public var defaultWorkspacePath: String?
     public var timeZoneIdentifier: String
+    public var googleCalendarID: String
     public var geminiModelID: String?
     public var groqBaseURLString: String?
     public var whisperCppExecutablePath: String?
@@ -27,6 +28,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case notificationsEnabled
         case defaultWorkspacePath
         case timeZoneIdentifier
+        case googleCalendarID
         case geminiModelID
         case groqBaseURLString
         case whisperCppExecutablePath
@@ -47,6 +49,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         notificationsEnabled: Bool = false,
         defaultWorkspacePath: String? = nil,
         timeZoneIdentifier: String = TimeZone.current.identifier,
+        googleCalendarID: String = "primary",
         geminiModelID: String? = nil,
         groqBaseURLString: String? = nil,
         whisperCppExecutablePath: String? = nil,
@@ -65,6 +68,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.notificationsEnabled = notificationsEnabled
         self.defaultWorkspacePath = defaultWorkspacePath
         self.timeZoneIdentifier = timeZoneIdentifier
+        self.googleCalendarID = googleCalendarID
         self.geminiModelID = geminiModelID
         self.groqBaseURLString = groqBaseURLString
         self.whisperCppExecutablePath = whisperCppExecutablePath
@@ -86,6 +90,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.notificationsEnabled = try container.decode(Bool.self, forKey: .notificationsEnabled)
         self.defaultWorkspacePath = try container.decodeIfPresent(String.self, forKey: .defaultWorkspacePath)
         self.timeZoneIdentifier = try container.decode(String.self, forKey: .timeZoneIdentifier)
+        self.googleCalendarID = try container.decodeIfPresent(String.self, forKey: .googleCalendarID) ?? "primary"
         self.geminiModelID = try container.decodeIfPresent(String.self, forKey: .geminiModelID)
         self.groqBaseURLString = try container.decodeIfPresent(String.self, forKey: .groqBaseURLString)
         self.whisperCppExecutablePath = try container.decodeIfPresent(String.self, forKey: .whisperCppExecutablePath)
@@ -107,6 +112,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(notificationsEnabled, forKey: .notificationsEnabled)
         try container.encodeIfPresent(defaultWorkspacePath, forKey: .defaultWorkspacePath)
         try container.encode(timeZoneIdentifier, forKey: .timeZoneIdentifier)
+        try container.encode(googleCalendarID, forKey: .googleCalendarID)
         try container.encodeIfPresent(geminiModelID, forKey: .geminiModelID)
         try container.encodeIfPresent(groqBaseURLString, forKey: .groqBaseURLString)
         try container.encodeIfPresent(whisperCppExecutablePath, forKey: .whisperCppExecutablePath)
@@ -136,6 +142,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         if let groqBaseURLString = copy.groqBaseURLString?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.groqBaseURLString = groqBaseURLString.isEmpty ? nil : groqBaseURLString
         }
+        // Google Calendar treats "primary" as the backward-compatible default,
+        // while a user-entered blank must stay blank so runtime readiness can flag
+        // the external write target instead of silently writing to the wrong calendar.
+        copy.googleCalendarID = copy.googleCalendarID.trimmingCharacters(in: .whitespacesAndNewlines)
         if let whisperCppExecutablePath = copy.whisperCppExecutablePath?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.whisperCppExecutablePath = whisperCppExecutablePath.isEmpty ? nil : whisperCppExecutablePath
         }
@@ -990,6 +1000,11 @@ public final class AppSettingsViewModel: ObservableObject {
     public func setDefaultWorkspacePath(_ path: String) {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.defaultWorkspacePath = trimmed.isEmpty ? nil : trimmed
+        clearMessages()
+    }
+
+    public func setGoogleCalendarID(_ calendarID: String) {
+        settings.googleCalendarID = calendarID.trimmingCharacters(in: .whitespacesAndNewlines)
         clearMessages()
     }
 
