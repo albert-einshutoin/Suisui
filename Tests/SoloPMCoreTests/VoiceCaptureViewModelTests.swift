@@ -108,6 +108,134 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         ])
     }
 
+    func testNotificationDraftCommandCreatesMailDraftQueueItemWithoutProviderCall() async throws {
+        let response = PlanningResponse(
+            providerID: "recording",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "unexpected-provider-plan",
+                userInput: "Should not be called",
+                summary: "Should not be used",
+                actions: [PlanAction(id: "unexpected", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        )
+        let provider = RecordingVoiceLLMProvider(response: response)
+        let store = RecordingAssistantQueueStore()
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider,
+            assistantQueueStore: store
+        )
+
+        viewModel.updateDraftText("Slack notification draft for release delay token=sk-notification-secret at /Users/shutoide/private.txt")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+        XCTAssertTrue(provider.requests.isEmpty)
+        let item = try XCTUnwrap(viewModel.assistantQueueItem)
+        XCTAssertEqual(store.savedItems.map(\.id), [item.id])
+        XCTAssertEqual(item.state, .waitingReview)
+        XCTAssertEqual(item.riskLevel, .draft)
+        XCTAssertEqual(item.requiredCapabilities, [.tool(.mailDraftCreateText)])
+        XCTAssertEqual(item.reviewReason, "Notification draft needs review before any external message or local notification is created.")
+        XCTAssertEqual(item.sourceTranscript, "Slack notification draft for release delay token=[REDACTED_SECRET] at [REDACTED_LOCAL_PATH]")
+        XCTAssertFalse(item.redactedSummary.contains("sk-notification-secret"))
+        XCTAssertFalse(item.sourceTranscript?.contains("/Users/shutoide") == true)
+
+        guard case .actionPlan(let actionPlan) = item.payload else {
+            return XCTFail("Expected notification draft to enter Assistant Queue as an action plan.")
+        }
+        XCTAssertTrue(actionPlan.id.hasPrefix("notification-draft:"))
+        XCTAssertEqual(actionPlan.riskLevel, .draft)
+        XCTAssertFalse(actionPlan.requiresApproval)
+        XCTAssertEqual(actionPlan.actions.map(\.tool), [.mailDraftCreateText])
+        XCTAssertEqual(actionPlan.actions.first?.arguments["subject"]?.stringValue, "Notification draft")
+        XCTAssertTrue(actionPlan.actions.first?.arguments["body"]?.stringValue?.contains("[REDACTED_SECRET]") == true)
+        XCTAssertFalse(actionPlan.actions.first?.arguments["body"]?.stringValue?.contains("/Users/shutoide") == true)
+        XCTAssertFalse(actionPlan.userInput.contains("sk-notification-secret"))
+        XCTAssertFalse(actionPlan.summary.contains("sk-notification-secret"))
+    }
+
+    func testClarifiedNotificationDraftIncludesDestinationAnswerInQueueReviewPayload() async throws {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider,
+            assistantQueueStore: RecordingAssistantQueueStore()
+        )
+
+        viewModel.updateDraftText("通知して")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertEqual(viewModel.routingResult?.intent, .clarify)
+        XCTAssertEqual(viewModel.clarificationQuestion?.slot, .destination)
+
+        await viewModel.submitClarificationAnswer(
+            "Slack release channel token=sk-destination-secret",
+            currentDate: Date(timeIntervalSince1970: 0),
+            timeZoneIdentifier: "UTC"
+        )
+
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+        XCTAssertTrue(provider.requests.isEmpty)
+        let item = try XCTUnwrap(viewModel.assistantQueueItem)
+        XCTAssertEqual(item.sourceTranscript, "通知して\nClarification answers:\n- destination: Slack release channel token=[REDACTED_SECRET]")
+        XCTAssertFalse(item.sourceTranscript?.contains("sk-destination-secret") == true)
+
+        guard case .actionPlan(let actionPlan) = item.payload else {
+            return XCTFail("Expected clarified notification draft to enter Assistant Queue as an action plan.")
+        }
+        let body = try XCTUnwrap(actionPlan.actions.first?.arguments["body"]?.stringValue)
+        XCTAssertTrue(body.contains("Original voice request:\n通知して"))
+        XCTAssertTrue(body.contains("Clarification answers:\n- destination: Slack release channel token=[REDACTED_SECRET]"))
+        XCTAssertFalse(body.contains("sk-destination-secret"))
+    }
+
+    func testUnsafeExternalSendCanResolveToDraftQueueAfterClarificationWithoutProviderCall() async throws {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider,
+            assistantQueueStore: RecordingAssistantQueueStore()
+        )
+
+        viewModel.updateDraftText("Slackに今すぐ送信して")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertEqual(viewModel.routingResult?.intent, .clarify)
+        XCTAssertNil(viewModel.assistantQueueItem)
+
+        await viewModel.submitClarificationAnswer(
+            "Slack draft only",
+            currentDate: Date(timeIntervalSince1970: 0),
+            timeZoneIdentifier: "UTC"
+        )
+
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+        XCTAssertTrue(provider.requests.isEmpty)
+        let item = try XCTUnwrap(viewModel.assistantQueueItem)
+        XCTAssertEqual(item.riskLevel, .draft)
+        XCTAssertEqual(item.requiredCapabilities, [.tool(.mailDraftCreateText)])
+        XCTAssertTrue(item.sourceTranscript?.contains("Slackに今すぐ送信して") == true)
+        XCTAssertTrue(item.sourceTranscript?.contains("destination: Slack draft only") == true)
+    }
+
     func testGeneratePlanQueuesDevelopmentPullRequestReviewGateFromExplicitVoiceCommand() async throws {
         let workspace = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: workspace) }
@@ -443,6 +571,32 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             XCTAssertFalse(reason.isEmpty)
         } else {
             XCTFail("Expected needs clarification phase.")
+        }
+    }
+
+    func testUnsafeExternalSendCommandDoesNotCreateNotificationQueueItemOrProviderCall() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider,
+            assistantQueueStore: RecordingAssistantQueueStore()
+        )
+
+        viewModel.updateDraftText("Slackに今すぐ送信して")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertEqual(viewModel.routingResult?.intent, .clarify)
+        XCTAssertTrue(provider.requests.isEmpty)
+        XCTAssertNil(viewModel.assistantQueueItem)
+        if case .needsClarification = viewModel.phase {
+        } else {
+            XCTFail("Expected unsafe external send to require clarification before queueing work.")
         }
     }
 

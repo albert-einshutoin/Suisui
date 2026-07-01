@@ -607,9 +607,14 @@ public struct ExecutionReceiptRedactionPolicy: Equatable, Sendable {
     }
 
     fileprivate static func canonicalPath(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        var trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             return trimmed
+        }
+        if let url = URL(string: trimmed), url.isFileURL {
+            trimmed = url.path
+        } else if trimmed == "~" || trimmed.hasPrefix("~/") {
+            trimmed = NSString(string: trimmed).expandingTildeInPath
         }
         var path = URL(fileURLWithPath: trimmed).standardizedFileURL.resolvingSymlinksInPath().path
         while path.count > 1 && path.hasSuffix("/") {
@@ -685,7 +690,19 @@ public struct ExecutionReceiptRedactor: Sendable {
     private func localPathStartIndexes(in value: String) -> [String.Index] {
         var indexes: [String.Index] = []
         var searchStart = value.startIndex
-        let prefixes = ["/Users/", "/Volumes/", "/private/", "/tmp/"]
+        let prefixes = [
+            "file:///Users/",
+            "file:///Volumes/",
+            "file:///private/",
+            "file:///tmp/",
+            "file:///var/",
+            "~/",
+            "/Users/",
+            "/Volumes/",
+            "/private/",
+            "/tmp/",
+            "/var/"
+        ]
 
         while searchStart < value.endIndex {
             let matches = prefixes.compactMap { prefix -> String.Index? in
