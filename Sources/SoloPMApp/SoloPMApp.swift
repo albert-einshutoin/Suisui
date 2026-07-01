@@ -89,6 +89,7 @@ struct SoloPM: App {
                 syncViewModel: AppRuntimeFactory.makeSyncSettingsViewModel(),
                 googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
                 googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
+                googleCalendarOAuthDisconnecter: AppRuntimeFactory.makeGoogleCalendarOAuthDisconnecter(),
                 appearancePreference: $appearancePreference,
                 languagePreference: $languagePreference
             )
@@ -394,6 +395,7 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
                     syncViewModel: AppRuntimeFactory.makeSyncSettingsViewModel(),
                     googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
                     googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
+                    googleCalendarOAuthDisconnecter: AppRuntimeFactory.makeGoogleCalendarOAuthDisconnecter(),
                     appearancePreference: .constant(SoloPMAppearancePreference.environmentOverride ?? .system),
                     languagePreference: .constant(AppLanguagePreference.environmentOverride ?? .system),
                     initialTab: selectedTab
@@ -1875,6 +1877,7 @@ private struct SettingsView: View {
     let integrationPermissionSnapshot: PermissionSnapshot
     let googleCalendarStatusProvider: () -> GoogleCalendarRuntimeSyncStatus
     let googleCalendarOAuthConnector: (any GoogleCalendarOAuthConnecting)?
+    let googleCalendarOAuthDisconnecter: (any GoogleCalendarOAuthDisconnecting)?
     @StateObject private var settingsViewModel: AppSettingsViewModel
     @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
     @StateObject private var externalMCPViewModel: ExternalMCPSettingsViewModel
@@ -1882,6 +1885,7 @@ private struct SettingsView: View {
     @Binding private var appearancePreference: SoloPMAppearancePreference
     @Binding private var languagePreference: AppLanguagePreference
     @State private var isConfirmingMCPRegistrationDeletion = false
+    @State private var isConfirmingGoogleCalendarOAuthDisconnect = false
     @State private var isChoosingDataLocation = false
     @State private var selectedTab: SettingsTab
     @State private var googleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus?
@@ -1897,6 +1901,7 @@ private struct SettingsView: View {
         syncViewModel: SyncSettingsViewModel,
         googleCalendarStatusProvider: @escaping () -> GoogleCalendarRuntimeSyncStatus,
         googleCalendarOAuthConnector: (any GoogleCalendarOAuthConnecting)?,
+        googleCalendarOAuthDisconnecter: (any GoogleCalendarOAuthDisconnecting)?,
         appearancePreference: Binding<SoloPMAppearancePreference>,
         languagePreference: Binding<AppLanguagePreference>,
         initialTab: SettingsTab = .overview
@@ -1905,6 +1910,7 @@ private struct SettingsView: View {
         self.integrationPermissionSnapshot = integrationPermissionSnapshot
         self.googleCalendarStatusProvider = googleCalendarStatusProvider
         self.googleCalendarOAuthConnector = googleCalendarOAuthConnector
+        self.googleCalendarOAuthDisconnecter = googleCalendarOAuthDisconnecter
         _settingsViewModel = StateObject(wrappedValue: settingsViewModel)
         _launchAtLoginViewModel = StateObject(wrappedValue: launchAtLoginViewModel)
         _externalMCPViewModel = StateObject(wrappedValue: externalMCPViewModel)
@@ -1957,6 +1963,18 @@ private struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This removes the saved registration from SoloPM.")
+        }
+        .confirmationDialog(
+            "Disconnect Google Calendar",
+            isPresented: $isConfirmingGoogleCalendarOAuthDisconnect
+        ) {
+            Button("Disconnect", role: .destructive) {
+                disconnectGoogleCalendarOAuthAuthorization()
+            }
+            .accessibilityIdentifier("settings-google-calendar-oauth-disconnect-confirm")
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes local Google Calendar OAuth tokens from Keychain. Tasks and saved calendar ID stay unchanged.")
         }
     }
 
@@ -2393,6 +2411,14 @@ private struct SettingsView: View {
                 .disabled(isGoogleCalendarOAuthAuthorizationInProgress || googleCalendarOAuthConnector == nil)
                 .accessibilityIdentifier("settings-google-calendar-oauth-setup")
                 .accessibilityHint("Opens Google Calendar OAuth authorization with PKCE. Tokens stay in Keychain.")
+                Button(role: .destructive) {
+                    isConfirmingGoogleCalendarOAuthDisconnect = true
+                } label: {
+                    Label("Disconnect Google Calendar", systemImage: "xmark.circle")
+                }
+                .disabled(isGoogleCalendarOAuthAuthorizationInProgress || googleCalendarOAuthDisconnecter == nil)
+                .accessibilityIdentifier("settings-google-calendar-oauth-disconnect")
+                .accessibilityHint("Deletes local Google Calendar OAuth metadata and Keychain tokens without changing tasks.")
                 if let googleCalendarSetupMessage {
                     Label(localizedSettingsDisplay(googleCalendarSetupMessage), systemImage: "info.circle")
                         .font(.caption)
@@ -3074,6 +3100,24 @@ private struct SettingsView: View {
             case .failure(let error):
                 googleCalendarSetupMessage = googleCalendarOAuthFailureMessage(from: error)
             }
+        }
+    }
+
+    private func disconnectGoogleCalendarOAuthAuthorization() {
+        guard let googleCalendarOAuthDisconnecter else {
+            googleCalendarSetupMessage = "Google Calendar OAuth disconnect is not available in this build."
+            return
+        }
+
+        do {
+            try googleCalendarOAuthDisconnecter.disconnect()
+            googleCalendarSetupMessage = "Google Calendar OAuth disconnected. Tokens were removed from Keychain."
+            googleCalendarSyncStatus = googleCalendarStatusProvider()
+        } catch {
+            googleCalendarSetupMessage = UserFacingErrorMessageSanitizer.message(
+                from: error,
+                fallback: "Google Calendar OAuth disconnect failed."
+            )
         }
     }
 
@@ -4309,6 +4353,16 @@ private enum AppRuntimeFactory {
 #endif
     }
 
+    @MainActor
+    static func makeGoogleCalendarOAuthDisconnecter() -> (any GoogleCalendarOAuthDisconnecting)? {
+        GoogleCalendarOAuthCredentialDisconnectController {
+            try GoogleCalendarAppRuntimeFactory.disconnectOAuthCredential(
+                secretStore: makeSecretStore(),
+                connection: migratedConnection()
+            )
+        }
+    }
+
     static func makeIntegrationPermissionSnapshot() -> PermissionSnapshot {
         EventKitPermissionSnapshotReader.snapshot(base: UserNotificationsPermissionSnapshotReader.snapshot())
     }
@@ -4747,6 +4801,24 @@ private protocol GoogleCalendarOAuthConnecting: AnyObject {
     func startAuthorization(
         completion: @escaping @MainActor (Result<GoogleCalendarOAuthCredentialMetadata, Error>) -> Void
     )
+}
+
+@MainActor
+private protocol GoogleCalendarOAuthDisconnecting: AnyObject {
+    func disconnect() throws
+}
+
+@MainActor
+private final class GoogleCalendarOAuthCredentialDisconnectController: GoogleCalendarOAuthDisconnecting {
+    private let disconnectAction: () throws -> Void
+
+    init(disconnectAction: @escaping () throws -> Void) {
+        self.disconnectAction = disconnectAction
+    }
+
+    func disconnect() throws {
+        try disconnectAction()
+    }
 }
 
 private enum GoogleCalendarOAuthConnectionError: LocalizedError, Equatable {

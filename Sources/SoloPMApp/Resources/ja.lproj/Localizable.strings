@@ -58,7 +58,13 @@
 "Choose a calendar before syncing" = "同期前にカレンダーを選択してください";
 "Choose a Google Calendar before enabling due-task sync." = "期限付きタスク同期を有効にする前にGoogle Calendarを選択してください。";
 "Connect with OAuth authorization" = "OAuth認証で接続";
+"Deletes local Google Calendar OAuth metadata and Keychain tokens without changing tasks." = "タスクを変更せず、ローカルのGoogle Calendar OAuthメタデータとKeychainトークンを削除します。";
+"Disconnect" = "切断";
+"Disconnect Google Calendar" = "Google Calendarを切断";
 "Google Calendar ID is blank or invalid." = "Google Calendar IDが空、または無効です。";
+"Google Calendar OAuth disconnect failed." = "Google Calendar OAuthの切断に失敗しました。";
+"Google Calendar OAuth disconnect is not available in this build." = "このビルドではGoogle Calendar OAuthの切断を利用できません。";
+"Google Calendar OAuth disconnected. Tokens were removed from Keychain." = "Google Calendar OAuthを切断しました。トークンはKeychainから削除されました。";
 "Google Calendar OAuth is missing the required https://www.googleapis.com/auth/calendar.events scope." = "Google Calendar OAuthに必要なhttps://www.googleapis.com/auth/calendar.eventsスコープがありません。";
 "Google Calendar OAuth is missing the required %@ scope." = "Google Calendar OAuthに必要な%@スコープがありません。";
 "Google Calendar OAuth expired and has no refresh token." = "Google Calendar OAuthの期限が切れており、refresh tokenがありません。";
@@ -86,6 +92,7 @@
 "Sync failed" = "同期失敗";
 "Sync due tasks from Project Board" = "Project Boardから期限付きタスクを同期";
 "Tokens stay in Keychain; Settings uses OAuth only." = "トークンはKeychainに保存され、SettingsはOAuthのみを使用します。";
+"This removes local Google Calendar OAuth tokens from Keychain. Tasks and saved calendar ID stay unchanged." = "ローカルのGoogle Calendar OAuthトークンをKeychainから削除します。タスクと保存済みカレンダーIDは変更しません。";
 "Update SoloPM runtime configuration" = "SoloPMランタイム設定を更新";
 "Upgrade to Pro before OAuth authorization" = "OAuth認証前にProへアップグレード";
 "In Progress" = "進行中";

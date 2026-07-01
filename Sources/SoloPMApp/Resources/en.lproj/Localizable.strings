@@ -58,7 +58,13 @@
 "Choose a calendar before syncing" = "Choose a calendar before syncing";
 "Choose a Google Calendar before enabling due-task sync." = "Choose a Google Calendar before enabling due-task sync.";
 "Connect with OAuth authorization" = "Connect with OAuth authorization";
+"Deletes local Google Calendar OAuth metadata and Keychain tokens without changing tasks." = "Deletes local Google Calendar OAuth metadata and Keychain tokens without changing tasks.";
+"Disconnect" = "Disconnect";
+"Disconnect Google Calendar" = "Disconnect Google Calendar";
 "Google Calendar ID is blank or invalid." = "Google Calendar ID is blank or invalid.";
+"Google Calendar OAuth disconnect failed." = "Google Calendar OAuth disconnect failed.";
+"Google Calendar OAuth disconnect is not available in this build." = "Google Calendar OAuth disconnect is not available in this build.";
+"Google Calendar OAuth disconnected. Tokens were removed from Keychain." = "Google Calendar OAuth disconnected. Tokens were removed from Keychain.";
 "Google Calendar OAuth is missing the required https://www.googleapis.com/auth/calendar.events scope." = "Google Calendar OAuth is missing the required https://www.googleapis.com/auth/calendar.events scope.";
 "Google Calendar OAuth is missing the required %@ scope." = "Google Calendar OAuth is missing the required %@ scope.";
 "Google Calendar OAuth expired and has no refresh token." = "Google Calendar OAuth expired and has no refresh token.";
@@ -86,6 +92,7 @@
 "Sync failed" = "Sync failed";
 "Sync due tasks from Project Board" = "Sync due tasks from Project Board";
 "Tokens stay in Keychain; Settings uses OAuth only." = "Tokens stay in Keychain; Settings uses OAuth only.";
+"This removes local Google Calendar OAuth tokens from Keychain. Tasks and saved calendar ID stay unchanged." = "This removes local Google Calendar OAuth tokens from Keychain. Tasks and saved calendar ID stay unchanged.";
 "Update SoloPM runtime configuration" = "Update SoloPM runtime configuration";
 "Upgrade to Pro before OAuth authorization" = "Upgrade to Pro before OAuth authorization";
 "In Progress" = "In Progress";
