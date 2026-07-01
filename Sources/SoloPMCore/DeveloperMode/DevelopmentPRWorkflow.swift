@@ -226,7 +226,7 @@ public struct ProjectWorkspaceScope: Equatable, Sendable {
 public enum DevelopmentBranchNamePolicy {
     public static func deterministicBranchName(project: ProjectRecord, task: TaskRecord?) -> String {
         let title = task?.title ?? project.title
-        let slug = asciiSlug(title)
+        let slug = safeAsciiSlug(title, fallback: task == nil ? "project" : "task")
         if let task {
             return "feature/solopm-\(project.id)-\(task.id)-\(slug)"
         }
@@ -246,6 +246,19 @@ public enum DevelopmentBranchNamePolicy {
             throw DevelopmentPRWorkflowError.invalidBranchName(value)
         }
         return branch
+    }
+
+    private static func safeAsciiSlug(_ value: String, fallback: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let maxLength = max(trimmed.count + 64, 1_200)
+        let redacted = ExecutionReceiptRedactor().redact(trimmed, maxLength: maxLength)
+        // Branch names are persisted in queue payloads and remote PR metadata, so
+        // redaction-sensitive task titles fall back to an ID-scoped neutral slug
+        // instead of becoming a second persistence channel for secrets or paths.
+        guard redacted == trimmed else {
+            return fallback
+        }
+        return asciiSlug(trimmed)
     }
 
     private static func asciiSlug(_ value: String) -> String {

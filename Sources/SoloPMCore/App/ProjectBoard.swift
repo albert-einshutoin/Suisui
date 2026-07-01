@@ -86,6 +86,8 @@ public struct ProjectDevelopmentAutomationReadiness: Equatable, Sendable {
     public var branchNamePreview: String?
     public var allowedFileOperations: [String]
     public var reviewSteps: [String]
+    public var lifecycleToolNames: [String]
+    public var approvalBoundaryLabel: String
     public var toolName: String
 
     public init(
@@ -98,6 +100,8 @@ public struct ProjectDevelopmentAutomationReadiness: Equatable, Sendable {
         branchNamePreview: String?,
         allowedFileOperations: [String],
         reviewSteps: [String],
+        lifecycleToolNames: [String],
+        approvalBoundaryLabel: String,
         toolName: String
     ) {
         self.projectID = projectID
@@ -109,6 +113,8 @@ public struct ProjectDevelopmentAutomationReadiness: Equatable, Sendable {
         self.branchNamePreview = branchNamePreview
         self.allowedFileOperations = allowedFileOperations
         self.reviewSteps = reviewSteps
+        self.lifecycleToolNames = lifecycleToolNames
+        self.approvalBoundaryLabel = approvalBoundaryLabel
         self.toolName = toolName
     }
 }
@@ -1480,6 +1486,8 @@ public final class ProjectBoardViewModel: ObservableObject {
     ) -> ProjectDevelopmentAutomationReadiness {
         let allowedFileOperations = Self.developmentAutomationAllowedFileOperations
         let reviewSteps = Self.developmentAutomationReviewSteps
+        let lifecycleToolNames = Self.developmentAutomationLifecycleToolNames
+        let approvalBoundaryLabel = Self.developmentAutomationApprovalBoundaryLabel
         let toolName = "development.pr_workflow.prepare"
 
         func blocked(_ reason: String) -> ProjectDevelopmentAutomationReadiness {
@@ -1493,6 +1501,8 @@ public final class ProjectBoardViewModel: ObservableObject {
                 branchNamePreview: nil,
                 allowedFileOperations: allowedFileOperations,
                 reviewSteps: reviewSteps,
+                lifecycleToolNames: lifecycleToolNames,
+                approvalBoundaryLabel: approvalBoundaryLabel,
                 toolName: toolName
             )
         }
@@ -1535,6 +1545,8 @@ public final class ProjectBoardViewModel: ObservableObject {
             branchNamePreview: branchNamePreview,
             allowedFileOperations: allowedFileOperations,
             reviewSteps: reviewSteps,
+            lifecycleToolNames: lifecycleToolNames,
+            approvalBoundaryLabel: approvalBoundaryLabel,
             toolName: toolName
         )
     }
@@ -1588,6 +1600,70 @@ public final class ProjectBoardViewModel: ObservableObject {
         developmentAutomationReviewPlan = nil
     }
 
+    @discardableResult
+    public func enqueueDevelopmentAutomationReview(
+        for project: ProjectBoardProject,
+        task: ProjectBoardTask?
+    ) -> Bool {
+        guard let assistantQueueStore else {
+            assistantQueueSnapshot = .empty
+            assistantQueueSelectedItemIDs = []
+            errorMessage = String(localized: "Assistant Queue is unavailable in this build.")
+            integrationStatusMessage = nil
+            return false
+        }
+        guard var plan = prepareDevelopmentAutomationReview(for: project, task: task) else {
+            return false
+        }
+
+        let validator = ActionPlanValidator()
+        let validation = validator.validate(plan)
+        guard validation.isValid else {
+            errorMessage = String(localized: "Development automation generated an invalid action plan.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        plan.userInput = Self.sanitizedDevelopmentAutomationReviewText(plan.userInput)
+        plan.summary = Self.sanitizedDevelopmentAutomationReviewText(plan.summary)
+        let persistedValidation = validator.validate(plan)
+        guard persistedValidation.isValid else {
+            errorMessage = String(localized: "Development automation generated an invalid action plan.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        let item = AssistantQueueAdapter.makeItem(
+            actionPlan: plan,
+            sourceTranscript: plan.userInput,
+            interpretationSummary: plan.summary,
+            reason: Self.developmentAutomationQueueReason(project: project),
+            costPreview: .localOnly()
+        )
+
+        do {
+            if try assistantQueueStore.insertIfAbsent(item) != nil {
+                focusAssistantQueueItem(id: item.id)
+                errorMessage = nil
+                integrationStatusMessage = String(localized: "Queued development automation for approval.")
+                todayCommandFeedback = nil
+                onChange()
+                return true
+            }
+
+            focusAssistantQueueItem(id: item.id)
+            errorMessage = nil
+            integrationStatusMessage = String(localized: "Development automation is already in Assistant Queue.")
+            todayCommandFeedback = nil
+            return true
+        } catch {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = AssistantQueueStoreError.userMessage(for: error)
+            integrationStatusMessage = nil
+            return false
+        }
+    }
+
     private func task(id: Int64) -> ProjectBoardTask? {
         snapshot.projects
             .flatMap(\.tasks)
@@ -1595,6 +1671,41 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     private static let developmentAutomationAllowedFileOperations = ["create", "read", "update"]
+
+    private static let developmentAutomationLifecycleToolNames = [
+        ActionTool.developmentPreparePullRequestWorkflow.rawValue,
+        ActionTool.developmentRepositoryListFiles.rawValue,
+        ActionTool.developmentRepositoryReadFile.rawValue,
+        ActionTool.developmentRepositoryCreateFile.rawValue,
+        ActionTool.developmentRepositoryUpdateFile.rawValue,
+        ActionTool.developmentRunVerification.rawValue,
+        ActionTool.developmentCommitChanges.rawValue,
+        ActionTool.developmentPushBranch.rawValue,
+        ActionTool.developmentCreatePullRequest.rawValue,
+        ActionTool.developmentReviewPullRequestGate.rawValue,
+        ActionTool.developmentMergePullRequest.rawValue
+    ]
+
+    private static let developmentAutomationApprovalBoundaryLabel = "Branch preparation starts here; file edits, verification, commit, push, pull request, review, and merge each stay behind explicit approval gates."
+
+    private static func developmentAutomationQueueReason(project: ProjectBoardProject) -> String {
+        String(
+            format: String(localized: "Development branch automation is ready for %@."),
+            sanitizedDevelopmentAutomationReviewText(project.title)
+        )
+    }
+
+    private static func sanitizedDevelopmentAutomationReviewText(_ text: String) -> String {
+        let redacted = ExecutionReceiptRedactor().redact(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard !redacted.isEmpty else {
+            return String(localized: "Development branch automation")
+        }
+        let maxLength = 500
+        guard redacted.count > maxLength else {
+            return redacted
+        }
+        return "\(redacted.prefix(maxLength))..."
+    }
 
     private static let developmentAutomationReviewSteps = [
         "Create a reviewable local branch inside the approved project directory.",

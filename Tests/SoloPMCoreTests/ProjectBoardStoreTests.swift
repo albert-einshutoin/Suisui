@@ -948,6 +948,23 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertTrue(readiness.reviewSteps.contains("Create a reviewable local branch inside the approved project directory."))
         XCTAssertTrue(readiness.reviewSteps.contains("Run verification before commit, push, or pull request creation."))
         XCTAssertTrue(readiness.reviewSteps.contains("Require explicit approval before git push and GitHub pull request creation."))
+        XCTAssertEqual(readiness.lifecycleToolNames, [
+            ActionTool.developmentPreparePullRequestWorkflow.rawValue,
+            ActionTool.developmentRepositoryListFiles.rawValue,
+            ActionTool.developmentRepositoryReadFile.rawValue,
+            ActionTool.developmentRepositoryCreateFile.rawValue,
+            ActionTool.developmentRepositoryUpdateFile.rawValue,
+            ActionTool.developmentRunVerification.rawValue,
+            ActionTool.developmentCommitChanges.rawValue,
+            ActionTool.developmentPushBranch.rawValue,
+            ActionTool.developmentCreatePullRequest.rawValue,
+            ActionTool.developmentReviewPullRequestGate.rawValue,
+            ActionTool.developmentMergePullRequest.rawValue
+        ])
+        XCTAssertEqual(
+            readiness.approvalBoundaryLabel,
+            "Branch preparation starts here; file edits, verification, commit, push, pull request, review, and merge each stay behind explicit approval gates."
+        )
     }
 
     @MainActor
@@ -1009,6 +1026,160 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(action.arguments["branchName"], .string("feature/solopm-\(project.id)-\(task.id)-implement-oauth-callback"))
         XCTAssertFalse(plan.actions.contains { $0.tool.rawValue.localizedCaseInsensitiveContains("delete") })
         XCTAssertEqual(viewModel.integrationStatusMessage, "Development branch automation is ready for review.")
+    }
+
+    @MainActor
+    func testDevelopmentAutomationQueueDraftUsesApprovalGatedPrepareWorkflow() throws {
+        let stores = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: stores.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Client Portal"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Implement OAuth callback",
+            projectID: project.id,
+            status: .planned,
+            priority: .high
+        ))
+        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
+            "/tmp/client-portal",
+            bookmarkData: Data([1, 2, 3]),
+            projectID: project.id
+        ))
+        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+
+        XCTAssertTrue(viewModel.enqueueDevelopmentAutomationReview(for: assignedProject, task: currentTask))
+
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        let item = try assistantQueueStore.get(id: itemID)
+        XCTAssertTrue(itemID.hasPrefix("action-plan:development-pr-prepare:"))
+        XCTAssertEqual(item.state, .waitingReview)
+        XCTAssertEqual(item.riskLevel, .write)
+        XCTAssertEqual(item.requiredCapabilities, [.tool(.developmentPreparePullRequestWorkflow), .providerExecutionApproval])
+        XCTAssertEqual(item.costPreview?.billingMode, .localOnly)
+        XCTAssertEqual(item.reviewReason, "Development branch automation is ready for Client Portal.")
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Queued development automation for approval.")
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, [itemID])
+        guard case .actionPlan(let plan) = item.payload else {
+            return XCTFail("Expected action plan payload")
+        }
+        let action = try XCTUnwrap(plan.actions.first)
+        XCTAssertEqual(action.tool, .developmentPreparePullRequestWorkflow)
+        XCTAssertEqual(action.arguments["projectId"], .number(Double(project.id)))
+        XCTAssertEqual(action.arguments["taskId"], .number(Double(task.id)))
+        XCTAssertEqual(action.arguments["branchName"], .string("feature/solopm-\(project.id)-\(task.id)-implement-oauth-callback"))
+        XCTAssertFalse(viewModel.snapshot.projects.first { $0.id == project.id }?.tasks.first?.status == .done)
+    }
+
+    @MainActor
+    func testDevelopmentAutomationQueueDraftRedactsSensitiveTaskTitleFromPersistentBranchName() throws {
+        let stores = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: stores.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Client Portal"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Fix /Users/alice/Secret Project notes with sk-proj-secret1234567890",
+            projectID: project.id,
+            status: .planned,
+            priority: .high
+        ))
+        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
+            "/tmp/client-portal",
+            bookmarkData: Data([1, 2, 3]),
+            projectID: project.id
+        ))
+        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+
+        XCTAssertTrue(viewModel.enqueueDevelopmentAutomationReview(for: assignedProject, task: currentTask))
+
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        let item = try assistantQueueStore.get(id: itemID)
+        guard case .actionPlan(let plan) = item.payload else {
+            return XCTFail("Expected action plan payload")
+        }
+        let action = try XCTUnwrap(plan.actions.first)
+        XCTAssertEqual(action.arguments["branchName"], .string("feature/solopm-\(project.id)-\(task.id)-task"))
+        XCTAssertFalse(String(describing: item).localizedCaseInsensitiveContains("users"))
+        XCTAssertFalse(String(describing: item).localizedCaseInsensitiveContains("secret"))
+        XCTAssertFalse(String(describing: item).localizedCaseInsensitiveContains("sk-proj"))
+    }
+
+    @MainActor
+    func testDevelopmentAutomationQueueDraftDoesNotOverwriteExistingAssistantQueueItem() throws {
+        let stores = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: stores.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Client Portal"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Implement OAuth callback",
+            projectID: project.id,
+            status: .planned,
+            priority: .high
+        ))
+        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
+            "/tmp/client-portal",
+            bookmarkData: Data([1, 2, 3]),
+            projectID: project.id
+        ))
+        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+        let plan = try XCTUnwrap(viewModel.prepareDevelopmentAutomationReview(for: assignedProject, task: currentTask))
+        var existing = AssistantQueueAdapter.makeItem(
+            actionPlan: plan,
+            sourceTranscript: "existing development transcript",
+            interpretationSummary: "Existing interpretation",
+            reason: "Existing approved development review.",
+            costPreview: .localOnly()
+        )
+        existing = try AssistantQueueStateMachine.approve(existing, reviewerID: "tester")
+        try assistantQueueStore.save(existing)
+
+        XCTAssertTrue(viewModel.enqueueDevelopmentAutomationReview(for: assignedProject, task: currentTask))
+
+        let stored = try assistantQueueStore.get(id: existing.id)
+        XCTAssertEqual(stored.state, .approved)
+        XCTAssertEqual(stored.reviewReason, "Existing approved development review.")
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Development automation is already in Assistant Queue.")
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, [existing.id])
+    }
+
+    @MainActor
+    func testDevelopmentAutomationQueueDraftRequiresAssistantQueueStore() throws {
+        let stores = try makeStoreBundle()
+        let viewModel = ProjectBoardViewModel(store: stores.board)
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Client Portal"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Implement OAuth callback",
+            projectID: project.id,
+            status: .planned,
+            priority: .high
+        ))
+        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
+            "/tmp/client-portal",
+            bookmarkData: Data([1, 2, 3]),
+            projectID: project.id
+        ))
+        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+
+        XCTAssertFalse(viewModel.enqueueDevelopmentAutomationReview(for: assignedProject, task: currentTask))
+
+        XCTAssertEqual(viewModel.errorMessage, "Assistant Queue is unavailable in this build.")
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, [])
     }
 
     @MainActor

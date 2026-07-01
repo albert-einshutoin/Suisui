@@ -2,6 +2,29 @@ import XCTest
 @testable import SoloPMCore
 
 final class DevelopmentPRWorkflowTests: XCTestCase {
+    func testDeterministicBranchNameFallsBackWhenTitleContainsSecretOrLocalPath() {
+        let project = ProjectRecord(id: 7, title: "Client Portal", status: "active")
+        let task = TaskRecord(
+            id: 42,
+            projectID: project.id,
+            title: "Fix /Users/alice/Secret Project notes with sk-proj-secret1234567890",
+            status: "planned",
+            dueAt: nil,
+            priority: nil,
+            sourceCommand: nil
+        )
+
+        let branchName = DevelopmentBranchNamePolicy.deterministicBranchName(
+            project: project,
+            task: task
+        )
+
+        XCTAssertEqual(branchName, "feature/solopm-7-42-task")
+        XCTAssertFalse(branchName.contains("users"))
+        XCTAssertFalse(branchName.contains("secret"))
+        XCTAssertFalse(branchName.contains("sk-proj"))
+    }
+
     func testPreparePullRequestWorkflowRequiresApprovalBeforeBranchMutation() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
