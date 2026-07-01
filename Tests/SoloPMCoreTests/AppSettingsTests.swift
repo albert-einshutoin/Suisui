@@ -54,6 +54,147 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(try store.load(), settings)
     }
 
+    func testManagedAIBillingSettingsPersistAndExposePerRunPreviewCap() throws {
+        let suiteName = "SoloPM.AppSettingsBillingCaps.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let settings = AppSettings(
+            managedAIBilling: ManagedAIBillingSettings(
+                isEnabled: true,
+                perRunCapCents: 50,
+                dailyCapCents: 150,
+                monthlyCapCents: 900,
+                workspaceCapCents: 75
+            )
+        )
+
+        try store.save(settings)
+
+        let loaded = try store.load()
+        XCTAssertEqual(loaded.managedAIBilling, settings.managedAIBilling)
+        XCTAssertEqual(loaded.normalizedForRuntime.managedAIBilling.hardCapCentsForPreview, 50)
+    }
+
+    func testManagedAIBillingSettingsRejectInvalidCaps() {
+        let settings = AppSettings(
+            managedAIBilling: ManagedAIBillingSettings(
+                isEnabled: true,
+                perRunCapCents: -1,
+                dailyCapCents: 0,
+                monthlyCapCents: -10,
+                workspaceCapCents: 25
+            )
+        )
+
+        XCTAssertEqual(
+            settings.validate().filter { $0.field.hasPrefix("managedAIBilling") },
+            [
+                ValidationIssue(
+                    field: "managedAIBilling.perRunCapCents",
+                    message: "Managed AI per-run cap must be greater than 0 cents.",
+                    severity: .error
+                ),
+                ValidationIssue(
+                    field: "managedAIBilling.dailyCapCents",
+                    message: "Managed AI daily cap must be greater than 0 cents.",
+                    severity: .error
+                ),
+                ValidationIssue(
+                    field: "managedAIBilling.monthlyCapCents",
+                    message: "Managed AI monthly cap must be greater than 0 cents.",
+                    severity: .error
+                )
+            ]
+        )
+    }
+
+    func testManagedAICostRateCardResolverReadsConfiguredEnvironment() {
+        let environment = [
+            ManagedAICostRateCardConfiguration.providerIDEnvironmentKey: " solopm.managed ",
+            ManagedAICostRateCardConfiguration.modelNameEnvironmentKey: " managed-small ",
+            ManagedAICostRateCardConfiguration.currencyCodeEnvironmentKey: " usd ",
+            ManagedAICostRateCardConfiguration.inputTokenCentsPerMillionEnvironmentKey: "10000",
+            ManagedAICostRateCardConfiguration.outputTokenCentsPerMillionEnvironmentKey: "20000"
+        ]
+        let resolver = ManagedAICostRateCardResolver(environment: environment)
+        let response = PlanningResponse(
+            providerID: "solopm.managed",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: []),
+            model: ExecutionReceiptModel(provider: "solopm.managed", name: "managed-small")
+        )
+
+        let rateCard = resolver.rateCard(for: response)
+
+        XCTAssertEqual(rateCard?.provider, "solopm.managed")
+        XCTAssertEqual(rateCard?.modelName, "managed-small")
+        XCTAssertEqual(rateCard?.currencyCode, "USD")
+        XCTAssertEqual(rateCard?.inputTokenCentsPerMillion, 10_000)
+        XCTAssertEqual(rateCard?.outputTokenCentsPerMillion, 20_000)
+    }
+
+    func testManagedAICostRateCardResolverIgnoresMissingOrInvalidRates() {
+        let invalidResolver = ManagedAICostRateCardResolver(environment: [
+            ManagedAICostRateCardConfiguration.providerIDEnvironmentKey: "solopm.managed",
+            ManagedAICostRateCardConfiguration.modelNameEnvironmentKey: "managed-small",
+            ManagedAICostRateCardConfiguration.inputTokenCentsPerMillionEnvironmentKey: "0",
+            ManagedAICostRateCardConfiguration.outputTokenCentsPerMillionEnvironmentKey: "invalid"
+        ])
+        let response = PlanningResponse(
+            providerID: "solopm.managed",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        )
+
+        XCTAssertNil(invalidResolver.rateCard(for: response))
+        XCTAssertNil(ManagedAICostRateCardResolver(environment: [:]).rateCard(for: response))
+    }
+
+    func testManagedAICostRateCardResolverRequiresMatchingModelName() {
+        let resolver = ManagedAICostRateCardResolver(configuration: ManagedAICostRateCardConfiguration(
+            providerID: "solopm.managed",
+            modelName: "managed-small",
+            inputTokenCentsPerMillion: 10_000,
+            outputTokenCentsPerMillion: 20_000
+        ))
+        let response = PlanningResponse(
+            providerID: "solopm.managed",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: []),
+            model: ExecutionReceiptModel(provider: "solopm.managed", name: "managed-large")
+        )
+
+        XCTAssertNil(resolver.rateCard(for: response))
+    }
+
+    @MainActor
+    func testAppSettingsViewModelSavesManagedAIBillingCaps() throws {
+        let suiteName = "SoloPM.AppSettingsBillingCapViewModel.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        viewModel.setManagedAIBillingEnabled(true)
+        viewModel.setManagedAIPerRunCapCents(125)
+        viewModel.setManagedAIDailyCapCents(200)
+        viewModel.setManagedAIMonthlyCapCents(1_000)
+        viewModel.setManagedAIWorkspaceCapCents(nil)
+        viewModel.saveSettings()
+
+        XCTAssertEqual(viewModel.successMessage, "Settings saved.")
+        let saved = try store.load().managedAIBilling
+        XCTAssertTrue(saved.isEnabled)
+        XCTAssertEqual(saved.perRunCapCents, 125)
+        XCTAssertEqual(saved.dailyCapCents, 200)
+        XCTAssertEqual(saved.monthlyCapCents, 1_000)
+        XCTAssertNil(saved.workspaceCapCents)
+    }
+
     func testGoogleCalendarIDDefaultsAndNormalizesForRuntime() throws {
         let legacyData = Data("""
         {

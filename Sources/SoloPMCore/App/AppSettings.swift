@@ -20,6 +20,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var openCodeModelID: String?
     public var isOpenCodeLocalExecutionApproved: Bool
     public var taskAutoExecution: TaskAutoExecutionSettings
+    public var managedAIBilling: ManagedAIBillingSettings
 
     private enum CodingKeys: String, CodingKey {
         case aiProvider
@@ -40,6 +41,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case openCodeModelID
         case isOpenCodeLocalExecutionApproved
         case taskAutoExecution
+        case managedAIBilling
     }
 
     public init(
@@ -60,7 +62,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         openCodeWorkspacePath: String? = nil,
         openCodeModelID: String? = nil,
         isOpenCodeLocalExecutionApproved: Bool = false,
-        taskAutoExecution: TaskAutoExecutionSettings = .default
+        taskAutoExecution: TaskAutoExecutionSettings = .default,
+        managedAIBilling: ManagedAIBillingSettings = .default
     ) {
         self.aiProvider = aiProvider
         self.sttProvider = sttProvider
@@ -80,6 +83,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.openCodeModelID = openCodeModelID
         self.isOpenCodeLocalExecutionApproved = isOpenCodeLocalExecutionApproved
         self.taskAutoExecution = taskAutoExecution
+        self.managedAIBilling = managedAIBilling
     }
 
     public init(from decoder: Decoder) throws {
@@ -102,6 +106,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.openCodeModelID = try container.decodeIfPresent(String.self, forKey: .openCodeModelID)
         self.isOpenCodeLocalExecutionApproved = try container.decodeIfPresent(Bool.self, forKey: .isOpenCodeLocalExecutionApproved) ?? false
         self.taskAutoExecution = try container.decodeIfPresent(TaskAutoExecutionSettings.self, forKey: .taskAutoExecution) ?? .default
+        self.managedAIBilling = try container.decodeIfPresent(ManagedAIBillingSettings.self, forKey: .managedAIBilling) ?? .default
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -124,6 +129,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encodeIfPresent(openCodeModelID, forKey: .openCodeModelID)
         try container.encode(isOpenCodeLocalExecutionApproved, forKey: .isOpenCodeLocalExecutionApproved)
         try container.encode(taskAutoExecution, forKey: .taskAutoExecution)
+        try container.encode(managedAIBilling, forKey: .managedAIBilling)
     }
 
     public static let `default` = AppSettings()
@@ -164,6 +170,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
             copy.openCodeModelID = openCodeModelID.isEmpty ? nil : openCodeModelID
         }
         copy.taskAutoExecution = copy.taskAutoExecution.normalized
+        copy.managedAIBilling = copy.managedAIBilling.normalized
         return copy
     }
 
@@ -254,6 +261,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         appendKokoroExecutablePathIssue(to: &issues)
         appendTTSSelectionIssues(to: &issues)
         issues.append(contentsOf: taskAutoExecution.validationIssues())
+        issues.append(contentsOf: managedAIBilling.validationIssues())
 
         return issues
     }
@@ -1140,6 +1148,31 @@ public final class AppSettingsViewModel: ObservableObject {
 
     public func setTaskAutoExecutionUrgentReviewCooldownMinutes(_ value: Int) {
         settings.taskAutoExecution.urgentReviewCooldownMinutes = value
+        clearMessages()
+    }
+
+    public func setManagedAIBillingEnabled(_ isEnabled: Bool) {
+        settings.managedAIBilling.isEnabled = isEnabled
+        clearMessages()
+    }
+
+    public func setManagedAIPerRunCapCents(_ value: Int?) {
+        settings.managedAIBilling.perRunCapCents = value
+        clearMessages()
+    }
+
+    public func setManagedAIDailyCapCents(_ value: Int?) {
+        settings.managedAIBilling.dailyCapCents = value
+        clearMessages()
+    }
+
+    public func setManagedAIMonthlyCapCents(_ value: Int?) {
+        settings.managedAIBilling.monthlyCapCents = value
+        clearMessages()
+    }
+
+    public func setManagedAIWorkspaceCapCents(_ value: Int?) {
+        settings.managedAIBilling.workspaceCapCents = value
         clearMessages()
     }
 

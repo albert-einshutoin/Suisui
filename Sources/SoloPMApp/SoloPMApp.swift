@@ -2126,6 +2126,75 @@ private struct SettingsView: View {
                 settingsSaveButton
             }
 
+            Section("Billing") {
+                Toggle(
+                    isOn: Binding(
+                        get: { settingsViewModel.settings.managedAIBilling.isEnabled },
+                        set: { settingsViewModel.setManagedAIBillingEnabled($0) }
+                    )
+                ) {
+                    Label("Managed AI billing", systemImage: "creditcard")
+                }
+                .accessibilityIdentifier("settings-managed-ai-billing-toggle")
+                .accessibilityHint("Enables local cost cap controls for SoloPM-managed AI work.")
+
+                Stepper(
+                    value: Binding(
+                        get: { settingsViewModel.settings.managedAIBilling.perRunCapCents ?? 0 },
+                        set: { settingsViewModel.setManagedAIPerRunCapCents($0 == 0 ? nil : $0) }
+                    ),
+                    in: 0...100_000,
+                    step: 25
+                ) {
+                    LabeledContent("Per-run cap", value: billingCapValueLabel(settingsViewModel.settings.managedAIBilling.perRunCapCents))
+                }
+                .accessibilityIdentifier("settings-managed-ai-per-run-cap")
+                .accessibilityHint("Sets the per-run cap used by managed AI cost previews.")
+
+                Stepper(
+                    value: Binding(
+                        get: { settingsViewModel.settings.managedAIBilling.dailyCapCents ?? 0 },
+                        set: { settingsViewModel.setManagedAIDailyCapCents($0 == 0 ? nil : $0) }
+                    ),
+                    in: 0...1_000_000,
+                    step: 50
+                ) {
+                    LabeledContent("Daily threshold", value: billingCapValueLabel(settingsViewModel.settings.managedAIBilling.dailyCapCents))
+                }
+                .accessibilityIdentifier("settings-managed-ai-daily-cap")
+
+                Stepper(
+                    value: Binding(
+                        get: { settingsViewModel.settings.managedAIBilling.monthlyCapCents ?? 0 },
+                        set: { settingsViewModel.setManagedAIMonthlyCapCents($0 == 0 ? nil : $0) }
+                    ),
+                    in: 0...10_000_000,
+                    step: 100
+                ) {
+                    LabeledContent("Monthly threshold", value: billingCapValueLabel(settingsViewModel.settings.managedAIBilling.monthlyCapCents))
+                }
+                .accessibilityIdentifier("settings-managed-ai-monthly-cap")
+
+                Stepper(
+                    value: Binding(
+                        get: { settingsViewModel.settings.managedAIBilling.workspaceCapCents ?? 0 },
+                        set: { settingsViewModel.setManagedAIWorkspaceCapCents($0 == 0 ? nil : $0) }
+                    ),
+                    in: 0...100_000_000,
+                    step: 100
+                ) {
+                    LabeledContent("Workspace threshold", value: billingCapValueLabel(settingsViewModel.settings.managedAIBilling.workspaceCapCents))
+                }
+                .accessibilityIdentifier("settings-managed-ai-workspace-cap")
+
+                Label("Per-run cap blocks managed previews; daily, monthly, and workspace caps are receipt usage thresholds until billing ledger enforcement lands.", systemImage: "lock.doc")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("settings-managed-ai-billing-boundary")
+
+                settingsSaveButton
+            }
+
             Section("Voice") {
                 Picker(
                     "Speech to Text",
@@ -2890,6 +2959,13 @@ private struct SettingsView: View {
         }
         .accessibilityIdentifier("settings-save-button")
         .accessibilityHint("Persists non-secret settings to local UserDefaults.")
+    }
+
+    private func billingCapValueLabel(_ cents: Int?) -> String {
+        guard let cents, cents > 0 else {
+            return localizedSettingsDisplay("Not set")
+        }
+        return String(format: localizedSettingsDisplay("USD %.2f"), Double(cents) / 100)
     }
 
     private func handleVoiceModelAction(_ row: VoiceModelReadinessRow) {
@@ -4284,6 +4360,7 @@ private enum AppRuntimeFactory {
         let audioRecorder = AVFoundationAudioRecorder()
         let sttProvider = makeSpeechToTextProvider(settings: settingsResult.settings, secretStore: secretStore)
         let llmProvider = makeLLMProvider(settings: settingsResult.settings, secretStore: secretStore)
+        let managedCostRateCardResolver = ManagedAICostRateCardResolver()
         var auditLogger: (any AuditLogger)?
         var assistantQueueStore: (any AssistantQueueStore)?
         var inboxCaptureService: InboxVoiceCaptureService?
@@ -4323,7 +4400,9 @@ private enum AppRuntimeFactory {
             runtimeValidationMessage: runtimeValidationMessage,
             assistantQueueStore: assistantQueueStore,
             inboxCaptureSaver: inboxCaptureService,
-            developmentProjectProvider: developmentProjectProvider
+            developmentProjectProvider: developmentProjectProvider,
+            appSettingsProvider: { loadRuntimeSettings().settings },
+            managedCostRateCardProvider: { managedCostRateCardResolver.rateCard(for: $0) }
         )
     }
 

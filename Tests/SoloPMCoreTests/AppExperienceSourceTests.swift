@@ -540,6 +540,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("AI Usage Meter"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"ai-usage-meter-summary\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"ai-usage-meter-scope\")"))
+        XCTAssertTrue(workflowSource.contains("appSettings.managedAIBilling"))
+        XCTAssertTrue(workflowSource.contains("usageThresholdRows(for: snapshot)"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"ai-usage-threshold-row-\\(row.scope.rawValue)\")"))
         XCTAssertTrue(workflowSource.contains("Latest Month"))
         XCTAssertTrue(workflowSource.contains("row.summary.costLabel"))
         XCTAssertTrue(workflowSource.contains("Recent AI Receipts"))
@@ -1015,7 +1018,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(persistenceSource.contains("case done"))
         XCTAssertTrue(boardSource.contains("ProjectBoardSidebarDestinationRow(destination: .done"))
-        XCTAssertTrue(boardSource.contains("DoneWorkflowView(viewModel: viewModel)"))
+        XCTAssertTrue(boardSource.contains("DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-workflow\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-reopen-task-\\(task.id)\")"))
         XCTAssertTrue(coreSource.contains("public func doneAnalytics("))
@@ -2817,6 +2820,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceFactory.contains("let connection = try migratedConnection()"))
         XCTAssertTrue(voiceFactory.contains("assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)"))
         XCTAssertTrue(voiceFactory.contains("assistantQueueStore: assistantQueueStore"))
+        XCTAssertTrue(voiceFactory.contains("let managedCostRateCardResolver = ManagedAICostRateCardResolver()"))
+        XCTAssertTrue(voiceFactory.contains("managedCostRateCardProvider: { managedCostRateCardResolver.rateCard(for: $0) }"))
         XCTAssertFalse(voiceFactory.contains("assistantQueueStore: nil"))
     }
 
@@ -2922,6 +2927,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-lookahead\")"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-urgent-cooldown\")"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-task-auto-execution-boundary\")"))
+        XCTAssertTrue(appSource.contains("Section(\"Billing\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-managed-ai-billing-toggle\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-managed-ai-per-run-cap\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-managed-ai-daily-cap\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-managed-ai-monthly-cap\")"))
+        XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-managed-ai-workspace-cap\")"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-save-button\")"))
         XCTAssertTrue(appSource.contains(".accessibilityHint(\"Persists non-secret settings to local UserDefaults.\")"))
     }

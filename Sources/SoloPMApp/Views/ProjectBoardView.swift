@@ -194,7 +194,7 @@ struct ProjectBoardView: View {
                         case .schedule:
                             ScheduleWorkflowView(viewModel: viewModel)
                         case .done:
-                            DoneWorkflowView(viewModel: viewModel)
+                            DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())
                         case .projects:
                             ProjectsPortfolioOverview(viewModel: viewModel) { projectID in
                                 if viewModel.openProjectFromPortfolioCard(projectID: projectID) {

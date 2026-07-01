@@ -523,6 +523,65 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertTrue(preview?.allowsApprovalAndRun ?? false)
     }
 
+    func testGeneratePlanAppliesManagedAIBillingPerRunCapToManagedCostPreview() async {
+        let response = PlanningResponse(
+            providerID: "solopm.managed",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-managed-preview-cap",
+                userInput: "Create a managed task",
+                summary: "Create managed task",
+                actions: [PlanAction(id: "action-1", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: []),
+            model: ExecutionReceiptModel(provider: "solopm.managed", name: "managed-small"),
+            usage: ExecutionReceiptUsage(
+                inputTokens: 1_000,
+                outputTokens: 1_000,
+                estimatedCostCents: nil,
+                currencyCode: "USD",
+                state: .estimated
+            )
+        )
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: response),
+            appSettingsProvider: {
+                AppSettings(
+                    managedAIBilling: ManagedAIBillingSettings(
+                        isEnabled: true,
+                        perRunCapCents: 10
+                    )
+                )
+            },
+            managedCostRateCardProvider: { response in
+                guard response.providerID == "solopm.managed" else {
+                    return nil
+                }
+                return AssistantQueueCostRateCard(
+                    provider: "solopm.managed",
+                    modelName: "managed-small",
+                    currencyCode: "USD",
+                    inputTokenCentsPerMillion: 10_000,
+                    outputTokenCentsPerMillion: 10_000
+                )
+            }
+        )
+
+        viewModel.updateDraftText("Create a managed task")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        let preview = viewModel.assistantQueueItem?.costPreview
+        XCTAssertEqual(preview?.billingMode, .soloPMManaged)
+        XCTAssertEqual(preview?.estimatedCostCents ?? -1, 20, accuracy: 0.0001)
+        XCTAssertEqual(preview?.capStatus, .wouldExceedLimit)
+        XCTAssertFalse(preview?.allowsApprovalAndRun ?? true)
+        XCTAssertFalse(viewModel.approveAssistantQueueItem(reviewerID: "local-user"))
+    }
+
     func testGeneratePlanRedactsProviderModelPathBeforeQueuePersistence() async {
         let response = PlanningResponse(
             providerID: "openai.chat_completions",
