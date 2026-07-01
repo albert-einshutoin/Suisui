@@ -100,6 +100,39 @@ final class DailyPlanningActionDraftTests: XCTestCase {
         assertOnlyLocalTaskTools(draft.actionPlan)
     }
 
+    func testDailyPlanningDraftRedactsSecretsAndLocalPathsFromDurablePlanFields() throws {
+        let calendar = fixedCalendar()
+        let referenceDate = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-06-30T09:10:00Z"))
+        let task = projectTask(
+            id: 45,
+            title: "Review /Users/shutoide/Private token=task-secret",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-29"
+        )
+        var review = dailyReview(task: task, referenceDate: referenceDate, calendar: calendar)
+        review.sourceTranscript = "今日のレビュー token=voice-secret /Users/shutoide/Private"
+
+        let draft = try XCTUnwrap(DailyPlanningActionDraftBuilder.makeDraft(
+            kind: .moveRecommendedDueDateToToday,
+            review: review,
+            task: task,
+            referenceDate: referenceDate,
+            calendar: calendar
+        ))
+
+        XCTAssertTrue(draft.actionPlan.userInput.contains("[REDACTED_SECRET]"))
+        XCTAssertTrue(draft.actionPlan.userInput.contains("[REDACTED_PATH]"))
+        XCTAssertFalse(draft.actionPlan.userInput.contains("voice-secret"))
+        XCTAssertFalse(draft.actionPlan.userInput.contains("/Users/shutoide"))
+        XCTAssertTrue(draft.actionPlan.summary.contains("[REDACTED_PATH]"))
+        XCTAssertTrue(draft.queueReason.contains("[REDACTED_PATH]"))
+        XCTAssertFalse(draft.actionPlan.summary.contains("task-secret"))
+        XCTAssertFalse(draft.actionPlan.summary.contains("/Users/shutoide"))
+        XCTAssertFalse(draft.queueReason.contains("task-secret"))
+        XCTAssertFalse(draft.queueReason.contains("/Users/shutoide"))
+    }
+
     func testReturnsNilWhenReviewHasNoRecommendedTask() throws {
         let calendar = fixedCalendar()
         let referenceDate = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-06-30T09:10:00Z"))

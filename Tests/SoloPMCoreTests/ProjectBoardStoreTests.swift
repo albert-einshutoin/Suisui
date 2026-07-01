@@ -2724,8 +2724,19 @@ final class ProjectBoardStoreTests: XCTestCase {
             return XCTFail("Expected action plan payload")
         }
         let action = try XCTUnwrap(plan.actions.first)
+        XCTAssertTrue(plan.userInput.contains("[REDACTED_SECRET]"))
+        XCTAssertTrue(plan.userInput.contains("[REDACTED_PATH]"))
+        XCTAssertFalse(plan.userInput.contains("voice-secret"))
+        XCTAssertFalse(plan.userInput.contains("/Users/shutoide"))
         XCTAssertEqual(action.tool, .taskUpdate)
         XCTAssertEqual(action.arguments["dueAt"], .string("2026-06-30"))
+        let payloadJSON = try XCTUnwrap(bundle.connection.queryRows(
+            "SELECT payload_json FROM assistant_queue_items WHERE id = '\(itemID)' LIMIT 1;"
+        ).first?["payload_json"])
+        XCTAssertTrue(payloadJSON.contains("[REDACTED_SECRET]"))
+        XCTAssertTrue(payloadJSON.contains("[REDACTED_PATH]"))
+        XCTAssertFalse(payloadJSON.contains("voice-secret"))
+        XCTAssertFalse(payloadJSON.contains("/Users/shutoide"))
         XCTAssertEqual(viewModel.snapshot.projects.first { $0.id == project.id }?.column(.planned)?.tasks.first?.dueAt, "2026-06-29")
         XCTAssertTrue(try calendarClient.listEvents().isEmpty)
     }
