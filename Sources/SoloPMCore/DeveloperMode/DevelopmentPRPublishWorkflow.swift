@@ -78,6 +78,7 @@ public enum DevelopmentPRPublishWorkflowError: Error, Equatable, Sendable {
     case localPathInPullRequestContent
     case invalidPullRequestURL
     case invalidGitHubOriginRemote
+    case originPushRepositoryMismatch(expected: String, actual: String)
     case pullRequestRepositoryMismatch(expected: String, actual: String)
     case invalidPullRequestStatusJSON
     case invalidPullRequestReviewThreadsJSON
@@ -107,6 +108,8 @@ public enum DevelopmentPRPublishWorkflowError: Error, Equatable, Sendable {
             return "Pull request URL must be a GitHub HTTPS pull request URL."
         case .invalidGitHubOriginRemote:
             return "Origin remote must resolve to a GitHub repository."
+        case .originPushRepositoryMismatch(let expected, let actual):
+            return "Origin push destinations must resolve to a single GitHub repository; found \(expected) and \(actual)."
         case .pullRequestRepositoryMismatch(let expected, let actual):
             return "Pull request repository \(actual) does not match origin repository \(expected)."
         case .invalidPullRequestStatusJSON:
@@ -119,7 +122,8 @@ public enum DevelopmentPRPublishWorkflowError: Error, Equatable, Sendable {
             return "Command is not allowed for development publish workflow."
         case .commandFailed(let tool, let command, let exitCode, let standardError):
             let suffix = standardError.isEmpty ? "" : " stderr: \(standardError)"
-            if command == ["remote", "get-url", "origin"] {
+            if command == ["remote", "get-url", "origin"]
+                || command == ["remote", "get-url", "--push", "--all", "origin"] {
                 return "Git origin remote lookup failed with exit code \(exitCode).\(suffix)"
             }
             if tool == .developmentCreatePullRequest {
@@ -139,7 +143,8 @@ public enum DevelopmentPRPublishWorkflowError: Error, Equatable, Sendable {
 public enum DevelopmentPublishGitCommandPolicy {
     public static func isAllowed(arguments: [String]) -> Bool {
         if arguments == ["status", "--short", "--branch"]
-            || arguments == ["remote", "get-url", "origin"] {
+            || arguments == ["remote", "get-url", "origin"]
+            || arguments == ["remote", "get-url", "--push", "--all", "origin"] {
             return true
         }
 
@@ -1249,6 +1254,7 @@ public struct DevelopmentPushWorkflowTool: Tool {
                 guard readiness.isReady else {
                     return failedReadinessResult(projectID: project.id, branchName: branchName, readiness: readiness)
                 }
+                let originRepository = try fetchOriginRepository(workingDirectory: scope.rootURL)
 
                 let push = try runGit(arguments: ["push", "-u", "origin", branchName], workingDirectory: scope.rootURL)
                 guard push.exitCode == 0 else {
@@ -1267,11 +1273,12 @@ public struct DevelopmentPushWorkflowTool: Tool {
                 return ToolResult(
                     tool: name,
                     status: .succeeded,
-                    summary: "Pushed development branch \(branchName). Pull request creation requires a separate approval gate.",
+                    summary: "Pushed development branch \(branchName) to \(originRepository.displayNameWithOwner). Pull request creation requires a separate approval gate.",
                     output: [
                         "projectId": .number(Double(project.id)),
                         "branchName": .string(branchName),
                         "remoteName": .string("origin"),
+                        "remoteRepository": .string(originRepository.displayNameWithOwner),
                         "workspaceClean": .bool(true),
                         "pushSummary": .string(redacted(push.standardOutput)),
                         "requiresPullRequestApproval": .bool(true)
@@ -1327,6 +1334,39 @@ public struct DevelopmentPushWorkflowTool: Tool {
             rollbackMetadata: ["branchName": .string(branchName)],
             compensationHint: "Inspect the branch and retry push after fixing the Git error."
         )
+    }
+
+    private func fetchOriginRepository(workingDirectory: URL) throws -> DevelopmentGitHubRepositoryIdentity {
+        // Git push prefers remote.origin.pushurl when configured, so validate
+        // the push destinations rather than the fetch URL before any write.
+        let arguments = ["remote", "get-url", "--push", "--all", "origin"]
+        let output = try runGit(arguments: arguments, workingDirectory: workingDirectory)
+        guard output.exitCode == 0 else {
+            throw DevelopmentPRPublishWorkflowError.commandFailed(
+                tool: name,
+                command: arguments,
+                exitCode: output.exitCode,
+                standardError: redacted(output.standardError.trimmingCharacters(in: .whitespacesAndNewlines))
+            )
+        }
+        let destinations = output.standardOutput
+            .split(whereSeparator: \.isNewline)
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard let firstDestination = destinations.first else {
+            throw DevelopmentPRPublishWorkflowError.invalidGitHubOriginRemote
+        }
+        let expected = try DevelopmentGitHubPRCommandPolicy.repositoryIdentity(fromRemoteURL: firstDestination)
+        for destination in destinations.dropFirst() {
+            let candidate = try DevelopmentGitHubPRCommandPolicy.repositoryIdentity(fromRemoteURL: destination)
+            guard candidate.matches(expected) else {
+                throw DevelopmentPRPublishWorkflowError.originPushRepositoryMismatch(
+                    expected: expected.displayNameWithOwner,
+                    actual: candidate.displayNameWithOwner
+                )
+            }
+        }
+        return expected
     }
 
     private func workspacePublishReadiness(branchName: String, scope: ProjectWorkspaceScope) throws -> DevelopmentPublishReadiness {

@@ -1076,6 +1076,54 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDevelopmentAutomationPushQueueDraftUsesSeparateApprovalGate() throws {
+        let stores = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: stores.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Client Portal"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Implement OAuth callback",
+            projectID: project.id,
+            status: .planned,
+            priority: .high
+        ))
+        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
+            "/tmp/client-portal",
+            bookmarkData: Data([1, 2, 3]),
+            projectID: project.id
+        ))
+        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+
+        XCTAssertTrue(viewModel.enqueueDevelopmentPushReview(for: assignedProject, task: currentTask))
+
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        let item = try assistantQueueStore.get(id: itemID)
+        XCTAssertTrue(itemID.hasPrefix("action-plan:development-pr-push:"))
+        XCTAssertEqual(item.state, .waitingReview)
+        XCTAssertEqual(item.riskLevel, .write)
+        XCTAssertEqual(item.requiredCapabilities, [.tool(.developmentPushBranch), .providerExecutionApproval])
+        XCTAssertEqual(item.costPreview?.billingMode, .localOnly)
+        XCTAssertEqual(item.reviewReason, "Development branch push needs review for Client Portal.")
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Queued development branch push review for approval.")
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, [itemID])
+        guard case .actionPlan(let plan) = item.payload else {
+            return XCTFail("Expected action plan payload")
+        }
+        XCTAssertEqual(plan.actions.count, 1)
+        let action = try XCTUnwrap(plan.actions.first)
+        XCTAssertEqual(action.tool, .developmentPushBranch)
+        XCTAssertEqual(action.arguments["projectId"], .number(Double(project.id)))
+        XCTAssertEqual(action.arguments["branchName"], .string("feature/solopm-\(project.id)-\(task.id)-implement-oauth-callback"))
+        XCTAssertTrue(plan.summary.contains("Execution rechecks the current branch, clean workspace, and GitHub origin before push."))
+        XCTAssertTrue(plan.summary.contains("Pull request creation requires a separate approval."))
+    }
+
+    @MainActor
     func testDevelopmentAutomationQueueDraftRedactsSensitiveTaskTitleFromPersistentBranchName() throws {
         let stores = try makeStoreBundle()
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)

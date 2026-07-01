@@ -4427,8 +4427,8 @@ private enum AppRuntimeFactory {
             auditLogger: auditLogger
         )
         // Queue execution must bridge project-panel approvals to local GitHub Flow
-        // preparation, but the allowlist intentionally stops before networked publish
-        // operations so push and PR creation can receive their own product gates.
+        // preparation and the first publish step. PR creation remains outside this
+        // lane until the product has a base-branch/body review surface for it.
         try registry.register(AuditedTool(
             base: DevelopmentPRWorkflowTool(
                 projectStore: projectStore,
@@ -4488,6 +4488,10 @@ private enum AppRuntimeFactory {
             logger: auditLogger
         ))
         try registry.register(AuditedTool(
+            base: DevelopmentPushWorkflowTool(projectStore: projectStore),
+            logger: auditLogger
+        ))
+        try registry.register(AuditedTool(
             base: DevelopmentPullRequestReviewGateTool(projectStore: projectStore),
             logger: auditLogger
         ))
@@ -4503,6 +4507,7 @@ private enum AppRuntimeFactory {
             .developmentRepositoryUpdateFile,
             .developmentRunVerification,
             .developmentCommitChanges,
+            .developmentPushBranch,
             .developmentReviewPullRequestGate,
             .developmentMergePullRequest
         ] {
@@ -4511,8 +4516,7 @@ private enum AppRuntimeFactory {
             }
         }
         for prohibitedTool in [
-            ActionTool.developmentPushBranch,
-            .developmentCreatePullRequest
+            ActionTool.developmentCreatePullRequest
         ] {
             guard !registry.contains(prohibitedTool) else {
                 throw ToolExecutionError.dangerousToolBlocked(prohibitedTool)

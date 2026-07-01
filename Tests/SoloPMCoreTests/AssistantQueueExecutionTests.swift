@@ -151,6 +151,170 @@ final class AssistantQueueExecutionTests: XCTestCase {
         ])
     }
 
+    func testCoordinatorRunsQueuedDevelopmentPushWorkflowWithApprovedProjectBookmark() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let queueStore = SQLiteAssistantQueueStore(connection: connection)
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let projectStore = SQLiteProjectStore(connection: connection)
+        let workspace = temporaryDirectory()
+        let project = try projectStore.create(
+            title: "SoloPM",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: Data("approved-development-push-bookmark".utf8)
+        )
+        let branchName = "feature/solopm-\(project.id)-push-queue"
+        let item = AssistantQueueAdapter.makeItem(
+            actionPlan: ActionPlan(
+                id: "development-push-queue",
+                userInput: "Push reviewed development branch",
+                summary: "Push reviewed development branch. Pull request creation requires a separate approval.",
+                actions: [
+                    PlanAction(
+                        id: "development-push",
+                        tool: .developmentPushBranch,
+                        arguments: [
+                            "projectId": .number(Double(project.id)),
+                            "branchName": .string(branchName)
+                        ],
+                        riskLevel: .write,
+                        requiresUserConfirmation: true
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            sourceTranscript: "Push the reviewed development branch",
+            interpretationSummary: "Development branch push",
+            reason: "Needs review before pushing a branch to origin."
+        )
+        let approved = try AssistantQueueStateMachine.approve(item, reviewerID: "local-user")
+        try queueStore.save(approved)
+        let gitRunner = RecordingAssistantQueueGitRunner()
+        gitRunner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
+        )
+        gitRunner.stub(
+            arguments: ["remote", "get-url", "--push", "--all", "origin"],
+            output: GitCommandOutput(standardOutput: "git@github.com:acme/solo-pm.git\n", standardError: "", exitCode: 0)
+        )
+        gitRunner.stub(
+            arguments: ["push", "-u", "origin", branchName],
+            output: GitCommandOutput(standardOutput: "branch pushed\n", standardError: "", exitCode: 0)
+        )
+        let registry = try ToolRegistry(tools: [
+            DevelopmentPushWorkflowTool(
+                projectStore: projectStore,
+                gitRunner: gitRunner,
+                bookmarkResolver: AssistantQueueStaticBookmarkResolver(url: workspace)
+            )
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-development-push" },
+            now: { Date(timeIntervalSince1970: 175) }
+        )
+
+        let result = try coordinator.execute(id: approved.id)
+
+        XCTAssertEqual(result.item.state, .done)
+        XCTAssertEqual(try queueStore.get(id: approved.id).state, .done)
+        let receipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receipt.status, .succeeded)
+        XCTAssertEqual(receipt.primaryToolName, ActionTool.developmentPushBranch.rawValue)
+        XCTAssertEqual(receipt.assistantQueueItemID, approved.id)
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .project, id: String(project.id))))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBranch, id: branchName)))
+        XCTAssertTrue(receipt.actions.first?.outputSummary?.contains("Remote repository acme/solo-pm") == true)
+        XCTAssertEqual(gitRunner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["remote", "get-url", "--push", "--all", "origin"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["push", "-u", "origin", branchName], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
+        ])
+    }
+
+    func testCoordinatorFailsQueuedDevelopmentPushWhenPushURLIsNotGitHub() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let queueStore = SQLiteAssistantQueueStore(connection: connection)
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let projectStore = SQLiteProjectStore(connection: connection)
+        let workspace = temporaryDirectory()
+        let project = try projectStore.create(
+            title: "SoloPM",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: Data("approved-development-push-bookmark".utf8)
+        )
+        let branchName = "feature/solopm-\(project.id)-push-queue"
+        let item = AssistantQueueAdapter.makeItem(
+            actionPlan: ActionPlan(
+                id: "development-push-invalid-origin",
+                userInput: "Push reviewed development branch",
+                summary: "Push reviewed development branch. Pull request creation requires a separate approval.",
+                actions: [
+                    PlanAction(
+                        id: "development-push",
+                        tool: .developmentPushBranch,
+                        arguments: [
+                            "projectId": .number(Double(project.id)),
+                            "branchName": .string(branchName)
+                        ],
+                        riskLevel: .write,
+                        requiresUserConfirmation: true
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            sourceTranscript: "Push the reviewed development branch",
+            interpretationSummary: "Development branch push",
+            reason: "Needs review before pushing a branch to origin."
+        )
+        let approved = try AssistantQueueStateMachine.approve(item, reviewerID: "local-user")
+        try queueStore.save(approved)
+        let gitRunner = RecordingAssistantQueueGitRunner()
+        gitRunner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
+        )
+        gitRunner.stub(
+            arguments: ["remote", "get-url", "--push", "--all", "origin"],
+            output: GitCommandOutput(standardOutput: "https://example.com/acme/solo-pm.git\n", standardError: "", exitCode: 0)
+        )
+        let registry = try ToolRegistry(tools: [
+            DevelopmentPushWorkflowTool(
+                projectStore: projectStore,
+                gitRunner: gitRunner,
+                bookmarkResolver: AssistantQueueStaticBookmarkResolver(url: workspace)
+            )
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-development-push-invalid-origin" },
+            now: { Date(timeIntervalSince1970: 176) }
+        )
+
+        let result = try coordinator.execute(id: approved.id)
+
+        XCTAssertEqual(result.item.state, .failed)
+        XCTAssertEqual(try queueStore.get(id: approved.id).state, .failed)
+        let receipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receipt.status, .failed)
+        XCTAssertEqual(receipt.primaryToolName, ActionTool.developmentPushBranch.rawValue)
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .project, id: String(project.id))))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBranch, id: branchName)))
+        XCTAssertTrue(receipt.actions.first?.errorSummary?.contains("Origin remote must resolve to a GitHub repository.") == true)
+        XCTAssertEqual(gitRunner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["remote", "get-url", "--push", "--all", "origin"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
+        ])
+    }
+
     func testCoordinatorRunsScheduleDraftCalendarApplyAndKeepsScopedReceiptReferences() throws {
         let queueStore = try makeQueueStore()
         let receiptStore = InMemoryExecutionReceiptStore()

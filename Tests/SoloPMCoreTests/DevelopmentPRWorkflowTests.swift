@@ -362,6 +362,10 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
             output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
         )
         runner.stub(
+            arguments: ["remote", "get-url", "--push", "--all", "origin"],
+            output: GitCommandOutput(standardOutput: "https://github.com/acme/solo-pm.git\n", standardError: "", exitCode: 0)
+        )
+        runner.stub(
             arguments: ["push", "-u", "origin", branchName],
             output: GitCommandOutput(standardOutput: "pushed token=push-secret\n", standardError: "", exitCode: 0)
         )
@@ -379,12 +383,97 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         XCTAssertEqual(result.output["projectId"], .number(Double(project.id)))
         XCTAssertEqual(result.output["branchName"], .string(branchName))
         XCTAssertEqual(result.output["remoteName"], .string("origin"))
+        XCTAssertEqual(result.output["remoteRepository"], .string("acme/solo-pm"))
         XCTAssertEqual(result.output["requiresPullRequestApproval"], .bool(true))
         XCTAssertEqual(result.output["pushSummary"], .string("pushed [REDACTED_SECRET]\n"))
+        XCTAssertTrue(result.summary.contains("acme/solo-pm"))
         XCTAssertFalse(result.summary.contains("push-secret"))
         XCTAssertEqual(runner.recordedInvocations, [
             GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["remote", "get-url", "--push", "--all", "origin"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
             GitCommandInvocation(arguments: ["push", "-u", "origin", branchName], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
+        ])
+    }
+
+    func testPushBranchRejectsNonGitHubPushURLBeforeRunningExternalWrite() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try createPublishProject(stores: stores, workspace: workspace)
+        let branchName = "feature/solopm-\(project.id)-publish-gate"
+        let runner = RecordingDevelopmentGitRunner()
+        runner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
+        )
+        runner.stub(
+            arguments: ["remote", "get-url", "--push", "--all", "origin"],
+            output: GitCommandOutput(standardOutput: "ssh://git@example.com/acme/solo-pm.git\n", standardError: "", exitCode: 0)
+        )
+        let tool = DevelopmentPushWorkflowTool(projectStore: stores.projects, gitRunner: runner, bookmarkResolver: publishBookmarkResolver(for: workspace))
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string(branchName)
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentPushBranch, "Origin remote must resolve to a GitHub repository.")
+            )
+        }
+        XCTAssertEqual(runner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["remote", "get-url", "--push", "--all", "origin"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
+        ])
+    }
+
+    func testPushBranchRejectsMultiplePushRepositoriesBeforeRunningExternalWrite() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try createPublishProject(stores: stores, workspace: workspace)
+        let branchName = "feature/solopm-\(project.id)-publish-gate"
+        let runner = RecordingDevelopmentGitRunner()
+        runner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
+        )
+        runner.stub(
+            arguments: ["remote", "get-url", "--push", "--all", "origin"],
+            output: GitCommandOutput(
+                standardOutput: """
+                https://github.com/acme/solo-pm.git
+                git@github.com:other/solo-pm.git
+                """,
+                standardError: "",
+                exitCode: 0
+            )
+        )
+        let tool = DevelopmentPushWorkflowTool(projectStore: stores.projects, gitRunner: runner, bookmarkResolver: publishBookmarkResolver(for: workspace))
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string(branchName)
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(
+                    .developmentPushBranch,
+                    "Origin push destinations must resolve to a single GitHub repository; found acme/solo-pm and other/solo-pm."
+                )
+            )
+        }
+        XCTAssertEqual(runner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["remote", "get-url", "--push", "--all", "origin"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
         ])
     }
 
@@ -1399,6 +1488,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
     func testDevelopmentPublishPoliciesRejectUnsafeCommands() {
         XCTAssertTrue(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["status", "--short", "--branch"]))
         XCTAssertTrue(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["remote", "get-url", "origin"]))
+        XCTAssertTrue(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["remote", "get-url", "--push", "--all", "origin"]))
         XCTAssertTrue(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push", "-u", "origin", "feature/solopm-1-task"]))
         XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push"]))
         XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push", "--force", "origin", "feature/solopm-1-task"]))

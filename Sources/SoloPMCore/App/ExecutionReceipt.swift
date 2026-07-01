@@ -1681,6 +1681,9 @@ public enum ExecutionReceiptFactory {
         var parts = [
             "Pushed development branch \(redactor.redact(branchName, maxLength: 240))."
         ]
+        if let remoteRepository = result.output["remoteRepository"]?.receiptNonEmptyString {
+            parts.append("Remote repository \(redactor.redact(remoteRepository, maxLength: 240)).")
+        }
         if result.output["requiresPullRequestApproval"]?.receiptBoolValue == true {
             parts.append("Pull request approval required.")
         }
