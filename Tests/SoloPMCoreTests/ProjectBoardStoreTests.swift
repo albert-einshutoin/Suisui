@@ -2425,6 +2425,129 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testWeeklyScheduleCockpitBuildsGridForecastAndReminderProposalsWithoutCalendarWrite() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-24T09:10:00Z")
+        let calendarClient = InMemoryCalendarClient()
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            scheduleCalendarClient: calendarClient
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        let support = try XCTUnwrap(viewModel.createProject(title: "Support"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Today launch review", projectID: project.id, status: .planned, priority: .high, dueAt: "2026-06-24T11:00:00Z"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Blocked support reply", projectID: support.id, status: .blocked, priority: .medium, dueAt: "2026-06-24T11:15:00Z"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Tomorrow implementation", projectID: project.id, status: .inProgress, priority: .medium, dueAt: "2026-06-25T10:00:00Z"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Later done task", projectID: project.id, status: .done, priority: .low, dueAt: "2026-06-26T09:00:00Z"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Unscheduled proposal", projectID: support.id, status: .planned, priority: .high, dueAt: nil))
+
+        _ = viewModel.prepareScheduleDraft(on: referenceDate, calendar: calendar)
+        let cockpit = viewModel.weeklyScheduleCockpit(around: referenceDate, calendar: calendar)
+
+        XCTAssertEqual(cockpit.days.map(\.dateKey), [
+            "2026-06-22",
+            "2026-06-23",
+            "2026-06-24",
+            "2026-06-25",
+            "2026-06-26",
+            "2026-06-27",
+            "2026-06-28"
+        ])
+        XCTAssertEqual(cockpit.unscheduledTasks.map(\.title), ["Unscheduled proposal"])
+        XCTAssertEqual(cockpit.agendaDay?.dateKey, "2026-06-24")
+        XCTAssertEqual(cockpit.focusForecast.overloadedDayKeys, ["2026-06-24"])
+
+        let wednesday = try XCTUnwrap(cockpit.days.first { $0.dateKey == "2026-06-24" })
+        XCTAssertEqual(wednesday.loadLevel, .overloaded)
+        XCTAssertEqual(wednesday.reminderProposalCount, 2)
+        XCTAssertEqual(wednesday.blocks.map(\.task.title), ["Today launch review", "Blocked support reply"])
+        XCTAssertTrue(wednesday.blocks.allSatisfy { $0.source == .scheduleDraft })
+        XCTAssertEqual(wednesday.blocks.map(\.overlapGroupSize), [1, 1])
+        XCTAssertEqual(wednesday.blocks.map(\.overlapLane), [0, 0])
+        XCTAssertEqual(wednesday.blocks.map(\.projectTitle), ["Launch", "Support"])
+
+        XCTAssertTrue(try calendarClient.listEvents().isEmpty)
+    }
+
+    @MainActor
+    func testWeeklyScheduleCockpitAssignsOverlapLanesForDueTimeBlocks() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-24T09:10:00Z")
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "First overlap", projectID: project.id, status: .planned, priority: .high, dueAt: "2026-06-24T11:00:00Z"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Second overlap", projectID: project.id, status: .planned, priority: .medium, dueAt: "2026-06-24T11:15:00Z"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Later block", projectID: project.id, status: .planned, priority: .low, dueAt: "2026-06-24T12:30:00Z"))
+
+        let cockpit = viewModel.weeklyScheduleCockpit(around: referenceDate, calendar: calendar)
+
+        let wednesday = try XCTUnwrap(cockpit.days.first { $0.dateKey == "2026-06-24" })
+        XCTAssertEqual(wednesday.blocks.map(\.source), [.dueTask, .dueTask, .dueTask])
+        XCTAssertEqual(wednesday.blocks.map(\.overlapGroupSize), [2, 2, 1])
+        XCTAssertEqual(wednesday.blocks.map(\.overlapLane), [0, 1, 0])
+    }
+
+    @MainActor
+    func testWeeklyScheduleCockpitHandlesDateOnlyTokyoDayAndDraftDedup() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-23T15:30:00Z")
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Tokyo Launch"))
+        let allDay = try XCTUnwrap(viewModel.createTask(title: "Date-only follow-up", projectID: project.id, status: .planned, priority: .medium, dueAt: "2026-06-24"))
+        let afterMidnight = try XCTUnwrap(viewModel.createTask(title: "Tokyo after-midnight check", projectID: project.id, status: .planned, priority: .high, dueAt: "2026-06-24T00:15:00+09:00"))
+
+        let dueOnlyCockpit = viewModel.weeklyScheduleCockpit(around: referenceDate, calendar: calendar)
+        let dueOnlyWednesday = try XCTUnwrap(dueOnlyCockpit.days.first { $0.dateKey == "2026-06-24" })
+
+        XCTAssertEqual(dueOnlyCockpit.agendaDay?.dateKey, "2026-06-24")
+        XCTAssertEqual(dueOnlyWednesday.blocks.map(\.task.id), [afterMidnight.id, allDay.id])
+        XCTAssertEqual(dueOnlyWednesday.blocks.map(\.source), [.dueTask, .dueTask])
+        XCTAssertEqual(dueOnlyWednesday.blocks.last?.timeLabel, "All day")
+        XCTAssertEqual(dueOnlyWednesday.loadLevel, .focused)
+
+        _ = viewModel.prepareScheduleDraft(on: referenceDate, calendar: calendar)
+        let draftCockpit = viewModel.weeklyScheduleCockpit(around: referenceDate, calendar: calendar)
+        let draftWednesday = try XCTUnwrap(draftCockpit.days.first { $0.dateKey == "2026-06-24" })
+
+        XCTAssertEqual(draftWednesday.blocks.map(\.task.id), [afterMidnight.id, allDay.id])
+        XCTAssertTrue(draftWednesday.blocks.allSatisfy { $0.source == .scheduleDraft })
+        XCTAssertFalse(draftWednesday.blocks.contains { $0.source == .dueTask && $0.task.id == allDay.id })
+    }
+
+    @MainActor
+    func testWeeklyScheduleFocusForecastStatesUseCountsNotLocalizedStrings() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-24T09:10:00Z")
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Forecast"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Focused work", projectID: project.id, status: .planned, priority: .medium, dueAt: "2026-06-24T10:00:00Z"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Heavy work A", projectID: project.id, status: .planned, priority: .medium, dueAt: "2026-06-25T10:00:00Z"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Heavy work B", projectID: project.id, status: .planned, priority: .medium, dueAt: "2026-06-25T11:00:00Z"))
+        _ = try XCTUnwrap(viewModel.createTask(title: "Heavy work C", projectID: project.id, status: .planned, priority: .medium, dueAt: "2026-06-25T12:00:00Z"))
+
+        let heavyCockpit = viewModel.weeklyScheduleCockpit(around: referenceDate, calendar: calendar)
+
+        XCTAssertEqual(heavyCockpit.focusForecast.state, .heavy)
+        XCTAssertEqual(heavyCockpit.focusForecast.heavyDayKeys, ["2026-06-25"])
+        XCTAssertEqual(heavyCockpit.focusForecast.overloadedDayKeys, [])
+
+        _ = try XCTUnwrap(viewModel.createTask(title: "Overloaded blocker", projectID: project.id, status: .blocked, priority: .high, dueAt: "2026-06-25T13:00:00Z"))
+        let overloadedCockpit = viewModel.weeklyScheduleCockpit(around: referenceDate, calendar: calendar)
+
+        XCTAssertEqual(overloadedCockpit.focusForecast.state, .overloaded)
+        XCTAssertEqual(overloadedCockpit.focusForecast.overloadedDayKeys, ["2026-06-25"])
+    }
+
+    @MainActor
     func testDailyPlanningReviewUsesTodayAndWorkloadWithoutMutatingStoreOrCalendar() throws {
         var calendar = utcCalendar()
         calendar.firstWeekday = 2
