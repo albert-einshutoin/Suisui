@@ -72,6 +72,7 @@
         "development.pr_workflow.create_pull_request",
         "development.pr_workflow.review_gate",
         "development.pr_workflow.merge",
+        "development.repository.list_files",
         "development.repository.read_file",
         "development.repository.create_file",
         "development.repository.update_file",

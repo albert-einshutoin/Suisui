@@ -74,8 +74,37 @@ public struct DevelopmentRepositoryFileRecord: Equatable, Sendable {
     }
 }
 
+public struct DevelopmentRepositoryFileListEntry: Equatable, Sendable {
+    public var relativePath: String
+    public var byteCount: Int
+
+    public init(relativePath: String, byteCount: Int) {
+        self.relativePath = relativePath
+        self.byteCount = byteCount
+    }
+
+    public var output: JSONValue {
+        .object([
+            "relativePath": .string(relativePath),
+            "byteCount": .number(Double(byteCount))
+        ])
+    }
+}
+
+public struct DevelopmentRepositoryFileList: Equatable, Sendable {
+    public var entries: [DevelopmentRepositoryFileListEntry]
+    public var truncated: Bool
+
+    public init(entries: [DevelopmentRepositoryFileListEntry], truncated: Bool) {
+        self.entries = entries
+        self.truncated = truncated
+    }
+}
+
 public enum DevelopmentRepositoryFilePathPolicy {
     public static let maximumContentBytes = 256 * 1024
+    public static let maximumListedFileEntries = 500
+    public static let maximumListedFileSystemNodes = 5_000
 
     private static let allowedTextExtensions: Set<String> = [
         "c", "cc", "cpp", "css", "csv", "go", "h", "hpp", "html", "ini", "java",
@@ -97,6 +126,54 @@ public enum DevelopmentRepositoryFilePathPolicy {
     ]
 
     public static func validatedRelativePath(_ rawPath: String) throws -> String {
+        let components = try validatedPathComponents(rawPath)
+
+        guard isSupportedTextPath(filename: components.last ?? "") else {
+            throw DevelopmentRepositoryFileError.unsupportedTextFile
+        }
+
+        return components.joined(separator: "/")
+    }
+
+    public static func validatedRelativeDirectoryPath(_ rawPath: String?) throws -> String? {
+        guard let rawPath else {
+            return nil
+        }
+
+        let trimmed = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+
+        return try validatedPathComponents(trimmed).joined(separator: "/")
+    }
+
+    public static func isSupportedListedFile(relativePath rawPath: String) -> Bool {
+        do {
+            _ = try validatedRelativePath(rawPath)
+            return true
+        } catch DevelopmentRepositoryFileError.gitMetadataPath,
+                DevelopmentRepositoryFileError.secretLikePath,
+                DevelopmentRepositoryFileError.unsupportedTextFile {
+            return false
+        } catch {
+            return false
+        }
+    }
+
+    public static func shouldSkipListedDirectory(relativePath rawPath: String) -> Bool {
+        do {
+            _ = try validatedRelativeDirectoryPath(rawPath)
+            return false
+        } catch DevelopmentRepositoryFileError.gitMetadataPath,
+                DevelopmentRepositoryFileError.secretLikePath {
+            return true
+        } catch {
+            return true
+        }
+    }
+
+    private static func validatedPathComponents(_ rawPath: String) throws -> [String] {
         guard !rawPath.contains("\u{0}") else {
             throw DevelopmentRepositoryFileError.invalidRelativePath
         }
@@ -123,11 +200,7 @@ public enum DevelopmentRepositoryFilePathPolicy {
             throw DevelopmentRepositoryFileError.secretLikePath
         }
 
-        guard isSupportedTextPath(filename: components.last ?? "") else {
-            throw DevelopmentRepositoryFileError.unsupportedTextFile
-        }
-
-        return components.joined(separator: "/")
+        return components
     }
 
     public static func validateTextContent(_ contents: String) throws {
@@ -186,6 +259,17 @@ public struct DevelopmentRepositoryFileClient: Sendable {
         self.redactor = redactor
     }
 
+    public func list(relativePath rawPath: String? = nil) throws -> DevelopmentRepositoryFileList {
+        let relativePath = try DevelopmentRepositoryFilePathPolicy.validatedRelativeDirectoryPath(rawPath)
+        let scope = try ProjectWorkspaceScope(project: project)
+        let directoryURL = try resolveExistingDirectory(relativePath: relativePath, scope: scope)
+        let list = try listedEntries(directoryURL: directoryURL, scope: scope)
+        return DevelopmentRepositoryFileList(
+            entries: list.entries.sorted { $0.relativePath < $1.relativePath },
+            truncated: list.truncated
+        )
+    }
+
     public func read(relativePath rawPath: String) throws -> DevelopmentRepositoryFileRecord {
         let relativePath = try DevelopmentRepositoryFilePathPolicy.validatedRelativePath(rawPath)
         let scope = try ProjectWorkspaceScope(project: project)
@@ -238,6 +322,101 @@ public struct DevelopmentRepositoryFileClient: Sendable {
 
         try Data(contents.utf8).write(to: fileURL, options: [.atomic])
         return record(relativePath: relativePath, contents: contents)
+    }
+
+    private func resolveExistingDirectory(relativePath: String?, scope: ProjectWorkspaceScope) throws -> URL {
+        let directoryURL: URL
+        if let relativePath {
+            directoryURL = try resolvedURL(relativePath: relativePath, scope: scope)
+            try rejectSymlinkComponents(relativePath: relativePath, rootURL: scope.rootURL, requireTargetExists: true)
+        } else {
+            directoryURL = scope.rootURL
+        }
+
+        var isDirectory = ObjCBool(false)
+        guard FileManager.default.fileExists(atPath: directoryURL.path, isDirectory: &isDirectory) else {
+            throw DevelopmentRepositoryFileError.fileNotFound
+        }
+        guard isDirectory.boolValue else {
+            throw DevelopmentRepositoryFileError.targetIsDirectory
+        }
+
+        let resolvedDirectoryURL = directoryURL.resolvingSymlinksInPath().standardizedFileURL
+        guard isInsideWorkspace(resolvedDirectoryURL, rootURL: scope.rootURL) else {
+            throw DevelopmentRepositoryFileError.pathEscapesWorkspace
+        }
+        return resolvedDirectoryURL
+    }
+
+    private func listedEntries(
+        directoryURL: URL,
+        scope: ProjectWorkspaceScope
+    ) throws -> DevelopmentRepositoryFileList {
+        let resourceKeys: [URLResourceKey] = [
+            .isDirectoryKey,
+            .isRegularFileKey,
+            .isSymbolicLinkKey,
+            .fileSizeKey
+        ]
+        let options: FileManager.DirectoryEnumerationOptions = [
+            .skipsHiddenFiles,
+            .skipsPackageDescendants
+        ]
+        guard let enumerator = FileManager.default.enumerator(
+            at: directoryURL,
+            includingPropertiesForKeys: resourceKeys,
+            options: options
+        ) else {
+            throw DevelopmentRepositoryFileError.fileNotFound
+        }
+
+        var entries: [DevelopmentRepositoryFileListEntry] = []
+        var visitedNodeCount = 0
+        for case let fileURL as URL in enumerator {
+            visitedNodeCount += 1
+            // Accepted-entry caps protect the LLM context; a separate node budget
+            // keeps generated or vendor-heavy trees from tying up the review UI.
+            guard visitedNodeCount <= DevelopmentRepositoryFilePathPolicy.maximumListedFileSystemNodes else {
+                return DevelopmentRepositoryFileList(entries: entries, truncated: true)
+            }
+
+            let values = try fileURL.resourceValues(forKeys: Set(resourceKeys))
+            guard values.isSymbolicLink != true else {
+                throw DevelopmentRepositoryFileError.symlinkNotAllowed
+            }
+            guard let relativePath = relativePath(for: fileURL, rootURL: scope.rootURL) else {
+                throw DevelopmentRepositoryFileError.pathEscapesWorkspace
+            }
+
+            if values.isDirectory == true {
+                if DevelopmentRepositoryFilePathPolicy.shouldSkipListedDirectory(relativePath: relativePath) {
+                    enumerator.skipDescendants()
+                }
+                continue
+            }
+
+            guard values.isRegularFile == true,
+                  DevelopmentRepositoryFilePathPolicy.isSupportedListedFile(relativePath: relativePath) else {
+                continue
+            }
+
+            let byteCount = values.fileSize ?? 0
+            guard byteCount <= DevelopmentRepositoryFilePathPolicy.maximumContentBytes else {
+                continue
+            }
+            guard try isUTF8TextFile(fileURL) else {
+                continue
+            }
+
+            entries.append(DevelopmentRepositoryFileListEntry(relativePath: relativePath, byteCount: byteCount))
+            // Repository scans are context-feed material, so cap the result before a
+            // generated tree can flood the review UI or planner prompt. The truncated
+            // subset is a bounded preview, not a complete lexicographic inventory.
+            if entries.count >= DevelopmentRepositoryFilePathPolicy.maximumListedFileEntries {
+                return DevelopmentRepositoryFileList(entries: entries, truncated: true)
+            }
+        }
+        return DevelopmentRepositoryFileList(entries: entries, truncated: false)
     }
 
     private func resolveExistingFile(relativePath: String, scope: ProjectWorkspaceScope) throws -> URL {
@@ -332,6 +511,14 @@ public struct DevelopmentRepositoryFileClient: Sendable {
         return contents
     }
 
+    private func isUTF8TextFile(_ url: URL) throws -> Bool {
+        let data = try Data(contentsOf: url)
+        guard !data.contains(0), String(data: data, encoding: .utf8) != nil else {
+            return false
+        }
+        return true
+    }
+
     private func failIfSecretLikeContent(_ contents: String) throws {
         let report = redactor.redact(contents).report
         guard report.replacementCount == 0 else {
@@ -353,6 +540,15 @@ public struct DevelopmentRepositoryFileClient: Sendable {
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
+    private func relativePath(for url: URL, rootURL: URL) -> String? {
+        let rootPath = rootURL.standardizedFileURL.path
+        let path = url.standardizedFileURL.path
+        guard path.hasPrefix(rootPath + "/") else {
+            return nil
+        }
+        return String(path.dropFirst(rootPath.count + 1))
+    }
+
     private func isInsideWorkspace(_ url: URL, rootURL: URL) -> Bool {
         let rootPath = rootURL.standardizedFileURL.path
         let path = url.standardizedFileURL.path
@@ -364,6 +560,8 @@ public struct DevelopmentRepositoryFileTool: Tool {
     public var name: ActionTool
     public var description: String {
         switch name {
+        case .developmentRepositoryListFiles:
+            return "List supported text files inside an approved project workspace."
         case .developmentRepositoryReadFile:
             return "Read a supported text file inside an approved project workspace."
         case .developmentRepositoryCreateFile:
@@ -377,6 +575,12 @@ public struct DevelopmentRepositoryFileTool: Tool {
 
     public var inputSchema: ToolInputSchema {
         switch name {
+        case .developmentRepositoryListFiles:
+            return ToolInputSchema(
+                required: ["projectId"],
+                properties: ["projectId": "integer", "relativePath": "string"],
+                nonBlank: ["relativePath"]
+            )
         case .developmentRepositoryReadFile:
             return ToolInputSchema(
                 required: ["projectId", "relativePath"],
@@ -428,38 +632,45 @@ public struct DevelopmentRepositoryFileTool: Tool {
         do {
             let project = try projectStore.get(id: projectID)
             let client = DevelopmentRepositoryFileClient(project: project, redactor: redactor)
-            let relativePath = try args.requiredTrimmedString("relativePath")
-            let record: DevelopmentRepositoryFileRecord
 
             switch name {
+            case .developmentRepositoryListFiles:
+                let list = try client.list(relativePath: try args.optionalTrimmedString("relativePath"))
+                return ToolResult(
+                    tool: name,
+                    status: .succeeded,
+                    summary: "Listed \(list.entries.count) repository files.",
+                    output: [
+                        "entryCount": .number(Double(list.entries.count)),
+                        "entries": .array(list.entries.map(\.output)),
+                        "truncated": .bool(list.truncated)
+                    ],
+                    rollbackMetadata: [
+                        "projectId": .number(Double(project.id))
+                    ]
+                )
             case .developmentRepositoryReadFile:
-                record = try client.read(relativePath: relativePath)
+                let relativePath = try args.requiredTrimmedString("relativePath")
+                let record = try client.read(relativePath: relativePath)
+                return result(record: record, project: project)
             case .developmentRepositoryCreateFile:
-                record = try client.create(
+                let relativePath = try args.requiredTrimmedString("relativePath")
+                let record = try client.create(
                     relativePath: relativePath,
                     contents: try args.requiredString("contents")
                 )
+                return result(record: record, project: project)
             case .developmentRepositoryUpdateFile:
-                record = try client.update(
+                let relativePath = try args.requiredTrimmedString("relativePath")
+                let record = try client.update(
                     relativePath: relativePath,
                     contents: try args.requiredString("contents"),
                     expectedSHA256: try args.optionalTrimmedString("expectedSHA256")
                 )
+                return result(record: record, project: project)
             default:
                 throw DevelopmentRepositoryFileError.unsupportedTool(name)
             }
-
-            return ToolResult(
-                tool: name,
-                status: .succeeded,
-                summary: "\(summaryVerb) \(record.relativePath).",
-                output: record.output,
-                rollbackMetadata: [
-                    "projectId": .number(Double(project.id)),
-                    "relativePath": .string(record.relativePath),
-                    "sha256": .string(record.sha256)
-                ]
-            )
         } catch let error as ToolExecutionError {
             throw error
         } catch let error as DevelopmentRepositoryFileError {
@@ -473,6 +684,8 @@ public struct DevelopmentRepositoryFileTool: Tool {
 
     private var summaryVerb: String {
         switch name {
+        case .developmentRepositoryListFiles:
+            return "Listed"
         case .developmentRepositoryReadFile:
             return "Read"
         case .developmentRepositoryCreateFile:
@@ -482,5 +695,19 @@ public struct DevelopmentRepositoryFileTool: Tool {
         default:
             return "Processed"
         }
+    }
+
+    private func result(record: DevelopmentRepositoryFileRecord, project: ProjectRecord) -> ToolResult {
+        ToolResult(
+            tool: name,
+            status: .succeeded,
+            summary: "\(summaryVerb) \(record.relativePath).",
+            output: record.output,
+            rollbackMetadata: [
+                "projectId": .number(Double(project.id)),
+                "relativePath": .string(record.relativePath),
+                "sha256": .string(record.sha256)
+            ]
+        )
     }
 }

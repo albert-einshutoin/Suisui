@@ -73,6 +73,7 @@ final class DeveloperModeTests: XCTestCase {
             .developmentCreatePullRequest,
             .developmentReviewPullRequestGate,
             .developmentMergePullRequest,
+            .developmentRepositoryListFiles,
             .developmentRepositoryReadFile,
             .developmentRepositoryCreateFile,
             .developmentRepositoryUpdateFile,
