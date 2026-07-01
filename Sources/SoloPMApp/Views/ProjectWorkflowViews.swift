@@ -164,12 +164,13 @@ struct ScheduleWorkflowView: View {
                         .font(.title2.weight(.semibold))
                     Spacer()
                     Button {
-                        _ = viewModel.prepareScheduleDraft()
+                        // Use the visible schedule date so drafted blocks match the week the user is reviewing.
+                        _ = viewModel.prepareScheduleDraft(on: workloadReferenceDate)
                     } label: {
                         Label("Generate Draft", systemImage: "wand.and.stars")
                     }
                     .accessibilityIdentifier("schedule-generate-draft")
-                    .accessibilityHint("Combines today's local time blocks and unscheduled tasks without writing to Calendar.")
+                    .accessibilityHint("Combines the visible day's local time blocks and unscheduled tasks without writing to Calendar.")
                 }
 
                 ScheduleMiniCalendarPanel(
@@ -204,7 +205,7 @@ struct ScheduleWorkflowView: View {
 
                 HStack(spacing: 8) {
                     Button {
-                        _ = viewModel.enqueueScheduleDraftCalendarApply()
+                        _ = viewModel.enqueueScheduleDraftCalendarApply(on: workloadReferenceDate)
                     } label: {
                         Label("Queue Calendar Apply", systemImage: "tray.and.arrow.down")
                     }

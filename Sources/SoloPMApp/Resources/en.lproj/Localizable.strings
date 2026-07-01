@@ -720,7 +720,7 @@
 "Created from a reviewed SoloPM schedule draft." = "Created from a reviewed SoloPM schedule draft.";
 "Applied %d Calendar events." = "Applied %d Calendar events.";
 "Calendar apply failed." = "Calendar apply failed.";
-"Combines today's local time blocks and unscheduled tasks without writing to Calendar." = "Combines today's local time blocks and unscheduled tasks without writing to Calendar.";
+"Combines the visible day's local time blocks and unscheduled tasks without writing to Calendar." = "Combines the visible day's local time blocks and unscheduled tasks without writing to Calendar.";
 "Required before writing reviewed schedule blocks to Calendar." = "Required before writing reviewed schedule blocks to Calendar.";
 "Requires approval and a configured Calendar backend before any external write." = "Requires approval and a configured Calendar backend before any external write.";
 "Completed Tasks" = "Completed Tasks";

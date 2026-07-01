@@ -720,7 +720,7 @@
 "Created from a reviewed SoloPM schedule draft." = "確認済みのSoloPM予定ドラフトから作成されました。";
 "Applied %d Calendar events." = "%d件のカレンダー予定を適用しました。";
 "Calendar apply failed." = "カレンダー適用に失敗しました。";
-"Combines today's local time blocks and unscheduled tasks without writing to Calendar." = "カレンダーへ書き込まず、今日のローカル時間枠と未スケジュールタスクを結合します。";
+"Combines the visible day's local time blocks and unscheduled tasks without writing to Calendar." = "カレンダーへ書き込まず、表示中の日のローカル時間枠と未スケジュールタスクを結合します。";
 "Required before writing reviewed schedule blocks to Calendar." = "確認済みの予定枠をカレンダーへ書き込む前に必要です。";
 "Requires approval and a configured Calendar backend before any external write." = "外部書き込み前に承認と設定済みカレンダーバックエンドが必要です。";
 "Completed Tasks" = "完了タスク";
