@@ -33,6 +33,7 @@ final class SoloPMHarnessTests: XCTestCase {
         XCTAssertTrue(accessibility.requiredCapabilities.contains(.mcpToolCall))
         XCTAssertTrue(accessibility.requiredCapabilities.contains(.accessibilityAudit))
         XCTAssertTrue(accessibility.assertions.contains(.accessibilityFocusPathCovered))
+        XCTAssertEqual(accessibility.requiredTodayCockpitOperations, SoloPMHarnessScenario.completeTodayCockpitOperations)
     }
 
     func testTaskLifecycleHarnessRequiresCreateEditExecuteAndDeleteCoverage() throws {
@@ -56,7 +57,9 @@ final class SoloPMHarnessTests: XCTestCase {
 
         let accessibility = try XCTUnwrap(catalog.first { $0.kind == .accessibilityFocusPath })
         XCTAssertEqual(accessibility.requiredTaskLifecycleOperations, requiredLifecycle)
+        XCTAssertEqual(accessibility.requiredTodayCockpitOperations, SoloPMHarnessScenario.completeTodayCockpitOperations)
         XCTAssertTrue(accessibility.missingTaskLifecycleOperations().isEmpty)
+        XCTAssertTrue(accessibility.missingTodayCockpitOperations().isEmpty)
     }
 
     func testTaskLifecycleOperationsMapToCompletePseudoVoiceOverFocusNodes() {
@@ -95,6 +98,37 @@ final class SoloPMHarnessTests: XCTestCase {
                 "project-inspector-delete",
                 "project-inspector-delete-confirmation-cancel",
                 "project-inspector-delete-confirmation-confirm"
+            ]
+        )
+    }
+
+    func testTodayCockpitOperationsMapToCompletePseudoVoiceOverFocusNodes() {
+        let mappedNodeIDs = SoloPMHarnessScenario.requiredTodayCockpitFocusNodeIDs(
+            for: SoloPMHarnessScenario.completeTodayCockpitOperations
+        )
+
+        XCTAssertEqual(
+            mappedNodeIDs,
+            AccessibilityFocusPathRequirement.todayCockpit.requiredNodeIDs
+        )
+        for operation in SoloPMHarnessTodayCockpitOperation.allCases {
+            XCTAssertFalse(
+                operation.requiredFocusNodeIDs.isEmpty,
+                "\(operation.rawValue) must map to at least one Today AX focus node"
+            )
+        }
+        XCTAssertEqual(
+            SoloPMHarnessTodayCockpitOperation.openToday.requiredFocusNodeIDs,
+            ["sidebar-destination-today", "today-workflow"]
+        )
+        XCTAssertEqual(
+            SoloPMHarnessTodayCockpitOperation.railActions.requiredFocusNodeIDs,
+            [
+                "today-rail-focus",
+                "today-rail-schedule-block",
+                "today-rail-edit-task",
+                "today-rail-add-subtask",
+                "today-rail-reminder-draft"
             ]
         )
     }
@@ -247,6 +281,23 @@ final class SoloPMHarnessTests: XCTestCase {
         )
     }
 
+    func testTodayCockpitCoverageReportsMissingRailRequirements() {
+        let scenario = SoloPMHarnessScenario(
+            id: "partial-today-cockpit",
+            name: "Partial Today cockpit",
+            kind: .accessibilityFocusPath,
+            requiredCapabilities: [.accessibilityAudit],
+            expectedMutations: [],
+            assertions: [.accessibilityFocusPathCovered],
+            requiredTodayCockpitOperations: [.openToday, .captureCommand, .commonActions]
+        )
+
+        XCTAssertEqual(
+            scenario.missingTodayCockpitOperations(),
+            [.focusSuggestions, .localFocusAndPlanning, .railContext, .railActions]
+        )
+    }
+
     func testScenarioDecodesLegacyPayloadWithoutLifecycleCoverage() throws {
         let legacyJSON = """
         {
@@ -262,8 +313,10 @@ final class SoloPMHarnessTests: XCTestCase {
         let scenario = try JSONDecoder().decode(SoloPMHarnessScenario.self, from: Data(legacyJSON.utf8))
 
         XCTAssertEqual(scenario.requiredTaskLifecycleOperations, [])
+        XCTAssertEqual(scenario.requiredTodayCockpitOperations, [])
         XCTAssertEqual(scenario.requiredDocumentDeliverableKinds, [])
         XCTAssertEqual(scenario.missingTaskLifecycleOperations(), SoloPMHarnessScenario.completeTaskLifecycleOperations)
+        XCTAssertEqual(scenario.missingTodayCockpitOperations(), SoloPMHarnessScenario.completeTodayCockpitOperations)
         XCTAssertEqual(scenario.missingDocumentDeliverableKinds(), SoloPMHarnessScenario.completeDocumentDeliverableKinds)
     }
 

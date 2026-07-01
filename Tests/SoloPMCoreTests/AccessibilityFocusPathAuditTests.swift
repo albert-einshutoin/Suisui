@@ -200,6 +200,93 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
         XCTAssertTrue(result.coveredRequiredNodeIDs.contains("task-status-move-in_progress"))
     }
 
+    func testPseudoVoiceOverAuditAcceptsCompleteTodayCockpitPath() {
+        let nodes = [
+            node("sidebar-destination-today", role: .button, label: "Today, 3 open due or overdue tasks", help: "Opens Today cockpit."),
+            node("today-workflow", role: .group, label: "Today"),
+            node("today-briefing-panel", role: .group, label: "Today briefing"),
+            node("today-command-capture-field", role: .textField, label: "Today command title"),
+            node("today-command-add", role: .button, label: "Add to Inbox", help: "Creates a local Inbox item from the command text."),
+            node("today-common-action-rail", role: .group, label: "Common Today actions"),
+            node("today-common-chip-add-task", role: .button, label: "Add Task", help: "Prepare a new local Inbox task."),
+            node("today-common-chip-plan-tomorrow", role: .button, label: "Plan Tomorrow", help: "Prepare a tomorrow planning note."),
+            node("today-common-chip-prepare-meeting", role: .button, label: "Prepare Meeting", help: "Prepare a meeting task."),
+            node("today-common-chip-draft-reply", role: .button, label: "Draft Reply", help: "Prepare a reply draft task."),
+            node("today-suggestion-rail", role: .group, label: "Quick focus suggestions"),
+            node("today-start-focus", role: .button, label: "Start Focus", help: "Start focusing without changing task status."),
+            node("today-flow-strip", role: .group, label: "Today flow"),
+            node("today-assistant-rail", role: .group, label: "Today assistant rail"),
+            node("today-rail-next-action", role: .group, label: "Start recommended task"),
+            node("today-rail-task-detail", role: .group, label: "Task detail"),
+            node("today-rail-focus", role: .button, label: "Focus", help: "Starts local focus without changing task status."),
+            node("today-rail-schedule-block", role: .button, label: "Schedule Block", help: "Creates a local schedule draft without writing Calendar."),
+            node("today-rail-edit-task", role: .button, label: "Edit", help: "Opens the selected task in the inspector for manual edits."),
+            node("today-rail-add-subtask", role: .button, label: "Add Subtask", help: "Prefills the Today command field for a local subtask draft."),
+            node("today-rail-reminder-draft", role: .button, label: "Add Reminder Draft", help: "Prefills the Today command field; external reminder writes still require approval.")
+        ]
+
+        let result = AccessibilityFocusPathAudit().audit(
+            nodes: nodes,
+            requirements: AccessibilityFocusPathRequirement.todayCockpit
+        )
+
+        XCTAssertTrue(result.findings.isEmpty, result.findings.map(\.message).joined(separator: "\n"))
+        XCTAssertEqual(result.coveredRequiredNodeIDs, AccessibilityFocusPathRequirement.todayCockpit.requiredNodeIDs)
+    }
+
+    func testPseudoVoiceOverAuditRequiresTodayRailActionsNotOnlyScreenshotMarkers() {
+        let nodes = [
+            node("sidebar-destination-today", role: .button, label: "Today", help: "Opens Today cockpit."),
+            node("today-workflow", role: .group, label: "Today"),
+            node("today-briefing-panel", role: .group, label: "Today briefing"),
+            node("today-command-capture-field", role: .textField, label: "Today command title"),
+            node("today-command-add", role: .button, label: "Add to Inbox", help: "Creates a local Inbox item."),
+            node("today-common-action-rail", role: .group, label: "Common Today actions"),
+            node("today-suggestion-rail", role: .group, label: "Quick focus suggestions"),
+            node("today-start-focus", role: .button, label: "Start Focus", help: "Start focusing without changing task status."),
+            node("today-flow-strip", role: .group, label: "Today flow"),
+            node("today-assistant-rail", role: .group, label: "Today assistant rail"),
+            node("today-rail-next-action", role: .group, label: "Start recommended task"),
+            node("today-rail-task-detail", role: .group, label: "Task detail")
+        ]
+
+        let result = AccessibilityFocusPathAudit().audit(
+            nodes: nodes,
+            requirements: AccessibilityFocusPathRequirement.todayCockpit
+        )
+
+        XCTAssertTrue(result.findings.contains { $0.nodeID == "today-rail-focus" && $0.kind == .missingRequiredNode })
+        XCTAssertTrue(result.findings.contains { $0.nodeID == "today-rail-schedule-block" && $0.kind == .missingRequiredNode })
+        XCTAssertTrue(result.findings.contains { $0.nodeID == "today-rail-reminder-draft" && $0.kind == .missingRequiredNode })
+    }
+
+    func testPseudoVoiceOverAuditAcceptsEmptyTodayCockpitWithoutRailActions() {
+        let nodes = [
+            node("sidebar-destination-today", role: .button, label: "Today, 0 open due or overdue tasks", help: "Opens Today cockpit."),
+            node("today-workflow", role: .group, label: "Today"),
+            node("today-briefing-panel", role: .group, label: "Today briefing"),
+            node("today-command-capture-field", role: .textField, label: "Today command title"),
+            node("today-common-action-rail", role: .group, label: "Common Today actions"),
+            node("today-common-chip-add-task", role: .button, label: "Add Task", help: "Prepare a new local Inbox task."),
+            node("today-common-chip-plan-tomorrow", role: .button, label: "Plan Tomorrow", help: "Prepare a tomorrow planning note."),
+            node("today-common-chip-prepare-meeting", role: .button, label: "Prepare Meeting", help: "Prepare a meeting task."),
+            node("today-common-chip-draft-reply", role: .button, label: "Draft Reply", help: "Prepare a reply draft task."),
+            node("today-suggestion-rail", role: .group, label: "Quick focus suggestions"),
+            node("today-flow-strip", role: .group, label: "Today flow"),
+            node("today-assistant-rail", role: .group, label: "Today assistant rail"),
+            node("today-rail-next-action", role: .group, label: "Capture the next task"),
+            node("today-rail-task-detail", role: .group, label: "No due task selected")
+        ]
+
+        let result = AccessibilityFocusPathAudit().audit(
+            nodes: nodes,
+            requirements: AccessibilityFocusPathRequirement.todayEmptyCockpit
+        )
+
+        XCTAssertTrue(result.findings.isEmpty, result.findings.map(\.message).joined(separator: "\n"))
+        XCTAssertEqual(result.coveredRequiredNodeIDs, AccessibilityFocusPathRequirement.todayEmptyCockpit.requiredNodeIDs)
+    }
+
     func testPseudoVoiceOverAuditRejectsGenericButtonsWithoutHelp() {
         let result = AccessibilityFocusPathAudit().audit(
             nodes: [

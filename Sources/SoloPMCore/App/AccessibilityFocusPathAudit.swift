@@ -80,6 +80,54 @@ public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
             "task-status-move-in_progress"
         ]
     )
+
+    // This is the seeded/actionable Today path used before visual and manual
+    // evidence capture. Empty Today still has source-level coverage, but this
+    // contract prevents losing the rail actions required when a task is ready.
+    public static let todayCockpit = AccessibilityFocusPathRequirement(
+        requiredNodeIDs: [
+            "sidebar-destination-today",
+            "today-workflow",
+            "today-briefing-panel",
+            "today-command-capture-field",
+            "today-command-add",
+            "today-common-action-rail",
+            "today-common-chip-add-task",
+            "today-common-chip-plan-tomorrow",
+            "today-common-chip-prepare-meeting",
+            "today-common-chip-draft-reply",
+            "today-suggestion-rail",
+            "today-start-focus",
+            "today-flow-strip",
+            "today-assistant-rail",
+            "today-rail-next-action",
+            "today-rail-task-detail",
+            "today-rail-focus",
+            "today-rail-schedule-block",
+            "today-rail-edit-task",
+            "today-rail-add-subtask",
+            "today-rail-reminder-draft"
+        ]
+    )
+
+    public static let todayEmptyCockpit = AccessibilityFocusPathRequirement(
+        requiredNodeIDs: [
+            "sidebar-destination-today",
+            "today-workflow",
+            "today-briefing-panel",
+            "today-command-capture-field",
+            "today-common-action-rail",
+            "today-common-chip-add-task",
+            "today-common-chip-plan-tomorrow",
+            "today-common-chip-prepare-meeting",
+            "today-common-chip-draft-reply",
+            "today-suggestion-rail",
+            "today-flow-strip",
+            "today-assistant-rail",
+            "today-rail-next-action",
+            "today-rail-task-detail"
+        ]
+    )
 }
 
 public enum AccessibilityFocusPathFindingKind: String, Codable, Equatable, Sendable {
