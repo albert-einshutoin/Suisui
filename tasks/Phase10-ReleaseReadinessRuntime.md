@@ -216,6 +216,14 @@
 - [x] 既存 UserDefaults 由来の未実装 STT 設定や ready でない local STT 設定は runtime 起動時に `openAITranscribe` へ正規化する。
 - [x] 完了条件: shipping app に未実装 STT provider skeleton を含めず、使えない音声 provider を選ばせない。
 
+### P10-023a: Local OSS voice runtime proof
+
+- [x] `script/check_local_voice_runtime_smoke.sh` は whisper.cpp tiny / Kokoro model の checksum、実行ファイル、STT sample WAV を検証し、不足時は `BLOCKER:` を集約して fail-closed にする。
+- [x] `docs/voice-models.md` は #13/#14 closeout 用の no network download runtime smoke 手順と env vars を明記する。
+- [x] `script/check_security_regressions.sh` は `.tmp/local-voice-runtime-smoke` を ignored runtime artifact path として検証する。
+- [ ] checksum 済み `ggml-tiny.bin` と `whisper-cli` で日本語または英語 sample WAV の実 transcription 証跡を取る。
+- [ ] checksum 済み `kokoro-v1_0.pth` と Kokoro runtime で日本語/英語 TTS WAV の実生成証跡を取る。
+
 ### P10-024: Project board narrow-window resilience
 
 - [x] ProjectBoard header が狭い window で横潰れしないよう `ViewThatFits` で縦配置へ fallback する。
