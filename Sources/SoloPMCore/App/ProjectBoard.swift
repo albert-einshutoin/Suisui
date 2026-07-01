@@ -1648,7 +1648,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         item.state = .blocked
-        item.blockingReason = String(localized: "Remote automation request is missing executable task mutation details.")
+        item.blockingReason = String(localized: "Remote automation request is missing executable task or development PR details.")
         return item
     }
 
@@ -1663,6 +1663,12 @@ public final class ProjectBoardViewModel: ObservableObject {
             request.redactedArgumentSummary,
             maxLength: 1_200
         )
+        if var pullRequest = sanitized.developmentPullRequest {
+            pullRequest.pullRequestURL = sanitizedAutomationMetadata(pullRequest.pullRequestURL, maxLength: 500)
+            pullRequest.branchName = sanitizedAutomationMetadata(pullRequest.branchName, maxLength: 240)
+            pullRequest.baseBranch = sanitizedAutomationMetadata(pullRequest.baseBranch, maxLength: 240)
+            sanitized.developmentPullRequest = pullRequest
+        }
         return sanitized
     }
 
@@ -1697,10 +1703,11 @@ public final class ProjectBoardViewModel: ObservableObject {
         let redacted = DeveloperSecretRedactor()
             .redact(value.trimmingCharacters(in: .whitespacesAndNewlines))
             .text
-        guard redacted.count > maxLength else {
-            return redacted
+        let localPathRedacted = LocalPathRedactor.redact(redacted)
+        guard localPathRedacted.count > maxLength else {
+            return localPathRedacted
         }
-        return "\(redacted.prefix(maxLength))..."
+        return "\(localPathRedacted.prefix(maxLength))..."
     }
 
     private static func automationRequestIngestMessage(

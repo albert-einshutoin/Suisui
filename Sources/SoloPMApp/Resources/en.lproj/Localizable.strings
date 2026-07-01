@@ -994,12 +994,14 @@
 "Calendar Event" = "Calendar Event";
 "Document" = "Document";
 "Development Branch" = "Development Branch";
+"Development Commit" = "Development Commit";
 "Estimated" = "Estimated";
 "Execution receipts are unavailable." = "Execution receipts are unavailable.";
 "Measured" = "Measured";
 "Not Started" = "Not Started";
 "Notification" = "Notification";
 "Pull Request" = "Pull Request";
+"Remote automation request is missing executable task or development PR details." = "Remote automation request is missing executable task or development PR details.";
 "Receipt Digest: %@" = "Receipt Digest: %@";
 "References" = "References";
 "Review Session" = "Review Session";

@@ -101,6 +101,7 @@ public extension ToolRegistryFactory {
     static func developerMode(
         settings: DeveloperModeSettings,
         gitRunner: any GitCommandRunner = ProcessGitCommandRunner(),
+        githubRunner: any GitHubCLICommandRunner = ProcessGitHubCLICommandRunner(),
         developmentCommandRunner: any DevelopmentCommandRunner = ProcessDevelopmentCommandRunner(),
         projectStore: SQLiteProjectStore? = nil,
         taskStore: SQLiteTaskStore? = nil
@@ -144,15 +145,18 @@ public extension ToolRegistryFactory {
             ))
             tools.append(DevelopmentPullRequestCreationTool(
                 projectStore: projectStore,
-                gitRunner: gitRunner
+                gitRunner: gitRunner,
+                githubRunner: githubRunner
             ))
             tools.append(DevelopmentPullRequestReviewGateTool(
                 projectStore: projectStore,
-                gitRunner: gitRunner
+                gitRunner: gitRunner,
+                githubRunner: githubRunner
             ))
             tools.append(DevelopmentPullRequestMergeTool(
                 projectStore: projectStore,
-                gitRunner: gitRunner
+                gitRunner: gitRunner,
+                githubRunner: githubRunner
             ))
         }
 

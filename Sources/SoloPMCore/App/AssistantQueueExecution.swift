@@ -27,45 +27,98 @@ enum AssistantQueueExecutableActionPlanFactory {
     }
 
     static func reviewSummary(for request: SyncAutomationRequestPayload) -> String {
-        guard let mutation = request.taskMutation else {
-            let summary = request.redactedArgumentSummary.trimmingCharacters(in: .whitespacesAndNewlines)
-            return summary.isEmpty ? "Remote automation request" : summary
+        if let mutation = request.taskMutation {
+            let suppliedSummary = request.redactedArgumentSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+            let mutationSummary = mutationReviewSummary(for: request, mutation: mutation)
+            guard !suppliedSummary.isEmpty else {
+                return mutationSummary
+            }
+            guard !suppliedSummary.contains(mutationSummary) else {
+                return suppliedSummary
+            }
+            return "\(suppliedSummary)\n\(mutationSummary)"
         }
 
-        let suppliedSummary = request.redactedArgumentSummary.trimmingCharacters(in: .whitespacesAndNewlines)
-        let mutationSummary = mutationReviewSummary(for: request, mutation: mutation)
-        guard !suppliedSummary.isEmpty else {
-            return mutationSummary
+        if let pullRequest = request.developmentPullRequest {
+            let suppliedSummary = request.redactedArgumentSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+            let pullRequestSummary = developmentPullRequestReviewSummary(for: request, pullRequest: pullRequest)
+            guard !suppliedSummary.isEmpty else {
+                return pullRequestSummary
+            }
+            guard !suppliedSummary.contains(pullRequestSummary) else {
+                return suppliedSummary
+            }
+            return "\(suppliedSummary)\n\(pullRequestSummary)"
         }
-        guard !suppliedSummary.contains(mutationSummary) else {
-            return suppliedSummary
-        }
-        return "\(suppliedSummary)\n\(mutationSummary)"
+
+        let summary = request.redactedArgumentSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+        return summary.isEmpty ? "Remote automation request" : summary
     }
 
     private static func actionPlan(for request: SyncAutomationRequestPayload) -> ActionPlan? {
-        guard let mutation = request.taskMutation,
-              hasRequiredFields(mutation),
-              isToolNameConsistent(request.toolName, operation: mutation.operation) else {
+        guard hasSingleExecutablePayload(request) else {
             return nil
         }
 
-        let summary = reviewSummary(for: request)
-        return ActionPlan(
-            id: "automation-request:\(request.id)",
-            userInput: summary,
-            summary: summary,
-            actions: [
-                PlanAction(
-                    id: "automation-request:\(request.id):\(mutation.operation.rawValue)",
-                    tool: tool(for: mutation.operation),
-                    arguments: arguments(for: mutation),
-                    riskLevel: .write
-                )
-            ],
-            riskLevel: .write,
-            requiresApproval: true
-        )
+        if let mutation = request.taskMutation {
+            guard hasRequiredFields(mutation),
+                  isToolNameConsistent(request.toolName, operation: mutation.operation) else {
+                return nil
+            }
+
+            let summary = reviewSummary(for: request)
+            return ActionPlan(
+                id: "automation-request:\(request.id)",
+                userInput: summary,
+                summary: summary,
+                actions: [
+                    PlanAction(
+                        id: "automation-request:\(request.id):\(mutation.operation.rawValue)",
+                        tool: tool(for: mutation.operation),
+                        arguments: arguments(for: mutation),
+                        riskLevel: .write
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+        }
+
+        if let pullRequest = request.developmentPullRequest {
+            guard hasRequiredFields(pullRequest),
+                  isToolNameConsistent(request.toolName, operation: pullRequest.operation) else {
+                return nil
+            }
+
+            let summary = reviewSummary(for: request)
+            return ActionPlan(
+                id: "automation-request:\(request.id)",
+                userInput: summary,
+                summary: summary,
+                actions: [
+                    PlanAction(
+                        id: "automation-request:\(request.id):\(pullRequest.operation.rawValue)",
+                        tool: tool(for: pullRequest.operation),
+                        arguments: arguments(for: pullRequest),
+                        riskLevel: .write
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+        }
+
+        return nil
+    }
+
+    private static func hasSingleExecutablePayload(_ request: SyncAutomationRequestPayload) -> Bool {
+        let payloadCount = [
+            request.taskMutation != nil,
+            request.developmentPullRequest != nil
+        ].filter { $0 }.count
+        // Mixed transport payloads make approval fingerprints ambiguous. Keep
+        // remote work one executable intent per queue item.
+        return payloadCount == 1
     }
 
     private static func hasRequiredFields(_ mutation: SyncTaskMutationPayload) -> Bool {
@@ -96,6 +149,24 @@ enum AssistantQueueExecutableActionPlanFactory {
         }
     }
 
+    private static func hasRequiredFields(_ pullRequest: SyncDevelopmentPullRequestPayload) -> Bool {
+        // Remote PR automation can merge code on GitHub, so the queue only
+        // accepts payloads that already match the local developer-mode gate.
+        guard pullRequest.projectID > 0,
+              let pullRequestURL = normalizedString(pullRequest.pullRequestURL),
+              let branchName = normalizedString(pullRequest.branchName),
+              let baseBranch = normalizedString(pullRequest.baseBranch),
+              (try? DevelopmentGitHubPRCommandPolicy.validatedPullRequestURL(
+                pullRequestURL,
+                redactor: DeveloperSecretRedactor()
+              )) != nil,
+              (try? DevelopmentPublishGitCommandPolicy.validatedPublishHeadBranch(branchName)) != nil,
+              (try? DevelopmentBranchNamePolicy.validated(baseBranch)) != nil else {
+            return false
+        }
+        return branchName != baseBranch
+    }
+
     private static func isToolNameConsistent(
         _ toolName: String?,
         operation: SyncTaskMutationOperation
@@ -103,6 +174,17 @@ enum AssistantQueueExecutableActionPlanFactory {
         guard let normalizedToolName = toolName?.trimmingCharacters(in: .whitespacesAndNewlines),
               !normalizedToolName.isEmpty else {
             return true
+        }
+        return supportedToolNames(for: operation).contains(normalizedToolName)
+    }
+
+    private static func isToolNameConsistent(
+        _ toolName: String?,
+        operation: SyncDevelopmentPullRequestOperation
+    ) -> Bool {
+        guard let normalizedToolName = toolName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !normalizedToolName.isEmpty else {
+            return false
         }
         return supportedToolNames(for: operation).contains(normalizedToolName)
     }
@@ -122,6 +204,21 @@ enum AssistantQueueExecutableActionPlanFactory {
         }
     }
 
+    private static func supportedToolNames(for operation: SyncDevelopmentPullRequestOperation) -> Set<String> {
+        switch operation {
+        case .reviewGate:
+            return [
+                ActionTool.developmentReviewPullRequestGate.rawValue,
+                "development_pr_review_gate"
+            ]
+        case .merge:
+            return [
+                ActionTool.developmentMergePullRequest.rawValue,
+                "development_pr_merge"
+            ]
+        }
+    }
+
     private static func tool(for operation: SyncTaskMutationOperation) -> ActionTool {
         switch operation {
         case .create:
@@ -130,6 +227,15 @@ enum AssistantQueueExecutableActionPlanFactory {
             return .taskUpdate
         case .complete:
             return .taskComplete
+        }
+    }
+
+    private static func tool(for operation: SyncDevelopmentPullRequestOperation) -> ActionTool {
+        switch operation {
+        case .reviewGate:
+            return .developmentReviewPullRequestGate
+        case .merge:
+            return .developmentMergePullRequest
         }
     }
 
@@ -167,6 +273,15 @@ enum AssistantQueueExecutableActionPlanFactory {
         return arguments
     }
 
+    private static func arguments(for pullRequest: SyncDevelopmentPullRequestPayload) -> [String: JSONValue] {
+        [
+            "projectId": .number(Double(pullRequest.projectID)),
+            "pullRequestURL": .string(normalizedString(pullRequest.pullRequestURL) ?? ""),
+            "branchName": .string(normalizedString(pullRequest.branchName) ?? ""),
+            "baseBranch": .string(normalizedString(pullRequest.baseBranch) ?? "")
+        ]
+    }
+
     private static func mutationReviewSummary(
         for request: SyncAutomationRequestPayload,
         mutation: SyncTaskMutationPayload
@@ -183,6 +298,21 @@ enum AssistantQueueExecutableActionPlanFactory {
         append("dueAt", mutation.dueAt, to: &parts)
         append("priority", mutation.priority, to: &parts)
         return "Mutation: \(parts.joined(separator: ", "))"
+    }
+
+    private static func developmentPullRequestReviewSummary(
+        for request: SyncAutomationRequestPayload,
+        pullRequest: SyncDevelopmentPullRequestPayload
+    ) -> String {
+        var parts = ["operation=\(pullRequest.operation.rawValue)"]
+        if let toolName = request.toolName?.trimmingCharacters(in: .whitespacesAndNewlines), !toolName.isEmpty {
+            parts.append("toolName=\(redacted(toolName))")
+        }
+        parts.append("projectID=\(pullRequest.projectID)")
+        append("pullRequestURL", pullRequest.pullRequestURL, to: &parts)
+        append("branchName", pullRequest.branchName, to: &parts)
+        append("baseBranch", pullRequest.baseBranch, to: &parts)
+        return "Development PR: \(parts.joined(separator: ", "))"
     }
 
     private static func putString(_ value: String?, key: String, into arguments: inout [String: JSONValue]) {

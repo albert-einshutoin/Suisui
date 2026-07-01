@@ -834,6 +834,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let branchName = "feature/solopm-\(project.id)-merge-gate"
         let baseBranch = "feature/phase14-product-completion"
         let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        let headRefOID = "0123456789abcdef0123456789abcdef01234567"
         let gitRunner = RecordingDevelopmentGitRunner()
         stubOrigin(gitRunner)
         let githubRunner = RecordingGitHubCLICommandRunner(outputs: [
@@ -842,6 +843,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
                 {
                   "url": "\(pullRequestURL)",
                   "headRefName": "\(branchName)",
+                  "headRefOid": "\(headRefOID)",
                   "baseRefName": "\(baseBranch)",
                   "headRepository": {
                     "name": "soloPM",
@@ -865,6 +867,11 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
                 """,
                 standardError: "",
                 exitCode: 0
+            ),
+            GitHubCLICommandOutput(
+                standardOutput: reviewThreadsJSON(totalCount: 0, unresolvedCount: 0),
+                standardError: "",
+                exitCode: 0
             )
         ])
         let tool = DevelopmentPullRequestReviewGateTool(
@@ -886,7 +893,75 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         XCTAssertEqual(result.status, .succeeded)
         XCTAssertEqual(result.output["readyToMerge"], .bool(true))
         XCTAssertEqual(result.output["statusCheckCount"], .number(1))
+        XCTAssertEqual(result.output["headRefOid"], .string(headRefOID))
+        XCTAssertEqual(result.output["unresolvedReviewThreadCount"], .number(0))
         XCTAssertFalse(result.summary.contains("legacy/status concluded"))
+        XCTAssertEqual(githubRunner.recordedInvocations.first?.workingDirectory, workspace.standardizedFileURL.resolvingSymlinksInPath())
+    }
+
+    func testPullRequestReviewGateBlocksUnresolvedReviewThreadsBeforeMerge() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let branchName = "feature/solopm-\(project.id)-merge-gate"
+        let baseBranch = "feature/phase14-product-completion"
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        stubOrigin(gitRunner)
+        let githubRunner = RecordingGitHubCLICommandRunner(outputs: [
+            GitHubCLICommandOutput(
+                standardOutput: pullRequestStatusJSON(
+                    url: pullRequestURL,
+                    headBranch: branchName,
+                    baseBranch: baseBranch,
+                    reviewDecision: "APPROVED",
+                    mergeable: "MERGEABLE",
+                    mergeStateStatus: "CLEAN",
+                    checks: [
+                        (name: "SwiftPM macOS", status: "COMPLETED", conclusion: "SUCCESS")
+                    ]
+                ),
+                standardError: "",
+                exitCode: 0
+            ),
+            GitHubCLICommandOutput(
+                standardOutput: reviewThreadsJSON(totalCount: 2, unresolvedCount: 1),
+                standardError: "",
+                exitCode: 0
+            )
+        ])
+        let tool = DevelopmentPullRequestReviewGateTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner
+        )
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "pullRequestURL": .string(pullRequestURL),
+                "branchName": .string(branchName),
+                "baseBranch": .string(baseBranch)
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .failed)
+        XCTAssertEqual(result.output["readyToMerge"], .bool(false))
+        XCTAssertEqual(result.output["reviewThreadCount"], .number(2))
+        XCTAssertEqual(result.output["unresolvedReviewThreadCount"], .number(1))
+        XCTAssertTrue(result.summary.contains("1 review thread is unresolved"))
+        XCTAssertEqual(githubRunner.recordedInvocations.map(\.arguments), [
+            [
+                "pr", "view", pullRequestURL,
+                "--json", DevelopmentGitHubPRCommandPolicy.statusJSONFields
+            ],
+            DevelopmentGitHubPRCommandPolicy.reviewThreadsArguments(
+                owner: "albert-einshutoin",
+                repository: "soloPM",
+                number: 116
+            )
+        ])
         XCTAssertEqual(githubRunner.recordedInvocations.first?.workingDirectory, workspace.standardizedFileURL.resolvingSymlinksInPath())
     }
 
@@ -980,6 +1055,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let branchName = "feature/solopm-\(project.id)-merge-gate"
         let baseBranch = "feature/phase14-product-completion"
         let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        let headRefOID = "0123456789abcdef0123456789abcdef01234567"
         let gitRunner = RecordingDevelopmentGitRunner()
         stubOrigin(gitRunner)
         let githubRunner = RecordingGitHubCLICommandRunner(outputs: [
@@ -988,6 +1064,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
                     url: pullRequestURL,
                     headBranch: branchName,
                     baseBranch: baseBranch,
+                    headRefOID: headRefOID,
                     reviewDecision: "APPROVED",
                     mergeable: "MERGEABLE",
                     mergeStateStatus: "CLEAN",
@@ -996,6 +1073,11 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
                         (name: "GitGuardian Security Checks", status: "COMPLETED", conclusion: "SUCCESS")
                     ]
                 ),
+                standardError: "",
+                exitCode: 0
+            ),
+            GitHubCLICommandOutput(
+                standardOutput: reviewThreadsJSON(totalCount: 0, unresolvedCount: 0),
                 standardError: "",
                 exitCode: 0
             ),
@@ -1027,6 +1109,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         XCTAssertEqual(result.output["pullRequestURL"], .string(pullRequestURL))
         XCTAssertEqual(result.output["branchName"], .string(branchName))
         XCTAssertEqual(result.output["baseBranch"], .string(baseBranch))
+        XCTAssertEqual(result.output["headRefOid"], .string(headRefOID))
+        XCTAssertEqual(result.output["unresolvedReviewThreadCount"], .number(0))
         XCTAssertEqual(result.output["statusCheckCount"], .number(2))
         XCTAssertEqual(result.output["mergeSummary"], .string("Merged pull request #116 [REDACTED_SECRET]\n"))
         XCTAssertFalse(result.summary.contains("merge-secret"))
@@ -1039,7 +1123,19 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
                 workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()
             ),
             GitHubCLICommandInvocation(
-                arguments: ["pr", "merge", pullRequestURL, "--merge", "--delete-branch"],
+                arguments: DevelopmentGitHubPRCommandPolicy.reviewThreadsArguments(
+                    owner: "albert-einshutoin",
+                    repository: "soloPM",
+                    number: 116
+                ),
+                workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()
+            ),
+            GitHubCLICommandInvocation(
+                arguments: [
+                    "pr", "merge", pullRequestURL,
+                    "--merge", "--delete-branch",
+                    "--match-head-commit", headRefOID
+                ],
                 workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()
             )
         ])
@@ -1092,6 +1188,18 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
             "--json", DevelopmentGitHubPRCommandPolicy.statusJSONFields
         ]))
         XCTAssertTrue(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
+            "api", "graphql",
+            "-f", "query=\(DevelopmentGitHubPRCommandPolicy.reviewThreadsQuery)",
+            "-F", "owner=albert-einshutoin",
+            "-F", "repo=soloPM",
+            "-F", "number=116"
+        ]))
+        XCTAssertTrue(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
+            "pr", "merge", "https://github.com/albert-einshutoin/soloPM/pull/116",
+            "--merge", "--delete-branch",
+            "--match-head-commit", "0123456789abcdef0123456789abcdef01234567"
+        ]))
+        XCTAssertFalse(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
             "pr", "merge", "https://github.com/albert-einshutoin/soloPM/pull/116",
             "--merge", "--delete-branch"
         ]))
@@ -1226,6 +1334,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         url: String,
         headBranch: String,
         baseBranch: String,
+        headRefOID: String = "0123456789abcdef0123456789abcdef01234567",
         reviewDecision: String,
         mergeable: String,
         mergeStateStatus: String,
@@ -1249,6 +1358,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         {
           "url": "\(url)",
           "headRefName": "\(headBranch)",
+          "headRefOid": "\(headRefOID)",
           "baseRefName": "\(baseBranch)",
           "headRepository": {
             "name": "\(headRepository)",
@@ -1262,6 +1372,33 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
           "mergeable": "\(mergeable)",
           "mergeStateStatus": "\(mergeStateStatus)",
           "statusCheckRollup": [\(checkObjects)]
+        }
+        """
+    }
+
+    private func reviewThreadsJSON(
+        totalCount: Int,
+        unresolvedCount: Int,
+        hasNextPage: Bool = false
+    ) -> String {
+        let resolvedCount = max(0, totalCount - unresolvedCount)
+        let nodes = Array(repeating: #"{"isResolved": false}"#, count: unresolvedCount)
+            + Array(repeating: #"{"isResolved": true}"#, count: resolvedCount)
+        return """
+        {
+          "data": {
+            "repository": {
+              "pullRequest": {
+                "reviewThreads": {
+                  "totalCount": \(totalCount),
+                  "nodes": [\(nodes.joined(separator: ","))],
+                  "pageInfo": {
+                    "hasNextPage": \(hasNextPage ? "true" : "false")
+                  }
+                }
+              }
+            }
+          }
         }
         """
     }

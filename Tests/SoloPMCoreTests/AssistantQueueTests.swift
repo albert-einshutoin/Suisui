@@ -480,6 +480,33 @@ final class AssistantQueueTests: XCTestCase {
         XCTAssertEqual(item.requiredCapabilities, [.connectedMacRequired, .providerExecutionApproval])
     }
 
+    func testDevelopmentPullRequestAutomationRequestAdapterShowsToolCapability() {
+        let request = SyncAutomationRequestPayload(
+            id: "request-pr-merge",
+            source: .cloudRelay,
+            approvalState: .pendingApproval,
+            sourceClientID: "web",
+            toolName: ActionTool.developmentMergePullRequest.rawValue,
+            redactedArgumentSummary: "Merge reviewed PR",
+            developmentPullRequest: SyncDevelopmentPullRequestPayload(
+                projectID: 7,
+                operation: .merge,
+                pullRequestURL: "https://github.com/albert-einshutoin/soloPM/pull/116",
+                branchName: "feature/solopm-7-merge-gate",
+                baseBranch: "feature/phase14-product-completion"
+            )
+        )
+
+        let item = AssistantQueueAdapter.makeItem(automationRequest: request)
+
+        XCTAssertEqual(item.state, .waitingReview)
+        XCTAssertEqual(item.requiredCapabilities, [
+            .connectedMacRequired,
+            .tool(.developmentMergePullRequest),
+            .providerExecutionApproval
+        ])
+    }
+
     func testActionPlanSummaryIsRedactedBeforeQueuePersistence() {
         let probeValue = "s" + "k-" + "assistantQueueSecret123"
         let secretPrefix = "token" + "="

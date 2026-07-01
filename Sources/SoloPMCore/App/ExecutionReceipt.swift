@@ -29,6 +29,7 @@ public enum ExecutionReceiptReferenceKind: String, Codable, Equatable, Hashable,
     case notification
     case reminder
     case developmentBranch = "development_branch"
+    case developmentCommit = "development_commit"
     case file
     case pullRequest = "pull_request"
     case externalMCP = "external_mcp"
@@ -1770,40 +1771,61 @@ public enum ExecutionReceiptFactory {
             ExecutionReceiptReference(kind: .actionPlan, id: session.originalPlan.id)
         ]
         for item in session.items {
-            guard let output = item.result?.output else {
-                continue
+            if let output = item.result?.output {
+                appendReference(kind: .task, keys: ["taskId", "taskID"], output: output, references: &references)
+                appendReference(kind: .project, keys: ["projectId", "projectID"], output: output, references: &references)
+                appendReference(kind: .calendarEvent, keys: ["calendarEventId", "calendarEventID", "eventId", "eventID"], output: output, references: &references)
+                appendReference(kind: .notification, keys: ["notificationId", "notificationID"], output: output, references: &references)
+                // Keep connector references stable and low-disclosure; reminder titles stay in redacted summaries.
+                appendReference(
+                    kind: .reminder,
+                    keys: ["reminderId", "reminderID", "reminderIds", "reminderIDs"],
+                    output: output,
+                    references: &references
+                )
+                appendDevelopmentReferences(for: item.editedAction, values: output, references: &references)
             }
-            appendReference(kind: .task, keys: ["taskId", "taskID"], output: output, references: &references)
-            appendReference(kind: .project, keys: ["projectId", "projectID"], output: output, references: &references)
-            appendReference(kind: .calendarEvent, keys: ["calendarEventId", "calendarEventID", "eventId", "eventID"], output: output, references: &references)
-            appendReference(kind: .notification, keys: ["notificationId", "notificationID"], output: output, references: &references)
-            // Keep connector references stable and low-disclosure; reminder titles stay in redacted summaries.
-            appendReference(
-                kind: .reminder,
-                keys: ["reminderId", "reminderID", "reminderIds", "reminderIDs"],
-                output: output,
-                references: &references
-            )
-            if item.editedAction.tool == .developmentPreparePullRequestWorkflow {
-                appendReference(kind: .developmentBranch, keys: ["branchName"], output: output, references: &references)
-            }
-            if item.editedAction.tool == .developmentPushBranch {
-                appendReference(kind: .developmentBranch, keys: ["branchName"], output: output, references: &references)
-            }
-            if item.editedAction.tool == .developmentCreatePullRequest {
-                appendReference(kind: .developmentBranch, keys: ["branchName"], output: output, references: &references)
-                appendReference(kind: .pullRequest, keys: ["pullRequestURL"], output: output, references: &references)
-            }
-            if item.editedAction.tool == .developmentReviewPullRequestGate {
-                appendReference(kind: .developmentBranch, keys: ["branchName"], output: output, references: &references)
-                appendReference(kind: .pullRequest, keys: ["pullRequestURL"], output: output, references: &references)
-            }
-            if item.editedAction.tool == .developmentMergePullRequest {
-                appendReference(kind: .developmentBranch, keys: ["branchName"], output: output, references: &references)
-                appendReference(kind: .pullRequest, keys: ["pullRequestURL"], output: output, references: &references)
-            }
+            // Developer PR tools may fail before producing ToolResult output
+            // (for example invalid GitHub JSON). Preserve the reviewed branch,
+            // PR, and project IDs from the approved action arguments so audit
+            // surfaces still show what external object was attempted.
+            appendDevelopmentReferences(for: item.editedAction, values: item.editedAction.arguments, references: &references)
         }
         return references
+    }
+
+    private static func appendDevelopmentReferences(
+        for action: PlanAction,
+        values: [String: JSONValue],
+        references: inout [ExecutionReceiptReference]
+    ) {
+        switch action.tool {
+        case .developmentPreparePullRequestWorkflow:
+            appendReference(kind: .project, keys: ["projectId", "projectID"], output: values, references: &references)
+            appendReference(kind: .developmentBranch, keys: ["branchName"], output: values, references: &references)
+            appendReference(kind: .developmentCommit, keys: ["headRefOid", "headRefOID"], output: values, references: &references)
+        case .developmentPushBranch:
+            appendReference(kind: .project, keys: ["projectId", "projectID"], output: values, references: &references)
+            appendReference(kind: .developmentBranch, keys: ["branchName"], output: values, references: &references)
+            appendReference(kind: .developmentCommit, keys: ["headRefOid", "headRefOID"], output: values, references: &references)
+        case .developmentCreatePullRequest:
+            appendReference(kind: .project, keys: ["projectId", "projectID"], output: values, references: &references)
+            appendReference(kind: .developmentBranch, keys: ["branchName"], output: values, references: &references)
+            appendReference(kind: .developmentCommit, keys: ["headRefOid", "headRefOID"], output: values, references: &references)
+            appendReference(kind: .pullRequest, keys: ["pullRequestURL"], output: values, references: &references)
+        case .developmentReviewPullRequestGate:
+            appendReference(kind: .project, keys: ["projectId", "projectID"], output: values, references: &references)
+            appendReference(kind: .developmentBranch, keys: ["branchName"], output: values, references: &references)
+            appendReference(kind: .developmentCommit, keys: ["headRefOid", "headRefOID"], output: values, references: &references)
+            appendReference(kind: .pullRequest, keys: ["pullRequestURL"], output: values, references: &references)
+        case .developmentMergePullRequest:
+            appendReference(kind: .project, keys: ["projectId", "projectID"], output: values, references: &references)
+            appendReference(kind: .developmentBranch, keys: ["branchName"], output: values, references: &references)
+            appendReference(kind: .developmentCommit, keys: ["headRefOid", "headRefOID"], output: values, references: &references)
+            appendReference(kind: .pullRequest, keys: ["pullRequestURL"], output: values, references: &references)
+        default:
+            return
+        }
     }
 
     private static func appendReference(

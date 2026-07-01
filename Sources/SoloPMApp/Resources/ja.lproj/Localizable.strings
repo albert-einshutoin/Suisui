@@ -994,12 +994,14 @@
 "Calendar Event" = "カレンダー予定";
 "Document" = "文書";
 "Development Branch" = "開発ブランチ";
+"Development Commit" = "開発コミット";
 "Estimated" = "推定";
 "Execution receipts are unavailable." = "実行レシートを利用できません。";
 "Measured" = "実測";
 "Not Started" = "未開始";
 "Notification" = "通知";
 "Pull Request" = "プルリクエスト";
+"Remote automation request is missing executable task or development PR details." = "リモート自動化リクエストに、実行可能なタスクまたは開発PRの詳細がありません。";
 "Receipt Digest: %@" = "レシートダイジェスト: %@";
 "References" = "参照";
 "Review Session" = "レビューセッション";
