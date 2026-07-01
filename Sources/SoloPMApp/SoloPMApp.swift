@@ -90,6 +90,7 @@ struct SoloPM: App {
                 googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
                 googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
                 googleCalendarOAuthDisconnecter: AppRuntimeFactory.makeGoogleCalendarOAuthDisconnecter(),
+                googleCalendarListProvider: AppRuntimeFactory.makeGoogleCalendarListProvider(),
                 appearancePreference: $appearancePreference,
                 languagePreference: $languagePreference
             )
@@ -396,6 +397,7 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
                     googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
                     googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
                     googleCalendarOAuthDisconnecter: AppRuntimeFactory.makeGoogleCalendarOAuthDisconnecter(),
+                    googleCalendarListProvider: AppRuntimeFactory.makeGoogleCalendarListProvider(),
                     appearancePreference: .constant(SoloPMAppearancePreference.environmentOverride ?? .system),
                     languagePreference: .constant(AppLanguagePreference.environmentOverride ?? .system),
                     initialTab: selectedTab
@@ -1878,6 +1880,7 @@ private struct SettingsView: View {
     let googleCalendarStatusProvider: () -> GoogleCalendarRuntimeSyncStatus
     let googleCalendarOAuthConnector: (any GoogleCalendarOAuthConnecting)?
     let googleCalendarOAuthDisconnecter: (any GoogleCalendarOAuthDisconnecting)?
+    let googleCalendarListProvider: (any GoogleCalendarListProviding)?
     @StateObject private var settingsViewModel: AppSettingsViewModel
     @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
     @StateObject private var externalMCPViewModel: ExternalMCPSettingsViewModel
@@ -1891,6 +1894,9 @@ private struct SettingsView: View {
     @State private var googleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus?
     @State private var googleCalendarSetupMessage: String?
     @State private var isGoogleCalendarOAuthAuthorizationInProgress = false
+    @State private var isLoadingGoogleCalendarList = false
+    @State private var googleCalendarListOptions: [GoogleCalendarRuntimeCalendarListEntry] = []
+    @State private var googleCalendarListLoadGeneration = 0
 
     init(
         settingsViewModel: AppSettingsViewModel,
@@ -1902,6 +1908,7 @@ private struct SettingsView: View {
         googleCalendarStatusProvider: @escaping () -> GoogleCalendarRuntimeSyncStatus,
         googleCalendarOAuthConnector: (any GoogleCalendarOAuthConnecting)?,
         googleCalendarOAuthDisconnecter: (any GoogleCalendarOAuthDisconnecting)?,
+        googleCalendarListProvider: (any GoogleCalendarListProviding)?,
         appearancePreference: Binding<SoloPMAppearancePreference>,
         languagePreference: Binding<AppLanguagePreference>,
         initialTab: SettingsTab = .overview
@@ -1911,6 +1918,7 @@ private struct SettingsView: View {
         self.googleCalendarStatusProvider = googleCalendarStatusProvider
         self.googleCalendarOAuthConnector = googleCalendarOAuthConnector
         self.googleCalendarOAuthDisconnecter = googleCalendarOAuthDisconnecter
+        self.googleCalendarListProvider = googleCalendarListProvider
         _settingsViewModel = StateObject(wrappedValue: settingsViewModel)
         _launchAtLoginViewModel = StateObject(wrappedValue: launchAtLoginViewModel)
         _externalMCPViewModel = StateObject(wrappedValue: externalMCPViewModel)
@@ -2398,6 +2406,35 @@ private struct SettingsView: View {
                 .accessibilityIdentifier("settings-google-calendar-id")
                 .accessibilityHint("Sets the Google Calendar id used for approved due-task sync.")
                 .onSubmit(saveGoogleCalendarIDSetting)
+                if !googleCalendarListOptions.isEmpty {
+                    Picker("Available Calendar", selection: Binding(
+                            get: { settingsViewModel.settings.googleCalendarID },
+                            set: { settingsViewModel.setGoogleCalendarID($0) }
+                        )
+                    ) {
+                        if shouldShowCurrentGoogleCalendarManualOption {
+                            Text(googleCalendarManualCalendarLabel)
+                                .tag(settingsViewModel.settings.googleCalendarID)
+                        }
+                        ForEach(googleCalendarListOptions) { option in
+                            Text(googleCalendarPickerLabel(for: option))
+                                .tag(option.id)
+                        }
+                    }
+                    .accessibilityIdentifier("settings-google-calendar-picker")
+                    .accessibilityHint("Chooses a writable Google Calendar returned by the connected account.")
+                }
+                Button {
+                    loadGoogleCalendarList()
+                } label: {
+                    Label(
+                        isLoadingGoogleCalendarList ? "Loading Calendars" : "Load Calendars",
+                        systemImage: "calendar.badge.checkmark"
+                    )
+                }
+                .disabled(isLoadingGoogleCalendarList || isGoogleCalendarOAuthAuthorizationInProgress || googleCalendarListProvider == nil)
+                .accessibilityIdentifier("settings-google-calendar-list-load")
+                .accessibilityHint("Loads writable Google Calendars for the connected OAuth account.")
                 Button {
                     saveGoogleCalendarIDSetting()
                 } label: {
@@ -3083,12 +3120,76 @@ private struct SettingsView: View {
         refreshGoogleCalendarSettingsStatus()
     }
 
+    private func loadGoogleCalendarList() {
+        guard !isGoogleCalendarOAuthAuthorizationInProgress else {
+            googleCalendarSetupMessage = "Wait for Google Calendar OAuth authorization to finish before loading calendars."
+            return
+        }
+        guard let googleCalendarListProvider else {
+            googleCalendarSetupMessage = "Google Calendar list is not available in this build."
+            return
+        }
+
+        googleCalendarListLoadGeneration += 1
+        let generation = googleCalendarListLoadGeneration
+        isLoadingGoogleCalendarList = true
+        googleCalendarSetupMessage = "Loading Google Calendars."
+        Task {
+            do {
+                let options = try await Task.detached(priority: .userInitiated) {
+                    try googleCalendarListProvider.listWritableCalendars()
+                }.value
+                guard generation == googleCalendarListLoadGeneration else {
+                    return
+                }
+                googleCalendarListOptions = options
+                if options.isEmpty {
+                    googleCalendarSetupMessage = "No writable Google Calendars were returned."
+                } else {
+                    googleCalendarSetupMessage = "Google Calendar list loaded. Choose a calendar, then save."
+                }
+            } catch {
+                guard generation == googleCalendarListLoadGeneration else {
+                    return
+                }
+                googleCalendarSetupMessage = googleCalendarListFailureMessage(from: error)
+            }
+            isLoadingGoogleCalendarList = false
+        }
+    }
+
+    private func invalidateGoogleCalendarListOptions() {
+        googleCalendarListLoadGeneration += 1
+        googleCalendarListOptions = []
+        isLoadingGoogleCalendarList = false
+    }
+
+    private var shouldShowCurrentGoogleCalendarManualOption: Bool {
+        let currentID = settingsViewModel.settings.googleCalendarID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard currentID.isEmpty == false else {
+            return false
+        }
+        return !googleCalendarListOptions.contains { $0.id == currentID }
+    }
+
+    private var googleCalendarManualCalendarLabel: String {
+        String(format: localizedSettingsDisplay("Current manual ID: %@"), settingsViewModel.settings.googleCalendarID)
+    }
+
+    private func googleCalendarPickerLabel(for option: GoogleCalendarRuntimeCalendarListEntry) -> String {
+        if option.isPrimary {
+            return String(format: localizedSettingsDisplay("%@ (Primary calendar)"), option.summary)
+        }
+        return option.summary
+    }
+
     private func startGoogleCalendarOAuthAuthorization() {
         guard let googleCalendarOAuthConnector else {
             googleCalendarSetupMessage = "Google Calendar OAuth authorization is not available in this build."
             return
         }
 
+        invalidateGoogleCalendarListOptions()
         isGoogleCalendarOAuthAuthorizationInProgress = true
         googleCalendarSetupMessage = "OAuth authorization opens in the system browser with PKCE. Tokens stay in Keychain before calendar writes are enabled."
         googleCalendarOAuthConnector.startAuthorization { result in
@@ -3110,6 +3211,7 @@ private struct SettingsView: View {
         }
 
         do {
+            invalidateGoogleCalendarListOptions()
             try googleCalendarOAuthDisconnecter.disconnect()
             googleCalendarSetupMessage = "Google Calendar OAuth disconnected. Tokens were removed from Keychain."
             googleCalendarSyncStatus = googleCalendarStatusProvider()
@@ -3119,6 +3221,26 @@ private struct SettingsView: View {
                 fallback: "Google Calendar OAuth disconnect failed."
             )
         }
+    }
+
+    private func googleCalendarListFailureMessage(from error: Error) -> String {
+        if let runtimeError = error as? GoogleCalendarRuntimeError {
+            switch runtimeError {
+            case .disconnected:
+                return "Connect Google Calendar with OAuth before loading calendars."
+            case .missingRequiredScope(let scope):
+                if scope == GoogleCalendarRuntimeOAuthScope.calendarListReadOnly {
+                    return "Reconnect Google Calendar with OAuth before loading calendars."
+                }
+                return "Google Calendar OAuth is missing the required \(scope) scope."
+            default:
+                break
+            }
+        }
+        return UserFacingErrorMessageSanitizer.message(
+            from: error,
+            fallback: "Google Calendar list could not be loaded."
+        )
     }
 
     private func googleCalendarOAuthFailureMessage(from error: Error) -> String {
@@ -4363,6 +4485,19 @@ private enum AppRuntimeFactory {
         }
     }
 
+    static func makeGoogleCalendarListProvider() -> (any GoogleCalendarListProviding)? {
+        do {
+            let secretStore = makeSecretStore()
+            let client = try GoogleCalendarAppRuntimeFactory.makeCalendarListClient(
+                secretStore: secretStore,
+                connection: migratedConnection()
+            )
+            return GoogleCalendarRuntimeCalendarListProvider(client: client)
+        } catch {
+            return nil
+        }
+    }
+
     static func makeIntegrationPermissionSnapshot() -> PermissionSnapshot {
         EventKitPermissionSnapshotReader.snapshot(base: UserNotificationsPermissionSnapshotReader.snapshot())
     }
@@ -4808,6 +4943,10 @@ private protocol GoogleCalendarOAuthDisconnecting: AnyObject {
     func disconnect() throws
 }
 
+private protocol GoogleCalendarListProviding: Sendable {
+    func listWritableCalendars() throws -> [GoogleCalendarRuntimeCalendarListEntry]
+}
+
 @MainActor
 private final class GoogleCalendarOAuthCredentialDisconnectController: GoogleCalendarOAuthDisconnecting {
     private let disconnectAction: () throws -> Void
@@ -4818,6 +4957,14 @@ private final class GoogleCalendarOAuthCredentialDisconnectController: GoogleCal
 
     func disconnect() throws {
         try disconnectAction()
+    }
+}
+
+private struct GoogleCalendarRuntimeCalendarListProvider: GoogleCalendarListProviding {
+    let client: any GoogleCalendarRuntimeCalendarListClient
+
+    func listWritableCalendars() throws -> [GoogleCalendarRuntimeCalendarListEntry] {
+        try client.listWritableCalendars()
     }
 }
 

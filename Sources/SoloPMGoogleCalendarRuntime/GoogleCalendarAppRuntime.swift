@@ -4,6 +4,7 @@ import SoloPMCore
 
 public enum GoogleCalendarRuntimeOAuthScope {
     public static let eventsWrite = GoogleCalendarRuntimeCredentialStatus.eventsWriteScope
+    public static let calendarListReadOnly = "https://www.googleapis.com/auth/calendar.calendarlist.readonly"
     public static let offlineAccess = "offline_access"
 }
 
@@ -156,7 +157,10 @@ public struct GoogleCalendarOAuthAuthorizationConfiguration: Equatable, Sendable
         redirectURI: String,
         authorizationEndpoint: URL = URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!,
         tokenEndpoint: URL = URL(string: "https://oauth2.googleapis.com/token")!,
-        scopes: Set<String> = [GoogleCalendarRuntimeOAuthScope.eventsWrite]
+        scopes: Set<String> = [
+            GoogleCalendarRuntimeOAuthScope.eventsWrite,
+            GoogleCalendarRuntimeOAuthScope.calendarListReadOnly
+        ]
     ) {
         self.clientID = clientID
         self.redirectURI = redirectURI
@@ -590,6 +594,127 @@ public protocol GoogleCalendarRuntimeEventClient: Sendable {
     ) throws -> GoogleCalendarRuntimeEventRecord
 }
 
+public struct GoogleCalendarRuntimeCalendarListEntry: Equatable, Identifiable, Sendable {
+    public var id: String
+    public var summary: String
+    public var accessRole: String
+    public var isPrimary: Bool
+
+    public init(
+        id: String,
+        summary: String,
+        accessRole: String,
+        isPrimary: Bool
+    ) {
+        self.id = id
+        self.summary = summary
+        self.accessRole = accessRole
+        self.isPrimary = isPrimary
+    }
+}
+
+public protocol GoogleCalendarRuntimeCalendarListClient: Sendable {
+    func listWritableCalendars() throws -> [GoogleCalendarRuntimeCalendarListEntry]
+}
+
+public struct GoogleCalendarHTTPCalendarListClient: GoogleCalendarRuntimeCalendarListClient {
+    private static let maximumCalendarListPages = 20
+    private static let writableAccessRoles: Set<String> = ["owner", "writer"]
+
+    private let tokenProvider: any GoogleCalendarBearerTokenProvider
+    private let httpClient: any SynchronousHTTPDataClient
+    private let configuration: GoogleCalendarHTTPConfiguration
+
+    public init(
+        tokenProvider: any GoogleCalendarBearerTokenProvider,
+        httpClient: any SynchronousHTTPDataClient = URLSessionSynchronousHTTPDataClient(),
+        configuration: GoogleCalendarHTTPConfiguration = GoogleCalendarHTTPConfiguration()
+    ) {
+        self.tokenProvider = tokenProvider
+        self.httpClient = httpClient
+        self.configuration = configuration
+    }
+
+    public func listWritableCalendars() throws -> [GoogleCalendarRuntimeCalendarListEntry] {
+        let accessToken = try tokenProvider.bearerToken()
+        var pageToken: String?
+        var seenPageTokens: Set<String> = []
+        var loadedPageCount = 0
+        var entries: [GoogleCalendarRuntimeCalendarListEntry] = []
+
+        repeat {
+            loadedPageCount += 1
+            guard loadedPageCount <= Self.maximumCalendarListPages else {
+                throw GoogleCalendarRuntimeError.apiFailure("Google Calendar calendarList.list exceeded the page limit.")
+            }
+            if let pageToken, seenPageTokens.insert(pageToken).inserted == false {
+                throw GoogleCalendarRuntimeError.apiFailure("Google Calendar calendarList.list returned a repeated page token.")
+            }
+            let request = try makeCalendarListRequest(accessToken: accessToken, pageToken: pageToken)
+            let (data, response) = try httpClient.data(for: request)
+            guard (200..<300).contains(response.statusCode) else {
+                throw GoogleCalendarRuntimeError.apiFailure("Google Calendar calendarList.list failed with HTTP \(response.statusCode).")
+            }
+
+            let body: GoogleCalendarCalendarListResponse
+            do {
+                body = try JSONDecoder().decode(GoogleCalendarCalendarListResponse.self, from: data)
+            } catch {
+                throw GoogleCalendarRuntimeError.apiFailure("Google Calendar calendar list response could not be decoded.")
+            }
+            entries.append(contentsOf: body.items.compactMap(Self.entry(from:)))
+            pageToken = body.nextPageToken?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if pageToken?.isEmpty == true {
+                pageToken = nil
+            }
+        } while pageToken != nil
+
+        return entries
+    }
+
+    public func makeCalendarListRequest(accessToken: String, pageToken: String? = nil) throws -> URLRequest {
+        let url = configuration.baseURL
+            .appendingPathComponent("users")
+            .appendingPathComponent("me")
+            .appendingPathComponent("calendarList")
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        var queryItems = [
+            URLQueryItem(name: "maxResults", value: "250"),
+            URLQueryItem(name: "minAccessRole", value: "writer"),
+            URLQueryItem(name: "showDeleted", value: "false"),
+            URLQueryItem(name: "showHidden", value: "false")
+        ]
+        if let pageToken, pageToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            queryItems.append(URLQueryItem(name: "pageToken", value: pageToken))
+        }
+        components?.queryItems = queryItems
+        guard let requestURL = components?.url else {
+            throw GoogleCalendarRuntimeError.apiFailure("Google Calendar calendar list request URL could not be built.")
+        }
+
+        var request = URLRequest(url: requestURL, timeoutInterval: configuration.timeoutInterval)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        return request
+    }
+
+    private static func entry(from item: GoogleCalendarCalendarListItem) -> GoogleCalendarRuntimeCalendarListEntry? {
+        let id = item.id?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let accessRole = item.accessRole?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        guard id.isEmpty == false,
+              writableAccessRoles.contains(accessRole) else {
+            return nil
+        }
+        let summary = item.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return GoogleCalendarRuntimeCalendarListEntry(
+            id: id,
+            summary: summary.isEmpty ? id : summary,
+            accessRole: accessRole,
+            isPrimary: item.primary ?? false
+        )
+    }
+}
+
 public struct GoogleCalendarHTTPEventClient: GoogleCalendarRuntimeEventClient {
     private let tokenProvider: any GoogleCalendarBearerTokenProvider
     private let httpClient: any SynchronousHTTPDataClient
@@ -695,6 +820,30 @@ public struct GoogleCalendarHTTPEventSink: ExternalCalendarEventSink {
 }
 
 public enum GoogleCalendarAppRuntimeFactory {
+    public static func makeCalendarListClient(
+        secretStore: any SecretStore,
+        metadataStore: any GoogleCalendarOAuthCredentialMetadataStore
+    ) -> GoogleCalendarRuntimeCalendarListClient {
+        let credentialStore = GoogleCalendarOAuthCredentialStore(
+            secretStore: secretStore,
+            metadataStore: metadataStore
+        )
+        return GoogleCalendarHTTPCalendarListClient(tokenProvider: GoogleCalendarOAuthBearerTokenProvider(
+            credentialStore: credentialStore,
+            requiredScopes: [GoogleCalendarRuntimeOAuthScope.calendarListReadOnly]
+        ))
+    }
+
+    public static func makeCalendarListClient(
+        secretStore: any SecretStore,
+        connection: SQLiteConnection
+    ) -> GoogleCalendarRuntimeCalendarListClient {
+        makeCalendarListClient(
+            secretStore: secretStore,
+            metadataStore: SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        )
+    }
+
     public static func syncStatus(
         entitlementStore: any EntitlementStore,
         secretStore: any SecretStore,
@@ -903,6 +1052,29 @@ private enum GoogleCalendarEventID {
 
 private struct GoogleCalendarEventResponse: Decodable {
     var id: String?
+}
+
+private struct GoogleCalendarCalendarListResponse: Decodable {
+    var nextPageToken: String?
+    var items: [GoogleCalendarCalendarListItem]
+
+    enum CodingKeys: String, CodingKey {
+        case nextPageToken
+        case items
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        nextPageToken = try container.decodeIfPresent(String.self, forKey: .nextPageToken)
+        items = try container.decodeIfPresent([GoogleCalendarCalendarListItem].self, forKey: .items) ?? []
+    }
+}
+
+private struct GoogleCalendarCalendarListItem: Decodable {
+    var id: String?
+    var summary: String?
+    var primary: Bool?
+    var accessRole: String?
 }
 
 private final class LockedResultBox: @unchecked Sendable {
