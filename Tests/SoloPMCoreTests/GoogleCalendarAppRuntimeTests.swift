@@ -81,6 +81,50 @@ final class GoogleCalendarAppRuntimeTests: XCTestCase {
         XCTAssertNil(try secretStore.read(GoogleCalendarOAuthCredentialStore.accessTokenKey))
     }
 
+    func testFactoryDisconnectClearsOAuthMetadataAndKeychainTokens() throws {
+        let secretStore = InMemorySecretStore()
+        let connection = try migratedConnection()
+        let metadataStore = SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        let credentialStore = GoogleCalendarOAuthCredentialStore(secretStore: secretStore, metadataStore: metadataStore)
+        try credentialStore.saveTokens(
+            accessToken: "calendar-access-token",
+            refreshToken: "calendar-refresh-token",
+            grantedScopes: [GoogleCalendarRuntimeOAuthScope.eventsWrite],
+            expiresAt: Date(timeIntervalSince1970: 5_000)
+        )
+        XCTAssertEqual(try makeController(secretStore: secretStore, connection: connection)
+            .status(now: Date(timeIntervalSince1970: 4_000)).state, .ready)
+
+        try GoogleCalendarAppRuntimeFactory.disconnectOAuthCredential(
+            secretStore: secretStore,
+            connection: connection
+        )
+
+        XCTAssertNil(try metadataStore.loadMetadata())
+        XCTAssertNil(try secretStore.read(GoogleCalendarOAuthCredentialStore.accessTokenKey))
+        XCTAssertNil(try secretStore.read(GoogleCalendarOAuthCredentialStore.refreshTokenKey))
+        XCTAssertEqual(try makeController(secretStore: secretStore, connection: connection)
+            .status(now: Date(timeIntervalSince1970: 4_000)).state, .oauthDisconnected)
+    }
+
+    func testFactoryDisconnectClearsKnownKeychainTokensWhenMetadataIsMissing() throws {
+        let secretStore = InMemorySecretStore()
+        let connection = try migratedConnection()
+        let metadataStore = SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        try secretStore.save("orphaned-calendar-access-token", for: GoogleCalendarOAuthCredentialStore.accessTokenKey)
+        try secretStore.save("orphaned-calendar-refresh-token", for: GoogleCalendarOAuthCredentialStore.refreshTokenKey)
+        XCTAssertNil(try metadataStore.loadMetadata())
+
+        try GoogleCalendarAppRuntimeFactory.disconnectOAuthCredential(
+            secretStore: secretStore,
+            connection: connection
+        )
+
+        XCTAssertNil(try secretStore.read(GoogleCalendarOAuthCredentialStore.accessTokenKey))
+        XCTAssertNil(try secretStore.read(GoogleCalendarOAuthCredentialStore.refreshTokenKey))
+        XCTAssertNil(try metadataStore.loadMetadata())
+    }
+
     func testCredentialStatusReportsRefreshOnlyWhenRuntimeSupportsRefresh() throws {
         let secretStore = InMemorySecretStore()
         let connection = try migratedConnection()

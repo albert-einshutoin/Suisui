@@ -135,6 +135,11 @@ public final class GoogleCalendarOAuthCredentialStore: @unchecked Sendable {
                 try secretStore.delete(refreshTokenKey)
             }
         }
+        // Also clear the well-known SoloPM OAuth keys even if metadata is
+        // missing or stale. This handles interrupted writes and corrupted
+        // metadata without leaving token material in Keychain after disconnect.
+        try secretStore.delete(Self.accessTokenKey)
+        try secretStore.delete(Self.refreshTokenKey)
         try metadataStore.deleteMetadata()
     }
 }
@@ -732,6 +737,20 @@ public enum GoogleCalendarAppRuntimeFactory {
             timeZoneIdentifier: timeZoneIdentifier,
             now: now
         )
+    }
+
+    public static func disconnectOAuthCredential(
+        secretStore: any SecretStore,
+        connection: SQLiteConnection
+    ) throws {
+        let credentialStore = GoogleCalendarOAuthCredentialStore(
+            secretStore: secretStore,
+            metadataStore: SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        )
+        // Disconnect is user-controlled credential revocation. Delete Keychain
+        // secrets and SQLite metadata together so readiness cannot keep stale
+        // token references after the user explicitly disconnects Google.
+        try credentialStore.deleteCredential()
     }
 
     public static func makeSyncController(
