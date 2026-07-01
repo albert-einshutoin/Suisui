@@ -945,6 +945,47 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testAppSettingsViewModelReportsWhisperCppSTTReadinessStages() throws {
+        let suiteName = "SoloPM.AppSettingsViewModelWhisperCppReadiness.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let executableURL = try writeExecutable(named: "whisper-cli")
+        let missingModelViewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            voiceModelManager: StaticAppSettingsVoiceModelManager(statuses: [
+                .whisperCppTinyMultilingual: .notInstalled
+            ])
+        )
+
+        XCTAssertEqual(missingModelViewModel.localSTTProviderReadinessRow.statusLabel, "Model not installed")
+        XCTAssertEqual(missingModelViewModel.localSTTProviderReadinessRow.nextActionLabel, "Download whisper.cpp model")
+        XCTAssertFalse(missingModelViewModel.localSTTProviderReadinessRow.isReady)
+
+        let runtimePendingViewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore(),
+            voiceModelManager: StaticAppSettingsVoiceModelManager(statuses: [
+                .whisperCppTinyMultilingual: .installed
+            ])
+        )
+
+        XCTAssertEqual(runtimePendingViewModel.localSTTProviderReadinessRow.statusLabel, "Runtime pending")
+        XCTAssertEqual(runtimePendingViewModel.localSTTProviderReadinessRow.nextActionLabel, "Configure whisper.cpp executable")
+        XCTAssertFalse(runtimePendingViewModel.localSTTProviderReadinessRow.isReady)
+
+        runtimePendingViewModel.setWhisperCppExecutablePath(executableURL.path)
+
+        XCTAssertEqual(runtimePendingViewModel.localSTTProviderReadinessRow.statusLabel, "Smoke pending")
+        XCTAssertEqual(
+            runtimePendingViewModel.localSTTProviderReadinessRow.detailLabel,
+            "Model and executable are ready; run the local voice runtime smoke before release closeout."
+        )
+        XCTAssertEqual(runtimePendingViewModel.localSTTProviderReadinessRow.nextActionLabel, "Run local voice smoke")
+        XCTAssertFalse(runtimePendingViewModel.localSTTProviderReadinessRow.isReady)
+    }
+
+    @MainActor
     func testAppSettingsViewModelPersistsProviderSelectionWhenSelected() throws {
         let suiteName = "SoloPM.AppSettingsViewModelProviderAutoSave.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

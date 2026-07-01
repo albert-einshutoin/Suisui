@@ -715,6 +715,33 @@ public struct TTSProviderReadinessRow: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct STTProviderReadinessRow: Identifiable, Equatable, Sendable {
+    public var provider: STTProvider
+    public var statusLabel: String
+    public var detailLabel: String
+    public var nextActionLabel: String
+    public var isReady: Bool
+    public var isSelected: Bool
+
+    public var id: STTProvider { provider }
+
+    public init(
+        provider: STTProvider,
+        statusLabel: String,
+        detailLabel: String,
+        nextActionLabel: String,
+        isReady: Bool,
+        isSelected: Bool
+    ) {
+        self.provider = provider
+        self.statusLabel = statusLabel
+        self.detailLabel = detailLabel
+        self.nextActionLabel = nextActionLabel
+        self.isReady = isReady
+        self.isSelected = isSelected
+    }
+}
+
 @MainActor
 public final class AppSettingsViewModel: ObservableObject {
     @Published public private(set) var settings: AppSettings
@@ -823,6 +850,10 @@ public final class AppSettingsViewModel: ObservableObject {
 
     public var ttsProviderReadinessRow: TTSProviderReadinessRow {
         makeTTSProviderReadinessRow(for: settings.ttsProvider)
+    }
+
+    public var localSTTProviderReadinessRow: STTProviderReadinessRow {
+        makeLocalSTTProviderReadinessRow()
     }
 
     public var voiceModelReadinessRows: [VoiceModelReadinessRow] {
@@ -952,6 +983,78 @@ public final class AppSettingsViewModel: ObservableObject {
             isReady: true,
             isSelected: settings.ttsProvider == provider
         )
+    }
+
+    private func makeLocalSTTProviderReadinessRow() -> STTProviderReadinessRow {
+        let provider = STTProvider.localWhisperCpp
+        guard let model = voiceModelCatalog.model(for: .whisperCppTinyMultilingual) else {
+            return STTProviderReadinessRow(
+                provider: provider,
+                statusLabel: "Model unavailable",
+                detailLabel: "whisper.cpp model metadata is not registered.",
+                nextActionLabel: "Update voice model catalog",
+                isReady: false,
+                isSelected: settings.sttProvider == provider
+            )
+        }
+
+        let status = voiceModelStatusOverrides[model.id] ?? voiceModelManager.status(for: model)
+        guard status == .installed else {
+            return STTProviderReadinessRow(
+                provider: provider,
+                statusLabel: localSTTModelStatusLabel(for: status),
+                detailLabel: "\(model.displayName) - \(model.licenseName) - \(model.sourceURL.host ?? "unknown source")",
+                nextActionLabel: localSTTModelNextActionLabel(for: status),
+                isReady: false,
+                isSelected: settings.sttProvider == provider
+            )
+        }
+
+        guard Self.isWhisperCppExecutableReady(settings.whisperCppExecutablePath) else {
+            return STTProviderReadinessRow(
+                provider: provider,
+                statusLabel: "Runtime pending",
+                detailLabel: "whisper.cpp executable path is required for offline speech to text.",
+                nextActionLabel: "Configure whisper.cpp executable",
+                isReady: false,
+                isSelected: settings.sttProvider == provider
+            )
+        }
+
+        return STTProviderReadinessRow(
+            provider: provider,
+            statusLabel: "Smoke pending",
+            detailLabel: "Model and executable are ready; run the local voice runtime smoke before release closeout.",
+            nextActionLabel: "Run local voice smoke",
+            // Selection is allowed at this stage, but release readiness still
+            // needs an explicit runtime smoke result tied to the current build.
+            isReady: false,
+            isSelected: settings.sttProvider == provider
+        )
+    }
+
+    private func localSTTModelStatusLabel(for status: VoiceModelInstallStatus) -> String {
+        switch status {
+        case .downloading:
+            "Downloading"
+        case .failed:
+            "Download failed"
+        case .corrupted:
+            "Needs reinstall"
+        case .notInstalled, .installed:
+            "Model not installed"
+        }
+    }
+
+    private func localSTTModelNextActionLabel(for status: VoiceModelInstallStatus) -> String {
+        switch status {
+        case .downloading:
+            "Wait for download"
+        case .failed, .corrupted:
+            "Retry whisper.cpp model"
+        case .notInstalled, .installed:
+            "Download whisper.cpp model"
+        }
     }
 
     public func setNotificationsEnabled(_ isEnabled: Bool) {

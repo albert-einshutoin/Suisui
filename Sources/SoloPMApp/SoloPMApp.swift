@@ -2246,6 +2246,9 @@ private struct SettingsView: View {
                 .textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("settings-whisper-cpp-executable-path")
                 .accessibilityHint("Sets the absolute path to whisper-cli for offline speech to text.")
+
+                LocalSTTProviderStatusRow(row: settingsViewModel.localSTTProviderReadinessRow)
+
                 LabeledContent("Shortcut", value: "Option + Space")
                 Picker(
                     "Text to Speech",
@@ -3067,11 +3070,14 @@ private struct SettingsView: View {
     }
 
     private var sttOverviewDetailLabel: String {
-        settingsViewModel.settings.sttProvider.isReleaseReady ? "Ready for voice capture" : "Unsupported provider"
+        localizedDisplay(
+            "Local whisper.cpp: %@",
+            localizedSettingsDisplay(settingsViewModel.localSTTProviderReadinessRow.statusLabel)
+        )
     }
 
     private var sttOverviewTone: SettingsStatusTone {
-        settingsViewModel.settings.sttProvider.isReleaseReady ? .ready : .danger
+        settingsViewModel.localSTTProviderReadinessRow.isReady ? .ready : .warning
     }
 
     private var ttsOverviewDetailLabel: String {
@@ -3676,6 +3682,54 @@ private struct SelectedTTSProviderStatusRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("tts-provider-readiness-row")
         .accessibilityLabel("TTS provider readiness")
+        .accessibilityValue("\(row.provider.displayName), \(localizedSettingsDisplay(row.statusLabel)), \(localizedSettingsDisplay(row.nextActionLabel))")
+    }
+}
+
+private struct LocalSTTProviderStatusRow: View {
+    let row: STTProviderReadinessRow
+
+    private var tone: SettingsStatusTone {
+        row.isReady ? .ready : .warning
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: tone.systemImage)
+                .foregroundStyle(tone.color)
+                .frame(width: 20)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(row.provider.displayName)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+
+                Text(localizedSettingsDisplay(row.statusLabel))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(tone.color)
+                    .lineLimit(1)
+
+                Text(localizedSettingsDisplay(row.detailLabel))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Label(localizedSettingsDisplay(row.nextActionLabel), systemImage: row.isReady ? "waveform" : "arrow.right.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("settings-local-stt-readiness-row")
+        .accessibilityLabel("STT provider readiness")
+        .accessibilityHint("Shows whether the local STT model, executable, and local voice runtime smoke are ready.")
         .accessibilityValue("\(row.provider.displayName), \(localizedSettingsDisplay(row.statusLabel)), \(localizedSettingsDisplay(row.nextActionLabel))")
     }
 }
