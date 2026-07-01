@@ -1606,6 +1606,18 @@ private struct TodayDailyPlanningReviewPanel: View {
                 .help("Queue a today due-date update for review without creating a Calendar event.")
                 .accessibilityIdentifier("today-daily-planning-draft-move-today")
                 .accessibilityHint("Creates an Assistant Queue approval item; task due date and Calendar stay unchanged until approval.")
+
+                Button {
+                    viewModel.enqueueDailyPlanningActionDraft(kind: .splitRecommendedTask)
+                } label: {
+                    Label("Draft Split", systemImage: "square.split.2x1")
+                }
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .disabled(review.recommendedTaskID == nil)
+                .help("Queue reviewable follow-up task drafts without changing the original task.")
+                .accessibilityIdentifier("today-daily-planning-draft-split")
+                .accessibilityHint("Creates an Assistant Queue approval item; no tasks are created until approval.")
             }
         }
         .padding(10)

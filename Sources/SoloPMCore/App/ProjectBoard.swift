@@ -2929,8 +2929,7 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     private static func sanitizedDailyPlanningSourceTranscript(_ sourceTranscript: String) -> String {
         let trimmed = sourceTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
-        let redactedSecrets = DeveloperSecretRedactor().redact(trimmed).text
-        let redacted = LocalPathRedactor.redact(redactedSecrets)
+        let redacted = ExecutionReceiptRedactor().redact(trimmed)
         let fallback = String(localized: "Today daily planning review")
         guard !redacted.isEmpty else {
             return fallback

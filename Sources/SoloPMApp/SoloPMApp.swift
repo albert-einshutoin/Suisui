@@ -880,6 +880,8 @@ private struct VoiceDailyPlanningReviewRequestPanel: View {
             "Queue a defer-to-tomorrow draft for approval"
         case .moveRecommendedDueDateToToday:
             "Queue a move-to-today draft for approval"
+        case .splitRecommendedTask:
+            "Queue a split-task draft for approval"
         }
     }
 }

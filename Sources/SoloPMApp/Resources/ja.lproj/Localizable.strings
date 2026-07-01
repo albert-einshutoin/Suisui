@@ -952,6 +952,7 @@
 "Daily progress" = "日次進捗";
 "Draft Defer" = "延期を下書き";
 "Draft Move to Today" = "今日へ移動を下書き";
+"Draft Split" = "分割を下書き";
 "Draft Start" = "開始を下書き";
 "Inbox Triage" = "Inbox整理";
 "Inbox captures are shown separately until moved into a project." = "Inboxキャプチャは、プロジェクトへ移動するまで別枠で表示します。";
@@ -961,6 +962,7 @@
 "No scheduled tasks for this day." = "この日に予定されたタスクはありません。";
 "Open Today Review" = "今日のレビューを開く";
 "Opening a local Today review. No provider, Calendar, Reminder, connector, or file write is run." = "ローカルのTodayレビューを開きます。プロバイダー、カレンダー、リマインダー、コネクター、ファイル書き込みは実行しません。";
+"Creates an Assistant Queue approval item; no tasks are created until approval." = "Assistant Queueの承認アイテムを作成します。承認されるまでタスクは作成されません。";
 "Agenda" = "予定";
 "All day" = "終日";
 "Due task" = "期限付きタスク";
@@ -982,6 +984,8 @@
 "Queue a tomorrow due-date update for review." = "明日への期限変更をレビュー用にQueueへ追加します。";
 "Queue a today due-date update for review without creating a Calendar event." = "カレンダー予定は作成せず、今日への期限変更をレビュー用にQueueへ追加します。";
 "Queue a move-to-today draft for approval" = "今日へ移動する下書きを承認用にQueueへ追加";
+"Queue a split-task draft for approval" = "タスク分割の下書きを承認用にQueueへ追加";
+"Queue reviewable follow-up task drafts without changing the original task." = "元タスクを変更せず、確認可能なフォローアップタスク下書きをQueueへ追加します。";
 "Queue the recommended task status update for review." = "推奨タスクのステータス更新をレビュー用にQueueへ追加します。";
 "Selected Day" = "選択中の日";
 "Selected workload day detail" = "選択中ワークロード日の詳細";
