@@ -5779,13 +5779,14 @@ final class ReleasePipelineTests: XCTestCase {
     func testRuntimeWorkflowSmokeScriptDefinesScenarioRegistryAndFailureArtifacts() throws {
         let script = try readPackageFile("script/check_runtime_workflow_smoke.sh")
 
-        XCTAssertTrue(script.contains("SCENARIOS=(\"project_task_crud\" \"inbox_triage\" \"today_complete\" \"settings_save\" \"voice_review\")"))
+        XCTAssertTrue(script.contains("SCENARIOS=(\"project_task_crud\" \"inbox_triage\" \"today_complete\" \"settings_save\" \"voice_review\" \"development_pr\")"))
         for scenario in [
             "project_task_crud",
             "inbox_triage",
             "today_complete",
             "settings_save",
-            "voice_review"
+            "voice_review",
+            "development_pr"
         ] {
             XCTAssertTrue(script.contains("run_\(scenario)()"), "workflow smoke must define \(scenario)")
             XCTAssertTrue(script.contains("write_scenario_artifact \"\(scenario)\""))
@@ -5800,11 +5801,13 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("./script/check_runtime_today_complete_smoke.sh"))
         XCTAssertTrue(script.contains("./script/check_runtime_settings_save_smoke.sh"))
         XCTAssertTrue(script.contains("./script/check_runtime_voice_review_smoke.sh"))
+        XCTAssertTrue(script.contains("./script/check_runtime_development_pr_smoke.sh"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_ACCESSIBLE_CRUD_KEEP_DATABASE=1"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_INBOX_TRIAGE_KEEP_DATABASE=1"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_TODAY_COMPLETE_KEEP_DATABASE=1"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_SETTINGS_SAVE_KEEP_HOME=1"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_VOICE_REVIEW_KEEP_DATABASE=1"))
+        XCTAssertTrue(script.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_KEEP_WORKSPACE=1"))
         XCTAssertTrue(script.contains("BLOCKER: runtime workflow scenario failed"))
         XCTAssertTrue(script.contains("Last visible window"))
         XCTAssertFalse(script.contains("inbox_triage runtime DB assertion is not implemented yet"))
@@ -5814,6 +5817,33 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("SKIP"))
         XCTAssertFalse(script.contains("TODO"))
         XCTAssertFalse(script.contains("fake success"))
+    }
+
+    func testRuntimeDevelopmentPRSmokeScriptRunsApprovedDirectoryFixtureFlow() throws {
+        let script = try readPackageFile("script/check_runtime_development_pr_smoke.sh")
+        let workflow = try readPackageFile("script/check_runtime_workflow_smoke.sh")
+
+        XCTAssertTrue(script.contains("swift test --filter DevelopmentAutomationRuntimeSmokeTests/testApprovedProjectDirectoryCanEditVerifyCommitAndPreparePullRequestBranch --quiet"))
+        XCTAssertTrue(script.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_ARTIFACT_DIR"))
+        XCTAssertTrue(script.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_KEEP_WORKSPACE"))
+        XCTAssertTrue(script.contains("approved project directory"))
+        XCTAssertTrue(script.contains("development.repository.list_files"))
+        XCTAssertTrue(script.contains("development.repository.create_file"))
+        XCTAssertTrue(script.contains("development.repository.update_file"))
+        XCTAssertTrue(script.contains("development.verification.run"))
+        XCTAssertTrue(script.contains("development.pr_workflow.commit"))
+        XCTAssertTrue(script.contains("development.pr_workflow.prepare"))
+        XCTAssertTrue(script.contains("development.pr_workflow.create_pull_request"))
+        XCTAssertTrue(script.contains("fake GitHub runner"))
+        XCTAssertTrue(script.contains("requiresPushApproval=true"))
+        XCTAssertTrue(script.contains("requiresPullRequestApproval=true"))
+        XCTAssertTrue(script.contains("No live push or GitHub PR is created by this smoke"))
+        XCTAssertFalse(script.contains("gh pr create"))
+        XCTAssertFalse(script.contains("git push"))
+
+        XCTAssertTrue(workflow.contains("\"development_pr\""))
+        XCTAssertTrue(workflow.contains("run_development_pr()"))
+        XCTAssertTrue(workflow.contains("./script/check_runtime_development_pr_smoke.sh"))
     }
 
     func testRuntimeInboxTriageSmokeScriptVerifiesAllClassificationActionsAndUndo() throws {
