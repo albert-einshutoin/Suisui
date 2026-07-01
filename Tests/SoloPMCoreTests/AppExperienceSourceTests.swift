@@ -2692,6 +2692,31 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("artifactStore: SQLiteArtifactStore(connection: connection)"))
     }
 
+    func testRuntimeExecutionRegistryIncludesDeveloperWorkflowToolsForAssistantQueue() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let coordinatorFactoryStart = try XCTUnwrap(appSource.range(of: "private static func makeAssistantQueueExecutionCoordinator("))
+        let coordinatorFactoryEnd = try XCTUnwrap(appSource.range(of: "@MainActor\n    static func makeMenuBarSummaryController()", range: coordinatorFactoryStart.upperBound..<appSource.endIndex))
+        let coordinatorFactory = String(appSource[coordinatorFactoryStart.lowerBound..<coordinatorFactoryEnd.lowerBound])
+        let registryFactoryStart = try XCTUnwrap(appSource.range(of: "private static func makeRuntimeToolRegistry("))
+        let registryFactory = String(appSource[registryFactoryStart.lowerBound..<coordinatorFactoryEnd.lowerBound])
+
+        XCTAssertTrue(appSource.contains("private static func makeRuntimeToolRegistry("))
+        XCTAssertTrue(coordinatorFactory.contains("makeRuntimeToolRegistry(connection: connection, auditLogger: auditLogger)"))
+        XCTAssertTrue(registryFactory.contains("DevelopmentPullRequestReviewGateTool(projectStore: projectStore)"))
+        XCTAssertTrue(registryFactory.contains("DevelopmentPullRequestMergeTool(projectStore: projectStore)"))
+        XCTAssertTrue(registryFactory.contains(".developmentReviewPullRequestGate"))
+        XCTAssertTrue(registryFactory.contains(".developmentMergePullRequest"))
+        XCTAssertFalse(registryFactory.contains("ToolRegistryFactory.developerMode("))
+        XCTAssertFalse(registryFactory.contains("DevelopmentPRWorkflowTool("))
+        XCTAssertFalse(registryFactory.contains("DevelopmentCommitWorkflowTool("))
+        XCTAssertFalse(registryFactory.contains("DevelopmentPushWorkflowTool("))
+        XCTAssertFalse(registryFactory.contains("DevelopmentPullRequestCreationTool("))
+        XCTAssertFalse(registryFactory.contains(".gitReadOnly"))
+        XCTAssertFalse(registryFactory.contains(".developmentPRWorkflow"))
+        XCTAssertFalse(registryFactory.contains(".developmentRepositoryFiles"))
+        XCTAssertFalse(registryFactory.contains(".developmentVerificationCommands"))
+    }
+
     func testReviewRuntimeRequiresAuditLoggerBeforeWriteExecution() throws {
         let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
         let reviewFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeReviewSessionViewModel(plan: ActionPlan)"))

@@ -83,6 +83,103 @@ final class VoiceDevelopmentPullRequestAutomationRequestBuilderTests: XCTestCase
         ])
     }
 
+    func testBuildsMergeAutomationRequestFromExplicitVoiceRouteAndApprovedBookmark() throws {
+        let workspace = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        let project = ProjectRecord(
+            id: 7,
+            title: "SoloPM",
+            status: "active",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: Data("approved-bookmark".utf8)
+        )
+        let route = VoiceCommandRouter().route(transcript: """
+        Merge PR https://github.com/albert-einshutoin/soloPM/pull/116 branch feature/solopm-7-merge-gate base feature/phase14-product-completion
+        """)
+        let builder = VoiceDevelopmentPullRequestAutomationRequestBuilder(
+            bookmarkResolver: StaticBookmarkResolver(url: workspace),
+            requestIDProvider: { "voice-pr-merge" }
+        )
+
+        let request = try builder.makeRequest(route: route, project: project)
+
+        XCTAssertEqual(request.id, "voice-pr-merge")
+        XCTAssertEqual(request.source, .conversation)
+        XCTAssertEqual(request.approvalState, .pendingApproval)
+        XCTAssertEqual(request.sourceClientID, "voice")
+        XCTAssertEqual(request.toolName, ActionTool.developmentMergePullRequest.rawValue)
+        XCTAssertTrue(request.redactedArgumentSummary.contains("Voice development PR merge"))
+        XCTAssertEqual(request.developmentPullRequest, SyncDevelopmentPullRequestPayload(
+            projectID: 7,
+            operation: .merge,
+            pullRequestURL: "https://github.com/albert-einshutoin/soloPM/pull/116",
+            branchName: "feature/solopm-7-merge-gate",
+            baseBranch: "feature/phase14-product-completion"
+        ))
+
+        let item = AssistantQueueAdapter.makeItem(automationRequest: request)
+        XCTAssertEqual(item.state, .waitingReview)
+        XCTAssertEqual(item.requiredCapabilities, [
+            .connectedMacRequired,
+            .tool(.developmentMergePullRequest),
+            .providerExecutionApproval
+        ])
+    }
+
+    func testReviewCommandMentioningMergeRemainsReviewGate() throws {
+        let workspace = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        let project = ProjectRecord(
+            id: 7,
+            title: "SoloPM",
+            status: "active",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: Data("approved-bookmark".utf8)
+        )
+        let route = VoiceCommandRouter().route(transcript: """
+        Review PR https://github.com/albert-einshutoin/soloPM/pull/116 branch feature/solopm-7-merge-gate base feature/phase14-product-completion before merge
+        """)
+        let builder = VoiceDevelopmentPullRequestAutomationRequestBuilder(
+            bookmarkResolver: StaticBookmarkResolver(url: workspace),
+            requestIDProvider: { "voice-pr-review" }
+        )
+
+        let request = try builder.makeRequest(route: route, project: project)
+
+        XCTAssertEqual(request.toolName, ActionTool.developmentReviewPullRequestGate.rawValue)
+        XCTAssertEqual(request.developmentPullRequest?.operation, .reviewGate)
+    }
+
+    func testNegatedMergeCommandDoesNotQueueMergeAutomation() throws {
+        let workspace = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        let project = ProjectRecord(
+            id: 7,
+            title: "SoloPM",
+            status: "active",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: Data("approved-bookmark".utf8)
+        )
+        let builder = VoiceDevelopmentPullRequestAutomationRequestBuilder(
+            bookmarkResolver: StaticBookmarkResolver(url: workspace),
+            requestIDProvider: { "voice-pr-review" }
+        )
+        let englishRoute = VoiceCommandRouter().route(transcript: """
+        Do not merge PR https://github.com/albert-einshutoin/soloPM/pull/116 branch feature/solopm-7-merge-gate base feature/phase14-product-completion
+        """)
+        let japaneseRoute = VoiceCommandRouter().route(transcript: """
+        PR https://github.com/albert-einshutoin/soloPM/pull/116 ブランチ feature/solopm-7-merge-gate ベース feature/phase14-product-completion はマージしないで確認して
+        """)
+
+        let englishRequest = try builder.makeRequest(route: englishRoute, project: project)
+        let japaneseRequest = try builder.makeRequest(route: japaneseRoute, project: project)
+
+        XCTAssertEqual(englishRequest.toolName, ActionTool.developmentReviewPullRequestGate.rawValue)
+        XCTAssertEqual(englishRequest.developmentPullRequest?.operation, .reviewGate)
+        XCTAssertEqual(japaneseRequest.toolName, ActionTool.developmentReviewPullRequestGate.rawValue)
+        XCTAssertEqual(japaneseRequest.developmentPullRequest?.operation, .reviewGate)
+    }
+
     func testRequiresBookmarkBackedProjectWorkspace() throws {
         let workspace = try makeWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace) }

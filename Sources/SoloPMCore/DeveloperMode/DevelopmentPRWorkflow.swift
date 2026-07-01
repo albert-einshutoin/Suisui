@@ -137,7 +137,8 @@ public struct ProjectWorkspaceScope: Equatable, Sendable {
     public init(
         project: ProjectRecord,
         fileManager: FileManager = .default,
-        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver()
+        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver(),
+        requireBookmark: Bool = false
     ) throws {
         guard let workspacePath = project.workspacePath?.trimmingCharacters(in: .whitespacesAndNewlines),
               !workspacePath.isEmpty else {
@@ -183,6 +184,12 @@ public struct ProjectWorkspaceScope: Equatable, Sendable {
                 throw error
             }
         } else {
+            guard !requireBookmark else {
+                // External PR automation must prove the user approved the project
+                // directory; a stored path alone is not enough authority to read,
+                // publish, review, or merge repository state.
+                throw DevelopmentPRWorkflowError.projectWorkspaceBookmarkUnavailable
+            }
             rootURL = try Self.validatedExistingRoot(
                 selectedURL: selectedURL,
                 workspacePath: workspacePath,

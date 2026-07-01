@@ -427,12 +427,12 @@ public final class VoiceCaptureViewModel: ObservableObject {
             dailyPlanningReviewRequest = nil
             inboxTriageRequest = nil
             developmentPullRequestAutomationRequest = nil
-            phase = .needsClarification("Select an approved project directory before queueing a development PR review gate.")
+            phase = .needsClarification("Select an approved project directory before queueing a development PR automation request.")
             return true
         }
 
         do {
-            let request = try developmentPullRequestAutomationRequestBuilder.makeReviewGateRequest(
+            let request = try developmentPullRequestAutomationRequestBuilder.makeRequest(
                 route: route,
                 project: project
             )

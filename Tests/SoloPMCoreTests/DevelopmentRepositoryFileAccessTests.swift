@@ -103,6 +103,33 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
         XCTAssertEqual(resolver.resolvedBookmarks, [])
     }
 
+    func testWorkspaceScopeCanRequireBookmarkForExternalDeveloperAutomation() throws {
+        let workspace = temporaryDirectory()
+        let resolver = RecordingProjectWorkspaceBookmarkResolver(
+            resolution: ProjectWorkspaceBookmarkResolution(
+                url: workspace,
+                isStale: false,
+                didStartAccessing: true
+            )
+        )
+        let project = ProjectRecord(
+            id: 42,
+            title: "SoloPM",
+            status: "active",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: nil
+        )
+
+        XCTAssertThrowsError(try ProjectWorkspaceScope(
+            project: project,
+            bookmarkResolver: resolver,
+            requireBookmark: true
+        )) { error in
+            XCTAssertEqual(error as? DevelopmentPRWorkflowError, .projectWorkspaceBookmarkUnavailable)
+        }
+        XCTAssertEqual(resolver.resolvedBookmarks, [])
+    }
+
     func testWorkspaceScopeRejectsBookmarkResolvingToDifferentDirectory() throws {
         let workspace = temporaryDirectory()
         let outside = temporaryDirectory()

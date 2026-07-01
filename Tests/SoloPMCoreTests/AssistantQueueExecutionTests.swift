@@ -363,7 +363,11 @@ final class AssistantQueueExecutionTests: XCTestCase {
         let projectStore = SQLiteProjectStore(connection: connection)
         let taskStore = SQLiteTaskStore(connection: connection)
         let workspace = temporaryDirectory()
-        let project = try projectStore.create(title: "SoloPM", workspacePath: workspace.path)
+        let project = try projectStore.create(
+            title: "SoloPM",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: Data("approved-pr-workspace-bookmark".utf8)
+        )
         let branchName = "feature/solopm-\(project.id)-merge-gate"
         let baseBranch = "feature/phase14-product-completion"
         let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
@@ -448,6 +452,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             ),
             gitRunner: gitRunner,
             githubRunner: githubRunner,
+            bookmarkResolver: AssistantQueueStaticBookmarkResolver(url: workspace),
             projectStore: projectStore,
             taskStore: taskStore
         )
@@ -524,7 +529,11 @@ final class AssistantQueueExecutionTests: XCTestCase {
         let projectStore = SQLiteProjectStore(connection: connection)
         let taskStore = SQLiteTaskStore(connection: connection)
         let workspace = temporaryDirectory()
-        let project = try projectStore.create(title: "SoloPM", workspacePath: workspace.path)
+        let project = try projectStore.create(
+            title: "SoloPM",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: Data("approved-pr-workspace-bookmark".utf8)
+        )
         let branchName = "feature/solopm-\(project.id)-merge-gate"
         let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
         let item = try AssistantQueueStateMachine.approve(
@@ -559,6 +568,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             ),
             gitRunner: gitRunner,
             githubRunner: githubRunner,
+            bookmarkResolver: AssistantQueueStaticBookmarkResolver(url: workspace),
             projectStore: projectStore,
             taskStore: taskStore
         )
@@ -581,6 +591,64 @@ final class AssistantQueueExecutionTests: XCTestCase {
         XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .pullRequest, id: pullRequestURL)))
         XCTAssertEqual(receipt.visibleSurfaces, [.assistantQueue, .projectDetail, .auditLog])
         XCTAssertTrue(receipt.actions.first?.errorSummary?.contains("unreadable pull request status") == true)
+    }
+
+    func testCoordinatorFailsDevelopmentPullRequestAutomationWithoutApprovedBookmarkBeforeGitHubCalls() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let queueStore = SQLiteAssistantQueueStore(connection: connection)
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let projectStore = SQLiteProjectStore(connection: connection)
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let workspace = temporaryDirectory()
+        let project = try projectStore.create(title: "SoloPM", workspacePath: workspace.path)
+        let branchName = "feature/solopm-\(project.id)-merge-gate"
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        let gitRunner = RecordingAssistantQueueGitRunner()
+        let githubRunner = RecordingAssistantQueueGitHubRunner(outputs: [
+            GitHubCLICommandOutput(standardOutput: "{}", standardError: "", exitCode: 0)
+        ])
+        let registry = try ToolRegistryFactory.developerMode(
+            settings: DeveloperModeSettings(
+                isEnabled: true,
+                workspaceRoot: workspace,
+                enabledCapabilities: [.developmentPRWorkflow]
+            ),
+            gitRunner: gitRunner,
+            githubRunner: githubRunner,
+            bookmarkResolver: AssistantQueueStaticBookmarkResolver(url: workspace),
+            projectStore: projectStore,
+            taskStore: taskStore
+        )
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-pr-missing-bookmark" },
+            now: { Date(timeIntervalSince1970: 195) }
+        )
+
+        for operation in [SyncDevelopmentPullRequestOperation.reviewGate, .merge] {
+            let item = try AssistantQueueStateMachine.approve(
+                AssistantQueueAdapter.makeItem(automationRequest: developmentPullRequestAutomationRequest(
+                    id: "automation-pr-\(operation.rawValue)-no-bookmark",
+                    projectID: project.id,
+                    operation: operation,
+                    pullRequestURL: pullRequestURL,
+                    branchName: branchName,
+                    baseBranch: "feature/phase14-product-completion"
+                )),
+                reviewerID: "local-user"
+            )
+            try queueStore.save(item)
+
+            let result = try coordinator.execute(id: item.id)
+
+            XCTAssertEqual(result.item.state, .failed)
+            XCTAssertTrue(result.receipt.actions.first?.errorSummary?.contains("bookmark") == true)
+        }
+        XCTAssertTrue(gitRunner.recordedInvocations.isEmpty)
+        XCTAssertTrue(githubRunner.recordedInvocations.isEmpty)
     }
 
     func testCoordinatorRejectsMalformedAutomationRequestBeforeRunning() throws {
@@ -1332,6 +1400,19 @@ private final class RecordingAssistantQueueGitHubRunner: GitHubCLICommandRunner,
             standardOutput: "",
             standardError: "unexpected command",
             exitCode: 127
+        )
+    }
+}
+
+private struct AssistantQueueStaticBookmarkResolver: ProjectWorkspaceBookmarkResolving {
+    var url: URL
+
+    func resolve(bookmarkData: Data) throws -> ProjectWorkspaceBookmarkResolution {
+        ProjectWorkspaceBookmarkResolution(
+            url: url,
+            isStale: false,
+            didStartAccessing: true,
+            stopAccessing: {}
         )
     }
 }
