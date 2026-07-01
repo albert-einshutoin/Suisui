@@ -2811,7 +2811,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("KeychainSecretStore"))
         XCTAssertTrue(appSource.contains("OpenAIResponsesProvider(secretStore:"))
         XCTAssertTrue(appSource.contains("ToolRegistry.phase2MVP("))
-        XCTAssertTrue(appSource.contains("artifactStore: SQLiteArtifactStore(connection: connection)"))
+        XCTAssertTrue(appSource.contains("let artifactStore = SQLiteArtifactStore(connection: connection)"))
+        XCTAssertTrue(appSource.contains("artifactStore: artifactStore"))
     }
 
     func testRuntimeExecutionRegistryIncludesDeveloperWorkflowToolsForAssistantQueue() throws {
@@ -2829,14 +2830,51 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(registryFactory.contains(".developmentReviewPullRequestGate"))
         XCTAssertTrue(registryFactory.contains(".developmentMergePullRequest"))
         XCTAssertFalse(registryFactory.contains("ToolRegistryFactory.developerMode("))
-        XCTAssertFalse(registryFactory.contains("DevelopmentPRWorkflowTool("))
-        XCTAssertFalse(registryFactory.contains("DevelopmentCommitWorkflowTool("))
+        XCTAssertTrue(registryFactory.contains("let artifactStore = SQLiteArtifactStore(connection: connection)"))
+        XCTAssertTrue(registryFactory.contains("DevelopmentPRWorkflowTool("))
+        XCTAssertTrue(registryFactory.contains("DevelopmentCommitWorkflowTool("))
+        XCTAssertTrue(registryFactory.contains("DevelopmentRepositoryFileTool("))
+        XCTAssertTrue(registryFactory.contains("name: .developmentRepositoryListFiles"))
+        XCTAssertTrue(registryFactory.contains("name: .developmentRepositoryReadFile"))
+        XCTAssertTrue(registryFactory.contains("name: .developmentRepositoryCreateFile"))
+        XCTAssertTrue(registryFactory.contains("name: .developmentRepositoryUpdateFile"))
+        XCTAssertTrue(registryFactory.contains("DevelopmentVerificationCommandTool("))
+        XCTAssertTrue(registryFactory.contains("taskStore: taskStore"))
+        XCTAssertTrue(registryFactory.contains("requireBookmark: true"))
+        XCTAssertTrue(registryFactory.contains("for prohibitedTool in ["))
+        XCTAssertTrue(registryFactory.contains(".developmentPushBranch"))
+        XCTAssertTrue(registryFactory.contains(".developmentCreatePullRequest"))
+        XCTAssertTrue(registryFactory.contains("throw ToolExecutionError.dangerousToolBlocked(prohibitedTool)"))
         XCTAssertFalse(registryFactory.contains("DevelopmentPushWorkflowTool("))
         XCTAssertFalse(registryFactory.contains("DevelopmentPullRequestCreationTool("))
         XCTAssertFalse(registryFactory.contains(".gitReadOnly"))
-        XCTAssertFalse(registryFactory.contains(".developmentPRWorkflow"))
-        XCTAssertFalse(registryFactory.contains(".developmentRepositoryFiles"))
-        XCTAssertFalse(registryFactory.contains(".developmentVerificationCommands"))
+
+        func auditedRegistrationBlock(containing needle: String) throws -> String {
+            let start = try XCTUnwrap(registryFactory.range(of: "try registry.register(AuditedTool(", range: registryFactory.startIndex..<registryFactory.endIndex))
+            let toolStart = try XCTUnwrap(registryFactory.range(of: needle, range: start.lowerBound..<registryFactory.endIndex))
+            let blockStart = try XCTUnwrap(
+                registryFactory.range(
+                    of: "try registry.register(AuditedTool(",
+                    options: .backwards,
+                    range: start.lowerBound..<toolStart.lowerBound
+                )
+            )
+            let blockEnd = try XCTUnwrap(registryFactory.range(of: "logger: auditLogger", range: toolStart.upperBound..<registryFactory.endIndex))
+            return String(registryFactory[blockStart.lowerBound..<blockEnd.upperBound])
+        }
+
+        for block in try [
+            auditedRegistrationBlock(containing: "DevelopmentPRWorkflowTool("),
+            auditedRegistrationBlock(containing: "name: .developmentRepositoryListFiles"),
+            auditedRegistrationBlock(containing: "name: .developmentRepositoryReadFile"),
+            auditedRegistrationBlock(containing: "name: .developmentRepositoryCreateFile"),
+            auditedRegistrationBlock(containing: "name: .developmentRepositoryUpdateFile"),
+            auditedRegistrationBlock(containing: "DevelopmentVerificationCommandTool("),
+            auditedRegistrationBlock(containing: "DevelopmentCommitWorkflowTool(")
+        ] {
+            XCTAssertTrue(block.contains("AuditedTool("))
+            XCTAssertTrue(block.contains("requireBookmark: true"))
+        }
     }
 
     func testReviewRuntimeRequiresAuditLoggerBeforeWriteExecution() throws {

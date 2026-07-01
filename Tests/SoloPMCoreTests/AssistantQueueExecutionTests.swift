@@ -58,6 +58,99 @@ final class AssistantQueueExecutionTests: XCTestCase {
         )
     }
 
+    func testCoordinatorRunsQueuedDevelopmentPrepareWorkflowWithApprovedProjectBookmark() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let queueStore = SQLiteAssistantQueueStore(connection: connection)
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let projectStore = SQLiteProjectStore(connection: connection)
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let workspace = temporaryDirectory()
+        let project = try projectStore.create(
+            title: "SoloPM",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: Data("approved-development-workspace-bookmark".utf8)
+        )
+        let task = try taskStore.create(
+            title: "Queue development branch",
+            projectID: project.id,
+            sourceCommand: "voice"
+        )
+        let branchName = "feature/solopm-\(project.id)-\(task.id)-queue-development-branch"
+        let item = AssistantQueueAdapter.makeItem(
+            actionPlan: ActionPlan(
+                id: "development-prepare-queue",
+                userInput: "Prepare a development branch for the selected task",
+                summary: "Prepare local development branch",
+                actions: [
+                    PlanAction(
+                        id: "development-prepare",
+                        tool: .developmentPreparePullRequestWorkflow,
+                        arguments: [
+                            "projectId": .number(Double(project.id)),
+                            "taskId": .number(Double(task.id))
+                        ],
+                        riskLevel: .write
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            sourceTranscript: "Prepare a development branch",
+            interpretationSummary: "Development branch preparation",
+            reason: "Needs review before local branch mutation."
+        )
+        let approved = try AssistantQueueStateMachine.approve(item, reviewerID: "local-user")
+        try queueStore.save(approved)
+        let gitRunner = RecordingAssistantQueueGitRunner()
+        gitRunner.stub(
+            arguments: ["switch", "-c", branchName],
+            output: GitCommandOutput(standardOutput: "", standardError: "", exitCode: 0)
+        )
+        gitRunner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
+        )
+        gitRunner.stub(
+            arguments: ["diff", "--stat"],
+            output: GitCommandOutput(standardOutput: "Sources/SoloPMApp/SoloPMApp.swift | 1 +\n", standardError: "", exitCode: 0)
+        )
+        let registry = try ToolRegistry(tools: [
+            DevelopmentPRWorkflowTool(
+                projectStore: projectStore,
+                taskStore: taskStore,
+                gitRunner: gitRunner,
+                bookmarkResolver: AssistantQueueStaticBookmarkResolver(url: workspace),
+                requireBookmark: true
+            )
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-development-prepare" },
+            now: { Date(timeIntervalSince1970: 170) }
+        )
+
+        let result = try coordinator.execute(id: approved.id)
+
+        XCTAssertEqual(result.item.state, .done)
+        XCTAssertEqual(try queueStore.get(id: approved.id).state, .done)
+        let receipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receipt.status, .succeeded)
+        XCTAssertEqual(receipt.primaryToolName, ActionTool.developmentPreparePullRequestWorkflow.rawValue)
+        XCTAssertEqual(receipt.assistantQueueItemID, approved.id)
+        XCTAssertEqual(receipt.visibleSurfaces, [.assistantQueue, .taskDetail, .projectDetail, .auditLog])
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .project, id: String(project.id))))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .task, id: String(task.id))))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBranch, id: branchName)))
+        XCTAssertEqual(gitRunner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["switch", "-c", branchName], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["diff", "--stat"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
+        ])
+    }
+
     func testCoordinatorRunsScheduleDraftCalendarApplyAndKeepsScopedReceiptReferences() throws {
         let queueStore = try makeQueueStore()
         let receiptStore = InMemoryExecutionReceiptStore()
@@ -963,6 +1056,30 @@ final class AssistantQueueExecutionTests: XCTestCase {
             )),
             reviewerID: "local-user"
         )
+        let remoteLocalDevelopmentTools = try [
+            ActionTool.developmentPreparePullRequestWorkflow,
+            .developmentRepositoryCreateFile,
+            .developmentCommitChanges
+        ].map { tool in
+            try AssistantQueueStateMachine.approve(
+                AssistantQueueAdapter.makeItem(automationRequest: SyncAutomationRequestPayload(
+                    id: "automation-local-dev-\(tool.rawValue.replacingOccurrences(of: ".", with: "-"))",
+                    source: .cloudRelay,
+                    approvalState: .pendingApproval,
+                    sourceClientID: "web",
+                    toolName: tool.rawValue,
+                    redactedArgumentSummary: "Remote request must not execute local development tool \(tool.rawValue)",
+                    developmentPullRequest: SyncDevelopmentPullRequestPayload(
+                        projectID: 7,
+                        operation: .reviewGate,
+                        pullRequestURL: "https://github.com/albert-einshutoin/soloPM/pull/116",
+                        branchName: "feature/solopm-7-merge-gate",
+                        baseBranch: "feature/phase14-product-completion"
+                    )
+                )),
+                reviewerID: "local-user"
+            )
+        }
         try queueStore.save(missingTaskID)
         try queueStore.save(noOpUpdate)
         try queueStore.save(mismatchedTool)
@@ -970,6 +1087,9 @@ final class AssistantQueueExecutionTests: XCTestCase {
         try queueStore.save(ambiguousPayload)
         try queueStore.save(missingToolName)
         try queueStore.save(mismatchedPullRequestTool)
+        for item in remoteLocalDevelopmentTools {
+            try queueStore.save(item)
+        }
         let coordinator = AssistantQueueExecutionCoordinator(
             queueStore: queueStore,
             executor: ActionExecutor(registry: ToolRegistry()),
@@ -984,7 +1104,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
             ambiguousPayload,
             missingToolName,
             mismatchedPullRequestTool
-        ] {
+        ] + remoteLocalDevelopmentTools {
             XCTAssertThrowsError(try coordinator.execute(id: item.id)) { error in
                 XCTAssertEqual(error as? AssistantQueueExecutionError, .unsupportedPayload)
             }
