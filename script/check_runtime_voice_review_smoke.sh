@@ -521,4 +521,27 @@ verify_sql_value \
   "planning audit success count unchanged after local Daily Planning handoff" \
   "SELECT count(*) FROM audit_logs WHERE category='planning' AND action='generate_plan' AND status='succeeded';"
 
-printf "OK: runtime voice review smoke verified local Daily Planning queue handoff\n"
+setTextAreaContaining "voice-command-input" "Open Today Review and move the recommended task to today"
+pressControlContaining "voice-command-generate-plan"
+wait_for_sql_value \
+  "1" \
+  "daily planning move-to-today Assistant Queue draft" \
+  "SELECT count(*) FROM assistant_queue_items WHERE id LIKE 'action-plan:daily-planning:%:moveRecommendedDueDateToToday:task:${daily_planning_seed_task_id}' AND payload_kind='action_plan' AND state='waitingReview' AND risk_level='write' AND source_transcript='Open Today Review and move the recommended task to today' AND approval_json IS NULL;"
+verify_sql_value \
+  "1" \
+  "daily planning task due date remains unchanged before move-to-today approval" \
+  "SELECT count(*) FROM tasks WHERE id=${daily_planning_seed_task_id} AND due_at='2026-01-01T09:00:00Z';"
+verify_sql_value \
+  "2" \
+  "two daily planning queue drafts before approval" \
+  "SELECT count(*) FROM assistant_queue_items;"
+verify_sql_value \
+  "0" \
+  "move-to-today review execution before approval" \
+  "SELECT count(*) FROM audit_logs WHERE category='review' OR action LIKE 'execution.%';"
+verify_sql_value \
+  "1" \
+  "planning audit did not start again for move-to-today local Daily Planning handoff" \
+  "SELECT count(*) FROM audit_logs WHERE category='planning' AND action='generate_plan' AND status='started';"
+
+printf "OK: runtime voice review smoke verified local Daily Planning queue handoffs\n"

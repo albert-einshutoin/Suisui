@@ -2680,6 +2680,68 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDailyPlanningReviewQueuesMoveDueDateToTodayDraftWithoutCalendarWrite() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-30T09:10:00Z")
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let calendarClient = InMemoryCalendarClient()
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore,
+            scheduleCalendarClient: calendarClient
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Daily Queue"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Review launch notes",
+            projectID: project.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-29"
+        ))
+
+        let queued = viewModel.enqueueDailyPlanningActionDraft(
+            kind: .moveRecommendedDueDateToToday,
+            transcript: "今日のレビューでおすすめを今日にリスケして token=voice-secret /Users/shutoide/Private",
+            on: referenceDate,
+            calendar: calendar
+        )
+
+        let itemID = "action-plan:daily-planning:2026-06-30:moveRecommendedDueDateToToday:task:\(task.id)"
+        XCTAssertTrue(queued)
+        let item = try assistantQueueStore.get(id: itemID)
+        XCTAssertEqual(item.state, .waitingReview)
+        XCTAssertEqual(item.reviewReason, "Daily Planning Review suggested moving Review launch notes due date to today.")
+        XCTAssertEqual(item.requiredCapabilities, [.tool(.taskUpdate), .providerExecutionApproval])
+        XCTAssertEqual(item.costPreview?.billingMode, .localOnly)
+        XCTAssertTrue(item.sourceTranscript?.contains("[REDACTED_SECRET]") ?? false)
+        XCTAssertTrue(item.sourceTranscript?.contains("[REDACTED_PATH]") ?? false)
+        XCTAssertFalse(item.sourceTranscript?.contains("voice-secret") ?? true)
+        XCTAssertFalse(item.sourceTranscript?.contains("/Users/shutoide") ?? true)
+        guard case .actionPlan(let plan) = item.payload else {
+            return XCTFail("Expected action plan payload")
+        }
+        let action = try XCTUnwrap(plan.actions.first)
+        XCTAssertTrue(plan.userInput.contains("[REDACTED_SECRET]"))
+        XCTAssertTrue(plan.userInput.contains("[REDACTED_PATH]"))
+        XCTAssertFalse(plan.userInput.contains("voice-secret"))
+        XCTAssertFalse(plan.userInput.contains("/Users/shutoide"))
+        XCTAssertEqual(action.tool, .taskUpdate)
+        XCTAssertEqual(action.arguments["dueAt"], .string("2026-06-30"))
+        let payloadJSON = try XCTUnwrap(bundle.connection.queryRows(
+            "SELECT payload_json FROM assistant_queue_items WHERE id = '\(itemID)' LIMIT 1;"
+        ).first?["payload_json"])
+        XCTAssertTrue(payloadJSON.contains("[REDACTED_SECRET]"))
+        XCTAssertTrue(payloadJSON.contains("[REDACTED_PATH]"))
+        XCTAssertFalse(payloadJSON.contains("voice-secret"))
+        XCTAssertFalse(payloadJSON.contains("/Users/shutoide"))
+        XCTAssertEqual(viewModel.snapshot.projects.first { $0.id == project.id }?.column(.planned)?.tasks.first?.dueAt, "2026-06-29")
+        XCTAssertTrue(try calendarClient.listEvents().isEmpty)
+    }
+
+    @MainActor
     func testDailyPlanningReviewDoesNotOverwriteExistingAssistantQueueItem() throws {
         var calendar = utcCalendar()
         calendar.firstWeekday = 2

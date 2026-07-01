@@ -3,6 +3,7 @@ import Foundation
 public enum DailyPlanningActionDraftKind: String, Codable, CaseIterable, Equatable, Sendable {
     case startRecommended
     case deferRecommendedToTomorrow
+    case moveRecommendedDueDateToToday
 }
 
 public struct DailyPlanningActionDraft: Equatable, Sendable {
@@ -42,6 +43,7 @@ public enum DailyPlanningActionDraftBuilder {
         let dateKey = Self.dateKey(for: referenceDate, calendar: calendar)
         let draftID = "daily-planning:\(dateKey):\(kind.rawValue):task:\(task.id)"
         let taskTitle = Self.redactedTaskTitle(task.title, redactor: redactor)
+        let sourceTranscript = Self.redactedSourceTranscript(review.sourceTranscript, redactor: redactor)
         let summary: String
         let queueReason: String
         let action: PlanAction
@@ -78,6 +80,18 @@ public enum DailyPlanningActionDraftBuilder {
                 ],
                 riskLevel: .write
             )
+        case .moveRecommendedDueDateToToday:
+            summary = "Move \(taskTitle) due date to \(dateKey) from Daily Planning Review."
+            queueReason = "Daily Planning Review suggested moving \(taskTitle) due date to today."
+            action = PlanAction(
+                id: "\(draftID):move-today",
+                tool: .taskUpdate,
+                arguments: [
+                    "id": .number(Double(task.id)),
+                    "dueAt": .string(dateKey)
+                ],
+                riskLevel: .write
+            )
         }
 
         return DailyPlanningActionDraft(
@@ -85,7 +99,7 @@ public enum DailyPlanningActionDraftBuilder {
             kind: kind,
             actionPlan: ActionPlan(
                 id: draftID,
-                userInput: redactor.redact(review.sourceTranscript).text,
+                userInput: sourceTranscript,
                 summary: summary,
                 actions: [action],
                 riskLevel: .write,
@@ -99,8 +113,19 @@ public enum DailyPlanningActionDraftBuilder {
         _ title: String,
         redactor: DeveloperSecretRedactor
     ) -> String {
-        let redactedTitle = redactor.redact(title).text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let secretRedacted = redactor.redact(title).text
+        let redactedTitle = LocalPathRedactor.redact(secretRedacted).trimmingCharacters(in: .whitespacesAndNewlines)
         return redactedTitle.isEmpty ? "recommended task" : redactedTitle
+    }
+
+    private static func redactedSourceTranscript(
+        _ sourceTranscript: String,
+        redactor: DeveloperSecretRedactor
+    ) -> String {
+        let secretRedacted = redactor.redact(sourceTranscript).text
+        // ActionPlan is persisted inside Assistant Queue payload JSON, so the
+        // same durable-audit redaction must run before the plan is built.
+        return LocalPathRedactor.redact(secretRedacted)
     }
 
     private static func tomorrow(from referenceDate: Date, calendar: Calendar) -> Date {

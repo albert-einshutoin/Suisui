@@ -66,6 +66,73 @@ final class DailyPlanningActionDraftTests: XCTestCase {
         assertOnlyLocalTaskTools(draft.actionPlan)
     }
 
+    func testBuildsMoveRecommendedDueDateToTodayDraftWithoutCalendarWrite() throws {
+        let calendar = fixedCalendar()
+        let referenceDate = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-06-30T09:10:00Z"))
+        let task = projectTask(
+            id: 44,
+            title: "Review launch notes",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-07-03"
+        )
+        let review = dailyReview(task: task, referenceDate: referenceDate, calendar: calendar)
+
+        let draft = try XCTUnwrap(DailyPlanningActionDraftBuilder.makeDraft(
+            kind: .moveRecommendedDueDateToToday,
+            review: review,
+            task: task,
+            referenceDate: referenceDate,
+            calendar: calendar
+        ))
+
+        XCTAssertEqual(draft.id, "daily-planning:2026-06-30:moveRecommendedDueDateToToday:task:44")
+        XCTAssertEqual(draft.queueReason, "Daily Planning Review suggested moving Review launch notes due date to today.")
+        XCTAssertEqual(draft.actionPlan.requiresApproval, true)
+        XCTAssertEqual(draft.actionPlan.riskLevel, .write)
+        XCTAssertTrue(ActionPlanValidator().validate(draft.actionPlan).isValid)
+        XCTAssertEqual(draft.actionPlan.actions.count, 1)
+        let action = try XCTUnwrap(draft.actionPlan.actions.first)
+        XCTAssertEqual(action.tool, .taskUpdate)
+        XCTAssertEqual(action.riskLevel, .write)
+        XCTAssertEqual(action.arguments["id"], .number(44))
+        XCTAssertEqual(action.arguments["dueAt"], .string("2026-06-30"))
+        assertOnlyLocalTaskTools(draft.actionPlan)
+    }
+
+    func testDailyPlanningDraftRedactsSecretsAndLocalPathsFromDurablePlanFields() throws {
+        let calendar = fixedCalendar()
+        let referenceDate = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-06-30T09:10:00Z"))
+        let task = projectTask(
+            id: 45,
+            title: "Review /Users/shutoide/Private token=task-secret",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-29"
+        )
+        var review = dailyReview(task: task, referenceDate: referenceDate, calendar: calendar)
+        review.sourceTranscript = "今日のレビュー token=voice-secret /Users/shutoide/Private"
+
+        let draft = try XCTUnwrap(DailyPlanningActionDraftBuilder.makeDraft(
+            kind: .moveRecommendedDueDateToToday,
+            review: review,
+            task: task,
+            referenceDate: referenceDate,
+            calendar: calendar
+        ))
+
+        XCTAssertTrue(draft.actionPlan.userInput.contains("[REDACTED_SECRET]"))
+        XCTAssertTrue(draft.actionPlan.userInput.contains("[REDACTED_PATH]"))
+        XCTAssertFalse(draft.actionPlan.userInput.contains("voice-secret"))
+        XCTAssertFalse(draft.actionPlan.userInput.contains("/Users/shutoide"))
+        XCTAssertTrue(draft.actionPlan.summary.contains("[REDACTED_PATH]"))
+        XCTAssertTrue(draft.queueReason.contains("[REDACTED_PATH]"))
+        XCTAssertFalse(draft.actionPlan.summary.contains("task-secret"))
+        XCTAssertFalse(draft.actionPlan.summary.contains("/Users/shutoide"))
+        XCTAssertFalse(draft.queueReason.contains("task-secret"))
+        XCTAssertFalse(draft.queueReason.contains("/Users/shutoide"))
+    }
+
     func testReturnsNilWhenReviewHasNoRecommendedTask() throws {
         let calendar = fixedCalendar()
         let referenceDate = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-06-30T09:10:00Z"))
