@@ -3133,12 +3133,12 @@ private struct TodayAssistantRail: View {
             .accessibilityHint("Prefills the Today command field for a local subtask draft.")
 
             Button {
-                commandTitle = String(format: String(localized: "Reminder for %@: "), task.title)
+                viewModel.enqueueTodayReminderDraft(for: task.id)
             } label: {
                 Label("Add Reminder Draft", systemImage: "bell.badge")
             }
             .accessibilityIdentifier("today-rail-reminder-draft")
-            .accessibilityHint("Prefills the Today command field; external reminder writes still require approval.")
+            .accessibilityHint("Queues a Reminders draft for approval before any external write.")
         }
         .buttonStyle(.bordered)
         .controlSize(.small)

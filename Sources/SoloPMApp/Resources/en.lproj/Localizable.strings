@@ -575,8 +575,8 @@
 "Subtask for %@: " = "Subtask for %@: ";
 "Prefills the Today command field for a local subtask draft." = "Prefills the Today command field for a local subtask draft.";
 "Add Reminder Draft" = "Add Reminder Draft";
-"Reminder for %@: " = "Reminder for %@: ";
-"Prefills the Today command field; external reminder writes still require approval." = "Prefills the Today command field; external reminder writes still require approval.";
+"Reminder for %@" = "Reminder for %@";
+"Queues a Reminders draft for approval before any external write." = "Queues a Reminders draft for approval before any external write.";
 "Review selected task" = "Review selected task";
 "You selected this Today task for review." = "You selected this Today task for review.";
 "Start recommended task" = "Start recommended task";
@@ -585,7 +585,14 @@
 "Add a Today command or schedule Inbox work to create a focus path." = "Add a Today command or schedule Inbox work to create a focus path.";
 "No notes yet." = "No notes yet.";
 "Subtask capture is staged through the Today command." = "Subtask capture is staged through the Today command.";
-"Reminder draft only; external writes require approval." = "Reminder draft only; external writes require approval.";
+"Reminder drafts queue for approval before external writes." = "Reminder drafts queue for approval before external writes.";
+"Today reminder draft" = "Today reminder draft";
+"Today reminder draft generated an invalid action plan." = "Today reminder draft generated an invalid action plan.";
+"Today reminder draft is already in Assistant Queue." = "Today reminder draft is already in Assistant Queue.";
+"Queued Today reminder draft for approval." = "Queued Today reminder draft for approval.";
+"Select an existing Today task before queuing a reminder." = "Select an existing Today task before queuing a reminder.";
+"Today assistant suggested a Reminders draft for 1 task." = "Today assistant suggested a Reminders draft for 1 task.";
+"Today assistant suggested Reminders drafts for %d tasks." = "Today assistant suggested Reminders drafts for %d tasks.";
 "Overdue %@" = "Overdue %@";
 "Due %@" = "Due %@";
 "Schedule Draft" = "Schedule Draft";
