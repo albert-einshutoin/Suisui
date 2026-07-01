@@ -42,6 +42,26 @@ RUNTIME_SMOKE_ARTIFACT_PATHS=(
   ".tmp/project-board-header-layout-smoke"
 )
 
+VOICE_MODEL_BINARY_PATTERNS=(
+  "*.gguf"
+  "*.ggml"
+  "*.onnx"
+  "*.safetensors"
+  "*.pt"
+  "*.pth"
+  "*.tflite"
+  "*.mlmodel"
+  "*.mlpackage"
+  "*.mlpackage/*"
+  "*ggml*.bin"
+  "*whisper*.bin"
+  "*model*.bin"
+  "models/*.bin"
+  "voice-models/*.bin"
+  "voice_models/*.bin"
+  "voicemodels/*.bin"
+)
+
 if [[ "${SOLOPM_SECURITY_SCAN_INCLUDE_TMP:-0}" == "1" ]]; then
   SCAN_PATHS+=(".tmp")
 fi
@@ -80,6 +100,28 @@ collect_files() {
   done
 }
 
+check_tracked_voice_model_binaries() {
+  local tracked_path
+  local lower_path
+  local failed=0
+
+  # Voice models must stay in the user cache. Restricting this guard to git
+  # tracked paths avoids blocking legitimate local downloads under .tmp or
+  # Application Support while still preventing accidental OSS model bundling.
+  while IFS= read -r -d '' tracked_path; do
+    lower_path="$(printf '%s' "$tracked_path" | tr '[:upper:]' '[:lower:]')"
+    for pattern in "${VOICE_MODEL_BINARY_PATTERNS[@]}"; do
+      if [[ "$lower_path" == $pattern ]]; then
+        printf 'BLOCKER: tracked voice model binary is not allowed: %s\n' "$tracked_path" >&2
+        failed=1
+        break
+      fi
+    done
+  done < <(git -C "$ROOT_DIR" ls-files -z)
+
+  return "$failed"
+}
+
 scan_pattern_group() {
   local label="$1"
   shift
@@ -100,16 +142,30 @@ scan_pattern_group() {
 }
 
 failure_count=0
+tracked_model_binary_failure=0
+secret_material_failure=0
+
+if ! check_tracked_voice_model_binaries; then
+  tracked_model_binary_failure=1
+  failure_count=$((failure_count + 1))
+fi
 if ! scan_pattern_group "secret-like token" "${TOKEN_PATTERNS[@]}"; then
+  secret_material_failure=1
   failure_count=$((failure_count + 1))
 fi
 if ! scan_pattern_group "raw secret assignment" "${RAW_SECRET_DENYLIST[@]}"; then
+  secret_material_failure=1
   failure_count=$((failure_count + 1))
 fi
 
 if [[ "$failure_count" -ne 0 ]]; then
-  echo "BLOCKER: security regression scan found secret-like material in fixture, screenshot metadata, release evidence, or packaging artifacts" >&2
+  if [[ "$tracked_model_binary_failure" -ne 0 ]]; then
+    echo "BLOCKER: security regression scan found tracked local voice model binaries" >&2
+  fi
+  if [[ "$secret_material_failure" -ne 0 ]]; then
+    echo "BLOCKER: security regression scan found secret-like material in fixture, screenshot metadata, release evidence, or packaging artifacts" >&2
+  fi
   exit 1
 fi
 
-printf 'OK: security regression scan passed for fixtures, screenshot metadata, release evidence, packaging, Keychain references, OAuth, MCP, NOTARY, and runtime smoke artifacts\n'
+printf 'OK: security regression scan passed for fixtures, screenshot metadata, release evidence, packaging, tracked voice model binaries, Keychain references, OAuth, MCP, NOTARY, and runtime smoke artifacts\n'

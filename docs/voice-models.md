@@ -12,6 +12,12 @@ Default cache root:
 
 Test and development fixtures should stay under `.tmp/`, which is already ignored by git. Do not commit downloaded model binaries, `.partial` files, generated model caches, or alternate local cache roots.
 
+## No-Bundle Guard
+
+`script/check_security_regressions.sh` blocks tracked local voice model binaries by checking `git ls-files` for model file extensions such as `.gguf`, `.ggml`, `.onnx`, `.safetensors`, `.pt`, `.pth`, `.tflite`, `.mlmodel`, and `.mlpackage`, plus model-named `.bin` files such as whisper.cpp `ggml-*.bin` artifacts.
+
+This guard intentionally checks only tracked files. Downloaded models, smoke-test artifacts, and developer fixtures can exist in `.tmp/` or the user cache without failing the release scan, but any model binary added to the repository or app bundle source tree must fail before PR merge.
+
 ## Phase 1 Catalog
 
 | Purpose | Engine | Model | Languages | Size | License | Source |
@@ -58,6 +64,17 @@ Local TTS now exposes a ready-gated Kokoro surface in Settings. The provider is 
 - Settings has an absolute, executable Kokoro runtime path.
 
 The first Kokoro provider slice is intentionally short-prompt only. It re-verifies the cached model before local synthesis and passes prompt text through a short-lived UTF-8 file instead of command-line arguments so task details are not exposed through process inspection. Settings Test Play uses fixed Japanese/English sample prompts, plays the generated WAV through the app's AVFoundation audio adapter, and removes the preview-owned output directory after playback. Long-form document read-aloud, bundled runtime packaging, and signed/notarized smoke evidence remain follow-up work.
+
+## Runtime Proof For Issue Closeout
+
+Issue closeout for local voice work needs runtime evidence in addition to source tests:
+
+- Model manager readiness: `script/check_security_regressions.sh` passes, no model binaries are tracked by `git ls-files`, Settings shows the model rows, and install/remove actions use the application support cache.
+- STT readiness: a checksum-verified `ggml-tiny.bin` is installed, Settings points to an absolute executable `whisper-cli`, and a Japanese or English sample WAV produces a transcript from the local provider.
+- TTS readiness: a checksum-verified `kokoro-v1_0.pth` is installed, Settings points to an absolute executable Kokoro runtime path, and Settings Test Play produces and plays a local WAV for Japanese and English prompts.
+- Packaging readiness: the signed app keeps model binaries out of the repository and app bundle, while runtime paths continue to resolve only to user-selected executables and cache files.
+
+Until those runtime checks are captured, source-only changes can close the no-bundled-model safety condition for the model manager, but they do not by themselves prove the whisper.cpp STT or Kokoro TTS providers are ready in a packaged app.
 
 ## Accessibility Boundary
 

@@ -8091,6 +8091,62 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(failing.output.contains("security regression scan found secret-like material"))
     }
 
+    func testSecurityRegressionScriptRejectsTrackedVoiceModelBinaries() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-security-regression-model-binary", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let modelsDirectory = fixtureRoot.appendingPathComponent("Models", isDirectory: true)
+        let copiedScriptURL = scriptDirectory.appendingPathComponent("check_security_regressions.sh")
+        let trackedModelURL = modelsDirectory.appendingPathComponent("ggml-test.bin")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        try readPackageFile("script/check_security_regressions.sh")
+            .write(to: copiedScriptURL, atomically: true, encoding: .utf8)
+        try """
+        /.tmp/
+        """.write(to: fixtureRoot.appendingPathComponent(".gitignore"), atomically: true, encoding: .utf8)
+        try Data([0x67, 0x67, 0x6d, 0x6c])
+            .write(to: trackedModelURL, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: copiedScriptURL.path)
+
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "init"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "config", "user.email", "security-tests@example.invalid"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "config", "user.name", "Security Tests"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "."]).exitCode, 0)
+
+        let result = try runTool(["bash", copiedScriptURL.path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("BLOCKER: tracked voice model binary is not allowed: Models/ggml-test.bin"))
+        XCTAssertTrue(result.output.contains("security regression scan found tracked local voice model binaries"))
+    }
+
+    func testVoiceModelDocsDefineNoBundleCloseoutAndRuntimeProof() throws {
+        let docs = try readPackageFile("docs/voice-models.md")
+        let script = try readPackageFile("script/check_security_regressions.sh")
+
+        XCTAssertTrue(script.contains("check_tracked_voice_model_binaries()"))
+        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" ls-files -z"))
+        XCTAssertTrue(script.contains("VOICE_MODEL_BINARY_PATTERNS=("))
+        for extensionPattern in ["*.gguf", "*.ggml", "*.onnx", "*.safetensors", "*.pt", "*.pth", "*.tflite", "*.mlmodel", "*.mlpackage", "*.mlpackage/*", "*ggml*.bin", "*whisper*.bin", "*model*.bin"] {
+            XCTAssertTrue(script.contains(extensionPattern), "Missing model binary guard pattern: \(extensionPattern)")
+        }
+        XCTAssertTrue(script.contains("tracked voice model binary is not allowed"))
+
+        XCTAssertTrue(docs.contains("No-Bundle Guard"))
+        XCTAssertTrue(docs.contains("script/check_security_regressions.sh"))
+        XCTAssertTrue(docs.contains("git ls-files"))
+        XCTAssertTrue(docs.contains("Runtime Proof For Issue Closeout"))
+        XCTAssertTrue(docs.contains("whisper-cli"))
+        XCTAssertTrue(docs.contains("Kokoro runtime path"))
+        XCTAssertTrue(docs.contains("Settings Test Play"))
+        XCTAssertTrue(docs.contains("they do not by themselves prove the whisper.cpp STT or Kokoro TTS providers are ready in a packaged app"))
+    }
+
     func testReleaseReadinessReportClassifiesUncheckedPhaseItems() throws {
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-release-readiness-phase-classification", isDirectory: true)
