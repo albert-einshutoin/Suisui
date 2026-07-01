@@ -174,6 +174,7 @@ launch_app_for_today() {
   terminate_app
   SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
     SOLOPM_DATABASE_PATH="$database_path" \
+    SOLOPM_LAUNCH_RECOVERY_MODE=1 \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="today" \
     "$APP_BINARY" &
   app_pid=$!

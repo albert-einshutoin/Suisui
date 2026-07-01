@@ -11,6 +11,7 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(script.contains("kill \"$osascript_pid\""))
         XCTAssertTrue(script.contains("tell application \\\"$APP_NAME\\\" to activate"))
         XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"))
+        XCTAssertTrue(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
         XCTAssertFalse(script.contains("/usr/bin/osascript -e \"tell application \\\"$APP_NAME\\\" to activate\" >/dev/null 2>&1 || true"))
     }
 
@@ -103,7 +104,7 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("performActionForItem(at: itemIndex)"))
         XCTAssertTrue(source.contains("visibleProjectBoardWindows"))
         XCTAssertTrue(source.contains("fallbackProjectBoardWindow"))
-        XCTAssertTrue(source.contains("rootView: ProjectBoardLaunchRecoveryView("))
+        XCTAssertTrue(source.contains("rootView: ProjectBoardFallbackRootView("))
         XCTAssertTrue(source.contains("viewModel: AppRuntimeFactory.makeProjectBoardViewModel()"))
         XCTAssertTrue(source.contains("makeKeyAndOrderFront(nil)"))
         XCTAssertTrue(source.contains("#selector(NSWindow.newWindowForTab(_:))"))
@@ -113,23 +114,55 @@ final class LaunchExperienceTests: XCTestCase {
     func testFallbackProjectBoardWindowUsesTodayLaunchRecoveryView() throws {
         let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
+        XCTAssertTrue(source.contains("private struct ProjectBoardFallbackRootView: View"))
+        XCTAssertTrue(source.contains("if SoloPMLaunchRecoveryEnvironment.isEnabled"))
+        XCTAssertTrue(source.contains("ProjectBoardView("))
         XCTAssertTrue(source.contains("private struct ProjectBoardLaunchRecoveryView: View"))
         XCTAssertTrue(source.contains("TodayWorkflowView(viewModel: viewModel, selectTodayTask: selectWorkflowTask)"))
         XCTAssertTrue(source.contains("InboxWorkflowView(viewModel: viewModel"))
         XCTAssertTrue(source.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION"))
         XCTAssertTrue(source.contains("ProjectBoardLaunchRecoveryDestination"))
+        XCTAssertTrue(source.contains("ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID"))
+        XCTAssertTrue(source.contains("viewModel.selectedTaskID = taskID"))
         XCTAssertTrue(source.contains("viewModel.load()"))
         XCTAssertTrue(source.contains("scheduleMissedTaskDailyFollowUp(settings: appSettings())"))
     }
 
     func testLaunchVerificationRecoveryUsesFallbackBeforeWindowGroupRetries() throws {
         let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let recoveryStart = try XCTUnwrap(source.range(of: "private enum SoloPMLaunchRecoveryEnvironment"))
+        let recoveryEnd = try XCTUnwrap(source.range(of: "private enum SoloPMWindowlessFallbackEnvironment"))
+        let recoveryBlock = String(source[recoveryStart.lowerBound..<recoveryEnd.lowerBound])
 
-        XCTAssertTrue(source.contains("private enum SoloPMLaunchRecoveryEnvironment"))
-        XCTAssertTrue(source.contains("environment[\"SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE\"] == \"1\""))
-        XCTAssertTrue(source.contains("environment[\"SOLOPM_DATABASE_PATH\"] != nil"))
+        XCTAssertTrue(recoveryBlock.contains("private enum SoloPMLaunchRecoveryEnvironment"))
+        XCTAssertTrue(recoveryBlock.contains("private static let flagName = \"SOLOPM_LAUNCH_RECOVERY_MODE\""))
+        XCTAssertTrue(recoveryBlock.contains("return environment[flagName] == \"1\""))
+        XCTAssertFalse(recoveryBlock.contains("environment[\"SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE\"] == \"1\""))
+        XCTAssertFalse(recoveryBlock.contains("environment[\"SOLOPM_DATABASE_PATH\"] != nil"))
         XCTAssertTrue(source.contains("if SoloPMLaunchRecoveryEnvironment.isEnabled"))
         XCTAssertTrue(source.contains("self.createFallbackProjectBoardWindow()"))
+    }
+
+    func testIsolatedDatabaseLaunchesUseFullBoardFallbackWithoutRecoveryMode() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(source.contains("private enum SoloPMWindowlessFallbackEnvironment"))
+        XCTAssertTrue(source.contains("static var shouldCreateDirectFallbackWindow: Bool"))
+        XCTAssertTrue(source.contains("return SoloPMLaunchRecoveryEnvironment.isEnabled\n            || environment[\"SOLOPM_DATABASE_PATH\"] != nil"))
+        XCTAssertTrue(source.contains("if SoloPMWindowlessFallbackEnvironment.shouldCreateDirectFallbackWindow"))
+        XCTAssertTrue(source.contains("taskAutomationSettings: AppRuntimeFactory.loadTaskAutoExecutionSettings"))
+    }
+
+    func testRuntimeWorkflowSmokesOptIntoLaunchRecoveryExplicitly() throws {
+        let todaySmoke = try readPackageFile("script/check_runtime_today_complete_smoke.sh")
+        let inboxSmoke = try readPackageFile("script/check_runtime_inbox_triage_smoke.sh")
+        let screenshotCapture = try readPackageFile("script/capture_ui_evidence.sh")
+
+        XCTAssertTrue(todaySmoke.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
+        XCTAssertTrue(inboxSmoke.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
+        XCTAssertTrue(screenshotCapture.contains("--p0-workflows"))
+        XCTAssertTrue(screenshotCapture.contains("if [[ \"$P0_WORKFLOWS\" == \"1\" ]]"))
+        XCTAssertTrue(screenshotCapture.contains("args+=(\"SOLOPM_LAUNCH_RECOVERY_MODE=1\")"))
     }
 
     func testLaunchVerificationWindowGroupUsesLaunchRecoveryView() throws {

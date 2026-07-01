@@ -107,13 +107,59 @@ struct SoloPM: App {
 }
 
 private enum SoloPMLaunchRecoveryEnvironment {
+    private static let flagName = "SOLOPM_LAUNCH_RECOVERY_MODE"
+
     static var isEnabled: Bool {
         let environment = ProcessInfo.processInfo.environment
-        // Runtime smoke launches the binary directly with an isolated database;
-        // on that path, forcing the toolbar-backed Project Board during early
-        // activation can enter AppKit layout before AX windows are available.
-        return environment["SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE"] == "1"
+        // Isolated databases and keychain-free runs are also used by visual
+        // evidence and CRUD smokes, so recovery is explicit. Only launch
+        // verification paths opt in when they need the lightweight workflow
+        // surface to avoid early AppKit toolbar layout before AX is ready.
+        return environment[flagName] == "1"
+    }
+}
+
+private enum SoloPMWindowlessFallbackEnvironment {
+    static var shouldCreateDirectFallbackWindow: Bool {
+        let environment = ProcessInfo.processInfo.environment
+        // Direct binary launches with an isolated SQLite path do not always
+        // get a SwiftUI WindowGroup quickly enough for AX/screenshot gates.
+        // They still need the full board unless launch recovery explicitly opts in.
+        return SoloPMLaunchRecoveryEnvironment.isEnabled
             || environment["SOLOPM_DATABASE_PATH"] != nil
+    }
+}
+
+private struct ProjectBoardFallbackRootView: View {
+    @StateObject private var viewModel: ProjectBoardViewModel
+    private let taskAutomationSettings: () -> TaskAutoExecutionSettings
+    private let appSettings: () -> AppSettings
+
+    init(
+        viewModel: ProjectBoardViewModel,
+        taskAutomationSettings: @escaping () -> TaskAutoExecutionSettings = { .default },
+        appSettings: @escaping () -> AppSettings = { .default }
+    ) {
+        _viewModel = StateObject(wrappedValue: viewModel)
+        self.taskAutomationSettings = taskAutomationSettings
+        self.appSettings = appSettings
+    }
+
+    var body: some View {
+        Group {
+            if SoloPMLaunchRecoveryEnvironment.isEnabled {
+                ProjectBoardLaunchRecoveryView(
+                    viewModel: viewModel,
+                    appSettings: appSettings
+                )
+            } else {
+                ProjectBoardView(
+                    viewModel: viewModel,
+                    taskAutomationSettings: taskAutomationSettings,
+                    appSettings: appSettings
+                )
+            }
+        }
     }
 }
 
@@ -154,11 +200,23 @@ private struct ProjectBoardLaunchRecoveryView: View {
 
     private func loadRuntimeState() {
         viewModel.load()
+        applySelectedTaskOverrideIfNeeded()
         _ = viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
     }
 
     private func selectWorkflowTask(_ task: ProjectBoardTask) {
         viewModel.selectedTaskID = task.id
+    }
+
+    private func applySelectedTaskOverrideIfNeeded() {
+        guard let taskID = ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID,
+              viewModel.snapshot.projects.flatMap(\.tasks).contains(where: { $0.id == taskID }) else {
+            return
+        }
+        // Recovery evidence does not render the broader Project Board
+        // inspector, so restore the selected task directly into the workflow
+        // rail. This keeps voice-detail screenshots deterministic.
+        viewModel.selectedTaskID = taskID
     }
 }
 
@@ -185,8 +243,9 @@ private final class SoloPMProjectBoardWindowFallback {
 
         // Debug app bundles can reach launch verification before SwiftUI's WindowGroup creates a window; keep a direct fallback so launch smoke tests prove a real board is visible.
         let hostingController = NSHostingController(
-            rootView: ProjectBoardLaunchRecoveryView(
+            rootView: ProjectBoardFallbackRootView(
                 viewModel: AppRuntimeFactory.makeProjectBoardViewModel(),
+                taskAutomationSettings: AppRuntimeFactory.loadTaskAutoExecutionSettings,
                 appSettings: AppRuntimeFactory.loadRuntimeAppSettings
             )
             .preferredColorScheme(Self.effectiveAppearancePreference.colorScheme)
@@ -277,7 +336,7 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
 
-            if SoloPMLaunchRecoveryEnvironment.isEnabled {
+            if SoloPMWindowlessFallbackEnvironment.shouldCreateDirectFallbackWindow {
                 self.createFallbackProjectBoardWindow()
                 return
             }
