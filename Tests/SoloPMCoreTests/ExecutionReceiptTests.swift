@@ -479,6 +479,93 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertFalse(displayedText.contains("gh pr create"))
     }
 
+    func testReviewExecutionReceiptRedactsRepositoryFileWriteContents() throws {
+        let privateSource = "func proprietaryBillingFormula() { let multiplier = 42 }"
+        var session = ReviewSession(
+            id: "review-development-file-write",
+            plan: ActionPlan(
+                id: "plan-development-file-write",
+                userInput: "Create and update a source file inside the approved project directory.",
+                summary: "Use scoped repository file tools before verification and commit.",
+                actions: [
+                    PlanAction(
+                        id: "action-create-file",
+                        tool: .developmentRepositoryCreateFile,
+                        arguments: [
+                            "projectId": .number(7),
+                            "relativePath": .string("Sources/Billing.swift"),
+                            "contents": .string(privateSource)
+                        ],
+                        riskLevel: .write
+                    ),
+                    PlanAction(
+                        id: "action-update-file",
+                        tool: .developmentRepositoryUpdateFile,
+                        arguments: [
+                            "projectId": .number(7),
+                            "relativePath": .string("Sources/Billing.swift"),
+                            "expectedSHA256": .string("sha256-old"),
+                            "contents": .string(privateSource + "\n// revised")
+                        ],
+                        riskLevel: .write
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+        )
+        try session.approve(token: ApprovalToken(id: "approval-development-file-write", sessionID: session.id))
+        session.executionStatus = .completed
+        session.markAction(
+            id: "action-create-file",
+            status: .succeeded,
+            result: ToolResult(
+                tool: .developmentRepositoryCreateFile,
+                status: .succeeded,
+                summary: "Created repository file Sources/Billing.swift",
+                output: [
+                    "projectId": .number(7),
+                    "relativePath": .string("Sources/Billing.swift"),
+                    "digest": .string("sha256-new"),
+                    "artifactId": .number(12)
+                ]
+            )
+        )
+        session.markAction(
+            id: "action-update-file",
+            status: .succeeded,
+            result: ToolResult(
+                tool: .developmentRepositoryUpdateFile,
+                status: .succeeded,
+                summary: "Updated repository file Sources/Billing.swift",
+                output: [
+                    "projectId": .number(7),
+                    "relativePath": .string("Sources/Billing.swift"),
+                    "digest": .string("sha256-revised"),
+                    "artifactId": .number(12)
+                ]
+            )
+        )
+
+        let receipt = ExecutionReceiptFactory.makeReviewReceipt(
+            session: session,
+            runID: "run-development-file-write",
+            model: nil,
+            usage: .unavailable,
+            startedAt: Date(timeIntervalSince1970: 40),
+            finishedAt: Date(timeIntervalSince1970: 41)
+        )
+        let actionInputs = receipt.actions.map(\.inputPreview).joined(separator: "\n")
+
+        XCTAssertTrue(actionInputs.contains("relativePath: Sources/Billing.swift"))
+        XCTAssertTrue(actionInputs.contains("contents: [REDACTED_REPOSITORY_FILE_CONTENT]"))
+        XCTAssertTrue(actionInputs.contains("contentBytes: 56"))
+        XCTAssertTrue(actionInputs.contains("expectedSHA256: sha256-old"))
+        XCTAssertFalse(actionInputs.contains("proprietaryBillingFormula"))
+        XCTAssertFalse(actionInputs.contains("multiplier"))
+        XCTAssertFalse(actionInputs.contains("revised"))
+    }
+
     func testDevelopmentPublishReceiptKeepsBranchAndPullRequestReferencesWithoutCommandLeakage() throws {
         let branchName = "feature/solopm-7-publish-gate"
         let baseBranch = "feature/phase14-product-completion"

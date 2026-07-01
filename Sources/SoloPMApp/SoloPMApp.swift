@@ -4728,6 +4728,60 @@ private enum AppRuntimeFactory {
                     ),
                     logger: auditLogger
                 ))
+                // Register only local, approval-gated development tools here. The broader
+                // developer-mode factory also exposes push and GitHub PR creation, which
+                // must stay outside the app ReviewSession runtime until those gates have
+                // separate product review and merge readiness checks.
+                try registry.register(AuditedTool(
+                    base: DevelopmentRepositoryFileTool(
+                        name: .developmentRepositoryListFiles,
+                        projectStore: projectStore,
+                        artifactStore: artifactStore,
+                        requireBookmark: true
+                    ),
+                    logger: auditLogger
+                ))
+                try registry.register(AuditedTool(
+                    base: DevelopmentRepositoryFileTool(
+                        name: .developmentRepositoryReadFile,
+                        projectStore: projectStore,
+                        artifactStore: artifactStore,
+                        requireBookmark: true
+                    ),
+                    logger: auditLogger
+                ))
+                try registry.register(AuditedTool(
+                    base: DevelopmentRepositoryFileTool(
+                        name: .developmentRepositoryCreateFile,
+                        projectStore: projectStore,
+                        artifactStore: artifactStore,
+                        requireBookmark: true
+                    ),
+                    logger: auditLogger
+                ))
+                try registry.register(AuditedTool(
+                    base: DevelopmentRepositoryFileTool(
+                        name: .developmentRepositoryUpdateFile,
+                        projectStore: projectStore,
+                        artifactStore: artifactStore,
+                        requireBookmark: true
+                    ),
+                    logger: auditLogger
+                ))
+                try registry.register(AuditedTool(
+                    base: DevelopmentVerificationCommandTool(
+                        projectStore: projectStore,
+                        requireBookmark: true
+                    ),
+                    logger: auditLogger
+                ))
+                try registry.register(AuditedTool(
+                    base: DevelopmentCommitWorkflowTool(
+                        projectStore: projectStore,
+                        requireBookmark: true
+                    ),
+                    logger: auditLogger
+                ))
                 let receiptStore = try makeExecutionReceiptStore()
                 return (auditLogger, receiptStore, registry, nil)
             } catch {

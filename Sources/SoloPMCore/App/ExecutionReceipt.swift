@@ -1572,6 +1572,8 @@ public enum ExecutionReceiptFactory {
         switch item.editedAction.tool {
         case .mailDraftCreateText:
             return redactor.redact(mailDraftActionInputPreview(arguments: item.editedAction.arguments))
+        case .developmentRepositoryCreateFile, .developmentRepositoryUpdateFile:
+            return redactor.redact(developmentRepositoryFileWriteInputPreview(arguments: item.editedAction.arguments))
         default:
             return redactor.redact(item.argumentDisplaySummary(maxFields: 12, maxValueLength: 300).fullText)
         }
@@ -1588,6 +1590,27 @@ public enum ExecutionReceiptFactory {
             "to: \(hasRecipient ? "[REDACTED_RECIPIENT]" : "none")",
             "body: [REDACTED_DRAFT_BODY]"
         ].joined(separator: ", ")
+    }
+
+    private static func developmentRepositoryFileWriteInputPreview(arguments: [String: JSONValue]) -> String {
+        var parts: [String] = []
+        if let projectID = arguments["projectId"]?.receiptIDValue {
+            parts.append("projectId: \(projectID)")
+        }
+        if let relativePath = arguments["relativePath"]?.receiptStringValue?.receiptPreview(maxLength: 300) {
+            parts.append("relativePath: \(relativePath)")
+        }
+        if let expectedSHA256 = arguments["expectedSHA256"]?.receiptStringValue?.receiptPreview(maxLength: 120) {
+            parts.append("expectedSHA256: \(expectedSHA256)")
+        }
+        if let contents = arguments["contents"]?.receiptStringValue {
+            parts.append("contentBytes: \(contents.utf8.count)")
+        }
+        // Repository writes can contain source code, customer content, or generated
+        // documents. Receipts should prove what was targeted without persisting the
+        // edited body; the resulting digest/artifact id is captured in tool output.
+        parts.append("contents: [REDACTED_REPOSITORY_FILE_CONTENT]")
+        return parts.joined(separator: ", ")
     }
 
     private static func actionOutputSummary(
