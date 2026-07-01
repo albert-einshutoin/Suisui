@@ -869,6 +869,58 @@ final class AssistantQueueStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelReportsReceiptPersistenceFailureAfterAssistantQueueExecution() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+        let receiptStore = FailingAssistantQueueExecutionReceiptStore()
+        let approved = try AssistantQueueStateMachine.approve(
+            makeItem(id: "queue-receipt-persistence-failure", state: .waitingReview, summary: "Create receipt failure task"),
+            reviewerID: "local-user"
+        )
+        try assistantQueueStore.save(approved)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created receipt failure task")
+            }
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: assistantQueueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-board-queue-receipt-failure" },
+            now: { Date(timeIntervalSince1970: 510) }
+        )
+        let viewModel = ProjectBoardViewModel(
+            store: boardStore,
+            assistantQueueStore: assistantQueueStore,
+            assistantQueueExecutionCoordinator: coordinator,
+            executionReceiptStore: receiptStore
+        )
+
+        viewModel.load()
+
+        XCTAssertFalse(viewModel.runAssistantQueueItem(id: approved.id))
+        let failed = try assistantQueueStore.get(id: approved.id)
+        XCTAssertEqual(failed.state, .failed)
+        XCTAssertEqual(
+            failed.blockingReason,
+            "Execution completed, but the execution receipt could not be saved. Fix receipt storage before retrying."
+        )
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Assistant Queue execution finished, but the execution receipt could not be saved. Fix receipt storage before retrying."
+        )
+        XCTAssertNil(viewModel.integrationStatusMessage)
+    }
+
+    @MainActor
     func testProjectBoardViewModelFocusesVoiceHandoffApprovedQueueItemDespiteStaleFilter() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
@@ -1063,5 +1115,32 @@ private struct FailingAssistantQueueStore: AssistantQueueStore {
         _ transform: (AssistantQueueItem) throws -> AssistantQueueItem
     ) throws -> AssistantQueueItem {
         throw error
+    }
+}
+
+private final class FailingAssistantQueueExecutionReceiptStore: ExecutionReceiptStore, @unchecked Sendable {
+    enum Error: Swift.Error, Equatable {
+        case saveFailed
+    }
+
+    func save(_ receipt: ExecutionReceipt) throws {
+        throw Error.saveFailed
+    }
+
+    func list(limit: Int) throws -> [ExecutionReceipt] {
+        []
+    }
+
+    func list(matching filter: ExecutionReceiptSearchFilter, limit: Int) throws -> [ExecutionReceipt] {
+        []
+    }
+
+    func list(
+        referenceKind: ExecutionReceiptReferenceKind,
+        referenceID: String,
+        visibleSurface: ExecutionReceiptSurface,
+        limit: Int
+    ) throws -> [ExecutionReceipt] {
+        []
     }
 }

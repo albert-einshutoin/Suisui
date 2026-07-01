@@ -3797,6 +3797,11 @@ public final class ProjectBoardViewModel: ObservableObject {
         switch error {
         case AssistantQueueExecutionError.unsupportedPayload:
             return "This Assistant Queue item cannot run from Project Board yet."
+        case AssistantQueueExecutionError.receiptPersistenceFailed(let queueStateMarkedFailed):
+            if queueStateMarkedFailed {
+                return "Assistant Queue execution finished, but the execution receipt could not be saved. Fix receipt storage before retrying."
+            }
+            return "Assistant Queue execution finished, but receipt storage and queue state update both failed. Check local data storage before retrying."
         case AssistantQueueTransitionError.approvalRequiredBeforeRunning:
             return "Approve this Assistant Queue item before running it."
         case AssistantQueueTransitionError.costPreviewRequiredBeforeApproval,

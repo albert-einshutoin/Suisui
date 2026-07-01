@@ -2,6 +2,7 @@ import Foundation
 
 public enum AssistantQueueExecutionError: Error, Equatable, Sendable {
     case unsupportedPayload
+    case receiptPersistenceFailed(queueStateMarkedFailed: Bool)
 }
 
 public struct AssistantQueueExecutionResult: Equatable, Sendable {
@@ -452,7 +453,11 @@ public struct AssistantQueueExecutionCoordinator {
                 startedAt: startedAt,
                 finishedAt: now()
             )
-            try executionReceiptStore.save(receipt)
+            try saveReceiptOrMarkQueueFailed(
+                receipt,
+                itemID: id,
+                executionStatus: failedSession.executionStatus
+            )
             _ = try queueStore.transition(id: id) { item in
                 try AssistantQueueStateMachine.markFailed(
                     item,
@@ -469,12 +474,44 @@ public struct AssistantQueueExecutionCoordinator {
             startedAt: startedAt,
             finishedAt: now()
         )
-        try executionReceiptStore.save(receipt)
+        try saveReceiptOrMarkQueueFailed(
+            receipt,
+            itemID: id,
+            executionStatus: executedSession.executionStatus
+        )
         let finalItem = try markFinalQueueState(
             id: id,
             status: executedSession.executionStatus
         )
         return AssistantQueueExecutionResult(item: finalItem, session: executedSession, receipt: receipt)
+    }
+
+    private func saveReceiptOrMarkQueueFailed(
+        _ receipt: ExecutionReceipt,
+        itemID: String,
+        executionStatus: ReviewExecutionStatus
+    ) throws {
+        do {
+            try executionReceiptStore.save(receipt)
+        } catch {
+            // A queue item must not stay running after tools have returned. If
+            // the durable receipt cannot be written, fail the item so retry
+            // starts from explicit human review instead of silently losing audit
+            // evidence or marking work done without a receipt.
+            var queueStateMarkedFailed = false
+            do {
+                _ = try queueStore.transition(id: itemID) { item in
+                    try AssistantQueueStateMachine.markFailed(
+                        item,
+                        reason: receiptPersistenceFailureReason(for: executionStatus)
+                    )
+                }
+                queueStateMarkedFailed = true
+            } catch {
+                queueStateMarkedFailed = false
+            }
+            throw AssistantQueueExecutionError.receiptPersistenceFailed(queueStateMarkedFailed: queueStateMarkedFailed)
+        }
     }
 
     private func markFinalQueueState(
@@ -519,5 +556,14 @@ public struct AssistantQueueExecutionCoordinator {
             startedAt: startedAt,
             finishedAt: finishedAt
         )
+    }
+
+    private func receiptPersistenceFailureReason(for status: ReviewExecutionStatus) -> String {
+        switch status {
+        case .completed:
+            return "Execution completed, but the execution receipt could not be saved. Fix receipt storage before retrying."
+        case .notStarted, .executing, .failed, .canceled:
+            return "Execution failed, and the execution receipt could not be saved. Fix receipt storage before retrying."
+        }
     }
 }
