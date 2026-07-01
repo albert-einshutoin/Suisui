@@ -236,6 +236,174 @@ final class GoogleCalendarAppRuntimeTests: XCTestCase {
         XCTAssertEqual(record.event.draft.title, "Due task")
     }
 
+    func testHTTPCalendarListClientListsWritableCalendarsWithOAuthToken() throws {
+        let httpClient = GoogleCalendarRecordingHTTPDataClient(
+            responseBody: """
+            {
+              "items": [
+                { "id": "primary", "summary": "Personal", "primary": true, "accessRole": "owner" },
+                { "id": "team@example.com", "summary": "Team Calendar", "accessRole": "writer" },
+                { "id": "read-only@example.com", "summary": "Read Only", "accessRole": "reader" },
+                { "id": "   ", "summary": "Blank", "accessRole": "writer" }
+              ]
+            }
+            """.data(using: .utf8)!,
+            statusCode: 200
+        )
+        let client = GoogleCalendarHTTPCalendarListClient(
+            tokenProvider: StaticGoogleCalendarBearerTokenProvider(token: "calendar-access-token"),
+            httpClient: httpClient,
+            configuration: GoogleCalendarHTTPConfiguration(baseURL: URL(string: "https://www.googleapis.com/calendar/v3")!)
+        )
+
+        let calendars = try client.listWritableCalendars()
+        let request = try XCTUnwrap(httpClient.requests.first)
+        let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
+        let query = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
+            item.value.map { (item.name, $0) }
+        })
+
+        XCTAssertEqual(calendars.map(\.id), ["primary", "team@example.com"])
+        XCTAssertEqual(calendars.map(\.summary), ["Personal", "Team Calendar"])
+        XCTAssertEqual(calendars.map(\.isPrimary), [true, false])
+        XCTAssertEqual(components.path, "/calendar/v3/users/me/calendarList")
+        XCTAssertEqual(query["maxResults"], "250")
+        XCTAssertEqual(query["minAccessRole"], "writer")
+        XCTAssertEqual(query["showDeleted"], "false")
+        XCTAssertEqual(query["showHidden"], "false")
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer calendar-access-token")
+        XCTAssertFalse(request.url?.absoluteString.contains("calendar-access-token") ?? true)
+    }
+
+    func testHTTPCalendarListClientRequiresCalendarListScopeBeforeNetwork() throws {
+        let secretStore = InMemorySecretStore()
+        let connection = try migratedConnection()
+        let metadataStore = SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        try GoogleCalendarOAuthCredentialStore(secretStore: secretStore, metadataStore: metadataStore).saveTokens(
+            accessToken: "calendar-access-token",
+            refreshToken: nil,
+            grantedScopes: [GoogleCalendarRuntimeOAuthScope.eventsWrite],
+            expiresAt: Date(timeIntervalSince1970: 5_000)
+        )
+        let httpClient = GoogleCalendarRecordingHTTPDataClient(responseBody: Data(), statusCode: 200)
+        let client = GoogleCalendarHTTPCalendarListClient(
+            tokenProvider: GoogleCalendarOAuthBearerTokenProvider(
+                credentialStore: GoogleCalendarOAuthCredentialStore(secretStore: secretStore, metadataStore: metadataStore),
+                requiredScopes: [GoogleCalendarRuntimeOAuthScope.calendarListReadOnly]
+            ),
+            httpClient: httpClient
+        )
+
+        XCTAssertThrowsError(try client.listWritableCalendars()) { error in
+            XCTAssertEqual(
+                error as? GoogleCalendarRuntimeError,
+                .missingRequiredScope(GoogleCalendarRuntimeOAuthScope.calendarListReadOnly)
+            )
+        }
+        XCTAssertTrue(httpClient.requests.isEmpty)
+    }
+
+    func testHTTPCalendarListClientFollowsPageTokens() throws {
+        let httpClient = GoogleCalendarRecordingHTTPDataClient(responses: [
+            (
+                """
+                {
+                  "nextPageToken": "page-2",
+                  "items": [
+                    { "id": "primary", "summary": "Personal", "primary": true, "accessRole": "owner" }
+                  ]
+                }
+                """.data(using: .utf8)!,
+                200
+            ),
+            (
+                """
+                {
+                  "items": [
+                    { "id": "team@example.com", "summary": "Team Calendar", "accessRole": "writer" }
+                  ]
+                }
+                """.data(using: .utf8)!,
+                200
+            )
+        ])
+        let client = GoogleCalendarHTTPCalendarListClient(
+            tokenProvider: StaticGoogleCalendarBearerTokenProvider(token: "calendar-access-token"),
+            httpClient: httpClient
+        )
+
+        let calendars = try client.listWritableCalendars()
+        let secondRequest = try XCTUnwrap(httpClient.requests.dropFirst().first)
+        let secondQuery = Dictionary(uniqueKeysWithValues: (URLComponents(
+            url: try XCTUnwrap(secondRequest.url),
+            resolvingAgainstBaseURL: false
+        )?.queryItems ?? []).compactMap { item in
+            item.value.map { (item.name, $0) }
+        })
+
+        XCTAssertEqual(calendars.map(\.id), ["primary", "team@example.com"])
+        XCTAssertEqual(httpClient.requests.count, 2)
+        XCTAssertEqual(secondQuery["pageToken"], "page-2")
+        XCTAssertFalse(secondRequest.url?.absoluteString.contains("calendar-access-token") ?? true)
+    }
+
+    func testHTTPCalendarListClientRejectsRepeatedPageToken() throws {
+        let httpClient = GoogleCalendarRecordingHTTPDataClient(responses: [
+            (
+                #"{"nextPageToken":"repeat","items":[]}"#.data(using: .utf8)!,
+                200
+            ),
+            (
+                #"{"nextPageToken":"repeat","items":[]}"#.data(using: .utf8)!,
+                200
+            )
+        ])
+        let client = GoogleCalendarHTTPCalendarListClient(
+            tokenProvider: StaticGoogleCalendarBearerTokenProvider(token: "calendar-access-token"),
+            httpClient: httpClient
+        )
+
+        XCTAssertThrowsError(try client.listWritableCalendars()) { error in
+            XCTAssertEqual(
+                error as? GoogleCalendarRuntimeError,
+                .apiFailure("Google Calendar calendarList.list returned a repeated page token.")
+            )
+        }
+    }
+
+    func testHTTPCalendarListClientRejectsHTTPAndDecodeFailuresWithoutLeakingBodies() throws {
+        let failedClient = GoogleCalendarHTTPCalendarListClient(
+            tokenProvider: StaticGoogleCalendarBearerTokenProvider(token: "calendar-access-token"),
+            httpClient: GoogleCalendarRecordingHTTPDataClient(
+                responseBody: #"{"error":"calendar-access-token"}"#.data(using: .utf8)!,
+                statusCode: 403
+            )
+        )
+        XCTAssertThrowsError(try failedClient.listWritableCalendars()) { error in
+            XCTAssertEqual(
+                error as? GoogleCalendarRuntimeError,
+                .apiFailure("Google Calendar calendarList.list failed with HTTP 403.")
+            )
+            XCTAssertFalse(String(describing: error).contains("calendar-access-token"))
+        }
+
+        let malformedClient = GoogleCalendarHTTPCalendarListClient(
+            tokenProvider: StaticGoogleCalendarBearerTokenProvider(token: "calendar-access-token"),
+            httpClient: GoogleCalendarRecordingHTTPDataClient(
+                responseBody: #"{"items":"not-a-list"}"#.data(using: .utf8)!,
+                statusCode: 200
+            )
+        )
+        XCTAssertThrowsError(try malformedClient.listWritableCalendars()) { error in
+            XCTAssertEqual(
+                error as? GoogleCalendarRuntimeError,
+                .apiFailure("Google Calendar calendar list response could not be decoded.")
+            )
+            XCTAssertFalse(String(describing: error).contains("calendar-access-token"))
+        }
+    }
+
     func testAppRuntimeFactoryReportsOAuthDisconnectedBeforeTokensAndReadyAfterTokens() throws {
         let secretStore = InMemorySecretStore()
         let connection = try migratedConnection()
@@ -352,7 +520,13 @@ final class GoogleCalendarAppRuntimeTests: XCTestCase {
         XCTAssertEqual(query["response_type"], "code")
         XCTAssertEqual(query["code_challenge_method"], "S256")
         XCTAssertEqual(query["code_challenge"], request.codeChallenge)
-        XCTAssertEqual(query["scope"], GoogleCalendarRuntimeOAuthScope.eventsWrite)
+        XCTAssertEqual(
+            Set((query["scope"] ?? "").split(separator: " ").map(String.init)),
+            [
+                GoogleCalendarRuntimeOAuthScope.eventsWrite,
+                GoogleCalendarRuntimeOAuthScope.calendarListReadOnly
+            ]
+        )
         XCTAssertEqual(query["access_type"], "offline")
         XCTAssertEqual(query["prompt"], "consent")
         XCTAssertNil(query["client_secret"])
@@ -409,7 +583,7 @@ final class GoogleCalendarAppRuntimeTests: XCTestCase {
               "access_token": "calendar-access-token",
               "refresh_token": "calendar-refresh-token",
               "expires_in": 3600,
-              "scope": "\(GoogleCalendarRuntimeOAuthScope.eventsWrite)",
+              "scope": "\(GoogleCalendarRuntimeOAuthScope.eventsWrite) \(GoogleCalendarRuntimeOAuthScope.calendarListReadOnly)",
               "token_type": "Bearer"
             }
             """.data(using: .utf8)!,
@@ -448,7 +622,10 @@ final class GoogleCalendarAppRuntimeTests: XCTestCase {
         XCTAssertTrue(body.contains("redirect_uri=solopm%3A%2F%2Foauth%2Fgoogle-calendar"))
         XCTAssertTrue(body.contains("code_verifier=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"))
         XCTAssertFalse(body.contains("client_secret"))
-        XCTAssertEqual(metadata.grantedScopes, [GoogleCalendarRuntimeOAuthScope.eventsWrite])
+        XCTAssertEqual(metadata.grantedScopes, [
+            GoogleCalendarRuntimeOAuthScope.eventsWrite,
+            GoogleCalendarRuntimeOAuthScope.calendarListReadOnly
+        ])
         XCTAssertEqual(metadata.expiresAt, Date(timeIntervalSince1970: 7_600))
         XCTAssertEqual(try secretStore.read(GoogleCalendarOAuthCredentialStore.accessTokenKey), "calendar-access-token")
         XCTAssertEqual(try secretStore.read(GoogleCalendarOAuthCredentialStore.refreshTokenKey), "calendar-refresh-token")
@@ -592,7 +769,10 @@ final class GoogleCalendarAppRuntimeTests: XCTestCase {
         ) { error in
             XCTAssertEqual(
                 error as? GoogleCalendarOAuthAuthorizationError,
-                .missingRequiredScope(GoogleCalendarRuntimeOAuthScope.eventsWrite)
+                .missingRequiredScope([
+                    GoogleCalendarRuntimeOAuthScope.calendarListReadOnly,
+                    GoogleCalendarRuntimeOAuthScope.eventsWrite
+                ].sorted().joined(separator: ","))
             )
         }
         XCTAssertNil(try metadataStore.loadMetadata())
@@ -673,13 +853,15 @@ private struct StaticGoogleCalendarBearerTokenProvider: GoogleCalendarBearerToke
 
 private final class GoogleCalendarRecordingHTTPDataClient: SynchronousHTTPDataClient, @unchecked Sendable {
     private let lock = NSLock()
-    private let responseBody: Data
-    private let statusCode: Int
+    private let responses: [(body: Data, statusCode: Int)]
     private var recordedRequests: [URLRequest] = []
 
     init(responseBody: Data, statusCode: Int) {
-        self.responseBody = responseBody
-        self.statusCode = statusCode
+        self.responses = [(responseBody, statusCode)]
+    }
+
+    init(responses: [(Data, Int)]) {
+        self.responses = responses.map { (body: $0.0, statusCode: $0.1) }
     }
 
     var requests: [URLRequest] {
@@ -690,15 +872,17 @@ private final class GoogleCalendarRecordingHTTPDataClient: SynchronousHTTPDataCl
 
     func data(for request: URLRequest) throws -> (Data, HTTPURLResponse) {
         lock.lock()
+        let responseIndex = recordedRequests.count
         recordedRequests.append(request)
+        let response = responses[min(responseIndex, responses.count - 1)]
         lock.unlock()
-        let response = HTTPURLResponse(
+        let httpResponse = HTTPURLResponse(
             url: request.url ?? URL(string: "https://www.googleapis.com")!,
-            statusCode: statusCode,
+            statusCode: response.statusCode,
             httpVersion: nil,
             headerFields: nil
         )!
-        return (responseBody, response)
+        return (response.body, httpResponse)
     }
 }
 
