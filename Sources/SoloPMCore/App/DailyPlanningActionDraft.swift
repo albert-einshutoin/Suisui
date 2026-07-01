@@ -4,6 +4,7 @@ public enum DailyPlanningActionDraftKind: String, Codable, CaseIterable, Equatab
     case startRecommended
     case deferRecommendedToTomorrow
     case moveRecommendedDueDateToToday
+    case splitRecommendedTask
 }
 
 public struct DailyPlanningActionDraft: Equatable, Sendable {
@@ -39,14 +40,14 @@ public enum DailyPlanningActionDraftBuilder {
             return nil
         }
 
-        let redactor = DeveloperSecretRedactor()
+        let redactor = ExecutionReceiptRedactor()
         let dateKey = Self.dateKey(for: referenceDate, calendar: calendar)
         let draftID = "daily-planning:\(dateKey):\(kind.rawValue):task:\(task.id)"
         let taskTitle = Self.redactedTaskTitle(task.title, redactor: redactor)
         let sourceTranscript = Self.redactedSourceTranscript(review.sourceTranscript, redactor: redactor)
         let summary: String
         let queueReason: String
-        let action: PlanAction
+        let actions: [PlanAction]
 
         // Daily planning is allowed to recommend writes, but the recommendation
         // must stay reviewable so the Today cockpit never mutates tasks or
@@ -55,7 +56,7 @@ public enum DailyPlanningActionDraftBuilder {
         case .startRecommended:
             summary = "Start \(taskTitle) from Daily Planning Review."
             queueReason = "Daily Planning Review suggested starting \(taskTitle)."
-            action = PlanAction(
+            actions = [PlanAction(
                 id: "\(draftID):start",
                 tool: .taskUpdate,
                 arguments: [
@@ -63,7 +64,7 @@ public enum DailyPlanningActionDraftBuilder {
                     "status": .string(ProjectTaskStatus.inProgress.rawValue)
                 ],
                 riskLevel: .write
-            )
+            )]
         case .deferRecommendedToTomorrow:
             let tomorrowKey = Self.dateKey(
                 for: Self.tomorrow(from: referenceDate, calendar: calendar),
@@ -71,7 +72,7 @@ public enum DailyPlanningActionDraftBuilder {
             )
             summary = "Defer \(taskTitle) to \(tomorrowKey) from Daily Planning Review."
             queueReason = "Daily Planning Review suggested deferring \(taskTitle) to tomorrow."
-            action = PlanAction(
+            actions = [PlanAction(
                 id: "\(draftID):defer",
                 tool: .taskUpdate,
                 arguments: [
@@ -79,11 +80,11 @@ public enum DailyPlanningActionDraftBuilder {
                     "dueAt": .string(tomorrowKey)
                 ],
                 riskLevel: .write
-            )
+            )]
         case .moveRecommendedDueDateToToday:
             summary = "Move \(taskTitle) due date to \(dateKey) from Daily Planning Review."
             queueReason = "Daily Planning Review suggested moving \(taskTitle) due date to today."
-            action = PlanAction(
+            actions = [PlanAction(
                 id: "\(draftID):move-today",
                 tool: .taskUpdate,
                 arguments: [
@@ -91,6 +92,14 @@ public enum DailyPlanningActionDraftBuilder {
                     "dueAt": .string(dateKey)
                 ],
                 riskLevel: .write
+            )]
+        case .splitRecommendedTask:
+            summary = "Split \(taskTitle) into reviewable follow-up tasks from Daily Planning Review."
+            queueReason = "Daily Planning Review suggested splitting \(taskTitle) into reviewable follow-up tasks."
+            actions = Self.splitTaskCreateActions(
+                draftID: draftID,
+                task: task,
+                taskTitle: taskTitle
             )
         }
 
@@ -101,7 +110,7 @@ public enum DailyPlanningActionDraftBuilder {
                 id: draftID,
                 userInput: sourceTranscript,
                 summary: summary,
-                actions: [action],
+                actions: actions,
                 riskLevel: .write,
                 requiresApproval: true
             ),
@@ -111,21 +120,61 @@ public enum DailyPlanningActionDraftBuilder {
 
     private static func redactedTaskTitle(
         _ title: String,
-        redactor: DeveloperSecretRedactor
+        redactor: ExecutionReceiptRedactor
     ) -> String {
-        let secretRedacted = redactor.redact(title).text
-        let redactedTitle = LocalPathRedactor.redact(secretRedacted).trimmingCharacters(in: .whitespacesAndNewlines)
+        let redactedTitle = redactor.redact(title).trimmingCharacters(in: .whitespacesAndNewlines)
         return redactedTitle.isEmpty ? "recommended task" : redactedTitle
     }
 
     private static func redactedSourceTranscript(
         _ sourceTranscript: String,
-        redactor: DeveloperSecretRedactor
+        redactor: ExecutionReceiptRedactor
     ) -> String {
-        let secretRedacted = redactor.redact(sourceTranscript).text
         // ActionPlan is persisted inside Assistant Queue payload JSON, so the
         // same durable-audit redaction must run before the plan is built.
-        return LocalPathRedactor.redact(secretRedacted)
+        return redactor.redact(sourceTranscript)
+    }
+
+    private static func splitTaskCreateActions(
+        draftID: String,
+        task: ProjectBoardTask,
+        taskTitle: String
+    ) -> [PlanAction] {
+        [
+            splitTaskCreateAction(
+                id: "\(draftID):split-1",
+                title: "\(taskTitle) - Define next slice",
+                task: task
+            ),
+            splitTaskCreateAction(
+                id: "\(draftID):split-2",
+                title: "\(taskTitle) - Complete remaining work",
+                task: task
+            )
+        ]
+    }
+
+    private static func splitTaskCreateAction(
+        id: String,
+        title: String,
+        task: ProjectBoardTask
+    ) -> PlanAction {
+        var arguments: [String: JSONValue] = [
+            "title": .string(title),
+            "projectId": .number(Double(task.projectID)),
+            "priority": .string(task.priority.rawValue),
+            "sourceCommand": .string("Daily Planning Review split from task \(task.id)"),
+            "detail": .string("Reviewable follow-up task generated from Daily Planning Review. Original task ID: \(task.id).")
+        ]
+        if let dueAt = task.dueAt?.trimmingCharacters(in: .whitespacesAndNewlines), dueAt.isEmpty == false {
+            arguments["dueAt"] = .string(dueAt)
+        }
+        return PlanAction(
+            id: id,
+            tool: .taskCreate,
+            arguments: arguments,
+            riskLevel: .write
+        )
     }
 
     private static func tomorrow(from referenceDate: Date, calendar: Calendar) -> Date {

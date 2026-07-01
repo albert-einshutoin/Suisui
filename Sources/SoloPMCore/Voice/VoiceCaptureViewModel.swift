@@ -543,8 +543,25 @@ public final class VoiceCaptureViewModel: ObservableObject {
             ],
             in: folded
         )
+        let requestsSplit = containsAnyExplicitPhrase(
+            [
+                "split recommended",
+                "split recommended task",
+                "split the recommended task",
+                "break down recommended",
+                "break down recommended task",
+                "break down the recommended task",
+                "おすすめを分割",
+                "おすすめを分け",
+                "おすすめを細分化",
+                "推奨タスクを分割",
+                "推奨タスクを分け",
+                "推奨タスクを細分化"
+            ],
+            in: folded
+        )
         let rejectsAction = containsAny(
-            ["do not", "don't", "dont", "not start", "not defer", "not reschedule", "cancel", "しない", "始めない", "開始しない", "延期しない", "リスケしない", "やめ"],
+            ["do not", "don't", "dont", "not start", "not defer", "not reschedule", "not split", "cancel", "しない", "始めない", "開始しない", "延期しない", "リスケしない", "分割しない", "分けない", "やめ"],
             in: folded
         )
         let asksForAdvice = containsAnyExplicitPhrase(
@@ -561,7 +578,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         let requestedKinds = [
             (requestsStart, DailyPlanningActionDraftKind.startRecommended),
             (requestsDefer, DailyPlanningActionDraftKind.deferRecommendedToTomorrow),
-            (requestsReschedule, DailyPlanningActionDraftKind.moveRecommendedDueDateToToday)
+            (requestsReschedule, DailyPlanningActionDraftKind.moveRecommendedDueDateToToday),
+            (requestsSplit, DailyPlanningActionDraftKind.splitRecommendedTask)
         ].compactMap { isRequested, kind in
             isRequested ? kind : nil
         }

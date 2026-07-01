@@ -952,6 +952,7 @@
 "Daily progress" = "Daily progress";
 "Draft Defer" = "Draft Defer";
 "Draft Move to Today" = "Draft Move to Today";
+"Draft Split" = "Draft Split";
 "Draft Start" = "Draft Start";
 "Inbox Triage" = "Inbox Triage";
 "Inbox captures are shown separately until moved into a project." = "Inbox captures are shown separately until moved into a project.";
@@ -961,6 +962,7 @@
 "No scheduled tasks for this day." = "No scheduled tasks for this day.";
 "Open Today Review" = "Open Today Review";
 "Opening a local Today review. No provider, Calendar, Reminder, connector, or file write is run." = "Opening a local Today review. No provider, Calendar, Reminder, connector, or file write is run.";
+"Creates an Assistant Queue approval item; no tasks are created until approval." = "Creates an Assistant Queue approval item; no tasks are created until approval.";
 "Agenda" = "Agenda";
 "All day" = "All day";
 "Due task" = "Due task";
@@ -982,6 +984,8 @@
 "Queue a tomorrow due-date update for review." = "Queue a tomorrow due-date update for review.";
 "Queue a today due-date update for review without creating a Calendar event." = "Queue a today due-date update for review without creating a Calendar event.";
 "Queue a move-to-today draft for approval" = "Queue a move-to-today draft for approval";
+"Queue a split-task draft for approval" = "Queue a split-task draft for approval";
+"Queue reviewable follow-up task drafts without changing the original task." = "Queue reviewable follow-up task drafts without changing the original task.";
 "Queue the recommended task status update for review." = "Queue the recommended task status update for review.";
 "Selected Day" = "Selected Day";
 "Selected workload day detail" = "Selected workload day detail";

@@ -867,11 +867,77 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.phase, .reviewReady)
     }
 
+    func testDailyPlanningReviewSplitCommandCreatesActionDraftRequestWithoutProviderCall() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-should-not-run",
+                userInput: "今日のレビューでおすすめを分割して",
+                summary: "Should not call provider",
+                actions: [PlanAction(id: "action-1", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("今日のレビューでおすすめを分割して")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertEqual(viewModel.routingResult?.intent, .dailyPlanningReview)
+        XCTAssertEqual(provider.requests.count, 0)
+        XCTAssertNil(viewModel.planningResponse)
+        XCTAssertNil(viewModel.assistantQueueItem)
+        XCTAssertEqual(viewModel.dailyPlanningReviewRequest?.sourceTranscript, "今日のレビューでおすすめを分割して")
+        XCTAssertEqual(viewModel.dailyPlanningReviewRequest?.requestedActionDraftKind, .splitRecommendedTask)
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+    }
+
+    func testDailyPlanningReviewEnglishSplitCommandCreatesActionDraftRequestWithoutProviderCall() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-should-not-run",
+                userInput: "Open Today Review and split the recommended task",
+                summary: "Should not call provider",
+                actions: [PlanAction(id: "action-1", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("Open Today Review and split the recommended task")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertEqual(viewModel.routingResult?.intent, .dailyPlanningReview)
+        XCTAssertEqual(provider.requests.count, 0)
+        XCTAssertNil(viewModel.planningResponse)
+        XCTAssertNil(viewModel.assistantQueueItem)
+        XCTAssertEqual(viewModel.dailyPlanningReviewRequest?.requestedActionDraftKind, .splitRecommendedTask)
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+    }
+
     func testDailyPlanningReviewAmbiguousMoveToTodayPhrasesStayReviewOnly() async {
         for transcript in [
             "Today review should I reschedule the recommended task to today?",
             "Open Today Review but do not reschedule the recommended task to today",
-            "Open Today Review and start the recommended task, then move the recommended task to today"
+            "Open Today Review and start the recommended task, then move the recommended task to today",
+            "Today review should I split the recommended task?",
+            "Open Today Review but do not split the recommended task",
+            "Open Today Review and split the recommended task, then move the recommended task to today"
         ] {
             let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
                 providerID: "fake",
