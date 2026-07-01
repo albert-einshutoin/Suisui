@@ -76,12 +76,50 @@ public struct ProjectBoardSnapshot: Equatable, Sendable {
     public static let empty = ProjectBoardSnapshot(projects: [])
 }
 
+public struct ProjectDevelopmentAutomationReadiness: Equatable, Sendable {
+    public var projectID: Int64
+    public var taskID: Int64?
+    public var isReady: Bool
+    public var statusLabel: String
+    public var blockingReason: String?
+    public var workspaceDisplayName: String?
+    public var branchNamePreview: String?
+    public var allowedFileOperations: [String]
+    public var reviewSteps: [String]
+    public var toolName: String
+
+    public init(
+        projectID: Int64,
+        taskID: Int64?,
+        isReady: Bool,
+        statusLabel: String,
+        blockingReason: String?,
+        workspaceDisplayName: String?,
+        branchNamePreview: String?,
+        allowedFileOperations: [String],
+        reviewSteps: [String],
+        toolName: String
+    ) {
+        self.projectID = projectID
+        self.taskID = taskID
+        self.isReady = isReady
+        self.statusLabel = statusLabel
+        self.blockingReason = blockingReason
+        self.workspaceDisplayName = workspaceDisplayName
+        self.branchNamePreview = branchNamePreview
+        self.allowedFileOperations = allowedFileOperations
+        self.reviewSteps = reviewSteps
+        self.toolName = toolName
+    }
+}
+
 public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
     public var id: Int64
     public var title: String
     public var status: String
     public var subtitle: String
     public var hasWorkspaceDirectory: Bool
+    public var hasWorkspaceBookmark: Bool
     public var workspaceDisplayName: String?
     public var columns: [ProjectBoardColumn]
     public var artifacts: [ProjectBoardArtifact]
@@ -93,6 +131,7 @@ public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
         status: String = "active",
         subtitle: String,
         hasWorkspaceDirectory: Bool = false,
+        hasWorkspaceBookmark: Bool = false,
         workspaceDisplayName: String? = nil,
         columns: [ProjectBoardColumn],
         artifacts: [ProjectBoardArtifact] = [],
@@ -103,6 +142,7 @@ public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
         self.status = status
         self.subtitle = subtitle
         self.hasWorkspaceDirectory = hasWorkspaceDirectory
+        self.hasWorkspaceBookmark = hasWorkspaceBookmark
         self.workspaceDisplayName = workspaceDisplayName
         self.columns = columns
         self.artifacts = artifacts
@@ -1190,6 +1230,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             status: project.status,
             subtitle: subtitle,
             hasWorkspaceDirectory: project.workspacePath != nil,
+            hasWorkspaceBookmark: project.workspaceBookmarkData?.isEmpty == false,
             workspaceDisplayName: workspaceDisplayName(for: project.workspacePath),
             columns: columns,
             artifacts: projectArtifacts,
@@ -1321,6 +1362,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var googleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus
     @Published public private(set) var projectAssistantAnswer: ProjectAssistantAnswer?
     @Published public private(set) var projectAssistantReviewDraft: ProjectAssistantReviewDraft?
+    @Published public private(set) var developmentAutomationReviewPlan: ActionPlan?
     @Published public private(set) var taskAutomationReviewDecision: TaskAutoExecutionDecision?
     @Published public private(set) var taskAutomationDocumentDeliverableReviews: [TaskAutomationDocumentDeliverableReview]
     @Published public private(set) var lastApprovedAutomationExecutionReceipt: ApprovedAutomationExecutionReceipt?
@@ -1398,6 +1440,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.googleCalendarSyncStatus = .runtimeNotConfigured
         self.projectAssistantAnswer = nil
         self.projectAssistantReviewDraft = nil
+        self.developmentAutomationReviewPlan = nil
         self.taskAutomationReviewDecision = nil
         self.taskAutomationDocumentDeliverableReviews = []
         self.lastApprovedAutomationExecutionReceipt = nil
@@ -1431,10 +1474,168 @@ public final class ProjectBoardViewModel: ObservableObject {
         return task(id: selectedTaskID)
     }
 
+    public func developmentAutomationReadiness(
+        for project: ProjectBoardProject,
+        task: ProjectBoardTask?
+    ) -> ProjectDevelopmentAutomationReadiness {
+        let allowedFileOperations = Self.developmentAutomationAllowedFileOperations
+        let reviewSteps = Self.developmentAutomationReviewSteps
+        let toolName = "development.pr_workflow.prepare"
+
+        func blocked(_ reason: String) -> ProjectDevelopmentAutomationReadiness {
+            ProjectDevelopmentAutomationReadiness(
+                projectID: project.id,
+                taskID: task?.id,
+                isReady: false,
+                statusLabel: "Needs setup",
+                blockingReason: reason,
+                workspaceDisplayName: project.workspaceDisplayName,
+                branchNamePreview: nil,
+                allowedFileOperations: allowedFileOperations,
+                reviewSteps: reviewSteps,
+                toolName: toolName
+            )
+        }
+
+        guard !project.isArchived, !project.isCompleted else {
+            return blocked("Restore the project before starting development automation.")
+        }
+
+        guard project.hasWorkspaceDirectory else {
+            return blocked("Choose a project directory before starting development automation.")
+        }
+        guard project.hasWorkspaceBookmark else {
+            return blocked("Choose the project directory again before starting branch automation.")
+        }
+
+        guard let task,
+              task.projectID == project.id,
+              task.status != .done,
+              task.status != .blocked else {
+            return blocked("Select an open development task before starting branch automation.")
+        }
+
+        let projectRecord = Self.developmentAutomationProjectRecord(from: project)
+        let taskRecord = Self.developmentAutomationTaskRecord(from: task)
+
+        // This preview deliberately reuses the write workflow's branch policy while avoiding
+        // any git side effects; branch creation, push, PR creation, review, and merge stay approval-gated.
+        let branchNamePreview = DevelopmentBranchNamePolicy.deterministicBranchName(
+            project: projectRecord,
+            task: taskRecord
+        )
+
+        return ProjectDevelopmentAutomationReadiness(
+            projectID: project.id,
+            taskID: task.id,
+            isReady: true,
+            statusLabel: "Ready for approval review",
+            blockingReason: nil,
+            workspaceDisplayName: project.workspaceDisplayName,
+            branchNamePreview: branchNamePreview,
+            allowedFileOperations: allowedFileOperations,
+            reviewSteps: reviewSteps,
+            toolName: toolName
+        )
+    }
+
+    @discardableResult
+    public func prepareDevelopmentAutomationReview(
+        for project: ProjectBoardProject,
+        task: ProjectBoardTask?
+    ) -> ActionPlan? {
+        let readiness = developmentAutomationReadiness(for: project, task: task)
+        guard readiness.isReady,
+              let task,
+              let branchName = readiness.branchNamePreview else {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = readiness.blockingReason
+            integrationStatusMessage = nil
+            return nil
+        }
+
+        let plan = ActionPlan(
+            id: "development-pr-prepare:\(project.id):\(task.id):\(Self.developmentAutomationPlanDigest(projectID: project.id, taskID: task.id, branchName: branchName))",
+            userInput: "Prepare a reviewable development branch for \(task.title).",
+            summary: "Prepare reviewable branch \(branchName) for \(task.title).",
+            actions: [
+                PlanAction(
+                    id: "development-pr-prepare",
+                    tool: .developmentPreparePullRequestWorkflow,
+                    arguments: [
+                        "projectId": .number(Double(project.id)),
+                        "taskId": .number(Double(task.id)),
+                        "branchName": .string(branchName)
+                    ],
+                    riskLevel: .write,
+                    requiresUserConfirmation: true
+                )
+            ],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+        // Store only the review plan, not an execution result. The actual git
+        // branch operation remains behind ReviewSession approval and runtime
+        // workspace validation so a stale bookmark cannot mutate the repo from this panel.
+        developmentAutomationReviewPlan = plan
+        integrationStatusMessage = "Development branch automation is ready for review."
+        todayCommandFeedback = nil
+        errorMessage = nil
+        return plan
+    }
+
+    public func clearDevelopmentAutomationReviewPlan() {
+        developmentAutomationReviewPlan = nil
+    }
+
     private func task(id: Int64) -> ProjectBoardTask? {
         snapshot.projects
             .flatMap(\.tasks)
             .first { $0.id == id }
+    }
+
+    private static let developmentAutomationAllowedFileOperations = ["create", "read", "update"]
+
+    private static let developmentAutomationReviewSteps = [
+        "Create a reviewable local branch inside the approved project directory.",
+        "Use project-scoped create/read/update file operations; delete is not available.",
+        "ReviewSession validates the saved project directory again before branch creation.",
+        "Run verification before commit, push, or pull request creation.",
+        "Require explicit approval before git push and GitHub pull request creation.",
+        "Use review and merge gates before marking the pull request complete."
+    ]
+
+    private static func developmentAutomationProjectRecord(from project: ProjectBoardProject) -> ProjectRecord {
+        ProjectRecord(
+            id: project.id,
+            title: project.title,
+            status: project.status
+        )
+    }
+
+    private static func developmentAutomationTaskRecord(from task: ProjectBoardTask) -> TaskRecord {
+        TaskRecord(
+            id: task.id,
+            projectID: task.projectID,
+            title: task.title,
+            status: task.status.rawValue,
+            dueAt: task.dueAt,
+            completedAt: task.completedAt,
+            priority: task.priority.rawValue,
+            sourceCommand: nil,
+            detail: task.detail,
+            updatedAt: task.updatedAt
+        )
+    }
+
+    private static func developmentAutomationPlanDigest(
+        projectID: Int64,
+        taskID: Int64,
+        branchName: String
+    ) -> String {
+        let input = "\(projectID):\(taskID):\(branchName)"
+        let digest = SHA256.hash(data: Data(input.utf8))
+        return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 
     public var canSyncGoogleCalendar: Bool {

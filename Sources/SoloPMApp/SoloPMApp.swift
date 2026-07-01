@@ -48,7 +48,8 @@ struct SoloPM: App {
                     ProjectBoardView(
                         viewModel: AppRuntimeFactory.makeProjectBoardViewModel(),
                         taskAutomationSettings: { settingsViewModel.settings.taskAutoExecution },
-                        appSettings: { settingsViewModel.settings }
+                        appSettings: { settingsViewModel.settings },
+                        developmentAutomationReviewSession: AppRuntimeFactory.makeReviewSessionViewModel
                     )
                 }
             }
@@ -158,7 +159,8 @@ private struct ProjectBoardFallbackRootView: View {
                 ProjectBoardView(
                     viewModel: viewModel,
                     taskAutomationSettings: taskAutomationSettings,
-                    appSettings: appSettings
+                    appSettings: appSettings,
+                    developmentAutomationReviewSession: AppRuntimeFactory.makeReviewSessionViewModel
                 )
             }
         }
@@ -1312,7 +1314,7 @@ private struct VoiceIntentPreview: View {
     }
 }
 
-private struct ActionReviewPanel: View {
+struct ActionReviewPanel: View {
     @StateObject private var viewModel: ReviewSessionViewModel
     private let onExecutionFinished: () -> Void
 
@@ -4700,9 +4702,12 @@ private enum AppRuntimeFactory {
             do {
                 let auditLogger = try makeAuditLogger()
                 let connection = try migratedConnection()
+                let projectStore = SQLiteProjectStore(connection: connection)
+                let taskStore = SQLiteTaskStore(connection: connection)
+                let artifactStore = SQLiteArtifactStore(connection: connection)
                 let registry = try ToolRegistry.phase2MVP(
-                    projectStore: SQLiteProjectStore(connection: connection),
-                    taskStore: SQLiteTaskStore(connection: connection),
+                    projectStore: projectStore,
+                    taskStore: taskStore,
                     knowledgeStore: SQLiteKnowledgeFrameStore(connection: connection),
                     notificationClient: UserNotificationsNotificationClient(),
                     calendarClient: EventKitCalendarClient(),
@@ -4712,9 +4717,17 @@ private enum AppRuntimeFactory {
                     notificationRequestStore: SQLiteNotificationRequestStore(connection: connection),
                     calendarLinkStore: SQLiteCalendarLinkStore(connection: connection),
                     reminderLinkStore: SQLiteReminderLinkStore(connection: connection),
-                    artifactStore: SQLiteArtifactStore(connection: connection),
+                    artifactStore: artifactStore,
                     auditLogger: auditLogger
                 )
+                try registry.register(AuditedTool(
+                    base: DevelopmentPRWorkflowTool(
+                        projectStore: projectStore,
+                        taskStore: taskStore,
+                        requireBookmark: true
+                    ),
+                    logger: auditLogger
+                ))
                 let receiptStore = try makeExecutionReceiptStore()
                 return (auditLogger, receiptStore, registry, nil)
             } catch {
