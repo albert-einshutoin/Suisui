@@ -31,6 +31,7 @@ KEEP_HOME="${SOLOPM_UI_EVIDENCE_KEEP_HOME:-0}"
 DRY_RUN=0
 DOCTOR=0
 P0_WORKFLOWS=0
+SCHEDULE_WORKLOAD=0
 PROJECT_BOARD_SELECTION_OVERRIDE=""
 PROJECT_BOARD_SELECTED_TASK_OVERRIDE=""
 PROJECT_BOARD_TARGET_MARKERS=""
@@ -53,15 +54,18 @@ for arg in "$@"; do
     --p0-workflows)
       P0_WORKFLOWS=1
       ;;
+    --schedule-workload)
+      SCHEDULE_WORKLOAD=1
+      ;;
     *)
-      echo "usage: $0 [--dry-run|--doctor|--p0-workflows]" >&2
+      echo "usage: $0 [--dry-run|--doctor|--p0-workflows|--schedule-workload]" >&2
       exit 2
       ;;
   esac
 done
 
-if [[ $((DRY_RUN + DOCTOR + P0_WORKFLOWS)) -gt 1 ]]; then
-  echo "usage: $0 [--dry-run|--doctor|--p0-workflows]" >&2
+if [[ $((DRY_RUN + DOCTOR + P0_WORKFLOWS + SCHEDULE_WORKLOAD)) -gt 1 ]]; then
+  echo "usage: $0 [--dry-run|--doctor|--p0-workflows|--schedule-workload]" >&2
   exit 2
 fi
 
@@ -945,9 +949,9 @@ write_evidence_file() {
     printf -- '- Viewport contract: `SOLOPM_VISUAL_BASELINE_VIEWPORT=%s`, `SOLOPM_SETTINGS_VISUAL_BASELINE_VIEWPORT=%s`\n' "$VISUAL_BASELINE_VIEWPORT" "$SETTINGS_VISUAL_BASELINE_VIEWPORT"
     printf '%s\n' '- Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`'
     printf '%s\n' '- Seed data: local `Launch Readiness` project with planned, in-progress, blocked, Inbox voice, Schedule, Done analytics, milestone, completed project, and deterministic MCP registration rows'
-    printf '%s\n' '- Scope: Project board sidebar, task cards, Inbox voice detail, Today cockpit, Projects overview, Schedule cockpit, Done analytics, Settings integrations, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System'
+    printf '%s\n' '- Scope: Project board sidebar, task cards, Inbox voice detail, Today cockpit, Projects overview, Schedule cockpit, Schedule workload dashboard, Done analytics, Settings integrations, Settings Appearance Theme picker, and Settings MCP server list across Light/Dark/System'
     printf '%s\n' '- Capture contract: Light/Dark/System visual baseline manifest fixes product screen targets, viewport, semantic tolerances, and AX frame audit requirements.'
-    printf '%s\n' '- Manual review: passed for Project Board sidebar/cards/inspector, Inbox voice detail, Today cockpit, Projects overview, Schedule cockpit, Done analytics, Settings integrations, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast'
+    printf '%s\n' '- Manual review: passed for Project Board sidebar/cards/inspector, Inbox voice detail, Today cockpit, Projects overview, Schedule cockpit, Schedule workload dashboard, Done analytics, Settings integrations, Settings Appearance Theme picker, Settings MCP server rows, and Light/Dark/System contrast'
     printf '\n'
     printf '%s\n' '## Screenshots'
     printf '\n'
@@ -966,6 +970,8 @@ write_evidence_file() {
     printf -- '- Projects Overview Dark: `%s`\n' "$(relative_path "$projects_dark_path")"
     printf -- '- Schedule Light: `%s`\n' "$(relative_path "$schedule_light_path")"
     printf -- '- Schedule Dark: `%s`\n' "$(relative_path "$schedule_dark_path")"
+    printf -- '- Schedule Workload Light: `%s`\n' "$(relative_path "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT")"
+    printf -- '- Schedule Workload Dark: `%s`\n' "$(relative_path "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT")"
     printf -- '- Done Light: `%s`\n' "$(relative_path "$done_light_path")"
     printf -- '- Done Dark: `%s`\n' "$(relative_path "$done_dark_path")"
     printf -- '- Settings Integrations Light: `%s`\n' "$(relative_path "$settings_integrations_light_path")"
@@ -994,6 +1000,8 @@ write_evidence_file() {
     printf -- '- Voice Command Light: `%s`\n' "$(relative_path "$VOICE_COMMAND_LIGHT_SCREENSHOT")"
     printf -- '- Voice Command Dark: `%s`\n' "$(relative_path "$VOICE_COMMAND_DARK_SCREENSHOT")"
     printf -- '- Voice Command System: `%s`\n' "$(relative_path "$VOICE_COMMAND_SYSTEM_SCREENSHOT")"
+    printf -- '- Schedule Workload Light: `%s`\n' "$(relative_path "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT")"
+    printf -- '- Schedule Workload Dark: `%s`\n' "$(relative_path "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT")"
     printf '\n'
     printf '%s\n' '## Notes'
     printf '\n'
@@ -1054,6 +1062,38 @@ write_p0_workflow_evidence_file() {
     printf '%s\n' '- The app runs with `SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1`, an isolated HOME, and a seeded SQLite database.'
     printf '%s\n' '- The P0 workflow capture uses `SOLOPM_LAUNCH_RECOVERY_MODE=1` so evidence targets Today and Inbox workflow rails directly.'
   } >"$ROOT_DIR/docs/release/evidence/p0-workflow-screenshots.md"
+}
+
+write_schedule_workload_evidence_file() {
+  local generated_at="$1"
+  local schedule_workload_light_path="$2"
+  local schedule_workload_dark_path="$3"
+  local source_commit
+  source_commit="$(ui_evidence_source_commit)"
+
+  {
+    printf '%s\n' '# Schedule Workload Screenshot Evidence'
+    printf '\n'
+    printf '%s\n' 'Generated with `script/capture_ui_evidence.sh --schedule-workload`.'
+    printf '%s\n' 'This targeted evidence covers the issue #1 calendar workload dashboard without rewriting the full release screenshot set.'
+    printf '\n'
+    printf -- '- Generated at: `%s`\n' "$generated_at"
+    printf -- '- Source commit: `%s`\n' "$source_commit"
+    printf -- '- Screen Recording preflight: `script/capture_ui_evidence.sh --doctor`\n'
+    printf -- '- Target markers: `schedule-workflow`, `schedule-workload-dashboard`, `schedule-workload-attention-banner`, `schedule-workload-day-detail`\n'
+    printf '\n'
+    printf '%s\n' '## Schedule Workload'
+    printf '\n'
+    printf -- '- Light: `%s`\n' "$(relative_path "$schedule_workload_light_path")"
+    printf -- '- Dark: `%s`\n' "$(relative_path "$schedule_workload_dark_path")"
+    printf '\n'
+    printf '%s\n' '## Guardrails'
+    printf '\n'
+    printf '%s\n' '- The dashboard is seeded from local ProjectBoard tasks in an isolated SQLite database.'
+    printf '%s\n' '- Opening the workload dashboard does not enqueue or execute external Calendar writes.'
+    printf '%s\n' '- API keys, provider tokens, OAuth tokens, calendar contents, and customer file contents are not captured.'
+    printf '%s\n' '- The app runs with `SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1`, an isolated HOME, and a seeded SQLite database.'
+  } >"$ROOT_DIR/docs/release/evidence/schedule-workload-screenshots.md"
 }
 
 write_visual_baseline_capture_manifest() {
@@ -1182,6 +1222,8 @@ PROJECTS_OVERVIEW_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/projects-overview-light.png"
 PROJECTS_OVERVIEW_DARK_SCREENSHOT="$SCREENSHOT_DIR/projects-overview-dark.png"
 SCHEDULE_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/schedule-light.png"
 SCHEDULE_DARK_SCREENSHOT="$SCREENSHOT_DIR/schedule-dark.png"
+SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/schedule-workload-light.png"
+SCHEDULE_WORKLOAD_DARK_SCREENSHOT="$SCREENSHOT_DIR/schedule-workload-dark.png"
 DONE_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/done-light.png"
 DONE_DARK_SCREENSHOT="$SCREENSHOT_DIR/done-dark.png"
 SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-integrations-light.png"
@@ -1194,6 +1236,7 @@ P0_TODAY_TARGET_MARKERS="today-workflow=>Today|today-briefing-panel=>Today|today
 P0_INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-make-task=>Inbox classification actions"
 PROJECTS_TARGET_MARKERS="sidebar-destination-projects=>Projects|projects-portfolio-overview=>Projects"
 SCHEDULE_TARGET_MARKERS="sidebar-destination-schedule=>Schedule|schedule-workflow=>Schedule"
+SCHEDULE_WORKLOAD_TARGET_MARKERS="sidebar-destination-schedule=>Schedule|schedule-workflow=>Schedule|schedule-workload-dashboard=>schedule-workload-dashboard|schedule-workload-attention-banner=>schedule-workload-attention-banner|schedule-workload-day-detail=>schedule-workload-day-detail"
 DONE_TARGET_MARKERS="sidebar-destination-done=>Done|done-workflow=>Done"
 VOICE_COMMAND_TARGET_MARKERS="voice-command-root=>Voice Command|voice-command-input=>Voice Command"
 
@@ -1216,6 +1259,19 @@ if [[ "$P0_WORKFLOWS" == "1" ]]; then
   exit 0
 fi
 
+if [[ "$SCHEDULE_WORKLOAD" == "1" ]]; then
+  capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS"
+  capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS"
+
+  GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  write_schedule_workload_evidence_file "$GENERATED_AT" "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT"
+
+  echo "Schedule workload screenshot evidence generated:"
+  echo "evidence: $ROOT_DIR/docs/release/evidence/schedule-workload-screenshots.md"
+  echo "screenshots: $SCREENSHOT_DIR"
+  exit 0
+fi
+
 capture_project_board_destination light "$PROJECT_BOARD_SELECTION_OVERRIDE" "$LIGHT_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS"
 capture_project_board_destination dark "$PROJECT_BOARD_SELECTION_OVERRIDE" "$DARK_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS"
 capture_project_board_destination system "$PROJECT_BOARD_SELECTION_OVERRIDE" "$SYSTEM_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS"
@@ -1234,6 +1290,8 @@ capture_project_board_destination light projects "$PROJECTS_OVERVIEW_LIGHT_SCREE
 capture_project_board_destination dark projects "$PROJECTS_OVERVIEW_DARK_SCREENSHOT" "Projects overview" "$PROJECTS_TARGET_MARKERS"
 capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS"
 capture_project_board_destination dark schedule "$SCHEDULE_DARK_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_TARGET_MARKERS"
+capture_project_board_destination light schedule "$SCHEDULE_WORKLOAD_LIGHT_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS"
+capture_project_board_destination dark schedule "$SCHEDULE_WORKLOAD_DARK_SCREENSHOT" "Schedule workload dashboard" "$SCHEDULE_WORKLOAD_TARGET_MARKERS"
 capture_project_board_destination light done "$DONE_LIGHT_SCREENSHOT" "Done analytics" "$DONE_TARGET_MARKERS"
 capture_project_board_destination dark done "$DONE_DARK_SCREENSHOT" "Done analytics" "$DONE_TARGET_MARKERS"
 capture_settings_overview light "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT"

@@ -102,6 +102,20 @@
       }
     },
     {
+      "id": "schedule-workload",
+      "title": "Schedule Workload",
+      "themes": ["light", "dark"],
+      "viewport": {
+        "width": 1560,
+        "height": 860
+      },
+      "axFrameAudit": true,
+      "artifacts": {
+        "light": "schedule-workload-light.png",
+        "dark": "schedule-workload-dark.png"
+      }
+    },
+    {
       "id": "done",
       "title": "Done",
       "themes": ["light", "dark"],
