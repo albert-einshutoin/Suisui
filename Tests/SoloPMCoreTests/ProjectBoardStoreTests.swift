@@ -232,21 +232,25 @@ final class ProjectBoardStoreTests: XCTestCase {
         )
 
         XCTAssertTrue(assigned.hasWorkspaceDirectory)
+        XCTAssertTrue(assigned.hasWorkspaceBookmark)
         XCTAssertEqual(assigned.workspaceDisplayName, "solopm-launch")
         XCTAssertEqual(try stores.projects.get(id: project.id).workspacePath, "/tmp/solopm-launch")
         XCTAssertEqual(try stores.projects.get(id: project.id).workspaceBookmarkData, bookmarkData)
         let loadedProject = try XCTUnwrap(stores.board.loadSnapshot().projects.first { $0.id == project.id })
         XCTAssertTrue(loadedProject.hasWorkspaceDirectory)
+        XCTAssertTrue(loadedProject.hasWorkspaceBookmark)
         XCTAssertEqual(loadedProject.workspaceDisplayName, "solopm-launch")
         XCTAssertNotEqual(loadedProject.workspaceDisplayName, "/tmp/solopm-launch")
 
         let cleared = try stores.board.setProjectWorkspacePath(id: project.id, path: nil)
 
         XCTAssertFalse(cleared.hasWorkspaceDirectory)
+        XCTAssertFalse(cleared.hasWorkspaceBookmark)
         XCTAssertNil(cleared.workspaceDisplayName)
         XCTAssertNil(try stores.projects.get(id: project.id).workspacePath)
         XCTAssertNil(try stores.projects.get(id: project.id).workspaceBookmarkData)
         XCTAssertFalse(try XCTUnwrap(stores.board.loadSnapshot().projects.first { $0.id == project.id }).hasWorkspaceDirectory)
+        XCTAssertFalse(try XCTUnwrap(stores.board.loadSnapshot().projects.first { $0.id == project.id }).hasWorkspaceBookmark)
     }
 
     @MainActor
@@ -264,6 +268,7 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         let loadedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
         XCTAssertTrue(loadedProject.hasWorkspaceDirectory)
+        XCTAssertTrue(loadedProject.hasWorkspaceBookmark)
         XCTAssertEqual(loadedProject.workspaceDisplayName, "solopm-launch")
         XCTAssertNotEqual(loadedProject.workspaceDisplayName, "/tmp/solopm-launch")
         XCTAssertEqual(loadedProject.tasks.map(\.id), [task.id])
@@ -904,6 +909,155 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(changeCount, 1)
         XCTAssertEqual(viewModel.selectedTask?.status, .inProgress)
         XCTAssertNil(viewModel.taskAutomationReviewDecision)
+    }
+
+    @MainActor
+    func testDevelopmentAutomationReadinessRequiresProjectWorkspaceAndOpenTask() throws {
+        let stores = try makeStoreBundle()
+        let viewModel = ProjectBoardViewModel(store: stores.board)
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Client Portal"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Implement OAuth callback",
+            projectID: project.id,
+            status: .planned,
+            priority: .high
+        ))
+
+        var readiness = viewModel.developmentAutomationReadiness(for: project, task: task)
+
+        XCTAssertFalse(readiness.isReady)
+        XCTAssertEqual(readiness.blockingReason, "Choose a project directory before starting development automation.")
+        XCTAssertNil(readiness.branchNamePreview)
+        XCTAssertEqual(readiness.allowedFileOperations, ["create", "read", "update"])
+        XCTAssertFalse(readiness.allowedFileOperations.contains("delete"))
+
+        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
+            "/tmp/client-portal",
+            bookmarkData: Data([1, 2, 3]),
+            projectID: project.id
+        ))
+        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+
+        readiness = viewModel.developmentAutomationReadiness(for: assignedProject, task: currentTask)
+
+        XCTAssertTrue(readiness.isReady)
+        XCTAssertNil(readiness.blockingReason)
+        XCTAssertEqual(readiness.branchNamePreview, "feature/solopm-\(project.id)-\(task.id)-implement-oauth-callback")
+        XCTAssertTrue(readiness.reviewSteps.contains("Create a reviewable local branch inside the approved project directory."))
+        XCTAssertTrue(readiness.reviewSteps.contains("Run verification before commit, push, or pull request creation."))
+        XCTAssertTrue(readiness.reviewSteps.contains("Require explicit approval before git push and GitHub pull request creation."))
+    }
+
+    @MainActor
+    func testDevelopmentAutomationReadinessRequiresBookmarkBackedWorkspace() throws {
+        let stores = try makeStoreBundle()
+        let viewModel = ProjectBoardViewModel(store: stores.board)
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Legacy Workspace"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Prepare branch",
+            projectID: project.id,
+            status: .planned,
+            priority: .medium
+        ))
+        _ = try stores.projects.updateFields(id: project.id, workspacePath: .set("/tmp/legacy-workspace"))
+        viewModel.load()
+        let pathOnlyProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+
+        let readiness = viewModel.developmentAutomationReadiness(for: pathOnlyProject, task: currentTask)
+
+        XCTAssertTrue(pathOnlyProject.hasWorkspaceDirectory)
+        XCTAssertFalse(pathOnlyProject.hasWorkspaceBookmark)
+        XCTAssertFalse(readiness.isReady)
+        XCTAssertEqual(readiness.blockingReason, "Choose the project directory again before starting branch automation.")
+        XCTAssertNil(viewModel.prepareDevelopmentAutomationReview(for: pathOnlyProject, task: currentTask))
+    }
+
+    @MainActor
+    func testDevelopmentAutomationReviewPlanUsesApprovalGatedPrepareWorkflow() throws {
+        let stores = try makeStoreBundle()
+        let viewModel = ProjectBoardViewModel(store: stores.board)
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Client Portal"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Implement OAuth callback",
+            projectID: project.id,
+            status: .planned,
+            priority: .high
+        ))
+        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
+            "/tmp/client-portal",
+            bookmarkData: Data([1, 2, 3]),
+            projectID: project.id
+        ))
+        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+
+        let plan = try XCTUnwrap(viewModel.prepareDevelopmentAutomationReview(for: assignedProject, task: currentTask))
+        let action = try XCTUnwrap(plan.actions.first)
+
+        XCTAssertEqual(viewModel.developmentAutomationReviewPlan, plan)
+        XCTAssertEqual(plan.riskLevel, .write)
+        XCTAssertTrue(plan.requiresApproval)
+        XCTAssertEqual(action.tool, .developmentPreparePullRequestWorkflow)
+        XCTAssertTrue(action.requiresUserConfirmation)
+        XCTAssertEqual(action.arguments["projectId"], .number(Double(project.id)))
+        XCTAssertEqual(action.arguments["taskId"], .number(Double(task.id)))
+        XCTAssertEqual(action.arguments["branchName"], .string("feature/solopm-\(project.id)-\(task.id)-implement-oauth-callback"))
+        XCTAssertFalse(plan.actions.contains { $0.tool.rawValue.localizedCaseInsensitiveContains("delete") })
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Development branch automation is ready for review.")
+    }
+
+    @MainActor
+    func testDevelopmentAutomationReadinessBlocksArchivedCompletedAndClosedTaskStates() throws {
+        let stores = try makeStoreBundle()
+        let viewModel = ProjectBoardViewModel(store: stores.board)
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Readonly Project"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Draft implementation",
+            projectID: project.id,
+            status: .planned,
+            priority: .medium
+        ))
+        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
+            "/tmp/readonly-project",
+            bookmarkData: Data([4, 5, 6]),
+            projectID: project.id
+        ))
+        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        viewModel.selectedTaskID = task.id
+        viewModel.moveSelectedTask(to: .blocked)
+        let blockedTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+
+        let blockedReadiness = viewModel.developmentAutomationReadiness(for: assignedProject, task: blockedTask)
+
+        XCTAssertFalse(blockedReadiness.isReady)
+        XCTAssertEqual(blockedReadiness.blockingReason, "Select an open development task before starting branch automation.")
+
+        viewModel.moveSelectedTask(to: .planned)
+        viewModel.selectedProjectID = project.id
+        viewModel.completeSelectedProject()
+        let completedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let openTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+
+        let completedReadiness = viewModel.developmentAutomationReadiness(for: completedProject, task: openTask)
+
+        XCTAssertFalse(completedReadiness.isReady)
+        XCTAssertEqual(completedReadiness.blockingReason, "Restore the project before starting development automation.")
+
+        viewModel.restoreSelectedProject()
+        viewModel.selectedTaskID = task.id
+        viewModel.moveSelectedTask(to: .done)
+        let activeProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let doneTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+
+        XCTAssertNil(viewModel.prepareDevelopmentAutomationReview(for: activeProject, task: doneTask))
+        XCTAssertNil(viewModel.developmentAutomationReviewPlan)
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Select an open development task before starting branch automation.")
     }
 
     @MainActor

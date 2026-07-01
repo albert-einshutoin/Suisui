@@ -27,11 +27,17 @@ private enum ProjectBoardLayoutMetrics {
     static let taskStatusRailHeight: CGFloat = 44
 }
 
+private struct DevelopmentAutomationReviewSheet: Identifiable {
+    let id: String
+    let viewModel: ReviewSessionViewModel
+}
+
 struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
     @StateObject private var viewModel: ProjectBoardViewModel
     private let taskAutomationSettings: () -> TaskAutoExecutionSettings
     private let appSettings: () -> AppSettings
+    private let developmentAutomationReviewSession: (ActionPlan) -> ReviewSessionViewModel
     @AppStorage(ProjectBoardSelectionPersistence.storageKey) private var persistedSelectedDestinationRawValue = ProjectBoardSelectionPersistence.defaultRawValue
     @State private var displayMode: ProjectBoardDisplayMode = .board
     @State private var selectedDestination: ProjectBoardSidebarDestination? = .today
@@ -42,16 +48,19 @@ struct ProjectBoardView: View {
     @State private var isExportingTaskInterop = false
     @State private var isImportingTaskInterop = false
     @State private var isGoogleCalendarSyncApprovalPresented = false
+    @State private var developmentAutomationReviewSheet: DevelopmentAutomationReviewSheet?
     @State private var taskInteropExportDocument = TaskInteropFileDocument(data: Data())
 
     init(
         viewModel: ProjectBoardViewModel,
         taskAutomationSettings: @escaping () -> TaskAutoExecutionSettings = { .default },
-        appSettings: @escaping () -> AppSettings = { .default }
+        appSettings: @escaping () -> AppSettings = { .default },
+        developmentAutomationReviewSession: @escaping (ActionPlan) -> ReviewSessionViewModel
     ) {
         _viewModel = StateObject(wrappedValue: viewModel)
         self.taskAutomationSettings = taskAutomationSettings
         self.appSettings = appSettings
+        self.developmentAutomationReviewSession = developmentAutomationReviewSession
     }
 
     var body: some View {
@@ -245,6 +254,7 @@ struct ProjectBoardView: View {
                         ProjectInspectorView(
                             project: project,
                             viewModel: viewModel,
+                            onReviewDevelopmentAutomation: presentDevelopmentAutomationReview,
                             onClose: { inspectorBinding.wrappedValue = false }
                         )
                     } else {
@@ -346,6 +356,15 @@ struct ProjectBoardView: View {
         } message: {
             Text("SoloPM will create Google Calendar events for due, unfinished tasks. Existing linked tasks are skipped.")
         }
+        .sheet(item: $developmentAutomationReviewSheet) { sheet in
+            ActionReviewPanel(viewModel: sheet.viewModel) {
+                viewModel.clearDevelopmentAutomationReviewPlan()
+                developmentAutomationReviewSheet = nil
+            }
+            .padding(16)
+            .frame(minWidth: 520, minHeight: 360)
+            .accessibilityIdentifier("project-development-automation-review-sheet")
+        }
     }
 
     private var inspectorBinding: Binding<Bool> {
@@ -362,6 +381,13 @@ struct ProjectBoardView: View {
 
     private var sidebarToggleHelp: String {
         columnVisibility == .detailOnly ? "Show Sidebar" : "Hide Sidebar"
+    }
+
+    private func presentDevelopmentAutomationReview(_ plan: ActionPlan) {
+        developmentAutomationReviewSheet = DevelopmentAutomationReviewSheet(
+            id: plan.id,
+            viewModel: developmentAutomationReviewSession(plan)
+        )
     }
 
     private var projectBoardHeaderBar: some View {
@@ -3159,15 +3185,22 @@ private struct InspectorCloseButton: View {
 private struct ProjectInspectorView: View {
     let project: ProjectBoardProject
     @ObservedObject var viewModel: ProjectBoardViewModel
+    let onReviewDevelopmentAutomation: (ActionPlan) -> Void
     let onClose: () -> Void
 
     @State private var title: String
     @State private var isConfirmingArchive = false
     @State private var isConfirmingDelete = false
 
-    init(project: ProjectBoardProject, viewModel: ProjectBoardViewModel, onClose: @escaping () -> Void) {
+    init(
+        project: ProjectBoardProject,
+        viewModel: ProjectBoardViewModel,
+        onReviewDevelopmentAutomation: @escaping (ActionPlan) -> Void,
+        onClose: @escaping () -> Void
+    ) {
         self.project = project
         self.viewModel = viewModel
+        self.onReviewDevelopmentAutomation = onReviewDevelopmentAutomation
         self.onClose = onClose
         _title = State(initialValue: project.title)
     }
@@ -3221,6 +3254,14 @@ private struct ProjectInspectorView: View {
                         clearProjectDirectoryButton
                     }
                 }
+            }
+
+            Section("Development Automation") {
+                ProjectDevelopmentAutomationPanel(
+                    project: project,
+                    viewModel: viewModel,
+                    onReviewDevelopmentAutomation: onReviewDevelopmentAutomation
+                )
             }
 
             Section("Save") {
@@ -3398,6 +3439,108 @@ private struct ProjectInspectorView: View {
         DispatchQueue.main.async {
             viewModel.deleteSelectedProject()
         }
+    }
+}
+
+private struct ProjectDevelopmentAutomationPanel: View {
+    let project: ProjectBoardProject
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    let onReviewDevelopmentAutomation: (ActionPlan) -> Void
+
+    private var readiness: ProjectDevelopmentAutomationReadiness {
+        viewModel.developmentAutomationReadiness(for: project, task: viewModel.selectedTask)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(
+                LocalizedStringKey(readiness.statusLabel),
+                systemImage: readiness.isReady ? "checkmark.seal" : "exclamationmark.triangle"
+            )
+                .font(.headline)
+                .foregroundStyle(readiness.isReady ? .green : .orange)
+                .accessibilityIdentifier("project-development-automation-status")
+
+            if let blockingReason = readiness.blockingReason {
+                Text(LocalizedStringKey(blockingReason))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let branchNamePreview = readiness.branchNamePreview {
+                LabeledContent("Branch Preview", value: branchNamePreview)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("project-development-automation-branch-preview")
+            }
+
+            LabeledContent("Prepare Tool", value: readiness.toolName)
+                .font(.caption)
+                .textSelection(.enabled)
+
+            Button {
+                guard let plan = viewModel.prepareDevelopmentAutomationReview(for: project, task: viewModel.selectedTask) else {
+                    return
+                }
+                onReviewDevelopmentAutomation(plan)
+            } label: {
+                Label("Review branch automation", systemImage: "doc.text.magnifyingglass")
+            }
+            .disabled(!readiness.isReady)
+            .help("Opens an approval-gated review for preparing a local development branch.")
+            .accessibilityIdentifier("project-development-automation-review")
+            .accessibilityHint("Opens an approval-gated review for preparing a local development branch.")
+
+            if hasMatchingReviewPlan {
+                Text(LocalizedStringKey("Review plan is ready. Approve and execute it before any local branch is created."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("project-development-automation-review-ready")
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Scoped file operations")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 6) {
+                    ForEach(readiness.allowedFileOperations, id: \.self) { operation in
+                        Text(operation)
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+
+                Text("This review only prepares the local branch.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(readiness.reviewSteps.enumerated()), id: \.offset) { index, step in
+                    Label(LocalizedStringKey(step), systemImage: "checklist")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("project-development-automation-step-\(index)")
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("project-development-automation")
+    }
+
+    private var hasMatchingReviewPlan: Bool {
+        guard let action = viewModel.developmentAutomationReviewPlan?.actions.first(where: { $0.tool == .developmentPreparePullRequestWorkflow }) else {
+            return false
+        }
+        return action.arguments["projectId"] == .number(Double(project.id))
+            && action.arguments["taskId"] == readiness.taskID.map { .number(Double($0)) }
+            && action.arguments["branchName"] == readiness.branchNamePreview.map(JSONValue.string)
     }
 }
 
