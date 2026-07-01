@@ -2,6 +2,102 @@ import XCTest
 @testable import SoloPMCore
 
 final class DevelopmentRepositoryFileAccessTests: XCTestCase {
+    func testListFilesWithinApprovedWorkspaceReturnsSortedEntries() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        try write("# SoloPM\n", to: workspace.appendingPathComponent("README.md"))
+        try write("let value = 1\n", to: workspace.appendingPathComponent("Sources/App.swift"))
+        try write("# Plan\n", to: workspace.appendingPathComponent("docs/plan.md"))
+        try write("ignored\n", to: workspace.appendingPathComponent("docs/image.png"))
+        try Data([0xFF, 0xFE, 0x00]).write(to: workspace.appendingPathComponent("docs/binary.txt"))
+        try write("token=secret\n", to: workspace.appendingPathComponent(".env"))
+        try FileManager.default.createDirectory(at: workspace.appendingPathComponent(".git"), withIntermediateDirectories: true)
+        try write("ref: refs/heads/main\n", to: workspace.appendingPathComponent(".git/HEAD"))
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let tool = DevelopmentRepositoryFileTool(name: .developmentRepositoryListFiles, projectStore: stores.projects)
+
+        let result = try tool.execute(
+            arguments: ["projectId": .number(Double(project.id))],
+            context: ToolExecutionContext(source: .reviewUI)
+        )
+
+        XCTAssertEqual(result.status, .succeeded)
+        XCTAssertEqual(result.output["entryCount"], .number(3))
+        XCTAssertEqual(result.output["truncated"], .bool(false))
+        let entries = try XCTUnwrap(result.output["entries"]?.arrayValue)
+        XCTAssertEqual(entries.map { $0.objectValue?["relativePath"] }, [
+            .string("README.md"),
+            .string("Sources/App.swift"),
+            .string("docs/plan.md")
+        ])
+        XCTAssertEqual(entries.map { $0.objectValue?["byteCount"] }, [
+            .number(9),
+            .number(14),
+            .number(7)
+        ])
+
+        let docsOnly = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "relativePath": .string("docs")
+            ],
+            context: ToolExecutionContext(source: .reviewUI)
+        )
+
+        XCTAssertEqual(docsOnly.output["entryCount"], .number(1))
+        XCTAssertEqual(
+            docsOnly.output["entries"]?.arrayValue?.first?.objectValue?["relativePath"],
+            .string("docs/plan.md")
+        )
+    }
+
+    func testListFilesCapsLargeWorkspaceResults() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        for index in 0...DevelopmentRepositoryFilePathPolicy.maximumListedFileEntries {
+            try write("file \(index)\n", to: workspace.appendingPathComponent("docs/file-\(index).md"))
+        }
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let tool = DevelopmentRepositoryFileTool(name: .developmentRepositoryListFiles, projectStore: stores.projects)
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "relativePath": .string("docs")
+            ],
+            context: ToolExecutionContext(source: .reviewUI)
+        )
+
+        XCTAssertEqual(
+            result.output["entryCount"],
+            .number(Double(DevelopmentRepositoryFilePathPolicy.maximumListedFileEntries))
+        )
+        XCTAssertEqual(result.output["truncated"], .bool(true))
+    }
+
+    func testListFilesCapsVisitedNodesEvenWhenMostFilesAreUnsupported() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let generatedDirectory = workspace.appendingPathComponent("generated")
+        try FileManager.default.createDirectory(at: generatedDirectory, withIntermediateDirectories: true)
+        for index in 0...DevelopmentRepositoryFilePathPolicy.maximumListedFileSystemNodes {
+            try Data([0xFF, 0xFE, 0x00]).write(to: generatedDirectory.appendingPathComponent("blob-\(index).bin"))
+        }
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let tool = DevelopmentRepositoryFileTool(name: .developmentRepositoryListFiles, projectStore: stores.projects)
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "relativePath": .string("generated")
+            ],
+            context: ToolExecutionContext(source: .reviewUI)
+        )
+
+        XCTAssertEqual(result.output["entryCount"], .number(0))
+        XCTAssertEqual(result.output["truncated"], .bool(true))
+    }
+
     func testReadTextFileWithinApprovedWorkspaceReturnsContentAndDigest() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
@@ -210,6 +306,40 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
         }
     }
 
+    func testListFilesRejectsTraversalAbsolutePathAndSymlinkEscape() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let outside = temporaryDirectory()
+        try write("outside\n", to: outside.appendingPathComponent("notes.md"))
+        try FileManager.default.createSymbolicLink(
+            at: workspace.appendingPathComponent("linked"),
+            withDestinationURL: outside
+        )
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let listTool = DevelopmentRepositoryFileTool(name: .developmentRepositoryListFiles, projectStore: stores.projects)
+
+        for path in [workspace.path, "../escape", "linked"] {
+            XCTAssertThrowsError(
+                try listTool.execute(
+                    arguments: [
+                        "projectId": .number(Double(project.id)),
+                        "relativePath": .string(path)
+                    ],
+                    context: ToolExecutionContext(source: .reviewUI)
+                ),
+                path
+            ) { error in
+                let expectedMessage = path == "linked"
+                    ? "Repository file path must not resolve outside the approved workspace."
+                    : "Repository file path must not contain traversal or empty components."
+                XCTAssertEqual(
+                    error as? ToolExecutionError,
+                    .executionFailed(.developmentRepositoryListFiles, expectedMessage)
+                )
+            }
+        }
+    }
+
     func testRepositoryFileAccessRejectsParentSymlinkAndSecretLikeContents() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
@@ -287,6 +417,38 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
         }
     }
 
+    func testListFilesRejectsGitMetadataAndSecretLikeRoots() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        try FileManager.default.createDirectory(at: workspace.appendingPathComponent(".git"), withIntermediateDirectories: true)
+        try write("ref: refs/heads/main\n", to: workspace.appendingPathComponent(".git/HEAD"))
+        try write("token=secret\n", to: workspace.appendingPathComponent(".env"))
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let listTool = DevelopmentRepositoryFileTool(name: .developmentRepositoryListFiles, projectStore: stores.projects)
+
+        for (path, message) in [
+            (".git", "Repository file path must not target git metadata."),
+            (".git/HEAD", "Repository file path must not target git metadata."),
+            (".env", "Repository file path looks like a credential or secret file.")
+        ] {
+            XCTAssertThrowsError(
+                try listTool.execute(
+                    arguments: [
+                        "projectId": .number(Double(project.id)),
+                        "relativePath": .string(path)
+                    ],
+                    context: ToolExecutionContext(source: .reviewUI)
+                ),
+                path
+            ) { error in
+                XCTAssertEqual(
+                    error as? ToolExecutionError,
+                    .executionFailed(.developmentRepositoryListFiles, message)
+                )
+            }
+        }
+    }
+
     func testRepositoryFileAccessRejectsOversizedAndNonUTF8Files() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
@@ -343,6 +505,7 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
             taskStore: stores.tasks
         )
 
+        XCTAssertTrue(registry.contains(.developmentRepositoryListFiles))
         XCTAssertTrue(registry.contains(.developmentRepositoryReadFile))
         XCTAssertTrue(registry.contains(.developmentRepositoryCreateFile))
         XCTAssertTrue(registry.contains(.developmentRepositoryUpdateFile))
@@ -397,6 +560,20 @@ private enum DevelopmentRepositoryFileTestMigrationRunner {
 }
 
 private extension JSONValue {
+    var arrayValue: [JSONValue]? {
+        guard case .array(let value) = self else {
+            return nil
+        }
+        return value
+    }
+
+    var objectValue: [String: JSONValue]? {
+        guard case .object(let value) = self else {
+            return nil
+        }
+        return value
+    }
+
     var stringValue: String? {
         guard case .string(let value) = self else {
             return nil

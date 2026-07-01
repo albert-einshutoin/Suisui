@@ -85,7 +85,7 @@ public extension DeveloperModeCapability {
             return DeveloperModePermissionDisclosure(
                 capability: self,
                 title: "Development repository files",
-                summary: "Reads, creates, and updates supported text files only inside the approved project directory; create and update require explicit approval."
+                summary: "Lists, reads, creates, and updates supported text files only inside the approved project directory; create and update require explicit approval."
             )
         case .developmentVerificationCommands:
             return DeveloperModePermissionDisclosure(
@@ -165,6 +165,7 @@ public extension ToolRegistryFactory {
                 throw DeveloperModeError.projectStoresRequired
             }
             tools.append(contentsOf: [
+                DevelopmentRepositoryFileTool(name: .developmentRepositoryListFiles, projectStore: projectStore),
                 DevelopmentRepositoryFileTool(name: .developmentRepositoryReadFile, projectStore: projectStore),
                 DevelopmentRepositoryFileTool(name: .developmentRepositoryCreateFile, projectStore: projectStore),
                 DevelopmentRepositoryFileTool(name: .developmentRepositoryUpdateFile, projectStore: projectStore)

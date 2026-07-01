@@ -136,6 +136,7 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
     case developmentCreatePullRequest = "development.pr_workflow.create_pull_request"
     case developmentReviewPullRequestGate = "development.pr_workflow.review_gate"
     case developmentMergePullRequest = "development.pr_workflow.merge"
+    case developmentRepositoryListFiles = "development.repository.list_files"
     case developmentRepositoryReadFile = "development.repository.read_file"
     case developmentRepositoryCreateFile = "development.repository.create_file"
     case developmentRepositoryUpdateFile = "development.repository.update_file"
@@ -158,6 +159,7 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
              .gitBranch,
              .gitLogSummary,
              .gitDiffSummary,
+             .developmentRepositoryListFiles,
              .developmentRepositoryReadFile:
             .read
         case .mailDraftCreateText:
@@ -231,6 +233,7 @@ public enum ActionTool: String, Codable, CaseIterable, Equatable, Sendable {
              .developmentCreatePullRequest,
              .developmentReviewPullRequestGate,
              .developmentMergePullRequest,
+             .developmentRepositoryListFiles,
              .developmentRepositoryReadFile,
              .developmentRepositoryCreateFile,
              .developmentRepositoryUpdateFile,
@@ -269,6 +272,7 @@ public extension ActionTool {
             .developmentCreatePullRequest,
             .developmentReviewPullRequestGate,
             .developmentMergePullRequest,
+            .developmentRepositoryListFiles,
             .developmentRepositoryReadFile,
             .developmentRepositoryCreateFile,
             .developmentRepositoryUpdateFile,

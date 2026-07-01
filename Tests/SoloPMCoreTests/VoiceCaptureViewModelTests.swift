@@ -63,6 +63,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         XCTAssertEqual(provider.requests.first?.availableTools, ActionTool.defaultPlanningTools)
+        XCTAssertFalse(provider.requests.first?.availableTools.contains(.developmentRepositoryListFiles) ?? true)
         XCTAssertFalse(provider.requests.first?.availableTools.contains(.developmentRepositoryReadFile) ?? true)
         XCTAssertFalse(provider.requests.first?.availableTools.contains(.developmentRepositoryCreateFile) ?? true)
         XCTAssertFalse(provider.requests.first?.availableTools.contains(.developmentRepositoryUpdateFile) ?? true)
