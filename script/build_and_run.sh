@@ -241,6 +241,7 @@ open_app() {
   local open_args=(-n -F "$APP_BUNDLE")
   if [[ "$MODE" == "--verify" || "$MODE" == "verify" ]]; then
     open_args+=(--env SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1)
+    open_args+=(--env SOLOPM_LAUNCH_RECOVERY_MODE=1)
   fi
   /usr/bin/open "${open_args[@]}"
   activate_app

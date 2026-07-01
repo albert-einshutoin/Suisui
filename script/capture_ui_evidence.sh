@@ -30,6 +30,7 @@ EVIDENCE_HOME="${SOLOPM_UI_EVIDENCE_HOME:-$(mktemp -d "$EVIDENCE_TMPDIR/solopm-u
 KEEP_HOME="${SOLOPM_UI_EVIDENCE_KEEP_HOME:-0}"
 DRY_RUN=0
 DOCTOR=0
+P0_WORKFLOWS=0
 PROJECT_BOARD_SELECTION_OVERRIDE=""
 PROJECT_BOARD_SELECTED_TASK_OVERRIDE=""
 PROJECT_BOARD_TARGET_MARKERS=""
@@ -49,15 +50,18 @@ for arg in "$@"; do
     --doctor)
       DOCTOR=1
       ;;
+    --p0-workflows)
+      P0_WORKFLOWS=1
+      ;;
     *)
-      echo "usage: $0 [--dry-run|--doctor]" >&2
+      echo "usage: $0 [--dry-run|--doctor|--p0-workflows]" >&2
       exit 2
       ;;
   esac
 done
 
-if [[ "$DRY_RUN" == "1" && "$DOCTOR" == "1" ]]; then
-  echo "usage: $0 [--dry-run|--doctor]" >&2
+if [[ $((DRY_RUN + DOCTOR + P0_WORKFLOWS)) -gt 1 ]]; then
+  echo "usage: $0 [--dry-run|--doctor|--p0-workflows]" >&2
   exit 2
 fi
 
@@ -120,6 +124,9 @@ app_env_args() {
     # Screenshot evidence must open the exact SQLite file seeded below; relying
     # on HOME-derived defaults can silently fall back to another database.
     args+=("SOLOPM_DATABASE_PATH=$DATABASE_PATH")
+  fi
+  if [[ "$P0_WORKFLOWS" == "1" ]]; then
+    args+=("SOLOPM_LAUNCH_RECOVERY_MODE=1")
   fi
   if [[ -n "$PROJECT_BOARD_SELECTION_OVERRIDE" ]]; then
     args+=("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=$PROJECT_BOARD_SELECTION_OVERRIDE")
@@ -1001,6 +1008,54 @@ write_evidence_file() {
   } >"$EVIDENCE_FILE"
 }
 
+write_p0_workflow_evidence_file() {
+  local generated_at="$1"
+  local inbox_light_path="$2"
+  local inbox_dark_path="$3"
+  local inbox_system_path="$4"
+  local today_light_path="$5"
+  local today_dark_path="$6"
+  local today_system_path="$7"
+  local inbox_voice_light_path="$8"
+  local inbox_voice_dark_path="$9"
+  local source_commit
+  source_commit="$(ui_evidence_source_commit)"
+
+  {
+    printf '%s\n' '# P0 Workflow Screenshot Evidence'
+    printf '\n'
+    printf '%s\n' 'Generated with `script/capture_ui_evidence.sh --p0-workflows`.'
+    printf '%s\n' 'This targeted evidence covers the Personal MVP Inbox and Today closeout paths without rewriting the full release screenshot set.'
+    printf '\n'
+    printf -- '- Generated at: `%s`\n' "$generated_at"
+    printf -- '- Source commit: `%s`\n' "$source_commit"
+    printf -- '- Screen Recording preflight: `script/capture_ui_evidence.sh --doctor`\n'
+    printf '\n'
+    printf '%s\n' '## Inbox'
+    printf '\n'
+    printf -- '- Light: `%s`\n' "$(relative_path "$inbox_light_path")"
+    printf -- '- Dark: `%s`\n' "$(relative_path "$inbox_dark_path")"
+    printf -- '- System: `%s`\n' "$(relative_path "$inbox_system_path")"
+    printf '\n'
+    printf '%s\n' '## Today'
+    printf '\n'
+    printf -- '- Light: `%s`\n' "$(relative_path "$today_light_path")"
+    printf -- '- Dark: `%s`\n' "$(relative_path "$today_dark_path")"
+    printf -- '- System: `%s`\n' "$(relative_path "$today_system_path")"
+    printf '\n'
+    printf '%s\n' '## Inbox Voice Detail'
+    printf '\n'
+    printf -- '- Light: `%s`\n' "$(relative_path "$inbox_voice_light_path")"
+    printf -- '- Dark: `%s`\n' "$(relative_path "$inbox_voice_dark_path")"
+    printf '\n'
+    printf '%s\n' '## Guardrails'
+    printf '\n'
+    printf '%s\n' '- API keys, provider tokens, OAuth tokens, calendar contents, and customer file contents are not captured.'
+    printf '%s\n' '- The app runs with `SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1`, an isolated HOME, and a seeded SQLite database.'
+    printf '%s\n' '- The P0 workflow capture uses `SOLOPM_LAUNCH_RECOVERY_MODE=1` so evidence targets Today and Inbox workflow rails directly.'
+  } >"$ROOT_DIR/docs/release/evidence/p0-workflow-screenshots.md"
+}
+
 write_visual_baseline_capture_manifest() {
   local generated_at="$1"
   local output_file="$SCREENSHOT_DIR/visual-baseline-capture-manifest.json"
@@ -1134,10 +1189,31 @@ SETTINGS_INTEGRATIONS_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-integrations-dar
 
 INBOX_TARGET_MARKERS="sidebar-destination-inbox=>Inbox|inbox-action-panel=>Inbox"
 TODAY_TARGET_MARKERS="sidebar-destination-today=>Today|today-briefing-panel=>Today|today-assistant-rail=>Today"
+P0_INBOX_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Inbox"
+P0_TODAY_TARGET_MARKERS="today-workflow=>Today|today-briefing-panel=>Today|today-assistant-rail=>Today"
 PROJECTS_TARGET_MARKERS="sidebar-destination-projects=>Projects|projects-portfolio-overview=>Projects"
 SCHEDULE_TARGET_MARKERS="sidebar-destination-schedule=>Schedule|schedule-workflow=>Schedule"
 DONE_TARGET_MARKERS="sidebar-destination-done=>Done|done-workflow=>Done"
 VOICE_COMMAND_TARGET_MARKERS="voice-command-root=>Voice Command|voice-command-input=>Voice Command"
+
+if [[ "$P0_WORKFLOWS" == "1" ]]; then
+  capture_project_board_destination light inbox "$INBOX_LIGHT_SCREENSHOT" "Inbox" "$P0_INBOX_TARGET_MARKERS"
+  capture_project_board_destination dark inbox "$INBOX_DARK_SCREENSHOT" "Inbox" "$P0_INBOX_TARGET_MARKERS"
+  capture_project_board_destination system inbox "$INBOX_SYSTEM_SCREENSHOT" "Inbox" "$P0_INBOX_TARGET_MARKERS"
+  capture_project_board_destination light today "$TODAY_LIGHT_SCREENSHOT" "Today" "$P0_TODAY_TARGET_MARKERS"
+  capture_project_board_destination dark today "$TODAY_DARK_SCREENSHOT" "Today" "$P0_TODAY_TARGET_MARKERS"
+  capture_project_board_destination system today "$TODAY_SYSTEM_SCREENSHOT" "Today" "$P0_TODAY_TARGET_MARKERS"
+  capture_project_board_destination light inbox "$INBOX_VOICE_LIGHT_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE"
+  capture_project_board_destination dark inbox "$INBOX_VOICE_DARK_SCREENSHOT" "Inbox voice detail" "$INBOX_VOICE_TARGET_MARKERS" "$INBOX_VOICE_TASK_OVERRIDE"
+
+  GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  write_p0_workflow_evidence_file "$GENERATED_AT" "$INBOX_LIGHT_SCREENSHOT" "$INBOX_DARK_SCREENSHOT" "$INBOX_SYSTEM_SCREENSHOT" "$TODAY_LIGHT_SCREENSHOT" "$TODAY_DARK_SCREENSHOT" "$TODAY_SYSTEM_SCREENSHOT" "$INBOX_VOICE_LIGHT_SCREENSHOT" "$INBOX_VOICE_DARK_SCREENSHOT"
+
+  echo "P0 workflow screenshot evidence generated:"
+  echo "evidence: $ROOT_DIR/docs/release/evidence/p0-workflow-screenshots.md"
+  echo "screenshots: $SCREENSHOT_DIR"
+  exit 0
+fi
 
 capture_project_board_destination light "$PROJECT_BOARD_SELECTION_OVERRIDE" "$LIGHT_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS"
 capture_project_board_destination dark "$PROJECT_BOARD_SELECTION_OVERRIDE" "$DARK_SCREENSHOT" "Project Board" "$PROJECT_BOARD_TARGET_MARKERS"
