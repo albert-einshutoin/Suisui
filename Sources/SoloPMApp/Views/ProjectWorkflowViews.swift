@@ -181,6 +181,10 @@ struct ScheduleWorkflowView: View {
                     nextWeek: moveWorkloadToNextWeek
                 )
 
+                WeeklyScheduleCockpitPanel(
+                    cockpit: viewModel.weeklyScheduleCockpit(around: workloadReferenceDate)
+                )
+
                 ScheduleStatusBanner(result: viewModel.scheduleApplyResult)
 
                 HStack(alignment: .top, spacing: 12) {
@@ -225,6 +229,285 @@ struct ScheduleWorkflowView: View {
     private func moveWorkloadToNextWeek() {
         workloadReferenceDate = Calendar.current.date(byAdding: .day, value: 7, to: workloadReferenceDate) ?? workloadReferenceDate
         selectedWorkloadDayKey = nil
+    }
+}
+
+private struct WeeklyScheduleCockpitPanel: View {
+    let cockpit: WeeklyScheduleCockpit
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                Label("Week Cockpit", systemImage: "calendar")
+                    .font(.headline)
+                Spacer(minLength: 8)
+                Label(focusForecastSummary, systemImage: "scope")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("schedule-focus-forecast")
+            }
+
+            ScrollView(.horizontal, showsIndicators: true) {
+                HStack(alignment: .top, spacing: 8) {
+                    ForEach(cockpit.days) { day in
+                        WeeklyScheduleDayColumn(day: day)
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("schedule-week-grid")
+            .accessibilityLabel("Weekly schedule grid")
+            .accessibilityHint("Shows local schedule draft and due-task blocks. It does not write Calendar events.")
+
+            HStack(alignment: .top, spacing: 12) {
+                WeeklyScheduleAgendaPanel(day: cockpit.agendaDay)
+                WeeklyScheduleReminderPanel(cockpit: cockpit)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("schedule-week-cockpit")
+        .accessibilityLabel("Week schedule cockpit")
+    }
+
+    private var focusForecastSummary: String {
+        switch cockpit.focusForecast.state {
+        case .overloaded:
+            String(
+                format: String(localized: "%d overloaded days. Review reminders and unscheduled work before applying Calendar changes."),
+                cockpit.focusForecast.overloadedDayKeys.count
+            )
+        case .heavy:
+            String(
+                format: String(localized: "%d heavy days. Keep schedule drafts reviewable before Calendar writes."),
+                cockpit.focusForecast.heavyDayKeys.count
+            )
+        case .open:
+            String(localized: "Week has no overloaded days.")
+        }
+    }
+}
+
+private struct WeeklyScheduleDayColumn: View {
+    let day: WeeklyScheduleDay
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(shortDateLabel)
+                        .font(.caption.weight(.semibold))
+                    Text(LocalizedStringKey(day.loadLevel.title))
+                        .font(.caption2)
+                        .foregroundStyle(loadTint)
+                }
+                Spacer(minLength: 4)
+                Text("\(day.workload.openTaskCount)")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Open task count")
+            }
+
+            if day.blocks.isEmpty {
+                Text("Open time")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 78, alignment: .topLeading)
+                    .padding(8)
+                    .background(Color.secondary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(day.blocks.prefix(4)) { block in
+                        WeeklyScheduleBlockRow(block: block)
+                    }
+                    if day.blocks.count > 4 {
+                        Text(String(format: String(localized: "+%d more"), day.blocks.count - 4))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(minHeight: 78, alignment: .topLeading)
+            }
+        }
+        .padding(10)
+        .frame(width: 148, alignment: .topLeading)
+        .background(dayBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(loadTint.opacity(0.25))
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("schedule-week-day-column-\(day.dateKey)")
+        .accessibilityLabel(String(format: String(localized: "Schedule day %@"), day.dateKey))
+        .accessibilityValue(String(format: String(localized: "%d blocks, %d reminder proposals"), day.blocks.count, day.reminderProposalCount))
+    }
+
+    private var shortDateLabel: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "E d"
+        return formatter.string(from: day.date)
+    }
+
+    private var loadTint: Color {
+        switch day.loadLevel {
+        case .open:
+            .secondary
+        case .focused:
+            .blue
+        case .heavy:
+            .orange
+        case .overloaded:
+            .red
+        }
+    }
+
+    private var dayBackground: Color {
+        switch day.loadLevel {
+        case .open:
+            Color.secondary.opacity(0.04)
+        case .focused:
+            Color.blue.opacity(0.06)
+        case .heavy:
+            Color.orange.opacity(0.08)
+        case .overloaded:
+            Color.red.opacity(0.08)
+        }
+    }
+}
+
+private struct WeeklyScheduleBlockRow: View {
+    let block: WeeklyScheduleBlock
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 5) {
+                Image(systemName: block.source == .scheduleDraft ? "wand.and.stars" : "clock")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text(LocalizedStringKey(block.timeLabel))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                if block.overlapGroupSize > 1 {
+                    Text(String(format: String(localized: "Lane %d/%d"), block.overlapLane + 1, block.overlapGroupSize))
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+            }
+            Text(block.task.title)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+            Text(block.projectTitle)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("schedule-week-block-\(block.id)")
+        .accessibilityLabel(block.task.title)
+        .accessibilityValue(accessibilityValue)
+    }
+
+    private var accessibilityValue: String {
+        [
+            block.timeLabel,
+            block.projectTitle,
+            block.source == .scheduleDraft ? "Schedule draft" : "Due task",
+            String(format: String(localized: "Lane %d of %d"), block.overlapLane + 1, block.overlapGroupSize)
+        ].joined(separator: ", ")
+    }
+}
+
+private struct WeeklyScheduleAgendaPanel: View {
+    let day: WeeklyScheduleDay?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Agenda", systemImage: "list.bullet")
+                .font(.subheadline.weight(.semibold))
+            if let day, !day.blocks.isEmpty {
+                ForEach(day.blocks.prefix(5)) { block in
+                    HStack(spacing: 8) {
+                        Text(LocalizedStringKey(block.timeLabel))
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 78, alignment: .leading)
+                        Text(block.task.title)
+                            .font(.caption)
+                            .lineLimit(1)
+                        Spacer(minLength: 6)
+                        Text(block.projectTitle)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            } else {
+                Text("No agenda blocks for the selected week.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityIdentifier("schedule-agenda")
+    }
+}
+
+private struct WeeklyScheduleReminderPanel: View {
+    let cockpit: WeeklyScheduleCockpit
+
+    private var topDays: [WeeklyScheduleDay] {
+        cockpit.days
+            .filter { $0.reminderProposalCount > 0 }
+            .sorted { lhs, rhs in
+                if lhs.reminderProposalCount != rhs.reminderProposalCount {
+                    return lhs.reminderProposalCount > rhs.reminderProposalCount
+                }
+                return lhs.date < rhs.date
+            }
+            .prefix(3)
+            .map { $0 }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Smart Reminders", systemImage: "bell.badge")
+                .font(.subheadline.weight(.semibold))
+            Text(String(format: String(localized: "%d proposals from local due and blocked tasks"), cockpit.focusForecast.reminderProposalCount))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(topDays) { day in
+                HStack(spacing: 8) {
+                    Text(day.dateKey)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    Text(String(format: String(localized: "%d reminders"), day.reminderProposalCount))
+                        .font(.caption)
+                }
+            }
+            if !cockpit.unscheduledTasks.isEmpty {
+                Label(String(format: String(localized: "%d unscheduled tasks need placement"), cockpit.unscheduledTasks.count), systemImage: "tray.full")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("schedule-smart-reminders")
+        .accessibilityLabel("Smart reminder proposals")
     }
 }
 

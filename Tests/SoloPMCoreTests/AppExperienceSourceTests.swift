@@ -2193,14 +2193,26 @@ final class AppExperienceSourceTests: XCTestCase {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
         let coreSource = try readPackageFile("Sources/SoloPMCore/App/ProjectBoard.swift")
         let workloadSource = try readPackageFile("Sources/SoloPMCore/App/DailyWorkloadDashboard.swift")
+        let weeklySource = try readPackageFile("Sources/SoloPMCore/App/WeeklyScheduleCockpit.swift")
 
         XCTAssertTrue(workloadSource.contains("public struct DailyWorkloadOverview"))
         XCTAssertTrue(workloadSource.contains("public struct DailyWorkloadDay"))
         XCTAssertTrue(workloadSource.contains("public struct DailyWorkloadProjectContribution"))
         XCTAssertTrue(coreSource.contains("public func dailyWorkloadOverview("))
+        XCTAssertTrue(weeklySource.contains("public struct WeeklyScheduleCockpit"))
+        XCTAssertTrue(weeklySource.contains("public struct WeeklyScheduleBlock"))
+        XCTAssertTrue(weeklySource.contains("public struct WeeklyScheduleFocusForecast"))
+        XCTAssertTrue(coreSource.contains("public func weeklyScheduleCockpit("))
         XCTAssertTrue(workloadSource.contains("inboxUntriagedCount"))
         XCTAssertTrue(workloadSource.contains("private static func isInboxProject"))
 
+        XCTAssertTrue(workflowSource.contains("WeeklyScheduleCockpitPanel("))
+        XCTAssertTrue(workflowSource.contains("viewModel.weeklyScheduleCockpit("))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-grid\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-day-column-\\(day.dateKey)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-block-\\(block.id)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-focus-forecast\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-smart-reminders\")"))
         XCTAssertTrue(workflowSource.contains("DailyWorkloadPanel("))
         XCTAssertTrue(workflowSource.contains("viewModel.dailyWorkloadOverview("))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workload-dashboard\")"))
@@ -2217,6 +2229,9 @@ final class AppExperienceSourceTests: XCTestCase {
         let dashboardStart = try XCTUnwrap(workflowSource.range(of: "private struct DailyWorkloadPanel"))
         let dashboardSource = String(workflowSource[dashboardStart.lowerBound...])
         XCTAssertFalse(dashboardSource.contains("applyScheduleDraftToCalendar"))
+        let weeklyStart = try XCTUnwrap(workflowSource.range(of: "private struct WeeklyScheduleCockpitPanel"))
+        let weeklyWorkflowSource = String(workflowSource[weeklyStart.lowerBound...])
+        XCTAssertFalse(weeklyWorkflowSource.contains("applyScheduleDraftToCalendar"))
     }
 
     func testAppAndCLIShareDefaultDatabaseLocation() throws {

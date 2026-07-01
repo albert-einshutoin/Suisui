@@ -1616,6 +1616,19 @@ public final class ProjectBoardViewModel: ObservableObject {
         )
     }
 
+    public func weeklyScheduleCockpit(
+        around referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> WeeklyScheduleCockpit {
+        WeeklyScheduleCockpitBuilder.cockpit(
+            from: snapshot,
+            workload: dailyWorkloadOverview(around: referenceDate, calendar: calendar),
+            scheduleDraft: scheduleDraft,
+            around: referenceDate,
+            calendar: calendar
+        )
+    }
+
     public func todayPlan(
         on referenceDate: Date = Date(),
         calendar: Calendar = .current
