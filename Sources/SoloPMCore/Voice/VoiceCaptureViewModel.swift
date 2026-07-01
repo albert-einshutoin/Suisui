@@ -68,6 +68,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     @Published public private(set) var assistantQueueItem: AssistantQueueItem?
     @Published public private(set) var dailyPlanningReviewRequest: VoiceDailyPlanningReviewRequest?
     @Published public private(set) var inboxTriageRequest: VoiceInboxTriageRequest?
+    @Published public private(set) var inboxCaptureResult: InboxVoiceCaptureResult?
     @Published public private(set) var developmentPullRequestAutomationRequest: SyncAutomationRequestPayload?
 
     private var audioRecorder: any AudioRecorder
@@ -77,9 +78,14 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private let runtimeValidationMessage: String?
     private let assistantQueueStore: (any AssistantQueueStore)?
     private let commandRouter: any VoiceCommandRouting
+    private let inboxCaptureSaver: (any InboxVoiceCaptureSaving)?
     private let inboxTriageCommandParser: InboxVoiceTriageCommandParser
     private let developmentProjectProvider: () -> ProjectRecord?
     private let developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder
+    // Save-to-Inbox must be tied to the audio that produced the current
+    // transcript so a failed new recording cannot reuse stale typed text.
+    private var lastTranscribedAudioURL: URL?
+    private var savedInboxAudioURL: URL?
 
     public init(
         draft: TranscriptDraft = TranscriptDraft(),
@@ -91,6 +97,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         runtimeValidationMessage: String? = nil,
         assistantQueueStore: (any AssistantQueueStore)? = nil,
         commandRouter: any VoiceCommandRouting = VoiceCommandRouter(),
+        inboxCaptureSaver: (any InboxVoiceCaptureSaving)? = nil,
         developmentProjectProvider: @escaping () -> ProjectRecord? = { nil },
         developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder = VoiceDevelopmentPullRequestAutomationRequestBuilder()
     ) {
@@ -103,6 +110,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.runtimeValidationMessage = runtimeValidationMessage
         self.assistantQueueStore = assistantQueueStore
         self.commandRouter = commandRouter
+        self.inboxCaptureSaver = inboxCaptureSaver
         self.developmentProjectProvider = developmentProjectProvider
         self.developmentPullRequestAutomationRequestBuilder = developmentPullRequestAutomationRequestBuilder
         self.recordingState = audioRecorder.state
@@ -112,8 +120,11 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.assistantQueueItem = nil
         self.dailyPlanningReviewRequest = nil
         self.inboxTriageRequest = nil
+        self.inboxCaptureResult = nil
         self.developmentPullRequestAutomationRequest = nil
         self.inboxTriageCommandParser = InboxVoiceTriageCommandParser()
+        self.lastTranscribedAudioURL = nil
+        self.savedInboxAudioURL = nil
     }
 
     public var canGeneratePlan: Bool {
@@ -123,6 +134,16 @@ public final class VoiceCaptureViewModel: ObservableObject {
             && phase != .generatingPlan
             && phase != .recording
             && phase != .transcribing
+    }
+
+    public var canSaveDraftToInbox: Bool {
+        inboxCaptureSaver != nil
+            && recordedAudio?.fileURL == lastTranscribedAudioURL
+            && recordedAudio?.fileURL != savedInboxAudioURL
+            && draft.canGeneratePlan
+            && phase != .recording
+            && phase != .transcribing
+            && phase != .generatingPlan
     }
 
     public var assistantQueueExecutionHandoffItemID: String? {
@@ -155,6 +176,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
+        inboxCaptureResult = nil
         developmentPullRequestAutomationRequest = nil
         refreshRoutingResult()
         if shouldResetPhaseAfterDraftChange, runtimeValidationMessage == nil {
@@ -173,6 +195,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
+        inboxCaptureResult = nil
+        lastTranscribedAudioURL = nil
+        savedInboxAudioURL = nil
         developmentPullRequestAutomationRequest = nil
         recordingState = audioRecorder.state
         phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
@@ -206,10 +231,15 @@ public final class VoiceCaptureViewModel: ObservableObject {
             assistantQueueItem = nil
             dailyPlanningReviewRequest = nil
             inboxTriageRequest = nil
+            inboxCaptureResult = nil
+            lastTranscribedAudioURL = audio.fileURL
+            savedInboxAudioURL = nil
             developmentPullRequestAutomationRequest = nil
             refreshRoutingResult()
             phase = .idle
         } catch {
+            lastTranscribedAudioURL = nil
+            savedInboxAudioURL = nil
             recordingState = audioRecorder.state
             phase = .failed(userMessage(for: error))
         }
@@ -282,6 +312,50 @@ public final class VoiceCaptureViewModel: ObservableObject {
             ),
             knowledgeFrameCandidates: knowledgeFrameCandidates
         )
+    }
+
+    public func saveDraftToInbox(
+        at date: Date = Date(),
+        createdAt: String? = nil
+    ) {
+        guard let inboxCaptureSaver else {
+            auditErrorMessage = "Voice Inbox capture is unavailable because local voice stores could not be opened."
+            return
+        }
+        guard let recordedAudio else {
+            auditErrorMessage = "Record audio before saving to Inbox."
+            return
+        }
+        guard recordedAudio.fileURL == lastTranscribedAudioURL else {
+            auditErrorMessage = "Transcribe audio before saving to Inbox."
+            return
+        }
+        guard recordedAudio.fileURL != savedInboxAudioURL else {
+            auditErrorMessage = "This voice capture is already saved to Inbox."
+            return
+        }
+        guard draft.canGeneratePlan else {
+            phase = .failed("Transcript is empty.")
+            return
+        }
+
+        do {
+            inboxCaptureResult = try inboxCaptureSaver.saveTranscribedCapture(
+                audio: recordedAudio,
+                transcript: STTTranscript(text: draft.normalizedText, duration: recordedAudio.duration),
+                transcriptionErrorMessage: nil,
+                at: date,
+                createdAt: createdAt
+            )
+            savedInboxAudioURL = recordedAudio.fileURL
+            auditErrorMessage = nil
+        } catch {
+            inboxCaptureResult = nil
+            auditErrorMessage = UserFacingErrorMessageSanitizer.message(
+                from: error,
+                fallback: "Voice Inbox capture could not be saved."
+            )
+        }
     }
 
     public func submitClarificationAnswer(

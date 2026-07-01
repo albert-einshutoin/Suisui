@@ -42,6 +42,9 @@
 "External Task Tools" = "外部タスクツール";
 "Export Tasks" = "タスクをエクスポート";
 "Generate Plan" = "計画生成";
+"Save to Inbox" = "Inboxに保存";
+"Saved to Inbox" = "Inboxに保存しました";
+"Open Inbox" = "Inboxを開く";
 "GitHub Issues" = "GitHub Issues";
 "Google Calendar" = "Google Calendar";
 "Google Calendar ID" = "Google Calendar ID";

@@ -1540,6 +1540,182 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.recordedAudio?.duration, 2)
     }
 
+    func testSaveDraftToInboxPersistsRecordedTranscriptAfterTranscription() async {
+        let task = ProjectBoardTask(
+            id: 42,
+            projectID: 1,
+            title: "Create a task",
+            detail: "",
+            status: .backlog,
+            priority: .medium,
+            dueAt: nil
+        )
+        let capture = InboxCaptureRecord(
+            id: 7,
+            taskID: task.id,
+            sourceKind: .voiceMemo,
+            audioFilePath: "/tmp/solopm-test.m4a",
+            durationSeconds: 2,
+            transcript: "Create a task",
+            interpretationSummary: "Route as task.create for a reviewable local task draft.",
+            memo: "Confidence: 0.91",
+            classificationStatus: .unclassified,
+            transcriptionStatus: .succeeded,
+            createdAt: "2026-06-21T10:27:00Z"
+        )
+        let saver = RecordingInboxVoiceCaptureSaver(result: InboxVoiceCaptureResult(task: task, capture: capture))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "Create a task")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            )),
+            inboxCaptureSaver: saver
+        )
+
+        await viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
+        await viewModel.stopRecording(
+            outputURL: URL(filePath: "/tmp/solopm-test.m4a"),
+            at: Date(timeIntervalSince1970: 12)
+        )
+
+        XCTAssertTrue(viewModel.canSaveDraftToInbox)
+        viewModel.saveDraftToInbox(
+            at: Date(timeIntervalSince1970: 13),
+            createdAt: "2026-06-21T10:27:00Z"
+        )
+
+        XCTAssertEqual(saver.requests.map(\.transcript?.text), ["Create a task"])
+        XCTAssertEqual(saver.requests.first?.audio.fileURL.path, "/tmp/solopm-test.m4a")
+        XCTAssertEqual(viewModel.inboxCaptureResult, InboxVoiceCaptureResult(task: task, capture: capture))
+        XCTAssertNil(viewModel.auditErrorMessage)
+    }
+
+    func testSaveDraftToInboxRequiresRecordedAudioAndSaver() {
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            ))
+        )
+
+        viewModel.updateDraftText("Create a task")
+        viewModel.saveDraftToInbox()
+
+        XCTAssertFalse(viewModel.canSaveDraftToInbox)
+        XCTAssertNil(viewModel.inboxCaptureResult)
+        XCTAssertEqual(viewModel.auditErrorMessage, "Voice Inbox capture is unavailable because local voice stores could not be opened.")
+    }
+
+    func testSaveDraftToInboxIsDisabledAfterSuccessfulSaveForSameAudio() async {
+        let task = ProjectBoardTask(
+            id: 42,
+            projectID: 1,
+            title: "Create a task",
+            detail: "",
+            status: .backlog,
+            priority: .medium,
+            dueAt: nil
+        )
+        let capture = InboxCaptureRecord(
+            id: 7,
+            taskID: task.id,
+            sourceKind: .voiceMemo,
+            audioFilePath: "/tmp/solopm-test.m4a",
+            durationSeconds: 2,
+            transcript: "Create a task",
+            interpretationSummary: "Route as task.create for a reviewable local task draft.",
+            memo: "Confidence: 0.91",
+            classificationStatus: .unclassified,
+            transcriptionStatus: .succeeded,
+            createdAt: "2026-06-21T10:27:00Z"
+        )
+        let saver = RecordingInboxVoiceCaptureSaver(result: InboxVoiceCaptureResult(task: task, capture: capture))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "Create a task")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            )),
+            inboxCaptureSaver: saver
+        )
+
+        await viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
+        await viewModel.stopRecording(
+            outputURL: URL(filePath: "/tmp/solopm-test.m4a"),
+            at: Date(timeIntervalSince1970: 12)
+        )
+
+        viewModel.saveDraftToInbox()
+        viewModel.saveDraftToInbox()
+
+        XCTAssertFalse(viewModel.canSaveDraftToInbox)
+        XCTAssertEqual(saver.requests.count, 1)
+    }
+
+    func testSaveDraftToInboxDoesNotUseStaleDraftAfterTranscriptionFailure() async {
+        let task = ProjectBoardTask(
+            id: 42,
+            projectID: 1,
+            title: "Create a task",
+            detail: "",
+            status: .backlog,
+            priority: .medium,
+            dueAt: nil
+        )
+        let capture = InboxCaptureRecord(
+            id: 7,
+            taskID: task.id,
+            sourceKind: .voiceMemo,
+            audioFilePath: "/tmp/solopm-test.m4a",
+            durationSeconds: 2,
+            transcript: "Create a task",
+            interpretationSummary: "Route as task.create for a reviewable local task draft.",
+            memo: "Confidence: 0.91",
+            classificationStatus: .unclassified,
+            transcriptionStatus: .succeeded,
+            createdAt: "2026-06-21T10:27:00Z"
+        )
+        let saver = RecordingInboxVoiceCaptureSaver(result: InboxVoiceCaptureResult(task: task, capture: capture))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(
+                availability: STTProviderAvailability(providerID: .whisperKit, isAvailable: false, reason: "Model missing"),
+                transcript: STTTranscript(text: "")
+            ),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            )),
+            inboxCaptureSaver: saver
+        )
+
+        viewModel.updateDraftText("Create a stale task")
+        await viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
+        await viewModel.stopRecording(
+            outputURL: URL(filePath: "/tmp/solopm-failed.m4a"),
+            at: Date(timeIntervalSince1970: 12)
+        )
+        viewModel.saveDraftToInbox()
+
+        XCTAssertFalse(viewModel.canSaveDraftToInbox)
+        XCTAssertEqual(saver.requests.count, 0)
+        XCTAssertNil(viewModel.inboxCaptureResult)
+        XCTAssertEqual(viewModel.auditErrorMessage, "Transcribe audio before saving to Inbox.")
+    }
+
     func testCanRecordAgainAfterSuccessfulTranscription() async {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
@@ -1729,6 +1905,41 @@ private struct StaticProjectWorkspaceBookmarkResolver: ProjectWorkspaceBookmarkR
             didStartAccessing: true,
             stopAccessing: {}
         )
+    }
+}
+
+@MainActor
+private final class RecordingInboxVoiceCaptureSaver: InboxVoiceCaptureSaving {
+    struct Request: Equatable {
+        var audio: RecordedAudio
+        var transcript: STTTranscript?
+        var transcriptionErrorMessage: String?
+        var date: Date
+        var createdAt: String?
+    }
+
+    private let result: InboxVoiceCaptureResult
+    private(set) var requests: [Request] = []
+
+    init(result: InboxVoiceCaptureResult) {
+        self.result = result
+    }
+
+    func saveTranscribedCapture(
+        audio: RecordedAudio,
+        transcript: STTTranscript?,
+        transcriptionErrorMessage: String?,
+        at date: Date,
+        createdAt: String?
+    ) throws -> InboxVoiceCaptureResult {
+        requests.append(Request(
+            audio: audio,
+            transcript: transcript,
+            transcriptionErrorMessage: transcriptionErrorMessage,
+            date: date,
+            createdAt: createdAt
+        ))
+        return result
     }
 }
 

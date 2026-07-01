@@ -7,7 +7,7 @@ final class InboxCaptureStoreTests: XCTestCase {
         let stores = try makeStores()
         let service = InboxVoiceCaptureService(
             audioRecorder: FakeAudioRecorder(),
-            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "Create launch checklist", duration: 3.5)),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "Create a task called launch checklist", duration: 3.5)),
             projectBoardStore: stores.board,
             inboxCaptureStore: stores.captures
         )
@@ -19,8 +19,10 @@ final class InboxCaptureStoreTests: XCTestCase {
             createdAt: "2026-06-21T10:25:00Z"
         )
 
-        XCTAssertEqual(result.task.title, "Create launch checklist")
-        XCTAssertEqual(result.capture.transcript, "Create launch checklist")
+        XCTAssertEqual(result.task.title, "Create a task called launch checklist")
+        XCTAssertEqual(result.capture.transcript, "Create a task called launch checklist")
+        XCTAssertEqual(result.capture.interpretationSummary, "Route as task.create for a reviewable local task draft.")
+        XCTAssertTrue(result.capture.memo?.hasPrefix("Confidence: ") ?? false)
         XCTAssertEqual(result.capture.durationSeconds, 3)
         XCTAssertEqual(result.capture.transcriptionStatus, .succeeded)
         XCTAssertNil(result.transcriptionErrorMessage)
@@ -28,8 +30,65 @@ final class InboxCaptureStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testInboxVoiceCaptureServiceRedactsInterpretationInputsAndAppearsAsAISuggested() async throws {
+        let stores = try makeStores()
+        let router = RecordingVoiceCommandRouter(result: VoiceCommandRoutingResult(
+            originalTranscript: "",
+            normalizedTranscript: "",
+            intent: .taskCreate,
+            interpretationSummary: """
+            Route as task.create with sk-proj-voiceSECRET123 token=voice-secret /Users/shutoide/Private /var/tmp/voice.log ~/Private/config.yml file:///Users/shutoide/Secret/file.txt
+            """,
+            confidence: 0.82,
+            decision: .reviewOnly
+        ))
+        let service = InboxVoiceCaptureService(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(
+                transcript: STTTranscript(
+                    text: "  Create a task called launch checklist token=voice-secret /Users/shutoide/Private  ",
+                    duration: 3.5
+                )
+            ),
+            projectBoardStore: stores.board,
+            inboxCaptureStore: stores.captures,
+            commandRouter: router
+        )
+
+        try await service.startRecording(at: Date(timeIntervalSince1970: 100))
+        let result = try await service.stopAndSave(
+            outputURL: URL(filePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/secret.m4a"),
+            at: Date(timeIntervalSince1970: 103),
+            createdAt: "2026-06-21T10:25:00Z"
+        )
+        let viewModel = ProjectBoardViewModel(store: stores.board, inboxCaptureStore: stores.captures)
+        viewModel.load()
+        viewModel.setInboxTriageFilter(.aiSuggested)
+
+        XCTAssertEqual(router.routedTranscripts, ["Create a task called launch checklist token=voice-secret /Users/shutoide/Private"])
+        XCTAssertTrue(result.capture.interpretationSummary?.contains("task.create") ?? false)
+        XCTAssertFalse(result.capture.interpretationSummary?.contains("sk-proj-voiceSECRET123") ?? true)
+        XCTAssertFalse(result.capture.interpretationSummary?.contains("voice-secret") ?? true)
+        XCTAssertFalse(result.capture.interpretationSummary?.contains("/Users/shutoide") ?? true)
+        XCTAssertFalse(result.capture.interpretationSummary?.contains("/var/tmp") ?? true)
+        XCTAssertFalse(result.capture.interpretationSummary?.contains("~/Private") ?? true)
+        XCTAssertFalse(result.capture.interpretationSummary?.contains("file:///Users") ?? true)
+        XCTAssertEqual(result.capture.memo, "Confidence: 0.82")
+        XCTAssertEqual(viewModel.filteredInboxTasks.map(\.id), [result.task.id])
+        XCTAssertEqual(viewModel.inboxTriageSummary(for: result.task).interpretationLabel, "AI interpreted")
+    }
+
+    @MainActor
     func testInboxVoiceCaptureServiceKeepsInboxItemWhenTranscriptionFails() async throws {
         let stores = try makeStores()
+        let router = RecordingVoiceCommandRouter(result: VoiceCommandRoutingResult(
+            originalTranscript: "",
+            normalizedTranscript: "",
+            intent: .taskCreate,
+            interpretationSummary: "Should not be saved",
+            confidence: 0.9,
+            decision: .reviewOnly
+        ))
         let service = InboxVoiceCaptureService(
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(
@@ -37,7 +96,8 @@ final class InboxCaptureStoreTests: XCTestCase {
                 transcript: STTTranscript(text: "")
             ),
             projectBoardStore: stores.board,
-            inboxCaptureStore: stores.captures
+            inboxCaptureStore: stores.captures,
+            commandRouter: router
         )
 
         try await service.startRecording(at: Date(timeIntervalSince1970: 200))
@@ -49,11 +109,51 @@ final class InboxCaptureStoreTests: XCTestCase {
 
         XCTAssertEqual(result.task.title, "Voice memo")
         XCTAssertNil(result.capture.transcript)
+        XCTAssertNil(result.capture.interpretationSummary)
+        XCTAssertNil(result.capture.memo)
         XCTAssertEqual(result.capture.transcriptionStatus, .failed)
         XCTAssertEqual(result.capture.retryTranscriptionActionTitle, "Retry Transcription")
         XCTAssertTrue(result.transcriptionErrorMessage?.contains("Model missing") == true)
         XCTAssertFalse(result.transcriptionErrorMessage?.contains("/secret/audio.m4a") ?? true)
+        XCTAssertEqual(router.routedTranscripts, [])
         XCTAssertEqual(try stores.captures.list(taskID: result.task.id), [result.capture])
+    }
+
+    @MainActor
+    func testInboxVoiceCaptureServiceDoesNotSuggestEmptyTranscripts() async throws {
+        let stores = try makeStores()
+        let router = RecordingVoiceCommandRouter(result: VoiceCommandRoutingResult(
+            originalTranscript: "",
+            normalizedTranscript: "",
+            intent: .taskCreate,
+            interpretationSummary: "Should not be saved",
+            confidence: 0.9,
+            decision: .reviewOnly
+        ))
+        let service = InboxVoiceCaptureService(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "   ", duration: 1)),
+            projectBoardStore: stores.board,
+            inboxCaptureStore: stores.captures,
+            commandRouter: router
+        )
+
+        try await service.startRecording(at: Date(timeIntervalSince1970: 200))
+        let result = try await service.stopAndSave(
+            outputURL: URL(filePath: "/Users/example/Library/Application Support/SoloPM/InboxAudio/empty.m4a"),
+            at: Date(timeIntervalSince1970: 201),
+            createdAt: "2026-06-21T10:26:00Z"
+        )
+        let viewModel = ProjectBoardViewModel(store: stores.board, inboxCaptureStore: stores.captures)
+        viewModel.load()
+        viewModel.setInboxTriageFilter(.aiSuggested)
+
+        XCTAssertEqual(result.task.title, "Voice memo")
+        XCTAssertNil(result.capture.interpretationSummary)
+        XCTAssertNil(result.capture.memo)
+        XCTAssertEqual(result.capture.transcriptionStatus, .failed)
+        XCTAssertEqual(router.routedTranscripts, [])
+        XCTAssertEqual(viewModel.filteredInboxTasks, [])
     }
 
     func testSQLiteInboxCaptureStorePersistsLoadsAndDeletesVoiceCaptureRecords() throws {
@@ -396,5 +496,28 @@ final class InboxCaptureStoreTests: XCTestCase {
             SQLiteProjectBoardStore(connection: connection),
             SQLiteInboxCaptureStore(connection: connection)
         )
+    }
+}
+
+private final class RecordingVoiceCommandRouter: VoiceCommandRouting, @unchecked Sendable {
+    private let result: VoiceCommandRoutingResult
+    private let lock = NSLock()
+    private var recordedTranscripts: [String] = []
+
+    var routedTranscripts: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedTranscripts
+    }
+
+    init(result: VoiceCommandRoutingResult) {
+        self.result = result
+    }
+
+    func route(transcript: String) -> VoiceCommandRoutingResult {
+        lock.lock()
+        recordedTranscripts.append(transcript)
+        lock.unlock()
+        return result
     }
 }
