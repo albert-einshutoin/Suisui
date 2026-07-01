@@ -2150,6 +2150,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("TodayAssistantRail("))
         XCTAssertTrue(workflowSource.contains("commandTitle: $commandTitle"))
         XCTAssertTrue(workflowSource.contains("viewModel.prepareTodayScheduleDraft(prioritizing: task.id)"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-rail-schedule-block\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-rail-schedule-draft-status\")"))
         XCTAssertTrue(workflowSource.contains("!trimmedCommandTitle.hasSuffix(\":\")"))
         XCTAssertTrue(workflowSource.contains("onSelectTask: selectTodayTask"))
         XCTAssertTrue(workflowSource.contains("openInspector(task.id)"))

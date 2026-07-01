@@ -3107,6 +3107,14 @@ private struct TodayAssistantRail: View {
             .accessibilityIdentifier("today-rail-schedule-block")
             .accessibilityHint("Creates a local schedule draft without writing Calendar.")
 
+            if let draft = viewModel.todayScheduleDraft {
+                Text(String(format: String(localized: "%d blocks ready"), draft.timeBlocks.count))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityIdentifier("today-rail-schedule-draft-status")
+            }
+
             Button {
                 openInspector(task.id)
             } label: {
