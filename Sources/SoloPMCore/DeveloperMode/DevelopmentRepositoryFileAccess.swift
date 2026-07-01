@@ -56,12 +56,23 @@ public struct DevelopmentRepositoryFileRecord: Equatable, Sendable {
     public var contents: String
     public var byteCount: Int
     public var sha256: String
+    public var workspacePath: String?
+    public var absolutePath: String?
 
-    public init(relativePath: String, contents: String, byteCount: Int, sha256: String) {
+    public init(
+        relativePath: String,
+        contents: String,
+        byteCount: Int,
+        sha256: String,
+        workspacePath: String? = nil,
+        absolutePath: String? = nil
+    ) {
         self.relativePath = relativePath
         self.contents = contents
         self.byteCount = byteCount
         self.sha256 = sha256
+        self.workspacePath = workspacePath
+        self.absolutePath = absolutePath
     }
 
     public var output: [String: JSONValue] {
@@ -254,20 +265,27 @@ public struct DevelopmentRepositoryFileClient: Sendable {
     private let project: ProjectRecord
     private let redactor: DeveloperSecretRedactor
     private let bookmarkResolver: any ProjectWorkspaceBookmarkResolving
+    private let requireBookmark: Bool
 
     public init(
         project: ProjectRecord,
         redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
-        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver()
+        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver(),
+        requireBookmark: Bool = false
     ) {
         self.project = project
         self.redactor = redactor
         self.bookmarkResolver = bookmarkResolver
+        self.requireBookmark = requireBookmark
     }
 
     public func list(relativePath rawPath: String? = nil) throws -> DevelopmentRepositoryFileList {
         let relativePath = try DevelopmentRepositoryFilePathPolicy.validatedRelativeDirectoryPath(rawPath)
-        let scope = try ProjectWorkspaceScope(project: project, bookmarkResolver: bookmarkResolver)
+        let scope = try ProjectWorkspaceScope(
+            project: project,
+            bookmarkResolver: bookmarkResolver,
+            requireBookmark: requireBookmark
+        )
         return try withExtendedLifetime(scope) {
             let directoryURL = try resolveExistingDirectory(relativePath: relativePath, scope: scope)
             let list = try listedEntries(directoryURL: directoryURL, scope: scope)
@@ -280,7 +298,11 @@ public struct DevelopmentRepositoryFileClient: Sendable {
 
     public func read(relativePath rawPath: String) throws -> DevelopmentRepositoryFileRecord {
         let relativePath = try DevelopmentRepositoryFilePathPolicy.validatedRelativePath(rawPath)
-        let scope = try ProjectWorkspaceScope(project: project, bookmarkResolver: bookmarkResolver)
+        let scope = try ProjectWorkspaceScope(
+            project: project,
+            bookmarkResolver: bookmarkResolver,
+            requireBookmark: requireBookmark
+        )
         return try withExtendedLifetime(scope) {
             let fileURL = try resolveExistingFile(relativePath: relativePath, scope: scope)
             let data = try readData(at: fileURL)
@@ -288,7 +310,7 @@ public struct DevelopmentRepositoryFileClient: Sendable {
             // Path allowlists cannot distinguish source code about secrets from real
             // credentials, so reads fail closed if the file body matches token patterns.
             try failIfSecretLikeContent(contents)
-            return record(relativePath: relativePath, contents: contents)
+            return record(relativePath: relativePath, contents: contents, scope: scope)
         }
     }
 
@@ -298,7 +320,11 @@ public struct DevelopmentRepositoryFileClient: Sendable {
         // Avoid writing credential-looking material into a repo file through the
         // assistant queue; users can still edit such files manually outside SoloPM.
         try failIfSecretLikeContent(contents)
-        let scope = try ProjectWorkspaceScope(project: project, bookmarkResolver: bookmarkResolver)
+        let scope = try ProjectWorkspaceScope(
+            project: project,
+            bookmarkResolver: bookmarkResolver,
+            requireBookmark: requireBookmark
+        )
         return try withExtendedLifetime(scope) {
             let fileURL = try resolveNewFile(relativePath: relativePath, scope: scope)
 
@@ -308,7 +334,7 @@ public struct DevelopmentRepositoryFileClient: Sendable {
             )
             try Data(contents.utf8).write(to: fileURL, options: [.atomic])
 
-            return record(relativePath: relativePath, contents: contents)
+            return record(relativePath: relativePath, contents: contents, scope: scope)
         }
     }
 
@@ -320,7 +346,11 @@ public struct DevelopmentRepositoryFileClient: Sendable {
         let relativePath = try DevelopmentRepositoryFilePathPolicy.validatedRelativePath(rawPath)
         try DevelopmentRepositoryFilePathPolicy.validateTextContent(contents)
         try failIfSecretLikeContent(contents)
-        let scope = try ProjectWorkspaceScope(project: project, bookmarkResolver: bookmarkResolver)
+        let scope = try ProjectWorkspaceScope(
+            project: project,
+            bookmarkResolver: bookmarkResolver,
+            requireBookmark: requireBookmark
+        )
         return try withExtendedLifetime(scope) {
             let fileURL = try resolveExistingFile(relativePath: relativePath, scope: scope)
 
@@ -334,7 +364,7 @@ public struct DevelopmentRepositoryFileClient: Sendable {
             }
 
             try Data(contents.utf8).write(to: fileURL, options: [.atomic])
-            return record(relativePath: relativePath, contents: contents)
+            return record(relativePath: relativePath, contents: contents, scope: scope)
         }
     }
 
@@ -540,12 +570,18 @@ public struct DevelopmentRepositoryFileClient: Sendable {
         }
     }
 
-    private func record(relativePath: String, contents: String) -> DevelopmentRepositoryFileRecord {
+    private func record(
+        relativePath: String,
+        contents: String,
+        scope: ProjectWorkspaceScope
+    ) -> DevelopmentRepositoryFileRecord {
         DevelopmentRepositoryFileRecord(
             relativePath: relativePath,
             contents: contents,
             byteCount: Data(contents.utf8).count,
-            sha256: sha256(Data(contents.utf8))
+            sha256: sha256(Data(contents.utf8)),
+            workspacePath: scope.rootURL.path,
+            absolutePath: scope.rootURL.appendingPathComponent(relativePath).standardizedFileURL.path
         )
     }
 
@@ -628,19 +664,25 @@ public struct DevelopmentRepositoryFileTool: Tool {
     }
 
     private let projectStore: SQLiteProjectStore
+    private let artifactStore: SQLiteArtifactStore?
     private let redactor: DeveloperSecretRedactor
     private let bookmarkResolver: any ProjectWorkspaceBookmarkResolving
+    private let requireBookmark: Bool
 
     public init(
         name: ActionTool,
         projectStore: SQLiteProjectStore,
+        artifactStore: SQLiteArtifactStore? = nil,
         redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
-        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver()
+        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver(),
+        requireBookmark: Bool = false
     ) {
         self.name = name
         self.projectStore = projectStore
+        self.artifactStore = artifactStore
         self.redactor = redactor
         self.bookmarkResolver = bookmarkResolver
+        self.requireBookmark = requireBookmark
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
@@ -655,7 +697,8 @@ public struct DevelopmentRepositoryFileTool: Tool {
             let client = DevelopmentRepositoryFileClient(
                 project: project,
                 redactor: redactor,
-                bookmarkResolver: bookmarkResolver
+                bookmarkResolver: bookmarkResolver,
+                requireBookmark: requireBookmark
             )
 
             switch name {
@@ -677,14 +720,14 @@ public struct DevelopmentRepositoryFileTool: Tool {
             case .developmentRepositoryReadFile:
                 let relativePath = try args.requiredTrimmedString("relativePath")
                 let record = try client.read(relativePath: relativePath)
-                return result(record: record, project: project)
+                return try result(record: record, project: project)
             case .developmentRepositoryCreateFile:
                 let relativePath = try args.requiredTrimmedString("relativePath")
                 let record = try client.create(
                     relativePath: relativePath,
                     contents: try args.requiredString("contents")
                 )
-                return result(record: record, project: project)
+                return try result(record: record, project: project, linkArtifact: true)
             case .developmentRepositoryUpdateFile:
                 let relativePath = try args.requiredTrimmedString("relativePath")
                 let record = try client.update(
@@ -692,7 +735,7 @@ public struct DevelopmentRepositoryFileTool: Tool {
                     contents: try args.requiredString("contents"),
                     expectedSHA256: try args.optionalTrimmedString("expectedSHA256")
                 )
-                return result(record: record, project: project)
+                return try result(record: record, project: project, linkArtifact: true)
             default:
                 throw DevelopmentRepositoryFileError.unsupportedTool(name)
             }
@@ -722,17 +765,61 @@ public struct DevelopmentRepositoryFileTool: Tool {
         }
     }
 
-    private func result(record: DevelopmentRepositoryFileRecord, project: ProjectRecord) -> ToolResult {
-        ToolResult(
+    private func result(
+        record: DevelopmentRepositoryFileRecord,
+        project: ProjectRecord,
+        linkArtifact: Bool = false
+    ) throws -> ToolResult {
+        let artifact = try linkArtifact ? persistedArtifactLink(for: record, project: project) : nil
+        var output = record.output
+        var rollbackMetadata: [String: JSONValue] = [
+            "projectId": .number(Double(project.id)),
+            "relativePath": .string(record.relativePath),
+            "sha256": .string(record.sha256)
+        ]
+        if let artifact {
+            output["artifactId"] = .number(Double(artifact.id))
+            rollbackMetadata["artifactId"] = .number(Double(artifact.id))
+        }
+
+        return ToolResult(
             tool: name,
             status: .succeeded,
             summary: "\(summaryVerb) \(record.relativePath).",
-            output: record.output,
-            rollbackMetadata: [
-                "projectId": .number(Double(project.id)),
-                "relativePath": .string(record.relativePath),
-                "sha256": .string(record.sha256)
-            ]
+            output: output,
+            rollbackMetadata: rollbackMetadata
+        )
+    }
+
+    private func persistedArtifactLink(
+        for record: DevelopmentRepositoryFileRecord,
+        project: ProjectRecord
+    ) throws -> ArtifactRecord? {
+        guard let artifactStore else {
+            return nil
+        }
+        guard let workspacePath = record.workspacePath, let absolutePath = record.absolutePath else {
+            throw ToolExecutionError.executionFailed(name, "Repository file client did not report an absolute artifact path.")
+        }
+
+        let updated = try artifactStore.updateProjectArtifactFromFileEvent(
+            projectID: project.id,
+            workspacePath: workspacePath,
+            path: absolutePath,
+            modifiedAt: Date()
+        )
+        if let artifact = updated.first {
+            return artifact
+        }
+
+        // Repository create/update results are project deliverables, not just
+        // transient file edits, so link them into the Project overview once the
+        // approved write succeeds.
+        return try artifactStore.create(
+            projectID: project.id,
+            workspacePath: workspacePath,
+            expectedPath: absolutePath,
+            createdState: .created
         )
     }
 }

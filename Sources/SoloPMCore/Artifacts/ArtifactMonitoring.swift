@@ -113,6 +113,34 @@ public final class SQLiteArtifactStore: @unchecked Sendable {
         return try listByWorkspaceAndExpectedPathLocked(workspacePath: workspacePath, path: path)
     }
 
+    public func updateProjectArtifactFromFileEvent(
+        projectID: Int64,
+        workspacePath: String,
+        path: String,
+        modifiedAt: Date
+    ) throws -> [ArtifactRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        try connection.execute(
+            """
+            UPDATE artifacts
+            SET created_state = '\(ArtifactCreatedState.created.rawValue)',
+                last_modified_at = '\(DeadlineDateParser.string(from: modifiedAt))',
+                workspace_path = '\(ArtifactSQL.escape(workspacePath))',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE project_id = \(projectID)
+              AND task_id IS NULL
+              AND expected_path = '\(ArtifactSQL.escape(path))';
+            """
+        )
+
+        return try listByProjectAndExpectedPathLocked(
+            projectID: projectID,
+            path: path
+        )
+    }
+
     public func listStale(workspacePath: String, modifiedBefore cutoff: Date) throws -> [ArtifactRecord] {
         lock.lock()
         defer { lock.unlock() }
@@ -142,6 +170,21 @@ public final class SQLiteArtifactStore: @unchecked Sendable {
             """
             SELECT * FROM artifacts
             WHERE workspace_path = '\(ArtifactSQL.escape(workspacePath))'
+              AND expected_path = '\(ArtifactSQL.escape(path))'
+            ORDER BY id ASC;
+            """
+        ).map(ArtifactRecord.init(row:))
+    }
+
+    private func listByProjectAndExpectedPathLocked(
+        projectID: Int64,
+        path: String
+    ) throws -> [ArtifactRecord] {
+        try connection.queryRows(
+            """
+            SELECT * FROM artifacts
+            WHERE project_id = \(projectID)
+              AND task_id IS NULL
               AND expected_path = '\(ArtifactSQL.escape(path))'
             ORDER BY id ASC;
             """

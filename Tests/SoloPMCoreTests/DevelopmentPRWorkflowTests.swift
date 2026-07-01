@@ -24,6 +24,39 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         XCTAssertEqual(runner.recordedInvocations, [])
     }
 
+    func testDeveloperModePrepareWorkflowRequiresStoredBookmarkBeforeGit() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let runner = RecordingDevelopmentGitRunner()
+        let registry = try ToolRegistryFactory.developerMode(
+            settings: DeveloperModeSettings(
+                isEnabled: true,
+                workspaceRoot: workspace,
+                enabledCapabilities: [.developmentPRWorkflow]
+            ),
+            gitRunner: runner,
+            projectStore: stores.projects,
+            taskStore: stores.tasks
+        )
+
+        XCTAssertThrowsError(
+            try registry.tool(named: .developmentPreparePullRequestWorkflow).execute(
+                arguments: ["projectId": .number(Double(project.id))],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(
+                    .developmentPreparePullRequestWorkflow,
+                    "Project workspace access bookmark could not be resolved and must be renewed."
+                )
+            )
+        }
+        XCTAssertEqual(runner.recordedInvocations, [])
+    }
+
     func testPreparePullRequestWorkflowFailsClosedWithoutApprovedProjectWorkspace() throws {
         let stores = try makeStores()
         let project = try stores.projects.create(title: "SoloPM")

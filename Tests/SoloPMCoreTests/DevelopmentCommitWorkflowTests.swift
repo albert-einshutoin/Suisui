@@ -250,6 +250,44 @@ final class DevelopmentCommitWorkflowTests: XCTestCase {
         XCTAssertTrue(DeveloperModeCapability.developmentPRWorkflow.disclosure.summary.contains("local commits"))
     }
 
+    func testDeveloperModeCommitRequiresStoredBookmarkBeforeGit() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        try write("let value = 1\n", to: workspace.appendingPathComponent("Sources/App.swift"))
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let runner = RecordingDevelopmentCommitGitRunner()
+        let registry = try ToolRegistryFactory.developerMode(
+            settings: DeveloperModeSettings(
+                isEnabled: true,
+                workspaceRoot: workspace,
+                enabledCapabilities: [.developmentPRWorkflow]
+            ),
+            gitRunner: runner,
+            projectStore: stores.projects,
+            taskStore: stores.tasks
+        )
+
+        XCTAssertThrowsError(
+            try registry.tool(named: .developmentCommitChanges).execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "relativePaths": .array([.string("Sources/App.swift")]),
+                    "commitMessage": .string("Implement app shell")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(
+                    .developmentCommitChanges,
+                    "Project workspace access bookmark could not be resolved and must be renewed."
+                )
+            )
+        }
+        XCTAssertEqual(runner.recordedInvocations, [])
+    }
+
     private func write(_ contents: String, to url: URL) throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try contents.write(to: url, atomically: true, encoding: .utf8)

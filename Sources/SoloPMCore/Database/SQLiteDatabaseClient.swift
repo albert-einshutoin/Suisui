@@ -634,6 +634,81 @@ public enum CoreMigrations {
                     WHERE state IN ('approved', 'running');
                     """
                 )
+            },
+            DatabaseMigration(id: "0017_scope_artifact_uniqueness_to_owner") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE artifacts_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        project_id INTEGER,
+                        task_id INTEGER,
+                        workspace_path TEXT NOT NULL,
+                        expected_path TEXT NOT NULL,
+                        created_state TEXT NOT NULL CHECK(created_state IN ('expected', 'created', 'missing')),
+                        last_modified_at TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    INSERT INTO artifacts_new (
+                        id,
+                        project_id,
+                        task_id,
+                        workspace_path,
+                        expected_path,
+                        created_state,
+                        last_modified_at,
+                        created_at,
+                        updated_at
+                    )
+                    SELECT
+                        id,
+                        project_id,
+                        task_id,
+                        workspace_path,
+                        expected_path,
+                        created_state,
+                        last_modified_at,
+                        created_at,
+                        updated_at
+                    FROM artifacts;
+
+                    DELETE FROM artifacts_new
+                    WHERE id IN (
+                        SELECT id
+                        FROM (
+                            SELECT
+                                id,
+                                ROW_NUMBER() OVER (
+                                    PARTITION BY IFNULL(project_id, -1), IFNULL(task_id, -1), expected_path
+                                    ORDER BY
+                                        CASE created_state
+                                            WHEN 'created' THEN 0
+                                            WHEN 'expected' THEN 1
+                                            ELSE 2
+                                        END,
+                                        CASE WHEN last_modified_at IS NULL THEN 1 ELSE 0 END,
+                                        last_modified_at DESC,
+                                        id ASC
+                                ) AS duplicate_rank
+                            FROM artifacts_new
+                        )
+                        WHERE duplicate_rank > 1
+                    );
+
+                    DROP TABLE artifacts;
+                    ALTER TABLE artifacts_new RENAME TO artifacts;
+
+                    CREATE INDEX IF NOT EXISTS idx_artifacts_workspace_path
+                    ON artifacts(workspace_path);
+
+                    CREATE INDEX IF NOT EXISTS idx_artifacts_last_modified_at
+                    ON artifacts(last_modified_at);
+
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_artifacts_owner_expected_path
+                    ON artifacts(IFNULL(project_id, -1), IFNULL(task_id, -1), expected_path);
+                    """
+                )
             }
         ]
     }

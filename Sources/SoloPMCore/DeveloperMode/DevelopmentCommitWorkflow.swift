@@ -97,15 +97,21 @@ public struct DevelopmentCommitWorkflowTool: Tool {
 
     private let projectStore: SQLiteProjectStore
     private let gitRunner: any GitCommandRunner
+    private let bookmarkResolver: any ProjectWorkspaceBookmarkResolving
+    private let requireBookmark: Bool
     private let redactor: DeveloperSecretRedactor
 
     public init(
         projectStore: SQLiteProjectStore,
         gitRunner: any GitCommandRunner = ProcessGitCommandRunner(),
+        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver(),
+        requireBookmark: Bool = false,
         redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()
     ) {
         self.projectStore = projectStore
         self.gitRunner = gitRunner
+        self.bookmarkResolver = bookmarkResolver
+        self.requireBookmark = requireBookmark
         self.redactor = redactor
     }
 
@@ -118,7 +124,11 @@ public struct DevelopmentCommitWorkflowTool: Tool {
 
         do {
             let project = try projectStore.get(id: projectID)
-            let scope = try ProjectWorkspaceScope(project: project)
+            let scope = try ProjectWorkspaceScope(
+                project: project,
+                bookmarkResolver: bookmarkResolver,
+                requireBookmark: requireBookmark
+            )
             let relativePaths = try validatedRelativePaths(args.trimmedStringArray("relativePaths"), project: project)
             let commitMessage = try DevelopmentCommitGitCommandPolicy.validatedCommitMessage(
                 args.requiredString("commitMessage"),
@@ -192,7 +202,12 @@ public struct DevelopmentCommitWorkflowTool: Tool {
             throw DevelopmentCommitWorkflowError.noRelativePaths
         }
 
-        let fileClient = DevelopmentRepositoryFileClient(project: project, redactor: redactor)
+        let fileClient = DevelopmentRepositoryFileClient(
+            project: project,
+            redactor: redactor,
+            bookmarkResolver: bookmarkResolver,
+            requireBookmark: requireBookmark
+        )
         var seen: Set<String> = []
         var relativePaths: [String] = []
         for rawPath in rawPaths {

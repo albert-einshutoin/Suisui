@@ -390,6 +390,184 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
         XCTAssertNotEqual(updated.output["sha256"], .string(createdDigest))
     }
 
+    func testCreateRepositoryFilePersistsProjectArtifactLinkForProjectOverview() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let bookmarkData = Data("approved-repository-workspace".utf8)
+        let resolver = RecordingProjectWorkspaceBookmarkResolver(
+            resolution: ProjectWorkspaceBookmarkResolution(
+                url: workspace,
+                isStale: false,
+                didStartAccessing: true,
+                stopAccessing: {}
+            )
+        )
+        let project = try stores.projects.create(
+            title: "SoloPM",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: bookmarkData
+        )
+        let createTool = DevelopmentRepositoryFileTool(
+            name: .developmentRepositoryCreateFile,
+            projectStore: stores.projects,
+            artifactStore: stores.artifacts,
+            bookmarkResolver: resolver,
+            requireBookmark: true
+        )
+
+        let result = try createTool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "relativePath": .string("docs/plan.md"),
+                "contents": .string("# Plan\n")
+            ],
+            context: approvedContext()
+        )
+
+        let artifactURL = workspace.appendingPathComponent("docs/plan.md").standardizedFileURL
+        XCTAssertTrue(FileManager.default.fileExists(atPath: artifactURL.path))
+        XCTAssertEqual(result.output["artifactId"], .number(1))
+        XCTAssertEqual(result.rollbackMetadata["artifactId"], .number(1))
+        XCTAssertEqual(resolver.resolvedBookmarks, [bookmarkData])
+
+        let artifacts = try stores.artifacts.list()
+        XCTAssertEqual(artifacts.count, 1)
+        XCTAssertEqual(artifacts.first?.projectID, project.id)
+        XCTAssertNil(artifacts.first?.taskID)
+        XCTAssertEqual(artifacts.first?.workspacePath, workspace.resolvingSymlinksInPath().standardizedFileURL.path)
+        XCTAssertEqual(artifacts.first?.expectedPath, artifactURL.path)
+        XCTAssertEqual(artifacts.first?.createdState, .created)
+    }
+
+    func testCreateRepositoryFileReusesExistingExpectedProjectArtifact() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let artifactURL = workspace.appendingPathComponent("docs/plan.md").standardizedFileURL
+        let bookmarkData = Data("approved-repository-create-workspace".utf8)
+        let resolver = RecordingProjectWorkspaceBookmarkResolver(
+            resolution: ProjectWorkspaceBookmarkResolution(
+                url: workspace,
+                isStale: false,
+                didStartAccessing: true,
+                stopAccessing: {}
+            )
+        )
+        let project = try stores.projects.create(
+            title: "SoloPM",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: bookmarkData
+        )
+        let existingArtifact = try stores.artifacts.create(
+            projectID: project.id,
+            workspacePath: artifactURL.deletingLastPathComponent().path,
+            expectedPath: artifactURL.path,
+            createdState: .expected
+        )
+        let createTool = DevelopmentRepositoryFileTool(
+            name: .developmentRepositoryCreateFile,
+            projectStore: stores.projects,
+            artifactStore: stores.artifacts,
+            bookmarkResolver: resolver,
+            requireBookmark: true
+        )
+
+        let result = try createTool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "relativePath": .string("docs/plan.md"),
+                "contents": .string("# Plan\n")
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.output["artifactId"], .number(Double(existingArtifact.id)))
+        let artifacts = try stores.artifacts.list()
+        XCTAssertEqual(artifacts.count, 1)
+        XCTAssertEqual(artifacts.first?.id, existingArtifact.id)
+        XCTAssertEqual(artifacts.first?.workspacePath, workspace.resolvingSymlinksInPath().standardizedFileURL.path)
+        XCTAssertEqual(artifacts.first?.expectedPath, artifactURL.path)
+        XCTAssertEqual(artifacts.first?.createdState, .created)
+    }
+
+    func testUpdateRepositoryFileRefreshesProjectArtifactLinkForProjectOverview() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        try write("# Draft\n", to: workspace.appendingPathComponent("docs/plan.md"))
+        let artifactURL = workspace.appendingPathComponent("docs/plan.md").standardizedFileURL
+        let bookmarkData = Data("approved-update-workspace".utf8)
+        let resolver = RecordingProjectWorkspaceBookmarkResolver(
+            resolution: ProjectWorkspaceBookmarkResolution(
+                url: workspace,
+                isStale: false,
+                didStartAccessing: true,
+                stopAccessing: {}
+            )
+        )
+        let project = try stores.projects.create(
+            title: "SoloPM",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: bookmarkData
+        )
+        let existingArtifact = try stores.artifacts.create(
+            projectID: project.id,
+            workspacePath: artifactURL.deletingLastPathComponent().path,
+            expectedPath: artifactURL.path,
+            createdState: .expected
+        )
+        let updateTool = DevelopmentRepositoryFileTool(
+            name: .developmentRepositoryUpdateFile,
+            projectStore: stores.projects,
+            artifactStore: stores.artifacts,
+            bookmarkResolver: resolver,
+            requireBookmark: true
+        )
+
+        let result = try updateTool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "relativePath": .string("docs/plan.md"),
+                "contents": .string("# Updated\n")
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.output["artifactId"], .number(Double(existingArtifact.id)))
+        XCTAssertEqual(try String(contentsOf: artifactURL, encoding: .utf8), "# Updated\n")
+        let artifacts = try stores.artifacts.list()
+        XCTAssertEqual(artifacts.count, 1)
+        XCTAssertEqual(artifacts.first?.id, existingArtifact.id)
+        XCTAssertEqual(artifacts.first?.projectID, project.id)
+        XCTAssertEqual(artifacts.first?.createdState, .created)
+        XCTAssertNotNil(artifacts.first?.lastModifiedAt)
+    }
+
+    func testRepositoryFileToolRequiresStoredBookmarkBeforePathOnlyWorkspaceAccess() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        try write("# Plan\n", to: workspace.appendingPathComponent("docs/plan.md"))
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let listTool = DevelopmentRepositoryFileTool(
+            name: .developmentRepositoryListFiles,
+            projectStore: stores.projects,
+            requireBookmark: true
+        )
+
+        XCTAssertThrowsError(
+            try listTool.execute(
+                arguments: ["projectId": .number(Double(project.id))],
+                context: ToolExecutionContext(source: .reviewUI)
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(
+                    .developmentRepositoryListFiles,
+                    "Project workspace access bookmark could not be resolved and must be renewed."
+                )
+            )
+        }
+    }
+
     func testUpdateRejectsStaleDigestBeforeWriting() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
@@ -714,7 +892,8 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
                 enabledCapabilities: [.developmentRepositoryFiles]
             ),
             projectStore: stores.projects,
-            taskStore: stores.tasks
+            taskStore: stores.tasks,
+            artifactStore: stores.artifacts
         )
 
         XCTAssertTrue(registry.contains(.developmentRepositoryListFiles))
@@ -723,17 +902,34 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
         XCTAssertTrue(registry.contains(.developmentRepositoryUpdateFile))
     }
 
+    func testDevelopmentModeRequiresArtifactStoreForRepositoryFileCapability() throws {
+        let stores = try makeStores()
+
+        XCTAssertThrowsError(try ToolRegistryFactory.developerMode(
+            settings: DeveloperModeSettings(
+                isEnabled: true,
+                workspaceRoot: temporaryDirectory(),
+                enabledCapabilities: [.developmentRepositoryFiles]
+            ),
+            projectStore: stores.projects,
+            taskStore: stores.tasks
+        )) { error in
+            XCTAssertEqual(error as? DeveloperModeError, .artifactStoreRequired)
+        }
+    }
+
     private func write(_ contents: String, to url: URL) throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try contents.write(to: url, atomically: true, encoding: .utf8)
     }
 
-    private func makeStores() throws -> (projects: SQLiteProjectStore, tasks: SQLiteTaskStore) {
+    private func makeStores() throws -> (projects: SQLiteProjectStore, tasks: SQLiteTaskStore, artifacts: SQLiteArtifactStore) {
         let connection = try SQLiteConnection(path: ":memory:")
         try DevelopmentRepositoryFileTestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         return (
             SQLiteProjectStore(connection: connection),
-            SQLiteTaskStore(connection: connection)
+            SQLiteTaskStore(connection: connection),
+            SQLiteArtifactStore(connection: connection)
         )
     }
 
