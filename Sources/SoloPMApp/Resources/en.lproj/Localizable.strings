@@ -567,7 +567,7 @@
 "Shows a compact route through the first local Today time blocks." = "Shows a compact route through the first local Today time blocks.";
 "Next Action" = "Next Action";
 "Today assistant rail" = "Today assistant rail";
-"Shows the selected or recommended Today task details and local next actions." = "Shows the selected or recommended Today task details and local next actions.";
+"Shows focused, selected, or recommended Today task details and local next actions." = "Shows focused, selected, or recommended Today task details and local next actions.";
 "Time Block" = "Time Block";
 "No block drafted" = "No block drafted";
 "Notes" = "Notes";
@@ -585,7 +585,9 @@
 "Reminder for %@" = "Reminder for %@";
 "Queues a Reminders draft for approval before any external write." = "Queues a Reminders draft for approval before any external write.";
 "Review selected task" = "Review selected task";
+"Resume focused task" = "Resume focused task";
 "You selected this Today task for review." = "You selected this Today task for review.";
+"This task is already in focus." = "This task is already in focus.";
 "Start recommended task" = "Start recommended task";
 "No project selected" = "No project selected";
 "Capture the next task" = "Capture the next task";

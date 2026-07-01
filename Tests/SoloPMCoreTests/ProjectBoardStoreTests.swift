@@ -4411,6 +4411,136 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelBuildsTodayAssistantRailContextFromFocusedTask() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        let focused = try XCTUnwrap(viewModel.createTask(
+            title: "Write launch memo",
+            detail: "Keep the current focus visible",
+            projectID: launch.id,
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-19T11:00:00Z"
+        ))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        viewModel.startFocus(taskID: focused.id)
+        viewModel.selectedTaskID = nil
+
+        let context = viewModel.todayAssistantRailContext(
+            on: try isoDate("2026-06-19T08:37:00Z"),
+            calendar: calendar
+        )
+
+        XCTAssertEqual(context.source, .focused)
+        XCTAssertEqual(context.task?.title, "Write launch memo")
+        XCTAssertEqual(context.projectTitle, "Launch")
+        XCTAssertEqual(context.nextActionTitle, "Resume focused task")
+        XCTAssertEqual(context.nextActionReason, "This task is already in focus.")
+        XCTAssertEqual(context.notes, "Keep the current focus visible")
+    }
+
+    @MainActor
+    func testProjectBoardViewModelPrefersFocusedTaskWhenBuildingTodayAssistantRailContext() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        let selected = try XCTUnwrap(viewModel.createTask(
+            title: "Selected due item",
+            projectID: launch.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-19T09:00:00Z"
+        ))
+        let focused = try XCTUnwrap(viewModel.createTask(
+            title: "Focused due item",
+            projectID: launch.id,
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-19T12:00:00Z"
+        ))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        viewModel.startFocus(taskID: focused.id)
+        viewModel.selectedTaskID = selected.id
+
+        let context = viewModel.todayAssistantRailContext(
+            on: try isoDate("2026-06-19T08:37:00Z"),
+            calendar: calendar
+        )
+
+        XCTAssertEqual(context.source, .focused)
+        XCTAssertEqual(context.task?.title, "Focused due item")
+    }
+
+    @MainActor
+    func testProjectBoardViewModelIgnoresCompletedFocusedTaskWhenBuildingTodayAssistantRailContext() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        let selected = try XCTUnwrap(viewModel.createTask(
+            title: "Selected open item",
+            projectID: launch.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-19T09:00:00Z"
+        ))
+        let completedFocus = try XCTUnwrap(viewModel.createTask(
+            title: "Completed focus item",
+            projectID: launch.id,
+            status: .done,
+            priority: .medium,
+            dueAt: "2026-06-19T12:00:00Z"
+        ))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        viewModel.setShowsCompletedWorkflowTasks(true)
+        viewModel.startFocus(taskID: completedFocus.id)
+        viewModel.selectedTaskID = selected.id
+
+        let context = viewModel.todayAssistantRailContext(
+            on: try isoDate("2026-06-19T08:37:00Z"),
+            calendar: calendar
+        )
+
+        XCTAssertEqual(context.source, .selected)
+        XCTAssertEqual(context.task?.title, "Selected open item")
+    }
+
+    @MainActor
+    func testProjectBoardViewModelFallsBackFromFutureFocusedTaskWhenBuildingTodayAssistantRailContext() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        _ = try XCTUnwrap(viewModel.createTask(
+            title: "Recommended today item",
+            projectID: launch.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-19T09:00:00Z"
+        ))
+        let futureFocus = try XCTUnwrap(viewModel.createTask(
+            title: "Future focused item",
+            projectID: launch.id,
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-25T12:00:00Z"
+        ))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        viewModel.startFocus(taskID: futureFocus.id)
+
+        let context = viewModel.todayAssistantRailContext(
+            on: try isoDate("2026-06-19T08:37:00Z"),
+            calendar: calendar
+        )
+
+        XCTAssertEqual(context.source, .recommended)
+        XCTAssertEqual(context.task?.title, "Recommended today item")
+    }
+
+    @MainActor
     func testTodayDueDisplayLabelFormatsOverdueTodayAndDateOnlyValues() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
