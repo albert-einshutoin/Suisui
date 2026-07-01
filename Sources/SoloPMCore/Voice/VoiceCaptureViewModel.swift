@@ -440,11 +440,18 @@ public final class VoiceCaptureViewModel: ObservableObject {
             ["do not", "don't", "dont", "not start", "not defer", "cancel", "しない", "始めない", "開始しない", "延期しない", "やめ"],
             in: folded
         )
+        let asksForAdvice = containsAnyExplicitPhrase(
+            ["should i", "should we", "whether", "do you think", "is it better"],
+            in: folded
+        ) || containsAny(
+            ["すべき", "べきか", "するか", "回すか", "確認して", "相談", "どう思"],
+            in: folded
+        )
 
         // Voice Daily Planning may prefill an approval item, but ambiguous
         // phrases must stay as a read-only review so the assistant never turns
         // a vague planning prompt into a write-capable Queue action.
-        guard rejectsAction == false, requestsStart != requestsDefer else {
+        guard rejectsAction == false, asksForAdvice == false, requestsStart != requestsDefer else {
             return nil
         }
         return requestsStart ? .startRecommended : .deferRecommendedToTomorrow
