@@ -159,6 +159,8 @@ struct ScheduleWorkflowView: View {
     @State private var selectedWorkloadDayKey: String?
 
     var body: some View {
+        let workloadOverview = viewModel.dailyWorkloadOverview(around: workloadReferenceDate)
+        let workloadReferenceDayKey = scheduleDateKey(for: workloadReferenceDate)
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 10) {
@@ -174,11 +176,23 @@ struct ScheduleWorkflowView: View {
                     .accessibilityHint("Combines today's local time blocks and unscheduled tasks without writing to Calendar.")
                 }
 
-                DailyWorkloadPanel(
-                    overview: viewModel.dailyWorkloadOverview(around: workloadReferenceDate),
+                ScheduleMiniCalendarPanel(
+                    overview: workloadOverview,
                     selectedDayKey: $selectedWorkloadDayKey,
+                    referenceDayKey: workloadReferenceDayKey,
                     previousWeek: moveWorkloadToPreviousWeek,
-                    nextWeek: moveWorkloadToNextWeek
+                    nextWeek: moveWorkloadToNextWeek,
+                    jumpToToday: moveWorkloadToToday,
+                    selectDay: selectMiniCalendarDay
+                )
+
+                DailyWorkloadPanel(
+                    overview: workloadOverview,
+                    selectedDayKey: $selectedWorkloadDayKey,
+                    referenceDayKey: workloadReferenceDayKey,
+                    previousWeek: moveWorkloadToPreviousWeek,
+                    nextWeek: moveWorkloadToNextWeek,
+                    selectDay: selectMiniCalendarDay
                 )
 
                 WeeklyScheduleCockpitPanel(
@@ -229,6 +243,221 @@ struct ScheduleWorkflowView: View {
     private func moveWorkloadToNextWeek() {
         workloadReferenceDate = Calendar.current.date(byAdding: .day, value: 7, to: workloadReferenceDate) ?? workloadReferenceDate
         selectedWorkloadDayKey = nil
+    }
+
+    private func moveWorkloadToToday() {
+        workloadReferenceDate = Date()
+        selectedWorkloadDayKey = nil
+    }
+
+    private func selectMiniCalendarDay(_ day: DailyWorkloadDay) {
+        workloadReferenceDate = day.date
+        selectedWorkloadDayKey = day.dateKey
+    }
+
+    private func scheduleDateKey(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar.current
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = Calendar.current.timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+}
+
+private struct ScheduleMiniCalendarPanel: View {
+    let overview: DailyWorkloadOverview
+    @Binding var selectedDayKey: String?
+    let referenceDayKey: String
+    let previousWeek: () -> Void
+    let nextWeek: () -> Void
+    let jumpToToday: () -> Void
+    let selectDay: (DailyWorkloadDay) -> Void
+
+    private var selectedDay: DailyWorkloadDay? {
+        overview.days.first { $0.dateKey == selectedDayKey }
+            ?? overview.days.first { $0.dateKey == referenceDayKey }
+            ?? overview.days.first { $0.totalTaskCount > 0 }
+            ?? overview.days.first
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
+                Label("Mini Calendar", systemImage: "calendar")
+                    .font(.headline)
+                Spacer(minLength: 8)
+                Button(action: previousWeek) {
+                    Label("Previous Week", systemImage: "chevron.left")
+                }
+                .labelStyle(.iconOnly)
+                .help("Previous Week")
+                .accessibilityIdentifier("schedule-mini-calendar-previous-week")
+                .accessibilityLabel("Previous Week")
+
+                Button(action: jumpToToday) {
+                    Label("Today", systemImage: "calendar.badge.clock")
+                }
+                .help("Jump to Today")
+                .accessibilityIdentifier("schedule-mini-calendar-today")
+                .accessibilityHint("Selects the current day in the Schedule mini calendar.")
+
+                Button(action: nextWeek) {
+                    Label("Next Week", systemImage: "chevron.right")
+                }
+                .labelStyle(.iconOnly)
+                .help("Next Week")
+                .accessibilityIdentifier("schedule-mini-calendar-next-week")
+                .accessibilityLabel("Next Week")
+            }
+
+            if let selectedDay {
+                Label(selectedSummary(for: selectedDay), systemImage: "scope")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("schedule-mini-calendar-selected-day")
+            }
+
+            ScrollView(.horizontal, showsIndicators: true) {
+                HStack(spacing: 8) {
+                    ForEach(overview.days) { day in
+                        Button {
+                            selectDay(day)
+                        } label: {
+                            ScheduleMiniCalendarDayChip(day: day, isSelected: day.dateKey == selectedDay?.dateKey)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("schedule-mini-calendar-day-\(day.dateKey)")
+                        .accessibilityLabel(String(format: String(localized: "Workload for %@"), day.dateKey))
+                        .accessibilityValue(dayAccessibilityValue(day, isSelected: day.dateKey == selectedDay?.dateKey))
+                        .accessibilityHint("Selects this day as the Schedule agenda without writing Calendar.")
+                        .accessibilityAddTraits(day.dateKey == selectedDay?.dateKey ? .isSelected : [])
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("schedule-mini-calendar")
+        .accessibilityLabel("Mini Calendar")
+        .accessibilityHint("Selects the Schedule agenda day without writing Calendar.")
+    }
+
+    private func selectedSummary(for day: DailyWorkloadDay) -> String {
+        String(
+            format: String(localized: "Selected %@ with %d open tasks and %d attention signals."),
+            day.dateKey,
+            day.openTaskCount,
+            day.overdueTaskCount + day.blockedTaskCount
+        )
+    }
+
+    private func dayAccessibilityValue(_ day: DailyWorkloadDay, isSelected: Bool) -> String {
+        let summary = String(
+            format: String(localized: "%d tasks, %d open, %d done, %d blocked, %d missed"),
+            day.totalTaskCount,
+            day.openTaskCount,
+            day.doneTaskCount,
+            day.blockedTaskCount,
+            day.overdueTaskCount
+        )
+        if isSelected {
+            return String(format: String(localized: "Selected, %@"), summary)
+        }
+        return String(format: String(localized: "Not selected, %@"), summary)
+    }
+}
+
+private struct ScheduleMiniCalendarDayChip: View {
+    let day: DailyWorkloadDay
+    let isSelected: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 5) {
+                Text(shortDateLabel)
+                    .font(.caption.weight(.semibold))
+                if day.overdueTaskCount > 0 {
+                    Image(systemName: "clock.badge.exclamationmark")
+                        .foregroundStyle(.orange)
+                        .accessibilityHidden(true)
+                }
+            }
+
+            Text(day.loadLabel)
+                .font(.caption2)
+                .foregroundStyle(loadTint)
+
+            HStack(spacing: 6) {
+                miniMetric(String(format: String(localized: "%d open"), day.openTaskCount))
+                miniMetric(String(format: String(localized: "%d done"), day.doneTaskCount))
+            }
+        }
+        .padding(9)
+        .frame(minWidth: 112, maxWidth: 112, minHeight: 82, alignment: .topLeading)
+        .background(background, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? Color.accentColor.opacity(0.6) : loadTint.opacity(0.2))
+        }
+    }
+
+    private var shortDateLabel: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "E d"
+        return formatter.string(from: day.date)
+    }
+
+    private var loadTint: Color {
+        if day.overdueTaskCount > 0 || day.blockedTaskCount > 0 {
+            return .orange
+        }
+        if day.openTaskCount > 2 {
+            return .blue
+        }
+        return .secondary
+    }
+
+    private var background: Color {
+        if isSelected {
+            return Color.accentColor.opacity(0.12)
+        }
+        if day.overdueTaskCount > 0 || day.blockedTaskCount > 0 {
+            return Color.orange.opacity(0.08)
+        }
+        if day.totalTaskCount > 0 {
+            return Color.blue.opacity(0.06)
+        }
+        return Color.secondary.opacity(0.05)
+    }
+
+    private func miniMetric(_ label: String) -> some View {
+        Text(label)
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+    }
+}
+
+private extension DailyWorkloadDay {
+    var loadLabel: String {
+        if overdueTaskCount > 0 {
+            return String(localized: "Missed work")
+        }
+        if blockedTaskCount > 0 {
+            return String(localized: "Blocked work")
+        }
+        if openTaskCount > 2 {
+            return String(localized: "Focused day")
+        }
+        if totalTaskCount > 0 {
+            return String(localized: "Light day")
+        }
+        return String(localized: "Open day")
     }
 }
 
@@ -514,11 +743,14 @@ private struct WeeklyScheduleReminderPanel: View {
 private struct DailyWorkloadPanel: View {
     let overview: DailyWorkloadOverview
     @Binding var selectedDayKey: String?
+    let referenceDayKey: String
     let previousWeek: () -> Void
     let nextWeek: () -> Void
+    let selectDay: (DailyWorkloadDay) -> Void
 
     private var selectedDay: DailyWorkloadDay? {
         overview.days.first { $0.dateKey == selectedDayKey }
+            ?? overview.days.first { $0.dateKey == referenceDayKey }
             ?? overview.days.first { $0.totalTaskCount > 0 }
             ?? overview.days.first
     }
@@ -556,7 +788,7 @@ private struct DailyWorkloadPanel: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 8)], spacing: 8) {
                 ForEach(overview.days) { day in
                     Button {
-                        selectedDayKey = day.dateKey
+                        selectDay(day)
                     } label: {
                         DailyWorkloadDayCell(day: day, isSelected: day.dateKey == selectedDay?.dateKey)
                     }
