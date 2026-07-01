@@ -165,6 +165,63 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         ))
     }
 
+    func testGeneratePlanQueuesDevelopmentPullRequestMergeFromExplicitVoiceCommand() async throws {
+        let workspace = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        let bookmarkData = Data("voice-pr-workspace-bookmark".utf8)
+        let project = ProjectRecord(
+            id: 7,
+            title: "SoloPM",
+            status: "active",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: bookmarkData
+        )
+        let store = RecordingAssistantQueueStore()
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "recording",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider,
+            assistantQueueStore: store,
+            developmentProjectProvider: { project },
+            developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder(
+                bookmarkResolver: StaticProjectWorkspaceBookmarkResolver(url: workspace),
+                requestIDProvider: { "voice-pr-merge-request" }
+            )
+        )
+
+        viewModel.updateDraftText("""
+        Merge PR https://github.com/albert-einshutoin/soloPM/pull/116 branch feature/solopm-7-merge-gate base feature/phase14-product-completion
+        """)
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+        XCTAssertTrue(provider.requests.isEmpty)
+        XCTAssertEqual(store.savedItems.map(\.id), ["automation-request:voice-pr-merge-request"])
+        XCTAssertEqual(viewModel.assistantQueueItem?.requiredCapabilities, [
+            .connectedMacRequired,
+            .tool(.developmentMergePullRequest),
+            .providerExecutionApproval
+        ])
+        guard case .automationRequest(let request) = viewModel.assistantQueueItem?.payload else {
+            return XCTFail("Expected a development PR automation request")
+        }
+        XCTAssertEqual(request.source, .conversation)
+        XCTAssertEqual(request.toolName, ActionTool.developmentMergePullRequest.rawValue)
+        XCTAssertEqual(request.developmentPullRequest, SyncDevelopmentPullRequestPayload(
+            projectID: 7,
+            operation: .merge,
+            pullRequestURL: "https://github.com/albert-einshutoin/soloPM/pull/116",
+            branchName: "feature/solopm-7-merge-gate",
+            baseBranch: "feature/phase14-product-completion"
+        ))
+    }
+
     func testGeneratePlanPersistsAssistantQueueItemWhenStoreIsConfigured() async {
         let store = RecordingAssistantQueueStore()
         let response = PlanningResponse(

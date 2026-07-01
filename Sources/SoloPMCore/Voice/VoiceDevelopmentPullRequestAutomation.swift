@@ -20,23 +20,23 @@ public enum VoiceDevelopmentPullRequestAutomationRequestError: Error, Equatable,
         case .clarificationRequired:
             return "Development PR workflow needs clarification before queueing a review gate."
         case .projectWorkspaceBookmarkRequired:
-            return "Select and approve the project directory before queueing a development PR review gate."
+            return "Select and approve the project directory before queueing a development PR automation request."
         case .projectWorkspaceInvalid(let message):
             return message
         case .missingPullRequestURL:
-            return "Development PR review gate needs a GitHub pull request URL."
+            return "Development PR workflow needs a GitHub pull request URL."
         case .missingBranchName:
-            return "Development PR review gate needs an explicit head branch."
+            return "Development PR workflow needs an explicit head branch."
         case .missingBaseBranch:
-            return "Development PR review gate needs an explicit base branch."
+            return "Development PR workflow needs an explicit base branch."
         case .invalidPullRequestURL:
-            return "Development PR review gate needs a valid GitHub pull request URL."
+            return "Development PR workflow needs a valid GitHub pull request URL."
         case .invalidHeadBranch:
-            return "Development PR review gate needs a feature/* head branch."
+            return "Development PR workflow needs a feature/* head branch."
         case .invalidBaseBranch:
-            return "Development PR review gate needs a safe base branch name."
+            return "Development PR workflow needs a safe base branch name."
         case .branchMatchesBase:
-            return "Development PR review gate needs different head and base branches."
+            return "Development PR workflow needs different head and base branches."
         }
     }
 }
@@ -60,10 +60,32 @@ public struct VoiceDevelopmentPullRequestAutomationRequestBuilder: Sendable {
         firstPullRequestURL(in: transcript) != nil
     }
 
+    public func makeRequest(
+        route: VoiceCommandRoutingResult,
+        project: ProjectRecord,
+        sourceClientID: String = "voice"
+    ) throws -> SyncAutomationRequestPayload {
+        try makeRequest(
+            route: route,
+            project: project,
+            operation: Self.requestedOperation(in: route.normalizedTranscript),
+            sourceClientID: sourceClientID
+        )
+    }
+
     public func makeReviewGateRequest(
         route: VoiceCommandRoutingResult,
         project: ProjectRecord,
         sourceClientID: String = "voice"
+    ) throws -> SyncAutomationRequestPayload {
+        try makeRequest(route: route, project: project, operation: .reviewGate, sourceClientID: sourceClientID)
+    }
+
+    private func makeRequest(
+        route: VoiceCommandRoutingResult,
+        project: ProjectRecord,
+        operation: SyncDevelopmentPullRequestOperation,
+        sourceClientID: String
     ) throws -> SyncAutomationRequestPayload {
         guard route.intent == .developmentPRWorkflow else {
             throw VoiceDevelopmentPullRequestAutomationRequestError.unsupportedIntent
@@ -123,8 +145,9 @@ public struct VoiceDevelopmentPullRequestAutomationRequestBuilder: Sendable {
             source: .conversation,
             approvalState: .pendingApproval,
             sourceClientID: sanitizedMetadata(sourceClientID, maxLength: 160),
-            toolName: ActionTool.developmentReviewPullRequestGate.rawValue,
+            toolName: toolName(for: operation),
             redactedArgumentSummary: reviewSummary(
+                operation: operation,
                 pullRequestURL: pullRequestURL,
                 branchName: branchName,
                 baseBranch: baseBranch,
@@ -132,7 +155,7 @@ public struct VoiceDevelopmentPullRequestAutomationRequestBuilder: Sendable {
             ),
             developmentPullRequest: SyncDevelopmentPullRequestPayload(
                 projectID: project.id,
-                operation: .reviewGate,
+                operation: operation,
                 pullRequestURL: pullRequestURL,
                 branchName: branchName,
                 baseBranch: baseBranch
@@ -158,15 +181,32 @@ public struct VoiceDevelopmentPullRequestAutomationRequestBuilder: Sendable {
     }
 
     private func reviewSummary(
+        operation: SyncDevelopmentPullRequestOperation,
         pullRequestURL: String,
         branchName: String,
         baseBranch: String,
         transcript: String
     ) -> String {
-        sanitizedMetadata(
-            "Voice development PR review: \(pullRequestURL) head \(branchName) into \(baseBranch). Source: \(transcript)",
+        let operationLabel: String
+        switch operation {
+        case .reviewGate:
+            operationLabel = "review"
+        case .merge:
+            operationLabel = "merge"
+        }
+        return sanitizedMetadata(
+            "Voice development PR \(operationLabel): \(pullRequestURL) head \(branchName) into \(baseBranch). Source: \(transcript)",
             maxLength: 1_200
         )
+    }
+
+    private func toolName(for operation: SyncDevelopmentPullRequestOperation) -> String {
+        switch operation {
+        case .reviewGate:
+            return ActionTool.developmentReviewPullRequestGate.rawValue
+        case .merge:
+            return ActionTool.developmentMergePullRequest.rawValue
+        }
     }
 
     private func sanitizedRequestID(_ rawID: String) -> String {
@@ -198,6 +238,60 @@ public struct VoiceDevelopmentPullRequestAutomationRequestBuilder: Sendable {
             return nil
         }
         return String(transcript[matchRange])
+    }
+
+    private static func requestedOperation(in transcript: String) -> SyncDevelopmentPullRequestOperation {
+        // Review phrasing wins because users often say "review before merge";
+        // treating that as a merge command would turn a safety check into a write.
+        if containsReviewGateSignal(in: transcript) {
+            return .reviewGate
+        }
+        if containsMergeSignal(in: transcript) {
+            return .merge
+        }
+        return .reviewGate
+    }
+
+    private static func containsReviewGateSignal(in transcript: String) -> Bool {
+        let normalized = transcript.lowercased()
+        return normalized.contains("review pr")
+            || normalized.contains("review pull request")
+            || normalized.contains("check pr")
+            || normalized.contains("review gate")
+            || transcript.contains("レビュー")
+            || transcript.contains("確認")
+    }
+
+    private static func containsMergeSignal(in transcript: String) -> Bool {
+        guard !containsMergeNegation(in: transcript) else {
+            return false
+        }
+        let englishPattern = #"(?i)(?:^|[\s,;])(merge)\s+(?:the\s+)?(?:pr|pull request|https://github\.com)"#
+        if matches(englishPattern, in: transcript) {
+            return true
+        }
+        return transcript.contains("マージ")
+    }
+
+    private static func containsMergeNegation(in transcript: String) -> Bool {
+        let normalized = transcript.lowercased()
+        if normalized.contains("do not merge")
+            || normalized.contains("don't merge")
+            || normalized.contains("dont merge")
+            || normalized.contains("not merge") {
+            return true
+        }
+        return transcript.contains("マージしない")
+            || transcript.contains("マージはしない")
+            || transcript.contains("マージしないで")
+    }
+
+    private static func matches(_ pattern: String, in transcript: String) -> Bool {
+        guard let expression = try? NSRegularExpression(pattern: pattern) else {
+            return false
+        }
+        let range = NSRange(transcript.startIndex..<transcript.endIndex, in: transcript)
+        return expression.firstMatch(in: transcript, range: range) != nil
     }
 
     private static func labeledBranchValue(in transcript: String, labels: [String]) -> String? {

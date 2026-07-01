@@ -248,9 +248,9 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
     func testPushBranchRequiresApprovalBeforeExternalWrite() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
-        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let runner = RecordingDevelopmentGitRunner()
-        let tool = DevelopmentPushWorkflowTool(projectStore: stores.projects, gitRunner: runner)
+        let tool = DevelopmentPushWorkflowTool(projectStore: stores.projects, gitRunner: runner, bookmarkResolver: publishBookmarkResolver(for: workspace))
 
         XCTAssertThrowsError(
             try tool.execute(
@@ -266,10 +266,39 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         XCTAssertEqual(runner.recordedInvocations, [])
     }
 
-    func testPushBranchRequiresCleanExpectedBranchAndUsesNarrowPushCommand() throws {
+    func testPushBranchRequiresApprovedBookmarkBeforeExternalGitWrite() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
         let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let branchName = "feature/solopm-\(project.id)-publish-gate"
+        let runner = RecordingDevelopmentGitRunner()
+        let tool = DevelopmentPushWorkflowTool(
+            projectStore: stores.projects,
+            gitRunner: runner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string(branchName)
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentPushBranch, "Project workspace access bookmark could not be resolved and must be renewed.")
+            )
+        }
+        XCTAssertEqual(runner.recordedInvocations, [])
+    }
+
+    func testPushBranchRequiresCleanExpectedBranchAndUsesNarrowPushCommand() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let branchName = "feature/solopm-\(project.id)-publish-gate"
         let runner = RecordingDevelopmentGitRunner()
         runner.stub(
@@ -280,7 +309,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
             arguments: ["push", "-u", "origin", branchName],
             output: GitCommandOutput(standardOutput: "pushed token=push-secret\n", standardError: "", exitCode: 0)
         )
-        let tool = DevelopmentPushWorkflowTool(projectStore: stores.projects, gitRunner: runner)
+        let tool = DevelopmentPushWorkflowTool(projectStore: stores.projects, gitRunner: runner, bookmarkResolver: publishBookmarkResolver(for: workspace))
 
         let result = try tool.execute(
             arguments: [
@@ -306,9 +335,9 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
     func testPushBranchRejectsProtectedHeadBranchBeforeRunningGit() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
-        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let runner = RecordingDevelopmentGitRunner()
-        let tool = DevelopmentPushWorkflowTool(projectStore: stores.projects, gitRunner: runner)
+        let tool = DevelopmentPushWorkflowTool(projectStore: stores.projects, gitRunner: runner, bookmarkResolver: publishBookmarkResolver(for: workspace))
 
         XCTAssertThrowsError(
             try tool.execute(
@@ -330,7 +359,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
     func testPushBranchRejectsDirtyOrWrongBranchBeforeRunningExternalWrite() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
-        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let runner = RecordingDevelopmentGitRunner()
         runner.stub(
             arguments: ["status", "--short", "--branch"],
@@ -343,7 +372,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
                 exitCode: 0
             )
         )
-        let tool = DevelopmentPushWorkflowTool(projectStore: stores.projects, gitRunner: runner)
+        let tool = DevelopmentPushWorkflowTool(projectStore: stores.projects, gitRunner: runner, bookmarkResolver: publishBookmarkResolver(for: workspace))
 
         let result = try tool.execute(
             arguments: [
@@ -364,7 +393,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
     func testCreatePullRequestRequiresSeparateApprovalAndBodyFileCommand() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
-        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let branchName = "feature/solopm-\(project.id)-publish-gate"
         let baseBranch = "feature/phase14-product-completion"
         let title = "Add development publish gate"
@@ -384,7 +413,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let tool = DevelopmentPullRequestCreationTool(
             projectStore: stores.projects,
             gitRunner: gitRunner,
-            githubRunner: githubRunner
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
         )
 
         let result = try tool.execute(
@@ -418,10 +448,44 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         XCTAssertEqual(githubRunner.recordedBodyFiles, [body])
     }
 
-    func testCreatePullRequestRejectsMalformedReturnedURLBeforeReceiptOutput() throws {
+    func testCreatePullRequestRequiresApprovedBookmarkBeforeExternalGitHubWrite() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
         let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let gitRunner = RecordingDevelopmentGitRunner()
+        let githubRunner = RecordingGitHubCLICommandRunner()
+        let tool = DevelopmentPullRequestCreationTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string("feature/solopm-\(project.id)-publish-gate"),
+                    "baseBranch": .string("feature/phase14-product-completion"),
+                    "title": .string("Add development publish gate"),
+                    "body": .string("## Summary\n- Add approval-gated publish tools\n")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentCreatePullRequest, "Project workspace access bookmark could not be resolved and must be renewed.")
+            )
+        }
+        XCTAssertEqual(gitRunner.recordedInvocations, [])
+        XCTAssertEqual(githubRunner.recordedInvocations, [])
+    }
+
+    func testCreatePullRequestRejectsMalformedReturnedURLBeforeReceiptOutput() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let branchName = "feature/solopm-\(project.id)-publish-gate"
         let gitRunner = RecordingDevelopmentGitRunner()
         gitRunner.stub(
@@ -438,7 +502,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let tool = DevelopmentPullRequestCreationTool(
             projectStore: stores.projects,
             gitRunner: gitRunner,
-            githubRunner: githubRunner
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
         )
 
         XCTAssertThrowsError(
@@ -463,13 +528,14 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
     func testCreatePullRequestRejectsProtectedOrMatchingHeadBeforeGitHubCommand() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
-        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let gitRunner = RecordingDevelopmentGitRunner()
         let githubRunner = RecordingGitHubCLICommandRunner()
         let tool = DevelopmentPullRequestCreationTool(
             projectStore: stores.projects,
             gitRunner: gitRunner,
-            githubRunner: githubRunner
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
         )
 
         XCTAssertThrowsError(
@@ -496,7 +562,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
     func testCreatePullRequestRejectsSecretLikeTitleOrBodyBeforeGitHubCommand() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
-        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let branchName = "feature/solopm-\(project.id)-publish-gate"
         let gitRunner = RecordingDevelopmentGitRunner()
         gitRunner.stub(
@@ -507,7 +573,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let tool = DevelopmentPullRequestCreationTool(
             projectStore: stores.projects,
             gitRunner: gitRunner,
-            githubRunner: githubRunner
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
         )
 
         XCTAssertThrowsError(
@@ -533,7 +600,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
     func testCreatePullRequestRejectsLocalPathsInTitleOrBodyBeforeGitHubCommand() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
-        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let branchName = "feature/solopm-\(project.id)-publish-gate"
         let gitRunner = RecordingDevelopmentGitRunner()
         gitRunner.stub(
@@ -544,7 +611,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let tool = DevelopmentPullRequestCreationTool(
             projectStore: stores.projects,
             gitRunner: gitRunner,
-            githubRunner: githubRunner
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
         )
 
         XCTAssertThrowsError(
@@ -570,7 +638,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
     func testCreatePullRequestFailureRedactsCommandBodyFileAndSecrets() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
-        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let branchName = "feature/solopm-\(project.id)-publish-gate"
         let gitRunner = RecordingDevelopmentGitRunner()
         gitRunner.stub(
@@ -587,7 +655,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let tool = DevelopmentPullRequestCreationTool(
             projectStore: stores.projects,
             gitRunner: gitRunner,
-            githubRunner: githubRunner
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
         )
 
         let result = try tool.execute(
@@ -616,7 +685,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
     func testPullRequestReviewGateReportsBlockedReasonsWithoutMergeCommand() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
-        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let branchName = "feature/solopm-\(project.id)-merge-gate"
         let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
         let gitRunner = RecordingDevelopmentGitRunner()
@@ -642,7 +711,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let tool = DevelopmentPullRequestReviewGateTool(
             projectStore: stores.projects,
             gitRunner: gitRunner,
-            githubRunner: githubRunner
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
         )
 
         let result = try tool.execute(
@@ -678,13 +748,14 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
     func testPullRequestReviewGateRequiresApprovalBeforeExternalReads() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
-        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let gitRunner = RecordingDevelopmentGitRunner()
         let githubRunner = RecordingGitHubCLICommandRunner()
         let tool = DevelopmentPullRequestReviewGateTool(
             projectStore: stores.projects,
             gitRunner: gitRunner,
-            githubRunner: githubRunner
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
         )
 
         XCTAssertThrowsError(
@@ -706,7 +777,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
 
     func testPullRequestReviewGateRejectsDifferentOriginRepositoryBeforeGitHubRead() throws {
         let stores = try makeStores()
-        let project = try stores.projects.create(title: "SoloPM", workspacePath: temporaryDirectory().path)
+        let workspace = temporaryDirectory()
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
         let gitRunner = RecordingDevelopmentGitRunner()
         stubOrigin(gitRunner, remoteURL: "https://github.com/other-org/other-repo.git")
@@ -714,7 +786,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let tool = DevelopmentPullRequestReviewGateTool(
             projectStore: stores.projects,
             gitRunner: gitRunner,
-            githubRunner: githubRunner
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
         )
 
         XCTAssertThrowsError(
@@ -741,7 +814,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
 
     func testPullRequestReviewGateBlocksForkHeadRepositoryAndMissingChecks() throws {
         let stores = try makeStores()
-        let project = try stores.projects.create(title: "SoloPM", workspacePath: temporaryDirectory().path)
+        let workspace = temporaryDirectory()
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let branchName = "feature/solopm-\(project.id)-merge-gate"
         let baseBranch = "feature/phase14-product-completion"
         let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
@@ -768,7 +842,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let tool = DevelopmentPullRequestReviewGateTool(
             projectStore: stores.projects,
             gitRunner: gitRunner,
-            githubRunner: githubRunner
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
         )
 
         let result = try tool.execute(
@@ -789,7 +864,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
 
     func testPullRequestReviewGateFailsClosedForGitHubStatusErrors() throws {
         let stores = try makeStores()
-        let project = try stores.projects.create(title: "SoloPM", workspacePath: temporaryDirectory().path)
+        let workspace = temporaryDirectory()
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
         let gitRunner = RecordingDevelopmentGitRunner()
         stubOrigin(gitRunner)
@@ -803,7 +879,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let tool = DevelopmentPullRequestReviewGateTool(
             projectStore: stores.projects,
             gitRunner: gitRunner,
-            githubRunner: githubRunner
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
         )
 
         XCTAssertThrowsError(
@@ -830,7 +907,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
     func testPullRequestReviewGateAcceptsSuccessfulStatusContextShape() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
-        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let branchName = "feature/solopm-\(project.id)-merge-gate"
         let baseBranch = "feature/phase14-product-completion"
         let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
@@ -877,7 +954,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let tool = DevelopmentPullRequestReviewGateTool(
             projectStore: stores.projects,
             gitRunner: gitRunner,
-            githubRunner: githubRunner
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
         )
 
         let result = try tool.execute(
@@ -902,7 +980,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
     func testPullRequestReviewGateBlocksUnresolvedReviewThreadsBeforeMerge() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
-        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let branchName = "feature/solopm-\(project.id)-merge-gate"
         let baseBranch = "feature/phase14-product-completion"
         let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
@@ -933,7 +1011,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let tool = DevelopmentPullRequestReviewGateTool(
             projectStore: stores.projects,
             gitRunner: gitRunner,
-            githubRunner: githubRunner
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
         )
 
         let result = try tool.execute(
@@ -968,13 +1047,14 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
     func testMergePullRequestRequiresApprovalBeforeExternalWrite() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
-        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let gitRunner = RecordingDevelopmentGitRunner()
         let githubRunner = RecordingGitHubCLICommandRunner()
         let tool = DevelopmentPullRequestMergeTool(
             projectStore: stores.projects,
             gitRunner: gitRunner,
-            githubRunner: githubRunner
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
         )
 
         XCTAssertThrowsError(
@@ -993,10 +1073,44 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         XCTAssertEqual(githubRunner.recordedInvocations, [])
     }
 
-    func testPullRequestMergeGateBlocksWhenChecksOrReviewAreNotGreenBeforeGitHubMergeCommand() throws {
+    func testMergePullRequestRequiresApprovedBookmarkBeforeExternalGitHubWrite() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
         let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let branchName = "feature/solopm-\(project.id)-merge-gate"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        let githubRunner = RecordingGitHubCLICommandRunner()
+        let tool = DevelopmentPullRequestMergeTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "pullRequestURL": .string("https://github.com/albert-einshutoin/soloPM/pull/116"),
+                    "branchName": .string(branchName),
+                    "baseBranch": .string("feature/phase14-product-completion")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentMergePullRequest, "Project workspace access bookmark could not be resolved and must be renewed.")
+            )
+        }
+        XCTAssertEqual(gitRunner.recordedInvocations, [])
+        XCTAssertEqual(githubRunner.recordedInvocations, [])
+    }
+
+    func testPullRequestMergeGateBlocksWhenChecksOrReviewAreNotGreenBeforeGitHubMergeCommand() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let branchName = "feature/solopm-\(project.id)-merge-gate"
         let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
         let gitRunner = RecordingDevelopmentGitRunner()
@@ -1022,7 +1136,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let tool = DevelopmentPullRequestMergeTool(
             projectStore: stores.projects,
             gitRunner: gitRunner,
-            githubRunner: githubRunner
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
         )
 
         let result = try tool.execute(
@@ -1051,7 +1166,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
     func testMergePullRequestRechecksGateAndUsesNarrowMergeCommand() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
-        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let branchName = "feature/solopm-\(project.id)-merge-gate"
         let baseBranch = "feature/phase14-product-completion"
         let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
@@ -1090,7 +1205,8 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let tool = DevelopmentPullRequestMergeTool(
             projectStore: stores.projects,
             gitRunner: gitRunner,
-            githubRunner: githubRunner
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
         )
 
         let result = try tool.execute(
@@ -1322,14 +1438,16 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
 
     func testPullRequestReviewGateRejectsMalformedOriginRemoteBeforeGitHubRead() throws {
         let stores = try makeStores()
-        let project = try stores.projects.create(title: "SoloPM", workspacePath: temporaryDirectory().path)
+        let workspace = temporaryDirectory()
+        let project = try createPublishProject(stores: stores, workspace: workspace)
         let gitRunner = RecordingDevelopmentGitRunner()
         stubOrigin(gitRunner, remoteURL: "https://github.com/albert-einshutoin//soloPM.git")
         let githubRunner = RecordingGitHubCLICommandRunner()
         let tool = DevelopmentPullRequestReviewGateTool(
             projectStore: stores.projects,
             gitRunner: gitRunner,
-            githubRunner: githubRunner
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
         )
 
         XCTAssertThrowsError(
@@ -1385,6 +1503,28 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         return (
             SQLiteProjectStore(connection: connection),
             SQLiteTaskStore(connection: connection)
+        )
+    }
+
+    private func createPublishProject(
+        stores: (projects: SQLiteProjectStore, tasks: SQLiteTaskStore),
+        workspace: URL
+    ) throws -> ProjectRecord {
+        try stores.projects.create(
+            title: "SoloPM",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: Data("publish-workspace-bookmark".utf8)
+        )
+    }
+
+    private func publishBookmarkResolver(for workspace: URL) -> any ProjectWorkspaceBookmarkResolving {
+        PRWorkflowRecordingProjectWorkspaceBookmarkResolver(
+            resolution: ProjectWorkspaceBookmarkResolution(
+                url: workspace,
+                isStale: false,
+                didStartAccessing: true,
+                stopAccessing: {}
+            )
         )
     }
 

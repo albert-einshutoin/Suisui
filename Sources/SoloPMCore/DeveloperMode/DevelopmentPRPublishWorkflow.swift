@@ -802,7 +802,11 @@ private struct DevelopmentPullRequestGateEvaluator {
         let baseBranch = try DevelopmentBranchNamePolicy.validated(args.requiredTrimmedString("baseBranch"))
         try DevelopmentGitHubPRCommandPolicy.validateBaseAndHead(baseBranch: baseBranch, headBranch: branchName)
         let project = try projectStore.get(id: projectID)
-        let scope = try ProjectWorkspaceScope(project: project, bookmarkResolver: bookmarkResolver)
+        let scope = try ProjectWorkspaceScope(
+            project: project,
+            bookmarkResolver: bookmarkResolver,
+            requireBookmark: true
+        )
         return try withExtendedLifetime(scope) {
             // Resolve origin before calling GitHub so a pasted PR URL for another
             // repository cannot read or merge outside the approved workspace.
@@ -1208,15 +1212,18 @@ public struct DevelopmentPushWorkflowTool: Tool {
     private let projectStore: SQLiteProjectStore
     private let gitRunner: any GitCommandRunner
     private let redactor: DeveloperSecretRedactor
+    private let bookmarkResolver: any ProjectWorkspaceBookmarkResolving
 
     public init(
         projectStore: SQLiteProjectStore,
         gitRunner: any GitCommandRunner = ProcessGitCommandRunner(),
-        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()
+        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
+        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver()
     ) {
         self.projectStore = projectStore
         self.gitRunner = gitRunner
         self.redactor = redactor
+        self.bookmarkResolver = bookmarkResolver
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
@@ -1228,7 +1235,11 @@ public struct DevelopmentPushWorkflowTool: Tool {
 
         do {
             let project = try projectStore.get(id: projectID)
-            let scope = try ProjectWorkspaceScope(project: project)
+            let scope = try ProjectWorkspaceScope(
+                project: project,
+                bookmarkResolver: bookmarkResolver,
+                requireBookmark: true
+            )
             let branchName = try DevelopmentPublishGitCommandPolicy.validatedPublishHeadBranch(
                 args.requiredTrimmedString("branchName")
             )
@@ -1396,17 +1407,20 @@ public struct DevelopmentPullRequestCreationTool: Tool {
     private let gitRunner: any GitCommandRunner
     private let githubRunner: any GitHubCLICommandRunner
     private let redactor: DeveloperSecretRedactor
+    private let bookmarkResolver: any ProjectWorkspaceBookmarkResolving
 
     public init(
         projectStore: SQLiteProjectStore,
         gitRunner: any GitCommandRunner = ProcessGitCommandRunner(),
         githubRunner: any GitHubCLICommandRunner = ProcessGitHubCLICommandRunner(),
-        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()
+        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
+        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver()
     ) {
         self.projectStore = projectStore
         self.gitRunner = gitRunner
         self.githubRunner = githubRunner
         self.redactor = redactor
+        self.bookmarkResolver = bookmarkResolver
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
@@ -1434,7 +1448,11 @@ public struct DevelopmentPullRequestCreationTool: Tool {
                 redactor: redactor
             )
             let project = try projectStore.get(id: projectID)
-            let scope = try ProjectWorkspaceScope(project: project)
+            let scope = try ProjectWorkspaceScope(
+                project: project,
+                bookmarkResolver: bookmarkResolver,
+                requireBookmark: true
+            )
 
             return try withExtendedLifetime(scope) {
                 let readiness = try workspacePublishReadiness(branchName: branchName, scope: scope)

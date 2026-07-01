@@ -103,6 +103,7 @@ public extension ToolRegistryFactory {
         gitRunner: any GitCommandRunner = ProcessGitCommandRunner(),
         githubRunner: any GitHubCLICommandRunner = ProcessGitHubCLICommandRunner(),
         developmentCommandRunner: any DevelopmentCommandRunner = ProcessDevelopmentCommandRunner(),
+        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver(),
         projectStore: SQLiteProjectStore? = nil,
         taskStore: SQLiteTaskStore? = nil
     ) throws -> ToolRegistry {
@@ -141,22 +142,26 @@ public extension ToolRegistryFactory {
             ))
             tools.append(DevelopmentPushWorkflowTool(
                 projectStore: projectStore,
-                gitRunner: gitRunner
+                gitRunner: gitRunner,
+                bookmarkResolver: bookmarkResolver
             ))
             tools.append(DevelopmentPullRequestCreationTool(
                 projectStore: projectStore,
                 gitRunner: gitRunner,
-                githubRunner: githubRunner
+                githubRunner: githubRunner,
+                bookmarkResolver: bookmarkResolver
             ))
             tools.append(DevelopmentPullRequestReviewGateTool(
                 projectStore: projectStore,
                 gitRunner: gitRunner,
-                githubRunner: githubRunner
+                githubRunner: githubRunner,
+                bookmarkResolver: bookmarkResolver
             ))
             tools.append(DevelopmentPullRequestMergeTool(
                 projectStore: projectStore,
                 gitRunner: gitRunner,
-                githubRunner: githubRunner
+                githubRunner: githubRunner,
+                bookmarkResolver: bookmarkResolver
             ))
         }
 

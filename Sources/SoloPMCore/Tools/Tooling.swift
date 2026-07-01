@@ -278,6 +278,15 @@ public final class ToolRegistry: @unchecked Sendable {
         tools[tool.name] = tool
     }
 
+    public func registerTools(
+        from registry: ToolRegistry,
+        transform: (any Tool) -> any Tool = { $0 }
+    ) throws {
+        for tool in registry.snapshotTools() {
+            try register(transform(tool))
+        }
+    }
+
     public func tool(named name: ActionTool) throws -> any Tool {
         lock.lock()
         defer { lock.unlock() }
@@ -316,6 +325,12 @@ public final class ToolRegistry: @unchecked Sendable {
         }
 
         return schema.validate(arguments: action.arguments, tool: action.tool, actionID: action.id)
+    }
+
+    private func snapshotTools() -> [any Tool] {
+        lock.lock()
+        defer { lock.unlock() }
+        return tools.values.sorted { $0.name.rawValue < $1.name.rawValue }
     }
 
     public var registeredTools: [ActionTool] {

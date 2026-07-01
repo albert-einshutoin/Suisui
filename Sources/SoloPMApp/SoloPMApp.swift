@@ -3852,21 +3852,7 @@ private enum AppRuntimeFactory {
         }
         do {
             let auditLogger = try makeAuditLogger()
-            let registry = try ToolRegistry.phase2MVP(
-                projectStore: SQLiteProjectStore(connection: connection),
-                taskStore: SQLiteTaskStore(connection: connection),
-                knowledgeStore: SQLiteKnowledgeFrameStore(connection: connection),
-                notificationClient: UserNotificationsNotificationClient(),
-                calendarClient: EventKitCalendarClient(),
-                reminderClient: EventKitReminderClient(),
-                fileAccessClient: LocalFileAccessClient(workspaceRoot: try workspaceRootURL()),
-                mailDraftClient: UnavailableMailDraftClient(),
-                notificationRequestStore: SQLiteNotificationRequestStore(connection: connection),
-                calendarLinkStore: SQLiteCalendarLinkStore(connection: connection),
-                reminderLinkStore: SQLiteReminderLinkStore(connection: connection),
-                artifactStore: SQLiteArtifactStore(connection: connection),
-                auditLogger: auditLogger
-            )
+            let registry = try makeRuntimeToolRegistry(connection: connection, auditLogger: auditLogger)
             return AssistantQueueExecutionCoordinator(
                 queueStore: assistantQueueStore,
                 executor: ActionExecutor(registry: registry, auditLogger: auditLogger),
@@ -3875,6 +3861,46 @@ private enum AppRuntimeFactory {
         } catch {
             return nil
         }
+    }
+
+    private static func makeRuntimeToolRegistry(
+        connection: SQLiteConnection,
+        auditLogger: any AuditLogger
+    ) throws -> ToolRegistry {
+        let projectStore = SQLiteProjectStore(connection: connection)
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let registry = try ToolRegistry.phase2MVP(
+            projectStore: projectStore,
+            taskStore: taskStore,
+            knowledgeStore: SQLiteKnowledgeFrameStore(connection: connection),
+            notificationClient: UserNotificationsNotificationClient(),
+            calendarClient: EventKitCalendarClient(),
+            reminderClient: EventKitReminderClient(),
+            fileAccessClient: LocalFileAccessClient(workspaceRoot: try workspaceRootURL()),
+            mailDraftClient: UnavailableMailDraftClient(),
+            notificationRequestStore: SQLiteNotificationRequestStore(connection: connection),
+            calendarLinkStore: SQLiteCalendarLinkStore(connection: connection),
+            reminderLinkStore: SQLiteReminderLinkStore(connection: connection),
+            artifactStore: SQLiteArtifactStore(connection: connection),
+            auditLogger: auditLogger
+        )
+        // Assistant Queue receives already-formed development PR requests. Keep
+        // runtime execution to the two externally reviewed operations so voice
+        // approval cannot accidentally expose branch, commit, push, or PR-create tools.
+        try registry.register(AuditedTool(
+            base: DevelopmentPullRequestReviewGateTool(projectStore: projectStore),
+            logger: auditLogger
+        ))
+        try registry.register(AuditedTool(
+            base: DevelopmentPullRequestMergeTool(projectStore: projectStore),
+            logger: auditLogger
+        ))
+        for requiredTool in [ActionTool.developmentReviewPullRequestGate, .developmentMergePullRequest] {
+            guard registry.contains(requiredTool) else {
+                throw ToolExecutionError.unknownTool(requiredTool)
+            }
+        }
+        return registry
     }
 
     @MainActor
