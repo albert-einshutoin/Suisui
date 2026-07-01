@@ -49,6 +49,54 @@ final class DevelopmentVerificationCommandTests: XCTestCase {
         ])
     }
 
+    func testVerificationCommandKeepsBookmarkAccessThroughProcessRunner() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let bookmarkData = Data("verification-workspace-bookmark".utf8)
+        let project = try stores.projects.create(
+            title: "SoloPM",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: bookmarkData
+        )
+        let accessCounter = VerificationRecordingAccessCounter()
+        let resolver = VerificationRecordingProjectWorkspaceBookmarkResolver(
+            resolution: ProjectWorkspaceBookmarkResolution(
+                url: workspace,
+                isStale: false,
+                didStartAccessing: true,
+                stopAccessing: { accessCounter.increment() }
+            )
+        )
+        let runner = RecordingDevelopmentCommandRunner(
+            output: DevelopmentCommandOutput(
+                standardOutput: "All tests passed\n",
+                standardError: "",
+                exitCode: 0
+            ),
+            onInvocation: { _ in
+                XCTAssertEqual(accessCounter.value, 0)
+            }
+        )
+        let tool = DevelopmentVerificationCommandTool(
+            projectStore: stores.projects,
+            commandRunner: runner,
+            bookmarkResolver: resolver
+        )
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "commandId": .string("swift.test")
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .succeeded)
+        XCTAssertEqual(result.output["passed"], .bool(true))
+        XCTAssertEqual(resolver.resolvedBookmarks, [bookmarkData])
+        XCTAssertEqual(accessCounter.value, 1)
+    }
+
     func testVerificationCommandAllowsSecurityRegressionAndGitDiffCheckPresets() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
@@ -385,11 +433,16 @@ final class DevelopmentVerificationCommandTests: XCTestCase {
 
 private final class RecordingDevelopmentCommandRunner: DevelopmentCommandRunner, @unchecked Sendable {
     private let output: DevelopmentCommandOutput
+    private let onInvocation: (@Sendable (DevelopmentCommandInvocation) -> Void)?
     private let lock = NSLock()
     private var invocations: [DevelopmentCommandInvocation] = []
 
-    init(output: DevelopmentCommandOutput) {
+    init(
+        output: DevelopmentCommandOutput,
+        onInvocation: (@Sendable (DevelopmentCommandInvocation) -> Void)? = nil
+    ) {
         self.output = output
+        self.onInvocation = onInvocation
     }
 
     var recordedInvocations: [DevelopmentCommandInvocation] {
@@ -399,14 +452,47 @@ private final class RecordingDevelopmentCommandRunner: DevelopmentCommandRunner,
     }
 
     func run(executable: String, arguments: [String], workingDirectory: URL) throws -> DevelopmentCommandOutput {
-        lock.lock()
-        invocations.append(DevelopmentCommandInvocation(
+        let invocation = DevelopmentCommandInvocation(
             executable: executable,
             arguments: arguments,
             workingDirectory: workingDirectory
-        ))
+        )
+        lock.lock()
+        invocations.append(invocation)
         lock.unlock()
+        onInvocation?(invocation)
         return output
+    }
+}
+
+private final class VerificationRecordingAccessCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+
+    func increment() {
+        lock.lock()
+        count += 1
+        lock.unlock()
+    }
+}
+
+private final class VerificationRecordingProjectWorkspaceBookmarkResolver: ProjectWorkspaceBookmarkResolving, @unchecked Sendable {
+    private let resolution: ProjectWorkspaceBookmarkResolution
+    private(set) var resolvedBookmarks: [Data] = []
+
+    init(resolution: ProjectWorkspaceBookmarkResolution) {
+        self.resolution = resolution
+    }
+
+    func resolve(bookmarkData: Data) throws -> ProjectWorkspaceBookmarkResolution {
+        resolvedBookmarks.append(bookmarkData)
+        return resolution
     }
 }
 

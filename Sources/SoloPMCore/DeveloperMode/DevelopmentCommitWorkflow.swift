@@ -125,51 +125,53 @@ public struct DevelopmentCommitWorkflowTool: Tool {
                 redactor: redactor
             )
 
-            let preexistingStagedPaths = try stagedRelativePaths(workingDirectory: scope.rootURL)
-            guard preexistingStagedPaths.isEmpty else {
-                throw DevelopmentCommitWorkflowError.preexistingStagedChanges
+            return try withExtendedLifetime(scope) {
+                let preexistingStagedPaths = try stagedRelativePaths(workingDirectory: scope.rootURL)
+                guard preexistingStagedPaths.isEmpty else {
+                    throw DevelopmentCommitWorkflowError.preexistingStagedChanges
+                }
+
+                // The commit gate stages only the reviewed file list. This keeps the
+                // assistant from sweeping unrelated user edits into a local commit.
+                _ = try runGit(arguments: ["add", "--"] + relativePaths, workingDirectory: scope.rootURL)
+
+                let stagedPaths = try stagedRelativePaths(workingDirectory: scope.rootURL)
+                guard Set(stagedPaths) == Set(relativePaths) else {
+                    throw DevelopmentCommitWorkflowError.stagedChangesMismatch
+                }
+
+                // Repository hooks are arbitrary local code. Verification has its own
+                // approved command gate, so this commit step records the reviewed diff
+                // without silently running hook scripts.
+                let commit = try runGit(
+                    arguments: ["-c", "core.hooksPath=/dev/null", "commit", "-m", commitMessage],
+                    workingDirectory: scope.rootURL
+                )
+                let status = try runGit(arguments: ["status", "--short", "--branch"], workingDirectory: scope.rootURL)
+
+                let externalWritePreview = "git push -u origin HEAD && gh pr create --fill"
+                return ToolResult(
+                    tool: name,
+                    status: .succeeded,
+                    summary: "Created a local development commit. Push and PR creation require a separate approval gate.",
+                    output: [
+                        "projectId": .number(Double(project.id)),
+                        "workspacePath": .string(scope.rootURL.path),
+                        "relativePaths": JSONValueFactory.strings(relativePaths),
+                        "commitMessage": .string(commitMessage),
+                        "commitSummary": .string(redacted(commit.standardOutput)),
+                        "status": .string(redacted(status.standardOutput)),
+                        "requiresPushApproval": .bool(true),
+                        "requiresPullRequestApproval": .bool(true),
+                        "externalWritePreview": .string(externalWritePreview)
+                    ],
+                    rollbackMetadata: [
+                        "relativePaths": JSONValueFactory.strings(relativePaths),
+                        "commitMessage": .string(commitMessage)
+                    ],
+                    compensationHint: "Review the local commit manually before any push or PR creation."
+                )
             }
-
-            // The commit gate stages only the reviewed file list. This keeps the
-            // assistant from sweeping unrelated user edits into a local commit.
-            _ = try runGit(arguments: ["add", "--"] + relativePaths, workingDirectory: scope.rootURL)
-
-            let stagedPaths = try stagedRelativePaths(workingDirectory: scope.rootURL)
-            guard Set(stagedPaths) == Set(relativePaths) else {
-                throw DevelopmentCommitWorkflowError.stagedChangesMismatch
-            }
-
-            // Repository hooks are arbitrary local code. Verification has its own
-            // approved command gate, so this commit step records the reviewed diff
-            // without silently running hook scripts.
-            let commit = try runGit(
-                arguments: ["-c", "core.hooksPath=/dev/null", "commit", "-m", commitMessage],
-                workingDirectory: scope.rootURL
-            )
-            let status = try runGit(arguments: ["status", "--short", "--branch"], workingDirectory: scope.rootURL)
-
-            let externalWritePreview = "git push -u origin HEAD && gh pr create --fill"
-            return ToolResult(
-                tool: name,
-                status: .succeeded,
-                summary: "Created a local development commit. Push and PR creation require a separate approval gate.",
-                output: [
-                    "projectId": .number(Double(project.id)),
-                    "workspacePath": .string(scope.rootURL.path),
-                    "relativePaths": JSONValueFactory.strings(relativePaths),
-                    "commitMessage": .string(commitMessage),
-                    "commitSummary": .string(redacted(commit.standardOutput)),
-                    "status": .string(redacted(status.standardOutput)),
-                    "requiresPushApproval": .bool(true),
-                    "requiresPullRequestApproval": .bool(true),
-                    "externalWritePreview": .string(externalWritePreview)
-                ],
-                rollbackMetadata: [
-                    "relativePaths": JSONValueFactory.strings(relativePaths),
-                    "commitMessage": .string(commitMessage)
-                ],
-                compensationHint: "Review the local commit manually before any push or PR creation."
-            )
         } catch let error as ToolExecutionError {
             throw error
         } catch let error as DevelopmentRepositoryFileError {

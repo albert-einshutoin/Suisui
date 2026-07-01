@@ -1141,6 +1141,89 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         ])
     }
 
+    func testMergePullRequestKeepsBookmarkAccessUntilMergeCommandCompletes() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let bookmarkData = Data("merge-workspace-bookmark".utf8)
+        let project = try stores.projects.create(
+            title: "SoloPM",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: bookmarkData
+        )
+        let branchName = "feature/solopm-\(project.id)-merge-gate"
+        let baseBranch = "feature/phase14-product-completion"
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        let headRefOID = "0123456789abcdef0123456789abcdef01234567"
+        let accessCounter = PRWorkflowRecordingAccessCounter()
+        let resolver = PRWorkflowRecordingProjectWorkspaceBookmarkResolver(
+            resolution: ProjectWorkspaceBookmarkResolution(
+                url: workspace,
+                isStale: false,
+                didStartAccessing: true,
+                stopAccessing: { accessCounter.increment() }
+            )
+        )
+        let gitRunner = RecordingDevelopmentGitRunner()
+        stubOrigin(gitRunner)
+        let githubRunner = RecordingGitHubCLICommandRunner(
+            outputs: [
+                GitHubCLICommandOutput(
+                    standardOutput: pullRequestStatusJSON(
+                        url: pullRequestURL,
+                        headBranch: branchName,
+                        baseBranch: baseBranch,
+                        headRefOID: headRefOID,
+                        reviewDecision: "APPROVED",
+                        mergeable: "MERGEABLE",
+                        mergeStateStatus: "CLEAN",
+                        checks: [
+                            (name: "SwiftPM macOS", status: "COMPLETED", conclusion: "SUCCESS"),
+                            (name: "GitGuardian Security Checks", status: "COMPLETED", conclusion: "SUCCESS")
+                        ]
+                    ),
+                    standardError: "",
+                    exitCode: 0
+                ),
+                GitHubCLICommandOutput(
+                    standardOutput: reviewThreadsJSON(totalCount: 0, unresolvedCount: 0),
+                    standardError: "",
+                    exitCode: 0
+                ),
+                GitHubCLICommandOutput(
+                    standardOutput: "Merged pull request #116\n",
+                    standardError: "",
+                    exitCode: 0
+                )
+            ],
+            onInvocation: { invocation in
+                if Array(invocation.arguments.prefix(2)) == ["pr", "merge"] {
+                    XCTAssertEqual(accessCounter.value, 0)
+                }
+            }
+        )
+        let tool = DevelopmentPullRequestMergeTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner,
+            bookmarkResolver: resolver
+        )
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "pullRequestURL": .string(pullRequestURL),
+                "branchName": .string(branchName),
+                "baseBranch": .string(baseBranch)
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .succeeded)
+        XCTAssertEqual(result.output["merged"], .bool(true))
+        XCTAssertEqual(resolver.resolvedBookmarks, [bookmarkData])
+        XCTAssertEqual(accessCounter.value, 1)
+    }
+
     func testDevelopmentPublishPoliciesRejectUnsafeCommands() {
         XCTAssertTrue(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["status", "--short", "--branch"]))
         XCTAssertTrue(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["remote", "get-url", "origin"]))
@@ -1406,6 +1489,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
 
 private final class RecordingGitHubCLICommandRunner: GitHubCLICommandRunner, @unchecked Sendable {
     private var outputs: [GitHubCLICommandOutput]
+    private let onInvocation: (@Sendable (GitHubCLICommandInvocation) -> Void)?
     private(set) var recordedInvocations: [GitHubCLICommandInvocation] = []
     private(set) var recordedBodyFiles: [String] = []
 
@@ -1414,17 +1498,25 @@ private final class RecordingGitHubCLICommandRunner: GitHubCLICommandRunner, @un
             standardOutput: "",
             standardError: "unexpected command",
             exitCode: 127
-        )
+        ),
+        onInvocation: (@Sendable (GitHubCLICommandInvocation) -> Void)? = nil
     ) {
         self.outputs = [output]
+        self.onInvocation = onInvocation
     }
 
-    init(outputs: [GitHubCLICommandOutput]) {
+    init(
+        outputs: [GitHubCLICommandOutput],
+        onInvocation: (@Sendable (GitHubCLICommandInvocation) -> Void)? = nil
+    ) {
         self.outputs = outputs
+        self.onInvocation = onInvocation
     }
 
     func runGitHub(arguments: [String], workingDirectory: URL) throws -> GitHubCLICommandOutput {
-        recordedInvocations.append(GitHubCLICommandInvocation(arguments: arguments, workingDirectory: workingDirectory))
+        let invocation = GitHubCLICommandInvocation(arguments: arguments, workingDirectory: workingDirectory)
+        recordedInvocations.append(invocation)
+        onInvocation?(invocation)
         if let bodyFileIndex = arguments.firstIndex(of: "--body-file"),
            arguments.indices.contains(arguments.index(after: bodyFileIndex)) {
             let bodyFile = arguments[arguments.index(after: bodyFileIndex)]
@@ -1438,6 +1530,37 @@ private final class RecordingGitHubCLICommandRunner: GitHubCLICommandRunner, @un
             standardError: "unexpected command",
             exitCode: 127
         )
+    }
+}
+
+private final class PRWorkflowRecordingAccessCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+
+    func increment() {
+        lock.lock()
+        count += 1
+        lock.unlock()
+    }
+}
+
+private final class PRWorkflowRecordingProjectWorkspaceBookmarkResolver: ProjectWorkspaceBookmarkResolving, @unchecked Sendable {
+    private let resolution: ProjectWorkspaceBookmarkResolution
+    private(set) var resolvedBookmarks: [Data] = []
+
+    init(resolution: ProjectWorkspaceBookmarkResolution) {
+        self.resolution = resolution
+    }
+
+    func resolve(bookmarkData: Data) throws -> ProjectWorkspaceBookmarkResolution {
+        resolvedBookmarks.append(bookmarkData)
+        return resolution
     }
 }
 

@@ -253,33 +253,43 @@ public enum DevelopmentRepositoryFilePathPolicy {
 public struct DevelopmentRepositoryFileClient: Sendable {
     private let project: ProjectRecord
     private let redactor: DeveloperSecretRedactor
+    private let bookmarkResolver: any ProjectWorkspaceBookmarkResolving
 
-    public init(project: ProjectRecord, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) {
+    public init(
+        project: ProjectRecord,
+        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
+        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver()
+    ) {
         self.project = project
         self.redactor = redactor
+        self.bookmarkResolver = bookmarkResolver
     }
 
     public func list(relativePath rawPath: String? = nil) throws -> DevelopmentRepositoryFileList {
         let relativePath = try DevelopmentRepositoryFilePathPolicy.validatedRelativeDirectoryPath(rawPath)
-        let scope = try ProjectWorkspaceScope(project: project)
-        let directoryURL = try resolveExistingDirectory(relativePath: relativePath, scope: scope)
-        let list = try listedEntries(directoryURL: directoryURL, scope: scope)
-        return DevelopmentRepositoryFileList(
-            entries: list.entries.sorted { $0.relativePath < $1.relativePath },
-            truncated: list.truncated
-        )
+        let scope = try ProjectWorkspaceScope(project: project, bookmarkResolver: bookmarkResolver)
+        return try withExtendedLifetime(scope) {
+            let directoryURL = try resolveExistingDirectory(relativePath: relativePath, scope: scope)
+            let list = try listedEntries(directoryURL: directoryURL, scope: scope)
+            return DevelopmentRepositoryFileList(
+                entries: list.entries.sorted { $0.relativePath < $1.relativePath },
+                truncated: list.truncated
+            )
+        }
     }
 
     public func read(relativePath rawPath: String) throws -> DevelopmentRepositoryFileRecord {
         let relativePath = try DevelopmentRepositoryFilePathPolicy.validatedRelativePath(rawPath)
-        let scope = try ProjectWorkspaceScope(project: project)
-        let fileURL = try resolveExistingFile(relativePath: relativePath, scope: scope)
-        let data = try readData(at: fileURL)
-        let contents = try decodeUTF8Text(data)
-        // Path allowlists cannot distinguish source code about secrets from real
-        // credentials, so reads fail closed if the file body matches token patterns.
-        try failIfSecretLikeContent(contents)
-        return record(relativePath: relativePath, contents: contents)
+        let scope = try ProjectWorkspaceScope(project: project, bookmarkResolver: bookmarkResolver)
+        return try withExtendedLifetime(scope) {
+            let fileURL = try resolveExistingFile(relativePath: relativePath, scope: scope)
+            let data = try readData(at: fileURL)
+            let contents = try decodeUTF8Text(data)
+            // Path allowlists cannot distinguish source code about secrets from real
+            // credentials, so reads fail closed if the file body matches token patterns.
+            try failIfSecretLikeContent(contents)
+            return record(relativePath: relativePath, contents: contents)
+        }
     }
 
     public func create(relativePath rawPath: String, contents: String) throws -> DevelopmentRepositoryFileRecord {
@@ -288,16 +298,18 @@ public struct DevelopmentRepositoryFileClient: Sendable {
         // Avoid writing credential-looking material into a repo file through the
         // assistant queue; users can still edit such files manually outside SoloPM.
         try failIfSecretLikeContent(contents)
-        let scope = try ProjectWorkspaceScope(project: project)
-        let fileURL = try resolveNewFile(relativePath: relativePath, scope: scope)
+        let scope = try ProjectWorkspaceScope(project: project, bookmarkResolver: bookmarkResolver)
+        return try withExtendedLifetime(scope) {
+            let fileURL = try resolveNewFile(relativePath: relativePath, scope: scope)
 
-        try FileManager.default.createDirectory(
-            at: fileURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try Data(contents.utf8).write(to: fileURL, options: [.atomic])
+            try FileManager.default.createDirectory(
+                at: fileURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try Data(contents.utf8).write(to: fileURL, options: [.atomic])
 
-        return record(relativePath: relativePath, contents: contents)
+            return record(relativePath: relativePath, contents: contents)
+        }
     }
 
     public func update(
@@ -308,20 +320,22 @@ public struct DevelopmentRepositoryFileClient: Sendable {
         let relativePath = try DevelopmentRepositoryFilePathPolicy.validatedRelativePath(rawPath)
         try DevelopmentRepositoryFilePathPolicy.validateTextContent(contents)
         try failIfSecretLikeContent(contents)
-        let scope = try ProjectWorkspaceScope(project: project)
-        let fileURL = try resolveExistingFile(relativePath: relativePath, scope: scope)
+        let scope = try ProjectWorkspaceScope(project: project, bookmarkResolver: bookmarkResolver)
+        return try withExtendedLifetime(scope) {
+            let fileURL = try resolveExistingFile(relativePath: relativePath, scope: scope)
 
-        if let expectedSHA256 {
-            // The digest is a cheap compare-and-swap guard: the user reviews one
-            // file version, and SoloPM refuses to overwrite a later edit.
-            let currentDigest = sha256(try readData(at: fileURL))
-            guard currentDigest == expectedSHA256.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else {
-                throw DevelopmentRepositoryFileError.staleDigest
+            if let expectedSHA256 {
+                // The digest is a cheap compare-and-swap guard: the user reviews one
+                // file version, and SoloPM refuses to overwrite a later edit.
+                let currentDigest = sha256(try readData(at: fileURL))
+                guard currentDigest == expectedSHA256.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else {
+                    throw DevelopmentRepositoryFileError.staleDigest
+                }
             }
-        }
 
-        try Data(contents.utf8).write(to: fileURL, options: [.atomic])
-        return record(relativePath: relativePath, contents: contents)
+            try Data(contents.utf8).write(to: fileURL, options: [.atomic])
+            return record(relativePath: relativePath, contents: contents)
+        }
     }
 
     private func resolveExistingDirectory(relativePath: String?, scope: ProjectWorkspaceScope) throws -> URL {
@@ -615,11 +629,18 @@ public struct DevelopmentRepositoryFileTool: Tool {
 
     private let projectStore: SQLiteProjectStore
     private let redactor: DeveloperSecretRedactor
+    private let bookmarkResolver: any ProjectWorkspaceBookmarkResolving
 
-    public init(name: ActionTool, projectStore: SQLiteProjectStore, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) {
+    public init(
+        name: ActionTool,
+        projectStore: SQLiteProjectStore,
+        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
+        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver()
+    ) {
         self.name = name
         self.projectStore = projectStore
         self.redactor = redactor
+        self.bookmarkResolver = bookmarkResolver
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
@@ -631,7 +652,11 @@ public struct DevelopmentRepositoryFileTool: Tool {
 
         do {
             let project = try projectStore.get(id: projectID)
-            let client = DevelopmentRepositoryFileClient(project: project, redactor: redactor)
+            let client = DevelopmentRepositoryFileClient(
+                project: project,
+                redactor: redactor,
+                bookmarkResolver: bookmarkResolver
+            )
 
             switch name {
             case .developmentRepositoryListFiles:

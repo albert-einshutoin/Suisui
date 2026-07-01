@@ -5,6 +5,9 @@ public enum DevelopmentPRWorkflowError: Error, Equatable, Sendable {
     case projectWorkspaceMustBeAbsolute
     case projectWorkspaceUnavailable(String)
     case projectWorkspaceIsSymlink
+    case projectWorkspaceBookmarkUnavailable
+    case projectWorkspaceBookmarkStale
+    case projectWorkspaceBookmarkPathMismatch
     case invalidBranchName(String)
     case commandNotAllowed([String])
     case commandFailed(arguments: [String], exitCode: Int32, standardError: String)
@@ -19,6 +22,12 @@ public enum DevelopmentPRWorkflowError: Error, Equatable, Sendable {
             return "Project workspace directory is unavailable."
         case .projectWorkspaceIsSymlink:
             return "Project workspace must not be a symlink."
+        case .projectWorkspaceBookmarkUnavailable:
+            return "Project workspace access bookmark could not be resolved and must be renewed."
+        case .projectWorkspaceBookmarkStale:
+            return "Project workspace access bookmark is stale and must be renewed."
+        case .projectWorkspaceBookmarkPathMismatch:
+            return "Project workspace access bookmark does not match the approved workspace directory."
         case .invalidBranchName:
             return "Branch name contains characters outside the safe GitHub Flow subset."
         case .commandNotAllowed:
@@ -31,10 +40,105 @@ public enum DevelopmentPRWorkflowError: Error, Equatable, Sendable {
     }
 }
 
-public struct ProjectWorkspaceScope: Equatable, Sendable {
-    public var rootURL: URL
+public struct ProjectWorkspaceBookmarkResolution: Sendable {
+    public var url: URL
+    public var isStale: Bool
+    public var didStartAccessing: Bool
 
-    public init(project: ProjectRecord, fileManager: FileManager = .default) throws {
+    private let stopAccessing: (@Sendable () -> Void)?
+
+    public init(
+        url: URL,
+        isStale: Bool,
+        didStartAccessing: Bool,
+        stopAccessing: (@Sendable () -> Void)? = nil
+    ) {
+        self.url = url
+        self.isStale = isStale
+        self.didStartAccessing = didStartAccessing
+        self.stopAccessing = stopAccessing
+    }
+
+    fileprivate func makeLease() -> ProjectWorkspaceBookmarkAccessLease? {
+        guard didStartAccessing, let stopAccessing else {
+            return nil
+        }
+        return ProjectWorkspaceBookmarkAccessLease(stopAccessing: stopAccessing)
+    }
+}
+
+public protocol ProjectWorkspaceBookmarkResolving: Sendable {
+    func resolve(bookmarkData: Data) throws -> ProjectWorkspaceBookmarkResolution
+}
+
+public struct SecurityScopedProjectWorkspaceBookmarkResolver: ProjectWorkspaceBookmarkResolving {
+    public init() {}
+
+    public func resolve(bookmarkData: Data) throws -> ProjectWorkspaceBookmarkResolution {
+        var isStale = false
+        let workspaceURL: URL
+        do {
+            workspaceURL = try URL(
+                resolvingBookmarkData: bookmarkData,
+                options: [.withSecurityScope],
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
+        } catch {
+            throw DevelopmentPRWorkflowError.projectWorkspaceBookmarkUnavailable
+        }
+
+        guard !isStale else {
+            throw DevelopmentPRWorkflowError.projectWorkspaceBookmarkStale
+        }
+
+        let didStartAccessing = workspaceURL.startAccessingSecurityScopedResource()
+        guard didStartAccessing else {
+            throw DevelopmentPRWorkflowError.projectWorkspaceBookmarkUnavailable
+        }
+        return ProjectWorkspaceBookmarkResolution(
+            url: workspaceURL,
+            isStale: isStale,
+            didStartAccessing: didStartAccessing,
+            stopAccessing: { workspaceURL.stopAccessingSecurityScopedResource() }
+        )
+    }
+}
+
+private final class ProjectWorkspaceBookmarkAccessLease: @unchecked Sendable {
+    private let lock = NSLock()
+    private let stopAccessing: @Sendable () -> Void
+    private var didStop = false
+
+    init(stopAccessing: @escaping @Sendable () -> Void) {
+        self.stopAccessing = stopAccessing
+    }
+
+    deinit {
+        stop()
+    }
+
+    func stop() {
+        lock.lock()
+        let shouldStop = !didStop
+        didStop = true
+        lock.unlock()
+
+        if shouldStop {
+            stopAccessing()
+        }
+    }
+}
+
+public struct ProjectWorkspaceScope: Equatable, Sendable {
+    public let rootURL: URL
+    private let bookmarkAccessLease: ProjectWorkspaceBookmarkAccessLease?
+
+    public init(
+        project: ProjectRecord,
+        fileManager: FileManager = .default,
+        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver()
+    ) throws {
         guard let workspacePath = project.workspacePath?.trimmingCharacters(in: .whitespacesAndNewlines),
               !workspacePath.isEmpty else {
             throw DevelopmentPRWorkflowError.projectWorkspaceRequired(project.id)
@@ -44,6 +148,59 @@ public struct ProjectWorkspaceScope: Equatable, Sendable {
         }
 
         let selectedURL = URL(fileURLWithPath: workspacePath, isDirectory: true).standardizedFileURL
+
+        if let bookmarkData = project.workspaceBookmarkData {
+            guard !bookmarkData.isEmpty else {
+                throw DevelopmentPRWorkflowError.projectWorkspaceBookmarkUnavailable
+            }
+            let resolution = try bookmarkResolver.resolve(bookmarkData: bookmarkData)
+            let lease = resolution.makeLease()
+            // A stored bookmark is the user's durable approval for this
+            // workspace. Once it exists, falling back to the raw path would let
+            // background developer automation outlive revoked or stale access.
+            do {
+                guard !resolution.isStale else {
+                    throw DevelopmentPRWorkflowError.projectWorkspaceBookmarkStale
+                }
+                guard let activeLease = lease else {
+                    throw DevelopmentPRWorkflowError.projectWorkspaceBookmarkUnavailable
+                }
+
+                let selectedRootURL = try Self.validatedExistingRoot(
+                    selectedURL: selectedURL,
+                    workspacePath: workspacePath,
+                    fileManager: fileManager
+                )
+                let resolvedBookmarkURL = resolution.url.resolvingSymlinksInPath().standardizedFileURL
+                guard resolvedBookmarkURL.path == selectedRootURL.path else {
+                    throw DevelopmentPRWorkflowError.projectWorkspaceBookmarkPathMismatch
+                }
+
+                rootURL = resolvedBookmarkURL
+                bookmarkAccessLease = activeLease
+            } catch {
+                lease?.stop()
+                throw error
+            }
+        } else {
+            rootURL = try Self.validatedExistingRoot(
+                selectedURL: selectedURL,
+                workspacePath: workspacePath,
+                fileManager: fileManager
+            )
+            bookmarkAccessLease = nil
+        }
+    }
+
+    public static func == (lhs: ProjectWorkspaceScope, rhs: ProjectWorkspaceScope) -> Bool {
+        lhs.rootURL == rhs.rootURL
+    }
+
+    private static func validatedExistingRoot(
+        selectedURL: URL,
+        workspacePath: String,
+        fileManager: FileManager
+    ) throws -> URL {
         let resourceValues = try? selectedURL.resourceValues(forKeys: [.isSymbolicLinkKey])
         guard resourceValues?.isSymbolicLink != true else {
             throw DevelopmentPRWorkflowError.projectWorkspaceIsSymlink
@@ -55,7 +212,7 @@ public struct ProjectWorkspaceScope: Equatable, Sendable {
             throw DevelopmentPRWorkflowError.projectWorkspaceUnavailable(workspacePath)
         }
 
-        rootURL = selectedURL.resolvingSymlinksInPath()
+        return selectedURL.resolvingSymlinksInPath().standardizedFileURL
     }
 }
 
@@ -176,47 +333,49 @@ public struct DevelopmentPRWorkflowTool: Tool {
                     ?? DevelopmentBranchNamePolicy.deterministicBranchName(project: project, task: task)
             )
 
-            // Push and PR creation intentionally stay preview-only here. They are
-            // external writes and must get a separate review gate after the user
-            // sees the local branch, status, and diff preview in the receipt.
-            let externalWritePreview = "git push -u origin \(branchName) && gh pr create --fill"
-            var output: [String: JSONValue] = [
-                "projectId": .number(Double(project.id)),
-                "branchName": .string(branchName),
-                "workspacePath": .string(scope.rootURL.path),
-                "requiresPushApproval": .bool(true),
-                "requiresPullRequestApproval": .bool(true),
-                "externalWritePreview": .string(externalWritePreview)
-            ]
-            if let task {
-                output["taskId"] = .number(Double(task.id))
-            }
+            return try withExtendedLifetime(scope) {
+                // Push and PR creation intentionally stay preview-only here. They are
+                // external writes and must get a separate review gate after the user
+                // sees the local branch, status, and diff preview in the receipt.
+                let externalWritePreview = "git push -u origin \(branchName) && gh pr create --fill"
+                var output: [String: JSONValue] = [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string(branchName),
+                    "workspacePath": .string(scope.rootURL.path),
+                    "requiresPushApproval": .bool(true),
+                    "requiresPullRequestApproval": .bool(true),
+                    "externalWritePreview": .string(externalWritePreview)
+                ]
+                if let task {
+                    output["taskId"] = .number(Double(task.id))
+                }
 
-            _ = try runGit(arguments: ["switch", "-c", branchName], workingDirectory: scope.rootURL)
-            do {
-                let status = try runGit(arguments: ["status", "--short", "--branch"], workingDirectory: scope.rootURL)
-                output["status"] = .string(redacted(status.standardOutput))
-                let diff = try runGit(arguments: ["diff", "--stat"], workingDirectory: scope.rootURL)
-                output["diffStat"] = .string(redacted(diff.standardOutput))
-            } catch {
-                output["gitEvidenceError"] = .string(redacted(developmentPRWorkflowErrorMessage(for: error)))
+                _ = try runGit(arguments: ["switch", "-c", branchName], workingDirectory: scope.rootURL)
+                do {
+                    let status = try runGit(arguments: ["status", "--short", "--branch"], workingDirectory: scope.rootURL)
+                    output["status"] = .string(redacted(status.standardOutput))
+                    let diff = try runGit(arguments: ["diff", "--stat"], workingDirectory: scope.rootURL)
+                    output["diffStat"] = .string(redacted(diff.standardOutput))
+                } catch {
+                    output["gitEvidenceError"] = .string(redacted(developmentPRWorkflowErrorMessage(for: error)))
+                    return ToolResult(
+                        tool: name,
+                        status: .failed,
+                        summary: "Prepared local development branch \(branchName), but could not capture git evidence. Push and PR creation require a separate approval gate.",
+                        output: output,
+                        rollbackMetadata: ["branchName": .string(branchName)],
+                        compensationHint: "Review the local branch manually before any push or PR creation."
+                    )
+                }
+
                 return ToolResult(
                     tool: name,
-                    status: .failed,
-                    summary: "Prepared local development branch \(branchName), but could not capture git evidence. Push and PR creation require a separate approval gate.",
+                    status: .succeeded,
+                    summary: "Prepared local development branch \(branchName). Push and PR creation require a separate approval gate.",
                     output: output,
-                    rollbackMetadata: ["branchName": .string(branchName)],
-                    compensationHint: "Review the local branch manually before any push or PR creation."
+                    rollbackMetadata: ["branchName": .string(branchName)]
                 )
             }
-
-            return ToolResult(
-                tool: name,
-                status: .succeeded,
-                summary: "Prepared local development branch \(branchName). Push and PR creation require a separate approval gate.",
-                output: output,
-                rollbackMetadata: ["branchName": .string(branchName)]
-            )
         } catch let error as ToolExecutionError {
             throw error
         } catch let error as DevelopmentPRWorkflowError {
