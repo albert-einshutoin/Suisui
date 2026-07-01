@@ -2482,6 +2482,10 @@ public final class ProjectBoardViewModel: ObservableObject {
             documentDeliverableDrafts: documentDeliverableDrafts
         )
         let documentDeliverableReviews = documentDeliverableReviews(from: documentDeliverableDrafts)
+        try persistDocumentDeliverableStartReceipt(
+            documentDeliverableReviews,
+            selectedTasks: decision.selectedTasks
+        )
         taskAutomationDocumentDeliverableReviews = documentDeliverableReviews
         if let receiptPersistenceMessage = saveTaskAutomationDocumentDeliverableReceipt(
             documentDeliverableReviews,
@@ -2524,6 +2528,10 @@ public final class ProjectBoardViewModel: ObservableObject {
             documentDeliverableDrafts: documentDeliverableDrafts
         )
         let documentDeliverableReviews = documentDeliverableReviews(from: documentDeliverableDrafts)
+        try persistDocumentDeliverableStartReceipt(
+            documentDeliverableReviews,
+            selectedTasks: decision.selectedTasks
+        )
         taskAutomationDocumentDeliverableReviews = documentDeliverableReviews
         if let receiptPersistenceMessage = saveTaskAutomationDocumentDeliverableReceipt(
             documentDeliverableReviews,
@@ -2608,6 +2616,22 @@ public final class ProjectBoardViewModel: ObservableObject {
             todayCommandFeedback = String(localized: "Review the automation plan again because the task changed after review.")
             return
         }
+        let executionReceipt = ApprovedAutomationExecutionReceipt(
+            task: selectedTask,
+            statusAfter: .inProgress,
+            reviewReason: reviewDecision.reason
+        )
+        guard persistApprovedAIWorkStartReceipt(
+            ExecutionReceiptFactory.makeApprovedAutomationReceipt(
+                executionReceipt,
+                runID: "approved-automation-start:\(UUID().uuidString)",
+                approvalID: nil,
+                status: .running,
+                createdAt: Date()
+            )
+        ) == nil else {
+            return
+        }
 
         do {
             let updatedTask = try store.updateTask(
@@ -2625,11 +2649,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             load()
             selectedProjectID = updatedTask.projectID
             selectedTaskID = selectedTask.id
-            let receipt = ApprovedAutomationExecutionReceipt(
-                task: selectedTask,
-                statusAfter: updatedTask.status,
-                reviewReason: reviewDecision.reason
-            )
+            let receipt = executionReceipt
             lastApprovedAutomationExecutionReceipt = receipt
             approvedAutomationExecutionReceipts.append(receipt)
             let receiptPersistenceMessage = saveApprovedAutomationExecutionReceipt(receipt)
@@ -2653,7 +2673,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     private func saveApprovedAutomationExecutionReceipt(_ receipt: ApprovedAutomationExecutionReceipt) -> String? {
         guard let executionReceiptStore else {
             refreshExecutionReceiptHistorySnapshot()
-            return nil
+            return Self.executionReceiptStorageUnavailableMessage()
         }
 
         let commonReceipt = ExecutionReceiptFactory.makeApprovedAutomationReceipt(
@@ -2682,7 +2702,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     ) -> String? {
         guard let executionReceiptStore else {
             refreshExecutionReceiptHistorySnapshot()
-            return nil
+            return Self.executionReceiptStorageUnavailableMessage()
         }
 
         let projectTitlesByID = Dictionary(uniqueKeysWithValues: snapshot.projects.map { ($0.id, $0.title) })
@@ -2722,7 +2742,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
         guard let executionReceiptStore else {
             refreshExecutionReceiptHistorySnapshot()
-            return nil
+            return Self.executionReceiptStorageUnavailableMessage()
         }
 
         let receipt = ExecutionReceiptFactory.makeDocumentDeliverableReceipt(
@@ -2743,6 +2763,57 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     private static func scheduleDraftApplyApprovalID() -> String {
         "schedule-draft-apply-approval:\(UUID().uuidString)"
+    }
+
+    private static func executionReceiptStorageUnavailableMessage() -> String {
+        String(localized: "Execution receipt storage is unavailable. Fix receipt storage before running approved AI work.")
+    }
+
+    private func markExecutionReceiptStorageUnavailable() -> String {
+        let message = Self.executionReceiptStorageUnavailableMessage()
+        refreshExecutionReceiptHistorySnapshot()
+        // Approved AI work must never complete without durable receipt storage;
+        // otherwise the user cannot audit what was read, changed, sent, or billed.
+        todayCommandFeedback = message
+        integrationStatusMessage = message
+        errorMessage = message
+        return message
+    }
+
+    private func persistApprovedAIWorkStartReceipt(_ receipt: ExecutionReceipt) -> String? {
+        guard let executionReceiptStore else {
+            return markExecutionReceiptStorageUnavailable()
+        }
+        do {
+            // This reservation is intentionally persisted before any approved
+            // write or review-evidence exposure so receipt storage failures
+            // cannot leave unauditable AI work behind.
+            try executionReceiptStore.save(receipt)
+            refreshExecutionReceiptHistorySnapshot()
+            return nil
+        } catch {
+            return markExecutionReceiptStorageUnavailable()
+        }
+    }
+
+    private func persistDocumentDeliverableStartReceipt(
+        _ documentDeliverableReviews: [TaskAutomationDocumentDeliverableReview],
+        selectedTasks: [ProjectBoardTask]
+    ) throws {
+        guard !documentDeliverableReviews.isEmpty else {
+            return
+        }
+        let receipt = ExecutionReceiptFactory.makeDocumentDeliverableReceipt(
+            deliverables: documentDeliverableReviews,
+            selectedTasks: selectedTasks,
+            runID: "document-deliverable-start:\(UUID().uuidString)",
+            status: .running,
+            createdAt: Date()
+        )
+        guard persistApprovedAIWorkStartReceipt(receipt) == nil else {
+            taskAutomationDocumentDeliverableReviews = []
+            throw TaskAutoExecutionPlanningRequestError.executionReceiptStoreUnavailable
+        }
     }
 
     private func scheduleDraftWriteCandidates(for draft: ScheduleDraft) -> [ScheduleDraftApplyWriteCandidate] {
@@ -3124,6 +3195,23 @@ public final class ProjectBoardViewModel: ObservableObject {
                 status: .skipped
             )
             return .calendarNotConfigured
+        }
+        let projectTitlesByID = Dictionary(uniqueKeysWithValues: snapshot.projects.map { ($0.id, $0.title) })
+        if let receiptStorageMessage = persistApprovedAIWorkStartReceipt(
+            ExecutionReceiptFactory.makeScheduleDraftApplyReceipt(
+                writeCandidates: writeCandidates,
+                unscheduledTaskCount: draft.unscheduledTasks.count,
+                createdEvents: [],
+                projectTitlesByID: projectTitlesByID,
+                runID: "schedule-draft-apply-start:\(UUID().uuidString)",
+                approvalID: executionApprovalID,
+                status: .running,
+                createdAt: Date()
+            )
+        ) {
+            let result = ScheduleApplyResult.failed(receiptStorageMessage)
+            scheduleApplyResult = result
+            return result
         }
 
         var createdEvents: [ScheduleDraftApplyCreatedEvent] = []

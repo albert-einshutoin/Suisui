@@ -1004,6 +1004,7 @@
 "Development Branch" = "開発ブランチ";
 "Development Commit" = "開発コミット";
 "Estimated" = "推定";
+"Execution receipt storage is unavailable. Fix receipt storage before running approved AI work." = "実行レシートの保存先を利用できません。承認済みAI作業を実行する前にレシート保存を復旧してください。";
 "Execution receipts are unavailable." = "実行レシートを利用できません。";
 "Measured" = "実測";
 "Not Started" = "未開始";

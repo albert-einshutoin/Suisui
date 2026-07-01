@@ -856,6 +856,7 @@ public enum ExecutionReceiptFactory {
         _ receipt: ApprovedAutomationExecutionReceipt,
         runID: String,
         approvalID: String?,
+        status: ExecutionReceiptStatus = .succeeded,
         createdAt: Date = Date(),
         redactionPolicy: ExecutionReceiptRedactionPolicy = ExecutionReceiptRedactionPolicy()
     ) -> ExecutionReceipt {
@@ -872,7 +873,13 @@ public enum ExecutionReceiptFactory {
             "dueAt: \(receipt.dueAt ?? "none")",
             "reviewReason: \(redactedReviewReason)"
         ].joined(separator: ", ")
-        let outputSummary = "Moved task \(receipt.taskID) from \(receipt.statusBefore.rawValue) to \(receipt.statusAfter.rawValue)."
+        let outputSummary = approvedAutomationOutputSummary(
+            status: status,
+            taskID: receipt.taskID,
+            statusBefore: receipt.statusBefore,
+            statusAfter: receipt.statusAfter
+        )
+        let finishedAt: Date? = (status == .running || status == .notStarted) ? nil : createdAt
 
         return ExecutionReceipt(
             id: "receipt:\(runID):approved-automation:\(receipt.taskID)",
@@ -880,8 +887,8 @@ public enum ExecutionReceiptFactory {
             approvalID: approvalID,
             createdAt: createdAt,
             startedAt: createdAt,
-            finishedAt: createdAt,
-            status: .succeeded,
+            finishedAt: finishedAt,
+            status: status,
             inputPreview: inputPreview,
             outputSummary: outputSummary,
             primaryToolName: ActionTool.taskUpdate.rawValue,
@@ -894,7 +901,7 @@ public enum ExecutionReceiptFactory {
                 ExecutionReceiptActionSummary(
                     id: "approved-automation:\(receipt.taskID)",
                     toolName: ActionTool.taskUpdate.rawValue,
-                    status: .succeeded,
+                    status: status,
                     inputPreview: inputPreview,
                     outputSummary: outputSummary
                 )
@@ -959,7 +966,7 @@ public enum ExecutionReceiptFactory {
             approvalID: approvalID,
             createdAt: createdAt,
             startedAt: createdAt,
-            finishedAt: createdAt,
+            finishedAt: (status == .running || status == .notStarted) ? nil : createdAt,
             status: status,
             inputPreview: inputPreview,
             outputSummary: outputSummary,
@@ -1010,7 +1017,7 @@ public enum ExecutionReceiptFactory {
             approvalID: approvalID,
             createdAt: createdAt,
             startedAt: createdAt,
-            finishedAt: createdAt,
+            finishedAt: (status == .running || status == .notStarted) ? nil : createdAt,
             status: status,
             inputPreview: inputPreview,
             outputSummary: outputSummary,
@@ -1729,6 +1736,28 @@ public enum ExecutionReceiptFactory {
             .notRetryable
         case nil:
             nil
+        }
+    }
+
+    private static func approvedAutomationOutputSummary(
+        status: ExecutionReceiptStatus,
+        taskID: Int64,
+        statusBefore: ProjectTaskStatus,
+        statusAfter: ProjectTaskStatus
+    ) -> String {
+        switch status {
+        case .succeeded:
+            return "Moved task \(taskID) from \(statusBefore.rawValue) to \(statusAfter.rawValue)."
+        case .running:
+            return "Reserved approved task update \(taskID) from \(statusBefore.rawValue) to \(statusAfter.rawValue)."
+        case .failed:
+            return "Approved task update \(taskID) failed before completion."
+        case .skipped:
+            return "Approved task update \(taskID) was skipped."
+        case .canceled:
+            return "Approved task update \(taskID) was canceled."
+        case .notStarted:
+            return "Approved task update \(taskID) has not started."
         }
     }
 
