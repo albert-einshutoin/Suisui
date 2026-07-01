@@ -201,7 +201,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertFalse(body.contains("sk-destination-secret"))
     }
 
-    func testUnsafeExternalSendCanResolveToDraftQueueAfterClarificationWithoutProviderCall() async throws {
+    func testExplicitExternalSendDoesNotCreateMailDraftQueueOrProviderCall() async throws {
         let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
             providerID: "fake",
             rawContent: "{}",
@@ -218,22 +218,130 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         viewModel.updateDraftText("Slackに今すぐ送信して")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
-        XCTAssertEqual(viewModel.routingResult?.intent, .clarify)
-        XCTAssertNil(viewModel.assistantQueueItem)
+        XCTAssertEqual(viewModel.routingResult?.intent, .connectorSendGate)
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+        XCTAssertTrue(provider.requests.isEmpty)
+        let item = try XCTUnwrap(viewModel.assistantQueueItem)
+        XCTAssertEqual(item.state, .blocked)
+        XCTAssertEqual(item.riskLevel, .write)
+        XCTAssertEqual(item.requiredCapabilities, [
+            .externalConnector(serviceID: "slack", action: "message.send"),
+            .providerExecutionApproval
+        ])
+        guard case .automationRequest(let request) = item.payload else {
+            return XCTFail("Expected direct external send to become a non-executable automation request.")
+        }
+        XCTAssertEqual(request.toolName, "connector.send")
+        XCTAssertNil(request.taskMutation)
+        XCTAssertNil(request.developmentPullRequest)
+    }
 
-        await viewModel.submitClarificationAnswer(
-            "Slack draft only",
-            currentDate: Date(timeIntervalSince1970: 0),
-            timeZoneIdentifier: "UTC"
+    func testExplicitConnectorSendCreatesBlockedQueueGateWithoutProviderOrMailDraftPlan() async throws {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "recording",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let store = RecordingAssistantQueueStore()
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider,
+            assistantQueueStore: store
         )
+
+        viewModel.updateDraftText("Slackに今すぐ送信して token=sk-connector-secret at /Users/shutoide/private.txt")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         XCTAssertEqual(viewModel.phase, .reviewReady)
         XCTAssertTrue(provider.requests.isEmpty)
         let item = try XCTUnwrap(viewModel.assistantQueueItem)
-        XCTAssertEqual(item.riskLevel, .draft)
-        XCTAssertEqual(item.requiredCapabilities, [.tool(.mailDraftCreateText)])
-        XCTAssertTrue(item.sourceTranscript?.contains("Slackに今すぐ送信して") == true)
-        XCTAssertTrue(item.sourceTranscript?.contains("destination: Slack draft only") == true)
+        XCTAssertEqual(store.savedItems.map(\.id), [item.id])
+        XCTAssertEqual(item.state, .blocked)
+        XCTAssertEqual(item.riskLevel, .write)
+        XCTAssertEqual(item.requiredCapabilities, [
+            .externalConnector(serviceID: "slack", action: "message.send"),
+            .providerExecutionApproval
+        ])
+        XCTAssertEqual(
+            item.blockingReason,
+            "Slack connector send is not configured. Create a reviewed draft instead; no external message was sent."
+        )
+        XCTAssertEqual(
+            item.sourceTranscript,
+            "Slackに今すぐ送信して token=[REDACTED_SECRET] at [REDACTED_LOCAL_PATH]"
+        )
+        XCTAssertFalse(item.redactedSummary.contains("sk-connector-secret"))
+        XCTAssertFalse(item.sourceTranscript?.contains("/Users/shutoide") == true)
+        XCTAssertFalse(viewModel.approveAssistantQueueItem())
+
+        guard case .automationRequest(let request) = item.payload else {
+            return XCTFail("Expected connector send gate to enter Assistant Queue as a non-executable automation request.")
+        }
+        XCTAssertEqual(request.source, .conversation)
+        XCTAssertEqual(request.approvalState, .pendingApproval)
+        XCTAssertEqual(request.sourceClientID, "voice")
+        XCTAssertEqual(request.toolName, "connector.send")
+        XCTAssertNil(request.taskMutation)
+        XCTAssertNil(request.developmentPullRequest)
+        XCTAssertFalse(request.redactedArgumentSummary.contains("sk-connector-secret"))
+        XCTAssertFalse(request.redactedArgumentSummary.contains("/Users/shutoide"))
+    }
+
+    func testExplicitConnectorSendGateDetectsLineAndDiscordDestinations() async throws {
+        let cases: [(transcript: String, serviceID: String, displayName: String)] = [
+            ("LINEに今すぐ送って", "line", "LINE"),
+            ("Discordに今すぐ投稿して", "discord", "Discord")
+        ]
+
+        for testCase in cases {
+            let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+                providerID: "recording",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            ))
+            let viewModel = VoiceCaptureViewModel(
+                audioRecorder: FakeAudioRecorder(),
+                sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+                llmProvider: provider,
+                assistantQueueStore: RecordingAssistantQueueStore()
+            )
+
+            viewModel.updateDraftText(testCase.transcript)
+            await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+            let item = try XCTUnwrap(viewModel.assistantQueueItem, testCase.transcript)
+            XCTAssertEqual(item.state, .blocked, testCase.transcript)
+            XCTAssertEqual(item.requiredCapabilities.first, .externalConnector(serviceID: testCase.serviceID, action: "message.send"), testCase.transcript)
+            XCTAssertTrue(item.blockingReason?.contains("\(testCase.displayName) connector send is not configured") == true, testCase.transcript)
+            XCTAssertTrue(provider.requests.isEmpty, testCase.transcript)
+        }
+    }
+
+    func testConnectorSendGateDoesNotTreatOnlineAsLineDestination() async throws {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "recording",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider,
+            assistantQueueStore: RecordingAssistantQueueStore()
+        )
+
+        viewModel.updateDraftText("online meeting mail send now")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        let item = try XCTUnwrap(viewModel.assistantQueueItem)
+        XCTAssertEqual(item.state, .blocked)
+        XCTAssertEqual(item.requiredCapabilities.first, .externalConnector(serviceID: "mail", action: "message.send"))
+        XCTAssertFalse(item.blockingReason?.contains("LINE connector") == true)
+        XCTAssertTrue(provider.requests.isEmpty)
     }
 
     func testGeneratePlanQueuesDevelopmentPullRequestReviewGateFromExplicitVoiceCommand() async throws {
@@ -574,7 +682,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         }
     }
 
-    func testUnsafeExternalSendCommandDoesNotCreateNotificationQueueItemOrProviderCall() async {
+    func testUnsafeExternalSendCommandCreatesBlockedGateWithoutProviderCall() async throws {
         let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
             providerID: "fake",
             rawContent: "{}",
@@ -591,13 +699,13 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         viewModel.updateDraftText("Slackに今すぐ送信して")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
-        XCTAssertEqual(viewModel.routingResult?.intent, .clarify)
+        XCTAssertEqual(viewModel.routingResult?.intent, .connectorSendGate)
         XCTAssertTrue(provider.requests.isEmpty)
-        XCTAssertNil(viewModel.assistantQueueItem)
-        if case .needsClarification = viewModel.phase {
-        } else {
-            XCTFail("Expected unsafe external send to require clarification before queueing work.")
-        }
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+        let item = try XCTUnwrap(viewModel.assistantQueueItem)
+        XCTAssertEqual(item.state, .blocked)
+        XCTAssertEqual(item.blockingReason, "Slack connector send is not configured. Create a reviewed draft instead; no external message was sent.")
+        XCTAssertFalse(viewModel.approveAssistantQueueItem())
     }
 
     func testDailyPlanningReviewIntentCreatesLocalRequestWithoutProviderCall() async {

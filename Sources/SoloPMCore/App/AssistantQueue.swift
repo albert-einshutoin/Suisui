@@ -26,6 +26,7 @@ public enum AssistantQueueRequiredCapability: Codable, Equatable, Sendable {
     case connectedMacRequired
     case providerExecutionApproval
     case externalMCP(serverID: String, toolName: String)
+    case externalConnector(serviceID: String, action: String)
 }
 
 public struct AssistantQueueApprovalRecord: Codable, Equatable, Sendable {
@@ -290,6 +291,50 @@ public enum AssistantQueueAdapter {
         )
     }
 
+    public static func makeConnectorSendGateItem(
+        serviceID: String,
+        serviceDisplayName: String,
+        redactedSourceTranscript: String,
+        redactedArgumentSummary: String,
+        routeSummary: String,
+        requestIDProvider: () -> String = { "connector-send:\(UUID().uuidString)" }
+    ) -> AssistantQueueItem {
+        let normalizedServiceID = normalizedConnectorIdentifier(serviceID, fallback: "external")
+        let displayName = normalizedConnectorDisplayName(serviceDisplayName, fallback: normalizedServiceID.capitalized)
+        let sanitizedSummary = sanitizedReviewText(
+            redactedArgumentSummary,
+            fallback: "\(displayName) connector send requested."
+        )
+        let request = SyncAutomationRequestPayload(
+            id: requestIDProvider(),
+            source: .conversation,
+            approvalState: .pendingApproval,
+            sourceClientID: "voice",
+            toolName: "connector.send",
+            redactedArgumentSummary: sanitizedSummary
+        )
+        // Connector sends are write-capable side effects, but no authenticated
+        // connector runtime exists yet. Store the request as a blocked,
+        // non-executable automation payload so review history shows what was
+        // requested while ActionExecutor has no plan to run.
+        return AssistantQueueItem(
+            id: "automation-request:\(request.id)",
+            state: .blocked,
+            payload: .automationRequest(request),
+            riskLevel: .write,
+            sourceTranscript: sanitizedReviewText(redactedSourceTranscript, fallback: nil),
+            interpretationSummary: sanitizedReviewText(routeSummary, fallback: "Route as connector.send_gate without sending."),
+            reviewReason: "\(displayName) connector send requires an authenticated connector and explicit send approval.",
+            redactedSummary: sanitizedSummary,
+            requiredCapabilities: [
+                .externalConnector(serviceID: normalizedServiceID, action: "message.send"),
+                .providerExecutionApproval
+            ],
+            blockingReason: "\(displayName) connector send is not configured. Create a reviewed draft instead; no external message was sent.",
+            costPreview: .localOnly(note: "Blocked connector send gate. No external message is sent and no SoloPM managed charge is incurred.")
+        )
+    }
+
     private static func maxRiskLevel(for actionPlan: ActionPlan) -> RiskLevel {
         actionPlan.actions.map(\.riskLevel).max().map { max($0, actionPlan.riskLevel) } ?? actionPlan.riskLevel
     }
@@ -345,6 +390,34 @@ public enum AssistantQueueAdapter {
             result.append(capability)
         }
         return result
+    }
+
+    private static func normalizedConnectorIdentifier(_ value: String, fallback: String) -> String {
+        let allowed = Set("abcdefghijklmnopqrstuvwxyz0123456789_-")
+        let normalized = value
+            .folding(options: [.caseInsensitive, .widthInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+            .filter { allowed.contains($0) }
+        return normalized.isEmpty ? fallback : normalized
+    }
+
+    private static func normalizedConnectorDisplayName(_ value: String, fallback: String) -> String {
+        let trimmed = DeveloperSecretRedactor().redact(value).text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayName = trimmed.isEmpty ? fallback : trimmed
+        guard displayName.count > 80 else {
+            return displayName
+        }
+        return String(displayName.prefix(80))
+    }
+
+    private static func sanitizedReviewText(_ value: String, fallback: String?) -> String {
+        let redacted = ExecutionReceiptRedactor().redact(value, maxLength: 1_200)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if redacted.isEmpty, let fallback {
+            return fallback
+        }
+        return redacted
     }
 }
 

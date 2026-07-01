@@ -7,6 +7,7 @@ final class VoiceCommandRouterTests: XCTestCase {
     func testIntentDisplayNamesAreUserFacingLabels() {
         XCTAssertEqual(VoiceCommandIntentKind.taskCreate.displayName, "Create task")
         XCTAssertEqual(VoiceCommandIntentKind.developmentPRWorkflow.displayName, "Prepare PR workflow")
+        XCTAssertEqual(VoiceCommandIntentKind.connectorSendGate.displayName, "Review connector send")
         XCTAssertFalse(VoiceCommandIntentKind.taskCreate.displayName.contains("."))
         XCTAssertFalse(VoiceCommandIntentKind.developmentPRWorkflow.displayName.contains("_"))
     }
@@ -130,13 +131,16 @@ final class VoiceCommandRouterTests: XCTestCase {
         XCTAssertNotNil(result.clarificationReason)
     }
 
-    func testUnsafeExternalSendRequiresClarification() {
+    func testExplicitExternalSendRoutesToConnectorSendGate() {
         let result = router.route(transcript: "Slackに今すぐ送信して")
 
-        XCTAssertEqual(result.intent, .clarify)
-        XCTAssertTrue(result.needsClarification)
-        XCTAssertLessThan(result.confidence, 0.7)
-        XCTAssertTrue(result.clarificationReason?.contains("external") ?? false)
+        XCTAssertEqual(result.intent, .connectorSendGate)
+        XCTAssertEqual(result.decision, .reviewOnly)
+        XCTAssertFalse(result.needsClarification)
+        XCTAssertTrue(result.reviewOnly)
+        XCTAssertGreaterThanOrEqual(result.confidence, 0.7)
+        XCTAssertTrue(result.interpretationSummary.contains("connector.send_gate"))
+        XCTAssertTrue(result.matchedSignals.contains("今すぐ送信"))
     }
 
     func testUnsafeExecutionBypassingReviewRequiresClarification() {

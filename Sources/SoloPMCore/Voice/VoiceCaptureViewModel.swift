@@ -259,6 +259,10 @@ public final class VoiceCaptureViewModel: ObservableObject {
             return
         }
 
+        if beginConnectorSendGateQueueItemIfNeeded(for: routedCommand) {
+            return
+        }
+
         if beginNotificationDraftQueueItemIfNeeded(for: routedCommand) {
             return
         }
@@ -314,6 +318,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
             }
             guard result.resolvedRoute.intent != .dailyPlanningReview else {
                 beginDailyPlanningReviewRequest(for: result.resolvedRoute, requestedAt: currentDate)
+                return
+            }
+            if beginConnectorSendGateQueueItemIfNeeded(for: result.resolvedRoute) {
                 return
             }
             if beginNotificationDraftQueueItemIfNeeded(for: result.resolvedRoute) {
@@ -583,6 +590,50 @@ public final class VoiceCaptureViewModel: ObservableObject {
         return true
     }
 
+    private func beginConnectorSendGateQueueItemIfNeeded(for route: VoiceCommandRoutingResult) -> Bool {
+        guard route.intent == .connectorSendGate else {
+            return false
+        }
+
+        do {
+            let item = makeConnectorSendGateQueueItem(for: route)
+            planningResponse = nil
+            assistantQueueItem = try persistAssistantQueueItemIfNeeded(item)
+            dailyPlanningReviewRequest = nil
+            inboxTriageRequest = nil
+            clarificationSession = nil
+            developmentPullRequestAutomationRequest = nil
+            phase = .reviewReady
+        } catch {
+            planningResponse = nil
+            assistantQueueItem = nil
+            dailyPlanningReviewRequest = nil
+            inboxTriageRequest = nil
+            developmentPullRequestAutomationRequest = nil
+            phase = .failed(userMessage(for: error))
+        }
+        return true
+    }
+
+    private func makeConnectorSendGateQueueItem(for route: VoiceCommandRoutingResult) -> AssistantQueueItem {
+        let redactor = ExecutionReceiptRedactor()
+        let redactedTranscript = redactor.redact(route.originalTranscript)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let connector = Self.connectorSendDestination(from: route)
+        let summary = [
+            "Connector send requested for \(connector.displayName).",
+            "Original voice request:",
+            redactedTranscript
+        ].joined(separator: "\n")
+        return AssistantQueueAdapter.makeConnectorSendGateItem(
+            serviceID: connector.serviceID,
+            serviceDisplayName: connector.displayName,
+            redactedSourceTranscript: redactedTranscript,
+            redactedArgumentSummary: summary,
+            routeSummary: route.interpretationSummary
+        )
+    }
+
     private func beginNotificationDraftQueueItemIfNeeded(for route: VoiceCommandRoutingResult) -> Bool {
         guard route.intent == .notificationDraft else {
             return false
@@ -681,6 +732,68 @@ public final class VoiceCaptureViewModel: ObservableObject {
             redactedClarificationLines: redactedClarificationLines,
             redactedSourceTranscript: sourceTranscriptParts.joined(separator: "\n")
         )
+    }
+
+    private static func connectorSendDestination(
+        from route: VoiceCommandRoutingResult
+    ) -> (serviceID: String, displayName: String) {
+        let folded = route.normalizedTranscript
+            .folding(options: [.caseInsensitive, .widthInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+        let knownConnectors: [(serviceID: String, displayName: String, signals: [String])] = [
+            ("slack", "Slack", ["slack"]),
+            ("line", "LINE", ["line"]),
+            ("discord", "Discord", ["discord"]),
+            ("mail", "Mail", ["mail", "email", "メール"])
+        ]
+
+        for connector in knownConnectors
+            where connector.signals.contains(where: { signal in containsConnectorSignal(signal, in: folded) }) {
+            return (connector.serviceID, connector.displayName)
+        }
+        return ("external", "External")
+    }
+
+    private static func containsConnectorSignal(_ signal: String, in foldedTranscript: String) -> Bool {
+        guard usesOnlyASCIILettersOrDigits(signal) else {
+            return foldedTranscript.contains(signal)
+        }
+
+        var searchStart = foldedTranscript.startIndex
+        while let range = foldedTranscript.range(of: signal, range: searchStart..<foldedTranscript.endIndex) {
+            if isLatinWordBoundary(before: range.lowerBound, after: range.upperBound, in: foldedTranscript) {
+                return true
+            }
+            searchStart = range.upperBound
+        }
+        return false
+    }
+
+    private static func usesOnlyASCIILettersOrDigits(_ signal: String) -> Bool {
+        signal.unicodeScalars.allSatisfy { scalar in
+            let value = scalar.value
+            return (97...122).contains(value) || (48...57).contains(value)
+        }
+    }
+
+    private static func isLatinWordBoundary(
+        before lowerBound: String.Index,
+        after upperBound: String.Index,
+        in text: String
+    ) -> Bool {
+        let hasLatinWordBefore = lowerBound > text.startIndex && isLatinWordCharacter(text[text.index(before: lowerBound)])
+        let hasLatinWordAfter = upperBound < text.endIndex && isLatinWordCharacter(text[upperBound])
+        return !hasLatinWordBefore && !hasLatinWordAfter
+    }
+
+    private static func isLatinWordCharacter(_ character: Character) -> Bool {
+        character.unicodeScalars.allSatisfy { scalar in
+            let value = scalar.value
+            return (65...90).contains(value)
+                || (97...122).contains(value)
+                || (48...57).contains(value)
+                || value == 95
+        }
     }
 
     private func makeInboxTriageRoute(

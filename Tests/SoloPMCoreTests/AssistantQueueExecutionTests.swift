@@ -184,6 +184,31 @@ final class AssistantQueueExecutionTests: XCTestCase {
         XCTAssertFalse(encodedReceipt.contains("team@example.com"))
     }
 
+    func testCoordinatorRejectsBlockedConnectorSendGateBeforeExecution() throws {
+        let queueStore = try makeQueueStore()
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let item = AssistantQueueAdapter.makeConnectorSendGateItem(
+            serviceID: "discord",
+            serviceDisplayName: "Discord",
+            redactedSourceTranscript: "Discordに今すぐ投稿して",
+            redactedArgumentSummary: "Connector send requested for Discord.",
+            routeSummary: "Route as connector.send_gate without sending.",
+            requestIDProvider: { "connector-send-discord" }
+        )
+        try queueStore.save(item)
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: try ActionExecutor(registry: ToolRegistry(tools: [])),
+            executionReceiptStore: receiptStore
+        )
+
+        XCTAssertThrowsError(try coordinator.execute(id: item.id)) { error in
+            XCTAssertEqual(error as? AssistantQueueExecutionError, .unsupportedPayload)
+        }
+        XCTAssertEqual(try queueStore.get(id: item.id).state, .blocked)
+        XCTAssertTrue(receiptStore.receipts.isEmpty)
+    }
+
     func testCoordinatorCopiesCostPreviewIntoEstimatedReceiptUsage() throws {
         let queueStore = try makeQueueStore()
         let receiptStore = InMemoryExecutionReceiptStore()
