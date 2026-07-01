@@ -2664,6 +2664,128 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(overloadedCockpit.focusForecast.overloadedDayKeys, ["2026-06-25"])
     }
 
+    func testWeeklyScheduleFocusForecastUsesCompletionHistoryForMomentum() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-24T09:10:00Z")
+        let thursdayOpenTasks = [
+            ProjectBoardTask(id: 1, projectID: 1, title: "Build screen", detail: "", status: .planned, priority: .medium, dueAt: "2026-06-25T10:00:00Z"),
+            ProjectBoardTask(id: 2, projectID: 1, title: "Write tests", detail: "", status: .planned, priority: .medium, dueAt: "2026-06-25T11:00:00Z"),
+            ProjectBoardTask(id: 3, projectID: 1, title: "Update docs", detail: "", status: .planned, priority: .medium, dueAt: "2026-06-25T12:00:00Z")
+        ]
+        let completionHistoryTasks = [
+            ProjectBoardTask(id: 10, projectID: 1, title: "Ship yesterday carryover", detail: "", status: .done, priority: .medium, dueAt: nil, completedAt: "2026-06-25T08:00:00Z"),
+            ProjectBoardTask(id: 11, projectID: 1, title: "Close support loop", detail: "", status: .done, priority: .medium, dueAt: "2026-06-24", completedAt: "2026-06-25T09:00:00Z")
+        ]
+        let tasks = thursdayOpenTasks + completionHistoryTasks
+        let project = ProjectBoardProject(
+            id: 1,
+            title: "Forecast Momentum",
+            subtitle: "3 open / 5 total",
+            columns: ProjectTaskStatus.allCases.map { status in
+                ProjectBoardColumn(status: status, tasks: tasks.filter { $0.status == status })
+            }
+        )
+        let snapshot = ProjectBoardSnapshot(projects: [project])
+        let workload = DailyWorkloadDashboardBuilder.overview(
+            from: snapshot,
+            around: referenceDate,
+            calendar: calendar,
+            visibleDayCount: 7
+        )
+
+        let cockpit = WeeklyScheduleCockpitBuilder.cockpit(
+            from: snapshot,
+            workload: workload,
+            scheduleDraft: nil,
+            around: referenceDate,
+            calendar: calendar
+        )
+
+        let thursday = try XCTUnwrap(cockpit.days.first { $0.dateKey == "2026-06-25" })
+        XCTAssertEqual(thursday.workload.openTaskCount, 3)
+        XCTAssertEqual(thursday.completionHistoryCount, 2)
+        XCTAssertEqual(thursday.loadLevel, .heavy)
+        XCTAssertEqual(cockpit.focusForecast.state, .heavy)
+        XCTAssertEqual(cockpit.focusForecast.completionHistoryCount, 2)
+        XCTAssertEqual(cockpit.focusForecast.completedDayKeys, ["2026-06-25"])
+        XCTAssertEqual(cockpit.focusForecast.heavyDayKeys, ["2026-06-25"])
+    }
+
+    func testWeeklyScheduleCompletionHistoryUsesCalendarDayAndScopedActiveProjects() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-24T16:00:00Z")
+        let activeTasks = [
+            ProjectBoardTask(id: 20, projectID: 1, title: "SQLite completion", detail: "", status: .done, priority: .medium, dueAt: nil, completedAt: "2026-06-24 15:30:00"),
+            ProjectBoardTask(id: 21, projectID: 1, title: "Reopened completion", detail: "", status: .planned, priority: .medium, dueAt: nil, completedAt: "2026-06-25T03:00:00+09:00")
+        ]
+        let inboxTasks = [
+            ProjectBoardTask(id: 30, projectID: 2, title: "Inbox completion", detail: "", status: .done, priority: .medium, dueAt: nil, completedAt: "2026-06-25T04:00:00+09:00")
+        ]
+        let archivedTasks = [
+            ProjectBoardTask(id: 40, projectID: 3, title: "Archived completion", detail: "", status: .done, priority: .medium, dueAt: nil, completedAt: "2026-06-25T05:00:00+09:00")
+        ]
+        let completedProjectTasks = [
+            ProjectBoardTask(id: 50, projectID: 4, title: "Completed project history", detail: "", status: .done, priority: .medium, dueAt: nil, completedAt: "2026-06-25T06:00:00+09:00")
+        ]
+        let active = ProjectBoardProject(
+            id: 1,
+            title: "Active Completion",
+            subtitle: "2 completed",
+            columns: ProjectTaskStatus.allCases.map { status in
+                ProjectBoardColumn(status: status, tasks: activeTasks.filter { $0.status == status })
+            }
+        )
+        let inbox = ProjectBoardProject(
+            id: 2,
+            title: "Inbox",
+            subtitle: "1 completed",
+            columns: ProjectTaskStatus.allCases.map { status in
+                ProjectBoardColumn(status: status, tasks: inboxTasks.filter { $0.status == status })
+            }
+        )
+        let archived = ProjectBoardProject(
+            id: 3,
+            title: "Archived Completion",
+            status: "archived",
+            subtitle: "1 completed",
+            columns: ProjectTaskStatus.allCases.map { status in
+                ProjectBoardColumn(status: status, tasks: archivedTasks.filter { $0.status == status })
+            }
+        )
+        let completedProject = ProjectBoardProject(
+            id: 4,
+            title: "Completed Project",
+            status: "completed",
+            subtitle: "1 completed",
+            columns: ProjectTaskStatus.allCases.map { status in
+                ProjectBoardColumn(status: status, tasks: completedProjectTasks.filter { $0.status == status })
+            }
+        )
+        let snapshot = ProjectBoardSnapshot(projects: [active, inbox, archived, completedProject])
+        let workload = DailyWorkloadDashboardBuilder.overview(
+            from: snapshot,
+            around: referenceDate,
+            calendar: calendar,
+            visibleDayCount: 7
+        )
+
+        let cockpit = WeeklyScheduleCockpitBuilder.cockpit(
+            from: snapshot,
+            workload: workload,
+            scheduleDraft: nil,
+            around: referenceDate,
+            calendar: calendar
+        )
+
+        let thursday = try XCTUnwrap(cockpit.days.first { $0.dateKey == "2026-06-25" })
+        XCTAssertEqual(thursday.completionHistoryCount, 2)
+        XCTAssertEqual(cockpit.focusForecast.completionHistoryCount, 2)
+        XCTAssertEqual(cockpit.focusForecast.completedDayKeys, ["2026-06-25"])
+    }
+
     @MainActor
     func testDailyPlanningReviewUsesTodayAndWorkloadWithoutMutatingStoreOrCalendar() throws {
         var calendar = utcCalendar()

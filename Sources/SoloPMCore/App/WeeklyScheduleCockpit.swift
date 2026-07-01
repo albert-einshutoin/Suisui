@@ -75,6 +75,7 @@ public struct WeeklyScheduleDay: Identifiable, Equatable, Sendable {
     public var workload: DailyWorkloadDay
     public var blocks: [WeeklyScheduleBlock]
     public var reminderProposalCount: Int
+    public var completionHistoryCount: Int
     public var loadLevel: WeeklyScheduleLoadLevel
 
     public init(
@@ -83,6 +84,7 @@ public struct WeeklyScheduleDay: Identifiable, Equatable, Sendable {
         workload: DailyWorkloadDay,
         blocks: [WeeklyScheduleBlock],
         reminderProposalCount: Int,
+        completionHistoryCount: Int = 0,
         loadLevel: WeeklyScheduleLoadLevel
     ) {
         self.date = date
@@ -90,6 +92,7 @@ public struct WeeklyScheduleDay: Identifiable, Equatable, Sendable {
         self.workload = workload
         self.blocks = blocks
         self.reminderProposalCount = reminderProposalCount
+        self.completionHistoryCount = completionHistoryCount
         self.loadLevel = loadLevel
     }
 }
@@ -98,18 +101,24 @@ public struct WeeklyScheduleFocusForecast: Equatable, Sendable {
     public var state: WeeklyScheduleFocusForecastState
     public var overloadedDayKeys: [String]
     public var heavyDayKeys: [String]
+    public var completedDayKeys: [String]
     public var reminderProposalCount: Int
+    public var completionHistoryCount: Int
 
     public init(
         state: WeeklyScheduleFocusForecastState,
         overloadedDayKeys: [String],
         heavyDayKeys: [String],
-        reminderProposalCount: Int
+        completedDayKeys: [String] = [],
+        reminderProposalCount: Int,
+        completionHistoryCount: Int = 0
     ) {
         self.state = state
         self.overloadedDayKeys = overloadedDayKeys
         self.heavyDayKeys = heavyDayKeys
+        self.completedDayKeys = completedDayKeys
         self.reminderProposalCount = reminderProposalCount
+        self.completionHistoryCount = completionHistoryCount
     }
 }
 
@@ -151,6 +160,10 @@ enum WeeklyScheduleCockpitBuilder {
             grouping: draftBlocks,
             by: \.dayKey
         ).mapValues { Set($0.map(\.task.id)) }
+        let completionHistoryCounts = completionHistoryCountsByDay(
+            from: snapshot,
+            calendar: calendar
+        )
 
         let days = workload.days.map { workloadDay -> WeeklyScheduleDay in
             let dayDraftBlocks = draftBlocks.filter { $0.dayKey == workloadDay.dateKey }
@@ -163,6 +176,7 @@ enum WeeklyScheduleCockpitBuilder {
                 to: (dayDraftBlocks + dueBlocks).sorted(by: sortBlocks)
             )
             let reminderProposalCount = reminderProposalCount(for: workloadDay)
+            let completionHistoryCount = completionHistoryCounts[workloadDay.dateKey, default: 0]
             let loadLevel = loadLevel(
                 for: workloadDay,
                 blockCount: blocks.count,
@@ -175,6 +189,7 @@ enum WeeklyScheduleCockpitBuilder {
                 workload: workloadDay,
                 blocks: blocks,
                 reminderProposalCount: reminderProposalCount,
+                completionHistoryCount: completionHistoryCount,
                 loadLevel: loadLevel
             )
         }
@@ -345,7 +360,9 @@ enum WeeklyScheduleCockpitBuilder {
     private static func focusForecast(for days: [WeeklyScheduleDay]) -> WeeklyScheduleFocusForecast {
         let overloaded = days.filter { $0.loadLevel == .overloaded }.map(\.dateKey)
         let heavy = days.filter { $0.loadLevel == .heavy }.map(\.dateKey)
+        let completed = days.filter { $0.completionHistoryCount > 0 }.map(\.dateKey)
         let reminderCount = days.reduce(0) { $0 + $1.reminderProposalCount }
+        let completionHistoryCount = days.reduce(0) { $0 + $1.completionHistoryCount }
         let state: WeeklyScheduleFocusForecastState = if !overloaded.isEmpty {
             .overloaded
         } else if !heavy.isEmpty {
@@ -358,8 +375,27 @@ enum WeeklyScheduleCockpitBuilder {
             state: state,
             overloadedDayKeys: overloaded,
             heavyDayKeys: heavy,
-            reminderProposalCount: reminderCount
+            completedDayKeys: completed,
+            reminderProposalCount: reminderCount,
+            completionHistoryCount: completionHistoryCount
         )
+    }
+
+    private static func completionHistoryCountsByDay(
+        from snapshot: ProjectBoardSnapshot,
+        calendar: Calendar
+    ) -> [String: Int] {
+        var counts: [String: Int] = [:]
+        snapshot.projects
+            .filter { !$0.isArchived && !$0.isCompleted && !isInboxProject($0) }
+            .flatMap(\.tasks)
+            .forEach { task in
+                guard let completedDate = completedDate(task.completedAt, calendar: calendar) else {
+                    return
+                }
+                counts[dateKey(for: completedDate, calendar: calendar), default: 0] += 1
+            }
+        return counts
     }
 
     private static func sortBlocks(_ lhs: WeeklyScheduleBlock, _ rhs: WeeklyScheduleBlock) -> Bool {
@@ -396,6 +432,32 @@ enum WeeklyScheduleCockpitBuilder {
         formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.date(from: raw)
+    }
+
+    private static func completedDate(_ raw: String?, calendar: Calendar) -> Date? {
+        guard let raw else {
+            return nil
+        }
+        if let date = ISO8601DateFormatter().date(from: raw) {
+            return date
+        }
+
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        if let date = formatter.date(from: raw) {
+            return date
+        }
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: raw)
+    }
+
+    private static func isInboxProject(_ project: ProjectBoardProject) -> Bool {
+        project.title.caseInsensitiveCompare("Inbox") == .orderedSame
     }
 
     private static func isDateOnly(_ raw: String) -> Bool {

@@ -1031,10 +1031,14 @@
 "Week schedule cockpit" = "週間スケジュールコックピット";
 "Weekly schedule grid" = "週間スケジュールグリッド";
 "+%d more" = "ほか%d件";
-"%d blocks, %d reminder proposals" = "%d件のブロック、%d件のリマインダー提案";
+"%d blocks, %d reminder proposals, %d completed tasks" = "%d件のブロック、%d件のリマインダー提案、%d件の完了実績";
+"%d completed tasks on this day" = "この日に%d件の完了実績";
+"%d completed this week." = "今週%d件完了済み。";
+"%d schedule completions" = "スケジュール完了実績 %d件";
 "%d heavy days. Keep schedule drafts reviewable before Calendar writes." = "多めの日が%d日あります。カレンダー書き込み前にスケジュール下書きをレビュー可能な状態に保ってください。";
 "%d overloaded days. Review reminders and unscheduled work before applying Calendar changes." = "過負荷の日が%d日あります。カレンダー変更を適用する前にリマインダーと未スケジュール作業を確認してください。";
 "%d proposals from local due and blocked tasks" = "ローカルの期限付き/ブロック中タスクから%d件の提案";
+"Completion history count" = "完了実績数";
 "%d reminders" = "%d件のリマインダー";
 "%d unscheduled tasks need placement" = "%d件の未スケジュールタスクの配置が必要";
 "Creates an Assistant Queue approval item without changing the task." = "タスクを変更せず、Assistant Queueの承認項目を作成します。";

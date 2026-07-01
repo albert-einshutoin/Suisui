@@ -501,7 +501,7 @@ private struct WeeklyScheduleCockpitPanel: View {
     }
 
     private var focusForecastSummary: String {
-        switch cockpit.focusForecast.state {
+        let base = switch cockpit.focusForecast.state {
         case .overloaded:
             String(
                 format: String(localized: "%d overloaded days. Review reminders and unscheduled work before applying Calendar changes."),
@@ -515,6 +515,13 @@ private struct WeeklyScheduleCockpitPanel: View {
         case .open:
             String(localized: "Week has no overloaded days.")
         }
+        guard cockpit.focusForecast.completionHistoryCount > 0 else {
+            return base
+        }
+        return base + " " + String(
+            format: String(localized: "%d completed this week."),
+            cockpit.focusForecast.completionHistoryCount
+        )
     }
 }
 
@@ -536,6 +543,21 @@ private struct WeeklyScheduleDayColumn: View {
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("Open task count")
+            }
+            if day.completionHistoryCount > 0 {
+                Label(
+                    String(format: String(localized: "%d schedule completions"), day.completionHistoryCount),
+                    systemImage: "checkmark.circle"
+                )
+                .font(.caption2)
+                .foregroundStyle(.green)
+                .lineLimit(1)
+                .accessibilityIdentifier("schedule-week-completion-history-\(day.dateKey)")
+                .accessibilityLabel("Completion history count")
+                .accessibilityValue(String(
+                    format: String(localized: "%d completed tasks on this day"),
+                    day.completionHistoryCount
+                ))
             }
 
             if day.blocks.isEmpty {
@@ -569,7 +591,12 @@ private struct WeeklyScheduleDayColumn: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("schedule-week-day-column-\(day.dateKey)")
         .accessibilityLabel(String(format: String(localized: "Schedule day %@"), day.dateKey))
-        .accessibilityValue(String(format: String(localized: "%d blocks, %d reminder proposals"), day.blocks.count, day.reminderProposalCount))
+        .accessibilityValue(String(
+            format: String(localized: "%d blocks, %d reminder proposals, %d completed tasks"),
+            day.blocks.count,
+            day.reminderProposalCount,
+            day.completionHistoryCount
+        ))
     }
 
     private var shortDateLabel: String {
