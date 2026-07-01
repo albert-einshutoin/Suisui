@@ -536,6 +536,12 @@ final class AppExperienceSourceTests: XCTestCase {
         let historySource = try readPackageFile("Sources/SoloPMCore/App/ExecutionReceiptHistory.swift")
 
         XCTAssertTrue(workflowSource.contains("viewModel.executionReceiptHistorySnapshot"))
+        XCTAssertTrue(workflowSource.contains("viewModel.executionUsageMeterSnapshot"))
+        XCTAssertTrue(workflowSource.contains("AI Usage Meter"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"ai-usage-meter-summary\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"ai-usage-meter-scope\")"))
+        XCTAssertTrue(workflowSource.contains("Latest Month"))
+        XCTAssertTrue(workflowSource.contains("row.summary.costLabel"))
         XCTAssertTrue(workflowSource.contains("Recent AI Receipts"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"recent-ai-receipts\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"execution-receipt-search-field\")"))
@@ -558,6 +564,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(receiptHistoryViewSource.contains(".sourceLinks"))
         XCTAssertFalse(receiptHistoryViewSource.contains(".actions"))
         XCTAssertFalse(receiptHistoryViewSource.contains("receipt.id"))
+        XCTAssertFalse(receiptHistoryViewSource.contains("receipt.runID"))
     }
 
     func testInspectorsShowScopedAIReceiptsWithoutRawReceiptFields() throws {

@@ -1065,6 +1065,119 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelLoadsExecutionUsageMeterFromReceiptsWithoutRawFields() throws {
+        let receiptStore = InMemoryExecutionReceiptStore(receipts: [
+            ExecutionReceipt(
+                id: "receipt-usage-estimated-token=secret",
+                runID: "run-usage-estimated",
+                createdAt: try isoDate("2026-06-18T08:00:00Z"),
+                finishedAt: try isoDate("2026-06-18T08:02:00Z"),
+                status: .succeeded,
+                inputPreview: "Raw prompt sk-proj-usage-secret from /Users/alice/private.md",
+                outputSummary: "Generated plan",
+                primaryToolName: ActionTool.taskCreate.rawValue,
+                usage: ExecutionReceiptUsage(
+                    inputTokens: 1_000,
+                    outputTokens: 500,
+                    estimatedCostCents: 0.25,
+                    currencyCode: "USD",
+                    state: .estimated
+                ),
+                references: [
+                    ExecutionReceiptReference(kind: .project, id: "7", label: "Launch token=usage-project-secret"),
+                    ExecutionReceiptReference(kind: .task, id: "42", label: "Usage task")
+                ],
+                visibleSurfaces: [.auditLog, .projectDetail]
+            ),
+            ExecutionReceipt(
+                id: "receipt-usage-measured",
+                runID: "run-usage-measured",
+                createdAt: try isoDate("2026-06-18T09:00:00Z"),
+                finishedAt: try isoDate("2026-06-18T09:02:00Z"),
+                status: .succeeded,
+                inputPreview: "Provider prompt",
+                outputSummary: "Generated follow-up",
+                primaryToolName: ActionTool.taskUpdate.rawValue,
+                usage: ExecutionReceiptUsage(
+                    inputTokens: 300,
+                    outputTokens: 100,
+                    estimatedCostCents: 0.10,
+                    currencyCode: "USD",
+                    state: .measured
+                ),
+                references: [
+                    ExecutionReceiptReference(kind: .project, id: "7", label: "Launch token=usage-project-secret")
+                ],
+                visibleSurfaces: [.auditLog, .projectDetail]
+            ),
+            ExecutionReceipt(
+                id: "receipt-local-only",
+                runID: "run-local-only",
+                createdAt: try isoDate("2026-06-18T09:05:00Z"),
+                status: .succeeded,
+                inputPreview: "Local prompt",
+                outputSummary: "Local-only action",
+                primaryToolName: ActionTool.taskList.rawValue,
+                usage: .unavailable,
+                visibleSurfaces: [.auditLog]
+            )
+        ])
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            executionReceiptStore: receiptStore
+        )
+
+        viewModel.load()
+
+        let snapshot = viewModel.executionUsageMeterSnapshot
+        XCTAssertNil(snapshot.unavailableMessage)
+        XCTAssertTrue(snapshot.scopeLabel.contains("UTC"))
+        XCTAssertTrue(snapshot.scopeLabel.contains("500"))
+        XCTAssertEqual(snapshot.summary.trackedReceiptCount, 2)
+        XCTAssertEqual(snapshot.summary.measuredReceiptCount, 1)
+        XCTAssertEqual(snapshot.summary.estimatedReceiptCount, 1)
+        XCTAssertEqual(snapshot.summary.inputTokens, 1_300)
+        XCTAssertEqual(snapshot.summary.outputTokens, 600)
+        XCTAssertEqual(snapshot.summary.totalTokens, 1_900)
+        XCTAssertEqual(snapshot.summary.costTotals.first?.currencyCode, "USD")
+        XCTAssertEqual(snapshot.summary.costTotals.first?.measuredCostCents ?? -1, 0.10, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.summary.costTotals.first?.estimatedCostCents ?? -1, 0.25, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.dailyRows.map(\.bucketKey), ["2026-06-18"])
+        XCTAssertEqual(snapshot.dailyRows.map(\.title), ["2026-06-18 UTC"])
+        XCTAssertEqual(snapshot.monthlyRows.map(\.bucketKey), ["2026-06"])
+        XCTAssertEqual(snapshot.monthlyRows.map(\.title), ["2026-06 UTC"])
+
+        let projectRow = try XCTUnwrap(snapshot.projectRows.first)
+        XCTAssertEqual(projectRow.bucketKey, "project:7")
+        XCTAssertTrue(projectRow.title.contains("Launch"))
+        XCTAssertEqual(projectRow.summary.totalTokens, 1_900)
+        XCTAssertEqual(projectRow.summary.trackedReceiptCount, 2)
+
+        let safeText = [
+            snapshot.summaryLabel,
+            snapshot.accessibilityValue,
+            snapshot.scopeLabel,
+            projectRow.title,
+            projectRow.accessibilityValue
+        ].joined(separator: " ")
+        XCTAssertFalse(safeText.contains("receipt-usage-estimated"))
+        XCTAssertFalse(safeText.contains("run-usage"))
+        XCTAssertFalse(safeText.contains("usage-secret"))
+        XCTAssertFalse(safeText.contains("private.md"))
+        XCTAssertFalse(safeText.contains("sk-proj"))
+    }
+
+    @MainActor
+    func testProjectBoardViewModelMarksExecutionUsageMeterUnavailableWithoutReceiptStore() {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+
+        viewModel.load()
+
+        XCTAssertEqual(viewModel.executionUsageMeterSnapshot.summary.trackedReceiptCount, 0)
+        XCTAssertEqual(viewModel.executionUsageMeterSnapshot.unavailableMessage, "Execution usage meter is unavailable")
+    }
+
+    @MainActor
     func testProjectBoardViewModelShowsExternalMCPReceiptsOnlyInGlobalAuditHistory() throws {
         let externalMCPReceipt = ExecutionReceiptFactory.makeExternalMCPReceipt(
             serverID: "/Users/alice/private-mcp-server",
