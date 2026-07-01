@@ -259,6 +259,10 @@ public final class VoiceCaptureViewModel: ObservableObject {
             return
         }
 
+        if beginNotificationDraftQueueItemIfNeeded(for: routedCommand) {
+            return
+        }
+
         if beginDevelopmentPullRequestAutomationRequestIfPossible(for: routedCommand) {
             return
         }
@@ -310,6 +314,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
             }
             guard result.resolvedRoute.intent != .dailyPlanningReview else {
                 beginDailyPlanningReviewRequest(for: result.resolvedRoute, requestedAt: currentDate)
+                return
+            }
+            if beginNotificationDraftQueueItemIfNeeded(for: result.resolvedRoute) {
                 return
             }
             if beginDevelopmentPullRequestAutomationRequestIfPossible(for: result.resolvedRoute) {
@@ -574,6 +581,106 @@ public final class VoiceCaptureViewModel: ObservableObject {
             phase = .failed(userMessage(for: error))
         }
         return true
+    }
+
+    private func beginNotificationDraftQueueItemIfNeeded(for route: VoiceCommandRoutingResult) -> Bool {
+        guard route.intent == .notificationDraft else {
+            return false
+        }
+
+        do {
+            let item = makeNotificationDraftQueueItem(for: route)
+            planningResponse = nil
+            assistantQueueItem = try persistAssistantQueueItemIfNeeded(item)
+            dailyPlanningReviewRequest = nil
+            inboxTriageRequest = nil
+            clarificationSession = nil
+            developmentPullRequestAutomationRequest = nil
+            phase = .reviewReady
+        } catch {
+            planningResponse = nil
+            assistantQueueItem = nil
+            dailyPlanningReviewRequest = nil
+            inboxTriageRequest = nil
+            developmentPullRequestAutomationRequest = nil
+            phase = .failed(userMessage(for: error))
+        }
+        return true
+    }
+
+    private func makeNotificationDraftQueueItem(for route: VoiceCommandRoutingResult) -> AssistantQueueItem {
+        let redactor = ExecutionReceiptRedactor()
+        // Notification-style commands often mention external services. Until a
+        // connector-specific send gate exists, keep them as a local mail draft
+        // payload so the Assistant Queue review remains the only gate before
+        // any notification, mail, Slack, LINE, or Discord side effect can exist.
+        let reviewContext = makeNotificationDraftReviewContext(for: route, redactor: redactor)
+        let draftBody = [
+            "Original voice request:",
+            reviewContext.redactedOriginalTranscript
+        ]
+        let clarificationBody = reviewContext.redactedClarificationLines.isEmpty
+            ? []
+            : [
+                "",
+                "Clarification answers:",
+                reviewContext.redactedClarificationLines.joined(separator: "\n")
+            ]
+        let actionBody = (draftBody + clarificationBody).joined(separator: "\n")
+        let actionPlan = ActionPlan(
+            id: "notification-draft:\(UUID().uuidString)",
+            userInput: reviewContext.redactedSourceTranscript,
+            summary: "Prepare a text-only notification draft without sending it.",
+            actions: [
+                PlanAction(
+                    id: "notification-draft-mail",
+                    tool: .mailDraftCreateText,
+                    arguments: [
+                        "subject": .string("Notification draft"),
+                        "body": .string(actionBody)
+                    ],
+                    riskLevel: .draft
+                )
+            ],
+            riskLevel: .draft,
+            requiresApproval: false
+        )
+        return AssistantQueueAdapter.makeItem(
+            actionPlan: actionPlan,
+            sourceTranscript: reviewContext.redactedSourceTranscript,
+            interpretationSummary: route.interpretationSummary,
+            reason: "Notification draft needs review before any external message or local notification is created.",
+            costPreview: .localOnly(note: "Local text draft only. No connector send or local notification is created before review.")
+        )
+    }
+
+    private func makeNotificationDraftReviewContext(
+        for route: VoiceCommandRoutingResult,
+        redactor: ExecutionReceiptRedactor
+    ) -> (
+        redactedOriginalTranscript: String,
+        redactedClarificationLines: [String],
+        redactedSourceTranscript: String
+    ) {
+        let redactedOriginalTranscript = redactor.redact(route.originalTranscript)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let redactedClarificationLines = route.clarificationTrail.map { trail in
+            let redactedAnswer = redactor.redact(trail.answer)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return "- \(trail.slot): \(redactedAnswer)"
+        }
+        let sourceTranscriptParts = redactedClarificationLines.isEmpty
+            ? [redactedOriginalTranscript]
+            : [
+                redactedOriginalTranscript,
+                "Clarification answers:",
+                redactedClarificationLines.joined(separator: "\n")
+            ]
+        return (
+            redactedOriginalTranscript: redactedOriginalTranscript,
+            redactedClarificationLines: redactedClarificationLines,
+            redactedSourceTranscript: sourceTranscriptParts.joined(separator: "\n")
+        )
     }
 
     private func makeInboxTriageRoute(

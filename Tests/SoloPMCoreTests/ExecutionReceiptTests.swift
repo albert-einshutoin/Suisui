@@ -2,6 +2,25 @@ import XCTest
 @testable import SoloPMCore
 
 final class ExecutionReceiptTests: XCTestCase {
+    func testExecutionReceiptRedactorCoversHomeVarAndFileURLLocalPaths() {
+        let redactor = ExecutionReceiptRedactor(
+            policy: ExecutionReceiptRedactionPolicy(
+                allowedLocalPathPrefixes: ["/Volumes/Satechi/Developer/soloPM"]
+            )
+        )
+
+        let redacted = redactor.redact(
+            "Read ~/Library/Secrets/key.txt, /var/folders/app/private.log, file:///Users/alice/private.md, and file:///Volumes/Satechi/Developer/soloPM/docs/plan.md",
+            maxLength: 1_000
+        )
+
+        XCTAssertEqual(redacted.components(separatedBy: "[REDACTED_LOCAL_PATH]").count - 1, 3)
+        XCTAssertFalse(redacted.contains("~/Library/Secrets/key.txt"))
+        XCTAssertFalse(redacted.contains("/var/folders/app/private.log"))
+        XCTAssertFalse(redacted.contains("file:///Users/alice/private.md"))
+        XCTAssertTrue(redacted.contains("file:///Volumes/Satechi/Developer/soloPM/docs/plan.md"))
+    }
+
     func testReviewExecutionReceiptRedactsSecretsAndDisallowedLocalPaths() throws {
         let providerKey = "sk-" + "proj-user-secret"
         let titleSecret = "token" + "=" + "secret-title"
