@@ -998,6 +998,77 @@ final class AssistantQueueStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelReportsManagedUsageCapExceededDetailAfterAssistantQueueExecution() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let ledgerStore = SQLiteManagedAIUsageLedgerStore(connection: connection)
+        try ledgerStore.record(ManagedAIUsageLedgerEntry(
+            sourceReceiptDigest: ManagedAIUsageLedgerEntry.digestIdentifier(kind: "receipt", value: "existing-board-cap"),
+            assistantQueueItemDigest: ManagedAIUsageLedgerEntry.digestIdentifier(kind: "assistant_queue_item", value: "existing-board-cap"),
+            billingMode: .soloPMManaged,
+            provider: "openai",
+            modelName: "gpt-managed",
+            usageState: .estimated,
+            inputTokens: 1_000,
+            outputTokens: 500,
+            costCents: 80,
+            currencyCode: "USD",
+            occurredAt: Date(timeIntervalSince1970: 1_788_280_400)
+        ))
+        let approved = try AssistantQueueStateMachine.approve(
+            makeItem(
+                id: "queue-managed-usage-cap-exceeded",
+                state: .waitingReview,
+                summary: "Create managed cap task",
+                costPreview: makeCostPreview(inputTokens: 1_000, outputTokens: 500)
+            ),
+            reviewerID: "local-user"
+        )
+        try assistantQueueStore.save(approved)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                XCTFail("Managed AI cap enforcement must stop before ProjectBoard tool execution.")
+                return ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created managed cap task")
+            }
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: assistantQueueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            managedAIUsageLedgerStore: ledgerStore,
+            managedAIBillingSettings: ManagedAIBillingSettings(
+                isEnabled: true,
+                dailyCapCents: 80
+            ),
+            runIDProvider: { "run-board-queue-managed-cap" },
+            now: { Date(timeIntervalSince1970: 1_788_282_000) }
+        )
+        let viewModel = ProjectBoardViewModel(
+            store: boardStore,
+            assistantQueueStore: assistantQueueStore,
+            assistantQueueExecutionCoordinator: coordinator,
+            executionReceiptStore: receiptStore
+        )
+
+        viewModel.load()
+
+        XCTAssertFalse(viewModel.runAssistantQueueItem(id: approved.id))
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Managed AI daily cap would be exceeded. Current USD 0.80 plus this run USD 0.0025 exceeds USD 0.80."
+        )
+        XCTAssertTrue(receiptStore.receipts.isEmpty)
+    }
+
+    @MainActor
     func testProjectBoardViewModelFocusesVoiceHandoffApprovedQueueItemDespiteStaleFilter() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)

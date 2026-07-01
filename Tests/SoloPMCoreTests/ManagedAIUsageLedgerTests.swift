@@ -74,6 +74,28 @@ final class ManagedAIUsageLedgerTests: XCTestCase {
         XCTAssertFalse(rawStorage.contains("sk-secret"))
     }
 
+    func testSQLiteLedgerUsageTotalsAggregateManagedUsageByUTCPeriodAndCurrency() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteManagedAIUsageLedgerStore(connection: connection)
+
+        try store.record(ledgerEntry(id: "same-day", costCents: 20, currencyCode: "USD", occurredAt: "2026-07-15T09:00:00Z"))
+        try store.record(ledgerEntry(id: "same-month", costCents: 30, currencyCode: "USD", occurredAt: "2026-07-01T09:00:00Z"))
+        try store.record(ledgerEntry(id: "prior-month", costCents: 40, currencyCode: "USD", occurredAt: "2026-06-30T23:59:00Z"))
+        try store.record(ledgerEntry(id: "other-currency", costCents: 999, currencyCode: "EUR", occurredAt: "2026-07-15T09:00:00Z"))
+
+        let totals = try store.usageTotals(
+            currencyCode: "usd",
+            referenceDate: isoDate("2026-07-15T10:00:00Z"),
+            calendar: ManagedAIBillingSettings.usageLedgerCalendar()
+        )
+
+        XCTAssertEqual(totals.currencyCode, "USD")
+        XCTAssertEqual(totals.dailyCostCents, 20)
+        XCTAssertEqual(totals.monthlyCostCents, 50)
+        XCTAssertEqual(totals.workspaceCostCents, 90)
+    }
+
     func testLedgerEntryFactorySkipsLocalAndProviderBilledPreviews() {
         let local = AssistantQueueCostPreview.localOnly()
         let providerBilled = AssistantQueueCostPreview.userProviderBilled(
@@ -103,5 +125,73 @@ final class ManagedAIUsageLedgerTests: XCTestCase {
             receipt: receipt,
             occurredAt: Date(timeIntervalSince1970: 128)
         ))
+    }
+
+    func testBillingSettingsProjectsLedgerTotalsAgainstDailyMonthlyAndWorkspaceCaps() {
+        let preview = AssistantQueueCostPreview(
+            billingMode: .soloPMManaged,
+            state: .estimated,
+            estimatedCostCents: 15,
+            currencyCode: "USD",
+            capStatus: .withinLimit
+        )
+        let totals = ManagedAIUsageLedgerTotals(
+            currencyCode: "usd",
+            dailyCostCents: 20,
+            monthlyCostCents: 90,
+            workspaceCostCents: 120
+        )
+
+        let monthlyProjection = ManagedAIBillingSettings(
+            isEnabled: true,
+            dailyCapCents: 100,
+            monthlyCapCents: 100,
+            workspaceCapCents: 500
+        ).firstExceededUsageCap(totals: totals, pendingCostPreview: preview)
+        XCTAssertEqual(monthlyProjection?.scope, .monthly)
+        XCTAssertEqual(monthlyProjection?.projectedCents, 105)
+
+        let workspaceProjection = ManagedAIBillingSettings(
+            isEnabled: true,
+            dailyCapCents: 100,
+            monthlyCapCents: 200,
+            workspaceCapCents: 130
+        ).firstExceededUsageCap(totals: totals, pendingCostPreview: preview)
+        XCTAssertEqual(workspaceProjection?.scope, .workspace)
+        XCTAssertEqual(workspaceProjection?.projectedCents, 135)
+
+        let withinLimit = ManagedAIBillingSettings(
+            isEnabled: true,
+            dailyCapCents: 100,
+            monthlyCapCents: 200,
+            workspaceCapCents: 200
+        ).firstExceededUsageCap(totals: totals, pendingCostPreview: preview)
+        XCTAssertNil(withinLimit)
+    }
+
+    private func ledgerEntry(
+        id: String,
+        billingMode: AssistantQueueCostBillingMode = .soloPMManaged,
+        costCents: Double,
+        currencyCode: String,
+        occurredAt: String
+    ) -> ManagedAIUsageLedgerEntry {
+        ManagedAIUsageLedgerEntry(
+            sourceReceiptDigest: ManagedAIUsageLedgerEntry.digestIdentifier(kind: "receipt", value: id),
+            assistantQueueItemDigest: ManagedAIUsageLedgerEntry.digestIdentifier(kind: "assistant_queue_item", value: id),
+            billingMode: billingMode,
+            provider: "openai",
+            modelName: "gpt-managed",
+            usageState: .estimated,
+            inputTokens: 1,
+            outputTokens: 1,
+            costCents: costCents,
+            currencyCode: currencyCode,
+            occurredAt: isoDate(occurredAt)
+        )
+    }
+
+    private func isoDate(_ value: String) -> Date {
+        ISO8601DateFormatter().date(from: value)!
     }
 }

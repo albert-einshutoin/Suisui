@@ -4412,6 +4412,13 @@ public final class ProjectBoardViewModel: ObservableObject {
                 return "Assistant Queue execution finished, but managed AI usage could not be saved. Fix billing ledger storage before retrying."
             }
             return "Assistant Queue execution finished, but managed AI usage and queue state update both failed. Check local billing storage before retrying."
+        case AssistantQueueExecutionError.managedUsageCapCheckFailed(let queueStateMarkedFailed):
+            if queueStateMarkedFailed {
+                return "Managed AI usage caps could not be checked. Fix billing ledger storage before retrying."
+            }
+            return "Managed AI usage caps could not be checked, and the queue state could not be updated. Check local billing storage before retrying."
+        case AssistantQueueExecutionError.managedUsageCapExceeded(let projection, _):
+            return projection.blockingReason
         case AssistantQueueTransitionError.approvalRequiredBeforeRunning:
             return "Approve this Assistant Queue item before running it."
         case AssistantQueueTransitionError.costPreviewRequiredBeforeApproval,

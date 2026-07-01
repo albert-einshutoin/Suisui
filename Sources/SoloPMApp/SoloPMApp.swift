@@ -2215,7 +2215,7 @@ private struct SettingsView: View {
                 }
                 .accessibilityIdentifier("settings-managed-ai-workspace-cap")
 
-                Label("Per-run cap blocks managed previews; daily, monthly, and workspace caps are receipt usage thresholds until billing ledger enforcement lands.", systemImage: "lock.doc")
+                Label("Per-run cap blocks managed previews; daily, monthly, and workspace caps are enforced from the managed usage ledger before execution.", systemImage: "lock.doc")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("settings-managed-ai-billing-boundary")
@@ -4396,7 +4396,8 @@ private enum AppRuntimeFactory {
                 queueStore: assistantQueueStore,
                 executor: ActionExecutor(registry: registry, auditLogger: auditLogger),
                 executionReceiptStore: executionReceiptStore,
-                managedAIUsageLedgerStore: SQLiteManagedAIUsageLedgerStore(connection: connection)
+                managedAIUsageLedgerStore: SQLiteManagedAIUsageLedgerStore(connection: connection),
+                managedAIBillingSettingsProvider: { loadRuntimeAppSettings().managedAIBilling }
             )
         } catch {
             return nil
