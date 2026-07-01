@@ -121,6 +121,69 @@ final class AssistantQueueExecutionTests: XCTestCase {
         XCTAssertFalse(encodedReceipt.contains("task-secret"))
     }
 
+    func testCoordinatorRunsApprovedMailDraftQueueItemIntoLocalDraftReceipt() throws {
+        let queueStore = try makeQueueStore()
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let draftsDirectory = temporaryDirectory().appendingPathComponent("MailDrafts", isDirectory: true)
+        let item = AssistantQueueAdapter.makeItem(
+            actionPlan: ActionPlan(
+                id: "notification-draft:test",
+                userInput: "Draft release notification",
+                summary: "Prepare a text-only notification draft without sending it.",
+                actions: [
+                    PlanAction(
+                        id: "notification-draft-mail",
+                        tool: .mailDraftCreateText,
+                        arguments: [
+                            "to": .string("team@example.com"),
+                            "subject": .string("Release delay"),
+                            "body": .string("Draft only. No external send.")
+                        ],
+                        riskLevel: .draft
+                    )
+                ],
+                riskLevel: .draft,
+                requiresApproval: false
+            ),
+            sourceTranscript: "Slack draft for release delay",
+            interpretationSummary: "Notification draft",
+            reason: "Notification draft needs review before any external message or local notification is created."
+        )
+        let approved = try AssistantQueueStateMachine.approve(item, reviewerID: "local-user")
+        try queueStore.save(approved)
+        let registry = try ToolRegistry(tools: [
+            MailDraftTool(client: LocalFileMailDraftClient(draftsDirectoryURL: draftsDirectory))
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-mail-draft-queue" },
+            now: { Date(timeIntervalSince1970: 180) }
+        )
+
+        let result = try coordinator.execute(id: approved.id)
+
+        XCTAssertEqual(result.item.state, .done)
+        XCTAssertEqual(try queueStore.get(id: approved.id).state, .done)
+        let files = try FileManager.default.contentsOfDirectory(at: draftsDirectory, includingPropertiesForKeys: nil)
+        XCTAssertEqual(files.count, 1)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: try Data(contentsOf: files[0])) as? [String: Any])
+        XCTAssertEqual(object["subject"] as? String, "Release delay")
+        XCTAssertEqual(object["body"] as? String, "Draft only. No external send.")
+
+        let receipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receipt.status, .succeeded)
+        XCTAssertEqual(receipt.primaryToolName, ActionTool.mailDraftCreateText.rawValue)
+        XCTAssertEqual(receipt.assistantQueueItemID, approved.id)
+        XCTAssertEqual(receipt.visibleSurfaces, [.assistantQueue])
+        XCTAssertFalse(receipt.outputSummary.contains("Draft only"))
+        XCTAssertEqual(receipt.actions.first?.inputPreview, "subject: Release delay, to: [REDACTED_RECIPIENT], body: [REDACTED_DRAFT_BODY]")
+        let encodedReceipt = try XCTUnwrap(String(data: JSONEncoder().encode(receipt), encoding: .utf8))
+        XCTAssertFalse(encodedReceipt.contains("Draft only"))
+        XCTAssertFalse(encodedReceipt.contains("team@example.com"))
+    }
+
     func testCoordinatorCopiesCostPreviewIntoEstimatedReceiptUsage() throws {
         let queueStore = try makeQueueStore()
         let receiptStore = InMemoryExecutionReceiptStore()

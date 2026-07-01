@@ -1551,11 +1551,36 @@ public enum ExecutionReceiptFactory {
             id: item.id,
             toolName: item.editedAction.tool.rawValue,
             status: executionReceiptStatus(for: item.executionStatus),
-            inputPreview: redactor.redact(item.argumentDisplaySummary(maxFields: 12, maxValueLength: 300).fullText),
+            inputPreview: actionInputPreview(for: item, redactor: redactor),
             outputSummary: actionOutputSummary(for: item, redactor: redactor),
             errorSummary: item.errorMessage.map { redactor.redact($0) },
             failureRecovery: executionReceiptFailureRecovery(for: item.failureRecovery)
         )
+    }
+
+    private static func actionInputPreview(
+        for item: ReviewActionItem,
+        redactor: ExecutionReceiptRedactor
+    ) -> String {
+        switch item.editedAction.tool {
+        case .mailDraftCreateText:
+            return redactor.redact(mailDraftActionInputPreview(arguments: item.editedAction.arguments))
+        default:
+            return redactor.redact(item.argumentDisplaySummary(maxFields: 12, maxValueLength: 300).fullText)
+        }
+    }
+
+    private static func mailDraftActionInputPreview(arguments: [String: JSONValue]) -> String {
+        let subject = arguments["subject"]?.receiptStringValue?.receiptPreview(maxLength: 300)
+        let hasRecipient = arguments["to"]?.receiptStringValue?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty == false
+        let subjectPreview = subject?.isEmpty == false ? subject ?? "none" : "none"
+        return [
+            "subject: \(subjectPreview)",
+            "to: \(hasRecipient ? "[REDACTED_RECIPIENT]" : "none")",
+            "body: [REDACTED_DRAFT_BODY]"
+        ].joined(separator: ", ")
     }
 
     private static func actionOutputSummary(
@@ -1879,6 +1904,19 @@ private enum ExecutionReceiptDigest {
 }
 
 private extension JSONValue {
+    var receiptStringValue: String? {
+        switch self {
+        case .string(let value):
+            value
+        case .number(let value):
+            String(value)
+        case .bool(let value):
+            value ? "true" : "false"
+        case .object, .array, .null:
+            nil
+        }
+    }
+
     var receiptIDValue: String? {
         switch self {
         case .string(let value):

@@ -3897,7 +3897,7 @@ private enum AppRuntimeFactory {
             calendarClient: EventKitCalendarClient(),
             reminderClient: EventKitReminderClient(),
             fileAccessClient: LocalFileAccessClient(workspaceRoot: try workspaceRootURL()),
-            mailDraftClient: UnavailableMailDraftClient(),
+            mailDraftClient: try makeMailDraftClient(),
             notificationRequestStore: SQLiteNotificationRequestStore(connection: connection),
             calendarLinkStore: SQLiteCalendarLinkStore(connection: connection),
             reminderLinkStore: SQLiteReminderLinkStore(connection: connection),
@@ -4205,7 +4205,7 @@ private enum AppRuntimeFactory {
                     calendarClient: EventKitCalendarClient(),
                     reminderClient: EventKitReminderClient(),
                     fileAccessClient: LocalFileAccessClient(workspaceRoot: try workspaceRootURL()),
-                    mailDraftClient: UnavailableMailDraftClient(),
+                    mailDraftClient: try makeMailDraftClient(),
                     notificationRequestStore: SQLiteNotificationRequestStore(connection: connection),
                     calendarLinkStore: SQLiteCalendarLinkStore(connection: connection),
                     reminderLinkStore: SQLiteReminderLinkStore(connection: connection),
@@ -4299,6 +4299,12 @@ private enum AppRuntimeFactory {
     private static func makeExecutionReceiptStore() throws -> any ExecutionReceiptStore {
         try FileExecutionReceiptStore(
             directoryURL: applicationSupportDirectoryURL().appendingPathComponent("ExecutionReceipts", isDirectory: true)
+        )
+    }
+
+    private static func makeMailDraftClient() throws -> any MailDraftClient {
+        LocalFileMailDraftClient(
+            draftsDirectoryURL: try applicationSupportDirectoryURL().appendingPathComponent("MailDrafts", isDirectory: true)
         )
     }
 
@@ -4639,12 +4645,6 @@ private struct UnavailableReviewTool: Tool {
 
     func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
         throw ToolExecutionError.executionFailed(name, message)
-    }
-}
-
-private struct UnavailableMailDraftClient: MailDraftClient {
-    func createTextDraft(to: String?, subject: String, body: String) throws -> MailDraftRecord {
-        throw ToolClientError.invalidRequest("Mail draft integration is not enabled in this release.")
     }
 }
 
