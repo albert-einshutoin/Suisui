@@ -209,6 +209,38 @@ final class DatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(indexes.contains("idx_assistant_queue_items_payload_kind"))
     }
 
+    func testCurrentMigrationsCreateManagedAIUsageLedgerTable() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+
+        XCTAssertTrue(try connection.tableExists("managed_ai_usage_ledger"))
+        XCTAssertTrue(try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;").contains("0018_create_managed_ai_usage_ledger"))
+
+        let columns = Set(try connection.queryRows("PRAGMA table_info(managed_ai_usage_ledger);").compactMap { $0["name"] })
+        XCTAssertTrue(columns.contains("source_receipt_digest"))
+        XCTAssertTrue(columns.contains("assistant_queue_item_digest"))
+        XCTAssertTrue(columns.contains("billing_mode"))
+        XCTAssertTrue(columns.contains("provider"))
+        XCTAssertTrue(columns.contains("model_name"))
+        XCTAssertTrue(columns.contains("input_tokens"))
+        XCTAssertTrue(columns.contains("output_tokens"))
+        XCTAssertTrue(columns.contains("cost_cents"))
+        XCTAssertTrue(columns.contains("currency_code"))
+        XCTAssertTrue(columns.contains("usage_state"))
+        XCTAssertTrue(columns.contains("occurred_at"))
+
+        let indexRows = try connection.queryRows("PRAGMA index_list(managed_ai_usage_ledger);")
+        let indexes = Set(indexRows.compactMap { $0["name"] })
+        XCTAssertTrue(indexes.contains("idx_managed_ai_usage_ledger_occurred_at"))
+        XCTAssertTrue(indexes.contains("idx_managed_ai_usage_ledger_queue_digest"))
+        XCTAssertEqual(
+            indexRows.first { $0["name"] == "idx_managed_ai_usage_ledger_queue_digest" }?["unique"],
+            "1"
+        )
+    }
+
     func testAssistantQueueCostPreviewMigrationKeepsExistingRowsReadable() throws {
         func sql(_ value: String) -> String {
             value.replacingOccurrences(of: "'", with: "''")

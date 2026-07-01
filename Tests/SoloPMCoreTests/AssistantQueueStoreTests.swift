@@ -65,6 +65,20 @@ final class AssistantQueueStoreTests: XCTestCase {
             summary: "Managed over cap",
             costPreview: makeCostPreview(inputTokens: 2_000, outputTokens: 1_000, hardCapCents: 0.10)
         )
+        let malformedManagedPreview = makeItem(
+            id: "queue-managed-preview-without-cost",
+            state: .waitingReview,
+            summary: "Managed missing cost",
+            costPreview: AssistantQueueCostPreview(
+                billingMode: .soloPMManaged,
+                state: .estimated,
+                usage: AssistantQueueCostUsage(inputTokens: 2_000, outputTokens: 1_000),
+                estimatedCostCents: nil,
+                currencyCode: "USD",
+                model: ExecutionReceiptModel(provider: "openai", name: "gpt-test"),
+                capStatus: .withinLimit
+            )
+        )
         let approvedOverCap = AssistantQueueItem(
             id: "queue-approved-over-cap",
             state: .approved,
@@ -82,11 +96,15 @@ final class AssistantQueueStoreTests: XCTestCase {
             costPreview: overCap.costPreview
         )
 
-        let snapshot = AssistantQueueReadModel.snapshot(from: [missingPreview, overCap, approvedOverCap])
+        let snapshot = AssistantQueueReadModel.snapshot(from: [missingPreview, overCap, malformedManagedPreview, approvedOverCap])
 
         XCTAssertFalse(snapshot.rows.first { $0.id == missingPreview.id }?.canApprove ?? true)
         XCTAssertFalse(snapshot.rows.first { $0.id == overCap.id }?.canApprove ?? true)
+        XCTAssertFalse(snapshot.rows.first { $0.id == malformedManagedPreview.id }?.canApprove ?? true)
         XCTAssertFalse(snapshot.rows.first { $0.id == approvedOverCap.id }?.canRun ?? true)
+        XCTAssertThrowsError(try AssistantQueueStateMachine.approve(malformedManagedPreview, reviewerID: "local-user")) { error in
+            XCTAssertEqual(error as? AssistantQueueTransitionError, .managedCostCapExceeded)
+        }
     }
 
     func testSQLiteStorePersistsApprovalWithoutExecutionToken() throws {
@@ -921,6 +939,65 @@ final class AssistantQueueStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelReportsManagedUsageLedgerFailureAfterAssistantQueueExecution() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let approved = try AssistantQueueStateMachine.approve(
+            makeItem(
+                id: "queue-managed-usage-ledger-failure",
+                state: .waitingReview,
+                summary: "Create managed ledger failure task",
+                costPreview: makeCostPreview(inputTokens: 1_000, outputTokens: 500)
+            ),
+            reviewerID: "local-user"
+        )
+        try assistantQueueStore.save(approved)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created managed ledger failure task")
+            }
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: assistantQueueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            managedAIUsageLedgerStore: FailingManagedAIUsageLedgerStore(),
+            runIDProvider: { "run-board-queue-managed-ledger-failure" },
+            now: { Date(timeIntervalSince1970: 520) }
+        )
+        let viewModel = ProjectBoardViewModel(
+            store: boardStore,
+            assistantQueueStore: assistantQueueStore,
+            assistantQueueExecutionCoordinator: coordinator,
+            executionReceiptStore: receiptStore
+        )
+
+        viewModel.load()
+
+        XCTAssertFalse(viewModel.runAssistantQueueItem(id: approved.id))
+        let failed = try assistantQueueStore.get(id: approved.id)
+        XCTAssertEqual(failed.state, .failed)
+        XCTAssertEqual(
+            failed.blockingReason,
+            "Execution completed, but the managed AI usage ledger could not be saved. Fix billing ledger storage before retrying."
+        )
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "Assistant Queue execution finished, but managed AI usage could not be saved. Fix billing ledger storage before retrying."
+        )
+        XCTAssertNil(viewModel.integrationStatusMessage)
+        XCTAssertEqual(receiptStore.receipts.count, 1)
+    }
+
+    @MainActor
     func testProjectBoardViewModelFocusesVoiceHandoffApprovedQueueItemDespiteStaleFilter() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
@@ -1141,6 +1218,20 @@ private final class FailingAssistantQueueExecutionReceiptStore: ExecutionReceipt
         visibleSurface: ExecutionReceiptSurface,
         limit: Int
     ) throws -> [ExecutionReceipt] {
+        []
+    }
+}
+
+private final class FailingManagedAIUsageLedgerStore: ManagedAIUsageLedgerStore, @unchecked Sendable {
+    enum Error: Swift.Error, Equatable {
+        case recordFailed
+    }
+
+    func record(_ entry: ManagedAIUsageLedgerEntry) throws {
+        throw Error.recordFailed
+    }
+
+    func list(limit: Int) throws -> [ManagedAIUsageLedgerEntry] {
         []
     }
 }

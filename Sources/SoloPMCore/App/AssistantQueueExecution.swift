@@ -3,6 +3,7 @@ import Foundation
 public enum AssistantQueueExecutionError: Error, Equatable, Sendable {
     case unsupportedPayload
     case receiptPersistenceFailed(queueStateMarkedFailed: Bool)
+    case managedUsageLedgerPersistenceFailed(queueStateMarkedFailed: Bool)
 }
 
 public struct AssistantQueueExecutionResult: Equatable, Sendable {
@@ -398,6 +399,7 @@ public struct AssistantQueueExecutionCoordinator {
     private let queueStore: any AssistantQueueStore
     private let executor: ActionExecutor
     private let executionReceiptStore: any ExecutionReceiptStore
+    private let managedAIUsageLedgerStore: (any ManagedAIUsageLedgerStore)?
     private let runIDProvider: () -> String
     private let now: () -> Date
 
@@ -405,12 +407,14 @@ public struct AssistantQueueExecutionCoordinator {
         queueStore: any AssistantQueueStore,
         executor: ActionExecutor,
         executionReceiptStore: any ExecutionReceiptStore,
+        managedAIUsageLedgerStore: (any ManagedAIUsageLedgerStore)? = nil,
         runIDProvider: @escaping () -> String = { "assistant-queue-run:\(UUID().uuidString)" },
         now: @escaping () -> Date = { Date() }
     ) {
         self.queueStore = queueStore
         self.executor = executor
         self.executionReceiptStore = executionReceiptStore
+        self.managedAIUsageLedgerStore = managedAIUsageLedgerStore
         self.runIDProvider = runIDProvider
         self.now = now
     }
@@ -458,6 +462,12 @@ public struct AssistantQueueExecutionCoordinator {
                 itemID: id,
                 executionStatus: failedSession.executionStatus
             )
+            try recordManagedUsageLedgerOrMarkQueueFailed(
+                item: running,
+                receipt: receipt,
+                itemID: id,
+                executionStatus: failedSession.executionStatus
+            )
             _ = try queueStore.transition(id: id) { item in
                 try AssistantQueueStateMachine.markFailed(
                     item,
@@ -476,6 +486,12 @@ public struct AssistantQueueExecutionCoordinator {
         )
         try saveReceiptOrMarkQueueFailed(
             receipt,
+            itemID: id,
+            executionStatus: executedSession.executionStatus
+        )
+        try recordManagedUsageLedgerOrMarkQueueFailed(
+            item: running,
+            receipt: receipt,
             itemID: id,
             executionStatus: executedSession.executionStatus
         )
@@ -514,6 +530,53 @@ public struct AssistantQueueExecutionCoordinator {
         }
     }
 
+    private func recordManagedUsageLedgerOrMarkQueueFailed(
+        item: AssistantQueueItem,
+        receipt: ExecutionReceipt,
+        itemID: String,
+        executionStatus: ReviewExecutionStatus
+    ) throws {
+        guard let managedAIUsageLedgerStore else {
+            return
+        }
+        guard item.costPreview?.billingMode == .soloPMManaged else {
+            return
+        }
+        guard let entry = ManagedAIUsageLedgerEntry.makeAssistantQueueEntry(
+            itemID: item.id,
+            costPreview: item.costPreview,
+            receipt: receipt,
+            occurredAt: receipt.finishedAt ?? now()
+        ) else {
+            try failQueueForManagedUsageLedgerIssue(itemID: itemID, executionStatus: executionStatus)
+        }
+
+        do {
+            try managedAIUsageLedgerStore.record(entry)
+        } catch {
+            try failQueueForManagedUsageLedgerIssue(itemID: itemID, executionStatus: executionStatus)
+        }
+    }
+
+    private func failQueueForManagedUsageLedgerIssue(
+        itemID: String,
+        executionStatus: ReviewExecutionStatus
+    ) throws -> Never {
+        var queueStateMarkedFailed = false
+        do {
+            _ = try queueStore.transition(id: itemID) { item in
+                try AssistantQueueStateMachine.markFailed(
+                    item,
+                    reason: managedUsageLedgerPersistenceFailureReason(for: executionStatus)
+                )
+            }
+            queueStateMarkedFailed = true
+        } catch {
+            queueStateMarkedFailed = false
+        }
+        throw AssistantQueueExecutionError.managedUsageLedgerPersistenceFailed(queueStateMarkedFailed: queueStateMarkedFailed)
+    }
+
     private func markFinalQueueState(
         id: String,
         status: ReviewExecutionStatus
@@ -537,6 +600,15 @@ public struct AssistantQueueExecutionCoordinator {
                     reason: "Execution stopped before completion."
                 )
             }
+        }
+    }
+
+    private func managedUsageLedgerPersistenceFailureReason(for status: ReviewExecutionStatus) -> String {
+        switch status {
+        case .completed:
+            return "Execution completed, but the managed AI usage ledger could not be saved. Fix billing ledger storage before retrying."
+        case .notStarted, .executing, .failed, .canceled:
+            return "Execution failed, and the managed AI usage ledger could not be saved. Fix billing ledger storage before retrying."
         }
     }
 

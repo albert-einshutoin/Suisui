@@ -4341,7 +4341,8 @@ private enum AppRuntimeFactory {
             return AssistantQueueExecutionCoordinator(
                 queueStore: assistantQueueStore,
                 executor: ActionExecutor(registry: registry, auditLogger: auditLogger),
-                executionReceiptStore: executionReceiptStore
+                executionReceiptStore: executionReceiptStore,
+                managedAIUsageLedgerStore: SQLiteManagedAIUsageLedgerStore(connection: connection)
             )
         } catch {
             return nil
