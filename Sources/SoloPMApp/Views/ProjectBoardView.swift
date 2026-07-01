@@ -534,11 +534,12 @@ struct ProjectBoardView: View {
     }
 
     private func consumePendingVoiceDailyPlanningReviewRequestIfNeeded() {
-        guard let transcript = SoloPMVoiceDailyPlanningReviewBridge.consumePendingSourceTranscript() else {
+        guard let request = SoloPMVoiceDailyPlanningReviewBridge.consumePendingRequest() else {
             return
         }
         handleVoiceDailyPlanningReviewRequest(
-            sourceTranscript: normalizedVoiceDailyPlanningReviewTranscript(transcript)
+            sourceTranscript: normalizedVoiceDailyPlanningReviewTranscript(request.sourceTranscript),
+            actionDraftKind: request.actionDraftKind
         )
     }
 
@@ -557,11 +558,19 @@ struct ProjectBoardView: View {
     }
 
     private func handleVoiceDailyPlanningReviewRequest(_ notification: Notification) {
-        guard let transcript = SoloPMVoiceDailyPlanningReviewBridge.consumePendingSourceTranscript() else {
+        let request: SoloPMVoiceDailyPlanningReviewBridge.Request?
+        if SoloPMVoiceDailyPlanningReviewBridge.hasRequestPayload(notification) {
+            request = SoloPMVoiceDailyPlanningReviewBridge.consumeRequest(from: notification)
+        } else {
+            request = SoloPMVoiceDailyPlanningReviewBridge.consumePendingRequest()
+        }
+
+        guard let request else {
             return
         }
         handleVoiceDailyPlanningReviewRequest(
-            sourceTranscript: normalizedVoiceDailyPlanningReviewTranscript(transcript)
+            sourceTranscript: normalizedVoiceDailyPlanningReviewTranscript(request.sourceTranscript),
+            actionDraftKind: request.actionDraftKind
         )
     }
 
@@ -570,11 +579,25 @@ struct ProjectBoardView: View {
         return trimmed.isEmpty ? String(localized: "Today daily planning review") : trimmed
     }
 
-    private func handleVoiceDailyPlanningReviewRequest(sourceTranscript: String) {
+    private func handleVoiceDailyPlanningReviewRequest(
+        sourceTranscript: String,
+        actionDraftKind: DailyPlanningActionDraftKind? = nil
+    ) {
         viewModel.load()
         _ = viewModel.prepareDailyPlanningReview(transcript: sourceTranscript)
         let summary = viewModel.missedTaskReview()
-        selectedDestination = summary.newlyMissedCount > 0 ? .catchUp : .today
+        if let actionDraftKind {
+            // Voice-triggered planning actions still become Assistant Queue
+            // drafts so Today review can suggest writes without mutating tasks
+            // before explicit user approval.
+            let queued = viewModel.enqueueDailyPlanningActionDraft(
+                kind: actionDraftKind,
+                transcript: sourceTranscript
+            )
+            selectedDestination = queued ? .assistantQueue : (summary.newlyMissedCount > 0 ? .catchUp : .today)
+        } else {
+            selectedDestination = summary.newlyMissedCount > 0 ? .catchUp : .today
+        }
         persistSelectedDestination(selectedDestination)
         applySelectedDestination(selectedDestination)
         playDailyPlanningReadoutFromSettings()
@@ -1077,15 +1100,56 @@ enum SoloPMAssistantQueueBridge {
 
 @MainActor
 enum SoloPMVoiceDailyPlanningReviewBridge {
-    private static var pendingSourceTranscript: String?
-
-    static func storePendingSourceTranscript(_ sourceTranscript: String) {
-        pendingSourceTranscript = normalized(sourceTranscript)
+    struct Request: Equatable {
+        var id: UUID
+        var sourceTranscript: String
+        var actionDraftKind: DailyPlanningActionDraftKind?
     }
 
-    static func consumePendingSourceTranscript() -> String? {
-        defer { pendingSourceTranscript = nil }
-        return pendingSourceTranscript
+    static let requestUserInfoKey = "request"
+    private static var pendingRequest: Request?
+    private static var consumedRequestIDs: Set<UUID> = []
+
+    static func storePendingRequest(_ request: VoiceDailyPlanningReviewRequest) -> Request? {
+        guard !consumedRequestIDs.contains(request.id) else {
+            return nil
+        }
+        let bridgeRequest = Request(
+            id: request.id,
+            sourceTranscript: normalized(request.sourceTranscript),
+            actionDraftKind: request.requestedActionDraftKind
+        )
+        pendingRequest = bridgeRequest
+        return bridgeRequest
+    }
+
+    static func consumePendingRequest() -> Request? {
+        guard let request = pendingRequest else {
+            return nil
+        }
+        return consume(request)
+    }
+
+    static func consumeRequest(from notification: Notification) -> Request? {
+        guard let request = notification.userInfo?[requestUserInfoKey] as? Request else {
+            return nil
+        }
+        return consume(request)
+    }
+
+    static func hasRequestPayload(_ notification: Notification) -> Bool {
+        notification.userInfo?[requestUserInfoKey] is Request
+    }
+
+    private static func consume(_ request: Request) -> Request? {
+        if pendingRequest?.id == request.id {
+            pendingRequest = nil
+        }
+        guard !consumedRequestIDs.contains(request.id) else {
+            return nil
+        }
+        consumedRequestIDs.insert(request.id)
+        return request
     }
 
     private static func normalized(_ sourceTranscript: String) -> String {
