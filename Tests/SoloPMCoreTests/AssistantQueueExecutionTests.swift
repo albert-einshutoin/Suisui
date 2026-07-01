@@ -1161,7 +1161,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
         XCTAssertNotEqual(receiptStore.receipts[0].queueApproval?.approvalID, receiptStore.receipts[1].queueApproval?.approvalID)
     }
 
-    func testCoordinatorDoesNotMarkDoneWhenReceiptCannotBePersisted() throws {
+    func testCoordinatorMarksFailedWhenSuccessfulExecutionReceiptCannotBePersisted() throws {
         let queueStore = try makeQueueStore()
         let approved = try AssistantQueueStateMachine.approve(makeActionPlanItem(), reviewerID: "local-user")
         try queueStore.save(approved)
@@ -1184,7 +1184,108 @@ final class AssistantQueueExecutionTests: XCTestCase {
         )
 
         XCTAssertThrowsError(try coordinator.execute(id: approved.id)) { error in
-            XCTAssertEqual(error as? FailingExecutionReceiptStore.Error, .saveFailed)
+            XCTAssertEqual(
+                error as? AssistantQueueExecutionError,
+                .receiptPersistenceFailed(queueStateMarkedFailed: true)
+            )
+        }
+        let failed = try queueStore.get(id: approved.id)
+        XCTAssertEqual(failed.state, .failed)
+        XCTAssertEqual(
+            failed.blockingReason,
+            "Execution completed, but the execution receipt could not be saved. Fix receipt storage before retrying."
+        )
+    }
+
+    func testCoordinatorMarksFailedWhenFailedExecutionReceiptCannotBePersisted() throws {
+        let queueStore = try makeQueueStore()
+        let approved = try AssistantQueueStateMachine.approve(makeActionPlanItem(), reviewerID: "local-user")
+        try queueStore.save(approved)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                ToolResult(tool: .taskCreate, status: .failed, summary: "Provider rejected the request")
+            }
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: FailingExecutionReceiptStore(),
+            runIDProvider: { "run-queue-failed-receipt-failure" },
+            now: { Date(timeIntervalSince1970: 310) }
+        )
+
+        XCTAssertThrowsError(try coordinator.execute(id: approved.id)) { error in
+            XCTAssertEqual(
+                error as? AssistantQueueExecutionError,
+                .receiptPersistenceFailed(queueStateMarkedFailed: true)
+            )
+        }
+        let failed = try queueStore.get(id: approved.id)
+        XCTAssertEqual(failed.state, .failed)
+        XCTAssertEqual(
+            failed.blockingReason,
+            "Execution failed, and the execution receipt could not be saved. Fix receipt storage before retrying."
+        )
+    }
+
+    func testCoordinatorMarksFailedWhenExecutorThrowsAndReceiptCannotBePersisted() throws {
+        let queueStore = try makeQueueStore()
+        let approved = try AssistantQueueStateMachine.approve(makeActionPlanItem(), reviewerID: "local-user")
+        try queueStore.save(approved)
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: ToolRegistry()),
+            executionReceiptStore: FailingExecutionReceiptStore(),
+            runIDProvider: { "run-queue-thrown-receipt-failure" },
+            now: { Date(timeIntervalSince1970: 320) }
+        )
+
+        XCTAssertThrowsError(try coordinator.execute(id: approved.id)) { error in
+            XCTAssertEqual(
+                error as? AssistantQueueExecutionError,
+                .receiptPersistenceFailed(queueStateMarkedFailed: true)
+            )
+        }
+        let failed = try queueStore.get(id: approved.id)
+        XCTAssertEqual(failed.state, .failed)
+        XCTAssertEqual(
+            failed.blockingReason,
+            "Execution failed, and the execution receipt could not be saved. Fix receipt storage before retrying."
+        )
+    }
+
+    func testCoordinatorReportsReceiptPersistenceFailureWhenQueueCannotMarkFailed() throws {
+        let queueStore = MarkFailedTransitionFailingQueueStore()
+        let approved = try AssistantQueueStateMachine.approve(makeActionPlanItem(), reviewerID: "local-user")
+        try queueStore.save(approved)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created")
+            }
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: FailingExecutionReceiptStore(),
+            runIDProvider: { "run-queue-receipt-and-state-failure" },
+            now: { Date(timeIntervalSince1970: 330) }
+        )
+
+        XCTAssertThrowsError(try coordinator.execute(id: approved.id)) { error in
+            XCTAssertEqual(
+                error as? AssistantQueueExecutionError,
+                .receiptPersistenceFailed(queueStateMarkedFailed: false)
+            )
         }
         XCTAssertEqual(try queueStore.get(id: approved.id).state, .running)
     }
@@ -1423,6 +1524,62 @@ final class AssistantQueueExecutionTests: XCTestCase {
         case .updateDueDate:
             return HostedMCPTaskToolName.taskDueDateUpdate.rawValue
         }
+    }
+}
+
+private final class MarkFailedTransitionFailingQueueStore: AssistantQueueStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [String: AssistantQueueItem] = [:]
+
+    @discardableResult
+    func save(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
+        lock.lock()
+        defer { lock.unlock() }
+        items[item.id] = item
+        return item
+    }
+
+    func get(id: String) throws -> AssistantQueueItem {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let item = items[id] else {
+            throw AssistantQueueStoreError.notFound(id)
+        }
+        return item
+    }
+
+    func list(filter: AssistantQueueFilter) throws -> [AssistantQueueItem] {
+        lock.lock()
+        defer { lock.unlock() }
+        return Array(items.values)
+            .filter { filter.includes($0.state) }
+            .sorted(by: { $0.id < $1.id })
+            .prefix(filter.limit)
+            .map { $0 }
+    }
+
+    func stateCounts() throws -> AssistantQueueStateCounts {
+        lock.lock()
+        defer { lock.unlock() }
+        return AssistantQueueStateCounts(items: Array(items.values))
+    }
+
+    @discardableResult
+    func transition(
+        id: String,
+        _ transform: (AssistantQueueItem) throws -> AssistantQueueItem
+    ) throws -> AssistantQueueItem {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let item = items[id] else {
+            throw AssistantQueueStoreError.notFound(id)
+        }
+        let next = try transform(item)
+        guard next.state != .failed else {
+            throw AssistantQueueStoreError.saveFailed
+        }
+        items[id] = next
+        return next
     }
 }
 
