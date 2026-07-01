@@ -76,6 +76,7 @@ struct TodayWorkflowView: View {
                 .padding(.bottom, 18)
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-workflow")
     }
 
@@ -1558,6 +1559,7 @@ struct InboxWorkflowView: View {
                     .padding(.bottom, 18)
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inbox-workflow")
         .onAppear {
             viewModel.ensureSelectedInboxTaskIsVisible()

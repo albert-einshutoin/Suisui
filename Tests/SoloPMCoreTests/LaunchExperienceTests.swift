@@ -56,15 +56,21 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("NSApplication.shared.activate(ignoringOtherApps: true)"))
     }
 
-    func testAppInitUsesSharedApplicationWhenPresentingLaunchWindow() throws {
+    func testAppInitActivatesButDefersFallbackWindowCreationToDelegate() throws {
         let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
         let initStart = try XCTUnwrap(source.range(of: "@MainActor\n    init() {"))
         let bodyStart = try XCTUnwrap(source.range(of: "\n    var body: some Scene {"))
         let initBlock = source[initStart.lowerBound..<bodyStart.lowerBound]
         XCTAssertTrue(initBlock.contains("NSApplication.shared.setActivationPolicy(.regular)"))
-        XCTAssertTrue(initBlock.contains("SoloPMProjectBoardWindowFallback.shared.showIfNeeded()"))
+        XCTAssertFalse(initBlock.contains("SoloPMProjectBoardWindowFallback.shared.showIfNeeded()"))
         XCTAssertFalse(initBlock.contains("NSApp.windows"))
+
+        let delegateStart = try XCTUnwrap(source.range(of: "func applicationDidFinishLaunching"))
+        let delegateEnd = try XCTUnwrap(source.range(of: "#if canImport(Sparkle)", range: delegateStart.lowerBound..<source.endIndex))
+        let delegateBlock = source[delegateStart.lowerBound..<delegateEnd.lowerBound]
+        XCTAssertTrue(delegateBlock.contains("ensureProjectBoardWindowIsVisible()"))
+        XCTAssertFalse(delegateBlock.contains("createFallbackProjectBoardWindow()"))
     }
 
     func testVerifyModeCanLaunchWithoutPromptingForKeychainSecrets() throws {
@@ -97,12 +103,48 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("performActionForItem(at: itemIndex)"))
         XCTAssertTrue(source.contains("visibleProjectBoardWindows"))
         XCTAssertTrue(source.contains("fallbackProjectBoardWindow"))
-        XCTAssertTrue(source.contains("rootView: ProjectBoardView("))
-        XCTAssertTrue(source.contains("taskAutomationSettings: AppRuntimeFactory.loadTaskAutoExecutionSettings"))
-        XCTAssertTrue(source.contains("appSettings: AppRuntimeFactory.loadRuntimeAppSettings"))
+        XCTAssertTrue(source.contains("rootView: ProjectBoardLaunchRecoveryView("))
+        XCTAssertTrue(source.contains("viewModel: AppRuntimeFactory.makeProjectBoardViewModel()"))
         XCTAssertTrue(source.contains("makeKeyAndOrderFront(nil)"))
         XCTAssertTrue(source.contains("#selector(NSWindow.newWindowForTab(_:))"))
         XCTAssertTrue(source.contains("return false"))
+    }
+
+    func testFallbackProjectBoardWindowUsesTodayLaunchRecoveryView() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(source.contains("private struct ProjectBoardLaunchRecoveryView: View"))
+        XCTAssertTrue(source.contains("TodayWorkflowView(viewModel: viewModel, selectTodayTask: selectWorkflowTask)"))
+        XCTAssertTrue(source.contains("InboxWorkflowView(viewModel: viewModel"))
+        XCTAssertTrue(source.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION"))
+        XCTAssertTrue(source.contains("ProjectBoardLaunchRecoveryDestination"))
+        XCTAssertTrue(source.contains("viewModel.load()"))
+        XCTAssertTrue(source.contains("scheduleMissedTaskDailyFollowUp(settings: appSettings())"))
+    }
+
+    func testLaunchVerificationRecoveryUsesFallbackBeforeWindowGroupRetries() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(source.contains("private enum SoloPMLaunchRecoveryEnvironment"))
+        XCTAssertTrue(source.contains("environment[\"SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE\"] == \"1\""))
+        XCTAssertTrue(source.contains("environment[\"SOLOPM_DATABASE_PATH\"] != nil"))
+        XCTAssertTrue(source.contains("if SoloPMLaunchRecoveryEnvironment.isEnabled"))
+        XCTAssertTrue(source.contains("self.createFallbackProjectBoardWindow()"))
+    }
+
+    func testLaunchVerificationWindowGroupUsesLaunchRecoveryView() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+
+        XCTAssertTrue(source.contains("if SoloPMLaunchRecoveryEnvironment.isEnabled {"))
+        XCTAssertTrue(source.contains("ProjectBoardLaunchRecoveryView("))
+        XCTAssertTrue(source.contains("ProjectBoardView("))
+    }
+
+    func testWorkflowRootAccessibilityKeepsNestedLaunchRecoveryIdentifiers() throws {
+        let source = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+
+        XCTAssertTrue(source.contains(".accessibilityElement(children: .contain)\n        .accessibilityIdentifier(\"today-workflow\")"))
+        XCTAssertTrue(source.contains(".accessibilityElement(children: .contain)\n        .accessibilityIdentifier(\"inbox-workflow\")"))
     }
 
     func testProjectBoardOpensOnLaunch() throws {
