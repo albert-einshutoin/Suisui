@@ -566,19 +566,20 @@ private struct VoiceCaptureView: View {
                     .accessibilityIdentifier("voice-command-generate-plan")
                 }
 
+                if let item = viewModel.assistantQueueItem {
+                    Divider()
+                    AssistantQueuePanel(
+                        item: item,
+                        executionHandoffItemID: viewModel.assistantQueueExecutionHandoffItemID,
+                        onApprove: { viewModel.approveAssistantQueueItem() },
+                        onDefer: { viewModel.deferAssistantQueueItem() },
+                        onReject: { viewModel.rejectAssistantQueueItem() },
+                        onOpenQueue: { postAssistantQueueOpenRequest() }
+                    )
+                }
+
                 if let response = viewModel.planningResponse {
                     Divider()
-                    if let item = viewModel.assistantQueueItem {
-                        AssistantQueuePanel(
-                            item: item,
-                            executionHandoffItemID: viewModel.assistantQueueExecutionHandoffItemID,
-                            onApprove: { viewModel.approveAssistantQueueItem() },
-                            onDefer: { viewModel.deferAssistantQueueItem() },
-                            onReject: { viewModel.rejectAssistantQueueItem() },
-                            onOpenQueue: { postAssistantQueueOpenRequest() }
-                        )
-                    }
-
                     ActionPlanPreview(response: response)
                 }
             }
@@ -4014,11 +4015,17 @@ private enum AppRuntimeFactory {
         let settingsResult = loadRuntimeSettings()
         var auditLogger: (any AuditLogger)?
         var assistantQueueStore: (any AssistantQueueStore)?
+        var developmentProjectProvider: () -> ProjectRecord? = { nil }
         var runtimeValidationMessage: String?
         var initialFailureMessage: String?
         do {
             auditLogger = try makeAuditLogger()
-            assistantQueueStore = try SQLiteAssistantQueueStore(connection: migratedConnection())
+            let connection = try migratedConnection()
+            assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+            let projectStore = SQLiteProjectStore(connection: connection)
+            developmentProjectProvider = {
+                approvedDevelopmentProject(from: projectStore)
+            }
             runtimeValidationMessage = nil
             initialFailureMessage = settingsResult.errorMessage
         } catch {
@@ -4034,8 +4041,16 @@ private enum AppRuntimeFactory {
             llmProvider: makeLLMProvider(settings: settingsResult.settings, secretStore: secretStore),
             auditRecorder: auditLogger.map { PlanningAuditRecorder(logger: $0) },
             runtimeValidationMessage: runtimeValidationMessage,
-            assistantQueueStore: assistantQueueStore
+            assistantQueueStore: assistantQueueStore,
+            developmentProjectProvider: developmentProjectProvider
         )
+    }
+
+    private static func approvedDevelopmentProject(from projectStore: SQLiteProjectStore) -> ProjectRecord? {
+        guard let projects = try? projectStore.list() else {
+            return nil
+        }
+        return VoiceDevelopmentProjectSelection.uniqueApprovedActiveProject(from: projects)
     }
 
     private static func loadRuntimeSettings() -> RuntimeSettingsLoadResult {

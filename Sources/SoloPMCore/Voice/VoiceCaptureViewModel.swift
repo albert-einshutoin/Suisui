@@ -65,6 +65,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     @Published public private(set) var assistantQueueItem: AssistantQueueItem?
     @Published public private(set) var dailyPlanningReviewRequest: VoiceDailyPlanningReviewRequest?
     @Published public private(set) var inboxTriageRequest: VoiceInboxTriageRequest?
+    @Published public private(set) var developmentPullRequestAutomationRequest: SyncAutomationRequestPayload?
 
     private var audioRecorder: any AudioRecorder
     private let sttProvider: any SpeechToTextProvider
@@ -74,6 +75,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private let assistantQueueStore: (any AssistantQueueStore)?
     private let commandRouter: any VoiceCommandRouting
     private let inboxTriageCommandParser: InboxVoiceTriageCommandParser
+    private let developmentProjectProvider: () -> ProjectRecord?
+    private let developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder
 
     public init(
         draft: TranscriptDraft = TranscriptDraft(),
@@ -84,7 +87,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
         auditRecorder: PlanningAuditRecorder? = nil,
         runtimeValidationMessage: String? = nil,
         assistantQueueStore: (any AssistantQueueStore)? = nil,
-        commandRouter: any VoiceCommandRouting = VoiceCommandRouter()
+        commandRouter: any VoiceCommandRouting = VoiceCommandRouter(),
+        developmentProjectProvider: @escaping () -> ProjectRecord? = { nil },
+        developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder = VoiceDevelopmentPullRequestAutomationRequestBuilder()
     ) {
         self.draft = draft
         self.phase = phase
@@ -95,6 +100,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.runtimeValidationMessage = runtimeValidationMessage
         self.assistantQueueStore = assistantQueueStore
         self.commandRouter = commandRouter
+        self.developmentProjectProvider = developmentProjectProvider
+        self.developmentPullRequestAutomationRequestBuilder = developmentPullRequestAutomationRequestBuilder
         self.recordingState = audioRecorder.state
         self.auditErrorMessage = nil
         self.routingResult = draft.canGeneratePlan ? commandRouter.route(transcript: draft.normalizedText) : nil
@@ -102,6 +109,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.assistantQueueItem = nil
         self.dailyPlanningReviewRequest = nil
         self.inboxTriageRequest = nil
+        self.developmentPullRequestAutomationRequest = nil
         self.inboxTriageCommandParser = InboxVoiceTriageCommandParser()
     }
 
@@ -144,6 +152,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
+        developmentPullRequestAutomationRequest = nil
         refreshRoutingResult()
         if shouldResetPhaseAfterDraftChange, runtimeValidationMessage == nil {
             phase = .idle
@@ -161,6 +170,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
+        developmentPullRequestAutomationRequest = nil
         recordingState = audioRecorder.state
         phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
     }
@@ -193,6 +203,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             assistantQueueItem = nil
             dailyPlanningReviewRequest = nil
             inboxTriageRequest = nil
+            developmentPullRequestAutomationRequest = nil
             refreshRoutingResult()
             phase = .idle
         } catch {
@@ -235,6 +246,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             assistantQueueItem = nil
             dailyPlanningReviewRequest = nil
             inboxTriageRequest = nil
+            developmentPullRequestAutomationRequest = nil
             beginClarification(for: routedCommand)
             return
         }
@@ -244,12 +256,19 @@ public final class VoiceCaptureViewModel: ObservableObject {
             return
         }
 
+        if beginDevelopmentPullRequestAutomationRequestIfPossible(for: routedCommand) {
+            return
+        }
+
         await generatePlan(
             for: routedCommand,
             plannedTranscript: plannedTranscript,
             currentDate: currentDate,
             timeZoneIdentifier: timeZoneIdentifier,
-            availableTools: availableTools,
+            availableTools: planningTools(
+                for: routedCommand,
+                requestedAvailableTools: availableTools
+            ),
             knowledgeFrameCandidates: knowledgeFrameCandidates
         )
     }
@@ -290,12 +309,18 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 beginDailyPlanningReviewRequest(for: result.resolvedRoute, requestedAt: currentDate)
                 return
             }
+            if beginDevelopmentPullRequestAutomationRequestIfPossible(for: result.resolvedRoute) {
+                return
+            }
             await generatePlan(
                 for: result.resolvedRoute,
                 plannedTranscript: result.resolvedRoute.normalizedTranscript,
                 currentDate: currentDate,
                 timeZoneIdentifier: timeZoneIdentifier,
-                availableTools: availableTools,
+                availableTools: planningTools(
+                    for: result.resolvedRoute,
+                    requestedAvailableTools: availableTools
+                ),
                 knowledgeFrameCandidates: knowledgeFrameCandidates
             )
         }
@@ -359,6 +384,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         assistantQueueItem = nil
         clarificationSession = nil
         inboxTriageRequest = nil
+        developmentPullRequestAutomationRequest = nil
         dailyPlanningReviewRequest = VoiceDailyPlanningReviewRequest(
             sourceTranscript: route.originalTranscript,
             routedIntent: route,
@@ -376,6 +402,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         assistantQueueItem = nil
         clarificationSession = nil
         dailyPlanningReviewRequest = nil
+        developmentPullRequestAutomationRequest = nil
         routingResult = routedIntent
         inboxTriageRequest = VoiceInboxTriageRequest(
             command: command,
@@ -384,6 +411,55 @@ public final class VoiceCaptureViewModel: ObservableObject {
             requestedAt: requestedAt
         )
         phase = .reviewReady
+    }
+
+    private func beginDevelopmentPullRequestAutomationRequestIfPossible(
+        for route: VoiceCommandRoutingResult
+    ) -> Bool {
+        guard route.intent == .developmentPRWorkflow,
+              VoiceDevelopmentPullRequestAutomationRequestBuilder.containsPullRequestURL(in: route.normalizedTranscript) else {
+            return false
+        }
+
+        guard let project = developmentProjectProvider() else {
+            planningResponse = nil
+            assistantQueueItem = nil
+            dailyPlanningReviewRequest = nil
+            inboxTriageRequest = nil
+            developmentPullRequestAutomationRequest = nil
+            phase = .needsClarification("Select an approved project directory before queueing a development PR review gate.")
+            return true
+        }
+
+        do {
+            let request = try developmentPullRequestAutomationRequestBuilder.makeReviewGateRequest(
+                route: route,
+                project: project
+            )
+            let item = AssistantQueueAdapter.makeItem(automationRequest: request)
+            planningResponse = nil
+            assistantQueueItem = try persistAssistantQueueItemIfNeeded(item)
+            dailyPlanningReviewRequest = nil
+            inboxTriageRequest = nil
+            clarificationSession = nil
+            developmentPullRequestAutomationRequest = request
+            phase = .reviewReady
+        } catch let error as VoiceDevelopmentPullRequestAutomationRequestError {
+            planningResponse = nil
+            assistantQueueItem = nil
+            dailyPlanningReviewRequest = nil
+            inboxTriageRequest = nil
+            developmentPullRequestAutomationRequest = nil
+            phase = .failed(error.userMessage)
+        } catch {
+            planningResponse = nil
+            assistantQueueItem = nil
+            dailyPlanningReviewRequest = nil
+            inboxTriageRequest = nil
+            developmentPullRequestAutomationRequest = nil
+            phase = .failed(userMessage(for: error))
+        }
+        return true
     }
 
     private func makeInboxTriageRoute(
@@ -426,6 +502,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
+        developmentPullRequestAutomationRequest = nil
 
         do {
             try auditRecorder?.recordStarted(input: request.userInput, providerID: llmProvider.providerID)
@@ -568,6 +645,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
+        developmentPullRequestAutomationRequest = nil
         refreshRoutingResult()
         if let routingResult, routingResult.needsClarification {
             beginClarification(for: routingResult)
@@ -592,6 +670,22 @@ public final class VoiceCaptureViewModel: ObservableObject {
             reason: "Voice planning draft needs review.",
             costPreview: assistantQueueCostPreview(for: response)
         )
+    }
+
+    private func planningTools(
+        for routedCommand: VoiceCommandRoutingResult,
+        requestedAvailableTools: [ActionTool]
+    ) -> [ActionTool] {
+        guard routedCommand.intent == .developmentPRWorkflow,
+              requestedAvailableTools == ActionTool.defaultPlanningTools else {
+            return requestedAvailableTools
+        }
+
+        // Developer tools are excluded from the default voice planner so normal
+        // task capture cannot gain filesystem, Git, or GitHub write surfaces.
+        // A routed development PR command is the explicit boundary where the
+        // planner may draft branch, commit, push, PR, review, and merge gates.
+        return ActionTool.developerModePlanningTools
     }
 
     private func assistantQueueCostPreview(for response: PlanningResponse) -> AssistantQueueCostPreview {

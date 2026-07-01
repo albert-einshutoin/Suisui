@@ -69,6 +69,102 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertFalse(provider.requests.first?.availableTools.contains(.developmentRepositoryUpdateFile) ?? true)
     }
 
+    func testGeneratePlanUsesDeveloperPlanningToolsForDevelopmentPRIntent() async {
+        let response = PlanningResponse(
+            providerID: "recording",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-development-pr-workflow",
+                userInput: "Prepare a development PR workflow",
+                summary: "Prepare branch, verification, PR review, and merge gates.",
+                actions: [
+                    PlanAction(
+                        id: "action-development-prepare",
+                        tool: .developmentPreparePullRequestWorkflow,
+                        arguments: ["projectId": .number(7)],
+                        riskLevel: .write
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        )
+        let provider = RecordingVoiceLLMProvider(response: response)
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("このプロジェクトでブランチを作ってPRレビューとマージまで進めて")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+        XCTAssertEqual(provider.requests.first?.availableTools, ActionTool.developerModePlanningTools)
+        XCTAssertEqual(viewModel.assistantQueueItem?.requiredCapabilities, [
+            .tool(.developmentPreparePullRequestWorkflow),
+            .providerExecutionApproval
+        ])
+    }
+
+    func testGeneratePlanQueuesDevelopmentPullRequestReviewGateFromExplicitVoiceCommand() async throws {
+        let workspace = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        let bookmarkData = Data("voice-pr-workspace-bookmark".utf8)
+        let project = ProjectRecord(
+            id: 7,
+            title: "SoloPM",
+            status: "active",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: bookmarkData
+        )
+        let store = RecordingAssistantQueueStore()
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "recording",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider,
+            assistantQueueStore: store,
+            developmentProjectProvider: { project },
+            developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder(
+                bookmarkResolver: StaticProjectWorkspaceBookmarkResolver(url: workspace),
+                requestIDProvider: { "voice-pr-review-request" }
+            )
+        )
+
+        viewModel.updateDraftText("""
+        Review PR https://github.com/albert-einshutoin/soloPM/pull/116 branch feature/solopm-7-merge-gate base feature/phase14-product-completion
+        """)
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+        XCTAssertTrue(provider.requests.isEmpty)
+        XCTAssertEqual(store.savedItems.map(\.id), ["automation-request:voice-pr-review-request"])
+        XCTAssertEqual(viewModel.assistantQueueItem?.requiredCapabilities, [
+            .connectedMacRequired,
+            .tool(.developmentReviewPullRequestGate),
+            .providerExecutionApproval
+        ])
+        guard case .automationRequest(let request) = viewModel.assistantQueueItem?.payload else {
+            return XCTFail("Expected a development PR automation request")
+        }
+        XCTAssertEqual(request.source, .conversation)
+        XCTAssertEqual(request.toolName, ActionTool.developmentReviewPullRequestGate.rawValue)
+        XCTAssertEqual(request.developmentPullRequest, SyncDevelopmentPullRequestPayload(
+            projectID: 7,
+            operation: .reviewGate,
+            pullRequestURL: "https://github.com/albert-einshutoin/soloPM/pull/116",
+            branchName: "feature/solopm-7-merge-gate",
+            baseBranch: "feature/phase14-product-completion"
+        ))
+    }
+
     func testGeneratePlanPersistsAssistantQueueItemWhenStoreIsConfigured() async {
         let store = RecordingAssistantQueueStore()
         let response = PlanningResponse(
@@ -1014,6 +1110,26 @@ private actor VoicePlanningGate {
         released = true
         releaseContinuation?.resume()
         releaseContinuation = nil
+    }
+}
+
+private func makeTemporaryDirectory() throws -> URL {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("SoloPMVoiceCaptureViewModelTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    return directory
+}
+
+private struct StaticProjectWorkspaceBookmarkResolver: ProjectWorkspaceBookmarkResolving {
+    var url: URL
+
+    func resolve(bookmarkData: Data) throws -> ProjectWorkspaceBookmarkResolution {
+        ProjectWorkspaceBookmarkResolution(
+            url: url,
+            isStale: false,
+            didStartAccessing: true,
+            stopAccessing: {}
+        )
     }
 }
 
