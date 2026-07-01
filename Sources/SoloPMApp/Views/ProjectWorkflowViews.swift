@@ -34,28 +34,23 @@ struct TodayWorkflowView: View {
     var playDailyPlanningReadout: () -> Void = {}
     @State private var commandTitle = ""
 
-    private var plan: TodayWorkflowPlan {
-        viewModel.todayPlan()
-    }
-
-    private var assistantContext: TodayAssistantRailContext {
-        viewModel.todayAssistantRailContext()
-    }
-
-    private var subtitle: String {
+    private func subtitle(for snapshot: TodayWorkflowSnapshot) -> String {
         if viewModel.showsCompletedWorkflowTasks {
-            return String(format: String(localized: "%d due or completed tasks"), plan.tasks.count)
+            return String(format: String(localized: "%d due or completed tasks"), snapshot.plan.tasks.count)
         }
-        return String(format: String(localized: "%d open due or overdue tasks"), plan.tasks.count)
+        return String(format: String(localized: "%d open due or overdue tasks"), snapshot.plan.tasks.count)
     }
 
     var body: some View {
+        let referenceDate = Date()
+        let calendar = Calendar.current
+        let snapshot = viewModel.todayWorkflowSnapshot(on: referenceDate, calendar: calendar)
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: 0) {
-                mainSurface
+                mainSurface(snapshot: snapshot)
                 TodayAssistantRail(
                     commandTitle: $commandTitle,
-                    context: assistantContext,
+                    context: snapshot.assistantContext,
                     viewModel: viewModel,
                     openInspector: openInspectorForTodayRailTask
                 )
@@ -65,10 +60,10 @@ struct TodayWorkflowView: View {
             }
 
             VStack(alignment: .leading, spacing: 0) {
-                mainSurface
+                mainSurface(snapshot: snapshot)
                 TodayAssistantRail(
                     commandTitle: $commandTitle,
-                    context: assistantContext,
+                    context: snapshot.assistantContext,
                     viewModel: viewModel,
                     openInspector: openInspectorForTodayRailTask
                 )
@@ -80,12 +75,12 @@ struct TodayWorkflowView: View {
         .accessibilityIdentifier("today-workflow")
     }
 
-    private var mainSurface: some View {
+    private func mainSurface(snapshot: TodayWorkflowSnapshot) -> some View {
         WorkflowTaskSurface(
             title: "Today",
-            subtitle: subtitle,
+            subtitle: subtitle(for: snapshot),
             systemImage: "sun.max",
-            tasks: plan.tasks,
+            tasks: snapshot.plan.tasks,
             emptyTitle: "No tasks due today",
             emptyDescription: "Captured work remains in Inbox until it is scheduled or moved to a project.",
             viewModel: viewModel,
@@ -93,13 +88,14 @@ struct TodayWorkflowView: View {
             headerAccessory: {
                 TodayCommandPanel(
                     commandTitle: $commandTitle,
-                    plan: plan,
+                    plan: snapshot.plan,
+                    recommendationChips: snapshot.recommendationChips,
                     viewModel: viewModel,
                     playDailyPlanningReadout: playDailyPlanningReadout
                 )
             },
             footer: {
-                TodaySuggestionPanel(plan: plan, viewModel: viewModel)
+                TodaySuggestionPanel(plan: snapshot.plan, viewModel: viewModel)
             }
         )
     }
@@ -2080,6 +2076,7 @@ private struct TodayDailyPlanningReviewPanel: View {
 private struct TodayCommandPanel: View {
     @Binding var commandTitle: String
     let plan: TodayWorkflowPlan
+    let recommendationChips: [TodayRecommendationChip]
     @ObservedObject var viewModel: ProjectBoardViewModel
     let playDailyPlanningReadout: () -> Void
 
@@ -2089,7 +2086,12 @@ private struct TodayCommandPanel: View {
                 viewModel: viewModel,
                 playDailyPlanningReadout: playDailyPlanningReadout
             )
-            TodayBriefingPanel(commandTitle: $commandTitle, plan: plan, viewModel: viewModel)
+            TodayBriefingPanel(
+                commandTitle: $commandTitle,
+                plan: plan,
+                recommendationChips: recommendationChips,
+                viewModel: viewModel
+            )
         }
     }
 }
@@ -2097,6 +2099,7 @@ private struct TodayCommandPanel: View {
 private struct TodayBriefingPanel: View {
     @Binding var commandTitle: String
     let plan: TodayWorkflowPlan
+    let recommendationChips: [TodayRecommendationChip]
     @ObservedObject var viewModel: ProjectBoardViewModel
 
     var body: some View {
@@ -2212,7 +2215,7 @@ private struct TodayBriefingPanel: View {
 
     private var suggestionRail: some View {
         HStack(spacing: 6) {
-            ForEach(viewModel.todayRecommendationChips()) { chip in
+            ForEach(recommendationChips) { chip in
                 Button {
                     viewModel.startFocus(taskID: chip.taskID)
                 } label: {

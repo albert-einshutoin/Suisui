@@ -2140,6 +2140,9 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testTodayWorkflowUsesSampleInspiredBriefingAndFlowRail() throws {
         let workflowSource = try readPackageFile("Sources/SoloPMApp/Views/ProjectWorkflowViews.swift")
+        let todayWorkflowStart = try XCTUnwrap(workflowSource.range(of: "struct TodayWorkflowView"))
+        let todayWorkflowEnd = try XCTUnwrap(workflowSource.range(of: "struct CatchUpWorkflowView"))
+        let todayWorkflowSource = String(workflowSource[todayWorkflowStart.lowerBound..<todayWorkflowEnd.lowerBound])
 
         XCTAssertTrue(workflowSource.contains("TodayBriefingPanel"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-briefing-panel\")"))
@@ -2152,6 +2155,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-flow-optimize\")"))
         XCTAssertTrue(workflowSource.contains("TodayAISuggestionCard(plan: plan, viewModel: viewModel)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-ai-suggestion-card\")"))
+        XCTAssertTrue(todayWorkflowSource.contains("let referenceDate = Date()"))
+        XCTAssertTrue(todayWorkflowSource.contains("let calendar = Calendar.current"))
+        XCTAssertTrue(todayWorkflowSource.contains("let snapshot = viewModel.todayWorkflowSnapshot(on: referenceDate, calendar: calendar)"))
+        XCTAssertTrue(todayWorkflowSource.contains("mainSurface(snapshot: snapshot)"))
+        XCTAssertTrue(todayWorkflowSource.contains("TodayAssistantRail(\n                    commandTitle: $commandTitle,\n                    context: snapshot.assistantContext"))
+        XCTAssertFalse(todayWorkflowSource.contains("viewModel.todayPlan()"))
+        XCTAssertFalse(todayWorkflowSource.contains("viewModel.todayAssistantRailContext()"))
     }
 
     func testTodayWorkflowProvidesCommonQuickActionChipsAndLocalRailActions() throws {
@@ -2167,6 +2177,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("commandTitle = String(localized: \"Plan tomorrow: \")"))
         XCTAssertTrue(workflowSource.contains("commandTitle = String(localized: \"Prepare meeting: \")"))
         XCTAssertTrue(workflowSource.contains("commandTitle = String(localized: \"Draft reply: \")"))
+        XCTAssertTrue(workflowSource.contains("recommendationChips: snapshot.recommendationChips"))
+        XCTAssertTrue(workflowSource.contains("let recommendationChips: [TodayRecommendationChip]"))
+        XCTAssertTrue(workflowSource.contains("ForEach(recommendationChips) { chip in"))
         XCTAssertTrue(workflowSource.contains("TodayAssistantRail("))
         XCTAssertTrue(workflowSource.contains("commandTitle: $commandTitle"))
         XCTAssertTrue(workflowSource.contains("viewModel.prepareTodayScheduleDraft(prioritizing: task.id)"))

@@ -476,6 +476,22 @@ public struct TodayRecommendationChip: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct TodayWorkflowSnapshot: Equatable, Sendable {
+    public var plan: TodayWorkflowPlan
+    public var assistantContext: TodayAssistantRailContext
+    public var recommendationChips: [TodayRecommendationChip]
+
+    public init(
+        plan: TodayWorkflowPlan,
+        assistantContext: TodayAssistantRailContext,
+        recommendationChips: [TodayRecommendationChip]
+    ) {
+        self.plan = plan
+        self.assistantContext = assistantContext
+        self.recommendationChips = recommendationChips
+    }
+}
+
 public struct TodayScheduleDraft: Equatable, Sendable {
     public var timeBlocks: [TodayTimeBlock]
 
@@ -1660,6 +1676,22 @@ public final class ProjectBoardViewModel: ObservableObject {
         )
     }
 
+    public func todayWorkflowSnapshot(
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> TodayWorkflowSnapshot {
+        let plan = todayPlan(on: referenceDate, calendar: calendar)
+        return TodayWorkflowSnapshot(
+            plan: plan,
+            assistantContext: todayAssistantRailContext(plan: plan),
+            recommendationChips: todayRecommendationChips(
+                from: plan.tasks,
+                on: referenceDate,
+                calendar: calendar
+            )
+        )
+    }
+
     public func makeDailyPlanningReview(
         transcript: String,
         on referenceDate: Date = Date(),
@@ -2107,7 +2139,10 @@ public final class ProjectBoardViewModel: ObservableObject {
         on referenceDate: Date = Date(),
         calendar: Calendar = .current
     ) -> TodayAssistantRailContext {
-        let plan = todayPlan(on: referenceDate, calendar: calendar)
+        todayAssistantRailContext(plan: todayPlan(on: referenceDate, calendar: calendar))
+    }
+
+    private func todayAssistantRailContext(plan: TodayWorkflowPlan) -> TodayAssistantRailContext {
         // Keep explicit focus ahead of selection so the rail reflects the user's active work.
         if let todayFocusTaskID,
            let focusedTask = plan.tasks.first(where: { $0.id == todayFocusTaskID && $0.status != .done }) {
@@ -2175,7 +2210,18 @@ public final class ProjectBoardViewModel: ObservableObject {
         on referenceDate: Date = Date(),
         calendar: Calendar = .current
     ) -> [TodayRecommendationChip] {
-        let tasks = todayTasks(on: referenceDate, calendar: calendar)
+        todayRecommendationChips(
+            from: todayTasks(on: referenceDate, calendar: calendar),
+            on: referenceDate,
+            calendar: calendar
+        )
+    }
+
+    private func todayRecommendationChips(
+        from tasks: [ProjectBoardTask],
+        on referenceDate: Date,
+        calendar: Calendar
+    ) -> [TodayRecommendationChip] {
         let dayStart = calendar.dateInterval(of: .day, for: referenceDate)?.start ?? referenceDate
         var usedTaskIDs = Set<Int64>()
 
