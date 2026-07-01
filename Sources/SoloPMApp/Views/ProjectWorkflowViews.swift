@@ -3426,7 +3426,7 @@ private struct TodayAssistantRail: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-assistant-rail")
         .accessibilityLabel("Today assistant rail")
-        .accessibilityHint("Shows the selected or recommended Today task details and local next actions.")
+        .accessibilityHint("Shows focused, selected, or recommended Today task details and local next actions.")
     }
 
     private func taskDetail(_ task: ProjectBoardTask) -> some View {

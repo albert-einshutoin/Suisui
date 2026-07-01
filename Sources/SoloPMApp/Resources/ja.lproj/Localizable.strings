@@ -567,7 +567,7 @@
 "Shows a compact route through the first local Today time blocks." = "先頭のローカルToday時間枠をコンパクトな流れとして表示します。";
 "Next Action" = "次アクション";
 "Today assistant rail" = "Todayアシスタントレール";
-"Shows the selected or recommended Today task details and local next actions." = "選択中または推奨されたTodayタスクの詳細とローカル次アクションを表示します。";
+"Shows focused, selected, or recommended Today task details and local next actions." = "集中、選択中、または推奨されたTodayタスクの詳細とローカル次アクションを表示します。";
 "Time Block" = "時間ブロック";
 "No block drafted" = "ブロック未作成";
 "Notes" = "メモ";
@@ -585,7 +585,9 @@
 "Reminder for %@" = "%@ のリマインダー";
 "Queues a Reminders draft for approval before any external write." = "外部書き込みの前に、Reminders下書きを承認キューへ追加します。";
 "Review selected task" = "選択中タスクを確認";
+"Resume focused task" = "集中タスクを再開";
 "You selected this Today task for review." = "このTodayタスクを確認対象として選択しました。";
+"This task is already in focus." = "このタスクはすでに集中対象です。";
 "Start recommended task" = "推奨タスクを開始";
 "No project selected" = "プロジェクト未選択";
 "Capture the next task" = "次のタスクを記録";

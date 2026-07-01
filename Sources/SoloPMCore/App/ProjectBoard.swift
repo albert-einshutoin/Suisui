@@ -404,6 +404,7 @@ public struct TodayWorkflowPlan: Equatable, Sendable {
 }
 
 public enum TodayAssistantRailSource: String, Codable, Equatable, Sendable {
+    case focused
     case selected
     case recommended
     case empty
@@ -2105,6 +2106,18 @@ public final class ProjectBoardViewModel: ObservableObject {
         calendar: Calendar = .current
     ) -> TodayAssistantRailContext {
         let plan = todayPlan(on: referenceDate, calendar: calendar)
+        // Keep explicit focus ahead of selection so the rail reflects the user's active work.
+        if let todayFocusTaskID,
+           let focusedTask = plan.tasks.first(where: { $0.id == todayFocusTaskID && $0.status != .done }) {
+            return todayAssistantRailContext(
+                source: .focused,
+                task: focusedTask,
+                plan: plan,
+                nextActionTitle: String(localized: "Resume focused task"),
+                nextActionReason: String(localized: "This task is already in focus.")
+            )
+        }
+
         if let selectedTask = selectedTask,
            plan.tasks.contains(where: { $0.id == selectedTask.id }) {
             return todayAssistantRailContext(
