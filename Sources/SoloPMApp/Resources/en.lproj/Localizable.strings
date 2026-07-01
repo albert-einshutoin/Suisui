@@ -1031,10 +1031,14 @@
 "Week schedule cockpit" = "Week schedule cockpit";
 "Weekly schedule grid" = "Weekly schedule grid";
 "+%d more" = "+%d more";
-"%d blocks, %d reminder proposals" = "%d blocks, %d reminder proposals";
+"%d blocks, %d reminder proposals, %d completed tasks" = "%d blocks, %d reminder proposals, %d completed tasks";
+"%d completed tasks on this day" = "%d completed tasks on this day";
+"%d completed this week." = "%d completed this week.";
+"%d schedule completions" = "%d schedule completions";
 "%d heavy days. Keep schedule drafts reviewable before Calendar writes." = "%d heavy days. Keep schedule drafts reviewable before Calendar writes.";
 "%d overloaded days. Review reminders and unscheduled work before applying Calendar changes." = "%d overloaded days. Review reminders and unscheduled work before applying Calendar changes.";
 "%d proposals from local due and blocked tasks" = "%d proposals from local due and blocked tasks";
+"Completion history count" = "Completion history count";
 "%d reminders" = "%d reminders";
 "%d unscheduled tasks need placement" = "%d unscheduled tasks need placement";
 "Creates an Assistant Queue approval item without changing the task." = "Creates an Assistant Queue approval item without changing the task.";
