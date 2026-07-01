@@ -4524,6 +4524,46 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelBuildsTodayWorkflowSnapshotFromOneReferenceDateAndCalendar() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        let localToday = try XCTUnwrap(viewModel.createTask(
+            title: "Close June report",
+            detail: "Date-only task should stay in the same snapshot as Today rail.",
+            projectID: launch.id,
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-30"
+        ))
+        _ = try XCTUnwrap(viewModel.createTask(
+            title: "July follow-up",
+            projectID: launch.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-07-01T09:00:00Z"
+        ))
+        var pacificCalendar = Calendar(identifier: .gregorian)
+        pacificCalendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+
+        let snapshot = viewModel.todayWorkflowSnapshot(
+            on: try isoDate("2026-07-01T06:30:00Z"),
+            calendar: pacificCalendar
+        )
+
+        XCTAssertEqual(snapshot.plan.tasks.map(\.id), [localToday.id])
+        XCTAssertEqual(snapshot.plan.dueTodayCount, 1)
+        XCTAssertEqual(snapshot.plan.overdueCount, 0)
+        XCTAssertEqual(snapshot.plan.recommendedTask?.id, localToday.id)
+        XCTAssertEqual(snapshot.assistantContext.source, .recommended)
+        XCTAssertEqual(snapshot.assistantContext.task?.id, localToday.id)
+        XCTAssertEqual(snapshot.assistantContext.nextBlockLabel, "23:30-00:00")
+        XCTAssertTrue(snapshot.recommendationChips.allSatisfy { chip in
+            snapshot.plan.tasks.contains { $0.id == chip.taskID }
+        })
+    }
+
+    @MainActor
     func testProjectBoardViewModelBuildsTodayAssistantRailContextFromFocusedTask() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()
