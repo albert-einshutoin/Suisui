@@ -278,6 +278,86 @@ pressButtonUntilSQLiteValue() {
   done
 }
 
+waitForAXElementContaining() {
+  local identifier_fragment="$1"
+  local required_text_one="${2:-}"
+  local required_text_two="${3:-}"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/osascript - "$APP_NAME" "$identifier_fragment" "$required_text_one" "$required_text_two" <<'APPLESCRIPT' >/dev/null 2>&1
+on run argv
+  set appName to item 1 of argv
+  set identifierFragment to item 2 of argv
+  set requiredTextOne to item 3 of argv
+  set requiredTextTwo to item 4 of argv
+  tell application "System Events"
+    if not (exists process appName) then error appName & " process is not visible to System Events"
+    tell process appName
+      set windowCount to count of windows
+      if windowCount < 1 then error appName & " has no visible windows"
+      try
+        set frontmost to true
+      end try
+      repeat with windowIndex from 1 to windowCount
+        set currentWindow to window windowIndex
+        try
+          perform action "AXRaise" of currentWindow
+        end try
+        set axItems to entire contents of currentWindow
+        repeat with axItem in axItems
+          set itemIdentifier to ""
+          set itemName to ""
+          set itemTitle to ""
+          set itemValue to ""
+          set itemDescription to ""
+          set itemHelp to ""
+          try
+            set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
+          end try
+          try
+            set itemName to name of axItem as text
+          end try
+          try
+            set itemTitle to value of attribute "AXTitle" of axItem as text
+          end try
+          try
+            set itemValue to value of axItem as text
+          end try
+          try
+            set itemValue to itemValue & " " & (value of attribute "AXValue" of axItem as text)
+          end try
+          try
+            set itemDescription to description of axItem as text
+          end try
+          try
+            set itemHelp to value of attribute "AXHelp" of axItem as text
+          end try
+          set signalText to itemIdentifier & " " & itemName & " " & itemTitle & " " & itemValue & " " & itemDescription & " " & itemHelp
+          set requiredOneMatches to requiredTextOne is "" or signalText contains requiredTextOne
+          set requiredTwoMatches to requiredTextTwo is "" or signalText contains requiredTextTwo
+          if signalText contains identifierFragment and requiredOneMatches and requiredTwoMatches then
+            return "found AX element " & identifierFragment
+          end if
+        end repeat
+      end repeat
+    end tell
+  end tell
+  error "AX element signal not found: " & identifierFragment
+end run
+APPLESCRIPT
+    then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: AX element did not expose required signal: $identifier_fragment" >&2
+      return 1
+    fi
+    activate_app
+    wait_for_visible_windows >/dev/null 2>&1 || true
+    sleep 1
+  done
+}
+
 pressButtonContaining() {
   local fragment="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
@@ -389,7 +469,16 @@ wait_for_no_app_process
 
 today_task_id="$(seed_today_task)"
 launch_app_for_today
+wait_for_database_table "assistant_queue_items"
 verify_single_value "seeded today task is open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL AND due_at='2026-01-01T09:00:00Z' THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
+pressButtonContaining "workflow-task-row-$today_task_id"
+pressButtonContaining "today-rail-focus"
+verify_single_value "focus kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
+pressButtonContaining "today-rail-schedule-block"
+waitForAXElementContaining "today-rail-schedule-draft-status"
+verify_single_value "schedule draft kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
+pressButtonUntilSQLiteValue "queue Today rail reminder draft" "today-rail-reminder-draft" "SELECT CASE WHEN count(*) = 1 THEN 1 ELSE 0 END FROM assistant_queue_items WHERE id LIKE 'action-plan:today-reminder:%:task:$today_task_id' AND state='waitingReview' AND approval_json IS NULL;" "1"
+verify_single_value "rail actions kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
 pressButtonUntilSQLiteValue "complete today task" "workflow-task-completion-$today_task_id" "SELECT CASE WHEN status='completed' AND completed_at IS NOT NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
 
-printf "OK: runtime today complete smoke completed a visible Today task and verified SQLite status\n"
+printf "OK: runtime today complete smoke covered Today rail focus, schedule draft, reminder draft, and visible row completion\n"
