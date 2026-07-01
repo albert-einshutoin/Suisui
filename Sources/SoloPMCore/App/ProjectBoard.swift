@@ -221,6 +221,100 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
     public var dueLabel: String? {
         dueAt
     }
+
+    // Today surfaces optimize for quick scanning; keep the stored dueAt raw for
+    // persistence/API compatibility and derive the friendlier label at the edge.
+    public func todayDueDisplayLabel(
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String? {
+        guard let dueAt else {
+            return nil
+        }
+        guard let parsedDue = Self.parsedDueDate(from: dueAt, calendar: calendar) else {
+            return dueAt
+        }
+
+        let dayInterval = calendar.dateInterval(of: .day, for: referenceDate)
+        let dateText = Self.formattedTodayDueDate(
+            parsedDue.date,
+            includesTime: parsedDue.includesTime,
+            calendar: calendar,
+            locale: locale
+        )
+
+        if isOverdueForToday(on: referenceDate, calendar: calendar) {
+            return String(format: String(localized: "Overdue %@"), dateText)
+        }
+        if let dayInterval,
+           parsedDue.date >= dayInterval.start,
+           parsedDue.date < dayInterval.end {
+            guard parsedDue.includesTime else {
+                return String(localized: "Today")
+            }
+            return String(
+                format: String(localized: "Today %@"),
+                Self.formattedTodayDueTime(parsedDue.date, calendar: calendar, locale: locale)
+            )
+        }
+        return String(format: String(localized: "Due %@"), dateText)
+    }
+
+    public func isOverdueForToday(
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Bool {
+        guard let dueAt,
+              let parsedDue = Self.parsedDueDate(from: dueAt, calendar: calendar),
+              let dayStart = calendar.dateInterval(of: .day, for: referenceDate)?.start else {
+            return false
+        }
+        return parsedDue.date < dayStart && status != .done
+    }
+
+    private struct ParsedDueDate {
+        var date: Date
+        var includesTime: Bool
+    }
+
+    private static func parsedDueDate(from rawDueAt: String, calendar: Calendar) -> ParsedDueDate? {
+        if let date = ISO8601DateFormatter().date(from: rawDueAt) {
+            return ParsedDueDate(date: date, includesTime: rawDueAt.contains("T"))
+        }
+
+        let formatter = DateFormatter()
+        var parsingCalendar = Calendar(identifier: .gregorian)
+        parsingCalendar.timeZone = calendar.timeZone
+        formatter.calendar = parsingCalendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: rawDueAt).map { ParsedDueDate(date: $0, includesTime: false) }
+    }
+
+    private static func formattedTodayDueDate(
+        _ date: Date,
+        includesTime: Bool,
+        calendar: Calendar,
+        locale: Locale
+    ) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = locale
+        formatter.timeZone = calendar.timeZone
+        formatter.setLocalizedDateFormatFromTemplate(includesTime ? "MMM d HH:mm" : "MMM d")
+        return formatter.string(from: date)
+    }
+
+    private static func formattedTodayDueTime(_ date: Date, calendar: Calendar, locale: Locale) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = locale
+        formatter.timeZone = calendar.timeZone
+        formatter.setLocalizedDateFormatFromTemplate("HH:mm")
+        return formatter.string(from: date)
+    }
 }
 
 public struct TaskAutomationDocumentSourceReview: Identifiable, Equatable, Sendable {
@@ -1473,10 +1567,10 @@ public final class ProjectBoardViewModel: ObservableObject {
             .flatMap(\.tasks)
             .filter { task in
                 (showsCompletedWorkflowTasks || task.status != .done)
-                    && dueDate(for: task.dueAt).map { $0 < endOfToday } == true
+                    && dueDate(for: task.dueAt, calendar: calendar).map { $0 < endOfToday } == true
             }
             .sorted { lhs, rhs in
-                switch (dueDate(for: lhs.dueAt), dueDate(for: rhs.dueAt)) {
+                switch (dueDate(for: lhs.dueAt, calendar: calendar), dueDate(for: rhs.dueAt, calendar: calendar)) {
                 case let (lhsDate?, rhsDate?):
                     if lhsDate == rhsDate {
                         return lhs.id > rhs.id
@@ -1530,10 +1624,10 @@ public final class ProjectBoardViewModel: ObservableObject {
         let dayInterval = calendar.dateInterval(of: .day, for: referenceDate)
         let dayStart = dayInterval?.start ?? referenceDate
         let overdueCount = tasks.filter { task in
-            dueDate(for: task.dueAt).map { $0 < dayStart } == true
+            dueDate(for: task.dueAt, calendar: calendar).map { $0 < dayStart } == true
         }.count
         let dueTodayCount = tasks.filter { task in
-            guard let dayInterval, let dueDate = dueDate(for: task.dueAt) else {
+            guard let dayInterval, let dueDate = dueDate(for: task.dueAt, calendar: calendar) else {
                 return false
             }
             return dueDate >= dayInterval.start && dueDate < dayInterval.end
@@ -2077,7 +2171,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                 reason: String(format: String(localized: "%@ is blocking today's plan."), task.title)
             ))
         }
-        if let task = firstTask(matching: { dueDate(for: $0.dueAt).map { $0 < dayStart } == true }) {
+        if let task = firstTask(matching: { dueDate(for: $0.dueAt, calendar: calendar).map { $0 < dayStart } == true }) {
             usedTaskIDs.insert(task.id)
             chips.append(TodayRecommendationChip(
                 kind: .overdue,
@@ -5073,7 +5167,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         return value?.isEmpty == false ? value : nil
     }
 
-    private func dueDate(for rawDueAt: String?) -> Date? {
+    private func dueDate(for rawDueAt: String?, calendar: Calendar? = nil) -> Date? {
         guard let rawDueAt else {
             return nil
         }
@@ -5083,9 +5177,11 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
+        var parsingCalendar = Calendar(identifier: .gregorian)
+        parsingCalendar.timeZone = calendar?.timeZone ?? TimeZone(secondsFromGMT: 0)!
+        formatter.calendar = parsingCalendar
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.timeZone = parsingCalendar.timeZone
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.date(from: rawDueAt)
     }
@@ -5369,7 +5465,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     ) -> ProjectBoardTask? {
         let dayStart = calendar.dateInterval(of: .day, for: referenceDate)?.start ?? referenceDate
         let overdueTasks = tasks.filter { task in
-            dueDate(for: task.dueAt).map { $0 < dayStart } == true
+            dueDate(for: task.dueAt, calendar: calendar).map { $0 < dayStart } == true
         }
         if let highPriorityOverdue = overdueTasks.first(where: { $0.priority == .high }) {
             return highPriorityOverdue
@@ -5393,7 +5489,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         let dayStart = calendar.dateInterval(of: .day, for: referenceDate)?.start ?? referenceDate
-        let isOverdue = dueDate(for: task.dueAt).map { $0 < dayStart } == true
+        let isOverdue = dueDate(for: task.dueAt, calendar: calendar).map { $0 < dayStart } == true
         if isOverdue && task.priority == .high {
             return "Overdue high-priority work should be cleared first."
         }

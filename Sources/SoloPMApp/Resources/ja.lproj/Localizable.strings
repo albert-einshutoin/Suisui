@@ -594,6 +594,7 @@
 "Today assistant suggested a Reminders draft for 1 task." = "Todayアシスタントが1件のタスク用Reminders下書きを提案しました。";
 "Today assistant suggested Reminders drafts for %d tasks." = "Todayアシスタントが%d件のタスク用Reminders下書きを提案しました。";
 "Overdue %@" = "期限超過 %@";
+"Today %@" = "今日 %@";
 "Due %@" = "期限 %@";
 "Schedule Draft" = "予定ドラフト";
 "Prepare local time blocks for schedule review" = "確認用のローカル時間ブロックを準備";
