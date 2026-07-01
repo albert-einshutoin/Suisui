@@ -391,6 +391,161 @@ final class AssistantQueueExecutionTests: XCTestCase {
         XCTAssertEqual(entry.usageState, .estimated)
     }
 
+    func testCoordinatorBlocksSoloPMManagedRunWhenDailyLedgerCapWouldBeExceeded() throws {
+        let queueStore = try makeQueueStore()
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let ledgerStore = RecordingManagedAIUsageLedgerStore(entries: [
+            ManagedAIUsageLedgerEntry(
+                sourceReceiptDigest: ManagedAIUsageLedgerEntry.digestIdentifier(kind: "receipt", value: "existing-daily"),
+                assistantQueueItemDigest: ManagedAIUsageLedgerEntry.digestIdentifier(kind: "assistant_queue_item", value: "existing-daily"),
+                billingMode: .soloPMManaged,
+                provider: "openai",
+                modelName: "gpt-managed",
+                usageState: .estimated,
+                inputTokens: 1_000,
+                outputTokens: 500,
+                costCents: 80,
+                currencyCode: "USD",
+                occurredAt: Date(timeIntervalSince1970: 1_788_280_400)
+            )
+        ])
+        let preview = makeCostPreview(inputTokens: 1_000, outputTokens: 500)
+        let approved = try AssistantQueueStateMachine.approve(
+            makeActionPlanItem(costPreview: preview),
+            reviewerID: "local-user"
+        )
+        try queueStore.save(approved)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                XCTFail("Managed AI cap enforcement must stop before tool execution.")
+                return ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created Launch checklist")
+            }
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            managedAIUsageLedgerStore: ledgerStore,
+            managedAIBillingSettings: ManagedAIBillingSettings(
+                isEnabled: true,
+                dailyCapCents: 80
+            ),
+            runIDProvider: { "run-queue-managed-ledger-cap" },
+            now: { Date(timeIntervalSince1970: 1_788_282_000) }
+        )
+
+        XCTAssertThrowsError(try coordinator.execute(id: approved.id)) { error in
+            guard case .managedUsageCapExceeded(let projection, true) = error as? AssistantQueueExecutionError else {
+                return XCTFail("Expected managed usage cap exceeded, got \(error)")
+            }
+            XCTAssertEqual(projection.scope, .daily)
+        }
+        let failed = try queueStore.get(id: approved.id)
+        XCTAssertEqual(failed.state, .failed)
+        XCTAssertEqual(
+            failed.blockingReason,
+            "Managed AI daily cap would be exceeded. Current USD 0.80 plus this run USD 0.0025 exceeds USD 0.80."
+        )
+        XCTAssertTrue(receiptStore.receipts.isEmpty)
+        XCTAssertEqual(ledgerStore.entries.count, 1)
+    }
+
+    func testCoordinatorReadsManagedBillingSettingsAtExecutionTime() throws {
+        let queueStore = try makeQueueStore()
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let ledgerStore = RecordingManagedAIUsageLedgerStore(entries: [
+            ManagedAIUsageLedgerEntry(
+                sourceReceiptDigest: ManagedAIUsageLedgerEntry.digestIdentifier(kind: "receipt", value: "existing-settings"),
+                assistantQueueItemDigest: ManagedAIUsageLedgerEntry.digestIdentifier(kind: "assistant_queue_item", value: "existing-settings"),
+                billingMode: .soloPMManaged,
+                provider: "openai",
+                modelName: "gpt-managed",
+                usageState: .estimated,
+                inputTokens: 1_000,
+                outputTokens: 500,
+                costCents: 80,
+                currencyCode: "USD",
+                occurredAt: Date(timeIntervalSince1970: 1_788_280_400)
+            )
+        ])
+        var runtimeBillingSettings = ManagedAIBillingSettings.default
+        let approved = try AssistantQueueStateMachine.approve(
+            makeActionPlanItem(costPreview: makeCostPreview(inputTokens: 1_000, outputTokens: 500)),
+            reviewerID: "local-user"
+        )
+        try queueStore.save(approved)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                XCTFail("Updated runtime cap settings must stop before tool execution.")
+                return ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created Launch checklist")
+            }
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            managedAIUsageLedgerStore: ledgerStore,
+            managedAIBillingSettingsProvider: { runtimeBillingSettings },
+            runIDProvider: { "run-queue-managed-settings-provider" },
+            now: { Date(timeIntervalSince1970: 1_788_282_000) }
+        )
+
+        runtimeBillingSettings = ManagedAIBillingSettings(isEnabled: true, dailyCapCents: 80)
+
+        XCTAssertThrowsError(try coordinator.execute(id: approved.id)) { error in
+            guard case .managedUsageCapExceeded(let projection, true) = error as? AssistantQueueExecutionError else {
+                return XCTFail("Expected managed usage cap exceeded, got \(error)")
+            }
+            XCTAssertEqual(projection.scope, .daily)
+        }
+    }
+
+    func testCoordinatorDoesNotRequireLedgerStoreForPerRunOnlyManagedBilling() throws {
+        let queueStore = try makeQueueStore()
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let approved = try AssistantQueueStateMachine.approve(
+            makeActionPlanItem(costPreview: makeCostPreview(inputTokens: 1_000, outputTokens: 500)),
+            reviewerID: "local-user"
+        )
+        try queueStore.save(approved)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created Launch checklist")
+            }
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            managedAIBillingSettings: ManagedAIBillingSettings(
+                isEnabled: true,
+                perRunCapCents: 2
+            ),
+            runIDProvider: { "run-queue-managed-per-run-only" },
+            now: { Date(timeIntervalSince1970: 1_788_282_100) }
+        )
+
+        let result = try coordinator.execute(id: approved.id)
+
+        XCTAssertEqual(result.item.state, .done)
+        XCTAssertEqual(receiptStore.receipts.count, 1)
+    }
+
     func testCoordinatorDoesNotRecordProviderBilledUsageInManagedLedger() throws {
         let queueStore = try makeQueueStore()
         let receiptStore = InMemoryExecutionReceiptStore()
@@ -1864,7 +2019,11 @@ private final class FailingExecutionReceiptStore: ExecutionReceiptStore, @unchec
 }
 
 private final class RecordingManagedAIUsageLedgerStore: ManagedAIUsageLedgerStore, @unchecked Sendable {
-    private(set) var entries: [ManagedAIUsageLedgerEntry] = []
+    private(set) var entries: [ManagedAIUsageLedgerEntry]
+
+    init(entries: [ManagedAIUsageLedgerEntry] = []) {
+        self.entries = entries
+    }
 
     func record(_ entry: ManagedAIUsageLedgerEntry) throws {
         entries.append(entry)

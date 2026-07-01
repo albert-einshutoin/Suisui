@@ -30,11 +30,67 @@ public struct ManagedAIBillingSettings: Codable, Equatable, Sendable {
         guard let perRunCapCents, perRunCapCents > 0 else {
             return nil
         }
-        // Existing Assistant Queue previews evaluate a single run before
-        // execution, so only the explicit per-run cap is used for hard blocking.
-        // Daily/monthly/workspace caps are status-only thresholds until the
-        // billing ledger can separate SoloPM-managed usage from BYOK telemetry.
+        // Previews evaluate the run in isolation. Daily/monthly/workspace caps
+        // are enforced later against the SoloPM-managed usage ledger so BYOK and
+        // local-only telemetry cannot affect managed billing decisions.
         return Double(perRunCapCents)
+    }
+
+    public static func usageLedgerCalendar() -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }
+
+    public var hasLedgerBackedUsageCap: Bool {
+        guard isEnabled else {
+            return false
+        }
+        return [dailyCapCents, monthlyCapCents, workspaceCapCents].contains { cap in
+            (cap ?? 0) > 0
+        }
+    }
+
+    public func firstExceededUsageCap(
+        totals: ManagedAIUsageLedgerTotals,
+        pendingCostPreview: AssistantQueueCostPreview
+    ) -> ManagedAIUsageCapProjection? {
+        guard isEnabled,
+              pendingCostPreview.billingMode == .soloPMManaged,
+              let pendingCostCents = pendingCostPreview.estimatedCostCents,
+              let previewCurrencyCode = pendingCostPreview.currencyCode
+        else {
+            return nil
+        }
+
+        let currencyCode = ManagedAIUsageLedgerTotals.normalizedCurrencyCode(previewCurrencyCode)
+        guard totals.currencyCode == currencyCode else {
+            return nil
+        }
+
+        return [
+            capProjection(
+                scope: .daily,
+                usedCents: totals.dailyCostCents,
+                pendingCostCents: pendingCostCents,
+                capCents: dailyCapCents,
+                currencyCode: currencyCode
+            ),
+            capProjection(
+                scope: .monthly,
+                usedCents: totals.monthlyCostCents,
+                pendingCostCents: pendingCostCents,
+                capCents: monthlyCapCents,
+                currencyCode: currencyCode
+            ),
+            capProjection(
+                scope: .workspace,
+                usedCents: totals.workspaceCostCents,
+                pendingCostCents: pendingCostCents,
+                capCents: workspaceCapCents,
+                currencyCode: currencyCode
+            )
+        ].compactMap { $0 }.first { $0.projectedCents > Double($0.capCents) }
     }
 
     public func usageThresholdRows(for snapshot: ExecutionUsageMeterSnapshot, currencyCode: String = "USD") -> [ManagedAIUsageThresholdRow] {
@@ -153,6 +209,25 @@ public struct ManagedAIBillingSettings: Codable, Equatable, Sendable {
             )
         )
     }
+
+    private func capProjection(
+        scope: ManagedAIUsageThresholdScope,
+        usedCents: Double,
+        pendingCostCents: Double,
+        capCents: Int?,
+        currencyCode: String
+    ) -> ManagedAIUsageCapProjection? {
+        guard let capCents, capCents > 0 else {
+            return nil
+        }
+        return ManagedAIUsageCapProjection(
+            scope: scope,
+            usedCents: usedCents,
+            pendingCostCents: pendingCostCents,
+            capCents: capCents,
+            currencyCode: currencyCode
+        )
+    }
 }
 
 public struct ManagedAICostRateCardConfiguration: Equatable, Sendable {
@@ -269,6 +344,17 @@ public enum ManagedAIUsageThresholdScope: String, Equatable, Sendable {
     case daily
     case monthly
     case workspace
+
+    public var capDisplayLabel: String {
+        switch self {
+        case .daily:
+            return String(localized: "daily")
+        case .monthly:
+            return String(localized: "monthly")
+        case .workspace:
+            return String(localized: "workspace")
+        }
+    }
 }
 
 public enum ManagedAIUsageThresholdStatus: String, Equatable, Sendable {
@@ -329,5 +415,49 @@ public struct ManagedAIUsageThresholdRow: Identifiable, Equatable, Sendable {
         let major = cents / 100
         let format = major > 0 && major < 0.01 ? "%.4f" : "%.2f"
         return "\(currencyCode) \(String(format: format, major))"
+    }
+}
+
+public struct ManagedAIUsageCapProjection: Equatable, Sendable {
+    public var scope: ManagedAIUsageThresholdScope
+    public var usedCents: Double
+    public var pendingCostCents: Double
+    public var projectedCents: Double
+    public var capCents: Int
+    public var currencyCode: String
+
+    public init(
+        scope: ManagedAIUsageThresholdScope,
+        usedCents: Double,
+        pendingCostCents: Double,
+        capCents: Int,
+        currencyCode: String
+    ) {
+        self.scope = scope
+        self.usedCents = Self.normalizedCost(usedCents)
+        self.pendingCostCents = Self.normalizedCost(pendingCostCents)
+        self.projectedCents = self.usedCents + self.pendingCostCents
+        self.capCents = max(0, capCents)
+        self.currencyCode = ManagedAIUsageLedgerTotals.normalizedCurrencyCode(currencyCode)
+    }
+
+    public var blockingReason: String {
+        String(
+            format: String(localized: "Managed AI %@ cap would be exceeded. Current %@ plus this run %@ exceeds %@."),
+            scope.capDisplayLabel,
+            currencyLabel(fromCents: usedCents),
+            currencyLabel(fromCents: pendingCostCents),
+            currencyLabel(fromCents: Double(capCents))
+        )
+    }
+
+    private func currencyLabel(fromCents cents: Double) -> String {
+        let major = cents / 100
+        let format = major > 0 && major < 0.01 ? "%.4f" : "%.2f"
+        return "\(currencyCode) \(String(format: format, major))"
+    }
+
+    private static func normalizedCost(_ value: Double) -> Double {
+        value.isFinite ? max(0, value) : 0
     }
 }

@@ -107,6 +107,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("let executionReceiptStore = try? makeExecutionReceiptStore()"))
         XCTAssertTrue(appSource.contains("executionReceiptStore: executionReceiptStore"))
         XCTAssertTrue(appSource.contains("managedAIUsageLedgerStore: SQLiteManagedAIUsageLedgerStore(connection: connection)"))
+        XCTAssertTrue(appSource.contains("managedAIBillingSettingsProvider: { loadRuntimeAppSettings().managedAIBilling }"))
         XCTAssertTrue(appSource.contains("return AssistantQueueExecutionCoordinator("))
         XCTAssertTrue(coreSource.contains("@Published public private(set) var assistantQueueSnapshot: AssistantQueueSnapshot"))
         XCTAssertTrue(coreSource.contains("AssistantQueueReadModel.snapshot("))

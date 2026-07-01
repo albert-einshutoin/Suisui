@@ -8,6 +8,83 @@ public enum ManagedAIUsageLedgerStoreError: Error, Equatable, Sendable {
 public protocol ManagedAIUsageLedgerStore: Sendable {
     func record(_ entry: ManagedAIUsageLedgerEntry) throws
     func list(limit: Int) throws -> [ManagedAIUsageLedgerEntry]
+    func usageTotals(
+        currencyCode: String,
+        referenceDate: Date,
+        calendar: Calendar
+    ) throws -> ManagedAIUsageLedgerTotals
+}
+
+public struct ManagedAIUsageLedgerTotals: Equatable, Sendable {
+    public var currencyCode: String
+    public var dailyCostCents: Double
+    public var monthlyCostCents: Double
+    public var workspaceCostCents: Double
+
+    public init(
+        currencyCode: String,
+        dailyCostCents: Double = 0,
+        monthlyCostCents: Double = 0,
+        workspaceCostCents: Double = 0
+    ) {
+        self.currencyCode = Self.normalizedCurrencyCode(currencyCode)
+        self.dailyCostCents = Self.normalizedCost(dailyCostCents)
+        self.monthlyCostCents = Self.normalizedCost(monthlyCostCents)
+        self.workspaceCostCents = Self.normalizedCost(workspaceCostCents)
+    }
+
+    public static func from(
+        entries: [ManagedAIUsageLedgerEntry],
+        currencyCode: String,
+        referenceDate: Date,
+        calendar: Calendar
+    ) -> ManagedAIUsageLedgerTotals {
+        let normalizedCurrencyCode = normalizedCurrencyCode(currencyCode)
+        let sameCurrencyManagedEntries = entries.filter { entry in
+            entry.billingMode == .soloPMManaged && entry.currencyCode == normalizedCurrencyCode
+        }
+        let dayInterval = calendar.dateInterval(of: .day, for: referenceDate)
+        let monthInterval = calendar.dateInterval(of: .month, for: referenceDate)
+
+        return ManagedAIUsageLedgerTotals(
+            currencyCode: normalizedCurrencyCode,
+            dailyCostCents: sameCurrencyManagedEntries
+                .filter { dayInterval?.contains($0.occurredAt) == true }
+                .reduce(0) { $0 + $1.costCents },
+            monthlyCostCents: sameCurrencyManagedEntries
+                .filter { monthInterval?.contains($0.occurredAt) == true }
+                .reduce(0) { $0 + $1.costCents },
+            workspaceCostCents: sameCurrencyManagedEntries.reduce(0) { $0 + $1.costCents }
+        )
+    }
+
+    static func normalizedCurrencyCode(_ value: String) -> String {
+        let redacted = AssistantQueueCostPreview.redactedMetadataText(value)
+        let trimmed = redacted.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return trimmed.isEmpty ? "USD" : trimmed
+    }
+
+    private static func normalizedCost(_ value: Double) -> Double {
+        value.isFinite ? max(0, value) : 0
+    }
+}
+
+public extension ManagedAIUsageLedgerStore {
+    func usageTotals(
+        currencyCode: String,
+        referenceDate: Date,
+        calendar: Calendar
+    ) throws -> ManagedAIUsageLedgerTotals {
+        // Test doubles can rely on the list contract. The production SQLite
+        // store overrides this with aggregate SQL so workspace caps are not
+        // limited by the read-model pagination used by UI history.
+        ManagedAIUsageLedgerTotals.from(
+            entries: try list(limit: 500),
+            currencyCode: currencyCode,
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+    }
 }
 
 public struct ManagedAIUsageLedgerEntry: Codable, Equatable, Sendable {
@@ -182,6 +259,38 @@ public final class SQLiteManagedAIUsageLedgerStore: ManagedAIUsageLedgerStore, @
         ).map(entry(row:))
     }
 
+    public func usageTotals(
+        currencyCode: String,
+        referenceDate: Date,
+        calendar: Calendar
+    ) throws -> ManagedAIUsageLedgerTotals {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let normalizedCurrencyCode = ManagedAIUsageLedgerTotals.normalizedCurrencyCode(currencyCode)
+        let dayInterval = calendar.dateInterval(of: .day, for: referenceDate)
+        let monthInterval = calendar.dateInterval(of: .month, for: referenceDate)
+        let baseCondition = """
+            billing_mode = '\(Self.escape(AssistantQueueCostBillingMode.soloPMManaged.rawValue))'
+            AND currency_code = '\(Self.escape(normalizedCurrencyCode))'
+            """
+        let dailyCondition = intervalCondition(
+            baseCondition: baseCondition,
+            interval: dayInterval
+        )
+        let monthlyCondition = intervalCondition(
+            baseCondition: baseCondition,
+            interval: monthInterval
+        )
+
+        return ManagedAIUsageLedgerTotals(
+            currencyCode: normalizedCurrencyCode,
+            dailyCostCents: try sumCostCents(where: dailyCondition),
+            monthlyCostCents: try sumCostCents(where: monthlyCondition),
+            workspaceCostCents: try sumCostCents(where: baseCondition)
+        )
+    }
+
     private func entry(row: [String: String]) throws -> ManagedAIUsageLedgerEntry {
         guard let rawBillingMode = row["billing_mode"],
               let billingMode = AssistantQueueCostBillingMode(rawValue: rawBillingMode) else {
@@ -227,6 +336,31 @@ public final class SQLiteManagedAIUsageLedgerStore: ManagedAIUsageLedgerStore, @
             return nil
         }
         return Int(value)
+    }
+
+    private func sumCostCents(where condition: String) throws -> Double {
+        let rows = try connection.queryRows(
+            """
+            SELECT COALESCE(SUM(cost_cents), 0) AS total
+            FROM managed_ai_usage_ledger
+            WHERE \(condition);
+            """
+        )
+        return Double(rows.first?["total"] ?? "0") ?? 0
+    }
+
+    private func intervalCondition(
+        baseCondition: String,
+        interval: DateInterval?
+    ) -> String {
+        guard let interval else {
+            return "\(baseCondition) AND 1 = 0"
+        }
+        return """
+            \(baseCondition)
+            AND occurred_at >= '\(Self.escape(Self.timestamp(interval.start)))'
+            AND occurred_at < '\(Self.escape(Self.timestamp(interval.end)))'
+            """
     }
 
     private static func sqlString(_ value: String?) -> String {

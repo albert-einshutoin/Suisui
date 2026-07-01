@@ -1091,10 +1091,14 @@
 "Latest Daily Usage" = "最新の日次使用量";
 "Latest Monthly Usage" = "最新の月次使用量";
 "Workspace Receipt Usage" = "ワークスペースレシート使用量";
+"daily" = "日次";
+"monthly" = "月次";
+"workspace" = "ワークスペース";
 "%@ used" = "%@ 使用済み";
 "%@ cap" = "%@ 上限";
 "%@ remaining" = "%@ 残り";
 "%@ exceeded" = "%@ 超過";
+"Managed AI %@ cap would be exceeded. Current %@ plus this run %@ exceeds %@." = "管理AIの%@上限を超過します。現在 %@ に今回の実行 %@ を加えると %@ を超えます。";
 "Shows receipt-derived token and cost usage without raw prompts, receipt identifiers, or provider secrets." = "レシート由来のトークンとコスト使用量を、rawプロンプト、レシートID、プロバイダー秘密情報なしで表示します。";
 "Recent audit receipts" = "最近の監査レシート";
 "Recent audit receipts (UTC buckets, up to %d receipts)" = "最近の監査レシート（UTC区切り、最大%d件）";
@@ -1161,6 +1165,7 @@
 "Monthly threshold" = "月次しきい値";
 "Workspace threshold" = "ワークスペースしきい値";
 "Sets the per-run cap used by managed AI cost previews." = "管理AIのコストプレビューで使う1回あたり上限を設定します。";
+"Per-run cap blocks managed previews; daily, monthly, and workspace caps are enforced from the managed usage ledger before execution." = "1回あたり上限は管理AIプレビューをブロックし、日次、月次、ワークスペース上限は実行前に管理AI使用台帳から強制適用されます。";
 "Per-run cap blocks managed previews; daily, monthly, and workspace caps are receipt usage thresholds until billing ledger enforcement lands." = "1回あたり上限は管理AIプレビューをブロックします。日次、月次、ワークスペース上限は課金台帳の強制適用が入るまでレシート使用量のしきい値として扱います。";
 "Not set" = "未設定";
 "USD %.2f" = "USD %.2f";

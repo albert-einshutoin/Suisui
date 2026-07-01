@@ -163,6 +163,10 @@ public enum AssistantQueueStateMachine {
         return running
     }
 
+    public static func hasCurrentApproval(_ item: AssistantQueueItem) -> Bool {
+        item.approval?.reviewedContentFingerprint == item.contentFingerprint
+    }
+
     public static func markDone(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
         guard item.state == .running else {
             throw AssistantQueueTransitionError.runningRequiredBeforeCompletion
@@ -177,6 +181,17 @@ public enum AssistantQueueStateMachine {
     public static func markFailed(_ item: AssistantQueueItem, reason: String) throws -> AssistantQueueItem {
         guard item.state == .running else {
             throw AssistantQueueTransitionError.runningRequiredBeforeCompletion
+        }
+
+        var failed = item
+        failed.state = .failed
+        failed.blockingReason = reason
+        return failed
+    }
+
+    public static func markExecutionBlocked(_ item: AssistantQueueItem, reason: String) throws -> AssistantQueueItem {
+        guard item.state == .approved || item.state == .running else {
+            throw AssistantQueueTransitionError.approvalRequiredBeforeRunning
         }
 
         var failed = item
