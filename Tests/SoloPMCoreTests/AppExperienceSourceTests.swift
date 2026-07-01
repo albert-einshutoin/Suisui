@@ -2742,9 +2742,40 @@ final class AppExperienceSourceTests: XCTestCase {
         let nextFactoryStart = try XCTUnwrap(appSource.range(of: "private static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
         let voiceFactory = String(appSource[voiceFactoryStart.lowerBound..<nextFactoryStart.lowerBound])
 
-        XCTAssertTrue(voiceFactory.contains("assistantQueueStore = try SQLiteAssistantQueueStore(connection: migratedConnection())"))
+        XCTAssertTrue(voiceFactory.contains("let connection = try migratedConnection()"))
+        XCTAssertTrue(voiceFactory.contains("assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)"))
         XCTAssertTrue(voiceFactory.contains("assistantQueueStore: assistantQueueStore"))
         XCTAssertFalse(voiceFactory.contains("assistantQueueStore: nil"))
+    }
+
+    func testVoiceRuntimeInjectsFailClosedDevelopmentProjectProvider() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let voiceFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeVoiceCaptureViewModel()"))
+        let nextFactoryStart = try XCTUnwrap(appSource.range(of: "private static func loadRuntimeSettings()", range: voiceFactoryStart.upperBound..<appSource.endIndex))
+        let voiceFactory = String(appSource[voiceFactoryStart.lowerBound..<nextFactoryStart.lowerBound])
+
+        XCTAssertTrue(voiceFactory.contains("let projectStore = SQLiteProjectStore(connection: connection)"))
+        XCTAssertTrue(voiceFactory.contains("developmentProjectProvider = {"))
+        XCTAssertTrue(voiceFactory.contains("approvedDevelopmentProject(from: projectStore)"))
+        XCTAssertTrue(voiceFactory.contains("developmentProjectProvider: developmentProjectProvider"))
+        XCTAssertTrue(appSource.contains("VoiceDevelopmentProjectSelection.uniqueApprovedActiveProject(from: projects)"))
+    }
+
+    func testVoiceAssistantQueuePanelRendersWithoutPlanningResponse() throws {
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
+        let queuePanelStart = try XCTUnwrap(appSource.range(of: "if let item = viewModel.assistantQueueItem"))
+        let responsePanelStart = try XCTUnwrap(appSource.range(of: "if let response = viewModel.planningResponse", range: queuePanelStart.upperBound..<appSource.endIndex))
+        let queuePanelSource = String(appSource[queuePanelStart.lowerBound..<responsePanelStart.lowerBound])
+        let responsePanelEnd = appSource.index(
+            responsePanelStart.lowerBound,
+            offsetBy: 160,
+            limitedBy: appSource.endIndex
+        ) ?? appSource.endIndex
+        let responsePanelSource = String(appSource[responsePanelStart.lowerBound..<responsePanelEnd])
+
+        XCTAssertTrue(queuePanelSource.contains("AssistantQueuePanel("))
+        XCTAssertFalse(responsePanelSource.contains("AssistantQueuePanel("))
+        XCTAssertTrue(responsePanelSource.contains("ActionPlanPreview(response: response)"))
     }
 
     func testReviewActionButtonsDoNotDropViewModelErrors() throws {
