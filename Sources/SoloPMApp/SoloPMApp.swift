@@ -607,11 +607,14 @@ private struct VoiceCaptureView: View {
     }
 
     private func postDailyPlanningReviewRequest(_ request: VoiceDailyPlanningReviewRequest) {
-        SoloPMVoiceDailyPlanningReviewBridge.storePendingRequest(request)
         openWindow(id: "project-board")
+        guard let bridgeRequest = SoloPMVoiceDailyPlanningReviewBridge.storePendingRequest(request) else {
+            return
+        }
         NotificationCenter.default.post(
             name: .soloPMVoiceDailyPlanningReviewRequested,
-            object: nil
+            object: nil,
+            userInfo: [SoloPMVoiceDailyPlanningReviewBridge.requestUserInfoKey: bridgeRequest]
         )
     }
 

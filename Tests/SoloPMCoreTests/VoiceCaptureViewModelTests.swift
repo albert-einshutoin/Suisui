@@ -571,6 +571,35 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.phase, .reviewReady)
     }
 
+    func testDailyPlanningReviewTomorrowContextWithoutDeferPhraseStaysReviewOnly() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-should-not-run",
+                userInput: "今日のレビューでおすすめを確認して、明日の予定も見せて",
+                summary: "Should not call provider",
+                actions: [PlanAction(id: "action-1", tool: .taskList)],
+                riskLevel: .read,
+                requiresApproval: false
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("今日のレビューでおすすめを確認して、明日の予定も見せて")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertEqual(viewModel.routingResult?.intent, .dailyPlanningReview)
+        XCTAssertEqual(provider.requests.count, 0)
+        XCTAssertNil(viewModel.dailyPlanningReviewRequest?.requestedActionDraftKind)
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+    }
+
     func testOpenTodayReviewCreatesLocalRequestWithoutProviderCall() async {
         let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
             providerID: "fake",

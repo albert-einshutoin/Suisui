@@ -558,7 +558,14 @@ struct ProjectBoardView: View {
     }
 
     private func handleVoiceDailyPlanningReviewRequest(_ notification: Notification) {
-        guard let request = SoloPMVoiceDailyPlanningReviewBridge.consumePendingRequest() else {
+        let request: SoloPMVoiceDailyPlanningReviewBridge.Request?
+        if SoloPMVoiceDailyPlanningReviewBridge.hasRequestPayload(notification) {
+            request = SoloPMVoiceDailyPlanningReviewBridge.consumeRequest(from: notification)
+        } else {
+            request = SoloPMVoiceDailyPlanningReviewBridge.consumePendingRequest()
+        }
+
+        guard let request else {
             return
         }
         handleVoiceDailyPlanningReviewRequest(
@@ -1094,22 +1101,55 @@ enum SoloPMAssistantQueueBridge {
 @MainActor
 enum SoloPMVoiceDailyPlanningReviewBridge {
     struct Request: Equatable {
+        var id: UUID
         var sourceTranscript: String
         var actionDraftKind: DailyPlanningActionDraftKind?
     }
 
+    static let requestUserInfoKey = "request"
     private static var pendingRequest: Request?
+    private static var consumedRequestIDs: Set<UUID> = []
 
-    static func storePendingRequest(_ request: VoiceDailyPlanningReviewRequest) {
-        pendingRequest = Request(
+    static func storePendingRequest(_ request: VoiceDailyPlanningReviewRequest) -> Request? {
+        guard !consumedRequestIDs.contains(request.id) else {
+            return nil
+        }
+        let bridgeRequest = Request(
+            id: request.id,
             sourceTranscript: normalized(request.sourceTranscript),
             actionDraftKind: request.requestedActionDraftKind
         )
+        pendingRequest = bridgeRequest
+        return bridgeRequest
     }
 
     static func consumePendingRequest() -> Request? {
-        defer { pendingRequest = nil }
-        return pendingRequest
+        guard let request = pendingRequest else {
+            return nil
+        }
+        return consume(request)
+    }
+
+    static func consumeRequest(from notification: Notification) -> Request? {
+        guard let request = notification.userInfo?[requestUserInfoKey] as? Request else {
+            return nil
+        }
+        return consume(request)
+    }
+
+    static func hasRequestPayload(_ notification: Notification) -> Bool {
+        notification.userInfo?[requestUserInfoKey] is Request
+    }
+
+    private static func consume(_ request: Request) -> Request? {
+        if pendingRequest?.id == request.id {
+            pendingRequest = nil
+        }
+        guard !consumedRequestIDs.contains(request.id) else {
+            return nil
+        }
+        consumedRequestIDs.insert(request.id)
+        return request
     }
 
     private static func normalized(_ sourceTranscript: String) -> String {

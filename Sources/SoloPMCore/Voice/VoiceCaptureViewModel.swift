@@ -403,16 +403,37 @@ public final class VoiceCaptureViewModel: ObservableObject {
         let folded = route.normalizedTranscript
             .folding(options: [.caseInsensitive, .widthInsensitive, .diacriticInsensitive], locale: .current)
             .lowercased()
-        let hasRecommendationTarget = containsAny(
-            ["recommended task", "recommended", "recommendation", "おすすめ", "推奨"],
+        let requestsStart = containsAnyExplicitPhrase(
+            [
+                "start recommended",
+                "start the recommended",
+                "begin recommended",
+                "begin the recommended",
+                "おすすめを開始",
+                "おすすめを始め",
+                "おすすめに着手",
+                "推奨タスクを開始",
+                "推奨タスクを始め",
+                "推奨タスクに着手"
+            ],
             in: folded
         )
-        let requestsStart = containsAny(
-            ["start recommended", "start the recommended", "start", "begin", "開始", "始め", "着手"],
-            in: folded
-        )
-        let requestsDefer = containsAny(
-            ["defer recommended", "defer", "tomorrow", "明日", "明日に回", "明日へ", "延期", "後回し"],
+        let requestsDefer = containsAnyExplicitPhrase(
+            [
+                "defer recommended to tomorrow",
+                "defer recommended task",
+                "defer the recommended task",
+                "defer the recommended task to tomorrow",
+                "move recommended to tomorrow",
+                "move recommended task to tomorrow",
+                "move the recommended task to tomorrow",
+                "おすすめを明日に回",
+                "おすすめを明日へ",
+                "おすすめを延期",
+                "推奨タスクを明日に回",
+                "推奨タスクを明日へ",
+                "推奨タスクを延期"
+            ],
             in: folded
         )
         let rejectsAction = containsAny(
@@ -423,15 +444,59 @@ public final class VoiceCaptureViewModel: ObservableObject {
         // Voice Daily Planning may prefill an approval item, but ambiguous
         // phrases must stay as a read-only review so the assistant never turns
         // a vague planning prompt into a write-capable Queue action.
-        guard hasRecommendationTarget, rejectsAction == false, requestsStart != requestsDefer else {
+        guard rejectsAction == false, requestsStart != requestsDefer else {
             return nil
         }
         return requestsStart ? .startRecommended : .deferRecommendedToTomorrow
     }
 
+    private static func containsAnyExplicitPhrase(_ phrases: [String], in foldedTranscript: String) -> Bool {
+        phrases.contains { phrase in
+            guard usesOnlyASCIILettersOrSpaces(phrase) else {
+                return foldedTranscript.contains(phrase)
+            }
+            return containsLatinPhrase(phrase, in: foldedTranscript)
+        }
+    }
+
     private static func containsAny(_ needles: [String], in foldedTranscript: String) -> Bool {
         needles.contains { needle in
             foldedTranscript.contains(needle)
+        }
+    }
+
+    private static func containsLatinPhrase(_ phrase: String, in foldedTranscript: String) -> Bool {
+        var searchStart = foldedTranscript.startIndex
+        while let range = foldedTranscript.range(of: phrase, range: searchStart..<foldedTranscript.endIndex) {
+            if isLatinPhraseBoundary(before: range.lowerBound, after: range.upperBound, in: foldedTranscript) {
+                return true
+            }
+            searchStart = range.upperBound
+        }
+        return false
+    }
+
+    private static func isLatinPhraseBoundary(
+        before lowerBound: String.Index,
+        after upperBound: String.Index,
+        in text: String
+    ) -> Bool {
+        let beforeIsBoundary = lowerBound == text.startIndex
+            || isLatinPhraseBoundaryCharacter(text[text.index(before: lowerBound)])
+        let afterIsBoundary = upperBound == text.endIndex
+            || isLatinPhraseBoundaryCharacter(text[upperBound])
+        return beforeIsBoundary && afterIsBoundary
+    }
+
+    private static func isLatinPhraseBoundaryCharacter(_ character: Character) -> Bool {
+        character.unicodeScalars.allSatisfy { scalar in
+            CharacterSet.alphanumerics.contains(scalar) == false
+        }
+    }
+
+    private static func usesOnlyASCIILettersOrSpaces(_ phrase: String) -> Bool {
+        phrase.unicodeScalars.allSatisfy { scalar in
+            scalar.value == 32 || (scalar.value >= 97 && scalar.value <= 122)
         }
     }
 
