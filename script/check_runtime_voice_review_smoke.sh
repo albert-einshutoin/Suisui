@@ -21,6 +21,7 @@ KEEP_DATABASE="${SOLOPM_RUNTIME_VOICE_REVIEW_KEEP_DATABASE:-0}"
 SQLITE3="${SQLITE3:-sqlite3}"
 WINDOW_WIDTH="${SOLOPM_RUNTIME_VOICE_REVIEW_WINDOW_WIDTH:-760}"
 WINDOW_HEIGHT="${SOLOPM_RUNTIME_VOICE_REVIEW_WINDOW_HEIGHT:-640}"
+daily_planning_seed_task_id=""
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_RUNTIME_VOICE_REVIEW_TIMEOUT_SECONDS must be a positive integer" >&2
@@ -436,6 +437,24 @@ verify_sql_value() {
   fi
 }
 
+seed_daily_planning_task() {
+  "$SQLITE3" "$database_path" <<'SQL'
+INSERT INTO projects (title, status, priority, deadline, workspace_path, tags_json, source_command, created_at, updated_at)
+VALUES ('Runtime Daily Planning Project', 'active', 'high', NULL, NULL, '[]', 'runtime-voice-review-smoke', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+INSERT INTO tasks (project_id, title, status, detail, due_at, completed_at, priority, source_command, created_at, updated_at)
+VALUES (last_insert_rowid(), 'Runtime Daily Planning Recommended', 'planned', 'Seeded for local Daily Planning voice queue smoke', '2026-01-01T09:00:00Z', NULL, 'high', 'runtime-voice-review-smoke', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+SQL
+  daily_planning_seed_task_id="$(sqlite_scalar "SELECT id FROM tasks WHERE title='Runtime Daily Planning Recommended' AND source_command='runtime-voice-review-smoke' ORDER BY id DESC LIMIT 1;")"
+  if [[ -z "$daily_planning_seed_task_id" ]]; then
+    echo "BLOCKER: daily planning seed task id was not written" >&2
+    return 1
+  fi
+  wait_for_sql_value \
+    "1" \
+    "daily planning seed task" \
+    "SELECT count(*) FROM tasks WHERE title='Runtime Daily Planning Recommended' AND source_command='runtime-voice-review-smoke';"
+}
+
 printf "== Runtime voice review smoke ==\n"
 ./script/build_and_run.sh --build-only
 
@@ -461,3 +480,45 @@ verify_sql_value "0" "task writes before approval" "SELECT count(*) FROM tasks;"
 verify_sql_value "0" "review execution before approval" "SELECT count(*) FROM audit_logs WHERE category='review' OR action LIKE 'execution.%';"
 
 printf "OK: runtime voice review smoke verified fail-closed planning audit and no pre-approval writes\n"
+
+seed_daily_planning_task
+setTextAreaContaining "voice-command-input" "Open Today Review and start the recommended task"
+pressControlContaining "voice-command-generate-plan"
+wait_for_sql_value \
+  "1" \
+  "daily planning Assistant Queue draft" \
+  "SELECT count(*) FROM assistant_queue_items WHERE id LIKE 'action-plan:daily-planning:%:startRecommended:task:${daily_planning_seed_task_id}' AND payload_kind='action_plan' AND state='waitingReview' AND risk_level='write' AND source_transcript='Open Today Review and start the recommended task' AND approval_json IS NULL;"
+verify_sql_value \
+  "1" \
+  "daily planning task remains planned before approval" \
+  "SELECT count(*) FROM tasks WHERE title='Runtime Daily Planning Recommended' AND source_command='runtime-voice-review-smoke' AND status='planned';"
+verify_sql_value \
+  "1" \
+  "no extra daily planning tasks before approval" \
+  "SELECT count(*) FROM tasks;"
+verify_sql_value \
+  "1" \
+  "no extra daily planning projects before approval" \
+  "SELECT count(*) FROM projects;"
+verify_sql_value \
+  "1" \
+  "only one daily planning queue draft before approval" \
+  "SELECT count(*) FROM assistant_queue_items;"
+verify_sql_value \
+  "0" \
+  "daily planning review execution before approval" \
+  "SELECT count(*) FROM audit_logs WHERE category='review' OR action LIKE 'execution.%';"
+verify_sql_value \
+  "1" \
+  "planning audit did not start again for local Daily Planning handoff" \
+  "SELECT count(*) FROM audit_logs WHERE category='planning' AND action='generate_plan' AND status='started';"
+verify_sql_value \
+  "1" \
+  "planning audit failure count unchanged after local Daily Planning handoff" \
+  "SELECT count(*) FROM audit_logs WHERE category='planning' AND action='generate_plan' AND status='failed';"
+verify_sql_value \
+  "0" \
+  "planning audit success count unchanged after local Daily Planning handoff" \
+  "SELECT count(*) FROM audit_logs WHERE category='planning' AND action='generate_plan' AND status='succeeded';"
+
+printf "OK: runtime voice review smoke verified local Daily Planning queue handoff\n"
