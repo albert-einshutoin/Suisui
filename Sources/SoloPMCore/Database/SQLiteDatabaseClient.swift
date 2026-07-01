@@ -709,6 +709,32 @@ public enum CoreMigrations {
                     ON artifacts(IFNULL(project_id, -1), IFNULL(task_id, -1), expected_path);
                     """
                 )
+            },
+            DatabaseMigration(id: "0018_create_managed_ai_usage_ledger") { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS managed_ai_usage_ledger (
+                        source_receipt_digest TEXT PRIMARY KEY NOT NULL,
+                        assistant_queue_item_digest TEXT,
+                        billing_mode TEXT NOT NULL CHECK(billing_mode IN ('solopm_managed')),
+                        provider TEXT NOT NULL,
+                        model_name TEXT NOT NULL,
+                        usage_state TEXT NOT NULL CHECK(usage_state IN ('measured', 'estimated', 'unknown', 'unavailable')),
+                        input_tokens INTEGER CHECK(input_tokens IS NULL OR input_tokens >= 0),
+                        output_tokens INTEGER CHECK(output_tokens IS NULL OR output_tokens >= 0),
+                        cost_cents REAL NOT NULL CHECK(cost_cents >= 0),
+                        currency_code TEXT NOT NULL,
+                        occurred_at TEXT NOT NULL,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_managed_ai_usage_ledger_occurred_at
+                    ON managed_ai_usage_ledger(occurred_at);
+
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_managed_ai_usage_ledger_queue_digest
+                    ON managed_ai_usage_ledger(assistant_queue_item_digest);
+                    """
+                )
             }
         ]
     }

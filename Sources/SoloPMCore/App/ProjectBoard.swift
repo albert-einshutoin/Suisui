@@ -4296,6 +4296,11 @@ public final class ProjectBoardViewModel: ObservableObject {
                 return "Assistant Queue execution finished, but the execution receipt could not be saved. Fix receipt storage before retrying."
             }
             return "Assistant Queue execution finished, but receipt storage and queue state update both failed. Check local data storage before retrying."
+        case AssistantQueueExecutionError.managedUsageLedgerPersistenceFailed(let queueStateMarkedFailed):
+            if queueStateMarkedFailed {
+                return "Assistant Queue execution finished, but managed AI usage could not be saved. Fix billing ledger storage before retrying."
+            }
+            return "Assistant Queue execution finished, but managed AI usage and queue state update both failed. Check local billing storage before retrying."
         case AssistantQueueTransitionError.approvalRequiredBeforeRunning:
             return "Approve this Assistant Queue item before running it."
         case AssistantQueueTransitionError.costPreviewRequiredBeforeApproval,

@@ -205,7 +205,10 @@ public struct AssistantQueueCostPreview: Codable, Equatable, Sendable {
         case .localOnly, .userProviderBilled:
             return true
         case .soloPMManaged:
-            return state == .estimated && capStatus != .wouldExceedLimit
+            return state == .estimated
+                && estimatedCostCents != nil
+                && currencyCode != nil
+                && capStatus != .wouldExceedLimit
         }
     }
 

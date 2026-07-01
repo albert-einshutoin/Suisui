@@ -56,6 +56,30 @@ final class CostPreviewTests: XCTestCase {
         XCTAssertFalse(preview.allowsApprovalAndRun)
     }
 
+    func testManagedEstimatedPreviewRequiresCostAndCurrencyBeforeApproval() {
+        let missingCost = AssistantQueueCostPreview(
+            billingMode: .soloPMManaged,
+            state: .estimated,
+            usage: AssistantQueueCostUsage(inputTokens: 1_000, outputTokens: 500),
+            estimatedCostCents: nil,
+            currencyCode: "USD",
+            model: ExecutionReceiptModel(provider: "openai", name: "gpt-test"),
+            capStatus: .withinLimit
+        )
+        let missingCurrency = AssistantQueueCostPreview(
+            billingMode: .soloPMManaged,
+            state: .estimated,
+            usage: AssistantQueueCostUsage(inputTokens: 1_000, outputTokens: 500),
+            estimatedCostCents: 0.25,
+            currencyCode: nil,
+            model: ExecutionReceiptModel(provider: "openai", name: "gpt-test"),
+            capStatus: .withinLimit
+        )
+
+        XCTAssertFalse(missingCost.allowsApprovalAndRun)
+        XCTAssertFalse(missingCurrency.allowsApprovalAndRun)
+    }
+
     func testLocalAndBYOKPreviewsNeverClaimSoloPMManagedCharges() {
         let local = AssistantQueueCostPreview.localOnly()
         let byok = AssistantQueueCostPreview.userProviderBilled(

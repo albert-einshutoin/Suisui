@@ -246,6 +246,139 @@ final class AssistantQueueExecutionTests: XCTestCase {
         XCTAssertEqual(result.receipt.model, ExecutionReceiptModel(provider: "openai", name: "gpt-test"))
     }
 
+    func testCoordinatorRecordsSoloPMManagedUsageLedgerEntryAfterReceiptPersistence() throws {
+        let queueStore = try makeQueueStore()
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let ledgerStore = RecordingManagedAIUsageLedgerStore()
+        let preview = AssistantQueueCostRateCard(
+            provider: "openai sk-secret /Users/alice/private",
+            modelName: "gpt-managed",
+            currencyCode: "USD",
+            inputTokenCentsPerMillion: 100,
+            outputTokenCentsPerMillion: 300
+        ).preview(inputTokens: 1_000, outputTokens: 500, hardCapCents: 2)
+        let approved = try AssistantQueueStateMachine.approve(
+            makeActionPlanItem(costPreview: preview),
+            reviewerID: "local-user"
+        )
+        try queueStore.save(approved)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created Launch checklist")
+            }
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            managedAIUsageLedgerStore: ledgerStore,
+            runIDProvider: { "run-queue-managed-ledger" },
+            now: { Date(timeIntervalSince1970: 126) }
+        )
+
+        let result = try coordinator.execute(id: approved.id)
+
+        let entry = try XCTUnwrap(ledgerStore.entries.first)
+        XCTAssertEqual(ledgerStore.entries.count, 1)
+        XCTAssertEqual(entry.sourceReceiptDigest, ManagedAIUsageLedgerEntry.digestIdentifier(kind: "receipt", value: result.receipt.id))
+        XCTAssertEqual(entry.assistantQueueItemDigest, ManagedAIUsageLedgerEntry.digestIdentifier(kind: "assistant_queue_item", value: approved.id))
+        XCTAssertEqual(entry.billingMode, .soloPMManaged)
+        XCTAssertFalse(entry.provider.contains("sk-secret"))
+        XCTAssertFalse(entry.provider.contains("/Users/alice"))
+        XCTAssertEqual(entry.modelName, "gpt-managed")
+        XCTAssertEqual(entry.inputTokens, 1_000)
+        XCTAssertEqual(entry.outputTokens, 500)
+        XCTAssertEqual(entry.costCents, 0.25, accuracy: 0.0001)
+        XCTAssertEqual(entry.currencyCode, "USD")
+        XCTAssertEqual(entry.usageState, .estimated)
+    }
+
+    func testCoordinatorDoesNotRecordProviderBilledUsageInManagedLedger() throws {
+        let queueStore = try makeQueueStore()
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let ledgerStore = RecordingManagedAIUsageLedgerStore()
+        let preview = AssistantQueueCostPreview.userProviderBilled(
+            provider: "openai.chat_completions",
+            modelName: "gpt-5.5",
+            observedUsage: ExecutionReceiptUsage(inputTokens: 900, outputTokens: 120, isEstimated: false)
+        )
+        let approved = try AssistantQueueStateMachine.approve(
+            makeActionPlanItem(costPreview: preview),
+            reviewerID: "local-user"
+        )
+        try queueStore.save(approved)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created Launch checklist")
+            }
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            managedAIUsageLedgerStore: ledgerStore,
+            runIDProvider: { "run-queue-provider-ledger" },
+            now: { Date(timeIntervalSince1970: 127) }
+        )
+
+        _ = try coordinator.execute(id: approved.id)
+
+        XCTAssertTrue(ledgerStore.entries.isEmpty)
+    }
+
+    func testCoordinatorMarksFailedWhenManagedUsageLedgerCannotBePersisted() throws {
+        let queueStore = try makeQueueStore()
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let preview = makeCostPreview(inputTokens: 1_000, outputTokens: 500)
+        let approved = try AssistantQueueStateMachine.approve(
+            makeActionPlanItem(costPreview: preview),
+            reviewerID: "local-user"
+        )
+        try queueStore.save(approved)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created Launch checklist")
+            }
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            managedAIUsageLedgerStore: FailingManagedAIUsageLedgerStore(),
+            runIDProvider: { "run-queue-managed-ledger-failure" },
+            now: { Date(timeIntervalSince1970: 128) }
+        )
+
+        XCTAssertThrowsError(try coordinator.execute(id: approved.id)) { error in
+            XCTAssertEqual(
+                error as? AssistantQueueExecutionError,
+                .managedUsageLedgerPersistenceFailed(queueStateMarkedFailed: true)
+            )
+        }
+        let failed = try queueStore.get(id: approved.id)
+        XCTAssertEqual(failed.state, .failed)
+        XCTAssertEqual(
+            failed.blockingReason,
+            "Execution completed, but the managed AI usage ledger could not be saved. Fix billing ledger storage before retrying."
+        )
+        XCTAssertEqual(receiptStore.receipts.count, 1)
+    }
+
     func testCoordinatorCopiesMeasuredProviderUsageAndBillingContextIntoReceipt() throws {
         let queueStore = try makeQueueStore()
         let receiptStore = InMemoryExecutionReceiptStore()
@@ -1606,6 +1739,32 @@ private final class FailingExecutionReceiptStore: ExecutionReceiptStore, @unchec
         visibleSurface: ExecutionReceiptSurface,
         limit: Int
     ) throws -> [ExecutionReceipt] {
+        []
+    }
+}
+
+private final class RecordingManagedAIUsageLedgerStore: ManagedAIUsageLedgerStore, @unchecked Sendable {
+    private(set) var entries: [ManagedAIUsageLedgerEntry] = []
+
+    func record(_ entry: ManagedAIUsageLedgerEntry) throws {
+        entries.append(entry)
+    }
+
+    func list(limit: Int) throws -> [ManagedAIUsageLedgerEntry] {
+        Array(entries.prefix(limit))
+    }
+}
+
+private final class FailingManagedAIUsageLedgerStore: ManagedAIUsageLedgerStore, @unchecked Sendable {
+    enum Error: Swift.Error, Equatable {
+        case recordFailed
+    }
+
+    func record(_ entry: ManagedAIUsageLedgerEntry) throws {
+        throw Error.recordFailed
+    }
+
+    func list(limit: Int) throws -> [ManagedAIUsageLedgerEntry] {
         []
     }
 }
