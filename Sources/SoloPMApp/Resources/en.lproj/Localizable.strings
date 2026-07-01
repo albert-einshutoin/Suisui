@@ -594,6 +594,7 @@
 "Today assistant suggested a Reminders draft for 1 task." = "Today assistant suggested a Reminders draft for 1 task.";
 "Today assistant suggested Reminders drafts for %d tasks." = "Today assistant suggested Reminders drafts for %d tasks.";
 "Overdue %@" = "Overdue %@";
+"Today %@" = "Today %@";
 "Due %@" = "Due %@";
 "Schedule Draft" = "Schedule Draft";
 "Prepare local time blocks for schedule review" = "Prepare local time blocks for schedule review";

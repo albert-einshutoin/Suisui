@@ -3804,6 +3804,169 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelBuildsTodayAssistantRailContextFromRecommendedTask() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        _ = viewModel.createTask(
+            title: "Ship today update",
+            detail: "Prepare release note",
+            projectID: launch.id,
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-19T12:00:00Z"
+        )
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        viewModel.selectedTaskID = nil
+
+        let context = viewModel.todayAssistantRailContext(
+            on: try isoDate("2026-06-19T08:37:00Z"),
+            calendar: calendar
+        )
+
+        XCTAssertEqual(context.source, .recommended)
+        XCTAssertEqual(context.task?.title, "Ship today update")
+        XCTAssertEqual(context.projectTitle, "Launch")
+        XCTAssertEqual(context.nextActionTitle, "Start recommended task")
+        XCTAssertEqual(context.nextActionReason, "Earliest due task keeps today on track.")
+        XCTAssertEqual(context.nextBlockLabel, "09:00-09:30")
+        XCTAssertEqual(context.notes, "Prepare release note")
+    }
+
+    @MainActor
+    func testTodayDueDisplayLabelFormatsOverdueTodayAndDateOnlyValues() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = try isoDate("2026-06-19T08:37:00Z")
+        let overdue = ProjectBoardTask(
+            id: 1,
+            projectID: 1,
+            title: "Overdue",
+            detail: "",
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-18T09:00:00Z"
+        )
+        let today = ProjectBoardTask(
+            id: 2,
+            projectID: 1,
+            title: "Today",
+            detail: "",
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-19T12:00:00Z"
+        )
+        let dateOnlyToday = ProjectBoardTask(
+            id: 3,
+            projectID: 1,
+            title: "Date only today",
+            detail: "",
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-19"
+        )
+        let dateOnly = ProjectBoardTask(
+            id: 4,
+            projectID: 1,
+            title: "Date only",
+            detail: "",
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-20"
+        )
+        var pacificCalendar = Calendar(identifier: .gregorian)
+        pacificCalendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        var buddhistPacificCalendar = Calendar(identifier: .buddhist)
+        buddhistPacificCalendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        let pacificDateOnlyToday = ProjectBoardTask(
+            id: 5,
+            projectID: 1,
+            title: "Pacific date only",
+            detail: "",
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-30"
+        )
+
+        XCTAssertEqual(
+            overdue.todayDueDisplayLabel(on: referenceDate, calendar: calendar, locale: Locale(identifier: "en_US_POSIX")),
+            "Overdue Jun 18 at 09:00"
+        )
+        XCTAssertTrue(overdue.isOverdueForToday(on: referenceDate, calendar: calendar))
+        XCTAssertEqual(
+            today.todayDueDisplayLabel(on: referenceDate, calendar: calendar, locale: Locale(identifier: "en_US_POSIX")),
+            "Today 12:00"
+        )
+        XCTAssertFalse(today.isOverdueForToday(on: referenceDate, calendar: calendar))
+        XCTAssertEqual(
+            dateOnlyToday.todayDueDisplayLabel(on: referenceDate, calendar: calendar, locale: Locale(identifier: "en_US_POSIX")),
+            "Today"
+        )
+        XCTAssertEqual(
+            dateOnly.todayDueDisplayLabel(on: referenceDate, calendar: calendar, locale: Locale(identifier: "en_US_POSIX")),
+            "Due Jun 20"
+        )
+        XCTAssertEqual(
+            pacificDateOnlyToday.todayDueDisplayLabel(
+                on: try isoDate("2026-07-01T06:30:00Z"),
+                calendar: pacificCalendar,
+                locale: Locale(identifier: "en_US_POSIX")
+            ),
+            "Today"
+        )
+        XCTAssertEqual(
+            pacificDateOnlyToday.todayDueDisplayLabel(
+                on: try isoDate("2026-07-01T06:30:00Z"),
+                calendar: buddhistPacificCalendar,
+                locale: Locale(identifier: "en_US_POSIX")
+            ),
+            "Today"
+        )
+        XCTAssertFalse(
+            pacificDateOnlyToday.isOverdueForToday(
+                on: try isoDate("2026-07-01T06:30:00Z"),
+                calendar: pacificCalendar
+            )
+        )
+    }
+
+    @MainActor
+    func testTodayPlanUsesCalendarTimeZoneForDateOnlyDueDates() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        _ = viewModel.createTask(
+            title: "Close June report",
+            projectID: launch.id,
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-30"
+        )
+        var pacificCalendar = Calendar(identifier: .gregorian)
+        pacificCalendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        var buddhistPacificCalendar = Calendar(identifier: .buddhist)
+        buddhistPacificCalendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+
+        let plan = viewModel.todayPlan(
+            on: try isoDate("2026-07-01T06:30:00Z"),
+            calendar: pacificCalendar
+        )
+        let nonGregorianPlan = viewModel.todayPlan(
+            on: try isoDate("2026-07-01T06:30:00Z"),
+            calendar: buddhistPacificCalendar
+        )
+
+        XCTAssertEqual(plan.overdueCount, 0)
+        XCTAssertEqual(plan.dueTodayCount, 1)
+        XCTAssertEqual(plan.recommendedTask?.title, "Close June report")
+        XCTAssertEqual(plan.recommendationReason, "Earliest due task keeps today on track.")
+        XCTAssertEqual(nonGregorianPlan.overdueCount, 0)
+        XCTAssertEqual(nonGregorianPlan.dueTodayCount, 1)
+        XCTAssertEqual(nonGregorianPlan.recommendedTask?.title, "Close June report")
+    }
+
+    @MainActor
     func testProjectBoardViewModelBuildsEmptyTodayAssistantRailContext() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()

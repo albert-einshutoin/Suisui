@@ -2391,9 +2391,9 @@ private struct WorkflowTaskRow: View {
                             } icon: {
                                 Image(systemName: task.status.systemImage)
                             }
-                            if let dueLabel = task.dueLabel {
+                            if let dueLabel = task.todayDueDisplayLabel() {
                                 Label(
-                                    dueDisplayLabel(dueLabel),
+                                    dueLabel,
                                     systemImage: isOverdue ? "calendar.badge.exclamationmark" : "calendar"
                                 )
                                 .foregroundStyle(isOverdue ? .red : .secondary)
@@ -2448,7 +2448,7 @@ private struct WorkflowTaskRow: View {
         if let triageSummary {
             values.append(triageSummary.accessibilityValue)
         }
-        if let dueLabel = task.dueLabel {
+        if let dueLabel = task.todayDueDisplayLabel() {
             values.append("\(String(localized: "Due")): \(dueLabel)")
         }
         return values.joined(separator: ", ")
@@ -2466,20 +2466,9 @@ private struct WorkflowTaskRow: View {
     }
 
     private var isOverdue: Bool {
-        guard let dueAt = task.dueAt,
-              let dueDate = ISO8601DateFormatter().date(from: dueAt),
-              let todayStart = Calendar.current.dateInterval(of: .day, for: Date())?.start else {
-            return false
-        }
-        return dueDate < todayStart && task.status != .done
+        task.isOverdueForToday()
     }
 
-    private func dueDisplayLabel(_ dueLabel: String) -> String {
-        if isOverdue {
-            return localizedDisplay("Overdue %@", dueLabel)
-        }
-        return localizedDisplay("Due %@", dueLabel)
-    }
 }
 
 private struct InboxTriagePill: View {
@@ -3075,7 +3064,7 @@ private struct TodayAssistantRail: View {
             detailRow(title: "Project", value: context.projectTitle, systemImage: "folder")
             detailRow(title: "Status", value: String(localized: String.LocalizationValue(task.status.title)), systemImage: task.status.systemImage)
             detailRow(title: "Priority", value: String(localized: String.LocalizationValue(task.priority.label)), systemImage: "flag")
-            detailRow(title: "Due", value: task.dueLabel ?? String(localized: "No due date"), systemImage: "calendar")
+            detailRow(title: "Due", value: task.todayDueDisplayLabel() ?? String(localized: "No due date"), systemImage: "calendar")
             detailRow(title: "Time Block", value: context.nextBlockLabel ?? String(localized: "No block drafted"), systemImage: "clock")
             detailRow(title: "Notes", value: context.notes, systemImage: "note.text")
             detailRow(title: "Subtasks", value: context.subtaskSummary, systemImage: "checklist")
