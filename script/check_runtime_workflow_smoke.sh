@@ -14,11 +14,11 @@ source "$METADATA_FILE"
 
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 ARTIFACT_DIR="${SOLOPM_RUNTIME_WORKFLOW_ARTIFACT_DIR:-$ROOT_DIR/.tmp/runtime-workflow-smoke}"
-SCENARIOS=("project_task_crud" "inbox_triage" "today_complete" "settings_save" "voice_review")
+SCENARIOS=("project_task_crud" "inbox_triage" "today_complete" "settings_save" "voice_review" "development_pr")
 REQUESTED_SCENARIOS=()
 
 usage() {
-  printf '%s\n' "usage: $0 [--scenario project_task_crud|inbox_triage|today_complete|settings_save|voice_review]..." >&2
+  printf '%s\n' "usage: $0 [--scenario project_task_crud|inbox_triage|today_complete|settings_save|voice_review|development_pr]..." >&2
 }
 
 while [[ $# -gt 0 ]]; do
@@ -197,6 +197,26 @@ run_voice_review() {
   scenario_reason="voice_review command failed"
   write_scenario_artifact "voice_review" "$scenario_status" "$scenario_reason"
   echo "BLOCKER: runtime workflow scenario failed: voice_review - $scenario_reason" >&2
+  return 1
+}
+
+run_development_pr() {
+  local scenario_output
+  local scenario_status="failed"
+  local scenario_reason="development_pr scenario did not finish"
+
+  if scenario_output="$(SOLOPM_RUNTIME_DEVELOPMENT_PR_KEEP_WORKSPACE=1 ./script/check_runtime_development_pr_smoke.sh 2>&1)"; then
+    printf '%s\n' "$scenario_output"
+    scenario_status="passed"
+    scenario_reason="Approved project directory file edits, verification, commit, and fake PR creation boundary passed"
+    write_scenario_artifact "development_pr" "$scenario_status" "$scenario_reason"
+    return 0
+  fi
+
+  printf '%s\n' "$scenario_output" >&2
+  scenario_reason="development_pr command failed"
+  write_scenario_artifact "development_pr" "$scenario_status" "$scenario_reason"
+  echo "BLOCKER: runtime workflow scenario failed: development_pr - $scenario_reason" >&2
   return 1
 }
 
