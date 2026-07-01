@@ -2,6 +2,164 @@ import XCTest
 @testable import SoloPMCore
 
 final class DevelopmentRepositoryFileAccessTests: XCTestCase {
+    func testWorkspaceScopeUsesStoredBookmarkAndStopsAccessWhenReleased() throws {
+        let workspace = temporaryDirectory()
+        let bookmarkData = Data("workspace-bookmark".utf8)
+        let accessCounter = RecordingAccessCounter()
+        let resolver = RecordingProjectWorkspaceBookmarkResolver(
+            resolution: ProjectWorkspaceBookmarkResolution(
+                url: workspace,
+                isStale: false,
+                didStartAccessing: true,
+                stopAccessing: { accessCounter.increment() }
+            )
+        )
+        let project = ProjectRecord(
+            id: 42,
+            title: "SoloPM",
+            status: "active",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: bookmarkData
+        )
+
+        do {
+            let scope = try ProjectWorkspaceScope(project: project, bookmarkResolver: resolver)
+            XCTAssertEqual(scope.rootURL.path, workspace.resolvingSymlinksInPath().path)
+            XCTAssertEqual(resolver.resolvedBookmarks, [bookmarkData])
+            XCTAssertEqual(accessCounter.value, 0)
+        }
+
+        XCTAssertEqual(accessCounter.value, 1)
+    }
+
+    func testWorkspaceScopeRejectsStaleStoredBookmarkBeforePathOnlyFallback() throws {
+        let workspace = temporaryDirectory()
+        let bookmarkData = Data("stale-bookmark".utf8)
+        let resolver = RecordingProjectWorkspaceBookmarkResolver(
+            resolution: ProjectWorkspaceBookmarkResolution(
+                url: workspace,
+                isStale: true,
+                didStartAccessing: false
+            )
+        )
+        let project = ProjectRecord(
+            id: 42,
+            title: "SoloPM",
+            status: "active",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: bookmarkData
+        )
+
+        XCTAssertThrowsError(try ProjectWorkspaceScope(project: project, bookmarkResolver: resolver)) { error in
+            XCTAssertEqual(error as? DevelopmentPRWorkflowError, .projectWorkspaceBookmarkStale)
+        }
+        XCTAssertEqual(resolver.resolvedBookmarks, [bookmarkData])
+    }
+
+    func testWorkspaceScopeRejectsBookmarkWhenSecurityScopeCannotStart() throws {
+        let workspace = temporaryDirectory()
+        let bookmarkData = Data("denied-bookmark".utf8)
+        let resolver = RecordingProjectWorkspaceBookmarkResolver(
+            resolution: ProjectWorkspaceBookmarkResolution(
+                url: workspace,
+                isStale: false,
+                didStartAccessing: false
+            )
+        )
+        let project = ProjectRecord(
+            id: 42,
+            title: "SoloPM",
+            status: "active",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: bookmarkData
+        )
+
+        XCTAssertThrowsError(try ProjectWorkspaceScope(project: project, bookmarkResolver: resolver)) { error in
+            XCTAssertEqual(error as? DevelopmentPRWorkflowError, .projectWorkspaceBookmarkUnavailable)
+        }
+        XCTAssertEqual(resolver.resolvedBookmarks, [bookmarkData])
+    }
+
+    func testWorkspaceScopeRejectsEmptyStoredBookmarkInsteadOfPathOnlyFallback() throws {
+        let workspace = temporaryDirectory()
+        let resolver = RecordingProjectWorkspaceBookmarkResolver(
+            resolution: ProjectWorkspaceBookmarkResolution(
+                url: workspace,
+                isStale: false,
+                didStartAccessing: true
+            )
+        )
+        let project = ProjectRecord(
+            id: 42,
+            title: "SoloPM",
+            status: "active",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: Data()
+        )
+
+        XCTAssertThrowsError(try ProjectWorkspaceScope(project: project, bookmarkResolver: resolver)) { error in
+            XCTAssertEqual(error as? DevelopmentPRWorkflowError, .projectWorkspaceBookmarkUnavailable)
+        }
+        XCTAssertEqual(resolver.resolvedBookmarks, [])
+    }
+
+    func testWorkspaceScopeRejectsBookmarkResolvingToDifferentDirectory() throws {
+        let workspace = temporaryDirectory()
+        let outside = temporaryDirectory()
+        let bookmarkData = Data("mismatched-bookmark".utf8)
+        let accessCounter = RecordingAccessCounter()
+        let resolver = RecordingProjectWorkspaceBookmarkResolver(
+            resolution: ProjectWorkspaceBookmarkResolution(
+                url: outside,
+                isStale: false,
+                didStartAccessing: true,
+                stopAccessing: { accessCounter.increment() }
+            )
+        )
+        let project = ProjectRecord(
+            id: 42,
+            title: "SoloPM",
+            status: "active",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: bookmarkData
+        )
+
+        XCTAssertThrowsError(try ProjectWorkspaceScope(project: project, bookmarkResolver: resolver)) { error in
+            XCTAssertEqual(error as? DevelopmentPRWorkflowError, .projectWorkspaceBookmarkPathMismatch)
+        }
+        XCTAssertEqual(resolver.resolvedBookmarks, [bookmarkData])
+        XCTAssertEqual(accessCounter.value, 1)
+    }
+
+    func testRepositoryFileClientKeepsBookmarkAccessThroughRead() throws {
+        let workspace = temporaryDirectory()
+        try write("let value = 1\n", to: workspace.appendingPathComponent("Sources/App.swift"))
+        let bookmarkData = Data("read-workspace-bookmark".utf8)
+        let accessCounter = RecordingAccessCounter()
+        let resolver = RecordingProjectWorkspaceBookmarkResolver(
+            resolution: ProjectWorkspaceBookmarkResolution(
+                url: workspace,
+                isStale: false,
+                didStartAccessing: true,
+                stopAccessing: { accessCounter.increment() }
+            )
+        )
+        let project = ProjectRecord(
+            id: 42,
+            title: "SoloPM",
+            status: "active",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: bookmarkData
+        )
+        let client = DevelopmentRepositoryFileClient(project: project, bookmarkResolver: resolver)
+
+        let record = try client.read(relativePath: "Sources/App.swift")
+
+        XCTAssertEqual(record.contents, "let value = 1\n")
+        XCTAssertEqual(resolver.resolvedBookmarks, [bookmarkData])
+        XCTAssertEqual(accessCounter.value, 1)
+    }
+
     func testListFilesWithinApprovedWorkspaceReturnsSortedEntries() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
@@ -130,6 +288,33 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
 
         XCTAssertEqual(sourceAboutSecrets.status, .succeeded)
         XCTAssertEqual(sourceAboutSecrets.output["contents"], .string("struct SecretStore {}\n"))
+    }
+
+    func testRepositoryFileToolRejectsInvalidStoredBookmarkInsteadOfPathFallback() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        try write("# Plan\n", to: workspace.appendingPathComponent("docs/plan.md"))
+        let project = try stores.projects.create(
+            title: "SoloPM",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: Data("invalid-bookmark".utf8)
+        )
+        let tool = DevelopmentRepositoryFileTool(name: .developmentRepositoryListFiles, projectStore: stores.projects)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: ["projectId": .number(Double(project.id))],
+                context: ToolExecutionContext(source: .reviewUI)
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(
+                    .developmentRepositoryListFiles,
+                    "Project workspace access bookmark could not be resolved and must be renewed."
+                )
+            )
+        }
     }
 
     func testCreateAndUpdateTextFileRequireApprovalAndStayInsideWorkspace() throws {
@@ -556,6 +741,37 @@ private enum DevelopmentRepositoryFileTestMigrationRunner {
             try migration.apply(connection)
             try connection.execute("INSERT INTO schema_migrations (id) VALUES ('\(migration.id)');")
         }
+    }
+}
+
+private final class RecordingAccessCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+
+    func increment() {
+        lock.lock()
+        count += 1
+        lock.unlock()
+    }
+}
+
+private final class RecordingProjectWorkspaceBookmarkResolver: ProjectWorkspaceBookmarkResolving, @unchecked Sendable {
+    private let resolution: ProjectWorkspaceBookmarkResolution
+    private(set) var resolvedBookmarks: [Data] = []
+
+    init(resolution: ProjectWorkspaceBookmarkResolution) {
+        self.resolution = resolution
+    }
+
+    func resolve(bookmarkData: Data) throws -> ProjectWorkspaceBookmarkResolution {
+        resolvedBookmarks.append(bookmarkData)
+        return resolution
     }
 }
 

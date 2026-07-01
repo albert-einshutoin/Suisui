@@ -786,6 +786,7 @@ private struct DevelopmentPullRequestGateEvaluator {
     var gitRunner: any GitCommandRunner
     var githubRunner: any GitHubCLICommandRunner
     var redactor: DeveloperSecretRedactor
+    var bookmarkResolver: any ProjectWorkspaceBookmarkResolving
 
     func evaluate(arguments: [String: JSONValue], tool: ActionTool) throws -> DevelopmentPullRequestGateContext {
         try validateRequiredArguments(arguments, tool: tool)
@@ -801,54 +802,56 @@ private struct DevelopmentPullRequestGateEvaluator {
         let baseBranch = try DevelopmentBranchNamePolicy.validated(args.requiredTrimmedString("baseBranch"))
         try DevelopmentGitHubPRCommandPolicy.validateBaseAndHead(baseBranch: baseBranch, headBranch: branchName)
         let project = try projectStore.get(id: projectID)
-        let scope = try ProjectWorkspaceScope(project: project)
-        // Resolve origin before calling GitHub so a pasted PR URL for another
-        // repository cannot read or merge outside the approved workspace.
-        let originRepository = try fetchOriginRepository(
-            workingDirectory: scope.rootURL,
-            tool: tool
-        )
-        let pullRequestRepository = try DevelopmentGitHubPRCommandPolicy.repositoryIdentity(
-            fromPullRequestURL: pullRequestURL
-        )
-        guard pullRequestRepository.matches(originRepository) else {
-            throw DevelopmentPRPublishWorkflowError.pullRequestRepositoryMismatch(
-                expected: originRepository.displayNameWithOwner,
-                actual: pullRequestRepository.displayNameWithOwner
+        let scope = try ProjectWorkspaceScope(project: project, bookmarkResolver: bookmarkResolver)
+        return try withExtendedLifetime(scope) {
+            // Resolve origin before calling GitHub so a pasted PR URL for another
+            // repository cannot read or merge outside the approved workspace.
+            let originRepository = try fetchOriginRepository(
+                workingDirectory: scope.rootURL,
+                tool: tool
             )
-        }
-        let status = try fetchStatus(
-            pullRequestURL: pullRequestURL,
-            workingDirectory: scope.rootURL,
-            tool: tool
-        )
-        let preliminaryBlockingReasons = status.blockingReasons(
-            expectedURL: pullRequestURL,
-            expectedHeadBranch: branchName,
-            expectedBaseBranch: baseBranch,
-            expectedRepository: originRepository
-        ).map(redacted)
-        let reviewThreads = preliminaryBlockingReasons.isEmpty
-            ? try fetchReviewThreads(
+            let pullRequestRepository = try DevelopmentGitHubPRCommandPolicy.repositoryIdentity(
+                fromPullRequestURL: pullRequestURL
+            )
+            guard pullRequestRepository.matches(originRepository) else {
+                throw DevelopmentPRPublishWorkflowError.pullRequestRepositoryMismatch(
+                    expected: originRepository.displayNameWithOwner,
+                    actual: pullRequestRepository.displayNameWithOwner
+                )
+            }
+            let status = try fetchStatus(
                 pullRequestURL: pullRequestURL,
                 workingDirectory: scope.rootURL,
                 tool: tool
             )
-            : .notChecked
-        let blockingReasons = preliminaryBlockingReasons + reviewThreads.blockingReasons.map(redacted)
+            let preliminaryBlockingReasons = status.blockingReasons(
+                expectedURL: pullRequestURL,
+                expectedHeadBranch: branchName,
+                expectedBaseBranch: baseBranch,
+                expectedRepository: originRepository
+            ).map(redacted)
+            let reviewThreads = preliminaryBlockingReasons.isEmpty
+                ? try fetchReviewThreads(
+                    pullRequestURL: pullRequestURL,
+                    workingDirectory: scope.rootURL,
+                    tool: tool
+                )
+                : .notChecked
+            let blockingReasons = preliminaryBlockingReasons + reviewThreads.blockingReasons.map(redacted)
 
-        return DevelopmentPullRequestGateContext(
-            projectID: project.id,
-            pullRequestURL: pullRequestURL,
-            branchName: branchName,
-            baseBranch: baseBranch,
-            workingDirectory: scope.rootURL,
-            decision: DevelopmentPullRequestGateDecision(
-                status: status,
-                reviewThreads: reviewThreads,
-                blockingReasons: blockingReasons
+            return DevelopmentPullRequestGateContext(
+                projectID: project.id,
+                pullRequestURL: pullRequestURL,
+                branchName: branchName,
+                baseBranch: baseBranch,
+                scope: scope,
+                decision: DevelopmentPullRequestGateDecision(
+                    status: status,
+                    reviewThreads: reviewThreads,
+                    blockingReasons: blockingReasons
+                )
             )
-        )
+        }
     }
 
     private func fetchOriginRepository(
@@ -957,8 +960,12 @@ private struct DevelopmentPullRequestGateContext: Equatable, Sendable {
     var pullRequestURL: String
     var branchName: String
     var baseBranch: String
-    var workingDirectory: URL
+    var scope: ProjectWorkspaceScope
     var decision: DevelopmentPullRequestGateDecision
+
+    var workingDirectory: URL {
+        scope.rootURL
+    }
 
     var headRefOID: String? {
         decision.status.validatedHeadRefOID
@@ -995,13 +1002,15 @@ public struct DevelopmentPullRequestReviewGateTool: Tool {
         projectStore: SQLiteProjectStore,
         gitRunner: any GitCommandRunner = ProcessGitCommandRunner(),
         githubRunner: any GitHubCLICommandRunner = ProcessGitHubCLICommandRunner(),
-        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()
+        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
+        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver()
     ) {
         self.evaluator = DevelopmentPullRequestGateEvaluator(
             projectStore: projectStore,
             gitRunner: gitRunner,
             githubRunner: githubRunner,
-            redactor: redactor
+            redactor: redactor,
+            bookmarkResolver: bookmarkResolver
         )
         self.redactor = redactor
     }
@@ -1067,7 +1076,8 @@ public struct DevelopmentPullRequestMergeTool: Tool {
         projectStore: SQLiteProjectStore,
         gitRunner: any GitCommandRunner = ProcessGitCommandRunner(),
         githubRunner: any GitHubCLICommandRunner = ProcessGitHubCLICommandRunner(),
-        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()
+        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
+        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver()
     ) {
         self.githubRunner = githubRunner
         self.redactor = redactor
@@ -1075,7 +1085,8 @@ public struct DevelopmentPullRequestMergeTool: Tool {
             projectStore: projectStore,
             gitRunner: gitRunner,
             githubRunner: githubRunner,
-            redactor: redactor
+            redactor: redactor,
+            bookmarkResolver: bookmarkResolver
         )
     }
 
@@ -1104,7 +1115,9 @@ public struct DevelopmentPullRequestMergeTool: Tool {
             guard DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: mergeArguments) else {
                 throw DevelopmentPRPublishWorkflowError.commandNotAllowed(tool: name, command: mergeArguments)
             }
-            let merge = try githubRunner.runGitHub(arguments: mergeArguments, workingDirectory: gate.workingDirectory)
+            let merge = try withExtendedLifetime(gate) {
+                try githubRunner.runGitHub(arguments: mergeArguments, workingDirectory: gate.workingDirectory)
+            }
             guard merge.exitCode == 0 else {
                 return failedCommandResult(gate: gate, exitCode: merge.exitCode, standardError: merge.standardError)
             }
@@ -1220,40 +1233,42 @@ public struct DevelopmentPushWorkflowTool: Tool {
                 args.requiredTrimmedString("branchName")
             )
 
-            let readiness = try workspacePublishReadiness(branchName: branchName, scope: scope)
-            guard readiness.isReady else {
-                return failedReadinessResult(projectID: project.id, branchName: branchName, readiness: readiness)
-            }
+            return try withExtendedLifetime(scope) {
+                let readiness = try workspacePublishReadiness(branchName: branchName, scope: scope)
+                guard readiness.isReady else {
+                    return failedReadinessResult(projectID: project.id, branchName: branchName, readiness: readiness)
+                }
 
-            let push = try runGit(arguments: ["push", "-u", "origin", branchName], workingDirectory: scope.rootURL)
-            guard push.exitCode == 0 else {
-                return failedCommandResult(
-                    projectID: project.id,
-                    branchName: branchName,
-                    error: .commandFailed(
-                        tool: name,
-                        command: ["push", "-u", "origin", branchName],
-                        exitCode: push.exitCode,
-                        standardError: redacted(push.standardError.trimmingCharacters(in: .whitespacesAndNewlines))
+                let push = try runGit(arguments: ["push", "-u", "origin", branchName], workingDirectory: scope.rootURL)
+                guard push.exitCode == 0 else {
+                    return failedCommandResult(
+                        projectID: project.id,
+                        branchName: branchName,
+                        error: .commandFailed(
+                            tool: name,
+                            command: ["push", "-u", "origin", branchName],
+                            exitCode: push.exitCode,
+                            standardError: redacted(push.standardError.trimmingCharacters(in: .whitespacesAndNewlines))
+                        )
                     )
+                }
+
+                return ToolResult(
+                    tool: name,
+                    status: .succeeded,
+                    summary: "Pushed development branch \(branchName). Pull request creation requires a separate approval gate.",
+                    output: [
+                        "projectId": .number(Double(project.id)),
+                        "branchName": .string(branchName),
+                        "remoteName": .string("origin"),
+                        "workspaceClean": .bool(true),
+                        "pushSummary": .string(redacted(push.standardOutput)),
+                        "requiresPullRequestApproval": .bool(true)
+                    ],
+                    rollbackMetadata: ["branchName": .string(branchName)],
+                    compensationHint: "Review the pushed branch before creating a pull request."
                 )
             }
-
-            return ToolResult(
-                tool: name,
-                status: .succeeded,
-                summary: "Pushed development branch \(branchName). Pull request creation requires a separate approval gate.",
-                output: [
-                    "projectId": .number(Double(project.id)),
-                    "branchName": .string(branchName),
-                    "remoteName": .string("origin"),
-                    "workspaceClean": .bool(true),
-                    "pushSummary": .string(redacted(push.standardOutput)),
-                    "requiresPullRequestApproval": .bool(true)
-                ],
-                rollbackMetadata: ["branchName": .string(branchName)],
-                compensationHint: "Review the pushed branch before creating a pull request."
-            )
         } catch let error as ToolExecutionError {
             throw error
         } catch let error as DevelopmentPRWorkflowError {
@@ -1421,81 +1436,83 @@ public struct DevelopmentPullRequestCreationTool: Tool {
             let project = try projectStore.get(id: projectID)
             let scope = try ProjectWorkspaceScope(project: project)
 
-            let readiness = try workspacePublishReadiness(branchName: branchName, scope: scope)
-            guard readiness.isReady else {
-                return failedReadinessResult(
-                    projectID: project.id,
-                    branchName: branchName,
-                    baseBranch: baseBranch,
-                    readiness: readiness
-                )
-            }
-
-            let fileManager = FileManager.default
-            let bodyFileURL = fileManager.temporaryDirectory
-                .appendingPathComponent("solopm-pr-body-\(UUID().uuidString).md")
-            try body.write(to: bodyFileURL, atomically: true, encoding: .utf8)
-            defer { try? fileManager.removeItem(at: bodyFileURL) }
-
-            // Use --body-file so reviewed PR text never becomes shell-interpreted
-            // or logged as an inline command argument by process tooling.
-            let githubArguments = [
-                "pr", "create",
-                "--base", baseBranch,
-                "--head", branchName,
-                "--title", title,
-                "--body-file", bodyFileURL.path
-            ]
-            guard DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: githubArguments) else {
-                throw DevelopmentPRPublishWorkflowError.commandNotAllowed(tool: name, command: githubArguments)
-            }
-
-            let output = try githubRunner.runGitHub(arguments: githubArguments, workingDirectory: scope.rootURL)
-            guard output.exitCode == 0 else {
-                return failedCommandResult(
-                    projectID: project.id,
-                    branchName: branchName,
-                    baseBranch: baseBranch,
-                    error: .commandFailed(
-                        tool: name,
-                        command: githubArguments,
-                        exitCode: output.exitCode,
-                        standardError: redacted(output.standardError.trimmingCharacters(in: .whitespacesAndNewlines))
+            return try withExtendedLifetime(scope) {
+                let readiness = try workspacePublishReadiness(branchName: branchName, scope: scope)
+                guard readiness.isReady else {
+                    return failedReadinessResult(
+                        projectID: project.id,
+                        branchName: branchName,
+                        baseBranch: baseBranch,
+                        readiness: readiness
                     )
+                }
+
+                let fileManager = FileManager.default
+                let bodyFileURL = fileManager.temporaryDirectory
+                    .appendingPathComponent("solopm-pr-body-\(UUID().uuidString).md")
+                try body.write(to: bodyFileURL, atomically: true, encoding: .utf8)
+                defer { try? fileManager.removeItem(at: bodyFileURL) }
+
+                // Use --body-file so reviewed PR text never becomes shell-interpreted
+                // or logged as an inline command argument by process tooling.
+                let githubArguments = [
+                    "pr", "create",
+                    "--base", baseBranch,
+                    "--head", branchName,
+                    "--title", title,
+                    "--body-file", bodyFileURL.path
+                ]
+                guard DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: githubArguments) else {
+                    throw DevelopmentPRPublishWorkflowError.commandNotAllowed(tool: name, command: githubArguments)
+                }
+
+                let output = try githubRunner.runGitHub(arguments: githubArguments, workingDirectory: scope.rootURL)
+                guard output.exitCode == 0 else {
+                    return failedCommandResult(
+                        projectID: project.id,
+                        branchName: branchName,
+                        baseBranch: baseBranch,
+                        error: .commandFailed(
+                            tool: name,
+                            command: githubArguments,
+                            exitCode: output.exitCode,
+                            standardError: redacted(output.standardError.trimmingCharacters(in: .whitespacesAndNewlines))
+                        )
+                    )
+                }
+
+                guard let rawPullRequestURL = pullRequestURL(from: output.standardOutput) else {
+                    return failedCommandResult(
+                        projectID: project.id,
+                        branchName: branchName,
+                        baseBranch: baseBranch,
+                        error: .missingPullRequestURL
+                    )
+                }
+                let pullRequestURL = try DevelopmentGitHubPRCommandPolicy.validatedPullRequestURL(
+                    rawPullRequestURL,
+                    redactor: redactor
+                )
+
+                return ToolResult(
+                    tool: name,
+                    status: .succeeded,
+                    summary: "Created pull request \(pullRequestURL) from \(branchName) into \(baseBranch).",
+                    output: [
+                        "projectId": .number(Double(project.id)),
+                        "branchName": .string(branchName),
+                        "baseBranch": .string(baseBranch),
+                        "title": .string(title),
+                        "pullRequestURL": .string(pullRequestURL),
+                        "workspaceClean": .bool(true)
+                    ],
+                    rollbackMetadata: [
+                        "branchName": .string(branchName),
+                        "pullRequestURL": .string(pullRequestURL)
+                    ],
+                    compensationHint: "Review CI and code review status before merging the pull request."
                 )
             }
-
-            guard let rawPullRequestURL = pullRequestURL(from: output.standardOutput) else {
-                return failedCommandResult(
-                    projectID: project.id,
-                    branchName: branchName,
-                    baseBranch: baseBranch,
-                    error: .missingPullRequestURL
-                )
-            }
-            let pullRequestURL = try DevelopmentGitHubPRCommandPolicy.validatedPullRequestURL(
-                rawPullRequestURL,
-                redactor: redactor
-            )
-
-            return ToolResult(
-                tool: name,
-                status: .succeeded,
-                summary: "Created pull request \(pullRequestURL) from \(branchName) into \(baseBranch).",
-                output: [
-                    "projectId": .number(Double(project.id)),
-                    "branchName": .string(branchName),
-                    "baseBranch": .string(baseBranch),
-                    "title": .string(title),
-                    "pullRequestURL": .string(pullRequestURL),
-                    "workspaceClean": .bool(true)
-                ],
-                rollbackMetadata: [
-                    "branchName": .string(branchName),
-                    "pullRequestURL": .string(pullRequestURL)
-                ],
-                compensationHint: "Review CI and code review status before merging the pull request."
-            )
         } catch let error as ToolExecutionError {
             throw error
         } catch let error as DevelopmentPRWorkflowError {

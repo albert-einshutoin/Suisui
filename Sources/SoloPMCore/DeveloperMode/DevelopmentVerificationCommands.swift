@@ -401,15 +401,18 @@ public struct DevelopmentVerificationCommandTool: Tool {
     private let projectStore: SQLiteProjectStore
     private let commandRunner: any DevelopmentCommandRunner
     private let redactor: DeveloperSecretRedactor
+    private let bookmarkResolver: any ProjectWorkspaceBookmarkResolving
 
     public init(
         projectStore: SQLiteProjectStore,
         commandRunner: any DevelopmentCommandRunner = ProcessDevelopmentCommandRunner(),
-        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()
+        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
+        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver()
     ) {
         self.projectStore = projectStore
         self.commandRunner = commandRunner
         self.redactor = redactor
+        self.bookmarkResolver = bookmarkResolver
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
@@ -423,45 +426,47 @@ public struct DevelopmentVerificationCommandTool: Tool {
         do {
             let command = try DevelopmentVerificationCommandPolicy.validated(commandID: commandID)
             let project = try projectStore.get(id: projectID)
-            let scope = try ProjectWorkspaceScope(project: project)
-            let executable = try DevelopmentVerificationCommandPolicy.resolvedExecutable(for: command, scope: scope)
-            let output = try commandRunner.run(
-                executable: executable,
-                arguments: command.arguments,
-                workingDirectory: scope.rootURL
-            )
+            let scope = try ProjectWorkspaceScope(project: project, bookmarkResolver: bookmarkResolver)
+            return try withExtendedLifetime(scope) {
+                let executable = try DevelopmentVerificationCommandPolicy.resolvedExecutable(for: command, scope: scope)
+                let output = try commandRunner.run(
+                    executable: executable,
+                    arguments: command.arguments,
+                    workingDirectory: scope.rootURL
+                )
 
-            let stdout = DevelopmentVerificationOutputPolicy.sanitize(output.standardOutput, redactor: redactor)
-            let stderr = DevelopmentVerificationOutputPolicy.sanitize(output.standardError, redactor: redactor)
-            let passed = output.exitCode == 0 && !output.timedOut
-            let summary = if passed {
-                "Ran \(command.commandDisplay) successfully."
-            } else if output.timedOut {
-                "Verification command \(command.commandDisplay) timed out."
-            } else {
-                "Verification command \(command.commandDisplay) failed with exit code \(output.exitCode)."
+                let stdout = DevelopmentVerificationOutputPolicy.sanitize(output.standardOutput, redactor: redactor)
+                let stderr = DevelopmentVerificationOutputPolicy.sanitize(output.standardError, redactor: redactor)
+                let passed = output.exitCode == 0 && !output.timedOut
+                let summary = if passed {
+                    "Ran \(command.commandDisplay) successfully."
+                } else if output.timedOut {
+                    "Verification command \(command.commandDisplay) timed out."
+                } else {
+                    "Verification command \(command.commandDisplay) failed with exit code \(output.exitCode)."
+                }
+
+                return ToolResult(
+                    tool: name,
+                    status: passed ? .succeeded : .failed,
+                    summary: summary,
+                    output: [
+                        "projectId": .number(Double(project.id)),
+                        "commandId": .string(command.id),
+                        "command": .string(command.commandDisplay),
+                        "executable": .string(executable),
+                        "arguments": JSONValueFactory.strings(command.arguments),
+                        "exitCode": .number(Double(output.exitCode)),
+                        "passed": .bool(passed),
+                        "timedOut": .bool(output.timedOut),
+                        "durationMs": .number(Double(output.durationMilliseconds)),
+                        "stdout": .string(stdout.text),
+                        "stderr": .string(stderr.text),
+                        "stdoutTruncated": .bool(output.standardOutputTruncated || stdout.truncated),
+                        "stderrTruncated": .bool(output.standardErrorTruncated || stderr.truncated)
+                    ]
+                )
             }
-
-            return ToolResult(
-                tool: name,
-                status: passed ? .succeeded : .failed,
-                summary: summary,
-                output: [
-                    "projectId": .number(Double(project.id)),
-                    "commandId": .string(command.id),
-                    "command": .string(command.commandDisplay),
-                    "executable": .string(executable),
-                    "arguments": JSONValueFactory.strings(command.arguments),
-                    "exitCode": .number(Double(output.exitCode)),
-                    "passed": .bool(passed),
-                    "timedOut": .bool(output.timedOut),
-                    "durationMs": .number(Double(output.durationMilliseconds)),
-                    "stdout": .string(stdout.text),
-                    "stderr": .string(stderr.text),
-                    "stdoutTruncated": .bool(output.standardOutputTruncated || stdout.truncated),
-                    "stderrTruncated": .bool(output.standardErrorTruncated || stderr.truncated)
-                ]
-            )
         } catch let error as ToolExecutionError {
             throw error
         } catch let error as DevelopmentVerificationCommandError {
