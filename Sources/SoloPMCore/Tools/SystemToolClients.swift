@@ -332,3 +332,122 @@ public struct MailDraftRecord: Equatable, Sendable {
 public protocol MailDraftClient: Sendable {
     func createTextDraft(to: String?, subject: String, body: String) throws -> MailDraftRecord
 }
+
+public final class LocalFileMailDraftClient: MailDraftClient, @unchecked Sendable {
+    public static let defaultRetentionInterval: TimeInterval = 60 * 60 * 24 * 30
+
+    private let draftsDirectoryURL: URL
+    private let fileManager: FileManager
+    private let retentionInterval: TimeInterval
+    private let now: @Sendable () -> Date
+
+    public init(
+        draftsDirectoryURL: URL,
+        fileManager: FileManager = .default,
+        retentionInterval: TimeInterval = LocalFileMailDraftClient.defaultRetentionInterval,
+        now: @escaping @Sendable () -> Date = Date.init
+    ) {
+        self.draftsDirectoryURL = draftsDirectoryURL.standardizedFileURL
+        self.fileManager = fileManager
+        self.retentionInterval = retentionInterval
+        self.now = now
+    }
+
+    public func createTextDraft(to: String?, subject: String, body: String) throws -> MailDraftRecord {
+        let trimmedSubject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedBodyForValidation = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let recipient = try normalizedRecipient(to)
+        guard !trimmedSubject.isEmpty else {
+            throw ToolClientError.invalidRequest("Mail draft subject is required.")
+        }
+        guard !trimmedBodyForValidation.isEmpty else {
+            throw ToolClientError.invalidRequest("Mail draft body is required.")
+        }
+
+        // Draft contents are persisted locally only; external send/list surfaces stay in separate approved connectors.
+        try prepareDraftsDirectory()
+        try pruneExpiredDrafts(referenceDate: now())
+        let id = "mail-draft-\(UUID().uuidString.lowercased())"
+        let record = MailDraftRecord(id: id, to: recipient, subject: trimmedSubject, body: body)
+        let snapshot = LocalFileMailDraftSnapshot(record: record, createdAt: ISO8601DateFormatter().string(from: now()))
+        let data = try JSONEncoder.localMailDraftEncoder.encode(snapshot)
+        let fileURL = draftsDirectoryURL.appendingPathComponent("\(id).json", isDirectory: false)
+        guard fileManager.createFile(atPath: fileURL.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
+            throw ToolClientError.conflict("Mail draft file already exists.")
+        }
+        try excludeFromBackup(fileURL)
+        return record
+    }
+
+    private func normalizedRecipient(_ value: String?) throws -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+        guard trimmed.rangeOfCharacter(from: CharacterSet(charactersIn: "\r\n,;:")) == nil else {
+            throw ToolClientError.invalidRequest("Mail draft recipient must be a single address or contact name.")
+        }
+        return trimmed
+    }
+
+    private func prepareDraftsDirectory() throws {
+        try fileManager.createDirectory(
+            at: draftsDirectoryURL,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: draftsDirectoryURL.path)
+        try excludeFromBackup(draftsDirectoryURL)
+    }
+
+    private func pruneExpiredDrafts(referenceDate: Date) throws {
+        guard retentionInterval > 0 else {
+            return
+        }
+        let files = try fileManager.contentsOfDirectory(
+            at: draftsDirectoryURL,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        )
+        for fileURL in files where fileURL.pathExtension == "json" {
+            let values = try fileURL.resourceValues(forKeys: [.contentModificationDateKey])
+            guard let modifiedAt = values.contentModificationDate,
+                  referenceDate.timeIntervalSince(modifiedAt) > retentionInterval else {
+                continue
+            }
+            // Business/customer text should not live forever just because a review draft was never opened.
+            try fileManager.removeItem(at: fileURL)
+        }
+    }
+
+    private func excludeFromBackup(_ url: URL) throws {
+        var resourceURL = url
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try resourceURL.setResourceValues(values)
+    }
+}
+
+private struct LocalFileMailDraftSnapshot: Encodable {
+    var id: String
+    var to: String?
+    var subject: String
+    var body: String
+    var createdAt: String
+
+    init(record: MailDraftRecord, createdAt: String) {
+        id = record.id
+        to = record.to
+        subject = record.subject
+        body = record.body
+        self.createdAt = createdAt
+    }
+}
+
+private extension JSONEncoder {
+    static var localMailDraftEncoder: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return encoder
+    }
+}

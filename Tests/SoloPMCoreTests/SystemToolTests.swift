@@ -426,6 +426,70 @@ final class SystemToolTests: XCTestCase {
         XCTAssertFalse(ActionTool.allCases.contains { $0.rawValue == "maildraft.send" })
     }
 
+    func testLocalFileMailDraftClientPersistsDraftWithoutSendSurface() throws {
+        let directory = temporaryDirectory().appendingPathComponent("MailDrafts", isDirectory: true)
+        let client = LocalFileMailDraftClient(draftsDirectoryURL: directory)
+
+        let record = try client.createTextDraft(
+            to: " team@example.com ",
+            subject: " Status / release ",
+            body: "  Draft only\nNo send.\n"
+        )
+
+        XCTAssertTrue(record.id.hasPrefix("mail-draft-"))
+        XCTAssertEqual(record.to, "team@example.com")
+        XCTAssertEqual(record.subject, "Status / release")
+        XCTAssertEqual(record.body, "  Draft only\nNo send.\n")
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        XCTAssertEqual(files.count, 1)
+        XCTAssertEqual(files.first?.pathExtension, "json")
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: directory.path)[.posixPermissions] as? Int, 0o700)
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: try XCTUnwrap(files.first).path)[.posixPermissions] as? Int, 0o600)
+        XCTAssertEqual(try directory.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
+        XCTAssertEqual(try XCTUnwrap(files.first).resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
+
+        let data = try Data(contentsOf: try XCTUnwrap(files.first))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object["id"] as? String, record.id)
+        XCTAssertEqual(object["to"] as? String, "team@example.com")
+        XCTAssertEqual(object["subject"] as? String, "Status / release")
+        XCTAssertEqual(object["body"] as? String, "  Draft only\nNo send.\n")
+        XCTAssertNil(object["sentAt"])
+        XCTAssertFalse(ActionTool.allCases.contains { $0.rawValue == "maildraft.send" })
+    }
+
+    func testLocalFileMailDraftClientRejectsUnsafeRecipientAndPrunesExpiredDrafts() throws {
+        let directory = temporaryDirectory().appendingPathComponent("MailDrafts", isDirectory: true)
+        let staleURL = directory.appendingPathComponent("stale.json")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: staleURL)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 100)],
+            ofItemAtPath: staleURL.path
+        )
+        let client = LocalFileMailDraftClient(
+            draftsDirectoryURL: directory,
+            retentionInterval: 60,
+            now: { Date(timeIntervalSince1970: 200) }
+        )
+
+        XCTAssertThrowsError(
+            try client.createTextDraft(
+                to: "team@example.com\nbcc: customer@example.com",
+                subject: "Status",
+                body: "Draft only"
+            )
+        ) { error in
+            XCTAssertEqual(error as? ToolClientError, .invalidRequest("Mail draft recipient must be a single address or contact name."))
+        }
+
+        _ = try client.createTextDraft(to: nil, subject: "Status", body: "Draft only")
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: staleURL.path))
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        XCTAssertEqual(files.count, 1)
+    }
+
     func testAuditedToolLogsApprovalMissingAndRedactsArguments() throws {
         let logger = InMemoryAuditLogger()
         let base = StaticTool(
