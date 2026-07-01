@@ -4409,6 +4409,7 @@ private enum AppRuntimeFactory {
     ) throws -> ToolRegistry {
         let projectStore = SQLiteProjectStore(connection: connection)
         let taskStore = SQLiteTaskStore(connection: connection)
+        let artifactStore = SQLiteArtifactStore(connection: connection)
         let registry = try ToolRegistry.phase2MVP(
             projectStore: projectStore,
             taskStore: taskStore,
@@ -4421,12 +4422,70 @@ private enum AppRuntimeFactory {
             notificationRequestStore: SQLiteNotificationRequestStore(connection: connection),
             calendarLinkStore: SQLiteCalendarLinkStore(connection: connection),
             reminderLinkStore: SQLiteReminderLinkStore(connection: connection),
-            artifactStore: SQLiteArtifactStore(connection: connection),
+            artifactStore: artifactStore,
             auditLogger: auditLogger
         )
-        // Assistant Queue receives already-formed development PR requests. Keep
-        // runtime execution to the two externally reviewed operations so voice
-        // approval cannot accidentally expose branch, commit, push, or PR-create tools.
+        // Queue execution must bridge project-panel approvals to local GitHub Flow
+        // preparation, but the allowlist intentionally stops before networked publish
+        // operations so push and PR creation can receive their own product gates.
+        try registry.register(AuditedTool(
+            base: DevelopmentPRWorkflowTool(
+                projectStore: projectStore,
+                taskStore: taskStore,
+                requireBookmark: true
+            ),
+            logger: auditLogger
+        ))
+        try registry.register(AuditedTool(
+            base: DevelopmentRepositoryFileTool(
+                name: .developmentRepositoryListFiles,
+                projectStore: projectStore,
+                artifactStore: artifactStore,
+                requireBookmark: true
+            ),
+            logger: auditLogger
+        ))
+        try registry.register(AuditedTool(
+            base: DevelopmentRepositoryFileTool(
+                name: .developmentRepositoryReadFile,
+                projectStore: projectStore,
+                artifactStore: artifactStore,
+                requireBookmark: true
+            ),
+            logger: auditLogger
+        ))
+        try registry.register(AuditedTool(
+            base: DevelopmentRepositoryFileTool(
+                name: .developmentRepositoryCreateFile,
+                projectStore: projectStore,
+                artifactStore: artifactStore,
+                requireBookmark: true
+            ),
+            logger: auditLogger
+        ))
+        try registry.register(AuditedTool(
+            base: DevelopmentRepositoryFileTool(
+                name: .developmentRepositoryUpdateFile,
+                projectStore: projectStore,
+                artifactStore: artifactStore,
+                requireBookmark: true
+            ),
+            logger: auditLogger
+        ))
+        try registry.register(AuditedTool(
+            base: DevelopmentVerificationCommandTool(
+                projectStore: projectStore,
+                requireBookmark: true
+            ),
+            logger: auditLogger
+        ))
+        try registry.register(AuditedTool(
+            base: DevelopmentCommitWorkflowTool(
+                projectStore: projectStore,
+                requireBookmark: true
+            ),
+            logger: auditLogger
+        ))
         try registry.register(AuditedTool(
             base: DevelopmentPullRequestReviewGateTool(projectStore: projectStore),
             logger: auditLogger
@@ -4435,9 +4494,27 @@ private enum AppRuntimeFactory {
             base: DevelopmentPullRequestMergeTool(projectStore: projectStore),
             logger: auditLogger
         ))
-        for requiredTool in [ActionTool.developmentReviewPullRequestGate, .developmentMergePullRequest] {
+        for requiredTool in [
+            ActionTool.developmentPreparePullRequestWorkflow,
+            .developmentRepositoryListFiles,
+            .developmentRepositoryReadFile,
+            .developmentRepositoryCreateFile,
+            .developmentRepositoryUpdateFile,
+            .developmentRunVerification,
+            .developmentCommitChanges,
+            .developmentReviewPullRequestGate,
+            .developmentMergePullRequest
+        ] {
             guard registry.contains(requiredTool) else {
                 throw ToolExecutionError.unknownTool(requiredTool)
+            }
+        }
+        for prohibitedTool in [
+            ActionTool.developmentPushBranch,
+            .developmentCreatePullRequest
+        ] {
+            guard !registry.contains(prohibitedTool) else {
+                throw ToolExecutionError.dangerousToolBlocked(prohibitedTool)
             }
         }
         return registry
