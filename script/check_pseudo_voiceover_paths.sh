@@ -32,10 +32,17 @@ done
 REQUIRED_MARKERS=(
   "AccessibilityFocusPathAudit"
   "dynamicRequiredNodeIDPrefixes"
+  "todayCockpit"
+  "todayEmptyCockpit"
   "SoloPMHarnessTaskLifecycleOperation"
+  "SoloPMHarnessTodayCockpitOperation"
   "requiredTaskLifecycleOperations"
+  "requiredTodayCockpitOperations"
   "requiredFocusNodeIDs"
+  "requiredTodayCockpitFocusNodeIDs"
   "completeTaskLifecycleOperations"
+  "completeTodayCockpitOperations"
+  "missingTodayCockpitOperations"
   "project-board-sidebar"
   "project-board-detail"
   "project-task-list"
@@ -60,12 +67,61 @@ REQUIRED_MARKERS=(
   "project-inspector-delete"
   "project-inspector-delete-confirmation-cancel"
   "project-inspector-delete-confirmation-confirm"
+  "sidebar-destination-today"
+  "today-workflow"
+  "today-briefing-panel"
+  "today-command-capture-field"
+  "today-command-add"
+  "today-common-action-rail"
+  "today-common-chip-add-task"
+  "today-common-chip-plan-tomorrow"
+  "today-common-chip-prepare-meeting"
+  "today-common-chip-draft-reply"
+  "today-suggestion-rail"
+  "today-start-focus"
+  "today-flow-strip"
+  "today-assistant-rail"
+  "today-rail-next-action"
+  "today-rail-task-detail"
+  "today-rail-focus"
+  "today-rail-schedule-block"
+  "today-rail-edit-task"
+  "today-rail-add-subtask"
+  "today-rail-reminder-draft"
 )
+
+TODAY_UI_ACCESSIBILITY_IDENTIFIERS=(
+  "today-workflow"
+  "today-briefing-panel"
+  "today-command-capture-field"
+  "today-command-add"
+  "today-common-action-rail"
+  "today-common-chip-add-task"
+  "today-common-chip-plan-tomorrow"
+  "today-common-chip-prepare-meeting"
+  "today-common-chip-draft-reply"
+  "today-suggestion-rail"
+  "today-start-focus"
+  "today-flow-strip"
+  "today-assistant-rail"
+  "today-rail-next-action"
+  "today-rail-task-detail"
+  "today-rail-focus"
+  "today-rail-schedule-block"
+  "today-rail-edit-task"
+  "today-rail-add-subtask"
+  "today-rail-reminder-draft"
+)
+
+TODAY_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SoloPMApp/Views/ProjectWorkflowViews.swift"
+SIDEBAR_DESTINATION_SOURCE="$ROOT_DIR/Sources/SoloPMCore/App/ProjectBoardSelectionPersistence.swift"
 
 SOURCES=(
   "$ROOT_DIR/Sources/SoloPMCore/App/AccessibilityFocusPathAudit.swift"
   "$ROOT_DIR/Sources/SoloPMCore/App/SoloPMHarness.swift"
+  "$SIDEBAR_DESTINATION_SOURCE"
   "$ROOT_DIR/Sources/SoloPMApp/Views/ProjectBoardView.swift"
+  "$TODAY_WORKFLOW_SOURCE"
   "$ROOT_DIR/docs/quality/accessibility-focus-paths.md"
 )
 
@@ -84,6 +140,32 @@ for marker in "${REQUIRED_MARKERS[@]}"; do
   fi
 done
 
+if [[ ! -f "$TODAY_WORKFLOW_SOURCE" ]]; then
+  echo "BLOCKER: Today workflow source is missing: $TODAY_WORKFLOW_SOURCE" >&2
+  missing=$((missing + 1))
+else
+  for identifier in "${TODAY_UI_ACCESSIBILITY_IDENTIFIERS[@]}"; do
+    if ! grep -F ".accessibilityIdentifier(\"$identifier\")" "$TODAY_WORKFLOW_SOURCE" >/dev/null; then
+      echo "BLOCKER: Today UI accessibilityIdentifier missing from ProjectWorkflowViews.swift: $identifier" >&2
+      missing=$((missing + 1))
+    fi
+  done
+fi
+
+if [[ ! -f "$SIDEBAR_DESTINATION_SOURCE" ]]; then
+  echo "BLOCKER: sidebar destination source is missing: $SIDEBAR_DESTINATION_SOURCE" >&2
+  missing=$((missing + 1))
+else
+  if ! grep -F '.accessibilityIdentifier("sidebar-destination-\(destination.accessibilityIdentifierSuffix)")' "$TODAY_WORKFLOW_SOURCE" >/dev/null; then
+    echo "BLOCKER: generated sidebar accessibilityIdentifier template is missing from ProjectWorkflowViews.swift" >&2
+    missing=$((missing + 1))
+  fi
+  if ! awk '/case \.today:/ { foundCase = 1; next } foundCase && /"today"/ { foundValue = 1; exit } END { exit !(foundCase && foundValue) }' "$SIDEBAR_DESTINATION_SOURCE"; then
+    echo "BLOCKER: Today sidebar accessibilityIdentifier suffix mapping is missing from ProjectBoardSelectionPersistence.swift" >&2
+    missing=$((missing + 1))
+  fi
+fi
+
 if [[ "$missing" -gt 0 ]]; then
   exit 1
 fi
@@ -97,4 +179,4 @@ if [[ "$RUN_SWIFT_TESTS" -eq 1 ]]; then
   swift test --filter SoloPMHarnessTests
 fi
 
-echo "OK: pseudo VoiceOver focus path contract covers task list/create/edit/status/automation/approved execution/delete and project complete/delete cascade markers"
+echo "OK: pseudo VoiceOver focus path contract covers task lifecycle execution and Today cockpit markers"

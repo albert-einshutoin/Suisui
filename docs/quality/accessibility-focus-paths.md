@@ -34,6 +34,36 @@ The task path covers task listing, create, content entry, edit, status execution
 | Cancel project delete | `project-inspector-delete-confirmation-cancel` | button | Cancels the project delete confirmation and returns to the project inspector without mutating local data. |
 | Confirm project delete | `project-inspector-delete-confirmation-confirm` | button | Confirms the project delete path that runtime smoke verifies as a task cascade delete. |
 
+## Today Cockpit
+
+The actionable Today path covers the `ui-samples/01.png` inspired cockpit: opening Today, capturing a local command, using quick suggestions, seeing the persistent assistant rail, and reaching the rail's local focus, schedule draft, edit, subtask draft, and reminder draft actions. This automated path is not release evidence by itself; it prevents source/runtime regressions before the manual Today VoiceOver pass and fresh screenshots are captured.
+
+| Step | AX identifier | Expected role | Required behavior |
+| --- | --- | --- | --- |
+| Open Today | `sidebar-destination-today` | button | User can move from navigation into the Today cockpit. |
+| Today region | `today-workflow` | group | The Today surface is exposed as the selected workflow. |
+| Briefing panel | `today-briefing-panel` | group | The command input, review prompt, suggestions, and flow strip are reachable before the rail. |
+| Command field | `today-command-capture-field` | text field | Captures new local work without changing existing task status. |
+| Add command | `today-command-add` | button | Sends the command into local Inbox rather than external Calendar or Reminder writes. |
+| Common action rail | `today-common-action-rail` | group | Groups common Today command chips so they are not buried in prose. |
+| Add task chip | `today-common-chip-add-task` | button | Prefills a local task command draft. |
+| Plan tomorrow chip | `today-common-chip-plan-tomorrow` | button | Prefills a tomorrow planning draft without Calendar writes. |
+| Prepare meeting chip | `today-common-chip-prepare-meeting` | button | Prefills a meeting preparation task. |
+| Draft reply chip | `today-common-chip-draft-reply` | button | Prefills a reply draft task. |
+| Suggestion rail | `today-suggestion-rail` | group | Exposes recommended focus suggestions. |
+| Start focus | `today-start-focus` | button | Starts local focus for the recommended task without mutating status. |
+| Flow strip | `today-flow-strip` | group | Shows due/overdue counts and local time-block planning state. |
+| Assistant rail | `today-assistant-rail` | group | Persistent right/bottom rail is reachable for selected or recommended Today work. |
+| Next action | `today-rail-next-action` | group | Announces what to do next and why. |
+| Task detail | `today-rail-task-detail` | group | Exposes project, status, priority, due date, notes, subtasks, and reminder summary. |
+| Rail focus | `today-rail-focus` | button | Starts local focus from the rail. |
+| Rail schedule draft | `today-rail-schedule-block` | button | Creates a local schedule draft without writing Calendar. |
+| Rail edit | `today-rail-edit-task` | button | Opens the selected task in the inspector for manual edits. |
+| Rail subtask draft | `today-rail-add-subtask` | button | Prefills a local subtask draft. |
+| Rail reminder draft | `today-rail-reminder-draft` | button | Prefills a reminder draft while preserving approval-gated external writes. |
+
+`AccessibilityFocusPathRequirement.todayCockpit` is the seeded/actionable path. It assumes a recommended or selected Today task exists, so rail action buttons are required and enabled. `AccessibilityFocusPathRequirement.todayEmptyCockpit` covers the 0-task state: Today navigation, the command field, common action chips, suggestion/flow landmarks, and the assistant rail empty detail must remain reachable without requiring `today-command-add`, `today-start-focus`, or task-specific rail action buttons to be enabled.
+
 ## Automation Boundary
 
 - Task automation ranks tasks by priority and due date, but defaults to disabled.
@@ -63,9 +93,11 @@ The harness emits one step per required AX identifier so task listing, create, e
 
 `SoloPMHarnessTaskLifecycleOperation.requiredFocusNodeIDs` maps each lifecycle operation to the AX nodes that prove it, and `SoloPMHarnessScenario.requiredFocusNodeIDs(for:)` flattens those operation mappings back through the canonical VoiceOver traversal order from `AccessibilityFocusPathRequirement.taskLifecycleAndExecution`. This keeps the operation list, MCP/E2E harness, and pseudo VoiceOver path tied together: adding a lifecycle operation or AX node now requires an explicit mapping instead of relying on a prose checklist.
 
+`SoloPMHarnessTodayCockpitOperation.requiredFocusNodeIDs` does the same for Today. `SoloPMHarnessScenario.requiredTodayCockpitOperations`, `SoloPMHarnessScenario.completeTodayCockpitOperations`, `SoloPMHarnessScenario.missingTodayCockpitOperations()`, and `SoloPMHarnessScenario.requiredTodayCockpitFocusNodeIDs(for:)` map `openToday`, `captureCommand`, `commonActions`, `focusSuggestions`, `localFocusAndPlanning`, `railContext`, and `railActions` back through `AccessibilityFocusPathRequirement.todayCockpit`, so the automated gate can prove the Today rail still exposes next action context and local draft actions before manual VoiceOver evidence is refreshed.
+
 Approved execution evidence must be a redacted `ApprovedAutomationExecutionReceipt` with task identity, project identity, reviewed title, reviewed detail, before/after status, priority, due date, and review reason. `ProjectBoardViewModel.approvedAutomationExecutionReceipts` keeps a receipt history across a configured multi-task review so running one approved task cannot erase the remaining reviewed queue or leave later executions unproven. Missing receipts, missing receipt history, missing reviewed task content, or receipt fields that still contain secret-like content fail the pseudo VoiceOver run before manual evidence can be reused.
 
-`script/check_pseudo_voiceover_paths.sh` is the cheap source-marker gate. Its marker list must include every `AccessibilityFocusPathRequirement.taskLifecycleAndExecution.requiredNodeIDs` entry, including task title/detail fields in the inline composer and inspector, so a release summary cannot claim create/edit coverage while only checking the action buttons. Run `script/check_pseudo_voiceover_paths.sh --swift-test` before reusing this gate as release evidence support; the option also runs `swift test --filter AccessibilityFocusPathAuditTests` and `swift test --filter SoloPMHarnessTests` so the real focus-path audit and approved execution receipt logic are proven, not only present as strings.
+`script/check_pseudo_voiceover_paths.sh` is the cheap source-marker gate. Its marker list must include every `AccessibilityFocusPathRequirement.taskLifecycleAndExecution.requiredNodeIDs` entry and every `AccessibilityFocusPathRequirement.todayCockpit.requiredNodeIDs` entry, including task title/detail fields in the inline composer, inspector, and Today rail actions, so a release summary cannot claim create/edit or Today cockpit coverage while only checking the action buttons. Run `script/check_pseudo_voiceover_paths.sh --swift-test` before reusing this gate as release evidence support; the option also runs `swift test --filter AccessibilityFocusPathAuditTests` and `swift test --filter SoloPMHarnessTests` so the real focus-path audit and approved execution receipt logic are proven, not only present as strings.
 
 ## Source Owners
 

@@ -98,6 +98,63 @@ public enum SoloPMHarnessTaskLifecycleOperation: String, Codable, CaseIterable, 
     }
 }
 
+public enum SoloPMHarnessTodayCockpitOperation: String, Codable, CaseIterable, Equatable, Hashable, Sendable {
+    case openToday
+    case captureCommand
+    case commonActions
+    case focusSuggestions
+    case localFocusAndPlanning
+    case railContext
+    case railActions
+
+    public var requiredFocusNodeIDs: [String] {
+        switch self {
+        case .openToday:
+            [
+                "sidebar-destination-today",
+                "today-workflow"
+            ]
+        case .captureCommand:
+            [
+                "today-briefing-panel",
+                "today-command-capture-field",
+                "today-command-add"
+            ]
+        case .commonActions:
+            [
+                "today-common-action-rail",
+                "today-common-chip-add-task",
+                "today-common-chip-plan-tomorrow",
+                "today-common-chip-prepare-meeting",
+                "today-common-chip-draft-reply"
+            ]
+        case .focusSuggestions:
+            [
+                "today-suggestion-rail"
+            ]
+        case .localFocusAndPlanning:
+            [
+                "today-start-focus",
+                "today-flow-strip"
+            ]
+        case .railContext:
+            [
+                "today-assistant-rail",
+                "today-rail-next-action",
+                "today-rail-task-detail"
+            ]
+        case .railActions:
+            [
+                "today-rail-focus",
+                "today-rail-schedule-block",
+                "today-rail-edit-task",
+                "today-rail-add-subtask",
+                "today-rail-reminder-draft"
+            ]
+        }
+    }
+}
+
 public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
     public var id: String
     public var name: String
@@ -106,6 +163,7 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
     public var expectedMutations: [SyncTaskMutationPayload]
     public var assertions: [SoloPMHarnessAssertion]
     public var requiredTaskLifecycleOperations: [SoloPMHarnessTaskLifecycleOperation]
+    public var requiredTodayCockpitOperations: [SoloPMHarnessTodayCockpitOperation]
     public var requiredDocumentDeliverableKinds: [DocumentAutomationOutputKind]
 
     public init(
@@ -116,6 +174,7 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
         expectedMutations: [SyncTaskMutationPayload],
         assertions: [SoloPMHarnessAssertion],
         requiredTaskLifecycleOperations: [SoloPMHarnessTaskLifecycleOperation] = [],
+        requiredTodayCockpitOperations: [SoloPMHarnessTodayCockpitOperation] = [],
         requiredDocumentDeliverableKinds: [DocumentAutomationOutputKind] = []
     ) {
         self.id = id
@@ -125,6 +184,7 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
         self.expectedMutations = expectedMutations
         self.assertions = assertions
         self.requiredTaskLifecycleOperations = requiredTaskLifecycleOperations
+        self.requiredTodayCockpitOperations = requiredTodayCockpitOperations
         self.requiredDocumentDeliverableKinds = requiredDocumentDeliverableKinds
     }
 
@@ -152,6 +212,16 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
         .pullRequestPlan
     ]
 
+    public static let completeTodayCockpitOperations: [SoloPMHarnessTodayCockpitOperation] = [
+        .openToday,
+        .captureCommand,
+        .commonActions,
+        .focusSuggestions,
+        .localFocusAndPlanning,
+        .railContext,
+        .railActions
+    ]
+
     public static func requiredFocusNodeIDs(
         for operations: [SoloPMHarnessTaskLifecycleOperation]
     ) -> [String] {
@@ -163,10 +233,28 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
             .filter { operationNodeIDs.contains($0) }
     }
 
+    public static func requiredTodayCockpitFocusNodeIDs(
+        for operations: [SoloPMHarnessTodayCockpitOperation]
+    ) -> [String] {
+        let operationNodeIDs = Set(operations.flatMap(\.requiredFocusNodeIDs))
+        // Today renders differently across horizontal and vertical layouts.
+        // Filter through the canonical requirement so operation coverage does
+        // not accidentally encode a layout-specific traversal order.
+        return AccessibilityFocusPathRequirement.todayCockpit.requiredNodeIDs
+            .filter { operationNodeIDs.contains($0) }
+    }
+
     public func missingTaskLifecycleOperations(
         required: [SoloPMHarnessTaskLifecycleOperation] = SoloPMHarnessScenario.completeTaskLifecycleOperations
     ) -> [SoloPMHarnessTaskLifecycleOperation] {
         let covered = Set(requiredTaskLifecycleOperations)
+        return required.filter { !covered.contains($0) }
+    }
+
+    public func missingTodayCockpitOperations(
+        required: [SoloPMHarnessTodayCockpitOperation] = SoloPMHarnessScenario.completeTodayCockpitOperations
+    ) -> [SoloPMHarnessTodayCockpitOperation] {
+        let covered = Set(requiredTodayCockpitOperations)
         return required.filter { !covered.contains($0) }
     }
 
@@ -267,7 +355,8 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
                 requiredCapabilities: [.mcpToolCall, .accessibilityAudit],
                 expectedMutations: [],
                 assertions: [.outputMatchesExpected, .approvalBoundary, .auditLogRecorded, .redactedLogs, .resultDiffRecorded, .accessibilityFocusPathCovered],
-                requiredTaskLifecycleOperations: Self.completeTaskLifecycleOperations
+                requiredTaskLifecycleOperations: Self.completeTaskLifecycleOperations,
+                requiredTodayCockpitOperations: Self.completeTodayCockpitOperations
             )
         ]
     }
@@ -280,6 +369,7 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
         case expectedMutations
         case assertions
         case requiredTaskLifecycleOperations
+        case requiredTodayCockpitOperations
         case requiredDocumentDeliverableKinds
     }
 
@@ -294,6 +384,10 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
         requiredTaskLifecycleOperations = try container.decodeIfPresent(
             [SoloPMHarnessTaskLifecycleOperation].self,
             forKey: .requiredTaskLifecycleOperations
+        ) ?? []
+        requiredTodayCockpitOperations = try container.decodeIfPresent(
+            [SoloPMHarnessTodayCockpitOperation].self,
+            forKey: .requiredTodayCockpitOperations
         ) ?? []
         requiredDocumentDeliverableKinds = try container.decodeIfPresent(
             [DocumentAutomationOutputKind].self,
@@ -310,6 +404,7 @@ public struct SoloPMHarnessScenario: Codable, Equatable, Sendable {
         try container.encode(expectedMutations, forKey: .expectedMutations)
         try container.encode(assertions, forKey: .assertions)
         try container.encode(requiredTaskLifecycleOperations, forKey: .requiredTaskLifecycleOperations)
+        try container.encode(requiredTodayCockpitOperations, forKey: .requiredTodayCockpitOperations)
         try container.encode(requiredDocumentDeliverableKinds, forKey: .requiredDocumentDeliverableKinds)
     }
 }
@@ -891,7 +986,8 @@ public struct SoloPMHarnessAccessibilityAuditRunner: Sendable {
                 requiredCapabilities: [.mcpToolCall, .accessibilityAudit],
                 expectedMutations: [],
                 assertions: [.accessibilityFocusPathCovered],
-                requiredTaskLifecycleOperations: SoloPMHarnessScenario.completeTaskLifecycleOperations
+                requiredTaskLifecycleOperations: SoloPMHarnessScenario.completeTaskLifecycleOperations,
+                requiredTodayCockpitOperations: SoloPMHarnessScenario.completeTodayCockpitOperations
             )
     }
 
