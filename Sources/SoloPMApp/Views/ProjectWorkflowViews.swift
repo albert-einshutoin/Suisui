@@ -551,6 +551,8 @@ private struct DailyWorkloadPanel: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            DailyWorkloadAttentionBanner(overview: overview)
+
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 8)], spacing: 8) {
                 ForEach(overview.days) { day in
                     Button {
@@ -561,7 +563,18 @@ private struct DailyWorkloadPanel: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("schedule-workload-day-cell-\(day.dateKey)")
                     .accessibilityLabel(String(format: String(localized: "Workload for %@"), day.dateKey))
-                    .accessibilityValue(String(format: String(localized: "%d tasks, %d percent complete"), day.totalTaskCount, Int((day.progress * 100).rounded())))
+                    .accessibilityValue(
+                        String(
+                            format: String(localized: "%d tasks, %d open, %d in progress, %d blocked, %d done, %d missed, %d percent complete"),
+                            day.totalTaskCount,
+                            day.openTaskCount,
+                            day.inProgressTaskCount,
+                            day.blockedTaskCount,
+                            day.doneTaskCount,
+                            day.overdueTaskCount,
+                            Int((day.progress * 100).rounded())
+                        )
+                    )
                 }
             }
 
@@ -586,6 +599,50 @@ private struct DailyWorkloadPanel: View {
         .accessibilityIdentifier("schedule-workload-dashboard")
         .accessibilityLabel("Daily Workload")
         .accessibilityHint("Shows local per-day task counts, progress, unscheduled tasks, and Inbox triage without writing Calendar.")
+    }
+}
+
+private struct DailyWorkloadAttentionBanner: View {
+    let overview: DailyWorkloadOverview
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: overview.attentionSignalCount > 0 ? "exclamationmark.triangle" : "checkmark.circle")
+                .foregroundStyle(overview.attentionSignalCount > 0 ? .orange : .secondary)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(headline)
+                    .font(.caption.weight(.semibold))
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(overview.attentionSignalCount > 0 ? Color.orange.opacity(0.08) : Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("schedule-workload-attention-banner")
+        .accessibilityLabel("Workload attention")
+        .accessibilityValue(detail)
+    }
+
+    private var headline: String {
+        if overview.attentionSignalCount > 0 {
+            return String(localized: "Review workload risks")
+        }
+        return String(localized: "No workload risks")
+    }
+
+    private var detail: String {
+        String(
+            format: String(localized: "Missed %d, blocked %d, unscheduled %d, Inbox %d"),
+            overview.missedTaskCount,
+            overview.blockedTaskCount,
+            overview.unscheduledTasks.count,
+            overview.inboxUntriagedCount
+        )
     }
 }
 
@@ -620,12 +677,16 @@ private struct DailyWorkloadDayCell: View {
                     .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-done")
             }
             HStack(spacing: 6) {
+                metric("Doing", value: day.inProgressTaskCount)
+                    .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-in-progress")
                 metric("Blocked", value: day.blockedTaskCount)
+                    .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-blocked")
                 metric("Missed", value: day.overdueTaskCount)
+                    .accessibilityIdentifier("schedule-workload-count-badge-\(day.dateKey)-missed")
             }
         }
         .padding(10)
-        .frame(minHeight: 118, maxHeight: 132, alignment: .topLeading)
+        .frame(minHeight: 128, maxHeight: 148, alignment: .topLeading)
         .background(isSelected ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)

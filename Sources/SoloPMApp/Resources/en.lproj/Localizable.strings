@@ -939,6 +939,12 @@
 "%d new" = "%d new";
 "%@ tasks" = "%@ tasks";
 "Daily Workload" = "Daily Workload";
+"Doing" = "Doing";
+"Workload attention" = "Workload attention";
+"Review workload risks" = "Review workload risks";
+"No workload risks" = "No workload risks";
+"Missed %d, blocked %d, unscheduled %d, Inbox %d" = "Missed %d, blocked %d, unscheduled %d, Inbox %d";
+"%d tasks, %d open, %d in progress, %d blocked, %d done, %d missed, %d percent complete" = "%d tasks, %d open, %d in progress, %d blocked, %d done, %d missed, %d percent complete";
 "Daily Planning Review" = "Daily Planning Review";
 "Daily Planning Review action is already in Assistant Queue." = "Daily Planning Review action is already in Assistant Queue.";
 "Daily Planning Review generated an invalid action plan." = "Daily Planning Review generated an invalid action plan.";

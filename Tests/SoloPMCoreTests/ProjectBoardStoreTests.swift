@@ -2365,6 +2365,10 @@ final class ProjectBoardStoreTests: XCTestCase {
         ])
         XCTAssertEqual(overview.inboxUntriagedCount, 1)
         XCTAssertEqual(overview.unscheduledTasks.map(\.title), ["Backlog without date"])
+        XCTAssertEqual(overview.inProgressTaskCount, 1)
+        XCTAssertEqual(overview.blockedTaskCount, 1)
+        XCTAssertEqual(overview.missedTaskCount, 1)
+        XCTAssertEqual(overview.attentionSignalCount, 4)
 
         let monday = try XCTUnwrap(overview.days.first { $0.dateKey == "2026-06-22" })
         XCTAssertEqual(monday.totalTaskCount, 1)
