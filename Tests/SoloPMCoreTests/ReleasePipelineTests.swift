@@ -6148,6 +6148,19 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("launch_voiceover_candidate_for_evidence"))
         XCTAssertTrue(script.contains("--validate-only"))
         XCTAssertTrue(script.contains("Validate the filled VoiceOver evidence command before writing tracked evidence."))
+        XCTAssertTrue(script.contains("validate_only=0"))
+        XCTAssertTrue(script.contains("usage: $0 [--validate-only]"))
+        XCTAssertTrue(script.contains("validate_only=1"))
+        XCTAssertTrue(script.contains("if [[ \"$validate_only\" == \"1\" ]]; then"))
+        XCTAssertTrue(script.contains("OK: VoiceOver evidence command validated without writing tracked evidence"))
+        XCTAssertTrue(script.contains("  exit 0"))
+        let validateOnlyRange = try XCTUnwrap(script.range(of: "write_voiceover_evidence_invocation \"--validate-only\""))
+        let validateExitRange = try XCTUnwrap(script.range(of: "OK: VoiceOver evidence command validated without writing tracked evidence"))
+        let validateExitCommandRange = try XCTUnwrap(script.range(of: "  exit 0", range: validateExitRange.upperBound..<script.endIndex))
+        let passedRange = try XCTUnwrap(script.range(of: "write_voiceover_evidence_invocation \"--passed\""))
+        XCTAssertLessThan(validateOnlyRange.lowerBound, validateExitRange.lowerBound)
+        XCTAssertLessThan(validateExitCommandRange.lowerBound, passedRange.lowerBound)
+        XCTAssertLessThan(validateExitRange.lowerBound, passedRange.lowerBound)
         XCTAssertTrue(script.contains("--capture-runtime-ax-smoke"))
         XCTAssertTrue(script.contains("--project-navigation-note"))
         XCTAssertTrue(script.contains("--task-content-execution-note"))
@@ -6166,7 +6179,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         let releaseChecklist = try readPackageFile("docs/release/checklist.md")
         XCTAssertTrue(releaseChecklist.contains("The generated VoiceOver evidence command requires a clean tracked source tree, pins the release-candidate source commit it was created for, and exits before writing evidence if the worktree is dirty or has moved to another commit."))
-        XCTAssertTrue(releaseChecklist.contains("Run the generated `--validate-only` command first; it performs the same passed-evidence validation without writing `docs/release/evidence/accessibility-voiceover.md`."))
+        XCTAssertTrue(releaseChecklist.contains("Run `.tmp/voiceover-review/create-evidence-command.sh --validate-only` first; it performs the same passed-evidence validation and exits before writing `docs/release/evidence/accessibility-voiceover.md`."))
         XCTAssertTrue(releaseChecklist.contains("The script also writes `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md` so the reviewer can inspect the current release-candidate context without modifying tracked evidence."))
         XCTAssertTrue(releaseChecklist.contains("Direct `./script/create_voiceover_evidence.sh --pending` also defaults to `.tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md`; it must not modify `docs/release/evidence/accessibility-voiceover.md` unless `--output` points there explicitly."))
         XCTAssertTrue(releaseChecklist.contains("The generated `.tmp/voiceover-review/launch.env` records `SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT` and `SOLOPM_VOICEOVER_REVIEW_PROJECT_ID` so manual reviewers can confirm the launched candidate matches the release-candidate source commit and seeded project."))
@@ -6190,6 +6203,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase11.contains("[x] VoiceOver evidence generator and generated worksheet command require a Task content execution observation proving approved execution records the reviewed task title and detail in the redacted receipt, and reject notes that only prove the Run approved plan control was reachable."))
         XCTAssertTrue(phase11.contains("[x] VoiceOver review candidate seeds a dedicated approved execution receipt task so manual reviewers can prove the reviewed title/detail is announced from `approved-execution-receipt`."))
         XCTAssertTrue(phase11.contains("[x] `script/create_voiceover_evidence.sh --validate-only` validates the filled manual command without writing tracked evidence."))
+        XCTAssertTrue(phase11.contains("[x] Generated `.tmp/voiceover-review/create-evidence-command.sh --validate-only` exits after validation without writing tracked VoiceOver evidence."))
     }
 
     func testReleaseReadinessReportCanUseAutomatedPreflightEvidenceInsteadOfRerunningLocalProofGates() throws {
