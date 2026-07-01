@@ -3784,6 +3784,8 @@ final class ReleasePipelineTests: XCTestCase {
         }
         let currentShortCommit = try manualReleaseEvidenceSourceCommit()
         let taskContentExecutionNote = "Approved execution announced the reviewed task title and detail, then left a redacted receipt with task identity, reviewed detail, and before/after status."
+        let inboxVoiceTriageNote = "Inbox voice capture detail announces transcript, AI interpretation, source metadata, memo field, and make task schedule review later project triage actions."
+        let todayRailActionsNote = "Today assistant rail announces next action and task detail before focus schedule draft edit subtask draft and reminder draft controls."
 
         let pendingResult = try runScript(
             "script/create_voiceover_evidence.sh",
@@ -3800,6 +3802,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(pendingEvidence.contains("- Runtime AX smoke:"))
         XCTAssertTrue(pendingEvidence.contains("- [ ] Project navigation"))
         XCTAssertTrue(pendingEvidence.contains("- [ ] Inline Task Composer"))
+        XCTAssertTrue(pendingEvidence.contains("- [ ] Inbox voice triage: confirm the selected voice intake detail announces transcript, interpretation, source metadata, memo, and triage actions."))
+        XCTAssertTrue(pendingEvidence.contains("- [ ] Today rail actions: confirm the Today rail announces next action, task detail, focus, schedule draft, edit, subtask draft, and reminder draft controls."))
         XCTAssertTrue(pendingEvidence.contains("- [ ] Task content execution: run the approved plan and confirm the redacted execution receipt includes reviewed title and detail."))
         XCTAssertTrue(pendingEvidence.contains("- [ ] Delete Task confirmation: confirm destructive action opens an inline inspector confirmation panel before local deletion."))
         XCTAssertTrue(pendingEvidence.contains("- [ ] No keyboard trap: confirm focus can leave sidebar, board, card controls, inspector fields, and inline confirmation panels."))
@@ -3846,6 +3850,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--inbox-voice-triage-note", inboxVoiceTriageNote,
+                "--today-rail-actions-note", todayRailActionsNote,
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
@@ -3874,6 +3880,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--inbox-voice-triage-note", inboxVoiceTriageNote,
+                "--today-rail-actions-note", todayRailActionsNote,
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
@@ -3902,6 +3910,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--inbox-voice-triage-note", inboxVoiceTriageNote,
+                "--today-rail-actions-note", todayRailActionsNote,
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
@@ -3930,6 +3940,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--inbox-voice-triage-note", inboxVoiceTriageNote,
+                "--today-rail-actions-note", todayRailActionsNote,
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
@@ -3957,6 +3969,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--inbox-voice-triage-note", inboxVoiceTriageNote,
+                "--today-rail-actions-note", todayRailActionsNote,
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
@@ -3984,6 +3998,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--inbox-voice-triage-note", inboxVoiceTriageNote,
+                "--today-rail-actions-note", todayRailActionsNote,
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
@@ -4117,6 +4133,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--inbox-voice-triage-note", inboxVoiceTriageNote,
+                "--today-rail-actions-note", todayRailActionsNote,
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
@@ -4172,6 +4190,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--inbox-voice-triage-note", inboxVoiceTriageNote,
+                "--today-rail-actions-note", todayRailActionsNote,
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--task-content-execution-note", "VoiceOver announced Run approved plan and the selected task execution completed.",
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
@@ -4183,6 +4203,66 @@ final class ReleasePipelineTests: XCTestCase {
         )
         XCTAssertNotEqual(weakTaskContentExecutionResult.exitCode, 0)
         XCTAssertTrue(weakTaskContentExecutionResult.output.contains("--task-content-execution-note must mention the redacted receipt, reviewed title, and reviewed detail"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: validateOnlyURL.path))
+
+        let weakInboxVoiceTriageResult = try runScript(
+            "script/create_voiceover_evidence.sh",
+            arguments: [
+                "--validate-only",
+                "--checked-by", "SoloPM Release Owner",
+                "--macos-version", "macOS 15.5",
+                "--check-date", "2026-06-19",
+                "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
+                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1",
+                "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
+                "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
+                "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
+                "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
+                "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
+                "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--inbox-voice-triage-note", "Inbox voice detail announced transcript and triage actions.",
+                "--today-rail-actions-note", todayRailActionsNote,
+                "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--task-content-execution-note", taskContentExecutionNote,
+                "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
+                "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
+                "--output", validateOnlyURL.path,
+                "--confirm-manual-voiceover-pass"
+            ]
+        )
+        XCTAssertNotEqual(weakInboxVoiceTriageResult.exitCode, 0)
+        XCTAssertTrue(weakInboxVoiceTriageResult.output.contains("--inbox-voice-triage-note must mention transcript, interpretation, metadata, memo, and every Inbox triage action"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: validateOnlyURL.path))
+
+        let weakTodayRailActionsResult = try runScript(
+            "script/create_voiceover_evidence.sh",
+            arguments: [
+                "--validate-only",
+                "--checked-by", "SoloPM Release Owner",
+                "--macos-version", "macOS 15.5",
+                "--check-date", "2026-06-19",
+                "--accessibility-environment", "VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display",
+                "--runtime-ax-smoke-note", "OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1",
+                "--project-navigation-note", "Sidebar Inbox, Today, and selected project rows announce destination and counts in order.",
+                "--project-board-detail-note", "Selected project board announces project title before card navigation begins.",
+                "--open-task-note", "Task card details open from keyboard focus without relying on drag.",
+                "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
+                "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
+                "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--inbox-voice-triage-note", inboxVoiceTriageNote,
+                "--today-rail-actions-note", "Today rail announced focus, schedule, and reminder controls.",
+                "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
+                "--task-content-execution-note", taskContentExecutionNote,
+                "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
+                "--no-keyboard-trap-note", "Focus can leave sidebar, board, card controls, inspector fields, and dialogs.",
+                "--no-unlabeled-crud-note", "Create, update, status move, local suggestion apply, automation review, approved execution, and delete actions have labels or help.",
+                "--output", validateOnlyURL.path,
+                "--confirm-manual-voiceover-pass"
+            ]
+        )
+        XCTAssertNotEqual(weakTodayRailActionsResult.exitCode, 0)
+        XCTAssertTrue(weakTodayRailActionsResult.output.contains("--today-rail-actions-note must mention next action, task detail, focus, schedule, edit, subtask, and reminder controls"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: validateOnlyURL.path))
 
         try """
@@ -4212,6 +4292,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--inbox-voice-triage-note", inboxVoiceTriageNote,
+                "--today-rail-actions-note", todayRailActionsNote,
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
@@ -4271,6 +4353,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--inbox-voice-triage-note", inboxVoiceTriageNote,
+                "--today-rail-actions-note", todayRailActionsNote,
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
@@ -4326,6 +4410,8 @@ final class ReleasePipelineTests: XCTestCase {
                 "--inline-task-composer-note", "Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.",
                 "--status-controls-note", "Previous and next status buttons announce the target status before moving the task.",
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
+                "--inbox-voice-triage-note", inboxVoiceTriageNote,
+                "--today-rail-actions-note", todayRailActionsNote,
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
@@ -4353,6 +4439,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(passedEvidence.contains("- Inline Task Composer: passed - Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable."))
         XCTAssertTrue(passedEvidence.contains("- Status controls: passed - Previous and next status buttons announce the target status before moving the task."))
         XCTAssertTrue(passedEvidence.contains("- Task inspector: passed - Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable."))
+        XCTAssertTrue(passedEvidence.contains("- Inbox voice triage: passed - \(inboxVoiceTriageNote)"))
+        XCTAssertTrue(passedEvidence.contains("- Today rail actions: passed - \(todayRailActionsNote)"))
         XCTAssertTrue(passedEvidence.contains("- Save Changes: passed - Keyboard activation reaches the local task save action and returns without a trap."))
         XCTAssertTrue(passedEvidence.contains("- Task content execution: passed - \(taskContentExecutionNote)"))
         XCTAssertTrue(passedEvidence.contains("- Delete Task confirmation: passed - Delete opens confirmation before local deletion and exposes cancel."))
@@ -6025,11 +6113,17 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("voiceover_worksheet_value()"))
         XCTAssertTrue(script.contains("WORKSHEET_REVIEWER=\"$(voiceover_worksheet_value \"Reviewer\")\""))
         XCTAssertTrue(script.contains("WORKSHEET_PROJECT_NAVIGATION_NOTE=\"$(voiceover_worksheet_value \"Project navigation\")\""))
+        XCTAssertTrue(script.contains("WORKSHEET_INBOX_VOICE_TRIAGE_NOTE=\"$(voiceover_worksheet_value \"Inbox voice triage\")\""))
+        XCTAssertTrue(script.contains("WORKSHEET_TODAY_RAIL_ACTIONS_NOTE=\"$(voiceover_worksheet_value \"Today rail actions\")\""))
         XCTAssertTrue(script.contains("WORKSHEET_TASK_CONTENT_EXECUTION_NOTE=\"$(voiceover_worksheet_value \"Task content execution\")\""))
         XCTAssertTrue(script.contains("--checked-by \"$WORKSHEET_REVIEWER\""))
         XCTAssertTrue(script.contains("--project-navigation-note \"$WORKSHEET_PROJECT_NAVIGATION_NOTE\""))
+        XCTAssertTrue(script.contains("--inbox-voice-triage-note \"$WORKSHEET_INBOX_VOICE_TRIAGE_NOTE\""))
+        XCTAssertTrue(script.contains("--today-rail-actions-note \"$WORKSHEET_TODAY_RAIL_ACTIONS_NOTE\""))
         XCTAssertTrue(script.contains("--task-content-execution-note \"$WORKSHEET_TASK_CONTENT_EXECUTION_NOTE\""))
         XCTAssertTrue(script.contains("Project navigation"))
+        XCTAssertTrue(script.contains("Inbox voice triage"))
+        XCTAssertTrue(script.contains("Today rail actions"))
         XCTAssertTrue(script.contains("Task content execution"))
         XCTAssertTrue(script.contains("No unlabeled primary CRUD controls"))
         XCTAssertTrue(script.contains("| `approved-execution-receipt` | Task content execution | Confirm VoiceOver announces the redacted receipt with reviewed task title and detail after approved execution. |"))
@@ -7750,10 +7844,13 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("--inline-task-composer-note \"<VoiceOver observation for title/detail/priority/due create flow, Command+Return, and Escape>\""))
         XCTAssertTrue(actionSummary.contains("--status-controls-note \"<VoiceOver observation for previous/next status controls and target status labels>\""))
         XCTAssertTrue(actionSummary.contains("--task-inspector-note \"<VoiceOver observation for inspector fields, summary, suggestion, save, and danger actions>\""))
+        XCTAssertTrue(actionSummary.contains("--inbox-voice-triage-note \"<VoiceOver observation for Inbox voice detail transcript, interpretation, metadata, memo, and triage actions>\""))
+        XCTAssertTrue(actionSummary.contains("--today-rail-actions-note \"<VoiceOver observation for Today rail next action, task detail, focus, schedule, edit, subtask, and reminder controls>\""))
         XCTAssertFalse(actionSummary.contains("--project-navigation-note \"<VoiceOver observation for sidebar project navigation>\""))
         XCTAssertFalse(actionSummary.contains("--inline-task-composer-note \"<VoiceOver observation for title/detail/priority/due create flow>\""))
         XCTAssertTrue(actionSummary.contains("--save-changes-note \"<VoiceOver observation proving keyboard activation saves local task changes>\""))
         XCTAssertTrue(actionSummary.contains("--task-content-execution-note \"<VoiceOver observation proving approved execution records reviewed task title and detail in the redacted receipt>\""))
+        XCTAssertTrue(actionSummary.contains("Inbox voice triage and Today rail actions notes are required for #5/#6 P0 cockpit closeout"))
         XCTAssertTrue(actionSummary.contains("Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail"))
         XCTAssertTrue(actionSummary.contains("--delete-confirmation-note \"<VoiceOver observation proving Delete Task opens an inline inspector confirmation panel before deletion>\""))
         XCTAssertTrue(actionSummary.contains("--confirm-manual-voiceover-pass"))
@@ -9195,6 +9292,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Inline Task Composer"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Status controls"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Task inspector"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Inbox voice triage"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Today rail actions"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Save Changes"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Task content execution"))
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Delete Task confirmation"))
@@ -9277,6 +9376,8 @@ final class ReleasePipelineTests: XCTestCase {
         - Inline Task Composer: passed - Title, detail, priority, due, create, cancel, Command+Return, and Escape paths are reachable.
         - Status controls: passed - Previous and next status buttons announce the target status before moving the task.
         - Task inspector: passed - Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.
+        - Inbox voice triage: passed - Inbox voice detail announced transcript and triage actions.
+        - Today rail actions: passed - Today rail announced focus, schedule, and reminder controls.
         - Save Changes: passed - Keyboard activation reaches the local task save action and returns without a trap.
         - Task content execution: passed - VoiceOver announced Run approved plan and the selected task execution completed.
         - Delete Task confirmation: passed - Delete opens confirmation before local deletion and exposes cancel.
@@ -9296,6 +9397,8 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence Inbox voice triage note must mention transcript, interpretation, metadata, memo, make task, schedule, review later, project, and triage"))
+        XCTAssertTrue(result.output.contains("VoiceOver accessibility evidence Today rail actions note must mention next action, task detail, focus, schedule, edit, subtask, and reminder"))
         XCTAssertFalse(result.output.contains("VoiceOver accessibility evidence missing concrete focus note: Task content execution"))
         XCTAssertFalse(result.output.contains("VoiceOver accessibility evidence has boilerplate focus note: Task content execution"))
         XCTAssertFalse(result.output.contains("VoiceOver accessibility evidence source commit does not match current release-candidate source commit"))
@@ -9377,6 +9480,8 @@ final class ReleasePipelineTests: XCTestCase {
         - Inline Task Composer: passed - Composer fields, create, and cancel were reachable.
         - Status controls: passed - Status move buttons announced target status.
         - Task inspector: passed - Inspector fields and actions were reachable.
+        - Inbox voice triage: passed - Inbox voice detail announced transcript, interpretation, source metadata, memo editing, and make task, schedule, review later, and project triage actions.
+        - Today rail actions: passed - Today assistant rail announced next action, task detail, focus, schedule draft, edit, subtask, and reminder draft controls.
         - Save Changes: passed - Save activated from keyboard.
         - Task content execution: passed - Approved execution recorded the reviewed task title and detail in the redacted receipt.
         - Delete Task confirmation: passed - Destructive confirmation was announced.
@@ -9548,6 +9653,8 @@ final class ReleasePipelineTests: XCTestCase {
         - Inline Task Composer: passed - Composer fields, create, and cancel were reachable.
         - Status controls: passed - Status move buttons announced target status.
         - Task inspector: passed - Inspector fields and actions were reachable.
+        - Inbox voice triage: passed - Inbox voice detail announced transcript, interpretation, source metadata, memo editing, and make task, schedule, review later, and project triage actions.
+        - Today rail actions: passed - Today assistant rail announced next action, task detail, focus, schedule draft, edit, subtask, and reminder draft controls.
         - Save Changes: passed - Save activated from keyboard.
         - Task content execution: passed - Approved execution recorded the reviewed task title and detail in the redacted receipt.
         - Delete Task confirmation: passed - Destructive confirmation was announced.
@@ -9675,6 +9782,8 @@ final class ReleasePipelineTests: XCTestCase {
         - Inline Task Composer: passed - Composer fields, create, and cancel were reachable.
         - Status controls: passed - Status move buttons announced target status.
         - Task inspector: passed - Inspector fields and actions were reachable.
+        - Inbox voice triage: passed - Inbox voice detail announced transcript, interpretation, source metadata, memo editing, and make task, schedule, review later, and project triage actions.
+        - Today rail actions: passed - Today assistant rail announced next action, task detail, focus, schedule draft, edit, subtask, and reminder draft controls.
         - Save Changes: passed - Save activated from keyboard.
         - Task content execution: passed - Approved execution recorded the reviewed task title and detail in the redacted receipt.
         - Delete Task confirmation: passed - Destructive confirmation was announced.
@@ -9807,6 +9916,8 @@ final class ReleasePipelineTests: XCTestCase {
         - Inline Task Composer: passed - Reached title, detail, priority, due, create, cancel, Command+Return, and Escape paths from a board column.
         - Status controls: passed - Previous and next status controls announced the target status before moving the selected local task.
         - Task inspector: passed - Focus reached title, detail, status, priority, due, summary, save, suggestion, and destructive actions.
+        - Inbox voice triage: passed - Inbox voice detail announced transcript, interpretation, source metadata, memo editing, and make task, schedule, review later, and project triage actions.
+        - Today rail actions: passed - Today assistant rail announced next action, task detail, focus, schedule draft, edit, subtask, and reminder draft controls.
         - Save Changes: passed - Keyboard activation saved the local task edit and left focus in the inspector without trapping it.
         - Task content execution: passed - Approved execution recorded the reviewed task title and detail in the redacted receipt for the selected local task.
         - Delete Task confirmation: passed - Delete opened the inline confirmation panel, announced cancel and confirm, and did not delete until confirmation.

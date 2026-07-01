@@ -64,6 +64,15 @@ The actionable Today path covers the `ui-samples/01.png` inspired cockpit: openi
 
 `AccessibilityFocusPathRequirement.todayCockpit` is the seeded/actionable path. It assumes a recommended or selected Today task exists, so rail action buttons are required and enabled. `AccessibilityFocusPathRequirement.todayEmptyCockpit` covers the 0-task state: Today navigation, the command field, common action chips, suggestion/flow landmarks, and the assistant rail empty detail must remain reachable without requiring `today-command-add`, `today-start-focus`, or task-specific rail action buttons to be enabled.
 
+## Manual P0 cockpit observations
+
+The manual release worksheet must also capture the P0 workflow cockpits that are not represented by the general task lifecycle fields.
+
+| Manual worksheet field | Source issue | Required behavior |
+| --- | --- | --- |
+| Inbox voice triage | `#5 Inbox: match rich voice intake and triage detail from ui-samples/02` | The selected voice intake detail announces transcript, interpretation, source metadata, memo editing, and the make-task, schedule, review-later, and project-conversion triage actions in the Inbox rail without forcing unrelated inspector navigation. |
+| Today rail actions | `#6 Today: add persistent assistant rail and next-action cockpit` | The Today rail announces next action context, task detail, focus, schedule draft, edit, subtask draft, and approval-gated reminder draft actions in a reachable order. |
+
 ## Automation Boundary
 
 - Task automation ranks tasks by priority and due date, but defaults to disabled.

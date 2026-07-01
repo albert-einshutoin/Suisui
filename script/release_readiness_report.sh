@@ -83,6 +83,8 @@ VOICEOVER_REQUIRED_MARKERS=(
   "Inline Task Composer"
   "Status controls"
   "Task inspector"
+  "Inbox voice triage"
+  "Today rail actions"
   "Save Changes"
   "Task content execution"
   "Delete Task confirmation"
@@ -107,6 +109,8 @@ VOICEOVER_REQUIRED_NOTE_LABELS=(
   "Inline Task Composer"
   "Status controls"
   "Task inspector"
+  "Inbox voice triage"
+  "Today rail actions"
   "Save Changes"
   "Task content execution"
   "Delete Task confirmation"
@@ -979,6 +983,8 @@ write_voiceover_manual_evidence_invocation() {
   printf '%s\n' '  --inline-task-composer-note "<VoiceOver observation for title/detail/priority/due create flow, Command+Return, and Escape>" \'
   printf '%s\n' '  --status-controls-note "<VoiceOver observation for previous/next status controls and target status labels>" \'
   printf '%s\n' '  --task-inspector-note "<VoiceOver observation for inspector fields, summary, suggestion, save, and danger actions>" \'
+  printf '%s\n' '  --inbox-voice-triage-note "<VoiceOver observation for Inbox voice detail transcript, interpretation, metadata, memo, and triage actions>" \'
+  printf '%s\n' '  --today-rail-actions-note "<VoiceOver observation for Today rail next action, task detail, focus, schedule, edit, subtask, and reminder controls>" \'
   printf '%s\n' '  --save-changes-note "<VoiceOver observation proving keyboard activation saves local task changes>" \'
   printf '%s\n' '  --task-content-execution-note "<VoiceOver observation proving approved execution records reviewed task title and detail in the redacted receipt>" \'
   printf '%s\n' '  --delete-confirmation-note "<VoiceOver observation proving Delete Task opens an inline inspector confirmation panel before deletion>" \'
@@ -1464,6 +1470,7 @@ write_release_actions() {
     printf -- "- The candidate writes \`.tmp/voiceover-review/create-evidence-command.sh\` with the same database/project context and reads reviewer, environment, and focus observations from the completed worksheet.\n"
     printf -- "- The generated VoiceOver evidence command is pinned to a clean tracked source tree and the release-candidate source commit it was created for. Rerun \`./script/prepare_release_manual_helpers.sh\` after source changes instead of reusing an older command.\n"
     printf -- "- The generated VoiceOver evidence command also refuses to run until \`.tmp/voiceover-review/voiceover-worksheet.md\` is \`Status: completed\`, pinned to the same source commit and candidate database, free of pending/unchecked/template markers, and filled.\n"
+    printf -- "- Inbox voice triage and Today rail actions notes are required for #5/#6 P0 cockpit closeout; do not reuse older Project Board-only VoiceOver evidence.\n"
     printf -- "- Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail; a reachable Run approved plan control alone is not release evidence.\n"
     printf -- "- Run the generated \`--validate-only\` command first; it performs the same passed-evidence validation without writing \`docs/release/evidence/accessibility-voiceover.md\`.\n"
     printf -- "- Run the source/runtime accessibility preflight first, then perform a real VoiceOver pass.\n"
@@ -1706,6 +1713,37 @@ voiceover_task_content_execution_note_covers_receipt() {
   grep -Eiq 'receipt' <<<"$normalized" &&
     grep -Eiq 'title' <<<"$normalized" &&
     grep -Eiq 'detail|body' <<<"$normalized"
+}
+
+voiceover_inbox_voice_triage_note_covers_p0() {
+  local normalized
+  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+
+  grep -Eiq 'inbox' <<<"$normalized" &&
+    grep -Eiq 'transcript' <<<"$normalized" &&
+    grep -Eiq 'interpretation' <<<"$normalized" &&
+    grep -Eiq 'metadata' <<<"$normalized" &&
+    grep -Eiq 'memo' <<<"$normalized" &&
+    grep -Eiq 'make[[:space:]-]*task' <<<"$normalized" &&
+    grep -Eiq 'schedule' <<<"$normalized" &&
+    grep -Eiq 'review[[:space:]-]*later' <<<"$normalized" &&
+    grep -Eiq 'project' <<<"$normalized" &&
+    grep -Eiq 'triage' <<<"$normalized"
+}
+
+voiceover_today_rail_actions_note_covers_p0() {
+  local normalized
+  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+
+  grep -Eiq 'today' <<<"$normalized" &&
+    grep -Eiq 'rail' <<<"$normalized" &&
+    grep -Eiq 'next[[:space:]-]*action' <<<"$normalized" &&
+    grep -Eiq 'task[[:space:]-]*detail' <<<"$normalized" &&
+    grep -Eiq 'focus' <<<"$normalized" &&
+    grep -Eiq 'schedule' <<<"$normalized" &&
+    grep -Eiq 'edit' <<<"$normalized" &&
+    grep -Eiq 'subtask' <<<"$normalized" &&
+    grep -Eiq 'reminder' <<<"$normalized"
 }
 
 is_boilerplate_competitor_value() {
@@ -2741,6 +2779,16 @@ else
       ! voiceover_task_content_execution_note_covers_receipt "$note_value"; then
       voiceover_blocker "VoiceOver accessibility evidence Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail"
     fi
+
+    if [[ "$note_label" == "Inbox voice triage" ]] &&
+      ! voiceover_inbox_voice_triage_note_covers_p0 "$note_value"; then
+      voiceover_blocker "VoiceOver accessibility evidence Inbox voice triage note must mention transcript, interpretation, metadata, memo, make task, schedule, review later, project, and triage"
+    fi
+
+    if [[ "$note_label" == "Today rail actions" ]] &&
+      ! voiceover_today_rail_actions_note_covers_p0 "$note_value"; then
+      voiceover_blocker "VoiceOver accessibility evidence Today rail actions note must mention next action, task detail, focus, schedule, edit, subtask, and reminder"
+    fi
   done
 
   if [[ -n "$EXPECTED_VOICEOVER_BUNDLE_IDENTIFIER" ]]; then
@@ -2774,7 +2822,7 @@ else
   fi
 fi
 if [[ "$voiceover_evidence_blocker_count" -gt 0 ]]; then
-  printf "NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass by running ./script/create_voiceover_evidence.sh --passed with complete release-candidate context, --capture-runtime-ax-smoke, complete focus-path notes, and no pending/template/unchecked markers; the generated evidence must include the runtime AX smoke OK line with unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, and destructiveCancelSignals=1/1. Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail.\n"
+  printf "NEXT: replace docs/release/evidence/accessibility-voiceover.md with a real VoiceOver pass by running ./script/create_voiceover_evidence.sh --passed with complete release-candidate context, --capture-runtime-ax-smoke, complete focus-path notes, Inbox voice triage, Today rail actions, and no pending/template/unchecked markers; the generated evidence must include the runtime AX smoke OK line with unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, and destructiveCancelSignals=1/1. Task content execution note must mention the redacted receipt, reviewed title, and reviewed detail.\n"
 fi
 
 section "Competitor hands-on evidence"
