@@ -607,7 +607,7 @@ private struct VoiceCaptureView: View {
     }
 
     private func postDailyPlanningReviewRequest(_ request: VoiceDailyPlanningReviewRequest) {
-        SoloPMVoiceDailyPlanningReviewBridge.storePendingSourceTranscript(request.sourceTranscript)
+        SoloPMVoiceDailyPlanningReviewBridge.storePendingRequest(request)
         openWindow(id: "project-board")
         NotificationCenter.default.post(
             name: .soloPMVoiceDailyPlanningReviewRequested,
@@ -654,6 +654,14 @@ private struct VoiceDailyPlanningReviewRequestPanel: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            if let requestedActionDraftKind = request.requestedActionDraftKind {
+                Label(localizedSettingsDisplay(actionDraftLabel(for: requestedActionDraftKind)), systemImage: "checklist")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             if !request.sourceTranscript.isEmpty {
                 Label(request.sourceTranscript, systemImage: "quote.bubble")
                     .font(.caption)
@@ -672,6 +680,15 @@ private struct VoiceDailyPlanningReviewRequestPanel: View {
         .padding(10)
         .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
         .accessibilityIdentifier("voice-daily-planning-request")
+    }
+
+    private func actionDraftLabel(for kind: DailyPlanningActionDraftKind) -> String {
+        switch kind {
+        case .startRecommended:
+            "Queue a start-task draft for approval"
+        case .deferRecommendedToTomorrow:
+            "Queue a defer-to-tomorrow draft for approval"
+        }
     }
 }
 

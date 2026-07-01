@@ -534,11 +534,12 @@ struct ProjectBoardView: View {
     }
 
     private func consumePendingVoiceDailyPlanningReviewRequestIfNeeded() {
-        guard let transcript = SoloPMVoiceDailyPlanningReviewBridge.consumePendingSourceTranscript() else {
+        guard let request = SoloPMVoiceDailyPlanningReviewBridge.consumePendingRequest() else {
             return
         }
         handleVoiceDailyPlanningReviewRequest(
-            sourceTranscript: normalizedVoiceDailyPlanningReviewTranscript(transcript)
+            sourceTranscript: normalizedVoiceDailyPlanningReviewTranscript(request.sourceTranscript),
+            actionDraftKind: request.actionDraftKind
         )
     }
 
@@ -557,11 +558,12 @@ struct ProjectBoardView: View {
     }
 
     private func handleVoiceDailyPlanningReviewRequest(_ notification: Notification) {
-        guard let transcript = SoloPMVoiceDailyPlanningReviewBridge.consumePendingSourceTranscript() else {
+        guard let request = SoloPMVoiceDailyPlanningReviewBridge.consumePendingRequest() else {
             return
         }
         handleVoiceDailyPlanningReviewRequest(
-            sourceTranscript: normalizedVoiceDailyPlanningReviewTranscript(transcript)
+            sourceTranscript: normalizedVoiceDailyPlanningReviewTranscript(request.sourceTranscript),
+            actionDraftKind: request.actionDraftKind
         )
     }
 
@@ -570,11 +572,25 @@ struct ProjectBoardView: View {
         return trimmed.isEmpty ? String(localized: "Today daily planning review") : trimmed
     }
 
-    private func handleVoiceDailyPlanningReviewRequest(sourceTranscript: String) {
+    private func handleVoiceDailyPlanningReviewRequest(
+        sourceTranscript: String,
+        actionDraftKind: DailyPlanningActionDraftKind? = nil
+    ) {
         viewModel.load()
         _ = viewModel.prepareDailyPlanningReview(transcript: sourceTranscript)
         let summary = viewModel.missedTaskReview()
-        selectedDestination = summary.newlyMissedCount > 0 ? .catchUp : .today
+        if let actionDraftKind {
+            // Voice-triggered planning actions still become Assistant Queue
+            // drafts so Today review can suggest writes without mutating tasks
+            // before explicit user approval.
+            let queued = viewModel.enqueueDailyPlanningActionDraft(
+                kind: actionDraftKind,
+                transcript: sourceTranscript
+            )
+            selectedDestination = queued ? .assistantQueue : (summary.newlyMissedCount > 0 ? .catchUp : .today)
+        } else {
+            selectedDestination = summary.newlyMissedCount > 0 ? .catchUp : .today
+        }
         persistSelectedDestination(selectedDestination)
         applySelectedDestination(selectedDestination)
         playDailyPlanningReadoutFromSettings()
@@ -1077,15 +1093,23 @@ enum SoloPMAssistantQueueBridge {
 
 @MainActor
 enum SoloPMVoiceDailyPlanningReviewBridge {
-    private static var pendingSourceTranscript: String?
-
-    static func storePendingSourceTranscript(_ sourceTranscript: String) {
-        pendingSourceTranscript = normalized(sourceTranscript)
+    struct Request: Equatable {
+        var sourceTranscript: String
+        var actionDraftKind: DailyPlanningActionDraftKind?
     }
 
-    static func consumePendingSourceTranscript() -> String? {
-        defer { pendingSourceTranscript = nil }
-        return pendingSourceTranscript
+    private static var pendingRequest: Request?
+
+    static func storePendingRequest(_ request: VoiceDailyPlanningReviewRequest) {
+        pendingRequest = Request(
+            sourceTranscript: normalized(request.sourceTranscript),
+            actionDraftKind: request.requestedActionDraftKind
+        )
+    }
+
+    static func consumePendingRequest() -> Request? {
+        defer { pendingRequest = nil }
+        return pendingRequest
     }
 
     private static func normalized(_ sourceTranscript: String) -> String {

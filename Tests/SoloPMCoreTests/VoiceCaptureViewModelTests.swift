@@ -474,6 +474,100 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.planningResponse)
         XCTAssertNil(viewModel.assistantQueueItem)
         XCTAssertEqual(viewModel.dailyPlanningReviewRequest?.sourceTranscript, "今日やることを確認して")
+        XCTAssertNil(viewModel.dailyPlanningReviewRequest?.requestedActionDraftKind)
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+    }
+
+    func testDailyPlanningReviewStartCommandCreatesActionDraftRequestWithoutProviderCall() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-should-not-run",
+                userInput: "Open Today Review and start the recommended task",
+                summary: "Should not call provider",
+                actions: [PlanAction(id: "action-1", tool: .taskUpdate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("Open Today Review and start the recommended task")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertEqual(viewModel.routingResult?.intent, .dailyPlanningReview)
+        XCTAssertEqual(provider.requests.count, 0)
+        XCTAssertNil(viewModel.planningResponse)
+        XCTAssertNil(viewModel.assistantQueueItem)
+        XCTAssertEqual(viewModel.dailyPlanningReviewRequest?.sourceTranscript, "Open Today Review and start the recommended task")
+        XCTAssertEqual(viewModel.dailyPlanningReviewRequest?.requestedActionDraftKind, .startRecommended)
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+    }
+
+    func testDailyPlanningReviewDeferCommandCreatesActionDraftRequestWithoutProviderCall() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-should-not-run",
+                userInput: "今日のレビューでおすすめを明日に回して",
+                summary: "Should not call provider",
+                actions: [PlanAction(id: "action-1", tool: .taskUpdate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("今日のレビューでおすすめを明日に回して")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertEqual(viewModel.routingResult?.intent, .dailyPlanningReview)
+        XCTAssertEqual(provider.requests.count, 0)
+        XCTAssertNil(viewModel.planningResponse)
+        XCTAssertNil(viewModel.assistantQueueItem)
+        XCTAssertEqual(viewModel.dailyPlanningReviewRequest?.sourceTranscript, "今日のレビューでおすすめを明日に回して")
+        XCTAssertEqual(viewModel.dailyPlanningReviewRequest?.requestedActionDraftKind, .deferRecommendedToTomorrow)
+        XCTAssertEqual(viewModel.phase, .reviewReady)
+    }
+
+    func testDailyPlanningReviewNegativeActionPhraseStaysReviewOnly() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-should-not-run",
+                userInput: "Open Today Review but do not start the recommended task",
+                summary: "Should not call provider",
+                actions: [PlanAction(id: "action-1", tool: .taskUpdate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider
+        )
+
+        viewModel.updateDraftText("Open Today Review but do not start the recommended task")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+
+        XCTAssertEqual(viewModel.routingResult?.intent, .dailyPlanningReview)
+        XCTAssertEqual(provider.requests.count, 0)
+        XCTAssertNil(viewModel.dailyPlanningReviewRequest?.requestedActionDraftKind)
         XCTAssertEqual(viewModel.phase, .reviewReady)
     }
 
@@ -505,6 +599,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.planningResponse)
         XCTAssertNil(viewModel.assistantQueueItem)
         XCTAssertEqual(viewModel.dailyPlanningReviewRequest?.sourceTranscript, "Open Today Review")
+        XCTAssertNil(viewModel.dailyPlanningReviewRequest?.requestedActionDraftKind)
         XCTAssertEqual(viewModel.phase, .reviewReady)
     }
 

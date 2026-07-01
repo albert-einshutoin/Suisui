@@ -15,17 +15,20 @@ public struct VoiceDailyPlanningReviewRequest: Equatable, Sendable, Identifiable
     public var id: UUID
     public var sourceTranscript: String
     public var routedIntent: VoiceCommandRoutingResult
+    public var requestedActionDraftKind: DailyPlanningActionDraftKind?
     public var requestedAt: Date
 
     public init(
         id: UUID = UUID(),
         sourceTranscript: String,
         routedIntent: VoiceCommandRoutingResult,
+        requestedActionDraftKind: DailyPlanningActionDraftKind? = nil,
         requestedAt: Date = Date()
     ) {
         self.id = id
         self.sourceTranscript = sourceTranscript
         self.routedIntent = routedIntent
+        self.requestedActionDraftKind = requestedActionDraftKind
         self.requestedAt = requestedAt
     }
 }
@@ -388,9 +391,48 @@ public final class VoiceCaptureViewModel: ObservableObject {
         dailyPlanningReviewRequest = VoiceDailyPlanningReviewRequest(
             sourceTranscript: route.originalTranscript,
             routedIntent: route,
+            requestedActionDraftKind: Self.requestedDailyPlanningActionDraftKind(from: route),
             requestedAt: requestedAt
         )
         phase = .reviewReady
+    }
+
+    private static func requestedDailyPlanningActionDraftKind(
+        from route: VoiceCommandRoutingResult
+    ) -> DailyPlanningActionDraftKind? {
+        let folded = route.normalizedTranscript
+            .folding(options: [.caseInsensitive, .widthInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+        let hasRecommendationTarget = containsAny(
+            ["recommended task", "recommended", "recommendation", "おすすめ", "推奨"],
+            in: folded
+        )
+        let requestsStart = containsAny(
+            ["start recommended", "start the recommended", "start", "begin", "開始", "始め", "着手"],
+            in: folded
+        )
+        let requestsDefer = containsAny(
+            ["defer recommended", "defer", "tomorrow", "明日", "明日に回", "明日へ", "延期", "後回し"],
+            in: folded
+        )
+        let rejectsAction = containsAny(
+            ["do not", "don't", "dont", "not start", "not defer", "cancel", "しない", "始めない", "開始しない", "延期しない", "やめ"],
+            in: folded
+        )
+
+        // Voice Daily Planning may prefill an approval item, but ambiguous
+        // phrases must stay as a read-only review so the assistant never turns
+        // a vague planning prompt into a write-capable Queue action.
+        guard hasRecommendationTarget, rejectsAction == false, requestsStart != requestsDefer else {
+            return nil
+        }
+        return requestsStart ? .startRecommended : .deferRecommendedToTomorrow
+    }
+
+    private static func containsAny(_ needles: [String], in foldedTranscript: String) -> Bool {
+        needles.contains { needle in
+            foldedTranscript.contains(needle)
+        }
     }
 
     private func beginInboxTriageRequest(
