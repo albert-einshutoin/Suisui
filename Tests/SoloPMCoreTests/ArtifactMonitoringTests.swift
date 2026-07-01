@@ -21,6 +21,122 @@ final class ArtifactMonitoringTests: XCTestCase {
         XCTAssertEqual(artifact.lastModifiedAt, lastModifiedAt)
     }
 
+    func testArtifactStoreUpdatesOnlyMatchingProjectArtifactFromFileEvent() throws {
+        let connection = try makeConnection()
+        let store = SQLiteArtifactStore(connection: connection)
+        let projectArtifact = try store.create(
+            projectID: 10,
+            workspacePath: "/tmp/solopm",
+            expectedPath: "/tmp/solopm/reports/status.md"
+        )
+        let otherProjectArtifact = try store.create(
+            projectID: 20,
+            workspacePath: "/tmp/solopm",
+            expectedPath: "/tmp/solopm/reports/other.md"
+        )
+        let modifiedAt = try Date.iso8601("2026-06-10T10:00:00Z")
+
+        let updated = try store.updateProjectArtifactFromFileEvent(
+            projectID: 10,
+            workspacePath: "/tmp/solopm",
+            path: "/tmp/solopm/reports/status.md",
+            modifiedAt: modifiedAt
+        )
+
+        XCTAssertEqual(updated.map(\.id), [projectArtifact.id])
+        let records = try store.list()
+        XCTAssertEqual(records.first { $0.id == projectArtifact.id }?.createdState, .created)
+        XCTAssertEqual(records.first { $0.id == projectArtifact.id }?.lastModifiedAt, modifiedAt)
+        XCTAssertEqual(records.first { $0.id == otherProjectArtifact.id }?.createdState, .expected)
+        XCTAssertNil(records.first { $0.id == otherProjectArtifact.id }?.lastModifiedAt)
+    }
+
+    func testArtifactStoreProjectFileEventDoesNotUpdateTaskArtifactWithSameExpectedPath() throws {
+        let connection = try makeCurrentConnection()
+        let store = SQLiteArtifactStore(connection: connection)
+        let projectArtifact = try store.create(
+            projectID: 10,
+            workspacePath: "/tmp/solopm",
+            expectedPath: "/tmp/solopm/reports/status.md"
+        )
+        let taskArtifact = try store.create(
+            projectID: 10,
+            taskID: 99,
+            workspacePath: "/tmp/solopm",
+            expectedPath: "/tmp/solopm/reports/status.md"
+        )
+        let modifiedAt = try Date.iso8601("2026-06-10T10:00:00Z")
+
+        let updated = try store.updateProjectArtifactFromFileEvent(
+            projectID: 10,
+            workspacePath: "/tmp/solopm",
+            path: "/tmp/solopm/reports/status.md",
+            modifiedAt: modifiedAt
+        )
+
+        XCTAssertEqual(updated.map(\.id), [projectArtifact.id])
+        let records = try store.list()
+        XCTAssertEqual(records.first { $0.id == projectArtifact.id }?.createdState, .created)
+        XCTAssertEqual(records.first { $0.id == taskArtifact.id }?.createdState, .expected)
+        XCTAssertNil(records.first { $0.id == taskArtifact.id }?.lastModifiedAt)
+    }
+
+    func testArtifactStoreAllowsSameExpectedPathForDifferentProjects() throws {
+        let connection = try makeCurrentConnection()
+        let store = SQLiteArtifactStore(connection: connection)
+
+        let first = try store.create(
+            projectID: 10,
+            workspacePath: "/tmp/solopm",
+            expectedPath: "/tmp/solopm/reports/status.md"
+        )
+        let second = try store.create(
+            projectID: 20,
+            workspacePath: "/tmp/solopm",
+            expectedPath: "/tmp/solopm/reports/status.md"
+        )
+
+        XCTAssertNotEqual(first.id, second.id)
+        XCTAssertEqual(try store.list().map(\.projectID), [10, 20])
+    }
+
+    func testCurrentMigrationScopesArtifactUniquenessAndKeepsCreatedDuplicate() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase4)
+        try connection.execute(
+            """
+            INSERT INTO artifacts (project_id, task_id, workspace_path, expected_path, created_state, last_modified_at)
+            VALUES (
+                10,
+                NULL,
+                '/tmp/solopm/reports',
+                '/tmp/solopm/reports/status.md',
+                'expected',
+                NULL
+            );
+
+            INSERT INTO artifacts (project_id, task_id, workspace_path, expected_path, created_state, last_modified_at)
+            VALUES (
+                10,
+                NULL,
+                '/tmp/solopm',
+                '/tmp/solopm/reports/status.md',
+                'created',
+                '2026-06-10T10:00:00Z'
+            );
+            """
+        )
+
+        try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+
+        let store = SQLiteArtifactStore(connection: connection)
+        let artifacts = try store.list()
+        XCTAssertEqual(artifacts.count, 1)
+        XCTAssertEqual(artifacts.first?.workspacePath, "/tmp/solopm")
+        XCTAssertEqual(artifacts.first?.createdState, .created)
+        XCTAssertEqual(artifacts.first?.lastModifiedAt, try Date.iso8601("2026-06-10T10:00:00Z"))
+    }
+
     func testArtifactStoreDeletesArtifactAndReportsMissingOnSecondDelete() throws {
         let connection = try makeConnection()
         let store = SQLiteArtifactStore(connection: connection)
@@ -345,6 +461,12 @@ final class ArtifactMonitoringTests: XCTestCase {
     private func makeConnection() throws -> SQLiteConnection {
         let connection = try SQLiteConnection(path: ":memory:")
         try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase4)
+        return connection
+    }
+
+    private func makeCurrentConnection() throws -> SQLiteConnection {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         return connection
     }
 

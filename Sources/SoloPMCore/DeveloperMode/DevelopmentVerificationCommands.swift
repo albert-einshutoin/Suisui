@@ -402,17 +402,20 @@ public struct DevelopmentVerificationCommandTool: Tool {
     private let commandRunner: any DevelopmentCommandRunner
     private let redactor: DeveloperSecretRedactor
     private let bookmarkResolver: any ProjectWorkspaceBookmarkResolving
+    private let requireBookmark: Bool
 
     public init(
         projectStore: SQLiteProjectStore,
         commandRunner: any DevelopmentCommandRunner = ProcessDevelopmentCommandRunner(),
         redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
-        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver()
+        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver(),
+        requireBookmark: Bool = false
     ) {
         self.projectStore = projectStore
         self.commandRunner = commandRunner
         self.redactor = redactor
         self.bookmarkResolver = bookmarkResolver
+        self.requireBookmark = requireBookmark
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
@@ -426,7 +429,11 @@ public struct DevelopmentVerificationCommandTool: Tool {
         do {
             let command = try DevelopmentVerificationCommandPolicy.validated(commandID: commandID)
             let project = try projectStore.get(id: projectID)
-            let scope = try ProjectWorkspaceScope(project: project, bookmarkResolver: bookmarkResolver)
+            let scope = try ProjectWorkspaceScope(
+                project: project,
+                bookmarkResolver: bookmarkResolver,
+                requireBookmark: requireBookmark
+            )
             return try withExtendedLifetime(scope) {
                 let executable = try DevelopmentVerificationCommandPolicy.resolvedExecutable(for: command, scope: scope)
                 let output = try commandRunner.run(

@@ -370,7 +370,8 @@ final class DevelopmentVerificationCommandTests: XCTestCase {
                 enabledCapabilities: [.developmentRepositoryFiles]
             ),
             projectStore: stores.projects,
-            taskStore: stores.tasks
+            taskStore: stores.tasks,
+            artifactStore: stores.artifacts
         )
         XCTAssertFalse(fileOnlyRegistry.contains(.developmentRunVerification))
 
@@ -398,12 +399,53 @@ final class DevelopmentVerificationCommandTests: XCTestCase {
         XCTAssertTrue(DeveloperModeCapability.developmentVerificationCommands.disclosure.summary.contains("approved project directory"))
     }
 
-    private func makeStores() throws -> (projects: SQLiteProjectStore, tasks: SQLiteTaskStore) {
+    func testDeveloperModeVerificationRequiresStoredBookmarkBeforeRunningCommand() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let runner = RecordingDevelopmentCommandRunner(output: DevelopmentCommandOutput(
+            standardOutput: "should not run\n",
+            standardError: "",
+            exitCode: 0
+        ))
+        let registry = try ToolRegistryFactory.developerMode(
+            settings: DeveloperModeSettings(
+                isEnabled: true,
+                workspaceRoot: workspace,
+                enabledCapabilities: [.developmentVerificationCommands]
+            ),
+            developmentCommandRunner: runner,
+            projectStore: stores.projects,
+            taskStore: stores.tasks
+        )
+
+        XCTAssertThrowsError(
+            try registry.tool(named: .developmentRunVerification).execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "commandId": .string("swift.test")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(
+                    .developmentRunVerification,
+                    "Project workspace access bookmark could not be resolved and must be renewed."
+                )
+            )
+        }
+        XCTAssertEqual(runner.recordedInvocations, [])
+    }
+
+    private func makeStores() throws -> (projects: SQLiteProjectStore, tasks: SQLiteTaskStore, artifacts: SQLiteArtifactStore) {
         let connection = try SQLiteConnection(path: ":memory:")
         try DevelopmentVerificationCommandTestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         return (
             SQLiteProjectStore(connection: connection),
-            SQLiteTaskStore(connection: connection)
+            SQLiteTaskStore(connection: connection),
+            SQLiteArtifactStore(connection: connection)
         )
     }
 

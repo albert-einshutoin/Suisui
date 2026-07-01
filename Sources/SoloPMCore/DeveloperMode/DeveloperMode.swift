@@ -52,6 +52,7 @@ public struct DeveloperModeSettings: Equatable, Sendable {
 public enum DeveloperModeError: Error, Equatable, Sendable {
     case workspaceRequired
     case projectStoresRequired
+    case artifactStoreRequired
 }
 
 public extension DeveloperModeCapability {
@@ -105,7 +106,8 @@ public extension ToolRegistryFactory {
         developmentCommandRunner: any DevelopmentCommandRunner = ProcessDevelopmentCommandRunner(),
         bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver(),
         projectStore: SQLiteProjectStore? = nil,
-        taskStore: SQLiteTaskStore? = nil
+        taskStore: SQLiteTaskStore? = nil,
+        artifactStore: SQLiteArtifactStore? = nil
     ) throws -> ToolRegistry {
         guard settings.isEnabled else {
             return ToolRegistry()
@@ -134,11 +136,15 @@ public extension ToolRegistryFactory {
             tools.append(DevelopmentPRWorkflowTool(
                 projectStore: projectStore,
                 taskStore: taskStore,
-                gitRunner: gitRunner
+                gitRunner: gitRunner,
+                bookmarkResolver: bookmarkResolver,
+                requireBookmark: true
             ))
             tools.append(DevelopmentCommitWorkflowTool(
                 projectStore: projectStore,
-                gitRunner: gitRunner
+                gitRunner: gitRunner,
+                bookmarkResolver: bookmarkResolver,
+                requireBookmark: true
             ))
             tools.append(DevelopmentPushWorkflowTool(
                 projectStore: projectStore,
@@ -169,11 +175,38 @@ public extension ToolRegistryFactory {
             guard let projectStore else {
                 throw DeveloperModeError.projectStoresRequired
             }
+            guard let artifactStore else {
+                throw DeveloperModeError.artifactStoreRequired
+            }
             tools.append(contentsOf: [
-                DevelopmentRepositoryFileTool(name: .developmentRepositoryListFiles, projectStore: projectStore),
-                DevelopmentRepositoryFileTool(name: .developmentRepositoryReadFile, projectStore: projectStore),
-                DevelopmentRepositoryFileTool(name: .developmentRepositoryCreateFile, projectStore: projectStore),
-                DevelopmentRepositoryFileTool(name: .developmentRepositoryUpdateFile, projectStore: projectStore)
+                DevelopmentRepositoryFileTool(
+                    name: .developmentRepositoryListFiles,
+                    projectStore: projectStore,
+                    artifactStore: artifactStore,
+                    bookmarkResolver: bookmarkResolver,
+                    requireBookmark: true
+                ),
+                DevelopmentRepositoryFileTool(
+                    name: .developmentRepositoryReadFile,
+                    projectStore: projectStore,
+                    artifactStore: artifactStore,
+                    bookmarkResolver: bookmarkResolver,
+                    requireBookmark: true
+                ),
+                DevelopmentRepositoryFileTool(
+                    name: .developmentRepositoryCreateFile,
+                    projectStore: projectStore,
+                    artifactStore: artifactStore,
+                    bookmarkResolver: bookmarkResolver,
+                    requireBookmark: true
+                ),
+                DevelopmentRepositoryFileTool(
+                    name: .developmentRepositoryUpdateFile,
+                    projectStore: projectStore,
+                    artifactStore: artifactStore,
+                    bookmarkResolver: bookmarkResolver,
+                    requireBookmark: true
+                )
             ])
         }
 
@@ -183,7 +216,9 @@ public extension ToolRegistryFactory {
             }
             tools.append(DevelopmentVerificationCommandTool(
                 projectStore: projectStore,
-                commandRunner: developmentCommandRunner
+                commandRunner: developmentCommandRunner,
+                bookmarkResolver: bookmarkResolver,
+                requireBookmark: true
             ))
         }
 

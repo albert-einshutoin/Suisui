@@ -304,17 +304,23 @@ public struct DevelopmentPRWorkflowTool: Tool {
     private let projectStore: SQLiteProjectStore
     private let taskStore: SQLiteTaskStore?
     private let gitRunner: any GitCommandRunner
+    private let bookmarkResolver: any ProjectWorkspaceBookmarkResolving
+    private let requireBookmark: Bool
     private let redactor: DeveloperSecretRedactor
 
     public init(
         projectStore: SQLiteProjectStore,
         taskStore: SQLiteTaskStore? = nil,
         gitRunner: any GitCommandRunner = ProcessGitCommandRunner(),
+        bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver(),
+        requireBookmark: Bool = false,
         redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()
     ) {
         self.projectStore = projectStore
         self.taskStore = taskStore
         self.gitRunner = gitRunner
+        self.bookmarkResolver = bookmarkResolver
+        self.requireBookmark = requireBookmark
         self.redactor = redactor
     }
 
@@ -334,7 +340,11 @@ public struct DevelopmentPRWorkflowTool: Tool {
                 }
                 return try taskStore.get(id: id)
             }
-            let scope = try ProjectWorkspaceScope(project: project)
+            let scope = try ProjectWorkspaceScope(
+                project: project,
+                bookmarkResolver: bookmarkResolver,
+                requireBookmark: requireBookmark
+            )
             let branchName = try DevelopmentBranchNamePolicy.validated(
                 try args.optionalTrimmedString("branchName")
                     ?? DevelopmentBranchNamePolicy.deterministicBranchName(project: project, task: task)
