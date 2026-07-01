@@ -3491,6 +3491,16 @@ private struct ProjectDevelopmentAutomationPanel: View {
             .accessibilityIdentifier("project-development-automation-review")
             .accessibilityHint("Opens an approval-gated review for preparing a local development branch.")
 
+            Button {
+                _ = viewModel.enqueueDevelopmentAutomationReview(for: project, task: viewModel.selectedTask)
+            } label: {
+                Label("Queue branch automation", systemImage: "tray.and.arrow.down")
+            }
+            .disabled(!readiness.isReady)
+            .help("Adds the development branch preparation plan to Assistant Queue without creating a branch.")
+            .accessibilityIdentifier("project-development-automation-queue")
+            .accessibilityHint("Adds the development branch preparation plan to Assistant Queue for review and approval.")
+
             if hasMatchingReviewPlan {
                 Text(LocalizedStringKey("Review plan is ready. Approve and execute it before any local branch is created."))
                     .font(.caption)
@@ -3514,10 +3524,34 @@ private struct ProjectDevelopmentAutomationPanel: View {
                     }
                 }
 
-                Text("This review only prepares the local branch.")
+                Text(LocalizedStringKey(readiness.approvalBoundaryLabel))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("project-development-automation-approval-boundary")
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("PR lifecycle tools")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                ForEach(Array(readiness.lifecycleToolNames.enumerated()), id: \.offset) { index, toolName in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Label(LocalizedStringKey(lifecycleToolDisplayName(for: toolName)), systemImage: lifecycleToolIcon(for: toolName))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text(toolName)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("project-development-automation-lifecycle-tool-\(index)")
+                }
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -3541,6 +3575,54 @@ private struct ProjectDevelopmentAutomationPanel: View {
         return action.arguments["projectId"] == .number(Double(project.id))
             && action.arguments["taskId"] == readiness.taskID.map { .number(Double($0)) }
             && action.arguments["branchName"] == readiness.branchNamePreview.map(JSONValue.string)
+    }
+
+    private func lifecycleToolIcon(for toolName: String) -> String {
+        if toolName.contains("repository") {
+            return "doc.text"
+        }
+        if toolName.contains("verification") {
+            return "checkmark.shield"
+        }
+        if toolName.contains("commit") {
+            return "tray.and.arrow.down"
+        }
+        if toolName.contains("push") || toolName.contains("pull_request") {
+            return "arrow.up.right.circle"
+        }
+        if toolName.contains("merge") {
+            return "arrow.triangle.merge"
+        }
+        return "point.topleft.down.curvedto.point.bottomright.up"
+    }
+
+    private func lifecycleToolDisplayName(for toolName: String) -> String {
+        switch toolName {
+        case ActionTool.developmentPreparePullRequestWorkflow.rawValue:
+            return "Prepare branch"
+        case ActionTool.developmentRepositoryListFiles.rawValue:
+            return "List project files"
+        case ActionTool.developmentRepositoryReadFile.rawValue:
+            return "Read project file"
+        case ActionTool.developmentRepositoryCreateFile.rawValue:
+            return "Create project file"
+        case ActionTool.developmentRepositoryUpdateFile.rawValue:
+            return "Update project file"
+        case ActionTool.developmentRunVerification.rawValue:
+            return "Run verification"
+        case ActionTool.developmentCommitChanges.rawValue:
+            return "Commit changes"
+        case ActionTool.developmentPushBranch.rawValue:
+            return "Push branch"
+        case ActionTool.developmentCreatePullRequest.rawValue:
+            return "Create pull request"
+        case ActionTool.developmentReviewPullRequestGate.rawValue:
+            return "Review pull request"
+        case ActionTool.developmentMergePullRequest.rawValue:
+            return "Merge pull request"
+        default:
+            return "Development tool"
+        }
     }
 }
 
