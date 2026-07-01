@@ -1808,6 +1808,78 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     @discardableResult
+    public func enqueueTodayReminderDraft(
+        for taskID: Int64,
+        sourceTranscript: String = "Today reminder draft",
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Bool {
+        // Reminders leave SoloPM's local task store. Queueing an executable plan
+        // keeps the write auditable and approval-gated before EventKit is touched.
+        guard let assistantQueueStore else {
+            assistantQueueSnapshot = .empty
+            assistantQueueSelectedItemIDs = []
+            errorMessage = String(localized: "Assistant Queue is unavailable in this build.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        guard let task = task(id: taskID) else {
+            errorMessage = String(localized: "Select an existing Today task before queuing a reminder.")
+            integrationStatusMessage = nil
+            todayCommandFeedback = errorMessage
+            return false
+        }
+
+        let plan = makeTodayReminderActionPlan(
+            for: task,
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        let validation = ActionPlanValidator().validate(plan)
+        guard validation.isValid else {
+            errorMessage = String(localized: "Today reminder draft generated an invalid action plan.")
+            integrationStatusMessage = nil
+            todayCommandFeedback = errorMessage
+            return false
+        }
+
+        let item = AssistantQueueAdapter.makeItem(
+            actionPlan: plan,
+            sourceTranscript: Self.sanitizedTodayReminderSourceTranscript(sourceTranscript),
+            interpretationSummary: String(localized: "Today reminder draft"),
+            reason: Self.todayReminderQueueReason(taskCount: 1),
+            costPreview: .localOnly()
+        )
+
+        do {
+            do {
+                _ = try assistantQueueStore.get(id: item.id)
+                focusAssistantQueueItem(id: item.id)
+                errorMessage = nil
+                integrationStatusMessage = String(localized: "Today reminder draft is already in Assistant Queue.")
+                todayCommandFeedback = integrationStatusMessage
+                return true
+            } catch AssistantQueueStoreError.notFound {
+                // Continue to save the new item below.
+            }
+
+            _ = try assistantQueueStore.save(item)
+            focusAssistantQueueItem(id: item.id)
+            errorMessage = nil
+            integrationStatusMessage = String(localized: "Queued Today reminder draft for approval.")
+            todayCommandFeedback = integrationStatusMessage
+            onChange()
+            return true
+        } catch {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = AssistantQueueStoreError.userMessage(for: error)
+            integrationStatusMessage = nil
+            return false
+        }
+    }
+
+    @discardableResult
     public func enqueueScheduleDraftCalendarApply(
         sourceTranscript: String = "Schedule draft Calendar apply",
         on referenceDate: Date = Date(),
@@ -1955,10 +2027,10 @@ public final class ProjectBoardViewModel: ObservableObject {
             nextActionReason: plan.recommendationReason,
             nextBlockLabel: nil,
             notes: String(localized: "Add a Today command or schedule Inbox work to create a focus path."),
-            // Subtasks and reminders stay as command drafts until those domains
-            // have approval-gated writes wired into the Today workflow.
+            // Subtasks remain local command drafts. Reminder writes now cross an
+            // app boundary, so the rail points users to Assistant Queue review.
             subtaskSummary: String(localized: "Subtask capture is staged through the Today command."),
-            reminderSummary: String(localized: "Reminder draft only; external writes require approval.")
+            reminderSummary: String(localized: "Reminder drafts queue for approval before external writes.")
         )
     }
 
@@ -2581,6 +2653,108 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     private func scheduleDraftWriteCandidates(for draft: ScheduleDraft) -> [ScheduleDraftApplyWriteCandidate] {
         draft.timeBlocks.compactMap(ScheduleDraftApplyWriteCandidate.init(block:))
+    }
+
+    private func makeTodayReminderActionPlan(
+        for task: ProjectBoardTask,
+        referenceDate: Date,
+        calendar: Calendar
+    ) -> ActionPlan {
+        var arguments: [String: JSONValue] = [
+            "title": .string(Self.todayReminderTitle(for: task)),
+            "taskId": .number(Double(task.id)),
+            "projectId": .number(Double(task.projectID))
+        ]
+        if let dueAt = Self.trimmedOptional(task.dueAt) {
+            arguments["dueAt"] = .string(dueAt)
+        }
+
+        return ActionPlan(
+            id: Self.todayReminderPlanID(
+                for: task,
+                referenceDate: referenceDate,
+                calendar: calendar
+            ),
+            userInput: "Queue Today reminder for approval",
+            summary: "Today reminder draft for 1 task.",
+            actions: [
+                PlanAction(
+                    id: "today-reminder-task-\(task.id)",
+                    tool: .remindersCreate,
+                    arguments: arguments,
+                    riskLevel: .write
+                )
+            ],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+    }
+
+    private static func todayReminderTitle(for task: ProjectBoardTask) -> String {
+        String(format: String(localized: "Reminder for %@"), task.title)
+    }
+
+    private static func todayReminderPlanID(
+        for task: ProjectBoardTask,
+        referenceDate: Date,
+        calendar: Calendar
+    ) -> String {
+        let dayKey = todayReminderDayKey(referenceDate: referenceDate, calendar: calendar)
+        let contentDigest = todayReminderContentDigest(for: task)
+        return "today-reminder:\(dayKey):\(contentDigest):task:\(task.id)"
+    }
+
+    private static func todayReminderContentDigest(for task: ProjectBoardTask) -> String {
+        let content = [
+            String(task.id),
+            String(task.projectID),
+            task.title,
+            trimmedOptional(task.dueAt) ?? ""
+        ].joined(separator: "|")
+        // The Queue identity must change when the reminder write changes, but
+        // exposing task titles in IDs would leak user work into logs and URLs.
+        let digest = SHA256.hash(data: Data(content.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return String(digest.prefix(16))
+    }
+
+    private static func todayReminderDayKey(referenceDate: Date, calendar: Calendar) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: referenceDate)
+    }
+
+    private static func todayReminderQueueReason(taskCount: Int) -> String {
+        if taskCount == 1 {
+            return String(localized: "Today assistant suggested a Reminders draft for 1 task.")
+        }
+        return String(format: String(localized: "Today assistant suggested Reminders drafts for %d tasks."), taskCount)
+    }
+
+    private static func sanitizedTodayReminderSourceTranscript(_ sourceTranscript: String) -> String {
+        let trimmed = sourceTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let redacted = DeveloperSecretRedactor().redact(trimmed).text
+        let fallback = String(localized: "Today reminder draft")
+        guard !redacted.isEmpty else {
+            return fallback
+        }
+        let maxLength = 300
+        guard redacted.count > maxLength else {
+            return redacted
+        }
+        return "\(redacted.prefix(maxLength))..."
+    }
+
+    private static func trimmedOptional(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let trimmed, !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
     }
 
     private func makeScheduleDraftCalendarApplyActionPlan(
@@ -5244,10 +5418,10 @@ public final class ProjectBoardViewModel: ObservableObject {
             notes: task.detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? String(localized: "No notes yet.")
                 : task.detail,
-            // This context powers a personal-MVP rail, so it exposes draft state
-            // without pretending a subtask/reminder persistence model exists yet.
+            // This context powers a personal-MVP rail. Subtasks stay local, while
+            // Reminder writes are staged through Assistant Queue for review.
             subtaskSummary: String(localized: "Subtask capture is staged through the Today command."),
-            reminderSummary: String(localized: "Reminder draft only; external writes require approval.")
+            reminderSummary: String(localized: "Reminder drafts queue for approval before external writes.")
         )
     }
 

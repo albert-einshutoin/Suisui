@@ -2734,6 +2734,134 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testTodayReminderDraftQueuesReminderActionForReviewWithoutReminderWrite() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-30T09:10:00Z")
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let titleSecret = "reminder-secret"
+        let project = try XCTUnwrap(viewModel.createProject(title: "Today Reminder Queue"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Renew launch checklist token=\(titleSecret)",
+            projectID: project.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-07-01T09:00:00Z"
+        ))
+
+        let queued = viewModel.enqueueTodayReminderDraft(
+            for: task.id,
+            sourceTranscript: "リマインダーを作って token=voice-secret",
+            on: referenceDate,
+            calendar: calendar
+        )
+
+        XCTAssertTrue(queued)
+        XCTAssertEqual(viewModel.errorMessage, nil)
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Queued Today reminder draft for approval.")
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Queued Today reminder draft for approval.")
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        XCTAssertTrue(itemID.hasPrefix("action-plan:today-reminder:2026-06-30:"))
+        XCTAssertTrue(itemID.hasSuffix(":task:\(task.id)"))
+        let idParts = itemID.split(separator: ":").map(String.init)
+        XCTAssertEqual(idParts.count, 6)
+        XCTAssertEqual(idParts[3].count, 16)
+        XCTAssertTrue(idParts[3].allSatisfy(\.isHexDigit))
+        XCTAssertFalse(itemID.contains("Renew launch checklist"))
+        XCTAssertFalse(itemID.contains(titleSecret))
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.map(\.id), [itemID])
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, [itemID])
+        XCTAssertEqual(viewModel.snapshot.projects.first { $0.id == project.id }?.column(.planned)?.tasks.map(\.id), [task.id])
+
+        let item = try assistantQueueStore.get(id: itemID)
+        XCTAssertEqual(item.state, .waitingReview)
+        XCTAssertEqual(item.riskLevel, .write)
+        XCTAssertEqual(item.reviewReason, "Today assistant suggested a Reminders draft for 1 task.")
+        XCTAssertEqual(item.requiredCapabilities, [.tool(.remindersCreate), .appPermission(.reminders), .providerExecutionApproval])
+        XCTAssertFalse(item.redactedSummary.contains(titleSecret))
+        XCTAssertTrue(item.sourceTranscript?.contains("[REDACTED_SECRET]") ?? false)
+        XCTAssertFalse(item.sourceTranscript?.contains("voice-secret") ?? true)
+        guard case .actionPlan(let plan) = item.payload else {
+            return XCTFail("Expected action plan payload")
+        }
+        XCTAssertEqual("action-plan:\(plan.id)", itemID)
+        XCTAssertFalse(plan.id.contains("Renew launch checklist"))
+        XCTAssertFalse(plan.id.contains(titleSecret))
+        XCTAssertEqual(plan.requiresApproval, true)
+        XCTAssertEqual(plan.riskLevel, .write)
+        XCTAssertEqual(plan.actions.map(\.tool), [.remindersCreate])
+        XCTAssertEqual(plan.actions.first?.arguments["title"], .string("Reminder for Renew launch checklist token=\(titleSecret)"))
+        XCTAssertEqual(plan.actions.first?.arguments["dueAt"], .string("2026-07-01T09:00:00Z"))
+        XCTAssertEqual(plan.actions.first?.arguments["taskId"], .number(Double(task.id)))
+        XCTAssertEqual(plan.actions.first?.arguments["projectId"], .number(Double(project.id)))
+    }
+
+    @MainActor
+    func testTodayReminderDraftDoesNotOverwriteExistingQueueItem() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-30T09:10:00Z")
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Today Reminder Queue"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Renew launch checklist",
+            projectID: project.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-07-01T09:00:00Z"
+        ))
+        XCTAssertTrue(viewModel.enqueueTodayReminderDraft(
+            for: task.id,
+            sourceTranscript: "初回のリマインダー",
+            on: referenceDate,
+            calendar: calendar
+        ))
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        var existing = try assistantQueueStore.get(id: itemID)
+        existing.reviewReason = "Existing approved reminder review."
+        existing = try AssistantQueueStateMachine.approve(existing, reviewerID: "tester")
+        try assistantQueueStore.save(existing)
+
+        let queued = viewModel.enqueueTodayReminderDraft(
+            for: task.id,
+            sourceTranscript: "更新されたリマインダー",
+            on: referenceDate,
+            calendar: calendar
+        )
+
+        let stored = try assistantQueueStore.get(id: itemID)
+        XCTAssertTrue(queued)
+        XCTAssertEqual(stored.state, .approved)
+        XCTAssertEqual(stored.reviewReason, "Existing approved reminder review.")
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Today reminder draft is already in Assistant Queue.")
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, [itemID])
+    }
+
+    @MainActor
+    func testTodayReminderDraftRequiresAssistantQueueStore() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+
+        let queued = viewModel.enqueueTodayReminderDraft(for: 1)
+
+        XCTAssertFalse(queued)
+        XCTAssertEqual(viewModel.errorMessage, "Assistant Queue is unavailable in this build.")
+        XCTAssertTrue(viewModel.assistantQueueSnapshot.rows.isEmpty)
+    }
+
+    @MainActor
     func testScheduleDraftQueuesCalendarWorkBlocksForReviewWithoutCalendarWrite() throws {
         var calendar = utcCalendar()
         calendar.firstWeekday = 2
@@ -3672,7 +3800,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(context.nextBlockLabel, "09:30-10:00")
         XCTAssertEqual(context.notes, "Prepare release note")
         XCTAssertEqual(context.subtaskSummary, "Subtask capture is staged through the Today command.")
-        XCTAssertEqual(context.reminderSummary, "Reminder draft only; external writes require approval.")
+        XCTAssertEqual(context.reminderSummary, "Reminder drafts queue for approval before external writes.")
     }
 
     @MainActor

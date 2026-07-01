@@ -575,8 +575,8 @@
 "Subtask for %@: " = "%@ のサブタスク: ";
 "Prefills the Today command field for a local subtask draft." = "ローカルサブタスク下書き用にTodayコマンド欄を事前入力します。";
 "Add Reminder Draft" = "リマインダー下書き";
-"Reminder for %@: " = "%@ のリマインダー: ";
-"Prefills the Today command field; external reminder writes still require approval." = "Todayコマンド欄を事前入力します。外部Reminder書き込みには引き続き承認が必要です。";
+"Reminder for %@" = "%@ のリマインダー";
+"Queues a Reminders draft for approval before any external write." = "外部書き込みの前に、Reminders下書きを承認キューへ追加します。";
 "Review selected task" = "選択中タスクを確認";
 "You selected this Today task for review." = "このTodayタスクを確認対象として選択しました。";
 "Start recommended task" = "推奨タスクを開始";
@@ -585,7 +585,14 @@
 "Add a Today command or schedule Inbox work to create a focus path." = "Todayコマンドを追加するかInbox作業を予定化して、集中経路を作成してください。";
 "No notes yet." = "メモはまだありません。";
 "Subtask capture is staged through the Today command." = "サブタスク記録はTodayコマンド経由で下書きされます。";
-"Reminder draft only; external writes require approval." = "リマインダーは下書きのみです。外部書き込みには承認が必要です。";
+"Reminder drafts queue for approval before external writes." = "リマインダー下書きは外部書き込み前に承認キューへ追加されます。";
+"Today reminder draft" = "Todayリマインダー下書き";
+"Today reminder draft generated an invalid action plan." = "Todayリマインダー下書きが無効なアクションプランを生成しました。";
+"Today reminder draft is already in Assistant Queue." = "Todayリマインダー下書きは既にAssistant Queueにあります。";
+"Queued Today reminder draft for approval." = "Todayリマインダー下書きを承認待ちに追加しました。";
+"Select an existing Today task before queuing a reminder." = "リマインダーをキューに追加する前に、既存のTodayタスクを選択してください。";
+"Today assistant suggested a Reminders draft for 1 task." = "Todayアシスタントが1件のタスク用Reminders下書きを提案しました。";
+"Today assistant suggested Reminders drafts for %d tasks." = "Todayアシスタントが%d件のタスク用Reminders下書きを提案しました。";
 "Overdue %@" = "期限超過 %@";
 "Due %@" = "期限 %@";
 "Schedule Draft" = "予定ドラフト";

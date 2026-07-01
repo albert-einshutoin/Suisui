@@ -222,7 +222,7 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
             node("today-rail-schedule-block", role: .button, label: "Schedule Block", help: "Creates a local schedule draft without writing Calendar."),
             node("today-rail-edit-task", role: .button, label: "Edit", help: "Opens the selected task in the inspector for manual edits."),
             node("today-rail-add-subtask", role: .button, label: "Add Subtask", help: "Prefills the Today command field for a local subtask draft."),
-            node("today-rail-reminder-draft", role: .button, label: "Add Reminder Draft", help: "Prefills the Today command field; external reminder writes still require approval.")
+            node("today-rail-reminder-draft", role: .button, label: "Add Reminder Draft", help: "Queues a Reminders draft for approval before any external write.")
         ]
 
         let result = AccessibilityFocusPathAudit().audit(
