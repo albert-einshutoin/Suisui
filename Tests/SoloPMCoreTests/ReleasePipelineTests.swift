@@ -7140,6 +7140,7 @@ final class ReleasePipelineTests: XCTestCase {
             "inbox-voice",
             "projects-overview",
             "schedule",
+            "schedule-workload",
             "done",
             "settings-integrations"
         ]
@@ -7193,6 +7194,7 @@ final class ReleasePipelineTests: XCTestCase {
             "Inbox Voice",
             "Projects Overview",
             "Schedule",
+            "Schedule Workload",
             "Done",
             "Settings Integrations"
         ] {

@@ -14,6 +14,7 @@ The source of truth is `docs/quality/visual-baseline-manifest.json`.
 | Inbox Voice | Light / Dark | 1560x860 | voice capture metadata, transcript context, interpretation state |
 | Projects Overview | Light / Dark | 1560x860 | portfolio cards, progress, risk, next due, selected summary |
 | Schedule | Light / Dark | 1560x860 | schedule cockpit, unscheduled tasks, review-only calendar draft |
+| Schedule Workload | Light / Dark | 1560x860 | daily workload counts, attention banner, selected day detail |
 | Done | Light / Dark | 1560x860 | completion analytics, history, reopen affordance |
 | Settings Overview | Light / Dark / System | 1200x720 | overview navigation and account-free local state |
 | Settings Integrations | Light / Dark | 1200x720 | provider, TTS/STT, Calendar/Reminder, Sync, Privacy, Data Location status |
