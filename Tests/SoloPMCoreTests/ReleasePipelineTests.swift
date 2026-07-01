@@ -8161,6 +8161,69 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(docs.contains("they do not by themselves prove the whisper.cpp STT or Kokoro TTS providers are ready in a packaged app"))
     }
 
+    func testLocalVoiceRuntimeSmokeScriptFailsClosedAndDocumentsIssueCloseout() throws {
+        let docs = try readPackageFile("docs/voice-models.md")
+        let script = try readPackageFile("script/check_local_voice_runtime_smoke.sh")
+        let phase10 = try readPackageFile("tasks/Phase10-ReleaseReadinessRuntime.md")
+
+        XCTAssertTrue(script.contains("SOLOPM_LOCAL_VOICE_CACHE_ROOT"))
+        XCTAssertTrue(script.contains("SOLOPM_WHISPER_CPP_EXECUTABLE"))
+        XCTAssertTrue(script.contains("SOLOPM_STT_SAMPLE_WAV"))
+        XCTAssertTrue(script.contains("SOLOPM_KOKORO_EXECUTABLE"))
+        XCTAssertTrue(script.contains("SOLOPM_LOCAL_VOICE_SMOKE_OUTPUT_DIR"))
+        XCTAssertTrue(script.contains("be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21"))
+        XCTAssertTrue(script.contains("496dba118d1a58f5f3db2efc88dbdc216e0483fc89fe6e47ee1f2c53f18ad1e4"))
+        XCTAssertTrue(script.contains("whisper-cli -m <model> -f <sample.wav> -l ja -np -nt"))
+        XCTAssertTrue(script.contains("Kokoro runtime --model <model> --text-file <prompt.txt> --language ja --voice jf_alpha --output <speech.wav>"))
+        XCTAssertTrue(script.contains("BLOCKER: local voice runtime smoke found"))
+        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" check-ignore -q"))
+        XCTAssertTrue(script.contains("SOLOPM_LOCAL_VOICE_SMOKE_OUTPUT_DIR inside repo must be ignored by git"))
+        XCTAssertTrue(script.contains("STT sample WAV path must be absolute"))
+        XCTAssertTrue(script.contains("STT sample WAV must use a .wav file"))
+        XCTAssertTrue(script.contains("Kokoro voice id must not contain whitespace"))
+        for networkMarker in ["curl ", "wget ", "git clone", "python -c", "python3 -c", "huggingface.co", "URLSession"] {
+            XCTAssertFalse(script.contains(networkMarker), "Local voice runtime smoke must not fetch network resources: \(networkMarker)")
+        }
+
+        XCTAssertTrue(docs.contains("script/check_local_voice_runtime_smoke.sh"))
+        XCTAssertTrue(docs.contains("SOLOPM_WHISPER_CPP_EXECUTABLE"))
+        XCTAssertTrue(docs.contains("SOLOPM_KOKORO_EXECUTABLE"))
+        XCTAssertTrue(docs.contains("SOLOPM_STT_SAMPLE_WAV"))
+        XCTAssertTrue(docs.contains("no network download"))
+
+        XCTAssertTrue(phase10.contains("P10-023a: Local OSS voice runtime proof"))
+        XCTAssertTrue(phase10.contains("[x] `script/check_local_voice_runtime_smoke.sh`"))
+        XCTAssertTrue(phase10.contains("[ ] checksum 済み `ggml-tiny.bin`"))
+        XCTAssertTrue(phase10.contains("[ ] checksum 済み `kokoro-v1_0.pth`"))
+
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-local-voice-runtime-smoke-missing-inputs", isDirectory: true)
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        let emptyCacheRoot = fixtureRoot.appendingPathComponent("VoiceModels", isDirectory: true)
+        let outputRoot = fixtureRoot.appendingPathComponent("smoke-output", isDirectory: true)
+        let result = try runScript(
+            "script/check_local_voice_runtime_smoke.sh",
+            environment: [
+                "SOLOPM_LOCAL_VOICE_CACHE_ROOT": emptyCacheRoot.path,
+                "SOLOPM_WHISPER_CPP_EXECUTABLE": fixtureRoot.appendingPathComponent("missing-whisper-cli").path,
+                "SOLOPM_STT_SAMPLE_WAV": fixtureRoot.appendingPathComponent("missing-sample.wav").path,
+                "SOLOPM_KOKORO_EXECUTABLE": fixtureRoot.appendingPathComponent("missing-kokoro").path,
+                "SOLOPM_LOCAL_VOICE_SMOKE_OUTPUT_DIR": outputRoot.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("BLOCKER: whisper.cpp executable is missing or not executable"))
+        XCTAssertTrue(result.output.contains("BLOCKER: STT sample WAV is missing"))
+        XCTAssertTrue(result.output.contains("BLOCKER: whisper.cpp tiny model is missing"))
+        XCTAssertTrue(result.output.contains("BLOCKER: Kokoro executable is missing or not executable"))
+        XCTAssertTrue(result.output.contains("BLOCKER: Kokoro model is missing"))
+        XCTAssertTrue(result.output.contains("BLOCKER: local voice runtime smoke found 5 prerequisite problem(s)"))
+    }
+
     func testReleaseReadinessReportClassifiesUncheckedPhaseItems() throws {
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-release-readiness-phase-classification", isDirectory: true)

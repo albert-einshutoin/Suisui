@@ -37,6 +37,7 @@ SCAN_PATHS=(
 RUNTIME_SMOKE_ARTIFACT_PATHS=(
   ".tmp/runtime-workflow-smoke"
   ".tmp/voiceover-review"
+  ".tmp/local-voice-runtime-smoke"
   ".tmp/project-board-state-restoration"
   ".tmp/layout-stability"
   ".tmp/project-board-header-layout-smoke"

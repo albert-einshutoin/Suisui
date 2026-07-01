@@ -76,6 +76,19 @@ Issue closeout for local voice work needs runtime evidence in addition to source
 
 Until those runtime checks are captured, source-only changes can close the no-bundled-model safety condition for the model manager, but they do not by themselves prove the whisper.cpp STT or Kokoro TTS providers are ready in a packaged app.
 
+`script/check_local_voice_runtime_smoke.sh` is the closeout verifier for #13 and #14 runtime proof. It performs no network download and expects the model cache and executable paths to already exist:
+
+```sh
+SOLOPM_WHISPER_CPP_EXECUTABLE=/absolute/path/to/whisper-cli \
+SOLOPM_STT_SAMPLE_WAV=/absolute/path/to/sample-ja-or-en.wav \
+SOLOPM_KOKORO_EXECUTABLE=/absolute/path/to/kokoro-runtime \
+./script/check_local_voice_runtime_smoke.sh
+```
+
+The verifier defaults to `~/Library/Application Support/SoloPM/VoiceModels`, or `SOLOPM_LOCAL_VOICE_CACHE_ROOT` when testing an alternate cache. It checks the recorded `ggml-tiny.bin` and `kokoro-v1_0.pth` SHA-256 values before launching local runtimes, writes smoke artifacts under `.tmp/local-voice-runtime-smoke` by default, and accepts `SOLOPM_LOCAL_VOICE_SMOKE_OUTPUT_DIR` for a separate ignored artifact directory. The smoke requires `SOLOPM_WHISPER_CPP_EXECUTABLE`, `SOLOPM_STT_SAMPLE_WAV`, and `SOLOPM_KOKORO_EXECUTABLE` so missing local setup fails as an explicit `BLOCKER:` instead of being mistaken for release readiness.
+
+By default the TTS half synthesizes both Japanese and English prompts using `SOLOPM_TTS_LANGUAGES="ja en"`, `SOLOPM_TTS_JA_VOICE_ID=jf_alpha`, and `SOLOPM_TTS_EN_VOICE_ID=af_heart`. STT defaults to `SOLOPM_STT_LANGUAGE=ja`, but release reviewers can set `SOLOPM_STT_LANGUAGE=en` or `auto` when the sample WAV is English or mixed language.
+
 ## Accessibility Boundary
 
 Product TTS is not VoiceOver. Local TTS can read short SoloPM prompts such as overdue counts or task creation summaries, but it does not replace manual VoiceOver evidence. Screen-reader accessibility remains a separate release gate under `docs/release/checklist.md`.
