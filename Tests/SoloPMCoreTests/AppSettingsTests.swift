@@ -45,12 +45,33 @@ final class AppSettingsTests: XCTestCase {
             sttProvider: .openAITranscribe,
             notificationsEnabled: true,
             defaultWorkspacePath: "/tmp/SoloPM",
-            timeZoneIdentifier: "Asia/Tokyo"
+            timeZoneIdentifier: "Asia/Tokyo",
+            googleCalendarID: "team@example.com"
         )
 
         try store.save(settings)
 
         XCTAssertEqual(try store.load(), settings)
+    }
+
+    func testGoogleCalendarIDDefaultsAndNormalizesForRuntime() throws {
+        let legacyData = Data("""
+        {
+          "aiProvider": "openAIResponses",
+          "sttProvider": "openAITranscribe",
+          "notificationsEnabled": false,
+          "defaultWorkspacePath": null,
+          "timeZoneIdentifier": "UTC"
+        }
+        """.utf8)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: legacyData)
+        let trimmed = AppSettings(googleCalendarID: " team@example.com ").normalizedForRuntime
+        let blank = AppSettings(googleCalendarID: " \n ").normalizedForRuntime
+
+        XCTAssertEqual(AppSettings.default.googleCalendarID, "primary")
+        XCTAssertEqual(decoded.googleCalendarID, "primary")
+        XCTAssertEqual(trimmed.googleCalendarID, "team@example.com")
+        XCTAssertEqual(blank.googleCalendarID, "")
     }
 
     func testUserDefaultsAppSettingsStoreCanUseRuntimeSuiteOverride() throws {
@@ -65,6 +86,21 @@ final class AppSettingsTests: XCTestCase {
         try store.save(settings)
 
         XCTAssertEqual(try store.load().notificationsEnabled, true)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelSavesGoogleCalendarIDSetting() throws {
+        let suiteName = "SoloPM.AppSettingsGoogleCalendarID.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        viewModel.setGoogleCalendarID(" team-calendar@example.com ")
+        viewModel.saveSettings()
+
+        XCTAssertEqual(viewModel.successMessage, "Settings saved.")
+        XCTAssertEqual(try store.load().googleCalendarID, "team-calendar@example.com")
     }
 
     @MainActor
@@ -905,6 +941,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertNil(openRouterSettings.openCodeExecutablePath)
         XCTAssertNil(openRouterSettings.openCodeWorkspacePath)
         XCTAssertNil(openRouterSettings.openCodeModelID)
+        XCTAssertEqual(openRouterSettings.googleCalendarID, "primary")
     }
 
     func testDefaultWorkspacePathMustBeAnAbsoluteDirectoryLocation() {

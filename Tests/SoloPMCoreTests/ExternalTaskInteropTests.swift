@@ -263,6 +263,83 @@ final class ExternalTaskInteropTests: XCTestCase {
         XCTAssertTrue(readyStatus.canSync)
     }
 
+    func testSettingsBackedGoogleCalendarSyncReloadsCalendarIDBeforeStatusAndWrites() throws {
+        let settingsStore = MutableAppSettingsStore(settings: AppSettings(timeZoneIdentifier: "Asia/Tokyo", googleCalendarID: "primary"))
+        let projectStore = InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
+            makeProject(
+                id: 10,
+                title: "Launch",
+                tasks: [
+                    ProjectBoardTask(
+                        id: 100,
+                        projectID: 10,
+                        title: "Send launch brief",
+                        detail: "",
+                        status: .planned,
+                        priority: .medium,
+                        dueAt: "2026-07-07"
+                    )
+                ]
+            )
+        ]))
+        let linkStore = InMemoryExternalTaskLinkStore()
+        let calendarSink = RecordingExternalCalendarEventSink()
+        let credentialStore = MutableGoogleCalendarRuntimeCredentialStatusStore(status: GoogleCalendarRuntimeCredentialStatus(
+            grantedScopes: [GoogleCalendarRuntimeCredentialStatus.eventsWriteScope],
+            expiresAt: Date(timeIntervalSince1970: 1_800_001_000),
+            hasRefreshToken: true
+        ))
+        let sync = SettingsBackedGoogleCalendarRuntimeSync(
+            settingsStore: settingsStore,
+            statusFactory: { settings, now in
+                try GoogleCalendarRuntimeSyncReadiness.status(
+                    entitlementStore: StaticEntitlementStore(plan: .pro),
+                    credentialStatusStore: credentialStore,
+                    configuration: GoogleCalendarRuntimeSyncConfiguration(
+                        calendarID: settings.googleCalendarID,
+                        timeZoneIdentifier: settings.timeZoneIdentifier
+                    ),
+                    isWriteRuntimeConfigured: true,
+                    now: now
+                )
+            },
+            syncFactory: { settings in
+                let service = GoogleCalendarTaskSyncService(
+                    entitlementStore: StaticEntitlementStore(plan: .pro),
+                    store: projectStore,
+                    linkStore: linkStore,
+                    calendarSink: calendarSink,
+                    calendarID: settings.googleCalendarID,
+                    timeZoneIdentifier: settings.timeZoneIdentifier
+                )
+                return GoogleCalendarRuntimeSyncController(
+                    entitlementStore: StaticEntitlementStore(plan: .pro),
+                    credentialStatusStore: credentialStore,
+                    configuration: GoogleCalendarRuntimeSyncConfiguration(
+                        calendarID: settings.googleCalendarID,
+                        timeZoneIdentifier: settings.timeZoneIdentifier
+                    ),
+                    taskSyncService: service
+                )
+            }
+        )
+
+        XCTAssertEqual(try sync.status(now: Date(timeIntervalSince1970: 1_800_000_000)).state, GoogleCalendarRuntimeSyncState.ready)
+
+        try settingsStore.save(AppSettings(timeZoneIdentifier: "Asia/Tokyo", googleCalendarID: "team-calendar@example.com"))
+        let result = try sync.syncDueTasks(context: approvedContext())
+
+        XCTAssertEqual(result.createdEventCount, 1)
+        XCTAssertEqual(calendarSink.createdRecords.map(\.calendarID), ["team-calendar@example.com"])
+
+        try settingsStore.save(AppSettings(timeZoneIdentifier: "Asia/Tokyo", googleCalendarID: " \n "))
+        XCTAssertEqual(try sync.status(now: Date(timeIntervalSince1970: 1_800_000_000)).state, GoogleCalendarRuntimeSyncState.invalidCalendarID)
+        XCTAssertThrowsError(try sync.syncDueTasks(context: approvedContext())) { error in
+            XCTAssertEqual(error as? GoogleCalendarRuntimeSyncError, .notReady(.invalidCalendarID))
+        }
+        XCTAssertEqual(calendarSink.createdRecords.map(\.calendarID), ["team-calendar@example.com"])
+    }
+
     func testGoogleCalendarSettingsReadinessRowKeepsOAuthActionsSeparateFromAPIKeys() {
         let notChecked = GoogleCalendarSettingsReadinessRow(status: nil)
         XCTAssertEqual(notChecked.statusLabel, "Not checked")
@@ -601,6 +678,23 @@ private final class MutableGoogleCalendarRuntimeCredentialStatusStore: GoogleCal
     }
 }
 
+private final class MutableAppSettingsStore: AppSettingsStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedSettings: AppSettings
+
+    init(settings: AppSettings) {
+        self.storedSettings = settings
+    }
+
+    func load() throws -> AppSettings {
+        lock.withLock { storedSettings }
+    }
+
+    func save(_ settings: AppSettings) throws {
+        lock.withLock { storedSettings = settings }
+    }
+}
+
 private final class InMemoryExternalTaskLinkStore: ExternalTaskLinkStore, @unchecked Sendable {
     private let lock = NSLock()
     private var records: [ExternalTaskLinkRecord] = []
@@ -650,9 +744,14 @@ private final class RecordingExternalCalendarEventSink: ExternalCalendarEventSin
     private let lock = NSLock()
     private var nextID = 1
     private var drafts: [CalendarEventDraft] = []
+    private var records: [ExternalCalendarEventRecord] = []
 
     var createdDrafts: [CalendarEventDraft] {
         lock.withLock { drafts }
+    }
+
+    var createdRecords: [ExternalCalendarEventRecord] {
+        lock.withLock { records }
     }
 
     func createEvent(
@@ -664,13 +763,15 @@ private final class RecordingExternalCalendarEventSink: ExternalCalendarEventSin
         lock.withLock {
             drafts.append(draft)
             defer { nextID += 1 }
-            return ExternalCalendarEventRecord(
+            let record = ExternalCalendarEventRecord(
                 providerID: ExternalTaskSource.googleCalendar.rawValue,
                 externalID: "calendar-event-\(nextID)",
                 calendarID: calendarID,
                 timeZoneIdentifier: timeZoneIdentifier,
                 title: draft.title
             )
+            records.append(record)
+            return record
         }
     }
 }

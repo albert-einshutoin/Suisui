@@ -44,6 +44,7 @@
 "Generate Plan" = "Generate Plan";
 "GitHub Issues" = "GitHub Issues";
 "Google Calendar" = "Google Calendar";
+"Google Calendar ID" = "Google Calendar ID";
 "Google Calendar Sync" = "Google Calendar Sync";
 "Google Calendar sync requires Pro and OAuth authorization." = "Google Calendar sync requires Pro and OAuth authorization.";
 "Check Status" = "Check Status";
@@ -76,6 +77,9 @@
 "Reconnect with Calendar events scope" = "Reconnect with Calendar events scope";
 "Reconnect with OAuth authorization" = "Reconnect with OAuth authorization";
 "Runtime not configured" = "Runtime not configured";
+"Save Calendar" = "Save Calendar";
+"Persists the selected Google Calendar id before checking sync readiness." = "Persists the selected Google Calendar id before checking sync readiness.";
+"Sets the Google Calendar id used for approved due-task sync." = "Sets the Google Calendar id used for approved due-task sync.";
 "Sync failed" = "Sync failed";
 "Sync due tasks from Project Board" = "Sync due tasks from Project Board";
 "Tokens stay in Keychain; Settings uses OAuth only." = "Tokens stay in Keychain; Settings uses OAuth only.";
