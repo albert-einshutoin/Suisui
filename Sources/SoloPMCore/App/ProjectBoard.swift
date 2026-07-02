@@ -203,6 +203,10 @@ public struct ProjectDevelopmentAutomationProgress: Equatable, Sendable {
     public var baseBranch: String?
     public var latestCommitOID: String?
     public var stages: [ProjectDevelopmentAutomationProgressStage]
+    public var canQueueVerificationReview: Bool
+    public var canQueueCommitReview: Bool
+    public var canQueueBranchPushReview: Bool
+    public var canQueuePullRequestCreationReview: Bool
     public var canQueuePullRequestReviewGate: Bool
     public var canQueuePullRequestMergeGate: Bool
     public var blockingReason: String?
@@ -216,6 +220,10 @@ public struct ProjectDevelopmentAutomationProgress: Equatable, Sendable {
         baseBranch: String?,
         latestCommitOID: String?,
         stages: [ProjectDevelopmentAutomationProgressStage],
+        canQueueVerificationReview: Bool,
+        canQueueCommitReview: Bool,
+        canQueueBranchPushReview: Bool,
+        canQueuePullRequestCreationReview: Bool,
         canQueuePullRequestReviewGate: Bool,
         canQueuePullRequestMergeGate: Bool,
         blockingReason: String?,
@@ -228,6 +236,10 @@ public struct ProjectDevelopmentAutomationProgress: Equatable, Sendable {
         self.baseBranch = baseBranch
         self.latestCommitOID = latestCommitOID
         self.stages = stages
+        self.canQueueVerificationReview = canQueueVerificationReview
+        self.canQueueCommitReview = canQueueCommitReview
+        self.canQueueBranchPushReview = canQueueBranchPushReview
+        self.canQueuePullRequestCreationReview = canQueuePullRequestCreationReview
         self.canQueuePullRequestReviewGate = canQueuePullRequestReviewGate
         self.canQueuePullRequestMergeGate = canQueuePullRequestMergeGate
         self.blockingReason = blockingReason
@@ -1781,6 +1793,293 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     @discardableResult
+    public func prepareDevelopmentVerificationReview(
+        for project: ProjectBoardProject,
+        task: ProjectBoardTask?,
+        commandID: String = "git.diff_check"
+    ) -> ActionPlan? {
+        let readiness = developmentAutomationReadiness(for: project, task: task)
+        guard readiness.isReady,
+              let task,
+              let branchName = readiness.branchNamePreview else {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = readiness.blockingReason
+            integrationStatusMessage = nil
+            return nil
+        }
+
+        let progress = developmentAutomationProgress(for: project, task: task)
+        guard progress.canQueueVerificationReview else {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = progress.nextApproval?.detail
+                ?? String(localized: "Prepare the development branch before queueing verification.")
+            integrationStatusMessage = nil
+            return nil
+        }
+
+        do {
+            let command = try DevelopmentVerificationCommandPolicy.validated(commandID: commandID)
+            let plan = ActionPlan(
+                id: "development-verification:\(project.id):\(task.id):\(Self.developmentVerificationPlanDigest(projectID: project.id, taskID: task.id, branchName: branchName, commandID: command.id))",
+                userInput: "Review local verification \(command.commandDisplay) for \(task.title).",
+                summary: "Run \(command.commandDisplay) inside approved branch \(branchName) before commit, push, or pull request creation.",
+                actions: [
+                    PlanAction(
+                        id: "development-verification",
+                        tool: .developmentRunVerification,
+                        arguments: [
+                            "projectId": .number(Double(project.id)),
+                            "branchName": .string(branchName),
+                            "commandId": .string(command.id)
+                        ],
+                        riskLevel: .write,
+                        requiresUserConfirmation: true
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+            // Carry branchName in the reviewed arguments even though the tool only
+            // executes projectId/commandId; receipts use it to resume the flow after relaunch.
+            developmentAutomationReviewPlan = plan
+            integrationStatusMessage = String(localized: "Development verification review is prepared.")
+            todayCommandFeedback = nil
+            errorMessage = nil
+            return plan
+        } catch let error as DevelopmentVerificationCommandError {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = String(localized: "Choose an approved verification command before queueing.")
+            errorMessage = Self.sanitizedDevelopmentAutomationReviewText(error.userMessage)
+            integrationStatusMessage = nil
+            return nil
+        } catch {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = String(localized: "Choose an approved verification command before queueing.")
+            errorMessage = Self.sanitizedDevelopmentAutomationReviewText(String(describing: error))
+            integrationStatusMessage = nil
+            return nil
+        }
+    }
+
+    @discardableResult
+    public func enqueueDevelopmentVerificationReview(
+        for project: ProjectBoardProject,
+        task: ProjectBoardTask?,
+        commandID: String = "git.diff_check"
+    ) -> Bool {
+        guard let assistantQueueStore else {
+            assistantQueueSnapshot = .empty
+            assistantQueueSelectedItemIDs = []
+            errorMessage = String(localized: "Assistant Queue is unavailable in this build.")
+            integrationStatusMessage = nil
+            return false
+        }
+        guard var plan = prepareDevelopmentVerificationReview(for: project, task: task, commandID: commandID) else {
+            return false
+        }
+
+        let validator = ActionPlanValidator()
+        let validation = validator.validate(plan)
+        guard validation.isValid else {
+            errorMessage = String(localized: "Development automation generated an invalid action plan.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        plan.userInput = Self.sanitizedDevelopmentAutomationReviewText(plan.userInput)
+        plan.summary = Self.sanitizedDevelopmentAutomationReviewText(plan.summary)
+        let persistedValidation = validator.validate(plan)
+        guard persistedValidation.isValid else {
+            errorMessage = String(localized: "Development automation generated an invalid action plan.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        let item = AssistantQueueAdapter.makeItem(
+            actionPlan: plan,
+            sourceTranscript: plan.userInput,
+            interpretationSummary: plan.summary,
+            reason: Self.developmentVerificationQueueReason(project: project),
+            costPreview: .localOnly()
+        )
+
+        do {
+            if try assistantQueueStore.insertIfAbsent(item) != nil {
+                focusAssistantQueueItem(id: item.id)
+                errorMessage = nil
+                integrationStatusMessage = String(localized: "Queued development verification review for approval.")
+                todayCommandFeedback = nil
+                onChange()
+                return true
+            }
+
+            focusAssistantQueueItem(id: item.id)
+            errorMessage = nil
+            integrationStatusMessage = String(localized: "Development verification review is already in Assistant Queue.")
+            todayCommandFeedback = nil
+            return true
+        } catch {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = AssistantQueueStoreError.userMessage(for: error)
+            integrationStatusMessage = nil
+            return false
+        }
+    }
+
+    @discardableResult
+    public func prepareDevelopmentCommitReview(
+        for project: ProjectBoardProject,
+        task: ProjectBoardTask?,
+        relativePathsText: String,
+        commitMessage: String
+    ) -> ActionPlan? {
+        let readiness = developmentAutomationReadiness(for: project, task: task)
+        guard readiness.isReady,
+              let task,
+              let branchName = readiness.branchNamePreview else {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = readiness.blockingReason
+            integrationStatusMessage = nil
+            return nil
+        }
+
+        let progress = developmentAutomationProgress(for: project, task: task)
+        guard progress.canQueueCommitReview else {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = progress.nextApproval?.detail
+                ?? String(localized: "Run verification before queueing the commit review.")
+            integrationStatusMessage = nil
+            return nil
+        }
+
+        do {
+            let relativePaths = try Self.validatedDevelopmentCommitRelativePaths(from: relativePathsText)
+            let reviewedCommitMessage = try DevelopmentCommitGitCommandPolicy.validatedCommitMessage(
+                commitMessage,
+                redactor: DeveloperSecretRedactor()
+            )
+            let plan = ActionPlan(
+                id: "development-commit:\(project.id):\(task.id):\(Self.developmentCommitPlanDigest(projectID: project.id, taskID: task.id, branchName: branchName, relativePaths: relativePaths, commitMessage: reviewedCommitMessage))",
+                userInput: "Review local commit for \(task.title).",
+                summary: "Commit \(relativePaths.joined(separator: ", ")) on branch \(branchName) after verification evidence. Push and pull request creation remain separate approvals.",
+                actions: [
+                    PlanAction(
+                        id: "development-commit",
+                        tool: .developmentCommitChanges,
+                        arguments: [
+                            "projectId": .number(Double(project.id)),
+                            "branchName": .string(branchName),
+                            "relativePaths": JSONValueFactory.strings(relativePaths),
+                            "commitMessage": .string(reviewedCommitMessage)
+                        ],
+                        riskLevel: .write,
+                        requiresUserConfirmation: true
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+            // The commit gate records exactly the reviewed file list. The tool
+            // re-reads each file and stages only this list so unrelated user edits
+            // cannot be swept into the local commit.
+            developmentAutomationReviewPlan = plan
+            integrationStatusMessage = String(localized: "Development commit review is prepared.")
+            todayCommandFeedback = nil
+            errorMessage = nil
+            return plan
+        } catch let error as DevelopmentRepositoryFileError {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = String(localized: "Review the commit file paths before queueing.")
+            errorMessage = Self.sanitizedDevelopmentAutomationReviewText(error.userMessage)
+            integrationStatusMessage = nil
+            return nil
+        } catch let error as DevelopmentCommitWorkflowError {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = String(localized: "Review the commit message and file paths before queueing.")
+            errorMessage = Self.sanitizedDevelopmentAutomationReviewText(error.userMessage)
+            integrationStatusMessage = nil
+            return nil
+        } catch {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = String(localized: "Review the commit message and file paths before queueing.")
+            errorMessage = Self.sanitizedDevelopmentAutomationReviewText(String(describing: error))
+            integrationStatusMessage = nil
+            return nil
+        }
+    }
+
+    @discardableResult
+    public func enqueueDevelopmentCommitReview(
+        for project: ProjectBoardProject,
+        task: ProjectBoardTask?,
+        relativePathsText: String,
+        commitMessage: String
+    ) -> Bool {
+        guard let assistantQueueStore else {
+            assistantQueueSnapshot = .empty
+            assistantQueueSelectedItemIDs = []
+            errorMessage = String(localized: "Assistant Queue is unavailable in this build.")
+            integrationStatusMessage = nil
+            return false
+        }
+        guard var plan = prepareDevelopmentCommitReview(
+            for: project,
+            task: task,
+            relativePathsText: relativePathsText,
+            commitMessage: commitMessage
+        ) else {
+            return false
+        }
+
+        let validator = ActionPlanValidator()
+        let validation = validator.validate(plan)
+        guard validation.isValid else {
+            errorMessage = String(localized: "Development automation generated an invalid action plan.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        plan.userInput = Self.sanitizedDevelopmentAutomationReviewText(plan.userInput)
+        plan.summary = Self.sanitizedDevelopmentAutomationReviewText(plan.summary)
+        let persistedValidation = validator.validate(plan)
+        guard persistedValidation.isValid else {
+            errorMessage = String(localized: "Development automation generated an invalid action plan.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        let item = AssistantQueueAdapter.makeItem(
+            actionPlan: plan,
+            sourceTranscript: plan.userInput,
+            interpretationSummary: plan.summary,
+            reason: Self.developmentCommitQueueReason(project: project),
+            costPreview: .localOnly()
+        )
+
+        do {
+            if try assistantQueueStore.insertIfAbsent(item) != nil {
+                focusAssistantQueueItem(id: item.id)
+                errorMessage = nil
+                integrationStatusMessage = String(localized: "Queued development commit review for approval.")
+                todayCommandFeedback = nil
+                onChange()
+                return true
+            }
+
+            focusAssistantQueueItem(id: item.id)
+            errorMessage = nil
+            integrationStatusMessage = String(localized: "Development commit review is already in Assistant Queue.")
+            todayCommandFeedback = nil
+            return true
+        } catch {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = AssistantQueueStoreError.userMessage(for: error)
+            integrationStatusMessage = nil
+            return false
+        }
+    }
+
+    @discardableResult
     public func prepareDevelopmentPushReview(
         for project: ProjectBoardProject,
         task: ProjectBoardTask?
@@ -1791,6 +2090,15 @@ public final class ProjectBoardViewModel: ObservableObject {
               let branchName = readiness.branchNamePreview else {
             developmentAutomationReviewPlan = nil
             todayCommandFeedback = readiness.blockingReason
+            integrationStatusMessage = nil
+            return nil
+        }
+
+        let progress = developmentAutomationProgress(for: project, task: task)
+        guard progress.canQueueBranchPushReview else {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = progress.nextApproval?.detail
+                ?? String(localized: "Create the local commit before queueing the branch push.")
             integrationStatusMessage = nil
             return nil
         }
@@ -1927,6 +2235,15 @@ public final class ProjectBoardViewModel: ObservableObject {
             let readiness = developmentAutomationReadiness(for: project, task: task)
             developmentAutomationReviewPlan = nil
             todayCommandFeedback = readiness.blockingReason
+            integrationStatusMessage = nil
+            return nil
+        }
+
+        let progress = developmentAutomationProgress(for: project, task: task)
+        guard progress.canQueuePullRequestCreationReview else {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = progress.nextApproval?.detail
+                ?? String(localized: "Push the branch before queueing pull request creation.")
             integrationStatusMessage = nil
             return nil
         }
@@ -2268,6 +2585,14 @@ public final class ProjectBoardViewModel: ObservableObject {
             toolName: ActionTool.developmentPreparePullRequestWorkflow.rawValue,
             receipts: receipts
         )
+        let verificationReceipt = latestDevelopmentAutomationReceipt(
+            toolName: ActionTool.developmentRunVerification.rawValue,
+            receipts: receipts
+        )
+        let commitReceipt = latestDevelopmentAutomationReceipt(
+            toolName: ActionTool.developmentCommitChanges.rawValue,
+            receipts: receipts
+        )
         let pushReceipt = latestDevelopmentAutomationReceipt(
             toolName: ActionTool.developmentPushBranch.rawValue,
             receipts: receipts
@@ -2286,6 +2611,8 @@ public final class ProjectBoardViewModel: ObservableObject {
         )
 
         let successfulPrepareReceipt = prepareReceipt?.status == .succeeded ? prepareReceipt : nil
+        let successfulVerificationReceipt = verificationReceipt?.status == .succeeded ? verificationReceipt : nil
+        let successfulCommitReceipt = commitReceipt?.status == .succeeded ? commitReceipt : nil
         let successfulPushReceipt = pushReceipt?.status == .succeeded ? pushReceipt : nil
         let successfulPullRequestReceipt = pullRequestReceipt?.status == .succeeded ? pullRequestReceipt : nil
         let successfulReviewReceipt = reviewReceipt?.status == .succeeded ? reviewReceipt : nil
@@ -2302,6 +2629,30 @@ public final class ProjectBoardViewModel: ObservableObject {
             kind: .developmentCommit,
             receipts: [successfulReviewReceipt, successfulPullRequestReceipt, pushReceipt].compactMap { $0 }
         )
+        let hasLaterThanVerificationEvidence = successfulCommitReceipt != nil
+            || successfulPushReceipt != nil
+            || successfulPullRequestReceipt != nil
+            || successfulReviewReceipt != nil
+            || successfulMergeReceipt != nil
+        let hasLaterThanCommitEvidence = successfulPushReceipt != nil
+            || successfulPullRequestReceipt != nil
+            || successfulReviewReceipt != nil
+            || successfulMergeReceipt != nil
+        let canQueueVerification = successfulPrepareReceipt != nil
+            && verificationReceipt == nil
+            && !hasLaterThanVerificationEvidence
+        let canQueueCommit = successfulVerificationReceipt != nil
+            && commitReceipt == nil
+            && !hasLaterThanCommitEvidence
+        let canQueuePush = successfulCommitReceipt != nil
+            && pushReceipt == nil
+            && successfulPullRequestReceipt == nil
+            && successfulReviewReceipt == nil
+            && successfulMergeReceipt == nil
+        let canQueuePullRequestCreation = successfulPushReceipt != nil
+            && pullRequestReceipt == nil
+            && successfulReviewReceipt == nil
+            && successfulMergeReceipt == nil
         let hasReviewEvidence = successfulReviewReceipt != nil
         let hasMergeEvidence = successfulMergeReceipt != nil
         let canQueueReview = successfulPullRequestReceipt != nil
@@ -2315,6 +2666,10 @@ public final class ProjectBoardViewModel: ObservableObject {
             && !hasMergeEvidence
         let progressBlockingReason = blockingReason
             ?? developmentAutomationProgressBlockingReason(
+                prepareReceipt: prepareReceipt,
+                verificationReceipt: verificationReceipt,
+                commitReceipt: commitReceipt,
+                pushReceipt: pushReceipt,
                 pullRequestReceipt: pullRequestReceipt,
                 reviewReceipt: reviewReceipt,
                 mergeReceipt: mergeReceipt,
@@ -2323,12 +2678,19 @@ public final class ProjectBoardViewModel: ObservableObject {
             )
         let nextApproval = developmentAutomationNextApproval(
             prepareReceipt: prepareReceipt,
+            verificationReceipt: verificationReceipt,
+            commitReceipt: commitReceipt,
             pushReceipt: pushReceipt,
             pullRequestReceipt: pullRequestReceipt,
             reviewReceipt: reviewReceipt,
             mergeReceipt: mergeReceipt,
             successfulPrepareReceipt: successfulPrepareReceipt,
-            successfulPushReceipt: successfulPushReceipt,
+            successfulVerificationReceipt: successfulVerificationReceipt,
+            successfulCommitReceipt: successfulCommitReceipt,
+            canQueueVerification: canQueueVerification,
+            canQueueCommit: canQueueCommit,
+            canQueuePush: canQueuePush,
+            canQueuePullRequestCreation: canQueuePullRequestCreation,
             canQueueReview: canQueueReview,
             canQueueMerge: canQueueMerge,
             blockingReason: blockingReason
@@ -2348,9 +2710,22 @@ public final class ProjectBoardViewModel: ObservableObject {
                     receipt: prepareReceipt
                 ),
                 developmentAutomationProgressStage(
+                    id: "verification-run",
+                    title: String(localized: "Verification run"),
+                    receipt: verificationReceipt,
+                    readyWhenMissing: canQueueVerification
+                ),
+                developmentAutomationProgressStage(
+                    id: "commit-created",
+                    title: String(localized: "Commit created"),
+                    receipt: commitReceipt,
+                    readyWhenMissing: canQueueCommit
+                ),
+                developmentAutomationProgressStage(
                     id: "branch-pushed",
                     title: String(localized: "Branch pushed"),
-                    receipt: pushReceipt
+                    receipt: pushReceipt,
+                    readyWhenMissing: canQueuePush
                 ),
                 developmentAutomationProgressStage(
                     id: "pull-request-created",
@@ -2370,6 +2745,10 @@ public final class ProjectBoardViewModel: ObservableObject {
                     readyWhenMissing: canQueueMerge
                 )
             ],
+            canQueueVerificationReview: canQueueVerification,
+            canQueueCommitReview: canQueueCommit,
+            canQueueBranchPushReview: canQueuePush,
+            canQueuePullRequestCreationReview: canQueuePullRequestCreation,
             canQueuePullRequestReviewGate: canQueueReview,
             canQueuePullRequestMergeGate: canQueueMerge,
             blockingReason: progressBlockingReason,
@@ -2379,12 +2758,19 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     private static func developmentAutomationNextApproval(
         prepareReceipt: ExecutionReceipt?,
+        verificationReceipt: ExecutionReceipt?,
+        commitReceipt: ExecutionReceipt?,
         pushReceipt: ExecutionReceipt?,
         pullRequestReceipt: ExecutionReceipt?,
         reviewReceipt: ExecutionReceipt?,
         mergeReceipt: ExecutionReceipt?,
         successfulPrepareReceipt: ExecutionReceipt?,
-        successfulPushReceipt: ExecutionReceipt?,
+        successfulVerificationReceipt: ExecutionReceipt?,
+        successfulCommitReceipt: ExecutionReceipt?,
+        canQueueVerification: Bool,
+        canQueueCommit: Bool,
+        canQueuePush: Bool,
+        canQueuePullRequestCreation: Bool,
         canQueueReview: Bool,
         canQueueMerge: Bool,
         blockingReason: String?
@@ -2409,6 +2795,8 @@ public final class ProjectBoardViewModel: ObservableObject {
 
         if let failedApproval = failedDevelopmentAutomationNextApproval(
             prepareReceipt: prepareReceipt,
+            verificationReceipt: verificationReceipt,
+            commitReceipt: commitReceipt,
             pushReceipt: pushReceipt,
             pullRequestReceipt: pullRequestReceipt,
             reviewReceipt: reviewReceipt,
@@ -2433,7 +2821,31 @@ public final class ProjectBoardViewModel: ObservableObject {
             )
         }
 
-        if pullRequestReceipt == nil, successfulPushReceipt != nil {
+        if canQueuePush {
+            return ProjectDevelopmentAutomationNextApproval(
+                id: "branch-push",
+                title: String(localized: "Queue branch push review"),
+                detail: String(localized: "Push is a separate external write approval after verification and commit evidence exists.")
+            )
+        }
+
+        if canQueueCommit {
+            return ProjectDevelopmentAutomationNextApproval(
+                id: "commit-changes",
+                title: String(localized: "Queue commit review"),
+                detail: String(localized: "Use the verification receipt to review the exact file list and commit message before creating a local commit.")
+            )
+        }
+
+        if canQueueVerification {
+            return ProjectDevelopmentAutomationNextApproval(
+                id: "verification-run",
+                title: String(localized: "Queue verification review"),
+                detail: String(localized: "Use the branch preparation receipt to run a local verification command before commit or push.")
+            )
+        }
+
+        if canQueuePullRequestCreation {
             return ProjectDevelopmentAutomationNextApproval(
                 id: "pull-request-create",
                 title: String(localized: "Queue pull request creation review"),
@@ -2442,6 +2854,20 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         if pushReceipt == nil, successfulPrepareReceipt != nil {
+            if successfulVerificationReceipt == nil {
+                return ProjectDevelopmentAutomationNextApproval(
+                    id: "verification-pending",
+                    title: String(localized: "Wait for verification receipt"),
+                    detail: String(localized: "The branch is prepared; wait for verification evidence before queueing commit or push.")
+                )
+            }
+            if successfulCommitReceipt == nil {
+                return ProjectDevelopmentAutomationNextApproval(
+                    id: "commit-pending",
+                    title: String(localized: "Wait for commit receipt"),
+                    detail: String(localized: "Verification is complete; wait for local commit evidence before queueing push.")
+                )
+            }
             return ProjectDevelopmentAutomationNextApproval(
                 id: "branch-push",
                 title: String(localized: "Queue branch push review"),
@@ -2466,6 +2892,8 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     private static func failedDevelopmentAutomationNextApproval(
         prepareReceipt: ExecutionReceipt?,
+        verificationReceipt: ExecutionReceipt?,
+        commitReceipt: ExecutionReceipt?,
         pushReceipt: ExecutionReceipt?,
         pullRequestReceipt: ExecutionReceipt?,
         reviewReceipt: ExecutionReceipt?,
@@ -2476,6 +2904,8 @@ public final class ProjectBoardViewModel: ObservableObject {
             (reviewReceipt, String(localized: "Review failed pull request gate")),
             (pullRequestReceipt, String(localized: "Review failed pull request creation")),
             (pushReceipt, String(localized: "Review failed branch push")),
+            (commitReceipt, String(localized: "Review failed commit")),
+            (verificationReceipt, String(localized: "Review failed verification")),
             (prepareReceipt, String(localized: "Review failed branch preparation"))
         ]
         let failedReceipt: (id: String, title: String)? = candidates.compactMap { candidate -> (id: String, title: String)? in
@@ -2566,6 +2996,10 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     private static func developmentAutomationProgressBlockingReason(
+        prepareReceipt: ExecutionReceipt?,
+        verificationReceipt: ExecutionReceipt?,
+        commitReceipt: ExecutionReceipt?,
+        pushReceipt: ExecutionReceipt?,
         pullRequestReceipt: ExecutionReceipt?,
         reviewReceipt: ExecutionReceipt?,
         mergeReceipt: ExecutionReceipt?,
@@ -2575,16 +3009,49 @@ public final class ProjectBoardViewModel: ObservableObject {
         if mergeReceipt?.status == .succeeded {
             return String(localized: "Pull request merge receipt is complete.")
         }
+        if prepareReceipt == nil {
+            return String(localized: "Queue branch preparation and wait for its execution receipt before verification.")
+        }
+        if prepareReceipt?.status == .failed || prepareReceipt?.status == .canceled {
+            return String(localized: "Branch preparation failed. Review the execution receipt before queueing verification.")
+        }
+        let hasEvidenceAfterVerification = commitReceipt != nil
+            || pushReceipt != nil
+            || pullRequestReceipt != nil
+            || reviewReceipt != nil
+            || mergeReceipt != nil
+        let hasEvidenceAfterCommit = pushReceipt != nil
+            || pullRequestReceipt != nil
+            || reviewReceipt != nil
+            || mergeReceipt != nil
+        if verificationReceipt == nil, !hasEvidenceAfterVerification {
+            return String(localized: "Run verification and wait for its execution receipt before commit.")
+        }
+        if verificationReceipt?.status == .failed || verificationReceipt?.status == .canceled {
+            return String(localized: "Verification failed. Review the execution receipt before queueing commit.")
+        }
+        if commitReceipt == nil, !hasEvidenceAfterCommit {
+            return String(localized: "Create the local commit and wait for its execution receipt before push.")
+        }
+        if commitReceipt?.status == .failed || commitReceipt?.status == .canceled {
+            return String(localized: "Local commit failed. Review the execution receipt before queueing push.")
+        }
+        if pushReceipt == nil {
+            return String(localized: "Push the branch and wait for its execution receipt before pull request creation.")
+        }
+        if pushReceipt?.status == .failed || pushReceipt?.status == .canceled {
+            return String(localized: "Branch push failed. Review the execution receipt before queueing pull request creation.")
+        }
         if pullRequestReceipt == nil {
             return String(localized: "Create the pull request and wait for its execution receipt before queueing review or merge.")
         }
-        if pullRequestReceipt?.status == .failed {
+        if pullRequestReceipt?.status == .failed || pullRequestReceipt?.status == .canceled {
             return String(localized: "Pull request creation failed. Review the execution receipt before queueing review or merge.")
         }
         if pullRequestURL == nil || baseBranch == nil {
             return String(localized: "Pull request receipt is missing URL or base branch evidence, so SoloPM will not draft review or merge approval.")
         }
-        if reviewReceipt?.status == .failed {
+        if reviewReceipt?.status == .failed || reviewReceipt?.status == .canceled {
             return String(localized: "Pull request review gate failed. Resolve the receipt before queueing merge.")
         }
         if reviewReceipt == nil {
@@ -2639,6 +3106,20 @@ public final class ProjectBoardViewModel: ObservableObject {
     private static func developmentAutomationPushQueueReason(project: ProjectBoardProject) -> String {
         String(
             format: String(localized: "Development branch push needs review for %@."),
+            sanitizedDevelopmentAutomationReviewText(project.title)
+        )
+    }
+
+    private static func developmentVerificationQueueReason(project: ProjectBoardProject) -> String {
+        String(
+            format: String(localized: "Development verification needs review for %@."),
+            sanitizedDevelopmentAutomationReviewText(project.title)
+        )
+    }
+
+    private static func developmentCommitQueueReason(project: ProjectBoardProject) -> String {
+        String(
+            format: String(localized: "Development commit needs reviewed files and message for %@."),
             sanitizedDevelopmentAutomationReviewText(project.title)
         )
     }
@@ -2835,6 +3316,51 @@ public final class ProjectBoardViewModel: ObservableObject {
         return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 
+    private static func validatedDevelopmentCommitRelativePaths(from text: String) throws -> [String] {
+        let rawPaths = text
+            .components(separatedBy: CharacterSet(charactersIn: ",\n"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard !rawPaths.isEmpty else {
+            throw DevelopmentCommitWorkflowError.noRelativePaths
+        }
+
+        var seen: Set<String> = []
+        var relativePaths: [String] = []
+        for rawPath in rawPaths {
+            let relativePath = try DevelopmentRepositoryFilePathPolicy.validatedRelativePath(rawPath)
+            guard seen.insert(relativePath).inserted else {
+                continue
+            }
+            relativePaths.append(relativePath)
+        }
+
+        guard !relativePaths.isEmpty else {
+            throw DevelopmentCommitWorkflowError.noRelativePaths
+        }
+        return relativePaths
+    }
+
+    private static func developmentVerificationPlanDigest(
+        projectID: Int64,
+        taskID: Int64,
+        branchName: String,
+        commandID: String
+    ) -> String {
+        developmentReviewedInputDigest([String(projectID), String(taskID), branchName, commandID])
+    }
+
+    private static func developmentCommitPlanDigest(
+        projectID: Int64,
+        taskID: Int64,
+        branchName: String,
+        relativePaths: [String],
+        commitMessage: String
+    ) -> String {
+        developmentReviewedInputDigest([String(projectID), String(taskID), branchName, commitMessage] + relativePaths)
+    }
+
     private static func developmentPullRequestCreationPlanDigest(
         projectID: Int64,
         taskID: Int64,
@@ -2845,7 +3371,10 @@ public final class ProjectBoardViewModel: ObservableObject {
     ) -> String {
         // Approval identity must change when any reviewed PR field changes; otherwise
         // Assistant Queue's duplicate protection can preserve an approval for stale text.
-        let parts = [String(projectID), String(taskID), branchName, baseBranch, title, body]
+        developmentReviewedInputDigest([String(projectID), String(taskID), branchName, baseBranch, title, body])
+    }
+
+    private static func developmentReviewedInputDigest(_ parts: [String]) -> String {
         let input = parts
             .map { "\($0.utf8.count):\($0)" }
             .joined(separator: "|")

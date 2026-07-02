@@ -3451,6 +3451,9 @@ private struct ProjectDevelopmentAutomationPanel: View {
     @State private var pullRequestBaseBranch = ""
     @State private var pullRequestTitle = ""
     @State private var pullRequestBody = ""
+    @State private var commitDraftKey: String?
+    @State private var commitRelativePaths = ""
+    @State private var commitMessage = ""
 
     private var readiness: ProjectDevelopmentAutomationReadiness {
         viewModel.developmentAutomationReadiness(for: project, task: viewModel.selectedTask)
@@ -3515,11 +3518,59 @@ private struct ProjectDevelopmentAutomationPanel: View {
             .accessibilityHint("Adds the development branch preparation plan to Assistant Queue for review and approval.")
 
             Button {
+                _ = viewModel.enqueueDevelopmentVerificationReview(for: project, task: viewModel.selectedTask)
+            } label: {
+                Label("Queue verification review", systemImage: "checkmark.shield")
+            }
+            .disabled(!developmentProgress.canQueueVerificationReview)
+            .help("Queues an approved local verification command after branch preparation evidence exists.")
+            .accessibilityIdentifier("project-development-automation-verification-queue")
+            .accessibilityHint("Adds a local verification command to Assistant Queue before commit or push.")
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Commit review")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                TextField("Commit file paths", text: $commitRelativePaths)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("project-development-automation-commit-paths")
+
+                TextField("Commit message", text: $commitMessage)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("project-development-automation-commit-message")
+
+                Button {
+                    _ = viewModel.enqueueDevelopmentCommitReview(
+                        for: project,
+                        task: viewModel.selectedTask,
+                        relativePathsText: commitRelativePaths,
+                        commitMessage: commitMessage
+                    )
+                } label: {
+                    Label("Queue commit review", systemImage: "tray.and.arrow.down")
+                }
+                .disabled(!canQueueCommitReview)
+                .help("Queues a local commit review after verification evidence exists.")
+                .accessibilityIdentifier("project-development-automation-commit-queue")
+                .accessibilityHint("Adds the reviewed file list and commit message to Assistant Queue before push.")
+            }
+            .onAppear {
+                syncCommitDraftIfNeeded()
+            }
+            .onChange(of: viewModel.selectedTask?.id) { _, _ in
+                syncCommitDraftIfNeeded()
+            }
+            .onChange(of: readiness.branchNamePreview) { _, _ in
+                syncCommitDraftIfNeeded()
+            }
+
+            Button {
                 _ = viewModel.enqueueDevelopmentPushReview(for: project, task: viewModel.selectedTask)
             } label: {
                 Label("Queue branch push review", systemImage: "arrow.up.circle")
             }
-            .disabled(!readiness.isReady)
+            .disabled(!developmentProgress.canQueueBranchPushReview)
             .help("Queues a branch push approval; execution rechecks the current branch, clean workspace, and GitHub origin before running.")
             .accessibilityIdentifier("project-development-automation-push-queue")
             .accessibilityHint("Adds only the branch push review to Assistant Queue; pull request creation still needs a separate approval.")
@@ -3749,10 +3800,16 @@ private struct ProjectDevelopmentAutomationPanel: View {
     }
 
     private var canQueuePullRequestCreationReview: Bool {
-        readiness.isReady
+        developmentProgress.canQueuePullRequestCreationReview
             && !pullRequestBaseBranch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !pullRequestTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !pullRequestBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canQueueCommitReview: Bool {
+        developmentProgress.canQueueCommitReview
+            && !commitRelativePaths.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func syncPullRequestDraftIfNeeded(_ draft: ProjectDevelopmentPullRequestCreationDraft) {
@@ -3764,6 +3821,20 @@ private struct ProjectDevelopmentAutomationPanel: View {
         pullRequestBaseBranch = draft.baseBranch
         pullRequestTitle = draft.title
         pullRequestBody = draft.body
+    }
+
+    private func syncCommitDraftIfNeeded() {
+        guard let task = viewModel.selectedTask,
+              let branchName = readiness.branchNamePreview else {
+            return
+        }
+        let key = "\(project.id):\(task.id):\(branchName)"
+        guard commitDraftKey != key else {
+            return
+        }
+        commitDraftKey = key
+        commitRelativePaths = ""
+        commitMessage = "Update task \(task.id)"
     }
 
     private func progressStageIcon(for status: ProjectDevelopmentAutomationProgressStageStatus) -> String {

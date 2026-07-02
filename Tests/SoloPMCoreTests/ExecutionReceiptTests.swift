@@ -479,6 +479,87 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertFalse(displayedText.contains("gh pr create"))
     }
 
+    func testDevelopmentVerificationAndCommitReceiptsKeepReviewedBranchEvidence() throws {
+        let branchName = "feature/solopm-7-42-implement-oauth-callback"
+        var session = ReviewSession(
+            id: "review-development-verify-commit",
+            plan: ActionPlan(
+                id: "plan-development-verify-commit",
+                userInput: "Verify and commit the reviewed development changes.",
+                summary: "Run verification before creating a local commit.",
+                actions: [
+                    PlanAction(
+                        id: "action-development-verification",
+                        tool: .developmentRunVerification,
+                        arguments: [
+                            "projectId": .number(7),
+                            "branchName": .string(branchName),
+                            "commandId": .string("git.diff_check")
+                        ],
+                        riskLevel: .write
+                    ),
+                    PlanAction(
+                        id: "action-development-commit",
+                        tool: .developmentCommitChanges,
+                        arguments: [
+                            "projectId": .number(7),
+                            "branchName": .string(branchName),
+                            "relativePaths": .array([.string("Sources/AuthCallback.swift")]),
+                            "commitMessage": .string("Add OAuth callback support")
+                        ],
+                        riskLevel: .write
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+        )
+        try session.approve(token: ApprovalToken(id: "approval-development-verify-commit", sessionID: session.id))
+        session.executionStatus = .completed
+        session.markAction(
+            id: "action-development-verification",
+            status: .succeeded,
+            result: ToolResult(
+                tool: .developmentRunVerification,
+                status: .succeeded,
+                summary: "Ran git diff --check successfully.",
+                output: [
+                    "projectId": .number(7),
+                    "commandId": .string("git.diff_check"),
+                    "passed": .bool(true)
+                ]
+            )
+        )
+        session.markAction(
+            id: "action-development-commit",
+            status: .succeeded,
+            result: ToolResult(
+                tool: .developmentCommitChanges,
+                status: .succeeded,
+                summary: "Created a local development commit. Push and PR creation require a separate approval gate.",
+                output: [
+                    "projectId": .number(7),
+                    "relativePaths": .array([.string("Sources/AuthCallback.swift")]),
+                    "commitMessage": .string("Add OAuth callback support"),
+                    "requiresPushApproval": .bool(true)
+                ]
+            )
+        )
+
+        let receipt = ExecutionReceiptFactory.makeReviewReceipt(
+            session: session,
+            runID: "run-development-verify-commit",
+            model: nil,
+            usage: .unavailable,
+            startedAt: Date(timeIntervalSince1970: 44),
+            finishedAt: Date(timeIntervalSince1970: 45)
+        )
+
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .project, id: "7")))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBranch, id: branchName)))
+        XCTAssertEqual(receipt.visibleSurfaces, [.projectDetail, .auditLog])
+    }
+
     func testReviewExecutionReceiptRedactsRepositoryFileWriteContents() throws {
         let privateSource = "func proprietaryBillingFormula() { let multiplier = 42 }"
         var session = ReviewSession(

@@ -1906,6 +1906,12 @@ public enum ExecutionReceiptFactory {
             appendReference(kind: .project, keys: ["projectId", "projectID"], output: values, references: &references)
             appendReference(kind: .developmentBranch, keys: ["branchName"], output: values, references: &references)
             appendReference(kind: .developmentCommit, keys: ["headRefOid", "headRefOID"], output: values, references: &references)
+        case .developmentRunVerification:
+            appendReference(kind: .project, keys: ["projectId", "projectID"], output: values, references: &references)
+            appendReference(kind: .developmentBranch, keys: ["branchName"], output: values, references: &references)
+        case .developmentCommitChanges:
+            appendReference(kind: .project, keys: ["projectId", "projectID"], output: values, references: &references)
+            appendReference(kind: .developmentBranch, keys: ["branchName"], output: values, references: &references)
         case .developmentCreatePullRequest:
             appendReference(kind: .project, keys: ["projectId", "projectID"], output: values, references: &references)
             appendReference(kind: .developmentBranch, keys: ["branchName"], output: values, references: &references)
