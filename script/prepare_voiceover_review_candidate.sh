@@ -176,7 +176,7 @@ write_voiceover_review_worksheet() {
     printf '%s\n' '- [ ] Status controls: previous/next status controls announce target status labels.'
     printf '%s\n' '- [ ] Task inspector: fields, summary, suggestion, save, and danger actions are reachable.'
     printf '%s\n' '- [ ] Inbox voice triage: selected voice intake detail announces transcript, interpretation, source metadata, memo, and triage actions.'
-    printf '%s\n' '- [ ] Today rail actions: Today rail announces next action, task detail, focus, schedule draft, edit, subtask draft, and reminder draft controls.'
+    printf '%s\n' '- [ ] Today rail actions: Open Today, select `Review Today rail next action with VoiceOver`, then confirm next action, task detail, focus, schedule draft, edit, subtask draft, and reminder draft controls are announced.'
     printf '%s\n' '- [ ] Save Changes: keyboard activation saves local task edits.'
     printf '%s\n' '- [ ] Task content execution: approved execution records the reviewed task title and detail in the redacted receipt.'
     printf '%s\n' '- [ ] Delete Task confirmation: destructive action opens an inline inspector confirmation panel before deletion.'
@@ -323,7 +323,7 @@ write_voiceover_evidence_command() {
     printf '%s\n' '  exit 2'
     printf '%s\n' 'fi'
     printf '%s\n' 'SEEDED_TASK_COUNT="$("$SQLITE3" -batch -noheader "$EXPECTED_DATABASE_PATH" "SELECT count(*) FROM tasks WHERE project_id=$EXPECTED_PROJECT_ID AND source_command='"'"'voiceover-review-seed'"'"';" | tail -n 1 || true)"'
-    printf '%s\n' 'if [[ "$SEEDED_TASK_COUNT" != "6" ]]; then'
+    printf '%s\n' 'if [[ "$SEEDED_TASK_COUNT" != "7" ]]; then'
     printf '%s\n' '  printf "BLOCKER: VoiceOver evidence command database is missing the seeded review tasks for project %s: got %s\n" "$EXPECTED_PROJECT_ID" "${SEEDED_TASK_COUNT:-<empty>}" >&2'
     printf '%s\n' '  exit 2'
     printf '%s\n' 'fi'
@@ -729,6 +729,23 @@ VALUES (
   CURRENT_TIMESTAMP
 );
 
+-- Today rail VoiceOver coverage needs a concrete due-today task because the
+-- empty Today state does not expose task-specific focus/schedule/edit/reminder
+-- actions. The due_at is pinned to the seed instant so the user's local Today
+-- boundary includes the task without relying on calendar-day string math.
+INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command, created_at, updated_at)
+VALUES (
+  $seeded_project_id,
+  'Review Today rail next action with VoiceOver',
+  'planned',
+  'Open Today and confirm the seeded task drives the assistant rail next action, task detail, focus, schedule draft, edit, subtask draft, and reminder draft controls.',
+  strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+  'high',
+  'voiceover-review-seed',
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+);
+
 INSERT INTO tasks (project_id, title, status, detail, due_at, priority, source_command, created_at, updated_at)
 VALUES (
   $seeded_project_id,
@@ -856,11 +873,12 @@ if [[ -z "${seed_project_id//[[:space:]]/}" ]]; then
   exit 1
 fi
 
-verify_seed "6" "seed task count" "SELECT count(*) FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"
+verify_seed "7" "seed task count" "SELECT count(*) FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"
 verify_seed "1" "seed artifact count" "SELECT count(*) FROM artifacts WHERE project_id=$seed_project_id AND expected_path='$(sql_escape "$VOICEOVER_REVIEW_ARTIFACT_PATH")';"
 verify_seed "1" "seed task spread" "SELECT CASE WHEN count(DISTINCT status) = 5 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"
+verify_seed "1" "Today rail seed task" "SELECT count(*) FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed' AND title='Review Today rail next action with VoiceOver' AND due_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+1 minute');"
 verify_seed "1" "approved execution receipt seed task" "SELECT count(*) FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed' AND title='Run approved execution receipt review' AND detail='Confirm the approved execution receipt announces the reviewed task title and detail after the plan runs.';"
-verify_seed "1" "VoiceOver release project selection" "SELECT CASE WHEN count(*) = 6 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"
+verify_seed "1" "VoiceOver release project selection" "SELECT CASE WHEN count(*) = 7 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"
 
 launch_env_file="$ROOT_DIR/.tmp/voiceover-review/launch.env"
 evidence_command_file="$ROOT_DIR/.tmp/voiceover-review/create-evidence-command.sh"
