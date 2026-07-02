@@ -3567,7 +3567,7 @@ private struct ProjectDevelopmentAutomationPanel: View {
                     }
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("project-development-automation-edit-preview")
-                    .accessibilityHint("Shows the reviewed repository operation, path, branch, and content digest before queueing approval.")
+                    .accessibilityHint("Shows the reviewed repository operation, path, branch, replacement summary, and content digest before queueing approval.")
                 }
 
                 Button {

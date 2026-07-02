@@ -1603,30 +1603,11 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     @MainActor
     func testDevelopmentRepositoryEditPreviewSummarizesReviewedInputWithoutRawContents() throws {
-        let stores = try makeStoreBundle()
-        let viewModel = ProjectBoardViewModel(store: stores.board)
-        viewModel.load()
-        let project = try XCTUnwrap(viewModel.createProject(title: "Client Portal"))
-        let task = try XCTUnwrap(viewModel.createTask(
-            title: "Implement OAuth callback",
-            projectID: project.id,
-            status: .planned
-        ))
-        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
-            "/tmp/client-portal",
-            bookmarkData: Data([1, 2, 3]),
-            projectID: project.id
-        ))
-        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
-        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
-        let branchName = try XCTUnwrap(viewModel.developmentAutomationReadiness(
-            for: assignedProject,
-            task: currentTask
-        ).branchNamePreview)
+        let subject = try makeDevelopmentRepositoryEditPreviewSubject()
 
-        let preview = try XCTUnwrap(viewModel.developmentRepositoryEditPreview(
-            for: assignedProject,
-            task: currentTask,
+        let preview = try XCTUnwrap(subject.viewModel.developmentRepositoryEditPreview(
+            for: subject.project,
+            task: subject.task,
             operation: .update,
             relativePath: "Sources/App/AuthCallback.swift",
             contents: "func handleOAuthCallback() {}\n",
@@ -1636,37 +1617,67 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(preview.title, "Repository Edit Preview")
         XCTAssertEqual(preview.rows.first { $0.id == "operation" }?.value, "Update project file")
         XCTAssertEqual(preview.rows.first { $0.id == "relative-path" }?.value, "Sources/App/AuthCallback.swift")
-        XCTAssertEqual(preview.rows.first { $0.id == "branch" }?.value, branchName)
+        XCTAssertEqual(preview.rows.first { $0.id == "branch" }?.value, subject.branchName)
         XCTAssertEqual(preview.rows.first { $0.id == "expected-sha" }?.value, String(repeating: "a", count: 12))
         XCTAssertEqual(preview.rows.first { $0.id == "content-summary" }?.value, "1 line / 30 bytes")
+        XCTAssertEqual(preview.rows.first { $0.id == "reviewed-change-scope" }?.value, "Reviewed replacement lines: 1")
+        XCTAssertEqual(preview.rows.first { $0.id == "reviewed-replacement" }?.value, "Update replacement: Sources/App/AuthCallback.swift (reviewed lines: 1)")
         let digestPrefix = try XCTUnwrap(preview.rows.first { $0.id == "content-digest" }?.value)
         XCTAssertEqual(digestPrefix.count, 12)
         XCTAssertFalse(preview.rows.map(\.value).joined(separator: "\n").contains("handleOAuthCallback"))
-        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertNil(subject.viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testDevelopmentRepositoryEditPreviewDescribesCreateReplacementWithoutPretendingDiff() throws {
+        let subject = try makeDevelopmentRepositoryEditPreviewSubject()
+
+        let preview = try XCTUnwrap(subject.viewModel.developmentRepositoryEditPreview(
+            for: subject.project,
+            task: subject.task,
+            operation: .create,
+            relativePath: "Sources/App/NewFeature.swift",
+            contents: "struct NewFeature {}\nlet enabled = true\n",
+            expectedSHA256: nil
+        ))
+
+        XCTAssertEqual(preview.rows.first { $0.id == "operation" }?.value, "Create project file")
+        XCTAssertEqual(preview.rows.first { $0.id == "reviewed-change-scope" }?.value, "Reviewed replacement lines: 2")
+        XCTAssertEqual(preview.rows.first { $0.id == "reviewed-replacement" }?.value, "Create replacement: Sources/App/NewFeature.swift (reviewed lines: 2)")
+        XCTAssertNil(preview.rows.first { $0.id == "expected-sha" })
+        let joinedValues = preview.rows.map(\.value).joined(separator: "\n")
+        XCTAssertFalse(joinedValues.contains("struct NewFeature"))
+        XCTAssertFalse(joinedValues.contains("enabled"))
+        XCTAssertFalse(joinedValues.contains("+2 / -0"))
+        XCTAssertNil(subject.viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testDevelopmentRepositoryEditPreviewCountsWhitespaceOnlyReplacementAsReviewedContent() throws {
+        let subject = try makeDevelopmentRepositoryEditPreviewSubject()
+
+        let preview = try XCTUnwrap(subject.viewModel.developmentRepositoryEditPreview(
+            for: subject.project,
+            task: subject.task,
+            operation: .create,
+            relativePath: "Sources/App/Spacing.swift",
+            contents: "   \n",
+            expectedSHA256: nil
+        ))
+
+        XCTAssertEqual(preview.rows.first { $0.id == "content-summary" }?.value, "1 line / 4 bytes")
+        XCTAssertEqual(preview.rows.first { $0.id == "reviewed-change-scope" }?.value, "Reviewed replacement lines: 1")
+        XCTAssertEqual(preview.rows.first { $0.id == "reviewed-replacement" }?.value, "Create replacement: Sources/App/Spacing.swift (reviewed lines: 1)")
+        XCTAssertNil(subject.viewModel.errorMessage)
     }
 
     @MainActor
     func testDevelopmentRepositoryEditPreviewFailsClosedForSecretLikeContents() throws {
-        let stores = try makeStoreBundle()
-        let viewModel = ProjectBoardViewModel(store: stores.board)
-        viewModel.load()
-        let project = try XCTUnwrap(viewModel.createProject(title: "Client Portal"))
-        let task = try XCTUnwrap(viewModel.createTask(
-            title: "Implement OAuth callback",
-            projectID: project.id,
-            status: .planned
-        ))
-        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
-            "/tmp/client-portal",
-            bookmarkData: Data([1, 2, 3]),
-            projectID: project.id
-        ))
-        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
-        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+        let subject = try makeDevelopmentRepositoryEditPreviewSubject()
 
-        let preview = viewModel.developmentRepositoryEditPreview(
-            for: assignedProject,
-            task: currentTask,
+        let preview = subject.viewModel.developmentRepositoryEditPreview(
+            for: subject.project,
+            task: subject.task,
             operation: .create,
             relativePath: "Sources/App/AuthCallback.swift",
             contents: "let token = \"sk-proj-abcdefghijklmnopqrstuvwxyz0123456789\"\n",
@@ -1674,8 +1685,8 @@ final class ProjectBoardStoreTests: XCTestCase {
         )
 
         XCTAssertNil(preview)
-        XCTAssertNil(viewModel.todayCommandFeedback)
-        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertNil(subject.viewModel.todayCommandFeedback)
+        XCTAssertNil(subject.viewModel.errorMessage)
     }
 
     @MainActor
@@ -7331,6 +7342,36 @@ final class ProjectBoardStoreTests: XCTestCase {
             SQLiteArtifactStore(connection: connection),
             SQLiteProjectMilestoneStore(connection: connection)
         )
+    }
+
+    @MainActor
+    private func makeDevelopmentRepositoryEditPreviewSubject() throws -> (
+        viewModel: ProjectBoardViewModel,
+        project: ProjectBoardProject,
+        task: ProjectBoardTask,
+        branchName: String
+    ) {
+        let stores = try makeStoreBundle()
+        let viewModel = ProjectBoardViewModel(store: stores.board)
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Client Portal"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Implement OAuth callback",
+            projectID: project.id,
+            status: .planned
+        ))
+        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
+            "/tmp/client-portal",
+            bookmarkData: Data([1, 2, 3]),
+            projectID: project.id
+        ))
+        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+        let branchName = try XCTUnwrap(viewModel.developmentAutomationReadiness(
+            for: assignedProject,
+            task: currentTask
+        ).branchNamePreview)
+        return (viewModel, assignedProject, currentTask, branchName)
     }
 
     private func developmentAutomationReceipt(

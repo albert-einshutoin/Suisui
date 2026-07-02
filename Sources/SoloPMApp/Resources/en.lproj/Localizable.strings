@@ -1235,7 +1235,12 @@
 "Expected SHA" = "Expected SHA";
 "%d line / %d bytes" = "%d line / %d bytes";
 "%d lines / %d bytes" = "%d lines / %d bytes";
-"Shows the reviewed repository operation, path, branch, and content digest before queueing approval." = "Shows the reviewed repository operation, path, branch, and content digest before queueing approval.";
+"Reviewed Change Scope" = "Reviewed Change Scope";
+"Reviewed Replacement" = "Reviewed Replacement";
+"Reviewed replacement lines: %d" = "Reviewed replacement lines: %d";
+"Create replacement: %@ (reviewed lines: %d)" = "Create replacement: %@ (reviewed lines: %d)";
+"Update replacement: %@ (reviewed lines: %d)" = "Update replacement: %@ (reviewed lines: %d)";
+"Shows the reviewed repository operation, path, branch, replacement summary, and content digest before queueing approval." = "Shows the reviewed repository operation, path, branch, replacement summary, and content digest before queueing approval.";
 "Queue repository edit review" = "Queue repository edit review";
 "Queues a scoped create or update file review after branch preparation evidence exists." = "Queues a scoped create or update file review after branch preparation evidence exists.";
 "Adds the reviewed repository edit to Assistant Queue before verification." = "Adds the reviewed repository edit to Assistant Queue before verification.";

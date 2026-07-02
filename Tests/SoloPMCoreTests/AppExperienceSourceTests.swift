@@ -1723,6 +1723,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-edit-expected-sha\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-edit-contents\")"))
         XCTAssertTrue(source.contains("viewModel.developmentRepositoryEditPreview("))
+        XCTAssertTrue(coreSource.contains("Reviewed Change Scope"))
+        XCTAssertTrue(coreSource.contains("Reviewed Replacement"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-edit-preview\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-edit-preview-row-\\(row.id)\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-edit-queue\")"))
