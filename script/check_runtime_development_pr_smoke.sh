@@ -38,6 +38,8 @@ seed_project_id=""
 seed_task_id=""
 queued_item_id=""
 repository_edit_item_id=""
+verification_item_id=""
+prepared_branch_name=""
 visible_edit_relative_path="runtime-development-pr-visible-edit.md"
 visible_edit_contents="Visible repository edit smoke proof"
 failure_reason="development PR smoke failed"
@@ -88,6 +90,7 @@ write_artifact() {
     printf -- '- Assistant Queue item: `%s`\n' "${queued_item_id:-not-queued}"
     printf -- '- Repository edit Assistant Queue item: `%s`\n' "${repository_edit_item_id:-not-queued}"
     printf -- '- Repository edit path: `%s`\n' "$visible_edit_relative_path"
+    printf -- '- Verification Assistant Queue item: `%s`\n' "${verification_item_id:-not-queued}"
     printf -- '- Approval boundary: `requiresPushApproval=true`, `requiresPullRequestApproval=true`\n'
     printf -- '- External writes: No live push, GitHub PR, review gate, or merge is created by this smoke.\n'
     printf -- '- Workspace retention requested: `%s`\n' "$KEEP_WORKSPACE"
@@ -764,23 +767,33 @@ wait_for_receipt_json() {
   local label="$1"
   local item_id="$2"
   local expected_tool="$3"
+  local expected_reference_kind="${4:-}"
+  local expected_reference_id="${5:-}"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   local receipt_file=""
 
   while true; do
     if [[ -d "$receipt_directory" ]]; then
-      receipt_file="$(/usr/bin/swift - "$receipt_directory" "$item_id" "$expected_tool" <<'SWIFT' 2>/dev/null || true
+      receipt_file="$(/usr/bin/swift - "$receipt_directory" "$item_id" "$expected_tool" "$expected_reference_kind" "$expected_reference_id" <<'SWIFT' 2>/dev/null || true
 import Foundation
+
+struct Reference: Decodable {
+    let kind: String
+    let id: String
+}
 
 struct Receipt: Decodable {
     let assistantQueueItemID: String?
     let primaryToolName: String?
     let status: String
+    let references: [Reference]?
 }
 
 let directory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
 let itemID = CommandLine.arguments[2]
 let expectedTool = CommandLine.arguments[3]
+let expectedReferenceKind = CommandLine.arguments.count > 4 ? CommandLine.arguments[4] : ""
+let expectedReferenceID = CommandLine.arguments.count > 5 ? CommandLine.arguments[5] : ""
 let decoder = JSONDecoder()
 let files = (try? FileManager.default.contentsOfDirectory(
     at: directory,
@@ -794,6 +807,13 @@ for file in files where file.pathExtension == "json" {
           receipt.assistantQueueItemID == itemID,
           receipt.primaryToolName == expectedTool,
           receipt.status == "succeeded" else {
+        continue
+    }
+    let hasExpectedReference = expectedReferenceKind.isEmpty
+        || (receipt.references ?? []).contains { reference in
+            reference.kind == expectedReferenceKind && reference.id == expectedReferenceID
+        }
+    guard hasExpectedReference else {
         continue
     }
     print(file.path)
@@ -856,6 +876,7 @@ WHERE id='$escaped_item_id';
   wait_for_receipt_json "visible Assistant Queue branch preparation" "$queued_item_id" "development.pr_workflow.prepare"
 
   current_branch="$(fixture_git -C "$UI_WORKSPACE" branch --show-current)"
+  prepared_branch_name="$current_branch"
   case "$current_branch" in
     *"$branch_fragment"*)
       printf "OK: local development branch prepared in fixture repo (%s)\n" "$current_branch"
@@ -954,6 +975,79 @@ WHERE id='$escaped_item_id';
   printf "OK: visible repository edit wrote %s\n" "$(relative_path "$edited_path")"
 }
 
+verify_visible_verification_handoff() {
+  local queue_sql
+  queue_sql="
+SELECT CASE WHEN count(*) = 1 THEN 1 ELSE 0 END
+FROM assistant_queue_items
+WHERE id LIKE 'action-plan:development-verification:$seed_project_id:$seed_task_id:%'
+  AND payload_kind='action_plan'
+  AND state='waitingReview'
+  AND risk_level='write'
+  AND approval_json IS NULL
+  AND payload_json LIKE '%development.verification.run%'
+  AND payload_json LIKE '%git.diff_check%'
+  AND required_capabilities_json LIKE '%providerExecutionApproval%'
+  AND (
+    required_capabilities_json LIKE '%development.verification.run%'
+    OR required_capabilities_json LIKE '%developmentRunVerification%'
+  );
+"
+
+  waitForAXMarkerContaining "project-development-automation-status"
+  pressButtonUntilSQLiteValue \
+    "visible Project automation panel queued verification review into Assistant Queue" \
+    "project-development-automation-verification-queue" \
+    "$queue_sql" \
+    "1"
+  verification_item_id="$(wait_for_nonempty_value \
+    "queued development verification Assistant Queue item id" \
+    "SELECT id FROM assistant_queue_items WHERE id LIKE 'action-plan:development-verification:$seed_project_id:$seed_task_id:%' ORDER BY updated_at DESC LIMIT 1;")"
+}
+
+verify_visible_assistant_queue_verification_execution() {
+  if [[ -z "$verification_item_id" ]]; then
+    echo "BLOCKER: verification Assistant Queue item id is missing before approve/run" >&2
+    return 1
+  fi
+
+  local escaped_item_id
+  local approval_sql
+  local done_sql
+  escaped_item_id="$(sql_escape "$verification_item_id")"
+  approval_sql="
+SELECT CASE WHEN state='approved' AND approval_json IS NOT NULL THEN 1 ELSE 0 END
+FROM assistant_queue_items
+WHERE id='$escaped_item_id';
+"
+  done_sql="
+SELECT CASE WHEN state='done' AND approval_json IS NOT NULL THEN 1 ELSE 0 END
+FROM assistant_queue_items
+WHERE id='$escaped_item_id';
+"
+
+  launch_app_for_assistant_queue
+  wait_for_database_table "assistant_queue_items"
+  waitForAXMarkerContaining "assistant-queue-workflow"
+  waitForAXMarkerContaining "assistant-queue-row-$verification_item_id"
+  pressButtonUntilSQLiteValue \
+    "visible Assistant Queue approved verification" \
+    "assistant-queue-approve-$verification_item_id" \
+    "$approval_sql" \
+    "1"
+  pressButtonUntilSQLiteValue \
+    "visible Assistant Queue approved and executed verification" \
+    "assistant-queue-run-$verification_item_id" \
+    "$done_sql" \
+    "1"
+  wait_for_receipt_json \
+    "visible Assistant Queue verification" \
+    "$verification_item_id" \
+    "development.verification.run" \
+    "development_branch" \
+    "$prepared_branch_name"
+}
+
 printf "== Runtime development PR smoke ==\n"
 ensure_no_existing_app_process
 
@@ -1009,5 +1103,12 @@ verify_visible_repository_edit_handoff
 failure_reason="visible Assistant Queue repository edit execution failed"
 verify_visible_assistant_queue_repository_edit_execution
 
-write_artifact "passed" "approved project directory fixture flow reached local commit, fake push, fake PR creation, fake review gate, fake merge, visible Project automation panel queued branch automation into Assistant Queue, visible Assistant Queue approved and executed local branch preparation, visible Project automation panel queued repository edit review into Assistant Queue, and visible Assistant Queue approved and executed repository edit"
+failure_reason="visible Project detail verification handoff failed"
+launch_app_for_development_detail
+verify_visible_verification_handoff
+
+failure_reason="visible Assistant Queue verification execution failed"
+verify_visible_assistant_queue_verification_execution
+
+write_artifact "passed" "approved project directory fixture flow reached local commit, fake push, fake PR creation, fake review gate, fake merge, visible Project automation panel queued branch automation into Assistant Queue, visible Assistant Queue approved and executed local branch preparation, visible Project automation panel queued repository edit review into Assistant Queue, visible Assistant Queue approved and executed repository edit, visible Project automation panel queued verification review into Assistant Queue, and visible Assistant Queue approved and executed verification"
 printf 'OK: runtime development PR smoke passed. Evidence: %s\n' "$(relative_path "$ARTIFACT_FILE")"

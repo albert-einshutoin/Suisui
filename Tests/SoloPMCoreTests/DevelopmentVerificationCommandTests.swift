@@ -2,6 +2,32 @@ import XCTest
 @testable import SoloPMCore
 
 final class DevelopmentVerificationCommandTests: XCTestCase {
+    func testVerificationCommandSchemaAllowsReviewedBranchContext() throws {
+        let stores = try makeStores()
+        let tool = DevelopmentVerificationCommandTool(
+            projectStore: stores.projects,
+            commandRunner: RecordingDevelopmentCommandRunner(output: DevelopmentCommandOutput(
+                standardOutput: "",
+                standardError: "",
+                exitCode: 0
+            ))
+        )
+        let registry = try ToolRegistry(tools: [tool])
+        let action = PlanAction(
+            id: "development-verification",
+            tool: .developmentRunVerification,
+            arguments: [
+                "projectId": .number(1),
+                "taskId": .number(1),
+                "branchName": .string("feature/solopm-1-1-runtime-smoke"),
+                "commandId": .string("git.diff_check")
+            ],
+            riskLevel: .write
+        )
+
+        XCTAssertEqual(registry.validate(action: action), [])
+    }
+
     func testVerificationCommandRequiresApprovalAndRunsAllowlistedCommandInApprovedWorkspace() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()

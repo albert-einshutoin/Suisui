@@ -627,6 +627,16 @@ private struct ProjectDevelopmentAutomationRecoveryView: View {
                     .accessibilityHint("Adds the reviewed repository edit to Assistant Queue before verification.")
                 }
 
+                Button {
+                    _ = viewModel.enqueueDevelopmentVerificationReview(for: project, task: task)
+                } label: {
+                    Label("Queue verification review", systemImage: "checkmark.shield")
+                }
+                .disabled(progress?.canQueueVerificationReview != true)
+                .help("Queues an approved local verification command after branch preparation evidence exists.")
+                .accessibilityIdentifier("project-development-automation-verification-queue")
+                .accessibilityHint("Adds a local verification command to Assistant Queue before commit or push.")
+
                 if let queueHandoff = progress?.queueHandoff {
                     VStack(alignment: .leading, spacing: 4) {
                         Label("Assistant Queue handoff", systemImage: "tray.full")

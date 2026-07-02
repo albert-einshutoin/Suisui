@@ -393,9 +393,12 @@ public struct DevelopmentVerificationCommandTool: Tool {
         properties: [
             "projectId": "integer",
             "taskId": "integer",
+            // branchName is reviewed context for receipts and handoff recovery;
+            // command execution remains scoped to the approved project directory.
+            "branchName": "string",
             "commandId": "string"
         ],
-        nonBlank: ["commandId"]
+        nonBlank: ["branchName", "commandId"]
     )
     public let permissionLevel: ToolPermissionLevel = .writeWithApproval
 
