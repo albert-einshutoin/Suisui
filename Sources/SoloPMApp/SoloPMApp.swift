@@ -12,6 +12,42 @@ import AppKit
 import Sparkle
 #endif
 
+#if DEBUG
+private struct RuntimeDevelopmentPRSmokeBookmarkResolver: ProjectWorkspaceBookmarkResolving {
+    static let flagName = "SOLOPM_RUNTIME_DEVELOPMENT_PR_FIXTURE_BOOKMARK"
+    static let markerPrefix = "solopm-runtime-development-pr-smoke:"
+
+    static var isEnabled: Bool {
+        ProcessInfo.processInfo.environment[flagName] == "1"
+    }
+
+    func resolve(bookmarkData: Data) throws -> ProjectWorkspaceBookmarkResolution {
+        guard Self.isEnabled,
+              let marker = String(data: bookmarkData, encoding: .utf8),
+              marker.hasPrefix(Self.markerPrefix) else {
+            throw DevelopmentPRWorkflowError.projectWorkspaceBookmarkUnavailable
+        }
+
+        let path = String(marker.dropFirst(Self.markerPrefix.count))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard path.hasPrefix("/") else {
+            throw DevelopmentPRWorkflowError.projectWorkspaceMustBeAbsolute
+        }
+
+        // Runtime UI smoke is launched from a shell fixture, which cannot mint a
+        // user-approved app-owned security scoped bookmark. This DEBUG-only
+        // resolver preserves the production invariant that a bookmark field must
+        // exist, while keeping release builds on the real security-scoped resolver.
+        return ProjectWorkspaceBookmarkResolution(
+            url: URL(fileURLWithPath: path, isDirectory: true).resolvingSymlinksInPath().standardizedFileURL,
+            isStale: false,
+            didStartAccessing: true,
+            stopAccessing: {}
+        )
+    }
+}
+#endif
+
 @main
 struct SoloPM: App {
 #if canImport(AppKit)
@@ -216,6 +252,8 @@ private struct ProjectBoardLaunchRecoveryView: View {
             )
         case .done:
             DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())
+        case .assistantQueue:
+            AssistantQueueWorkflowView(viewModel: viewModel)
         case .project(let projectID):
             ProjectDevelopmentAutomationRecoveryView(
                 projectID: projectID,
@@ -396,6 +434,7 @@ private enum ProjectBoardLaunchRecoveryDestination: Equatable {
     case schedule
     case today
     case done
+    case assistantQueue
     case project(Int64)
 
     init?(rawValue: String) {
@@ -418,6 +457,8 @@ private enum ProjectBoardLaunchRecoveryDestination: Equatable {
             self = .today
         case "done":
             self = .done
+        case "assistant-queue":
+            self = .assistantQueue
         default:
             return nil
         }
@@ -427,7 +468,7 @@ private enum ProjectBoardLaunchRecoveryDestination: Equatable {
         switch self {
         case .project(let projectID):
             return availableProjects.contains(where: { $0.id == projectID }) ? self : .today
-        case .inbox, .schedule, .today, .done:
+        case .inbox, .schedule, .today, .done, .assistantQueue:
             return self
         }
     }
@@ -4758,10 +4799,12 @@ private enum AppRuntimeFactory {
         // tools only after each external write has its own reviewed ActionPlan.
         // Remote/cloud requests still enter as blocked review items instead of
         // reaching this local project-directory registry directly.
+        let developmentBookmarkResolver = makeDevelopmentWorkspaceBookmarkResolver()
         try registry.register(AuditedTool(
             base: DevelopmentPRWorkflowTool(
                 projectStore: projectStore,
                 taskStore: taskStore,
+                bookmarkResolver: developmentBookmarkResolver,
                 requireBookmark: true
             ),
             logger: auditLogger
@@ -4771,6 +4814,7 @@ private enum AppRuntimeFactory {
                 name: .developmentRepositoryListFiles,
                 projectStore: projectStore,
                 artifactStore: artifactStore,
+                bookmarkResolver: developmentBookmarkResolver,
                 requireBookmark: true
             ),
             logger: auditLogger
@@ -4780,6 +4824,7 @@ private enum AppRuntimeFactory {
                 name: .developmentRepositoryReadFile,
                 projectStore: projectStore,
                 artifactStore: artifactStore,
+                bookmarkResolver: developmentBookmarkResolver,
                 requireBookmark: true
             ),
             logger: auditLogger
@@ -4789,6 +4834,7 @@ private enum AppRuntimeFactory {
                 name: .developmentRepositoryCreateFile,
                 projectStore: projectStore,
                 artifactStore: artifactStore,
+                bookmarkResolver: developmentBookmarkResolver,
                 requireBookmark: true
             ),
             logger: auditLogger
@@ -4798,6 +4844,7 @@ private enum AppRuntimeFactory {
                 name: .developmentRepositoryUpdateFile,
                 projectStore: projectStore,
                 artifactStore: artifactStore,
+                bookmarkResolver: developmentBookmarkResolver,
                 requireBookmark: true
             ),
             logger: auditLogger
@@ -4805,6 +4852,7 @@ private enum AppRuntimeFactory {
         try registry.register(AuditedTool(
             base: DevelopmentVerificationCommandTool(
                 projectStore: projectStore,
+                bookmarkResolver: developmentBookmarkResolver,
                 requireBookmark: true
             ),
             logger: auditLogger
@@ -4812,6 +4860,7 @@ private enum AppRuntimeFactory {
         try registry.register(AuditedTool(
             base: DevelopmentCommitWorkflowTool(
                 projectStore: projectStore,
+                bookmarkResolver: developmentBookmarkResolver,
                 requireBookmark: true
             ),
             logger: auditLogger
@@ -4850,6 +4899,15 @@ private enum AppRuntimeFactory {
             }
         }
         return registry
+    }
+
+    private static func makeDevelopmentWorkspaceBookmarkResolver() -> any ProjectWorkspaceBookmarkResolving {
+#if DEBUG
+        if RuntimeDevelopmentPRSmokeBookmarkResolver.isEnabled {
+            return RuntimeDevelopmentPRSmokeBookmarkResolver()
+        }
+#endif
+        return SecurityScopedProjectWorkspaceBookmarkResolver()
     }
 
     @MainActor

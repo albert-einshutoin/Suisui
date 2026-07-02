@@ -32,9 +32,11 @@ UI_ROOT="$ARTIFACT_DIR/visible-ui"
 UI_HOME="$UI_ROOT/home"
 UI_WORKSPACE="$UI_ROOT/approved-workspace"
 database_path="$UI_ROOT/SoloPM-runtime-development-pr-ui.sqlite"
+receipt_directory="$UI_HOME/Library/Application Support/SoloPM/ExecutionReceipts"
 app_pid=""
 seed_project_id=""
 seed_task_id=""
+queued_item_id=""
 failure_reason="development PR smoke failed"
 
 mkdir -p "$ARTIFACT_DIR" "$WORKSPACE_ROOT" "$UI_ROOT" "$UI_HOME"
@@ -77,9 +79,10 @@ write_artifact() {
     printf -- '- Reason: `%s`\n' "$reason"
     printf -- '- XCTest: `DevelopmentAutomationRuntimeSmokeTests/testApprovedProjectDirectoryCanEditVerifyCommitAndPreparePullRequestBranch`\n'
     printf -- '- Flow: approved project directory -> `development.pr_workflow.prepare` -> `development.repository.list_files` -> `development.repository.create_file` -> `development.repository.update_file` -> `development.verification.run` -> `development.pr_workflow.commit` -> `development.pr_workflow.push` -> `development.pr_workflow.create_pull_request` -> `development.pr_workflow.review_gate` -> `development.pr_workflow.merge` with fake Git and GitHub runners\n'
-    printf -- '- Visible UI: Project automation panel -> `project-development-automation-queue` -> `project-development-automation-queue-handoff`\n'
+    printf -- '- Visible UI: Project automation panel -> `project-development-automation-queue` -> `project-development-automation-queue-handoff` -> Assistant Queue approve/run -> receipt\n'
     printf -- '- Queued project: `%s`\n' "${seed_project_id:-not-seeded}"
     printf -- '- Queued task: `%s`\n' "${seed_task_id:-not-seeded}"
+    printf -- '- Assistant Queue item: `%s`\n' "${queued_item_id:-not-queued}"
     printf -- '- Approval boundary: `requiresPushApproval=true`, `requiresPullRequestApproval=true`\n'
     printf -- '- External writes: No live push, GitHub PR, review gate, or merge is created by this smoke.\n'
     printf -- '- Workspace retention requested: `%s`\n' "$KEEP_WORKSPACE"
@@ -266,6 +269,7 @@ launch_app_for_database_migration() {
   HOME="$UI_HOME" \
     CFFIXED_USER_HOME="$UI_HOME" \
     SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SOLOPM_RUNTIME_DEVELOPMENT_PR_FIXTURE_BOOKMARK=1 \
     SOLOPM_FORCE_PROJECT_BOARD_FALLBACK=1 \
     SOLOPM_DATABASE_PATH="$database_path" \
     "$APP_BINARY" >>"$APP_LOG_FILE" 2>&1 &
@@ -278,11 +282,30 @@ launch_app_for_development_detail() {
   HOME="$UI_HOME" \
     CFFIXED_USER_HOME="$UI_HOME" \
     SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SOLOPM_RUNTIME_DEVELOPMENT_PR_FIXTURE_BOOKMARK=1 \
     SOLOPM_FORCE_PROJECT_BOARD_FALLBACK=1 \
     SOLOPM_LAUNCH_RECOVERY_MODE=1 \
     SOLOPM_DATABASE_PATH="$database_path" \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="project:$seed_project_id" \
     SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID="$seed_task_id" \
+    "$APP_BINARY" >>"$APP_LOG_FILE" 2>&1 &
+  app_pid=$!
+  wait_for_app_process
+  activate_app
+  wait_for_visible_windows
+  set_development_window_size "$WINDOW_WIDTH" "$WINDOW_HEIGHT"
+}
+
+launch_app_for_assistant_queue() {
+  terminate_app
+  HOME="$UI_HOME" \
+    CFFIXED_USER_HOME="$UI_HOME" \
+    SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SOLOPM_RUNTIME_DEVELOPMENT_PR_FIXTURE_BOOKMARK=1 \
+    SOLOPM_FORCE_PROJECT_BOARD_FALLBACK=1 \
+    SOLOPM_LAUNCH_RECOVERY_MODE=1 \
+    SOLOPM_DATABASE_PATH="$database_path" \
+    SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="assistant-queue" \
     "$APP_BINARY" >>"$APP_LOG_FILE" 2>&1 &
   app_pid=$!
   wait_for_app_process
@@ -498,15 +521,40 @@ sql_escape() {
   printf "%s" "$1" | sed "s/'/''/g"
 }
 
+make_runtime_smoke_bookmark_base64() {
+  local workspace="$1"
+  printf 'solopm-runtime-development-pr-smoke:%s' "$workspace" | base64 | tr -d '\n'
+}
+
+fixture_git() {
+  git \
+    -c commit.gpgsign=false \
+    -c tag.gpgsign=false \
+    -c core.hooksPath=/dev/null \
+    "$@"
+}
+
+seed_git_repository() {
+  if ! fixture_git -C "$UI_WORKSPACE" init -b main >/dev/null 2>&1; then
+    fixture_git -C "$UI_WORKSPACE" init >/dev/null
+    fixture_git -C "$UI_WORKSPACE" checkout -B main >/dev/null
+  fi
+  fixture_git -C "$UI_WORKSPACE" config user.name "SoloPM Runtime Smoke" >/dev/null
+  fixture_git -C "$UI_WORKSPACE" config user.email "runtime-smoke@solopm.local" >/dev/null
+  fixture_git -C "$UI_WORKSPACE" add README.md
+  fixture_git -C "$UI_WORKSPACE" commit -m "Seed runtime development UI repo" >/dev/null
+}
+
 seed_development_project() {
   rm -rf "$UI_WORKSPACE"
   mkdir -p "$UI_WORKSPACE"
   printf '# Runtime Development UI Repo\n' >"$UI_WORKSPACE/README.md"
+  seed_git_repository
 
   local escaped_workspace
   local bookmark_data
   escaped_workspace="$(sql_escape "$UI_WORKSPACE")"
-  bookmark_data="$(printf 'approved-development-ui-bookmark' | base64)"
+  bookmark_data="$(make_runtime_smoke_bookmark_base64 "$UI_WORKSPACE")"
 
   "$SQLITE3" "$database_path" <<SQL
 DELETE FROM tasks WHERE source_command = 'runtime-development-pr-ui-smoke';
@@ -598,7 +646,115 @@ WHERE id LIKE 'action-plan:development-pr-prepare:$seed_project_id:$seed_task_id
     "project-development-automation-queue" \
     "$queue_sql" \
     "1"
+  queued_item_id="$(wait_for_nonempty_value \
+    "queued development branch prepare Assistant Queue item id" \
+    "SELECT id FROM assistant_queue_items WHERE id LIKE 'action-plan:development-pr-prepare:$seed_project_id:$seed_task_id:%' ORDER BY updated_at DESC LIMIT 1;")"
   waitForAXMarkerContaining "project-development-automation-queue-handoff"
+}
+
+wait_for_receipt_json() {
+  local label="$1"
+  local item_id="$2"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local receipt_file=""
+
+  while true; do
+    if [[ -d "$receipt_directory" ]]; then
+      receipt_file="$(/usr/bin/swift - "$receipt_directory" "$item_id" <<'SWIFT' 2>/dev/null || true
+import Foundation
+
+struct Receipt: Decodable {
+    let assistantQueueItemID: String?
+    let primaryToolName: String?
+    let status: String
+}
+
+let directory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
+let itemID = CommandLine.arguments[2]
+let decoder = JSONDecoder()
+let files = (try? FileManager.default.contentsOfDirectory(
+    at: directory,
+    includingPropertiesForKeys: [.contentModificationDateKey],
+    options: [.skipsHiddenFiles]
+)) ?? []
+
+for file in files where file.pathExtension == "json" {
+    guard let data = try? Data(contentsOf: file),
+          let receipt = try? decoder.decode(Receipt.self, from: data),
+          receipt.assistantQueueItemID == itemID,
+          receipt.primaryToolName == "development.pr_workflow.prepare",
+          receipt.status == "succeeded" else {
+        continue
+    }
+    print(file.path)
+    exit(0)
+}
+SWIFT
+)"
+      if [[ -n "$receipt_file" ]]; then
+        printf "OK: %s receipt verified at %s\n" "$label" "$(relative_path "$receipt_file")"
+        return 0
+      fi
+    fi
+
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: $label receipt was not saved in $receipt_directory" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+verify_visible_assistant_queue_prepare_execution() {
+  if [[ -z "$queued_item_id" ]]; then
+    echo "BLOCKER: queued Assistant Queue item id is missing before approve/run" >&2
+    return 1
+  fi
+
+  local escaped_item_id
+  local approval_sql
+  local done_sql
+  local branch_fragment
+  local current_branch
+  escaped_item_id="$(sql_escape "$queued_item_id")"
+  branch_fragment="feature/solopm-$seed_project_id-$seed_task_id"
+  approval_sql="
+SELECT CASE WHEN state='approved' AND approval_json IS NOT NULL THEN 1 ELSE 0 END
+FROM assistant_queue_items
+WHERE id='$escaped_item_id';
+"
+  done_sql="
+SELECT CASE WHEN state='done' AND approval_json IS NOT NULL THEN 1 ELSE 0 END
+FROM assistant_queue_items
+WHERE id='$escaped_item_id';
+"
+
+  launch_app_for_assistant_queue
+  wait_for_database_table "assistant_queue_items"
+  waitForAXMarkerContaining "assistant-queue-workflow"
+  waitForAXMarkerContaining "assistant-queue-row-$queued_item_id"
+  pressButtonUntilSQLiteValue \
+    "visible Assistant Queue approved local branch preparation" \
+    "assistant-queue-approve-$queued_item_id" \
+    "$approval_sql" \
+    "1"
+  pressButtonUntilSQLiteValue \
+    "visible Assistant Queue approved and executed local branch preparation" \
+    "assistant-queue-run-$queued_item_id" \
+    "$done_sql" \
+    "1"
+  wait_for_receipt_json "visible Assistant Queue branch preparation" "$queued_item_id"
+
+  current_branch="$(fixture_git -C "$UI_WORKSPACE" branch --show-current)"
+  case "$current_branch" in
+    *"$branch_fragment"*)
+      printf "OK: local development branch prepared in fixture repo (%s)\n" "$current_branch"
+      ;;
+    *)
+      echo "BLOCKER: expected local branch containing '$branch_fragment', got '${current_branch:-<empty>}'" >&2
+      return 1
+      ;;
+  esac
 }
 
 printf "== Runtime development PR smoke ==\n"
@@ -646,5 +802,8 @@ launch_app_for_development_detail
 wait_for_database_table "assistant_queue_items"
 verify_visible_queue_handoff
 
-write_artifact "passed" "approved project directory fixture flow reached local commit, fake push, fake PR creation, fake review gate, fake merge, and visible Project automation panel queued branch automation into Assistant Queue"
+failure_reason="visible Assistant Queue branch preparation execution failed"
+verify_visible_assistant_queue_prepare_execution
+
+write_artifact "passed" "approved project directory fixture flow reached local commit, fake push, fake PR creation, fake review gate, fake merge, visible Project automation panel queued branch automation into Assistant Queue, and visible Assistant Queue approved and executed local branch preparation"
 printf 'OK: runtime development PR smoke passed. Evidence: %s\n' "$(relative_path "$ARTIFACT_FILE")"
