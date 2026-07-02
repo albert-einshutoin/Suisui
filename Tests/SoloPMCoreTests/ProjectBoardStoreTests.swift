@@ -1602,6 +1602,83 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDevelopmentRepositoryEditPreviewSummarizesReviewedInputWithoutRawContents() throws {
+        let stores = try makeStoreBundle()
+        let viewModel = ProjectBoardViewModel(store: stores.board)
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Client Portal"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Implement OAuth callback",
+            projectID: project.id,
+            status: .planned
+        ))
+        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
+            "/tmp/client-portal",
+            bookmarkData: Data([1, 2, 3]),
+            projectID: project.id
+        ))
+        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+        let branchName = try XCTUnwrap(viewModel.developmentAutomationReadiness(
+            for: assignedProject,
+            task: currentTask
+        ).branchNamePreview)
+
+        let preview = try XCTUnwrap(viewModel.developmentRepositoryEditPreview(
+            for: assignedProject,
+            task: currentTask,
+            operation: .update,
+            relativePath: "Sources/App/AuthCallback.swift",
+            contents: "func handleOAuthCallback() {}\n",
+            expectedSHA256: String(repeating: "a", count: 64)
+        ))
+
+        XCTAssertEqual(preview.title, "Repository Edit Preview")
+        XCTAssertEqual(preview.rows.first { $0.id == "operation" }?.value, "Update project file")
+        XCTAssertEqual(preview.rows.first { $0.id == "relative-path" }?.value, "Sources/App/AuthCallback.swift")
+        XCTAssertEqual(preview.rows.first { $0.id == "branch" }?.value, branchName)
+        XCTAssertEqual(preview.rows.first { $0.id == "expected-sha" }?.value, String(repeating: "a", count: 12))
+        XCTAssertEqual(preview.rows.first { $0.id == "content-summary" }?.value, "1 line / 30 bytes")
+        let digestPrefix = try XCTUnwrap(preview.rows.first { $0.id == "content-digest" }?.value)
+        XCTAssertEqual(digestPrefix.count, 12)
+        XCTAssertFalse(preview.rows.map(\.value).joined(separator: "\n").contains("handleOAuthCallback"))
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testDevelopmentRepositoryEditPreviewFailsClosedForSecretLikeContents() throws {
+        let stores = try makeStoreBundle()
+        let viewModel = ProjectBoardViewModel(store: stores.board)
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Client Portal"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Implement OAuth callback",
+            projectID: project.id,
+            status: .planned
+        ))
+        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
+            "/tmp/client-portal",
+            bookmarkData: Data([1, 2, 3]),
+            projectID: project.id
+        ))
+        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+
+        let preview = viewModel.developmentRepositoryEditPreview(
+            for: assignedProject,
+            task: currentTask,
+            operation: .create,
+            relativePath: "Sources/App/AuthCallback.swift",
+            contents: "let token = \"sk-proj-abcdefghijklmnopqrstuvwxyz0123456789\"\n",
+            expectedSHA256: nil
+        )
+
+        XCTAssertNil(preview)
+        XCTAssertNil(viewModel.todayCommandFeedback)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
     func testDevelopmentRepositoryUpdateReviewRequiresExpectedSHA() throws {
         let stores = try makeStoreBundle()
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)

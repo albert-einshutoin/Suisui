@@ -1226,6 +1226,15 @@
 "Repository file path" = "Repository file path";
 "Expected SHA for updates" = "Expected SHA for updates";
 "Repository file contents" = "Repository file contents";
+"Repository Edit Preview" = "Repository Edit Preview";
+"Operation" = "Operation";
+"Relative Path" = "Relative Path";
+"Content" = "Content";
+"Content SHA-256" = "Content SHA-256";
+"Expected SHA" = "Expected SHA";
+"%d line / %d bytes" = "%d line / %d bytes";
+"%d lines / %d bytes" = "%d lines / %d bytes";
+"Shows the reviewed repository operation, path, branch, and content digest before queueing approval." = "Shows the reviewed repository operation, path, branch, and content digest before queueing approval.";
 "Queue repository edit review" = "Queue repository edit review";
 "Queues a scoped create or update file review after branch preparation evidence exists." = "Queues a scoped create or update file review after branch preparation evidence exists.";
 "Adds the reviewed repository edit to Assistant Queue before verification." = "Adds the reviewed repository edit to Assistant Queue before verification.";
