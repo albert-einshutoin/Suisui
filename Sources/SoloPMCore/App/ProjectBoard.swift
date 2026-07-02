@@ -195,6 +195,40 @@ public struct ProjectDevelopmentAutomationNextApproval: Identifiable, Equatable,
     }
 }
 
+public struct ProjectDevelopmentAutomationQueueHandoff: Identifiable, Equatable, Sendable {
+    public var id: String
+    public var state: AssistantQueueState
+    public var stateLabel: String
+    public var title: String
+    public var reviewReason: String
+    public var capabilityLabels: [String]
+    public var latestReceiptStatusLabel: String?
+    public var canApprove: Bool
+    public var canRun: Bool
+
+    public init(
+        id: String,
+        state: AssistantQueueState,
+        stateLabel: String,
+        title: String,
+        reviewReason: String,
+        capabilityLabels: [String],
+        latestReceiptStatusLabel: String?,
+        canApprove: Bool,
+        canRun: Bool
+    ) {
+        self.id = id
+        self.state = state
+        self.stateLabel = stateLabel
+        self.title = title
+        self.reviewReason = reviewReason
+        self.capabilityLabels = capabilityLabels
+        self.latestReceiptStatusLabel = latestReceiptStatusLabel
+        self.canApprove = canApprove
+        self.canRun = canRun
+    }
+}
+
 public struct ProjectDevelopmentAutomationProgress: Equatable, Sendable {
     public var projectID: Int64
     public var taskID: Int64?
@@ -211,6 +245,7 @@ public struct ProjectDevelopmentAutomationProgress: Equatable, Sendable {
     public var canQueuePullRequestMergeGate: Bool
     public var blockingReason: String?
     public var nextApproval: ProjectDevelopmentAutomationNextApproval?
+    public var queueHandoff: ProjectDevelopmentAutomationQueueHandoff?
 
     public init(
         projectID: Int64,
@@ -227,7 +262,8 @@ public struct ProjectDevelopmentAutomationProgress: Equatable, Sendable {
         canQueuePullRequestReviewGate: Bool,
         canQueuePullRequestMergeGate: Bool,
         blockingReason: String?,
-        nextApproval: ProjectDevelopmentAutomationNextApproval?
+        nextApproval: ProjectDevelopmentAutomationNextApproval?,
+        queueHandoff: ProjectDevelopmentAutomationQueueHandoff? = nil
     ) {
         self.projectID = projectID
         self.taskID = taskID
@@ -244,6 +280,7 @@ public struct ProjectDevelopmentAutomationProgress: Equatable, Sendable {
         self.canQueuePullRequestMergeGate = canQueuePullRequestMergeGate
         self.blockingReason = blockingReason
         self.nextApproval = nextApproval
+        self.queueHandoff = queueHandoff
     }
 }
 
@@ -1829,6 +1866,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                         tool: .developmentRunVerification,
                         arguments: [
                             "projectId": .number(Double(project.id)),
+                            "taskId": .number(Double(task.id)),
                             "branchName": .string(branchName),
                             "commandId": .string(command.id)
                         ],
@@ -1968,6 +2006,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                         tool: .developmentCommitChanges,
                         arguments: [
                             "projectId": .number(Double(project.id)),
+                            "taskId": .number(Double(task.id)),
                             "branchName": .string(branchName),
                             "relativePaths": JSONValueFactory.strings(relativePaths),
                             "commitMessage": .string(reviewedCommitMessage)
@@ -2113,6 +2152,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                     tool: .developmentPushBranch,
                     arguments: [
                         "projectId": .number(Double(project.id)),
+                        "taskId": .number(Double(task.id)),
                         "branchName": .string(branchName)
                     ],
                     riskLevel: .write,
@@ -2275,6 +2315,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                         tool: .developmentCreatePullRequest,
                         arguments: [
                             "projectId": .number(Double(project.id)),
+                            "taskId": .number(Double(draft.taskID)),
                             "branchName": .string(draft.branchName),
                             "baseBranch": .string(reviewedBaseBranch),
                             "title": .string(reviewedTitle),
@@ -2395,6 +2436,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                 taskID: task?.id,
                 branchName: readiness.branchNamePreview,
                 receipts: [],
+                queueHandoff: nil,
                 blockingReason: readiness.blockingReason
             )
         }
@@ -2405,6 +2447,12 @@ public final class ProjectBoardViewModel: ObservableObject {
                 taskID: task?.id,
                 branchName: branchName,
                 receipts: [],
+                queueHandoff: developmentAutomationQueueHandoff(
+                    projectID: project.id,
+                    taskID: task?.id,
+                    branchName: branchName,
+                    receipts: []
+                ),
                 blockingReason: String(localized: "Execution receipts are unavailable, so SoloPM cannot confirm which development approval comes next.")
             )
         }
@@ -2429,6 +2477,12 @@ public final class ProjectBoardViewModel: ObservableObject {
                 taskID: task?.id,
                 branchName: branchName,
                 receipts: receipts,
+                queueHandoff: developmentAutomationQueueHandoff(
+                    projectID: project.id,
+                    taskID: task?.id,
+                    branchName: branchName,
+                    receipts: receipts
+                ),
                 blockingReason: nil
             )
         } catch {
@@ -2437,8 +2491,62 @@ public final class ProjectBoardViewModel: ObservableObject {
                 taskID: task?.id,
                 branchName: branchName,
                 receipts: [],
+                queueHandoff: developmentAutomationQueueHandoff(
+                    projectID: project.id,
+                    taskID: task?.id,
+                    branchName: branchName,
+                    receipts: []
+                ),
                 blockingReason: String(localized: "Execution receipts could not be read, so SoloPM cannot confirm which development approval comes next.")
             )
+        }
+    }
+
+    private func developmentAutomationQueueHandoff(
+        projectID: Int64,
+        taskID: Int64?,
+        branchName: String,
+        receipts: [ExecutionReceipt]
+    ) -> ProjectDevelopmentAutomationQueueHandoff? {
+        guard let assistantQueueStore else {
+            return nil
+        }
+
+        do {
+            let expectedToolNames = Self.developmentAutomationExpectedQueueToolNames(receipts: receipts)
+            guard !expectedToolNames.isEmpty else {
+                return nil
+            }
+            let matchingItems = try assistantQueueStore.list(filter: .all(limit: 500)).filter { item in
+                Self.isDevelopmentAutomationQueueHandoffState(item.state)
+                    && Self.developmentAutomationQueueItemMatches(
+                        item,
+                        projectID: projectID,
+                        taskID: taskID,
+                        branchName: branchName,
+                        expectedToolNames: expectedToolNames
+                    )
+            }
+            guard !matchingItems.isEmpty else {
+                return nil
+            }
+
+            // Keep the project panel as a projection of Assistant Queue state.
+            // The queue row remains the review surface of record, while this
+            // handoff prevents users from losing the pending approval in project context.
+            let snapshot = AssistantQueueReadModel.snapshot(
+                from: matchingItems,
+                receipts: receipts,
+                viewFilter: .all,
+                sort: .needsActionFirst,
+                allItemsForCounts: matchingItems
+            )
+            let selectedRow = snapshot.rows.first { row in
+                assistantQueueSelectedItemIDs.contains(row.id)
+            }
+            return (selectedRow ?? snapshot.rows.first).map(Self.developmentAutomationQueueHandoff)
+        } catch {
+            return nil
         }
     }
 
@@ -2519,6 +2627,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                 ),
                 developmentPullRequest: SyncDevelopmentPullRequestPayload(
                     projectID: project.id,
+                    taskID: task.id,
                     operation: operation,
                     pullRequestURL: pullRequestURL,
                     branchName: branchName,
@@ -2579,6 +2688,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         taskID: Int64?,
         branchName: String?,
         receipts: [ExecutionReceipt],
+        queueHandoff: ProjectDevelopmentAutomationQueueHandoff?,
         blockingReason: String?
     ) -> ProjectDevelopmentAutomationProgress {
         let prepareReceipt = latestDevelopmentAutomationReceipt(
@@ -2752,7 +2862,8 @@ public final class ProjectBoardViewModel: ObservableObject {
             canQueuePullRequestReviewGate: canQueueReview,
             canQueuePullRequestMergeGate: canQueueMerge,
             blockingReason: progressBlockingReason,
-            nextApproval: nextApproval
+            nextApproval: nextApproval,
+            queueHandoff: queueHandoff
         )
     }
 
@@ -2962,6 +3073,186 @@ public final class ProjectBoardViewModel: ObservableObject {
             return summary
         }
         return "\(summary.prefix(177))..."
+    }
+
+    private static func developmentAutomationQueueHandoff(
+        from row: AssistantQueueReadModelRow
+    ) -> ProjectDevelopmentAutomationQueueHandoff {
+        ProjectDevelopmentAutomationQueueHandoff(
+            id: row.id,
+            state: row.state,
+            stateLabel: row.stateLabel,
+            title: row.title,
+            reviewReason: row.reviewReason,
+            capabilityLabels: row.capabilityLabels,
+            latestReceiptStatusLabel: row.latestReceipt?.statusLabel,
+            canApprove: row.canApprove,
+            canRun: row.canRun
+        )
+    }
+
+    private static func developmentAutomationExpectedQueueToolNames(
+        receipts: [ExecutionReceipt]
+    ) -> Set<String> {
+        let prepareReceipt = latestDevelopmentAutomationReceipt(
+            toolName: ActionTool.developmentPreparePullRequestWorkflow.rawValue,
+            receipts: receipts
+        )
+        let verificationReceipt = latestDevelopmentAutomationReceipt(
+            toolName: ActionTool.developmentRunVerification.rawValue,
+            receipts: receipts
+        )
+        let commitReceipt = latestDevelopmentAutomationReceipt(
+            toolName: ActionTool.developmentCommitChanges.rawValue,
+            receipts: receipts
+        )
+        let pushReceipt = latestDevelopmentAutomationReceipt(
+            toolName: ActionTool.developmentPushBranch.rawValue,
+            receipts: receipts
+        )
+        let pullRequestReceipt = latestDevelopmentAutomationReceipt(
+            toolName: ActionTool.developmentCreatePullRequest.rawValue,
+            receipts: receipts
+        )
+        let reviewReceipt = latestDevelopmentAutomationReceipt(
+            toolName: ActionTool.developmentReviewPullRequestGate.rawValue,
+            receipts: receipts
+        )
+        let mergeReceipt = latestDevelopmentAutomationReceipt(
+            toolName: ActionTool.developmentMergePullRequest.rawValue,
+            receipts: receipts
+        )
+
+        if mergeReceipt?.status == .succeeded {
+            return []
+        }
+
+        if let failedReceipt = [
+            mergeReceipt,
+            reviewReceipt,
+            pullRequestReceipt,
+            pushReceipt,
+            commitReceipt,
+            verificationReceipt,
+            prepareReceipt
+        ].compactMap({ $0 }).first(where: { receipt in
+            receipt.status == .failed || receipt.status == .canceled
+        }) {
+            return failedReceipt.primaryToolName.map { [$0] } ?? Set(failedReceipt.actions.map(\.toolName))
+        }
+
+        let successfulPrepareReceipt = prepareReceipt?.status == .succeeded ? prepareReceipt : nil
+        let successfulVerificationReceipt = verificationReceipt?.status == .succeeded ? verificationReceipt : nil
+        let successfulCommitReceipt = commitReceipt?.status == .succeeded ? commitReceipt : nil
+        let successfulPushReceipt = pushReceipt?.status == .succeeded ? pushReceipt : nil
+        let successfulPullRequestReceipt = pullRequestReceipt?.status == .succeeded ? pullRequestReceipt : nil
+        let successfulReviewReceipt = reviewReceipt?.status == .succeeded ? reviewReceipt : nil
+
+        if successfulPrepareReceipt == nil {
+            return [ActionTool.developmentPreparePullRequestWorkflow.rawValue]
+        }
+        if successfulVerificationReceipt == nil {
+            return [ActionTool.developmentRunVerification.rawValue]
+        }
+        if successfulCommitReceipt == nil {
+            return [ActionTool.developmentCommitChanges.rawValue]
+        }
+        if successfulPushReceipt == nil {
+            return [ActionTool.developmentPushBranch.rawValue]
+        }
+        if successfulPullRequestReceipt == nil {
+            return [ActionTool.developmentCreatePullRequest.rawValue]
+        }
+        if successfulReviewReceipt == nil {
+            return [ActionTool.developmentReviewPullRequestGate.rawValue]
+        }
+        return [ActionTool.developmentMergePullRequest.rawValue]
+    }
+
+    private static func developmentAutomationQueueItemMatches(
+        _ item: AssistantQueueItem,
+        projectID: Int64,
+        taskID: Int64?,
+        branchName: String,
+        expectedToolNames: Set<String>
+    ) -> Bool {
+        switch item.payload {
+        case .actionPlan(let plan):
+            return developmentAutomationActionPlanMatches(
+                plan,
+                projectID: projectID,
+                taskID: taskID,
+                branchName: branchName,
+                expectedToolNames: expectedToolNames
+            )
+        case .automationRequest(let request):
+            return developmentAutomationRequestMatches(
+                request,
+                projectID: projectID,
+                taskID: taskID,
+                branchName: branchName,
+                expectedToolNames: expectedToolNames
+            )
+        }
+    }
+
+    private static func isDevelopmentAutomationQueueHandoffState(_ state: AssistantQueueState) -> Bool {
+        switch state {
+        case .done, .rejected:
+            return false
+        case .captured, .interpreted, .drafted, .waitingReview, .approved, .running, .blocked, .failed, .deferred:
+            return true
+        }
+    }
+
+    private static func developmentAutomationActionPlanMatches(
+        _ plan: ActionPlan,
+        projectID: Int64,
+        taskID: Int64?,
+        branchName: String,
+        expectedToolNames: Set<String>
+    ) -> Bool {
+        plan.actions.contains { action in
+            expectedToolNames.contains(action.tool.rawValue)
+                && jsonNumber(action.arguments["projectId"], equals: projectID)
+                && jsonString(action.arguments["branchName"], equals: branchName)
+                && taskID.map { jsonNumber(action.arguments["taskId"], equals: $0) } ?? true
+        }
+    }
+
+    private static func developmentAutomationRequestMatches(
+        _ request: SyncAutomationRequestPayload,
+        projectID: Int64,
+        taskID: Int64?,
+        branchName: String,
+        expectedToolNames: Set<String>
+    ) -> Bool {
+        guard let toolName = request.toolName,
+              expectedToolNames.contains(toolName),
+              let pullRequest = request.developmentPullRequest,
+              pullRequest.projectID == projectID,
+              pullRequest.branchName == branchName else {
+            return false
+        }
+        guard let expectedTaskID = taskID,
+              let requestTaskID = pullRequest.taskID else {
+            return true
+        }
+        return requestTaskID == expectedTaskID
+    }
+
+    private static func jsonNumber(_ value: JSONValue?, equals expected: Int64) -> Bool {
+        guard case .number(let number) = value else {
+            return false
+        }
+        return number == Double(expected)
+    }
+
+    private static func jsonString(_ value: JSONValue?, equals expected: String) -> Bool {
+        guard case .string(let string) = value else {
+            return false
+        }
+        return string == expected
     }
 
     private static func latestDevelopmentAutomationReceipt(

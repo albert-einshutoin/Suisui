@@ -392,6 +392,7 @@ public struct DevelopmentVerificationCommandTool: Tool {
         required: ["projectId", "commandId"],
         properties: [
             "projectId": "integer",
+            "taskId": "integer",
             "commandId": "string"
         ],
         nonBlank: ["commandId"]

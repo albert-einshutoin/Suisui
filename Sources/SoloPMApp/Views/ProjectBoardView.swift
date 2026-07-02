@@ -3643,6 +3643,46 @@ private struct ProjectDevelopmentAutomationPanel: View {
                     .accessibilityHint("Shows the next receipt-backed approval to prevent pull requests from being left unreviewed.")
                 }
 
+                if let queueHandoff = developmentProgress.queueHandoff {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("Assistant Queue handoff", systemImage: "tray.full")
+                            .font(.caption)
+                            .foregroundStyle(Color.accentColor)
+
+                        Text(verbatim: "\(queueHandoff.stateLabel) - \(queueHandoff.title)")
+                            .font(.caption2)
+                            .foregroundStyle(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text(verbatim: queueHandoff.reviewReason)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if let latestReceiptStatusLabel = queueHandoff.latestReceiptStatusLabel {
+                            Text(verbatim: "\(String(localized: "Latest receipt")): \(latestReceiptStatusLabel)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        Text(queueHandoffStatusText(for: queueHandoff))
+                            .font(.caption2)
+                            .foregroundStyle(queueHandoff.canRun ? .green : .secondary)
+
+                        ForEach(Array(queueHandoff.capabilityLabels.enumerated()), id: \.offset) { index, capability in
+                            Text(verbatim: capability)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("project-development-automation-queue-handoff-capability-\(index)")
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("project-development-automation-queue-handoff")
+                    .accessibilityHint("Shows the matching Assistant Queue item for the current development automation approval.")
+                }
+
                 ForEach(developmentProgress.stages) { stage in
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: progressStageIcon(for: stage.status))
@@ -3860,6 +3900,29 @@ private struct ProjectDevelopmentAutomationPanel: View {
             return .green
         case .failed:
             return .red
+        }
+    }
+
+    private func queueHandoffStatusText(
+        for handoff: ProjectDevelopmentAutomationQueueHandoff
+    ) -> LocalizedStringKey {
+        switch handoff.state {
+        case .approved:
+            return handoff.canRun ? "Ready to run from Assistant Queue" : "Approved in Assistant Queue"
+        case .running:
+            return "Running in Assistant Queue"
+        case .blocked:
+            return "Blocked in Assistant Queue"
+        case .failed:
+            return "Failed in Assistant Queue"
+        case .deferred:
+            return "Deferred in Assistant Queue"
+        case .done:
+            return "Completed in Assistant Queue"
+        case .rejected:
+            return "Rejected in Assistant Queue"
+        case .captured, .interpreted, .drafted, .waitingReview:
+            return "Waiting for review approval"
         }
     }
 
