@@ -3552,6 +3552,24 @@ private struct ProjectDevelopmentAutomationPanel: View {
                     .accessibilityLabel("Repository file contents")
                     .accessibilityIdentifier("project-development-automation-edit-contents")
 
+                if let repositoryEditPreview {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label(LocalizedStringKey(repositoryEditPreview.title), systemImage: "doc.text.magnifyingglass")
+                            .font(.caption)
+                            .foregroundStyle(Color.accentColor)
+
+                        ForEach(repositoryEditPreview.rows) { row in
+                            LabeledContent(LocalizedStringKey(row.label), value: row.value)
+                                .font(.caption2)
+                                .textSelection(.enabled)
+                                .accessibilityIdentifier("project-development-automation-edit-preview-row-\(row.id)")
+                        }
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("project-development-automation-edit-preview")
+                    .accessibilityHint("Shows the reviewed repository operation, path, branch, and content digest before queueing approval.")
+                }
+
                 Button {
                     _ = viewModel.enqueueDevelopmentRepositoryEditReview(
                         for: project,
@@ -3936,6 +3954,17 @@ private struct ProjectDevelopmentAutomationPanel: View {
             && !repositoryEditRelativePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !repositoryEditContents.isEmpty
             && hasRequiredUpdateDigest
+    }
+
+    private var repositoryEditPreview: ProjectDevelopmentAutomationApprovalPreview? {
+        viewModel.developmentRepositoryEditPreview(
+            for: project,
+            task: viewModel.selectedTask,
+            operation: repositoryEditOperation,
+            relativePath: repositoryEditRelativePath,
+            contents: repositoryEditContents,
+            expectedSHA256: repositoryEditExpectedSHA256
+        )
     }
 
     private func syncPullRequestDraftIfNeeded(_ draft: ProjectDevelopmentPullRequestCreationDraft) {

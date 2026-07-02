@@ -1978,6 +1978,80 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    public func developmentRepositoryEditPreview(
+        for project: ProjectBoardProject,
+        task: ProjectBoardTask?,
+        operation: ProjectDevelopmentRepositoryEditOperation,
+        relativePath: String,
+        contents: String,
+        expectedSHA256: String?
+    ) -> ProjectDevelopmentAutomationApprovalPreview? {
+        let readiness = developmentAutomationReadiness(for: project, task: task)
+        guard readiness.isReady,
+              let branchName = readiness.branchNamePreview else {
+            return nil
+        }
+
+        do {
+            let reviewedRelativePath = try DevelopmentRepositoryFilePathPolicy.validatedRelativePath(relativePath)
+            try DevelopmentRepositoryFilePathPolicy.validateTextContent(contents)
+            let contentRedaction = DeveloperSecretRedactor().redact(contents)
+            guard contentRedaction.report.matchedPatternNames.isEmpty else {
+                return nil
+            }
+
+            var rows = [
+                ProjectDevelopmentAutomationApprovalPreviewRow(
+                    id: "operation",
+                    label: String(localized: "Operation"),
+                    value: operation.title
+                ),
+                ProjectDevelopmentAutomationApprovalPreviewRow(
+                    id: "relative-path",
+                    label: String(localized: "Relative Path"),
+                    value: Self.sanitizedDevelopmentAutomationReviewText(reviewedRelativePath)
+                ),
+                ProjectDevelopmentAutomationApprovalPreviewRow(
+                    id: "branch",
+                    label: String(localized: "Branch"),
+                    value: Self.sanitizedDevelopmentAutomationReviewText(branchName)
+                ),
+                ProjectDevelopmentAutomationApprovalPreviewRow(
+                    id: "content-summary",
+                    label: String(localized: "Content"),
+                    value: Self.developmentRepositoryEditContentSummary(contents)
+                ),
+                ProjectDevelopmentAutomationApprovalPreviewRow(
+                    id: "content-digest",
+                    label: String(localized: "Content SHA-256"),
+                    value: Self.developmentRepositoryEditContentDigest(contents)
+                )
+            ]
+
+            if operation == .update {
+                guard let reviewedExpectedSHA256 = expectedSHA256?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !reviewedExpectedSHA256.isEmpty else {
+                    return nil
+                }
+                rows.append(ProjectDevelopmentAutomationApprovalPreviewRow(
+                    id: "expected-sha",
+                    label: String(localized: "Expected SHA"),
+                    value: String(try DevelopmentRepositoryFilePathPolicy.validatedExpectedSHA256(reviewedExpectedSHA256).prefix(12))
+                ))
+            }
+
+            // Review previews must help users distinguish edits without leaking the
+            // content into receipt-like surfaces; the raw text remains only in the
+            // dedicated editor until the user queues the approval-gated action.
+            return ProjectDevelopmentAutomationApprovalPreview(
+                title: String(localized: "Repository Edit Preview"),
+                rows: rows
+            )
+        } catch {
+            return nil
+        }
+    }
+
     @discardableResult
     public func enqueueDevelopmentRepositoryEditReview(
         for project: ProjectBoardProject,
@@ -3935,6 +4009,29 @@ public final class ProjectBoardViewModel: ObservableObject {
             return redacted
         }
         return "\(redacted.prefix(maxLength))..."
+    }
+
+    private static func developmentRepositoryEditContentSummary(_ contents: String) -> String {
+        // Treat a final newline as file formatting, not an extra blank line, so
+        // the preview matches how users normally describe source-file edits.
+        let newlineCount = contents.reduce(into: 0) { count, character in
+            if character.isNewline {
+                count += 1
+            }
+        }
+        let lineCount = max(1, 1 + newlineCount - (contents.last?.isNewline == true ? 1 : 0))
+        let byteCount = contents.utf8.count
+        if lineCount == 1 {
+            return String(format: String(localized: "%d line / %d bytes"), lineCount, byteCount)
+        }
+        return String(format: String(localized: "%d lines / %d bytes"), lineCount, byteCount)
+    }
+
+    private static func developmentRepositoryEditContentDigest(_ contents: String) -> String {
+        let digest = SHA256.hash(data: Data(contents.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return String(digest.prefix(12))
     }
 
     private static let developmentAutomationReviewSteps = [
