@@ -6263,7 +6263,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Run approved execution receipt review"))
         XCTAssertTrue(script.contains("Confirm the approved execution receipt announces the reviewed task title and detail after the plan runs."))
         XCTAssertTrue(script.contains("VoiceOver review artifact"))
-        XCTAssertTrue(script.contains("SELECT CASE WHEN count(*) = 6 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"))
+        XCTAssertTrue(script.contains("SELECT CASE WHEN count(*) = 7 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=project:$seed_project_id"))
         XCTAssertTrue(script.contains("printf 'SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1\\n'"))
         XCTAssertTrue(script.contains("printf 'SOLOPM_LAUNCH_RECOVERY_MODE=1\\n'"))
@@ -6380,6 +6380,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(releaseChecklist.contains("The generated VoiceOver evidence command also rejects boilerplate worksheet values such as `TBD`, `Verified`, `OK`, or `No issues`; each required worksheet field must contain concrete VoiceOver observations."))
         XCTAssertTrue(releaseChecklist.contains("The worksheet maps `approved-execution-receipt` to the Task content execution note so manual reviewers confirm the approved execution receipt, not only the Run approved plan button."))
         XCTAssertTrue(releaseChecklist.contains("The seeded VoiceOver candidate includes a dedicated approved execution receipt task so the manual pass has a concrete task title/detail pair to run and hear back from `approved-execution-receipt`."))
+        XCTAssertTrue(releaseChecklist.contains("The seeded VoiceOver candidate also includes a due-today Today rail task so manual reviewers select a concrete task before checking next action, task detail, focus, schedule draft, edit, subtask draft, and reminder draft controls."))
         XCTAssertTrue(releaseChecklist.contains("The Task content execution observation must explicitly mention the redacted receipt, reviewed title, and reviewed detail"))
         XCTAssertTrue(releaseChecklist.contains("--task-content-execution-note"))
         let phase11 = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
@@ -6395,6 +6396,19 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase11.contains("[x] VoiceOver review candidate seeds a dedicated approved execution receipt task so manual reviewers can prove the reviewed title/detail is announced from `approved-execution-receipt`."))
         XCTAssertTrue(phase11.contains("[x] `script/create_voiceover_evidence.sh --validate-only` validates the filled manual command without writing tracked evidence."))
         XCTAssertTrue(phase11.contains("[x] Generated `.tmp/voiceover-review/create-evidence-command.sh --validate-only` exits after validation without writing tracked VoiceOver evidence."))
+    }
+
+    func testVoiceOverReviewCandidateSeedsTodayRailTaskForManualVoiceOverActions() throws {
+        let script = try readPackageFile("script/prepare_voiceover_review_candidate.sh")
+
+        XCTAssertTrue(script.contains("'Review Today rail next action with VoiceOver'"))
+        XCTAssertTrue(script.contains("'Open Today and confirm the seeded task drives the assistant rail next action, task detail, focus, schedule draft, edit, subtask draft, and reminder draft controls.'"))
+        XCTAssertTrue(script.contains("strftime('%Y-%m-%dT%H:%M:%SZ', 'now')"))
+        XCTAssertTrue(script.contains("verify_seed \"1\" \"Today rail seed task\""))
+        XCTAssertTrue(script.contains("title='Review Today rail next action with VoiceOver' AND due_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+1 minute')"))
+        XCTAssertTrue(script.contains("if [[ \"$SEEDED_TASK_COUNT\" != \"7\" ]]; then"))
+        XCTAssertTrue(script.contains("SELECT CASE WHEN count(*) = 7 THEN 1 ELSE 0 END FROM tasks WHERE project_id=$seed_project_id AND source_command='voiceover-review-seed';"))
+        XCTAssertTrue(script.contains("- [ ] Today rail actions: Open Today, select `Review Today rail next action with VoiceOver`, then confirm next action, task detail, focus, schedule draft, edit, subtask draft, and reminder draft controls are announced."))
     }
 
     func testReleaseReadinessReportCanUseAutomatedPreflightEvidenceInsteadOfRerunningLocalProofGates() throws {
