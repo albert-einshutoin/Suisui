@@ -757,26 +757,33 @@ private struct WeeklyScheduleReminderPanel: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             ForEach(topDays) { day in
-                HStack(spacing: 8) {
-                    Text(day.dateKey)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                    Text(String(format: String(localized: "%d reminders"), day.reminderProposalCount))
-                        .font(.caption)
-                    if let task = reminderProposalTask(for: day) {
-                        Spacer(minLength: 6)
-                        Button {
-                            queueReminderDraft(task, day)
-                        } label: {
-                            Label("Queue Reminder Draft", systemImage: "bell.badge")
-                                .labelStyle(.iconOnly)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(day.dateKey)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        Text(String(format: String(localized: "%d reminders"), day.reminderProposalCount))
+                            .font(.caption)
+                    }
+                    ForEach(reminderProposalTasks(for: day), id: \.id) { task in
+                        HStack(spacing: 6) {
+                            Text(task.title)
+                                .font(.caption2)
+                                .lineLimit(1)
+                            Spacer(minLength: 6)
+                            Button {
+                                queueReminderDraft(task, day)
+                            } label: {
+                                Label("Queue Reminder Draft", systemImage: "bell.badge")
+                                    .labelStyle(.iconOnly)
+                            }
+                            .buttonStyle(.borderless)
+                            .controlSize(.small)
+                            .help("Queue Reminder Draft")
+                            .accessibilityIdentifier("schedule-smart-reminder-draft-\(task.id)")
+                            .accessibilityLabel(String(format: String(localized: "Queue reminder draft for %@"), task.title))
+                            .accessibilityHint("Queues a Reminders draft for approval before any external write.")
                         }
-                        .buttonStyle(.borderless)
-                        .controlSize(.small)
-                        .help("Queue Reminder Draft")
-                        .accessibilityIdentifier("schedule-smart-reminder-draft-\(task.id)")
-                        .accessibilityLabel(String(format: String(localized: "Queue reminder draft for %@"), task.title))
-                        .accessibilityHint("Queues a Reminders draft for approval before any external write.")
                     }
                 }
             }
@@ -794,7 +801,7 @@ private struct WeeklyScheduleReminderPanel: View {
         .accessibilityLabel("Smart reminder proposals")
     }
 
-    private func reminderProposalTask(for day: WeeklyScheduleDay) -> ProjectBoardTask? {
+    private func reminderProposalTasks(for day: WeeklyScheduleDay) -> [ProjectBoardTask] {
         day.workload.projectContributions
             .flatMap(\.tasks)
             .filter { $0.status != .done }
@@ -804,7 +811,6 @@ private struct WeeklyScheduleReminderPanel: View {
                 }
                 return lhs.id < rhs.id
             }
-            .first
     }
 
     private func priorityRank(_ priority: ProjectTaskPriority) -> Int {
