@@ -14,7 +14,7 @@ import Sparkle
 
 #if DEBUG
 private struct RuntimeDevelopmentPRSmokeBookmarkResolver: ProjectWorkspaceBookmarkResolving {
-    static let flagName = "SOLOPM_RUNTIME_DEVELOPMENT_PR_FIXTURE_BOOKMARK"
+    static let flagName = "SOLOPM_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK"
     static let markerPrefix = "solopm-runtime-development-pr-smoke:"
 
     static var isEnabled: Bool {
@@ -34,7 +34,7 @@ private struct RuntimeDevelopmentPRSmokeBookmarkResolver: ProjectWorkspaceBookma
             throw DevelopmentPRWorkflowError.projectWorkspaceMustBeAbsolute
         }
 
-        // Runtime UI smoke is launched from a shell fixture, which cannot mint a
+        // Runtime UI smoke is launched from a shell-owned workspace, which cannot mint a
         // user-approved app-owned security scoped bookmark. This DEBUG-only
         // resolver preserves the production invariant that a bookmark field must
         // exist, while keeping release builds on the real security-scoped resolver.

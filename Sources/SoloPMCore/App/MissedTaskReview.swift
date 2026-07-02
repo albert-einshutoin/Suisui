@@ -264,7 +264,7 @@ public protocol MissedTaskReviewStateStore: Sendable {
     func recordNotification(day: String, at date: Date) throws
 }
 
-public final class InMemoryMissedTaskReviewStateStore: MissedTaskReviewStateStore, @unchecked Sendable {
+public final class VolatileMissedTaskReviewStateStore: MissedTaskReviewStateStore, @unchecked Sendable {
     private let lock = NSLock()
     private var reviewedAtByTaskID: [Int64: Date] = [:]
     private var notifiedDay: String?

@@ -585,7 +585,7 @@ public enum GoogleCalendarRuntimeSyncReadiness {
         }
         guard isWriteRuntimeConfigured else {
             // Readiness must account for the local app boundary: metadata alone is not enough
-            // unless a write sink is present, otherwise the UI could imply a fake success path.
+            // unless a write sink is present, otherwise the UI could imply an unverified success path.
             return GoogleCalendarRuntimeSyncStatus(plan: entitlement.plan, state: .runtimeNotConfigured)
         }
 

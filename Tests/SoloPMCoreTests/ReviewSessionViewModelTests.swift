@@ -5,7 +5,7 @@ import XCTest
 final class ReviewSessionViewModelTests: XCTestCase {
     func testApproveEditAndExecuteSession() throws {
         let logger = InMemoryAuditLogger()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let registry = try ToolRegistry(tools: [
             StaticTool(name: .taskCreate, description: "create", inputSchema: ToolInputSchema(required: ["title"]), permissionLevel: .writeWithApproval) { _, context in
                 XCTAssertNotNil(context.approvalToken)
@@ -42,7 +42,7 @@ final class ReviewSessionViewModelTests: XCTestCase {
     }
 
     func testNotificationExecutionReceiptIncludesScheduledNotificationReference() throws {
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let registry = try ToolRegistry(tools: [
             NotificationTool(name: .notificationSchedule, client: InMemoryNotificationClient())
         ])
@@ -73,7 +73,7 @@ final class ReviewSessionViewModelTests: XCTestCase {
     }
 
     func testReminderExecutionReceiptIncludesCreatedReminderReference() throws {
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let registry = try ToolRegistry(tools: [
             ReminderTool(name: .remindersCreate, client: InMemoryReminderClient())
         ])
@@ -104,7 +104,7 @@ final class ReviewSessionViewModelTests: XCTestCase {
 
     func testDevelopmentPRWorkflowExecutionReceiptIncludesBranchEvidenceAndScopedVisibility() throws {
         let branchName = "feature/solopm-7-42-fix-calendar-sync"
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let registry = try ToolRegistry(tools: [
             StaticTool(
                 name: .developmentPreparePullRequestWorkflow,
@@ -225,7 +225,7 @@ final class ReviewSessionViewModelTests: XCTestCase {
     }
 
     func testFailedToolExecutionCreatesRedactedExecutionReceipt() throws {
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let registry = try ToolRegistry(tools: [
             StaticTool(name: .taskCreate, description: "create", inputSchema: ToolInputSchema(required: ["title"]), permissionLevel: .writeWithApproval) { _, _ in
                 throw ToolExecutionError.executionFailed(.taskCreate, "provider failed \("token" + "=" + "tool-secret")")
@@ -252,7 +252,7 @@ final class ReviewSessionViewModelTests: XCTestCase {
 
     func testCancelSessionRecordsAuditEventAndDisablesExecution() throws {
         let logger = InMemoryAuditLogger()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let registry = ToolRegistry()
         let viewModel = ReviewSessionViewModel(
             plan: ActionPlan.reviewViewModelFixture(actions: [

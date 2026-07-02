@@ -2026,7 +2026,7 @@ final class ExternalMCPTests: XCTestCase {
 
     func testReadExecutionCreatesGlobalReceiptWithRedactedArgumentsAndResultSummary() async throws {
         let logger = InMemoryAuditLogger()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let transport = ExternalMCPTestKit.makeFakeServerTransport()
         let executor = makeExecutor(
             transport: transport,
@@ -2338,7 +2338,7 @@ final class ExternalMCPTests: XCTestCase {
     }
 
     func testExternalMCPToolErrorCreatesFailedReceiptWithoutRawErrorBody() async throws {
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let transport = RecordingMCPTransport { request in
             if request.method == "tools/call" {
                 return MCPJSONRPCResponse(
@@ -2457,7 +2457,7 @@ final class ExternalMCPTests: XCTestCase {
     }
 
     func testTimeoutExecutionCreatesFailedGlobalReceiptBeforeRethrowing() async throws {
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let transport = RecordingMCPTransport { request in
             if request.method == "tools/call" {
                 throw MCPClientError.timeout(serverID: "fake", method: "tools/call")
@@ -2530,7 +2530,7 @@ final class ExternalMCPTests: XCTestCase {
     }
 
     func testCanceledExternalMCPExecutionCreatesCanceledReceipt() async throws {
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let transport = RecordingMCPTransport { request in
             if request.method == "tools/call" {
                 throw CancellationError()

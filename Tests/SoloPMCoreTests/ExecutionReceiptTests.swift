@@ -1721,7 +1721,7 @@ final class ExecutionReceiptTests: XCTestCase {
             visibleSurface: .auditLog
         )
 
-        let memoryStore = InMemoryExecutionReceiptStore(receipts: [matchingReceipt] + newerUnrelatedReceipts)
+        let memoryStore = VolatileExecutionReceiptStore(receipts: [matchingReceipt] + newerUnrelatedReceipts)
         XCTAssertEqual(try memoryStore.list(matching: filter, limit: 5).map(\.id), ["receipt-audit-match"])
 
         let directory = FileManager.default.temporaryDirectory

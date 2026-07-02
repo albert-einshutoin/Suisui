@@ -1703,7 +1703,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         assistantQueueStore: (any AssistantQueueStore)? = nil,
         assistantQueueExecutionCoordinator: AssistantQueueExecutionCoordinator? = nil,
         executionReceiptStore: (any ExecutionReceiptStore)? = nil,
-        missedTaskReviewStateStore: any MissedTaskReviewStateStore = InMemoryMissedTaskReviewStateStore(),
+        missedTaskReviewStateStore: any MissedTaskReviewStateStore = VolatileMissedTaskReviewStateStore(),
         missedTaskFollowUpNotificationClient: (any NotificationClient)? = nil,
         externalTaskLinkStore: (any ExternalTaskLinkStore)? = nil,
         scheduleCalendarClient: (any CalendarClient)? = nil,

@@ -5903,7 +5903,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
         XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH=\"$database_path\""))
         XCTAssertTrue(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
-        XCTAssertTrue(script.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_FIXTURE_BOOKMARK=1"))
+        XCTAssertTrue(script.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_SMOKE_BOOKMARK=1"))
+        XCTAssertFalse(script.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_FIXTURE_BOOKMARK"))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$seed_project_id\""))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"assistant-queue\""))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID=\"$seed_task_id\""))
@@ -11813,6 +11814,32 @@ final class ReleasePipelineTests: XCTestCase {
 
         let benignResult = try runTool(["rg", "-n", pattern, benignFile.path])
         XCTAssertEqual(benignResult.exitCode, 1, benignResult.output)
+    }
+
+    func testRuntimeProductSourceDoesNotTripReleaseMarkerScan() throws {
+        let availability = try runTool(["rg", "--version"])
+        try XCTSkipIf(availability.exitCode != 0, "rg is required to exercise the release marker pattern")
+
+        let script = try readPackageFile("script/release_readiness_report.sh")
+        guard let patternLine = script
+            .split(separator: "\n")
+            .first(where: { $0.hasPrefix("MOCK_PATTERN=\"") }) else {
+            return XCTFail("release readiness report must define MOCK_PATTERN")
+        }
+        let pattern = String(patternLine.dropFirst("MOCK_PATTERN=\"".count).dropLast())
+        var runtimeSourcePaths = [
+            packageRoot().appendingPathComponent("Sources/SoloPMCore").path,
+            packageRoot().appendingPathComponent("Sources/SoloPMApp").path,
+            packageRoot().appendingPathComponent("Sources/SoloPMCLI").path
+        ]
+        let optionalConnectorsPath = packageRoot()
+            .appendingPathComponent("Sources/SoloPMExternalConnectors").path
+        if FileManager.default.fileExists(atPath: optionalConnectorsPath) {
+            runtimeSourcePaths.append(optionalConnectorsPath)
+        }
+
+        let scanResult = try runTool(["rg", "-n", pattern] + runtimeSourcePaths)
+        XCTAssertEqual(scanResult.exitCode, 1, scanResult.output)
     }
 
     func testDistributionPackageScriptBuildsDmgWithApplicationsLinkAndChecksums() throws {

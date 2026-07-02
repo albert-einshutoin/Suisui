@@ -4,7 +4,7 @@ import XCTest
 final class AssistantQueueExecutionTests: XCTestCase {
     func testCoordinatorRunsApprovedActionPlanAndPersistsQueueReceipt() throws {
         let queueStore = try makeQueueStore()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let approved = try AssistantQueueStateMachine.approve(makeActionPlanItem(), reviewerID: "local-user")
         try queueStore.save(approved)
         let registry = try ToolRegistry(tools: [
@@ -62,7 +62,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         let queueStore = SQLiteAssistantQueueStore(connection: connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let projectStore = SQLiteProjectStore(connection: connection)
         let taskStore = SQLiteTaskStore(connection: connection)
         let workspace = temporaryDirectory()
@@ -155,7 +155,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         let queueStore = SQLiteAssistantQueueStore(connection: connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let projectStore = SQLiteProjectStore(connection: connection)
         let taskStore = SQLiteTaskStore(connection: connection)
         let artifactStore = SQLiteArtifactStore(connection: connection)
@@ -251,7 +251,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         let queueStore = SQLiteAssistantQueueStore(connection: connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let projectStore = SQLiteProjectStore(connection: connection)
         let workspace = temporaryDirectory()
         let project = try projectStore.create(
@@ -336,7 +336,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         let queueStore = SQLiteAssistantQueueStore(connection: connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let projectStore = SQLiteProjectStore(connection: connection)
         let workspace = temporaryDirectory()
         let project = try projectStore.create(
@@ -413,7 +413,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
 
     func testCoordinatorRunsScheduleDraftCalendarApplyAndKeepsScopedReceiptReferences() throws {
         let queueStore = try makeQueueStore()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let calendarClient = InMemoryCalendarClient()
         let item = AssistantQueueAdapter.makeItem(
             actionPlan: ActionPlan(
@@ -476,7 +476,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
 
     func testCoordinatorRunsApprovedMailDraftQueueItemIntoLocalDraftReceipt() throws {
         let queueStore = try makeQueueStore()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let draftsDirectory = temporaryDirectory().appendingPathComponent("MailDrafts", isDirectory: true)
         let item = AssistantQueueAdapter.makeItem(
             actionPlan: ActionPlan(
@@ -539,7 +539,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
 
     func testCoordinatorRejectsBlockedConnectorSendGateBeforeExecution() throws {
         let queueStore = try makeQueueStore()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let item = AssistantQueueAdapter.makeConnectorSendGateItem(
             serviceID: "discord",
             serviceDisplayName: "Discord",
@@ -564,7 +564,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
 
     func testCoordinatorCopiesCostPreviewIntoEstimatedReceiptUsage() throws {
         let queueStore = try makeQueueStore()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let preview = makeCostPreview(inputTokens: 1_000, outputTokens: 500)
         let approved = try AssistantQueueStateMachine.approve(
             makeActionPlanItem(costPreview: preview),
@@ -601,7 +601,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
 
     func testCoordinatorRecordsSoloPMManagedUsageLedgerEntryAfterReceiptPersistence() throws {
         let queueStore = try makeQueueStore()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let ledgerStore = RecordingManagedAIUsageLedgerStore()
         let preview = AssistantQueueCostRateCard(
             provider: "openai sk-secret /Users/alice/private",
@@ -653,7 +653,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
 
     func testCoordinatorBlocksSoloPMManagedRunWhenDailyLedgerCapWouldBeExceeded() throws {
         let queueStore = try makeQueueStore()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let ledgerStore = RecordingManagedAIUsageLedgerStore(entries: [
             ManagedAIUsageLedgerEntry(
                 sourceReceiptDigest: ManagedAIUsageLedgerEntry.digestIdentifier(kind: "receipt", value: "existing-daily"),
@@ -717,7 +717,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
 
     func testCoordinatorReadsManagedBillingSettingsAtExecutionTime() throws {
         let queueStore = try makeQueueStore()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let ledgerStore = RecordingManagedAIUsageLedgerStore(entries: [
             ManagedAIUsageLedgerEntry(
                 sourceReceiptDigest: ManagedAIUsageLedgerEntry.digestIdentifier(kind: "receipt", value: "existing-settings"),
@@ -772,7 +772,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
 
     func testCoordinatorDoesNotRequireLedgerStoreForPerRunOnlyManagedBilling() throws {
         let queueStore = try makeQueueStore()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let approved = try AssistantQueueStateMachine.approve(
             makeActionPlanItem(costPreview: makeCostPreview(inputTokens: 1_000, outputTokens: 500)),
             reviewerID: "local-user"
@@ -808,7 +808,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
 
     func testCoordinatorDoesNotRecordProviderBilledUsageInManagedLedger() throws {
         let queueStore = try makeQueueStore()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let ledgerStore = RecordingManagedAIUsageLedgerStore()
         let preview = AssistantQueueCostPreview.userProviderBilled(
             provider: "openai.chat_completions",
@@ -846,7 +846,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
 
     func testCoordinatorMarksFailedWhenManagedUsageLedgerCannotBePersisted() throws {
         let queueStore = try makeQueueStore()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let preview = makeCostPreview(inputTokens: 1_000, outputTokens: 500)
         let approved = try AssistantQueueStateMachine.approve(
             makeActionPlanItem(costPreview: preview),
@@ -889,7 +889,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
 
     func testCoordinatorCopiesMeasuredProviderUsageAndBillingContextIntoReceipt() throws {
         let queueStore = try makeQueueStore()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let preview = AssistantQueueCostPreview.userProviderBilled(
             provider: "openai.chat_completions",
             modelName: "gpt-5.5",
@@ -931,7 +931,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
 
     func testCoordinatorRunsApprovedAutomationRequestTaskMutationThroughActionExecutor() throws {
         let queueStore = try makeQueueStore()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let approved = try AssistantQueueStateMachine.approve(makeTaskMutationItem(), reviewerID: "local-user")
         try queueStore.save(approved)
         let registry = try ToolRegistry(tools: [
@@ -984,7 +984,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         let queueStore = SQLiteAssistantQueueStore(connection: connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let projectStore = SQLiteProjectStore(connection: connection)
         let taskStore = SQLiteTaskStore(connection: connection)
         let task = try taskStore.create(title: "Existing remote task")
@@ -1088,7 +1088,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         let queueStore = SQLiteAssistantQueueStore(connection: connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let projectStore = SQLiteProjectStore(connection: connection)
         let taskStore = SQLiteTaskStore(connection: connection)
         let workspace = temporaryDirectory()
@@ -1254,7 +1254,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         let queueStore = SQLiteAssistantQueueStore(connection: connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let projectStore = SQLiteProjectStore(connection: connection)
         let taskStore = SQLiteTaskStore(connection: connection)
         let workspace = temporaryDirectory()
@@ -1326,7 +1326,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         let queueStore = SQLiteAssistantQueueStore(connection: connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let projectStore = SQLiteProjectStore(connection: connection)
         let taskStore = SQLiteTaskStore(connection: connection)
         let workspace = temporaryDirectory()
@@ -1508,7 +1508,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
         let coordinator = AssistantQueueExecutionCoordinator(
             queueStore: queueStore,
             executor: ActionExecutor(registry: ToolRegistry()),
-            executionReceiptStore: InMemoryExecutionReceiptStore()
+            executionReceiptStore: VolatileExecutionReceiptStore()
         )
 
         for item in [
@@ -1649,7 +1649,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
         let coordinator = AssistantQueueExecutionCoordinator(
             queueStore: queueStore,
             executor: ActionExecutor(registry: ToolRegistry()),
-            executionReceiptStore: InMemoryExecutionReceiptStore()
+            executionReceiptStore: VolatileExecutionReceiptStore()
         )
 
         XCTAssertThrowsError(try coordinator.execute(id: item.id)) { error in
@@ -1660,7 +1660,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
 
     func testCoordinatorMarksQueueFailedAndPersistsFailedReceiptWhenToolFails() throws {
         let queueStore = try makeQueueStore()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let approved = try AssistantQueueStateMachine.approve(makeActionPlanItem(), reviewerID: "local-user")
         try queueStore.save(approved)
         let registry = try ToolRegistry(tools: [
@@ -1698,7 +1698,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
 
     func testCoordinatorCanRunReapprovedFailedItemAfterRetryReviewAndKeepsSeparateReceipts() throws {
         let queueStore = try makeQueueStore()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let approved = try AssistantQueueStateMachine.approve(makeActionPlanItem(), reviewerID: "local-user")
         try queueStore.save(approved)
         let failingRegistry = try ToolRegistry(tools: [
@@ -1762,7 +1762,7 @@ final class AssistantQueueExecutionTests: XCTestCase {
 
     func testCoordinatorCanRunReapprovedFailedTaskMutationAutomationRequestAfterRetryReview() throws {
         let queueStore = try makeQueueStore()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let approved = try AssistantQueueStateMachine.approve(makeTaskMutationItem(), reviewerID: "local-user")
         try queueStore.save(approved)
         let failingRegistry = try ToolRegistry(tools: [
