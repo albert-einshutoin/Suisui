@@ -38,7 +38,7 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(script.contains("BLOCKER: Project Board window was not visible within"))
         XCTAssertTrue(source.contains("SoloPMProjectBoardWindowFallback.shared.showIfNeeded()"))
         XCTAssertTrue(source.contains("createFallbackProjectBoardWindow()"))
-        XCTAssertTrue(source.contains("guard visibleProjectBoardWindows.isEmpty else"))
+        XCTAssertTrue(source.contains("guard SoloPMWindowlessFallbackEnvironment.shouldForceProjectBoardFallback || visibleProjectBoardWindows.isEmpty else"))
         XCTAssertTrue(source.contains("window.makeKeyAndOrderFront(nil)"))
         XCTAssertTrue(source.contains("window.orderFrontRegardless()"))
     }
@@ -163,9 +163,14 @@ final class LaunchExperienceTests: XCTestCase {
 
         XCTAssertTrue(source.contains("private enum SoloPMWindowlessFallbackEnvironment"))
         XCTAssertTrue(source.contains("static var shouldCreateDirectFallbackWindow: Bool"))
+        XCTAssertTrue(source.contains("static var shouldForceProjectBoardFallback: Bool"))
+        XCTAssertTrue(source.contains("private static let forceFallbackFlagName = \"SOLOPM_FORCE_PROJECT_BOARD_FALLBACK\""))
         XCTAssertTrue(source.contains("return SoloPMLaunchRecoveryEnvironment.isEnabled\n            || environment[\"SOLOPM_DATABASE_PATH\"] != nil"))
+        XCTAssertTrue(source.contains("|| shouldForceProjectBoardFallback"))
+        XCTAssertTrue(source.contains("guard SoloPMWindowlessFallbackEnvironment.shouldForceProjectBoardFallback || visibleProjectBoardWindows.isEmpty else"))
         XCTAssertTrue(source.contains("if SoloPMWindowlessFallbackEnvironment.shouldCreateDirectFallbackWindow"))
         XCTAssertTrue(source.contains("taskAutomationSettings: AppRuntimeFactory.loadTaskAutoExecutionSettings"))
+        XCTAssertTrue(source.contains("window.occlusionState.contains(.visible)"))
     }
 
     func testRuntimeWorkflowSmokesOptIntoLaunchRecoveryExplicitly() throws {
@@ -176,7 +181,9 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(todaySmoke.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
         XCTAssertTrue(inboxSmoke.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
         XCTAssertTrue(screenshotCapture.contains("--p0-workflows"))
+        XCTAssertTrue(screenshotCapture.contains("--schedule-cockpit"))
         XCTAssertTrue(screenshotCapture.contains("if [[ \"$P0_WORKFLOWS\" == \"1\" ]]"))
+        XCTAssertTrue(screenshotCapture.contains("if [[ \"$P0_WORKFLOWS\" == \"1\" || \"$SCHEDULE_COCKPIT\" == \"1\" ]]"))
         XCTAssertTrue(screenshotCapture.contains("args+=(\"SOLOPM_LAUNCH_RECOVERY_MODE=1\")"))
     }
 
@@ -186,6 +193,8 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("if SoloPMLaunchRecoveryEnvironment.isEnabled {"))
         XCTAssertTrue(source.contains("ProjectBoardLaunchRecoveryView("))
         XCTAssertTrue(source.contains("ProjectBoardView("))
+        XCTAssertTrue(source.contains("case .schedule:\n            ScheduleWorkflowView(viewModel: viewModel)"))
+        XCTAssertTrue(source.contains("case schedule"))
     }
 
     func testWorkflowRootAccessibilityKeepsNestedLaunchRecoveryIdentifiers() throws {

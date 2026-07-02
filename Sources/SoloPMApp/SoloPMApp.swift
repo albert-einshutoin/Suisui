@@ -123,6 +123,12 @@ private enum SoloPMLaunchRecoveryEnvironment {
 }
 
 private enum SoloPMWindowlessFallbackEnvironment {
+    private static let forceFallbackFlagName = "SOLOPM_FORCE_PROJECT_BOARD_FALLBACK"
+
+    static var shouldForceProjectBoardFallback: Bool {
+        ProcessInfo.processInfo.environment[forceFallbackFlagName] == "1"
+    }
+
     static var shouldCreateDirectFallbackWindow: Bool {
         let environment = ProcessInfo.processInfo.environment
         // Direct binary launches with an isolated SQLite path do not always
@@ -130,6 +136,7 @@ private enum SoloPMWindowlessFallbackEnvironment {
         // They still need the full board unless launch recovery explicitly opts in.
         return SoloPMLaunchRecoveryEnvironment.isEnabled
             || environment["SOLOPM_DATABASE_PATH"] != nil
+            || shouldForceProjectBoardFallback
     }
 }
 
@@ -199,6 +206,8 @@ private struct ProjectBoardLaunchRecoveryView: View {
         switch selectedDestination {
         case .inbox:
             InboxWorkflowView(viewModel: viewModel, selectInboxTask: selectWorkflowTask)
+        case .schedule:
+            ScheduleWorkflowView(viewModel: viewModel)
         case .today:
             TodayWorkflowView(
                 viewModel: viewModel,
@@ -373,6 +382,7 @@ private struct ProjectBoardLaunchRecoveryTaskInspector: View {
 
 private enum ProjectBoardLaunchRecoveryDestination: String {
     case inbox
+    case schedule
     case today
 }
 
@@ -388,7 +398,7 @@ private final class SoloPMProjectBoardWindowFallback {
     }
 
     func showIfNeeded() {
-        guard visibleProjectBoardWindows.isEmpty else {
+        guard SoloPMWindowlessFallbackEnvironment.shouldForceProjectBoardFallback || visibleProjectBoardWindows.isEmpty else {
             return
         }
 
@@ -419,7 +429,12 @@ private final class SoloPMProjectBoardWindowFallback {
 
     private var visibleProjectBoardWindows: [NSWindow] {
         NSApplication.shared.windows.filter { window in
-            window.isVisible && !window.isMiniaturized && window.title == "SoloPM"
+            // AppKit restoration can mark a window visible before it is actually
+            // on-screen; occlusion keeps screenshot/AX gates from trusting that state.
+            window.isVisible
+                && window.occlusionState.contains(.visible)
+                && !window.isMiniaturized
+                && window.title == "SoloPM"
         }
     }
 
@@ -516,7 +531,7 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func createFallbackProjectBoardWindow() {
-        guard visibleProjectBoardWindows.isEmpty else {
+        guard SoloPMWindowlessFallbackEnvironment.shouldForceProjectBoardFallback || visibleProjectBoardWindows.isEmpty else {
             return
         }
 
@@ -602,7 +617,12 @@ private final class SoloPMAppDelegate: NSObject, NSApplicationDelegate {
 
     private var visibleProjectBoardWindows: [NSWindow] {
         NSApplication.shared.windows.filter { window in
-            window.isVisible && !window.isMiniaturized && window.title == "SoloPM"
+            // AppKit restoration can mark a window visible before it is actually
+            // on-screen; occlusion keeps screenshot/AX gates from trusting that state.
+            window.isVisible
+                && window.occlusionState.contains(.visible)
+                && !window.isMiniaturized
+                && window.title == "SoloPM"
         }
     }
 }
