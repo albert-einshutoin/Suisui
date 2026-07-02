@@ -1264,6 +1264,11 @@
 "Queues GitHub pull request creation for approval after reviewing the base branch, title, and body." = "baseブランチ、タイトル、本文を確認したうえでGitHub Pull Request作成を承認用にキューへ追加します。";
 "Adds only the pull request creation review to Assistant Queue; review and merge still need separate approval." = "Pull Request作成レビューだけをAssistant Queueへ追加します。レビューとマージには別の承認が必要です。";
 "Pull request progress" = "Pull Request進捗";
+"Approval Preview" = "承認プレビュー";
+"Branch" = "ブランチ";
+"Base Branch" = "Baseブランチ";
+"Latest Commit" = "最新コミット";
+"Shows the receipt-backed branch, commit, and pull request evidence for the next development approval." = "次の開発承認に使うreceipt-backedのブランチ、コミット、Pull Request証跡を表示します。";
 "Queue pull request review gate" = "Pull Requestレビューゲートをキューへ追加";
 "Queue pull request merge gate" = "Pull Requestマージゲートをキューへ追加";
 "Uses the pull request creation receipt to queue review, CI, unresolved thread, and mergeability checks." = "Pull Request作成receiptを使ってレビュー、CI、未解決スレッド、マージ可否チェックをキューへ追加します。";

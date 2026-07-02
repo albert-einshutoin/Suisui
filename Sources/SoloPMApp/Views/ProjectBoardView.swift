@@ -3643,6 +3643,24 @@ private struct ProjectDevelopmentAutomationPanel: View {
                     .accessibilityHint("Shows the next receipt-backed approval to prevent pull requests from being left unreviewed.")
                 }
 
+                if let approvalPreview = developmentProgress.approvalPreview {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label(LocalizedStringKey(approvalPreview.title), systemImage: "doc.text.magnifyingglass")
+                            .font(.caption)
+                            .foregroundStyle(Color.accentColor)
+
+                        ForEach(approvalPreview.rows) { row in
+                            LabeledContent(LocalizedStringKey(row.label), value: row.value)
+                                .font(.caption2)
+                                .textSelection(.enabled)
+                                .accessibilityIdentifier("project-development-automation-approval-preview-row-\(row.id)")
+                        }
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("project-development-automation-approval-preview")
+                    .accessibilityHint("Shows the receipt-backed branch, commit, and pull request evidence for the next development approval.")
+                }
+
                 if let queueHandoff = developmentProgress.queueHandoff {
                     VStack(alignment: .leading, spacing: 4) {
                         Label("Assistant Queue handoff", systemImage: "tray.full")
@@ -3720,6 +3738,12 @@ private struct ProjectDevelopmentAutomationPanel: View {
                         .font(.caption)
                         .textSelection(.enabled)
                         .accessibilityIdentifier("project-development-automation-progress-base")
+                }
+                if let latestCommitOID = developmentProgress.latestCommitOID {
+                    LabeledContent("Latest Commit", value: latestCommitOID)
+                        .font(.caption)
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("project-development-automation-progress-commit")
                 }
 
                 VStack(alignment: .leading, spacing: 8) {

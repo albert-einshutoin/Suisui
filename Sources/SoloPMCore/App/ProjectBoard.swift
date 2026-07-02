@@ -229,6 +229,28 @@ public struct ProjectDevelopmentAutomationQueueHandoff: Identifiable, Equatable,
     }
 }
 
+public struct ProjectDevelopmentAutomationApprovalPreviewRow: Identifiable, Equatable, Sendable {
+    public var id: String
+    public var label: String
+    public var value: String
+
+    public init(id: String, label: String, value: String) {
+        self.id = id
+        self.label = label
+        self.value = value
+    }
+}
+
+public struct ProjectDevelopmentAutomationApprovalPreview: Equatable, Sendable {
+    public var title: String
+    public var rows: [ProjectDevelopmentAutomationApprovalPreviewRow]
+
+    public init(title: String, rows: [ProjectDevelopmentAutomationApprovalPreviewRow]) {
+        self.title = title
+        self.rows = rows
+    }
+}
+
 public struct ProjectDevelopmentAutomationProgress: Equatable, Sendable {
     public var projectID: Int64
     public var taskID: Int64?
@@ -245,6 +267,7 @@ public struct ProjectDevelopmentAutomationProgress: Equatable, Sendable {
     public var canQueuePullRequestMergeGate: Bool
     public var blockingReason: String?
     public var nextApproval: ProjectDevelopmentAutomationNextApproval?
+    public var approvalPreview: ProjectDevelopmentAutomationApprovalPreview?
     public var queueHandoff: ProjectDevelopmentAutomationQueueHandoff?
 
     public init(
@@ -263,6 +286,7 @@ public struct ProjectDevelopmentAutomationProgress: Equatable, Sendable {
         canQueuePullRequestMergeGate: Bool,
         blockingReason: String?,
         nextApproval: ProjectDevelopmentAutomationNextApproval?,
+        approvalPreview: ProjectDevelopmentAutomationApprovalPreview? = nil,
         queueHandoff: ProjectDevelopmentAutomationQueueHandoff? = nil
     ) {
         self.projectID = projectID
@@ -280,6 +304,7 @@ public struct ProjectDevelopmentAutomationProgress: Equatable, Sendable {
         self.canQueuePullRequestMergeGate = canQueuePullRequestMergeGate
         self.blockingReason = blockingReason
         self.nextApproval = nextApproval
+        self.approvalPreview = approvalPreview
         self.queueHandoff = queueHandoff
     }
 }
@@ -2737,7 +2762,13 @@ public final class ProjectBoardViewModel: ObservableObject {
         )
         let latestCommitOID = developmentAutomationReferenceID(
             kind: .developmentCommit,
-            receipts: [successfulReviewReceipt, successfulPullRequestReceipt, pushReceipt].compactMap { $0 }
+            receipts: [
+                successfulMergeReceipt,
+                successfulReviewReceipt,
+                successfulPullRequestReceipt,
+                successfulPushReceipt,
+                successfulCommitReceipt
+            ].compactMap { $0 }
         )
         let hasLaterThanVerificationEvidence = successfulCommitReceipt != nil
             || successfulPushReceipt != nil
@@ -2805,6 +2836,12 @@ public final class ProjectBoardViewModel: ObservableObject {
             canQueueMerge: canQueueMerge,
             blockingReason: blockingReason
         )
+        let approvalPreview = developmentAutomationApprovalPreview(
+            branchName: branchName,
+            latestCommitOID: latestCommitOID,
+            pullRequestURL: pullRequestURL,
+            baseBranch: baseBranch
+        )
 
         return ProjectDevelopmentAutomationProgress(
             projectID: projectID,
@@ -2863,7 +2900,52 @@ public final class ProjectBoardViewModel: ObservableObject {
             canQueuePullRequestMergeGate: canQueueMerge,
             blockingReason: progressBlockingReason,
             nextApproval: nextApproval,
+            approvalPreview: approvalPreview,
             queueHandoff: queueHandoff
+        )
+    }
+
+    private static func developmentAutomationApprovalPreview(
+        branchName: String?,
+        latestCommitOID: String?,
+        pullRequestURL: String?,
+        baseBranch: String?
+    ) -> ProjectDevelopmentAutomationApprovalPreview? {
+        var rows: [ProjectDevelopmentAutomationApprovalPreviewRow] = []
+        if let branchName {
+            rows.append(ProjectDevelopmentAutomationApprovalPreviewRow(
+                id: "branch",
+                label: String(localized: "Branch"),
+                value: sanitizedDevelopmentAutomationReviewText(branchName)
+            ))
+        }
+        if let latestCommitOID {
+            rows.append(ProjectDevelopmentAutomationApprovalPreviewRow(
+                id: "latest-commit",
+                label: String(localized: "Latest Commit"),
+                value: sanitizedDevelopmentAutomationReviewText(latestCommitOID)
+            ))
+        }
+        if let pullRequestURL {
+            rows.append(ProjectDevelopmentAutomationApprovalPreviewRow(
+                id: "pull-request",
+                label: String(localized: "Pull Request"),
+                value: sanitizedDevelopmentAutomationReviewText(pullRequestURL)
+            ))
+        }
+        if let baseBranch {
+            rows.append(ProjectDevelopmentAutomationApprovalPreviewRow(
+                id: "base-branch",
+                label: String(localized: "Base Branch"),
+                value: sanitizedDevelopmentAutomationReviewText(baseBranch)
+            ))
+        }
+        guard !rows.isEmpty else {
+            return nil
+        }
+        return ProjectDevelopmentAutomationApprovalPreview(
+            title: String(localized: "Approval Preview"),
+            rows: rows
         )
     }
 

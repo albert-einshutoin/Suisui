@@ -1391,10 +1391,17 @@ final class ProjectBoardStoreTests: XCTestCase {
             id: "receipt-commit",
             projectID: project.id,
             branchName: branchName,
+            commitOID: headOID,
             toolName: ActionTool.developmentCommitChanges.rawValue
         ))
 
         let committedProgress = viewModel.developmentAutomationProgress(for: assignedProject, task: currentTask)
+        XCTAssertEqual(committedProgress.latestCommitOID, headOID)
+        XCTAssertEqual(committedProgress.approvalPreview?.rows.map(\.id), [
+            "branch",
+            "latest-commit"
+        ])
+        XCTAssertEqual(committedProgress.approvalPreview?.rows.first { $0.id == "latest-commit" }?.value, headOID)
         XCTAssertFalse(committedProgress.canQueueVerificationReview)
         XCTAssertFalse(committedProgress.canQueueCommitReview)
         XCTAssertTrue(committedProgress.canQueueBranchPushReview)
@@ -1431,6 +1438,14 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(progress.pullRequestURL, pullRequestURL)
         XCTAssertEqual(progress.baseBranch, baseBranch)
         XCTAssertEqual(progress.latestCommitOID, headOID)
+        XCTAssertEqual(progress.approvalPreview?.rows.map(\.id), [
+            "branch",
+            "latest-commit",
+            "pull-request",
+            "base-branch"
+        ])
+        XCTAssertEqual(progress.approvalPreview?.rows.first { $0.id == "pull-request" }?.value, pullRequestURL)
+        XCTAssertEqual(progress.approvalPreview?.rows.first { $0.id == "base-branch" }?.value, baseBranch)
         XCTAssertTrue(progress.canQueuePullRequestReviewGate)
         XCTAssertFalse(progress.canQueuePullRequestMergeGate)
         XCTAssertEqual(progress.nextApproval?.id, "pull-request-review")
