@@ -453,6 +453,11 @@ SQL
     "1" \
     "daily planning seed task" \
     "SELECT count(*) FROM tasks WHERE title='Runtime Daily Planning Recommended' AND source_command='runtime-voice-review-smoke';"
+  daily_planning_seed_project_count="$(sqlite_scalar "SELECT count(*) FROM projects;")"
+  if [[ -z "$daily_planning_seed_project_count" ]]; then
+    echo "BLOCKER: daily planning seed project baseline was not readable" >&2
+    return 1
+  fi
 }
 
 printf "== Runtime voice review smoke ==\n"
@@ -499,6 +504,10 @@ verify_sql_value \
 verify_sql_value \
   "1" \
   "no extra daily planning projects before approval" \
+  "SELECT count(*) FROM projects WHERE source_command='runtime-voice-review-smoke';"
+verify_sql_value \
+  "$daily_planning_seed_project_count" \
+  "total project count unchanged after daily planning handoff" \
   "SELECT count(*) FROM projects;"
 verify_sql_value \
   "1" \
