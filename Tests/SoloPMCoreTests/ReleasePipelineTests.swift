@@ -8365,8 +8365,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase10.contains("P10-023a: Local OSS voice runtime proof"))
         XCTAssertTrue(phase10.contains("[x] `script/check_local_voice_runtime_smoke.sh`"))
         XCTAssertTrue(phase10.contains("[x] `release_readiness_report.sh` は `docs/release/evidence/local-voice-runtime.md`"))
-        XCTAssertTrue(phase10.contains("[ ] checksum 済み `ggml-tiny.bin`"))
-        XCTAssertTrue(phase10.contains("[ ] checksum 済み `kokoro-v1_0.pth`"))
+        XCTAssertTrue(phase10.contains("[x] checksum 済み `ggml-tiny.bin`"))
+        XCTAssertTrue(phase10.contains("[x] checksum 済み `kokoro-v1_0.pth`"))
 
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-local-voice-runtime-smoke-missing-inputs", isDirectory: true)
