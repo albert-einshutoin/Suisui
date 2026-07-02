@@ -203,7 +203,7 @@ private struct ProjectBoardLaunchRecoveryView: View {
 
     @ViewBuilder
     private var workflowBody: some View {
-        switch selectedDestination {
+        switch resolvedSelectedDestination {
         case .inbox:
             InboxWorkflowView(viewModel: viewModel, selectInboxTask: selectWorkflowTask)
         case .schedule:
@@ -216,6 +216,11 @@ private struct ProjectBoardLaunchRecoveryView: View {
             )
         case .done:
             DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())
+        case .project(let projectID):
+            ProjectDevelopmentAutomationRecoveryView(
+                projectID: projectID,
+                viewModel: viewModel
+            )
         }
     }
 
@@ -236,6 +241,10 @@ private struct ProjectBoardLaunchRecoveryView: View {
     private var selectedDestination: ProjectBoardLaunchRecoveryDestination {
         let rawValue = ProcessInfo.processInfo.environment["SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION"]
         return ProjectBoardLaunchRecoveryDestination(rawValue: rawValue ?? "") ?? .today
+    }
+
+    private var resolvedSelectedDestination: ProjectBoardLaunchRecoveryDestination {
+        selectedDestination.resolved(availableProjects: viewModel.snapshot.projects)
     }
 
     private func loadRuntimeState() {
@@ -382,11 +391,160 @@ private struct ProjectBoardLaunchRecoveryTaskInspector: View {
     }
 }
 
-private enum ProjectBoardLaunchRecoveryDestination: String {
+private enum ProjectBoardLaunchRecoveryDestination: Equatable {
     case inbox
     case schedule
     case today
     case done
+    case project(Int64)
+
+    init?(rawValue: String) {
+        let rawValue = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if rawValue.hasPrefix("project:") {
+            let rawProjectID = rawValue.dropFirst("project:".count)
+            guard let projectID = Int64(rawProjectID), projectID > 0 else {
+                return nil
+            }
+            self = .project(projectID)
+            return
+        }
+
+        switch rawValue {
+        case "inbox":
+            self = .inbox
+        case "schedule":
+            self = .schedule
+        case "today", "":
+            self = .today
+        case "done":
+            self = .done
+        default:
+            return nil
+        }
+    }
+
+    func resolved(availableProjects: [ProjectBoardProject]) -> ProjectBoardLaunchRecoveryDestination {
+        switch self {
+        case .project(let projectID):
+            return availableProjects.contains(where: { $0.id == projectID }) ? self : .today
+        case .inbox, .schedule, .today, .done:
+            return self
+        }
+    }
+
+}
+
+private struct ProjectDevelopmentAutomationRecoveryView: View {
+    let projectID: Int64
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    @State private var didLoad = false
+
+    private var project: ProjectBoardProject? {
+        viewModel.snapshot.projects.first { $0.id == projectID }
+    }
+
+    private var task: ProjectBoardTask? {
+        viewModel.selectedTask
+    }
+
+    private var readiness: ProjectDevelopmentAutomationReadiness? {
+        guard let project else {
+            return nil
+        }
+        return viewModel.developmentAutomationReadiness(for: project, task: task)
+    }
+
+    private var progress: ProjectDevelopmentAutomationProgress? {
+        guard let project else {
+            return nil
+        }
+        return viewModel.developmentAutomationProgress(for: project, task: task)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let project, let readiness {
+                Label(
+                    LocalizedStringKey(readiness.statusLabel),
+                    systemImage: readiness.isReady ? "checkmark.seal" : "exclamationmark.triangle"
+                )
+                .font(.headline)
+                .foregroundStyle(readiness.isReady ? .green : .orange)
+                .accessibilityIdentifier("project-development-automation-status")
+
+                Text(project.title)
+                    .font(.title3)
+                    .textSelection(.enabled)
+
+                if let task {
+                    Text(task.title)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+
+                if let blockingReason = readiness.blockingReason {
+                    Text(LocalizedStringKey(blockingReason))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let branchNamePreview = readiness.branchNamePreview {
+                    LabeledContent("Branch Preview", value: branchNamePreview)
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("project-development-automation-branch-preview")
+                }
+
+                Button {
+                    _ = viewModel.enqueueDevelopmentAutomationReview(for: project, task: task)
+                } label: {
+                    Label("Queue branch automation", systemImage: "tray.and.arrow.down")
+                }
+                .disabled(!readiness.isReady)
+                .help("Adds the development branch preparation plan to Assistant Queue without creating a branch.")
+                .accessibilityIdentifier("project-development-automation-queue")
+                .accessibilityHint("Adds the development branch preparation plan to Assistant Queue for review and approval.")
+
+                if let queueHandoff = progress?.queueHandoff {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("Assistant Queue handoff", systemImage: "tray.full")
+                            .font(.caption)
+                            .foregroundStyle(Color.accentColor)
+                        Text(verbatim: "\(queueHandoff.stateLabel) - \(queueHandoff.title)")
+                            .font(.caption2)
+                        Text(verbatim: queueHandoff.reviewReason)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("project-development-automation-queue-handoff")
+                    .accessibilityHint("Shows the matching Assistant Queue item for the current development automation approval.")
+                }
+            } else {
+                if didLoad {
+                    EmptyView()
+                } else {
+                    ProgressView("Loading Project")
+                }
+            }
+        }
+        // Runtime smoke uses this narrow surface to avoid loading the full board's
+        // heavy AX tree; execution remains deferred to the normal Assistant Queue.
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("project-development-automation")
+        .task {
+            viewModel.load()
+            didLoad = true
+            viewModel.selectedProjectID = projectID
+            if let taskID = ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID {
+                viewModel.selectedTaskID = taskID
+            }
+        }
+    }
+
 }
 
 #if canImport(AppKit)
