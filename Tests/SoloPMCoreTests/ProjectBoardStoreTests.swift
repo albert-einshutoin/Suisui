@@ -6109,7 +6109,12 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     @MainActor
     func testProjectBoardViewModelBuildsTodayAssistantRailContextFromSelectedTask() throws {
-        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
         viewModel.load()
         let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
         _ = viewModel.createTask(
@@ -6128,8 +6133,30 @@ final class ProjectBoardStoreTests: XCTestCase {
             priority: .medium,
             dueAt: "2026-06-19T12:00:00Z"
         ))
+        let completedToday = try XCTUnwrap(viewModel.createTask(
+            title: "Publish shipped update",
+            projectID: launch.id,
+            status: .done,
+            priority: .low,
+            dueAt: "2026-06-19T13:00:00Z"
+        ))
+        let legacyDoneWithoutCompletedAt = try XCTUnwrap(viewModel.createTask(
+            title: "Legacy done due today",
+            projectID: launch.id,
+            status: .done,
+            priority: .low,
+            dueAt: "2026-06-19T14:00:00Z"
+        ))
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        try bundle.connection.execute("UPDATE tasks SET completed_at = '2026-06-19T13:05:00Z' WHERE id = \(completedToday.id);")
+        try bundle.connection.execute("UPDATE tasks SET completed_at = NULL WHERE id = \(legacyDoneWithoutCompletedAt.id);")
+        viewModel.load()
+        XCTAssertTrue(viewModel.enqueueTodayReminderDraft(
+            for: selected.id,
+            on: try isoDate("2026-06-19T08:37:00Z"),
+            calendar: calendar
+        ))
         viewModel.selectedTaskID = selected.id
 
         let context = viewModel.todayAssistantRailContext(
@@ -6144,8 +6171,60 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(context.nextActionReason, "You selected this Today task for review.")
         XCTAssertEqual(context.nextBlockLabel, "09:30-10:00")
         XCTAssertEqual(context.notes, "Prepare release note")
-        XCTAssertEqual(context.subtaskSummary, "Subtask capture is staged through the Today command.")
-        XCTAssertEqual(context.reminderSummary, "Reminder drafts queue for approval before external writes.")
+        XCTAssertEqual(context.subtaskSummary, "2 open Today tasks, 1 done today.")
+        XCTAssertEqual(context.reminderSummary, "Reminder draft is waiting for approval.")
+    }
+
+    @MainActor
+    func testProjectBoardViewModelUsesCurrentTodayReminderDraftStateForRailContext() throws {
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let launch = try XCTUnwrap(viewModel.createProject(title: "Launch"))
+        let selected = try XCTUnwrap(viewModel.createTask(
+            title: "Ship today update",
+            detail: "Prepare release note",
+            projectID: launch.id,
+            status: .planned,
+            priority: .medium,
+            dueAt: "2026-06-19T12:00:00Z"
+        ))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        viewModel.selectedTaskID = selected.id
+
+        XCTAssertTrue(viewModel.enqueueTodayReminderDraft(
+            for: selected.id,
+            on: try isoDate("2026-06-18T08:37:00Z"),
+            calendar: calendar
+        ))
+        var context = viewModel.todayAssistantRailContext(
+            on: try isoDate("2026-06-19T08:37:00Z"),
+            calendar: calendar
+        )
+        XCTAssertEqual(context.reminderSummary, "No Today reminder draft queued.")
+
+        XCTAssertTrue(viewModel.enqueueTodayReminderDraft(
+            for: selected.id,
+            on: try isoDate("2026-06-19T08:37:00Z"),
+            calendar: calendar
+        ))
+        let currentItemID = try XCTUnwrap(try assistantQueueStore.list(filter: .all(limit: 500)).map(\.id).first { id in
+            id.hasPrefix("action-plan:today-reminder:2026-06-19:")
+                && id.hasSuffix(":task:\(selected.id)")
+        })
+        try assistantQueueStore.save(AssistantQueueStateMachine.deferItem(try assistantQueueStore.get(id: currentItemID)))
+
+        context = viewModel.todayAssistantRailContext(
+            on: try isoDate("2026-06-19T08:37:00Z"),
+            calendar: calendar
+        )
+
+        XCTAssertEqual(context.reminderSummary, "Reminder draft is deferred.")
     }
 
     @MainActor

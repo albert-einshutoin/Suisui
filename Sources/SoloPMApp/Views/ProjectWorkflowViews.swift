@@ -4287,7 +4287,7 @@ private struct TodayAssistantRail: View {
             detailRow(title: "Due", value: task.todayDueDisplayLabel() ?? String(localized: "No due date"), systemImage: "calendar")
             detailRow(title: "Time Block", value: context.nextBlockLabel ?? String(localized: "No block drafted"), systemImage: "clock")
             detailRow(title: "Notes", value: context.notes, systemImage: "note.text")
-            detailRow(title: "Subtasks", value: context.subtaskSummary, systemImage: "checklist")
+            detailRow(title: "Today Progress", value: context.subtaskSummary, systemImage: "checklist")
             detailRow(title: "Reminder", value: context.reminderSummary, systemImage: "bell")
         }
         .accessibilityElement(children: .contain)
