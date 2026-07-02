@@ -80,6 +80,9 @@ public enum DevelopmentPRPublishWorkflowError: Error, Equatable, Sendable {
     case invalidGitHubOriginRemote
     case originPushRepositoryMismatch(expected: String, actual: String)
     case pullRequestRepositoryMismatch(expected: String, actual: String)
+    case missingRemoteHead(branchName: String)
+    case remoteHeadMismatch(branchName: String, local: String, remote: String)
+    case invalidHeadCommitOID
     case invalidPullRequestStatusJSON
     case invalidPullRequestReviewThreadsJSON
     case missingPullRequestURL
@@ -112,6 +115,12 @@ public enum DevelopmentPRPublishWorkflowError: Error, Equatable, Sendable {
             return "Origin push destinations must resolve to a single GitHub repository; found \(expected) and \(actual)."
         case .pullRequestRepositoryMismatch(let expected, let actual):
             return "Pull request repository \(actual) does not match origin repository \(expected)."
+        case .missingRemoteHead(let branchName):
+            return "Remote branch \(branchName) is missing; push the reviewed branch before creating a pull request."
+        case .remoteHeadMismatch(let branchName, let local, let remote):
+            return "Remote branch \(branchName) points to \(remote), but local HEAD is \(local); push the reviewed commit before creating a pull request."
+        case .invalidHeadCommitOID:
+            return "Git returned an unreadable commit OID for pull request creation."
         case .invalidPullRequestStatusJSON:
             return "GitHub CLI returned an unreadable pull request status response."
         case .invalidPullRequestReviewThreadsJSON:
@@ -125,6 +134,10 @@ public enum DevelopmentPRPublishWorkflowError: Error, Equatable, Sendable {
             if command == ["remote", "get-url", "origin"]
                 || command == ["remote", "get-url", "--push", "--all", "origin"] {
                 return "Git origin remote lookup failed with exit code \(exitCode).\(suffix)"
+            }
+            if command == ["rev-parse", "HEAD"]
+                || (command.count == 3 && command[0] == "ls-remote") {
+                return "Git remote branch lookup failed with exit code \(exitCode).\(suffix)"
             }
             if tool == .developmentCreatePullRequest {
                 return "GitHub CLI pull request creation failed with exit code \(exitCode).\(suffix)"
@@ -144,8 +157,17 @@ public enum DevelopmentPublishGitCommandPolicy {
     public static func isAllowed(arguments: [String]) -> Bool {
         if arguments == ["status", "--short", "--branch"]
             || arguments == ["remote", "get-url", "origin"]
-            || arguments == ["remote", "get-url", "--push", "--all", "origin"] {
+            || arguments == ["remote", "get-url", "--push", "--all", "origin"]
+            || arguments == ["rev-parse", "HEAD"] {
             return true
+        }
+        if arguments.count == 3,
+           arguments[0] == "ls-remote",
+           arguments[2].hasPrefix("refs/heads/") {
+            let branchName = String(arguments[2].dropFirst("refs/heads/".count))
+            let repositoryIsAllowed = arguments[1] == "origin"
+                || (try? DevelopmentGitHubPRCommandPolicy.repositoryIdentity(fromRemoteURL: arguments[1])) != nil
+            return repositoryIsAllowed && (try? validatedPublishHeadBranch(branchName)) != nil
         }
 
         guard arguments.count == 4,
@@ -214,24 +236,26 @@ public enum DevelopmentGitHubPRCommandPolicy {
             return true
         }
 
-        guard arguments.count == 10,
+        guard arguments.count == 12,
               arguments[0] == "pr",
               arguments[1] == "create",
-              arguments[2] == "--base",
-              arguments[4] == "--head",
-              arguments[6] == "--title",
-              arguments[8] == "--body-file" else {
+              arguments[2] == "--repo",
+              arguments[4] == "--base",
+              arguments[6] == "--head",
+              arguments[8] == "--title",
+              arguments[10] == "--body-file" else {
             return false
         }
 
-        guard (try? DevelopmentBranchNamePolicy.validated(arguments[3])) != nil,
-              (try? DevelopmentPublishGitCommandPolicy.validatedPublishHeadBranch(arguments[5])) != nil,
-              arguments[3] != arguments[5],
-              isValidPullRequestTitle(arguments[7]) else {
+        guard isValidRepositoryNameWithOwner(arguments[3]),
+              (try? DevelopmentBranchNamePolicy.validated(arguments[5])) != nil,
+              (try? DevelopmentPublishGitCommandPolicy.validatedPublishHeadBranch(arguments[7])) != nil,
+              arguments[5] != arguments[7],
+              isValidPullRequestTitle(arguments[9]) else {
             return false
         }
 
-        let bodyFilePath = arguments[9]
+        let bodyFilePath = arguments[11]
         return bodyFilePath.hasPrefix("/")
             && !bodyFilePath.contains("\u{0}")
             && !URL(fileURLWithPath: bodyFilePath).lastPathComponent.hasPrefix("-")
@@ -449,6 +473,18 @@ public enum DevelopmentGitHubPRCommandPolicy {
         return value.allSatisfy { character in
             isASCIIAlphaNumeric(character) || character == "-" || character == "_" || character == "."
         }
+    }
+
+    private static func isValidRepositoryNameWithOwner(_ value: String) -> Bool {
+        guard !value.contains("\u{0}"),
+              !value.contains(where: { $0.isWhitespace }) else {
+            return false
+        }
+        let parts = strictPathParts(value)
+        guard parts.count == 2 else {
+            return false
+        }
+        return isValidGitHubOwner(parts[0]) && isValidGitHubRepositoryName(parts[1])
     }
 
     private static func isASCIIAlphaNumeric(_ character: Character) -> Bool {
@@ -1504,6 +1540,24 @@ public struct DevelopmentPullRequestCreationTool: Tool {
                         readiness: readiness
                     )
                 }
+                let originDestination = try fetchOriginPushDestination(workingDirectory: scope.rootURL)
+                let originRepository = originDestination.repository
+                let headVerification = try verifyRemoteHeadMatchesLocal(
+                    branchName: branchName,
+                    remoteURL: originDestination.remoteURL,
+                    workingDirectory: scope.rootURL
+                )
+                if let blockingError = headVerification.blockingError {
+                    return failedCommandResult(
+                        projectID: project.id,
+                        branchName: branchName,
+                        baseBranch: baseBranch,
+                        remoteRepository: originRepository,
+                        localHeadOID: headVerification.localHeadOID,
+                        remoteHeadOID: headVerification.remoteHeadOID,
+                        error: blockingError
+                    )
+                }
 
                 let fileManager = FileManager.default
                 let bodyFileURL = fileManager.temporaryDirectory
@@ -1515,6 +1569,7 @@ public struct DevelopmentPullRequestCreationTool: Tool {
                 // or logged as an inline command argument by process tooling.
                 let githubArguments = [
                     "pr", "create",
+                    "--repo", originRepository.displayNameWithOwner,
                     "--base", baseBranch,
                     "--head", branchName,
                     "--title", title,
@@ -1551,17 +1606,35 @@ public struct DevelopmentPullRequestCreationTool: Tool {
                     rawPullRequestURL,
                     redactor: redactor
                 )
+                let pullRequestRepository = try DevelopmentGitHubPRCommandPolicy.repositoryIdentity(
+                    fromPullRequestURL: pullRequestURL
+                )
+                guard pullRequestRepository.matches(originRepository) else {
+                    return failedCommandResult(
+                        projectID: project.id,
+                        branchName: branchName,
+                        baseBranch: baseBranch,
+                        remoteRepository: originRepository,
+                        pullRequestURL: pullRequestURL,
+                        error: .pullRequestRepositoryMismatch(
+                            expected: originRepository.displayNameWithOwner,
+                            actual: pullRequestRepository.displayNameWithOwner
+                        )
+                    )
+                }
 
                 return ToolResult(
                     tool: name,
                     status: .succeeded,
-                    summary: "Created pull request \(pullRequestURL) from \(branchName) into \(baseBranch).",
+                    summary: "Created pull request \(pullRequestURL) in \(originRepository.displayNameWithOwner) from \(branchName) into \(baseBranch).",
                     output: [
                         "projectId": .number(Double(project.id)),
                         "branchName": .string(branchName),
                         "baseBranch": .string(baseBranch),
                         "title": .string(title),
                         "pullRequestURL": .string(pullRequestURL),
+                        "remoteRepository": .string(originRepository.displayNameWithOwner),
+                        "headOid": .string(headVerification.localHeadOID),
                         "workspaceClean": .bool(true)
                     ],
                     rollbackMetadata: [
@@ -1606,22 +1679,137 @@ public struct DevelopmentPullRequestCreationTool: Tool {
         projectID: Int64,
         branchName: String,
         baseBranch: String,
+        remoteRepository: DevelopmentGitHubRepositoryIdentity? = nil,
+        pullRequestURL: String? = nil,
+        localHeadOID: String? = nil,
+        remoteHeadOID: String? = nil,
         error: DevelopmentPRPublishWorkflowError
     ) -> ToolResult {
-        ToolResult(
+        var output: [String: JSONValue] = [
+            "projectId": .number(Double(projectID)),
+            "branchName": .string(branchName),
+            "baseBranch": .string(baseBranch),
+            "workspaceClean": .bool(true),
+            "publishError": .string(redacted(error.userMessage))
+        ]
+        if let remoteRepository {
+            output["remoteRepository"] = .string(remoteRepository.displayNameWithOwner)
+        }
+        if let pullRequestURL {
+            output["pullRequestURL"] = .string(pullRequestURL)
+        }
+        if let localHeadOID {
+            output["localHeadOid"] = .string(localHeadOID)
+        }
+        if let remoteHeadOID {
+            output["remoteHeadOid"] = .string(remoteHeadOID)
+        }
+        var rollbackMetadata: [String: JSONValue] = ["branchName": .string(branchName)]
+        if let pullRequestURL {
+            rollbackMetadata["pullRequestURL"] = .string(pullRequestURL)
+        }
+        return ToolResult(
             tool: name,
             status: .failed,
             summary: redacted(error.userMessage),
-            output: [
-                "projectId": .number(Double(projectID)),
-                "branchName": .string(branchName),
-                "baseBranch": .string(baseBranch),
-                "workspaceClean": .bool(true),
-                "publishError": .string(redacted(error.userMessage))
-            ],
-            rollbackMetadata: ["branchName": .string(branchName)],
-            compensationHint: "Inspect the GitHub CLI result and retry PR creation after fixing the error."
+            output: output,
+            rollbackMetadata: rollbackMetadata,
+            compensationHint: "Inspect the GitHub CLI result, close any unexpected pull request, and retry PR creation after fixing the error."
         )
+    }
+
+    private func fetchOriginPushDestination(workingDirectory: URL) throws -> DevelopmentOriginPushDestination {
+        // PR creation must target the same repository that git push writes to;
+        // remote.origin.pushurl can intentionally differ from the fetch URL.
+        let arguments = ["remote", "get-url", "--push", "--all", "origin"]
+        let output = try runGit(arguments: arguments, workingDirectory: workingDirectory)
+        guard output.exitCode == 0 else {
+            throw DevelopmentPRPublishWorkflowError.commandFailed(
+                tool: name,
+                command: arguments,
+                exitCode: output.exitCode,
+                standardError: redacted(output.standardError.trimmingCharacters(in: .whitespacesAndNewlines))
+            )
+        }
+        let destinations = output.standardOutput
+            .split(whereSeparator: \.isNewline)
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard let firstDestination = destinations.first else {
+            throw DevelopmentPRPublishWorkflowError.invalidGitHubOriginRemote
+        }
+        let expected = try DevelopmentGitHubPRCommandPolicy.repositoryIdentity(fromRemoteURL: firstDestination)
+        for destination in destinations.dropFirst() {
+            let candidate = try DevelopmentGitHubPRCommandPolicy.repositoryIdentity(fromRemoteURL: destination)
+            guard candidate.matches(expected) else {
+                throw DevelopmentPRPublishWorkflowError.originPushRepositoryMismatch(
+                    expected: expected.displayNameWithOwner,
+                    actual: candidate.displayNameWithOwner
+                )
+            }
+        }
+        return DevelopmentOriginPushDestination(repository: expected, remoteURL: firstDestination)
+    }
+
+    private func verifyRemoteHeadMatchesLocal(
+        branchName: String,
+        remoteURL: String,
+        workingDirectory: URL
+    ) throws -> DevelopmentPullRequestRemoteHeadVerification {
+        let localHeadArguments = ["rev-parse", "HEAD"]
+        let localHeadOutput = try runGit(arguments: localHeadArguments, workingDirectory: workingDirectory)
+        guard localHeadOutput.exitCode == 0 else {
+            throw DevelopmentPRPublishWorkflowError.commandFailed(
+                tool: name,
+                command: localHeadArguments,
+                exitCode: localHeadOutput.exitCode,
+                standardError: redacted(localHeadOutput.standardError.trimmingCharacters(in: .whitespacesAndNewlines))
+            )
+        }
+        let localHeadOID = try validatedHeadOID(localHeadOutput.standardOutput)
+
+        let remoteRef = "refs/heads/\(branchName)"
+        let remoteHeadArguments = ["ls-remote", remoteURL, remoteRef]
+        let remoteHeadOutput = try runGit(arguments: remoteHeadArguments, workingDirectory: workingDirectory)
+        guard remoteHeadOutput.exitCode == 0 else {
+            throw DevelopmentPRPublishWorkflowError.commandFailed(
+                tool: name,
+                command: remoteHeadArguments,
+                exitCode: remoteHeadOutput.exitCode,
+                standardError: redacted(remoteHeadOutput.standardError.trimmingCharacters(in: .whitespacesAndNewlines))
+            )
+        }
+        let remoteHeadOID = try remoteHeadOID(from: remoteHeadOutput.standardOutput, expectedRef: remoteRef)
+        return DevelopmentPullRequestRemoteHeadVerification(
+            branchName: branchName,
+            localHeadOID: localHeadOID,
+            remoteHeadOID: remoteHeadOID
+        )
+    }
+
+    private func validatedHeadOID(_ rawOID: String) throws -> String {
+        do {
+            return try DevelopmentGitHubPRCommandPolicy.validatedHeadCommitOID(rawOID)
+        } catch {
+            throw DevelopmentPRPublishWorkflowError.invalidHeadCommitOID
+        }
+    }
+
+    private func remoteHeadOID(from output: String, expectedRef: String) throws -> String? {
+        let rows = output
+            .split(whereSeparator: \.isNewline)
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard let row = rows.first else {
+            return nil
+        }
+        let columns = row.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard rows.count == 1,
+              columns.count == 2,
+              columns[1] == expectedRef else {
+            throw DevelopmentPRPublishWorkflowError.invalidHeadCommitOID
+        }
+        return try validatedHeadOID(columns[0])
     }
 
     private func workspacePublishReadiness(branchName: String, scope: ProjectWorkspaceScope) throws -> DevelopmentPublishReadiness {
@@ -1688,6 +1876,27 @@ public struct DevelopmentPullRequestCreationTool: Tool {
 
     private func redacted(_ value: String) -> String {
         LocalPathRedactor.redact(redactor.redact(value).text)
+    }
+}
+
+private struct DevelopmentOriginPushDestination: Equatable, Sendable {
+    var repository: DevelopmentGitHubRepositoryIdentity
+    var remoteURL: String
+}
+
+private struct DevelopmentPullRequestRemoteHeadVerification: Equatable, Sendable {
+    var branchName: String
+    var localHeadOID: String
+    var remoteHeadOID: String?
+
+    var blockingError: DevelopmentPRPublishWorkflowError? {
+        guard let remoteHeadOID else {
+            return .missingRemoteHead(branchName: branchName)
+        }
+        guard localHeadOID.lowercased() != remoteHeadOID.lowercased() else {
+            return nil
+        }
+        return .remoteHeadMismatch(branchName: branchName, local: localHeadOID, remote: remoteHeadOID)
     }
 }
 

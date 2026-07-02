@@ -4426,9 +4426,10 @@ private enum AppRuntimeFactory {
             artifactStore: artifactStore,
             auditLogger: auditLogger
         )
-        // Queue execution must bridge project-panel approvals to local GitHub Flow
-        // preparation and the first publish step. PR creation remains outside this
-        // lane until the product has a base-branch/body review surface for it.
+        // Queue execution bridges project-panel approvals to local GitHub Flow
+        // tools only after each external write has its own reviewed ActionPlan.
+        // Remote/cloud requests still enter as blocked review items instead of
+        // reaching this local project-directory registry directly.
         try registry.register(AuditedTool(
             base: DevelopmentPRWorkflowTool(
                 projectStore: projectStore,
@@ -4492,6 +4493,10 @@ private enum AppRuntimeFactory {
             logger: auditLogger
         ))
         try registry.register(AuditedTool(
+            base: DevelopmentPullRequestCreationTool(projectStore: projectStore),
+            logger: auditLogger
+        ))
+        try registry.register(AuditedTool(
             base: DevelopmentPullRequestReviewGateTool(projectStore: projectStore),
             logger: auditLogger
         ))
@@ -4508,18 +4513,12 @@ private enum AppRuntimeFactory {
             .developmentRunVerification,
             .developmentCommitChanges,
             .developmentPushBranch,
+            .developmentCreatePullRequest,
             .developmentReviewPullRequestGate,
             .developmentMergePullRequest
         ] {
             guard registry.contains(requiredTool) else {
                 throw ToolExecutionError.unknownTool(requiredTool)
-            }
-        }
-        for prohibitedTool in [
-            ActionTool.developmentCreatePullRequest
-        ] {
-            guard !registry.contains(prohibitedTool) else {
-                throw ToolExecutionError.dangerousToolBlocked(prohibitedTool)
             }
         }
         return registry

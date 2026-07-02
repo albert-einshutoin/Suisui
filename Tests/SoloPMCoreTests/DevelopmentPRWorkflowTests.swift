@@ -544,10 +544,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let title = "Add development publish gate"
         let body = "## Summary\n- Add approval-gated publish tools\n"
         let gitRunner = RecordingDevelopmentGitRunner()
-        gitRunner.stub(
-            arguments: ["status", "--short", "--branch"],
-            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
-        )
+        stubPullRequestCreationPreflight(gitRunner, branchName: branchName)
         let githubRunner = RecordingGitHubCLICommandRunner(
             output: GitHubCLICommandOutput(
                 standardOutput: "https://github.com/albert-einshutoin/soloPM/pull/106\n",
@@ -578,19 +575,267 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         XCTAssertEqual(result.output["branchName"], .string(branchName))
         XCTAssertEqual(result.output["baseBranch"], .string(baseBranch))
         XCTAssertEqual(result.output["pullRequestURL"], .string("https://github.com/albert-einshutoin/soloPM/pull/106"))
+        XCTAssertEqual(result.output["remoteRepository"], .string("albert-einshutoin/soloPM"))
+        XCTAssertEqual(result.output["headOid"], .string("0123456789abcdef0123456789abcdef01234567"))
         XCTAssertEqual(githubRunner.recordedInvocations.count, 1)
         let invocation = try XCTUnwrap(githubRunner.recordedInvocations.first)
         XCTAssertEqual(invocation.workingDirectory, workspace.standardizedFileURL.resolvingSymlinksInPath())
-        XCTAssertEqual(Array(invocation.arguments.prefix(8)), [
+        XCTAssertEqual(Array(invocation.arguments.prefix(10)), [
             "pr", "create",
+            "--repo", "albert-einshutoin/soloPM",
             "--base", baseBranch,
             "--head", branchName,
             "--title", title
         ])
-        XCTAssertEqual(invocation.arguments[8], "--body-file")
+        XCTAssertEqual(invocation.arguments[10], "--body-file")
         XCTAssertFalse(invocation.arguments.contains("--body"))
         XCTAssertFalse(invocation.arguments.contains("--fill"))
         XCTAssertEqual(githubRunner.recordedBodyFiles, [body])
+        XCTAssertEqual(gitRunner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["remote", "get-url", "--push", "--all", "origin"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["rev-parse", "HEAD"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["ls-remote", "https://github.com/albert-einshutoin/soloPM.git", "refs/heads/\(branchName)"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
+        ])
+    }
+
+    func testCreatePullRequestRejectsNonGitHubOriginBeforeGitHubWrite() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try createPublishProject(stores: stores, workspace: workspace)
+        let branchName = "feature/solopm-\(project.id)-publish-gate"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        gitRunner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
+        )
+        gitRunner.stub(
+            arguments: ["remote", "get-url", "--push", "--all", "origin"],
+            output: GitCommandOutput(standardOutput: "ssh://git@example.com/acme/solo-pm.git\n", standardError: "", exitCode: 0)
+        )
+        let githubRunner = RecordingGitHubCLICommandRunner()
+        let tool = DevelopmentPullRequestCreationTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string(branchName),
+                    "baseBranch": .string("main"),
+                    "title": .string("Add development publish gate"),
+                    "body": .string("## Summary\n- Add approval-gated publish tools\n")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentCreatePullRequest, "Origin remote must resolve to a GitHub repository.")
+            )
+        }
+        XCTAssertEqual(githubRunner.recordedInvocations, [])
+        XCTAssertEqual(gitRunner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["remote", "get-url", "--push", "--all", "origin"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
+        ])
+    }
+
+    func testCreatePullRequestRejectsMultiplePushRepositoriesBeforeGitHubWrite() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try createPublishProject(stores: stores, workspace: workspace)
+        let branchName = "feature/solopm-\(project.id)-publish-gate"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        gitRunner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
+        )
+        gitRunner.stub(
+            arguments: ["remote", "get-url", "--push", "--all", "origin"],
+            output: GitCommandOutput(
+                standardOutput: """
+                https://github.com/acme/solo-pm.git
+                git@github.com:other/solo-pm.git
+                """,
+                standardError: "",
+                exitCode: 0
+            )
+        )
+        let githubRunner = RecordingGitHubCLICommandRunner()
+        let tool = DevelopmentPullRequestCreationTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string(branchName),
+                    "baseBranch": .string("main"),
+                    "title": .string("Add development publish gate"),
+                    "body": .string("## Summary\n- Add approval-gated publish tools\n")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(
+                    .developmentCreatePullRequest,
+                    "Origin push destinations must resolve to a single GitHub repository; found acme/solo-pm and other/solo-pm."
+                )
+            )
+        }
+        XCTAssertEqual(githubRunner.recordedInvocations, [])
+        XCTAssertEqual(gitRunner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["remote", "get-url", "--push", "--all", "origin"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
+        ])
+    }
+
+    func testCreatePullRequestRejectsRemoteHeadMismatchBeforeGitHubWrite() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try createPublishProject(stores: stores, workspace: workspace)
+        let branchName = "feature/solopm-\(project.id)-publish-gate"
+        let localHeadOID = "0123456789abcdef0123456789abcdef01234567"
+        let remoteHeadOID = "abcdef0123456789abcdef0123456789abcdef01"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        stubPullRequestCreationPreflight(
+            gitRunner,
+            branchName: branchName,
+            localHeadOID: localHeadOID,
+            remoteHeadOID: remoteHeadOID
+        )
+        let githubRunner = RecordingGitHubCLICommandRunner()
+        let tool = DevelopmentPullRequestCreationTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
+        )
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "branchName": .string(branchName),
+                "baseBranch": .string("main"),
+                "title": .string("Add development publish gate"),
+                "body": .string("## Summary\n- Add approval-gated publish tools\n")
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .failed)
+        XCTAssertEqual(
+            result.output["publishError"],
+            .string("Remote branch \(branchName) points to \(remoteHeadOID), but local HEAD is \(localHeadOID); push the reviewed commit before creating a pull request.")
+        )
+        XCTAssertEqual(result.output["remoteRepository"], .string("albert-einshutoin/soloPM"))
+        XCTAssertEqual(result.output["localHeadOid"], .string(localHeadOID))
+        XCTAssertEqual(result.output["remoteHeadOid"], .string(remoteHeadOID))
+        XCTAssertEqual(githubRunner.recordedInvocations, [])
+    }
+
+    func testCreatePullRequestReturnsFailedResultWhenRemoteHeadIsMissing() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try createPublishProject(stores: stores, workspace: workspace)
+        let branchName = "feature/solopm-\(project.id)-publish-gate"
+        let localHeadOID = "0123456789abcdef0123456789abcdef01234567"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        gitRunner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
+        )
+        stubOriginPush(gitRunner)
+        gitRunner.stub(
+            arguments: ["rev-parse", "HEAD"],
+            output: GitCommandOutput(standardOutput: "\(localHeadOID)\n", standardError: "", exitCode: 0)
+        )
+        gitRunner.stub(
+            arguments: ["ls-remote", "https://github.com/albert-einshutoin/soloPM.git", "refs/heads/\(branchName)"],
+            output: GitCommandOutput(standardOutput: "", standardError: "", exitCode: 0)
+        )
+        let githubRunner = RecordingGitHubCLICommandRunner()
+        let tool = DevelopmentPullRequestCreationTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
+        )
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "branchName": .string(branchName),
+                "baseBranch": .string("main"),
+                "title": .string("Add development publish gate"),
+                "body": .string("## Summary\n- Add approval-gated publish tools\n")
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .failed)
+        XCTAssertEqual(
+            result.output["publishError"],
+            .string("Remote branch \(branchName) is missing; push the reviewed branch before creating a pull request.")
+        )
+        XCTAssertEqual(result.output["remoteRepository"], .string("albert-einshutoin/soloPM"))
+        XCTAssertEqual(result.output["localHeadOid"], .string(localHeadOID))
+        XCTAssertNil(result.output["remoteHeadOid"])
+        XCTAssertEqual(githubRunner.recordedInvocations, [])
+    }
+
+    func testCreatePullRequestRejectsReturnedPullRequestURLFromDifferentRepository() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try createPublishProject(stores: stores, workspace: workspace)
+        let branchName = "feature/solopm-\(project.id)-publish-gate"
+        let gitRunner = RecordingDevelopmentGitRunner()
+        stubPullRequestCreationPreflight(gitRunner, branchName: branchName, remoteURL: "https://github.com/acme/solo-pm.git")
+        let githubRunner = RecordingGitHubCLICommandRunner(
+            output: GitHubCLICommandOutput(
+                standardOutput: "https://github.com/other/solo-pm/pull/106\n",
+                standardError: "",
+                exitCode: 0
+            )
+        )
+        let tool = DevelopmentPullRequestCreationTool(
+            projectStore: stores.projects,
+            gitRunner: gitRunner,
+            githubRunner: githubRunner,
+            bookmarkResolver: publishBookmarkResolver(for: workspace)
+        )
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "branchName": .string(branchName),
+                "baseBranch": .string("main"),
+                "title": .string("Add development publish gate"),
+                "body": .string("## Summary\n- Add approval-gated publish tools\n")
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .failed)
+        XCTAssertEqual(result.output["publishError"], .string("Pull request repository other/solo-pm does not match origin repository acme/solo-pm."))
+        XCTAssertEqual(result.output["remoteRepository"], .string("acme/solo-pm"))
+        XCTAssertEqual(result.output["pullRequestURL"], .string("https://github.com/other/solo-pm/pull/106"))
+        XCTAssertEqual(result.rollbackMetadata["pullRequestURL"], .string("https://github.com/other/solo-pm/pull/106"))
+        XCTAssertEqual(githubRunner.recordedInvocations.count, 1)
+        XCTAssertEqual(Array(githubRunner.recordedInvocations[0].arguments.prefix(4)), [
+            "pr", "create", "--repo", "acme/solo-pm"
+        ])
     }
 
     func testCreatePullRequestRequiresApprovedBookmarkBeforeExternalGitHubWrite() throws {
@@ -633,10 +878,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let project = try createPublishProject(stores: stores, workspace: workspace)
         let branchName = "feature/solopm-\(project.id)-publish-gate"
         let gitRunner = RecordingDevelopmentGitRunner()
-        gitRunner.stub(
-            arguments: ["status", "--short", "--branch"],
-            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
-        )
+        stubPullRequestCreationPreflight(gitRunner, branchName: branchName)
         let githubRunner = RecordingGitHubCLICommandRunner(
             output: GitHubCLICommandOutput(
                 standardOutput: "https://user:token@github.com/albert-einshutoin/soloPM/pull/106\n",
@@ -786,10 +1028,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let project = try createPublishProject(stores: stores, workspace: workspace)
         let branchName = "feature/solopm-\(project.id)-publish-gate"
         let gitRunner = RecordingDevelopmentGitRunner()
-        gitRunner.stub(
-            arguments: ["status", "--short", "--branch"],
-            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
-        )
+        stubPullRequestCreationPreflight(gitRunner, branchName: branchName)
         let githubRunner = RecordingGitHubCLICommandRunner(
             output: GitHubCLICommandOutput(
                 standardOutput: "",
@@ -1489,6 +1728,11 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         XCTAssertTrue(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["status", "--short", "--branch"]))
         XCTAssertTrue(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["remote", "get-url", "origin"]))
         XCTAssertTrue(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["remote", "get-url", "--push", "--all", "origin"]))
+        XCTAssertTrue(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["rev-parse", "HEAD"]))
+        XCTAssertTrue(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["ls-remote", "origin", "refs/heads/feature/solopm-1-task"]))
+        XCTAssertTrue(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["ls-remote", "git@github.com:albert-einshutoin/soloPM.git", "refs/heads/feature/solopm-1-task"]))
+        XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["ls-remote", "ssh://git@example.com/albert-einshutoin/soloPM.git", "refs/heads/feature/solopm-1-task"]))
+        XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["ls-remote", "origin", "refs/heads/main"]))
         XCTAssertTrue(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push", "-u", "origin", "feature/solopm-1-task"]))
         XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push"]))
         XCTAssertFalse(DevelopmentPublishGitCommandPolicy.isAllowed(arguments: ["push", "--force", "origin", "feature/solopm-1-task"]))
@@ -1501,6 +1745,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         let bodyFile = FileManager.default.temporaryDirectory.appendingPathComponent("solopm-pr-body-test.md").path
         XCTAssertTrue(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
             "pr", "create",
+            "--repo", "albert-einshutoin/soloPM",
             "--base", "main",
             "--head", "feature/solopm-1-task",
             "--title", "Add publish gate",
@@ -1508,6 +1753,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         ]))
         XCTAssertFalse(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
             "pr", "create",
+            "--repo", "albert-einshutoin/soloPM",
             "--base", "main",
             "--head", "main",
             "--title", "Add publish gate",
@@ -1516,6 +1762,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         XCTAssertFalse(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: ["pr", "merge", "1"]))
         XCTAssertFalse(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
             "pr", "create",
+            "--repo", "albert-einshutoin/soloPM",
             "--base", "main",
             "--head", "feature/solopm-1-task",
             "--title", "Add publish gate",
@@ -1523,6 +1770,7 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         ]))
         XCTAssertFalse(DevelopmentGitHubPRCommandPolicy.isAllowed(arguments: [
             "pr", "create",
+            "--repo", "albert-einshutoin/soloPM",
             "--base", "main",
             "--head", "feature/solopm-1-task",
             "--title", "Add publish gate",
@@ -1696,6 +1944,42 @@ final class DevelopmentPRWorkflowTests: XCTestCase {
         runner.stub(
             arguments: ["remote", "get-url", "origin"],
             output: GitCommandOutput(standardOutput: "\(remoteURL)\n", standardError: "", exitCode: 0)
+        )
+    }
+
+    private func stubOriginPush(
+        _ runner: RecordingDevelopmentGitRunner,
+        remoteURL: String = "https://github.com/albert-einshutoin/soloPM.git"
+    ) {
+        runner.stub(
+            arguments: ["remote", "get-url", "--push", "--all", "origin"],
+            output: GitCommandOutput(standardOutput: "\(remoteURL)\n", standardError: "", exitCode: 0)
+        )
+    }
+
+    private func stubPullRequestCreationPreflight(
+        _ runner: RecordingDevelopmentGitRunner,
+        branchName: String,
+        remoteURL: String = "https://github.com/albert-einshutoin/soloPM.git",
+        localHeadOID: String = "0123456789abcdef0123456789abcdef01234567",
+        remoteHeadOID: String? = nil
+    ) {
+        runner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
+        )
+        stubOriginPush(runner, remoteURL: remoteURL)
+        runner.stub(
+            arguments: ["rev-parse", "HEAD"],
+            output: GitCommandOutput(standardOutput: "\(localHeadOID)\n", standardError: "", exitCode: 0)
+        )
+        runner.stub(
+            arguments: ["ls-remote", remoteURL, "refs/heads/\(branchName)"],
+            output: GitCommandOutput(
+                standardOutput: "\(remoteHeadOID ?? localHeadOID)\trefs/heads/\(branchName)\n",
+                standardError: "",
+                exitCode: 0
+            )
         )
     }
 
