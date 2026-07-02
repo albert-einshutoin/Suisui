@@ -5903,12 +5903,25 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
         XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH=\"$database_path\""))
         XCTAssertTrue(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
+        XCTAssertTrue(script.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_FIXTURE_BOOKMARK=1"))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$seed_project_id\""))
+        XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"assistant-queue\""))
         XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID=\"$seed_task_id\""))
+        XCTAssertTrue(script.contains("receipt_directory=\"$UI_HOME/Library/Application Support/SoloPM/ExecutionReceipts\""))
+        XCTAssertTrue(script.contains("solopm-runtime-development-pr-smoke:"))
+        XCTAssertTrue(script.contains("fixture_git()"))
+        XCTAssertTrue(script.contains("-c commit.gpgsign=false"))
+        XCTAssertTrue(script.contains("-c core.hooksPath=/dev/null"))
+        XCTAssertTrue(script.contains("fixture_git -C \"$UI_WORKSPACE\" init"))
         XCTAssertTrue(script.contains("project-development-automation-status"))
         XCTAssertTrue(script.contains("project-development-automation-branch-preview"))
         XCTAssertTrue(script.contains("project-development-automation-queue"))
         XCTAssertTrue(script.contains("project-development-automation-queue-handoff"))
+        XCTAssertTrue(script.contains("assistant-queue-workflow"))
+        XCTAssertTrue(script.contains("assistant-queue-row-$queued_item_id"))
+        XCTAssertTrue(script.contains("assistant-queue-approve-$queued_item_id"))
+        XCTAssertTrue(script.contains("assistant-queue-run-$queued_item_id"))
+        XCTAssertTrue(script.contains("wait_for_receipt_json \"visible Assistant Queue branch preparation\""))
         XCTAssertTrue(script.contains("ensure_no_existing_app_process"))
         XCTAssertTrue(script.contains("the smoke only terminates its own launched PID"))
         XCTAssertTrue(script.contains("kill -9 \"$app_pid\""))
@@ -5925,15 +5938,30 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("while ! pgrep -x \"$APP_NAME\""))
         XCTAssertTrue(script.contains("payload_kind='action_plan'"))
         XCTAssertTrue(script.contains("state='waitingReview'"))
+        XCTAssertTrue(script.contains("state='approved'"))
+        XCTAssertTrue(script.contains("state='done'"))
         XCTAssertTrue(script.contains("approval_json IS NULL"))
+        XCTAssertTrue(script.contains("approval_json IS NOT NULL"))
+        XCTAssertTrue(script.contains("struct Receipt: Decodable"))
+        XCTAssertTrue(script.contains("decoder.decode(Receipt.self"))
         XCTAssertTrue(script.contains("required_capabilities_json LIKE '%developmentPreparePullRequestWorkflow%'"))
         XCTAssertTrue(script.contains("required_capabilities_json LIKE '%providerExecutionApproval%'"))
         XCTAssertTrue(script.contains("requiresPushApproval=true"))
         XCTAssertTrue(script.contains("requiresPullRequestApproval=true"))
         XCTAssertTrue(script.contains("No live push, GitHub PR, review gate, or merge is created by this smoke"))
         XCTAssertTrue(script.contains("visible Project automation panel queued branch automation into Assistant Queue"))
-        XCTAssertFalse(script.contains("gh pr create"))
-        XCTAssertFalse(script.contains("git push"))
+        XCTAssertTrue(script.contains("visible Assistant Queue approved and executed local branch preparation"))
+        for prohibitedPattern in [
+            #"\b(?:git|fixture_git)\b[^\n]*\bpush\b"#,
+            #"\bgh\b[^\n]*\bpr\s+create\b"#,
+            #"\bcurl\b[^\n]*(?:-X\s+POST|--request\s+POST|api\.github\.com)"#,
+            #"\bssh\b[^\n]*github\.com"#
+        ] {
+            XCTAssertNil(
+                script.range(of: prohibitedPattern, options: .regularExpression),
+                "runtime development PR smoke must not contain external write command matching \(prohibitedPattern)"
+            )
+        }
 
         XCTAssertTrue(workflow.contains("\"development_pr\""))
         XCTAssertTrue(workflow.contains("run_development_pr()"))
