@@ -3616,7 +3616,7 @@ private struct ProjectDevelopmentAutomationPanel: View {
                         .accessibilityIdentifier("project-development-automation-progress-base")
                 }
 
-                HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 8) {
                     Button {
                         _ = viewModel.enqueueDevelopmentPullRequestLifecycleReview(
                             for: project,
