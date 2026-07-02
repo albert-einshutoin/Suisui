@@ -50,6 +50,15 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(script.contains("<false/>"))
     }
 
+    func testBundleCarriesSignedLocalLicensePublicKeyMetadata() throws {
+        let script = try readPackageFile("script/build_and_run.sh")
+
+        XCTAssertTrue(script.contains("LOCAL_LICENSE_PUBLIC_KEY_BASE64=\"${SOLOPM_LOCAL_LICENSE_PUBLIC_KEY_BASE64:-${SOLOPM_LOCAL_LICENSE_PUBLIC_KEY:-}}\""))
+        XCTAssertTrue(script.contains("xml_escape()"))
+        XCTAssertTrue(script.contains("<key>SoloPMLocalLicensePublicKey</key>"))
+        XCTAssertTrue(script.contains("$(xml_escape \"$LOCAL_LICENSE_PUBLIC_KEY_BASE64\")"))
+    }
+
     func testAppDelegateActivatesRegularAppOnLaunch() throws {
         let source = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 

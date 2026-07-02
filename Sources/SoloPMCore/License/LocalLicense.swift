@@ -83,8 +83,8 @@ public struct LocalLicenseValidator: Sendable {
     private let personalInformationFields: Set<String> = [
         "email",
         "name",
-        "fullName",
-        "userName",
+        "fullname",
+        "username",
         "phone",
         "address"
     ]
@@ -121,9 +121,24 @@ public struct LocalLicenseValidator: Sendable {
             throw LicenseValidationError(message: "License file is not valid JSON.")
         }
 
-        let keys = Set(dictionary.keys)
-        if !keys.intersection(personalInformationFields).isEmpty {
-            throw LicenseValidationError(message: "License file must not contain personal information fields.")
+        try rejectPersonalInformationFields(in: dictionary)
+    }
+
+    private func rejectPersonalInformationFields(in object: Any) throws {
+        if let dictionary = object as? [String: Any] {
+            for (key, value) in dictionary {
+                // Local license JSON can live in Keychain and support logs, so
+                // the validator rejects PII anywhere in the payload, not only
+                // at the top level.
+                if personalInformationFields.contains(key.lowercased()) {
+                    throw LicenseValidationError(message: "License file must not contain personal information fields.")
+                }
+                try rejectPersonalInformationFields(in: value)
+            }
+        } else if let array = object as? [Any] {
+            for value in array {
+                try rejectPersonalInformationFields(in: value)
+            }
         }
     }
 }

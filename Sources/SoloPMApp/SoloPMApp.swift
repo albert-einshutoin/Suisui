@@ -4352,7 +4352,7 @@ private enum AppRuntimeFactory {
             let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
             let executionReceiptStore = try? makeExecutionReceiptStore()
             let secretStore = makeSecretStore()
-            let entitlementStore = KeychainEntitlementStore(secretStore: secretStore)
+            let entitlementStore = makeEntitlementStore(secretStore: secretStore)
             let googleCalendarSync = makeSettingsBackedGoogleCalendarSyncController(
                 connection: connection,
                 entitlementStore: entitlementStore,
@@ -4567,9 +4567,10 @@ private enum AppRuntimeFactory {
 
     @MainActor
     static func makeSyncSettingsViewModel() -> SyncSettingsViewModel {
-        SyncSettingsViewModel(
+        let secretStore = makeSecretStore()
+        return SyncSettingsViewModel(
             service: SyncService(
-                entitlementStore: KeychainEntitlementStore(secretStore: makeSecretStore()),
+                entitlementStore: makeEntitlementStore(secretStore: secretStore),
                 configuration: .notConfigured,
                 networkClient: UnavailableSyncNetworkClient()
             )
@@ -4582,7 +4583,7 @@ private enum AppRuntimeFactory {
             let secretStore = makeSecretStore()
             let runtimeSettings = loadRuntimeAppSettings()
             return try GoogleCalendarAppRuntimeFactory.syncStatus(
-                entitlementStore: KeychainEntitlementStore(secretStore: secretStore),
+                entitlementStore: makeEntitlementStore(secretStore: secretStore),
                 secretStore: secretStore,
                 connection: connection,
                 calendarID: runtimeSettings.googleCalendarID,
@@ -5021,6 +5022,21 @@ private enum AppRuntimeFactory {
             httpClient: URLSessionSynchronousHTTPDataClient(),
             credentialStore: credentialStore
         )
+    }
+
+    private static func makeEntitlementStore(secretStore: any SecretStore) -> KeychainEntitlementStore {
+        KeychainEntitlementStore(
+            secretStore: secretStore,
+            verifier: makeLocalLicenseVerifier()
+        )
+    }
+
+    private static func makeLocalLicenseVerifier() -> any LocalLicenseVerifier {
+        guard let publicKeyBase64 = Bundle.main.object(forInfoDictionaryKey: "SoloPMLocalLicensePublicKey") as? String,
+              !publicKeyBase64.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return NoBundledLocalLicenseVerifier()
+        }
+        return SignedLocalLicenseVerifier(publicKeyBase64: publicKeyBase64)
     }
 
     private static func googleCalendarOAuthClientID() -> String? {

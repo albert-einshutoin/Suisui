@@ -50,6 +50,7 @@ COPYRIGHT="${COPYRIGHT:?COPYRIGHT is required}"
 BUILD_CONFIGURATION="${SOLOPM_BUILD_CONFIGURATION:-debug}"
 SPARKLE_FEED_URL="${SOLOPM_SPARKLE_FEED_URL:-${SPARKLE_FEED_URL:-}}"
 SPARKLE_PUBLIC_ED_KEY="${SOLOPM_SPARKLE_PUBLIC_ED_KEY:-${SPARKLE_PUBLIC_ED_KEY:-}}"
+LOCAL_LICENSE_PUBLIC_KEY_BASE64="${SOLOPM_LOCAL_LICENSE_PUBLIC_KEY_BASE64:-${SOLOPM_LOCAL_LICENSE_PUBLIC_KEY:-}}"
 VERIFY_TIMEOUT_SECONDS="${SOLOPM_VERIFY_TIMEOUT_SECONDS:-12}"
 PROJECT_BOARD_WINDOW_NAME="${SOLOPM_PROJECT_BOARD_WINDOW_NAME:-SoloPM}"
 BUILD_AND_RUN_LOCK_DIR="$BUILD_AND_RUN_TMP_ROOT/build_and_run.lock"
@@ -106,6 +107,16 @@ copy_app_localizations() {
   while IFS= read -r -d '' localization_dir; do
     /usr/bin/ditto "$localization_dir" "$APP_RESOURCES/$(basename "$localization_dir")"
   done < <(find "$APP_LOCALIZATION_SOURCE" -maxdepth 1 -type d -name "*.lproj" -print0)
+}
+
+xml_escape() {
+  local value="$1"
+  value="${value//&/&amp;}"
+  value="${value//</&lt;}"
+  value="${value//>/&gt;}"
+  value="${value//\"/&quot;}"
+  value="${value//\'/&apos;}"
+  printf '%s' "$value"
 }
 
 acquire_build_and_run_lock() {
@@ -208,6 +219,8 @@ done < <(find "$BUILD_DIR" -maxdepth 1 -type f -name "*.dylib" -print0)
   printf '%s\n' '  <false/>'
   printf '%s\n' '  <key>NSMicrophoneUsageDescription</key>'
   printf '%s\n' '  <string>SoloPM uses the microphone when you explicitly start voice capture.</string>'
+  printf '%s\n' '  <key>SoloPMLocalLicensePublicKey</key>'
+  printf '  <string>%s</string>\n' "$(xml_escape "$LOCAL_LICENSE_PUBLIC_KEY_BASE64")"
   printf '%s\n' '  <key>NSHumanReadableCopyright</key>'
   printf '  <string>%s</string>\n' "$COPYRIGHT"
   printf '%s\n' '</dict>'
