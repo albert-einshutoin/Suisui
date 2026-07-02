@@ -37,6 +37,9 @@ app_pid=""
 seed_project_id=""
 seed_task_id=""
 queued_item_id=""
+repository_edit_item_id=""
+visible_edit_relative_path="runtime-development-pr-visible-edit.md"
+visible_edit_contents="Visible repository edit smoke proof"
 failure_reason="development PR smoke failed"
 
 mkdir -p "$ARTIFACT_DIR" "$WORKSPACE_ROOT" "$UI_ROOT" "$UI_HOME"
@@ -83,6 +86,8 @@ write_artifact() {
     printf -- '- Queued project: `%s`\n' "${seed_project_id:-not-seeded}"
     printf -- '- Queued task: `%s`\n' "${seed_task_id:-not-seeded}"
     printf -- '- Assistant Queue item: `%s`\n' "${queued_item_id:-not-queued}"
+    printf -- '- Repository edit Assistant Queue item: `%s`\n' "${repository_edit_item_id:-not-queued}"
+    printf -- '- Repository edit path: `%s`\n' "$visible_edit_relative_path"
     printf -- '- Approval boundary: `requiresPushApproval=true`, `requiresPullRequestApproval=true`\n'
     printf -- '- External writes: No live push, GitHub PR, review gate, or merge is created by this smoke.\n'
     printf -- '- Workspace retention requested: `%s`\n' "$KEEP_WORKSPACE"
@@ -440,6 +445,110 @@ pressButtonContainingBounded() {
   done
 }
 
+setTextFieldContaining() {
+  local fragment="$1"
+  local replacement="$2"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+
+  while true; do
+    if /usr/bin/osascript - "$APP_NAME" "$fragment" "$replacement" <<'APPLESCRIPT'
+on run argv
+  set appName to item 1 of argv
+  set fragment to item 2 of argv
+  set replacement to item 3 of argv
+  tell application "System Events"
+    if not (exists process appName) then error appName & " process is not visible to System Events"
+    tell process appName
+      set windowCount to count of windows
+      if windowCount < 1 then error appName & " has no visible windows"
+      try
+        set frontmost to true
+      end try
+      repeat with windowIndex from 1 to windowCount
+        set currentWindow to window windowIndex
+        try
+          perform action "AXRaise" of currentWindow
+        end try
+        set axItems to entire contents of currentWindow
+        repeat with axItem in axItems
+          set itemRole to ""
+          try
+            set itemRole to role of axItem as text
+          end try
+          if itemRole is "AXTextField" or itemRole is "AXTextArea" then
+            set fieldIdentifier to ""
+            set fieldName to ""
+            set fieldTitle to ""
+            set fieldDescription to ""
+            set fieldHelp to ""
+            set fieldValue to ""
+            try
+              set fieldIdentifier to value of attribute "AXIdentifier" of axItem as text
+            end try
+            try
+              set fieldName to name of axItem as text
+            end try
+            try
+              set fieldTitle to value of attribute "AXTitle" of axItem as text
+            end try
+            try
+              set fieldDescription to description of axItem as text
+            end try
+            try
+              set fieldHelp to value of attribute "AXHelp" of axItem as text
+            end try
+            try
+              set fieldValue to value of axItem as text
+            end try
+            set signalText to fieldIdentifier & " " & fieldName & " " & fieldTitle & " " & fieldDescription & " " & fieldHelp & " " & fieldValue
+            if signalText contains fragment then
+              set previousClipboard to ""
+              try
+                set previousClipboard to the clipboard as text
+              end try
+              perform action "AXPress" of axItem
+              set focused of axItem to true
+              delay 0.2
+              set the clipboard to replacement
+              keystroke "a" using command down
+              delay 0.1
+              key code 51
+              delay 0.1
+              keystroke "v" using command down
+              delay 0.3
+              -- AXTextArea treats Tab as file content, so only text fields use
+              -- Tab to leave focus after pasting reviewed repository contents.
+              if itemRole is not "AXTextArea" then
+                key code 48
+                delay 0.2
+              end if
+              try
+                set the clipboard to previousClipboard
+              end try
+              delay 0.2
+              return "set text field " & fragment
+            end if
+          end if
+        end repeat
+      end repeat
+    end tell
+  end tell
+  error "text field signal not found: " & fragment
+end run
+APPLESCRIPT
+    then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: failed to set text field in AX tree: $fragment" >&2
+      return 1
+    fi
+    activate_app
+    wait_for_visible_windows >/dev/null 2>&1 || true
+    sleep 1
+  done
+}
+
 waitForAXSubtreeMarkerContaining() {
   local identifier_fragment="$1"
   local required_text="$2"
@@ -649,18 +758,18 @@ WHERE id LIKE 'action-plan:development-pr-prepare:$seed_project_id:$seed_task_id
   queued_item_id="$(wait_for_nonempty_value \
     "queued development branch prepare Assistant Queue item id" \
     "SELECT id FROM assistant_queue_items WHERE id LIKE 'action-plan:development-pr-prepare:$seed_project_id:$seed_task_id:%' ORDER BY updated_at DESC LIMIT 1;")"
-  waitForAXMarkerContaining "project-development-automation-queue-handoff"
 }
 
 wait_for_receipt_json() {
   local label="$1"
   local item_id="$2"
+  local expected_tool="$3"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   local receipt_file=""
 
   while true; do
     if [[ -d "$receipt_directory" ]]; then
-      receipt_file="$(/usr/bin/swift - "$receipt_directory" "$item_id" <<'SWIFT' 2>/dev/null || true
+      receipt_file="$(/usr/bin/swift - "$receipt_directory" "$item_id" "$expected_tool" <<'SWIFT' 2>/dev/null || true
 import Foundation
 
 struct Receipt: Decodable {
@@ -671,6 +780,7 @@ struct Receipt: Decodable {
 
 let directory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
 let itemID = CommandLine.arguments[2]
+let expectedTool = CommandLine.arguments[3]
 let decoder = JSONDecoder()
 let files = (try? FileManager.default.contentsOfDirectory(
     at: directory,
@@ -682,7 +792,7 @@ for file in files where file.pathExtension == "json" {
     guard let data = try? Data(contentsOf: file),
           let receipt = try? decoder.decode(Receipt.self, from: data),
           receipt.assistantQueueItemID == itemID,
-          receipt.primaryToolName == "development.pr_workflow.prepare",
+          receipt.primaryToolName == expectedTool,
           receipt.status == "succeeded" else {
         continue
     }
@@ -743,7 +853,7 @@ WHERE id='$escaped_item_id';
     "assistant-queue-run-$queued_item_id" \
     "$done_sql" \
     "1"
-  wait_for_receipt_json "visible Assistant Queue branch preparation" "$queued_item_id"
+  wait_for_receipt_json "visible Assistant Queue branch preparation" "$queued_item_id" "development.pr_workflow.prepare"
 
   current_branch="$(fixture_git -C "$UI_WORKSPACE" branch --show-current)"
   case "$current_branch" in
@@ -755,6 +865,93 @@ WHERE id='$escaped_item_id';
       return 1
       ;;
   esac
+}
+
+verify_visible_repository_edit_handoff() {
+  local escaped_relative_path
+  local queue_sql
+  escaped_relative_path="$(sql_escape "$visible_edit_relative_path")"
+  queue_sql="
+SELECT CASE WHEN count(*) = 1 THEN 1 ELSE 0 END
+FROM assistant_queue_items
+WHERE id LIKE 'action-plan:development-repository-edit:$seed_project_id:$seed_task_id:%'
+  AND payload_kind='action_plan'
+  AND state='waitingReview'
+  AND risk_level='write'
+  AND approval_json IS NULL
+  AND payload_json LIKE '%development.repository.create_file%'
+  AND payload_json LIKE '%$escaped_relative_path%'
+  AND required_capabilities_json LIKE '%providerExecutionApproval%'
+  AND (
+    required_capabilities_json LIKE '%development.repository.create_file%'
+    OR required_capabilities_json LIKE '%developmentRepositoryCreateFile%'
+  );
+"
+
+  waitForAXMarkerContaining "project-development-automation-status"
+  setTextFieldContaining "project-development-automation-edit-path" "$visible_edit_relative_path"
+  setTextFieldContaining "project-development-automation-edit-contents" "$visible_edit_contents"
+  waitForAXSubtreeMarkerContaining "project-development-automation-edit-preview" "$visible_edit_relative_path"
+  pressButtonUntilSQLiteValue \
+    "visible Project automation panel queued repository edit review into Assistant Queue" \
+    "project-development-automation-edit-queue" \
+    "$queue_sql" \
+    "1"
+  repository_edit_item_id="$(wait_for_nonempty_value \
+    "queued development repository edit Assistant Queue item id" \
+    "SELECT id FROM assistant_queue_items WHERE id LIKE 'action-plan:development-repository-edit:$seed_project_id:$seed_task_id:%' ORDER BY updated_at DESC LIMIT 1;")"
+}
+
+verify_visible_assistant_queue_repository_edit_execution() {
+  if [[ -z "$repository_edit_item_id" ]]; then
+    echo "BLOCKER: repository edit Assistant Queue item id is missing before approve/run" >&2
+    return 1
+  fi
+
+  local escaped_item_id
+  local approval_sql
+  local done_sql
+  local edited_path
+  local actual_contents
+  escaped_item_id="$(sql_escape "$repository_edit_item_id")"
+  approval_sql="
+SELECT CASE WHEN state='approved' AND approval_json IS NOT NULL THEN 1 ELSE 0 END
+FROM assistant_queue_items
+WHERE id='$escaped_item_id';
+"
+  done_sql="
+SELECT CASE WHEN state='done' AND approval_json IS NOT NULL THEN 1 ELSE 0 END
+FROM assistant_queue_items
+WHERE id='$escaped_item_id';
+"
+
+  launch_app_for_assistant_queue
+  wait_for_database_table "assistant_queue_items"
+  waitForAXMarkerContaining "assistant-queue-workflow"
+  waitForAXMarkerContaining "assistant-queue-row-$repository_edit_item_id"
+  pressButtonUntilSQLiteValue \
+    "visible Assistant Queue approved repository edit" \
+    "assistant-queue-approve-$repository_edit_item_id" \
+    "$approval_sql" \
+    "1"
+  pressButtonUntilSQLiteValue \
+    "visible Assistant Queue approved and executed repository edit" \
+    "assistant-queue-run-$repository_edit_item_id" \
+    "$done_sql" \
+    "1"
+  wait_for_receipt_json "visible Assistant Queue repository edit" "$repository_edit_item_id" "development.repository.create_file"
+
+  edited_path="$UI_WORKSPACE/$visible_edit_relative_path"
+  if [[ ! -f "$edited_path" ]]; then
+    echo "BLOCKER: repository edit did not create expected file: $edited_path" >&2
+    return 1
+  fi
+  actual_contents="$(cat "$edited_path")"
+  if [[ "$actual_contents" != "$visible_edit_contents" ]]; then
+    echo "BLOCKER: repository edit file contents mismatch for $edited_path" >&2
+    return 1
+  fi
+  printf "OK: visible repository edit wrote %s\n" "$(relative_path "$edited_path")"
 }
 
 printf "== Runtime development PR smoke ==\n"
@@ -805,5 +1002,12 @@ verify_visible_queue_handoff
 failure_reason="visible Assistant Queue branch preparation execution failed"
 verify_visible_assistant_queue_prepare_execution
 
-write_artifact "passed" "approved project directory fixture flow reached local commit, fake push, fake PR creation, fake review gate, fake merge, visible Project automation panel queued branch automation into Assistant Queue, and visible Assistant Queue approved and executed local branch preparation"
+failure_reason="visible Project detail repository edit handoff failed"
+launch_app_for_development_detail
+verify_visible_repository_edit_handoff
+
+failure_reason="visible Assistant Queue repository edit execution failed"
+verify_visible_assistant_queue_repository_edit_execution
+
+write_artifact "passed" "approved project directory fixture flow reached local commit, fake push, fake PR creation, fake review gate, fake merge, visible Project automation panel queued branch automation into Assistant Queue, visible Assistant Queue approved and executed local branch preparation, visible Project automation panel queued repository edit review into Assistant Queue, and visible Assistant Queue approved and executed repository edit"
 printf 'OK: runtime development PR smoke passed. Evidence: %s\n' "$(relative_path "$ARTIFACT_FILE")"

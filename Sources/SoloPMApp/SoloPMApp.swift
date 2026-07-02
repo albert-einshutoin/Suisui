@@ -479,6 +479,8 @@ private struct ProjectDevelopmentAutomationRecoveryView: View {
     let projectID: Int64
     @ObservedObject var viewModel: ProjectBoardViewModel
     @State private var didLoad = false
+    @State private var repositoryEditRelativePath = ""
+    @State private var repositoryEditContents = ""
 
     private var project: ProjectBoardProject? {
         viewModel.snapshot.projects.first { $0.id == projectID }
@@ -500,6 +502,26 @@ private struct ProjectDevelopmentAutomationRecoveryView: View {
             return nil
         }
         return viewModel.developmentAutomationProgress(for: project, task: task)
+    }
+
+    private var canQueueRepositoryEditReview: Bool {
+        progress?.canQueueRepositoryEditReview == true
+            && !repositoryEditRelativePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !repositoryEditContents.isEmpty
+    }
+
+    private var repositoryEditPreview: ProjectDevelopmentAutomationApprovalPreview? {
+        guard let project else {
+            return nil
+        }
+        return viewModel.developmentRepositoryEditPreview(
+            for: project,
+            task: task,
+            operation: .create,
+            relativePath: repositoryEditRelativePath,
+            contents: repositoryEditContents,
+            expectedSHA256: nil
+        )
     }
 
     var body: some View {
@@ -546,6 +568,64 @@ private struct ProjectDevelopmentAutomationRecoveryView: View {
                 .help("Adds the development branch preparation plan to Assistant Queue without creating a branch.")
                 .accessibilityIdentifier("project-development-automation-queue")
                 .accessibilityHint("Adds the development branch preparation plan to Assistant Queue for review and approval.")
+
+                // The recovery surface mirrors the next approval step so runtime
+                // smoke can prove repository edits stay review-gated without
+                // loading the full board's heavier AX tree.
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Repository edit review")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    TextField("Repository file path", text: $repositoryEditRelativePath)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("project-development-automation-edit-path")
+
+                    TextEditor(text: $repositoryEditContents)
+                        .font(.caption)
+                        .frame(minHeight: 90)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(.quaternary)
+                        )
+                        .accessibilityLabel("Repository file contents")
+                        .accessibilityIdentifier("project-development-automation-edit-contents")
+
+                    if let repositoryEditPreview {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label(LocalizedStringKey(repositoryEditPreview.title), systemImage: "doc.text.magnifyingglass")
+                                .font(.caption)
+                                .foregroundStyle(Color.accentColor)
+
+                            ForEach(repositoryEditPreview.rows) { row in
+                                LabeledContent(LocalizedStringKey(row.label), value: row.value)
+                                    .font(.caption2)
+                                    .textSelection(.enabled)
+                                    .accessibilityIdentifier("project-development-automation-edit-preview-row-\(row.id)")
+                            }
+                        }
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("project-development-automation-edit-preview")
+                        .accessibilityHint("Shows the reviewed repository operation, path, branch, replacement summary, and content digest before queueing approval.")
+                    }
+
+                    Button {
+                        _ = viewModel.enqueueDevelopmentRepositoryEditReview(
+                            for: project,
+                            task: task,
+                            operation: .create,
+                            relativePath: repositoryEditRelativePath,
+                            contents: repositoryEditContents,
+                            expectedSHA256: nil
+                        )
+                    } label: {
+                        Label("Queue repository edit review", systemImage: "doc.badge.gearshape")
+                    }
+                    .disabled(!canQueueRepositoryEditReview)
+                    .help("Queues a scoped create file review after branch preparation evidence exists.")
+                    .accessibilityIdentifier("project-development-automation-edit-queue")
+                    .accessibilityHint("Adds the reviewed repository edit to Assistant Queue before verification.")
+                }
 
                 if let queueHandoff = progress?.queueHandoff {
                     VStack(alignment: .leading, spacing: 4) {

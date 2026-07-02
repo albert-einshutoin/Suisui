@@ -5884,6 +5884,7 @@ final class ReleasePipelineTests: XCTestCase {
     func testRuntimeDevelopmentPRSmokeScriptRunsApprovedDirectoryFixtureFlow() throws {
         let script = try readPackageFile("script/check_runtime_development_pr_smoke.sh")
         let workflow = try readPackageFile("script/check_runtime_workflow_smoke.sh")
+        let appSource = try readPackageFile("Sources/SoloPMApp/SoloPMApp.swift")
 
         XCTAssertTrue(script.contains("swift test --filter DevelopmentAutomationRuntimeSmokeTests/testApprovedProjectDirectoryCanEditVerifyCommitAndPreparePullRequestBranch --quiet"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_ARTIFACT_DIR"))
@@ -5918,11 +5919,21 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("project-development-automation-branch-preview"))
         XCTAssertTrue(script.contains("project-development-automation-queue"))
         XCTAssertTrue(script.contains("project-development-automation-queue-handoff"))
+        XCTAssertTrue(script.contains("project-development-automation-edit-path"))
+        XCTAssertTrue(script.contains("project-development-automation-edit-contents"))
+        XCTAssertTrue(script.contains("project-development-automation-edit-preview"))
+        XCTAssertTrue(script.contains("project-development-automation-edit-queue"))
+        XCTAssertTrue(script.contains("setTextFieldContaining()"))
+        XCTAssertTrue(script.contains("if itemRole is not \"AXTextArea\" then"))
         XCTAssertTrue(script.contains("assistant-queue-workflow"))
         XCTAssertTrue(script.contains("assistant-queue-row-$queued_item_id"))
         XCTAssertTrue(script.contains("assistant-queue-approve-$queued_item_id"))
         XCTAssertTrue(script.contains("assistant-queue-run-$queued_item_id"))
-        XCTAssertTrue(script.contains("wait_for_receipt_json \"visible Assistant Queue branch preparation\""))
+        XCTAssertTrue(script.contains("assistant-queue-row-$repository_edit_item_id"))
+        XCTAssertTrue(script.contains("assistant-queue-approve-$repository_edit_item_id"))
+        XCTAssertTrue(script.contains("assistant-queue-run-$repository_edit_item_id"))
+        XCTAssertTrue(script.contains("wait_for_receipt_json \"visible Assistant Queue branch preparation\" \"$queued_item_id\" \"development.pr_workflow.prepare\""))
+        XCTAssertTrue(script.contains("wait_for_receipt_json \"visible Assistant Queue repository edit\" \"$repository_edit_item_id\" \"development.repository.create_file\""))
         XCTAssertTrue(script.contains("ensure_no_existing_app_process"))
         XCTAssertTrue(script.contains("the smoke only terminates its own launched PID"))
         XCTAssertTrue(script.contains("kill -9 \"$app_pid\""))
@@ -5946,12 +5957,17 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("struct Receipt: Decodable"))
         XCTAssertTrue(script.contains("decoder.decode(Receipt.self"))
         XCTAssertTrue(script.contains("required_capabilities_json LIKE '%developmentPreparePullRequestWorkflow%'"))
+        XCTAssertTrue(script.contains("required_capabilities_json LIKE '%developmentRepositoryCreateFile%'"))
         XCTAssertTrue(script.contains("required_capabilities_json LIKE '%providerExecutionApproval%'"))
+        XCTAssertTrue(script.contains("action-plan:development-repository-edit:$seed_project_id:$seed_task_id:%"))
+        XCTAssertTrue(script.contains("runtime-development-pr-visible-edit.md"))
         XCTAssertTrue(script.contains("requiresPushApproval=true"))
         XCTAssertTrue(script.contains("requiresPullRequestApproval=true"))
         XCTAssertTrue(script.contains("No live push, GitHub PR, review gate, or merge is created by this smoke"))
         XCTAssertTrue(script.contains("visible Project automation panel queued branch automation into Assistant Queue"))
         XCTAssertTrue(script.contains("visible Assistant Queue approved and executed local branch preparation"))
+        XCTAssertTrue(script.contains("visible Project automation panel queued repository edit review into Assistant Queue"))
+        XCTAssertTrue(script.contains("visible Assistant Queue approved and executed repository edit"))
         for prohibitedPattern in [
             #"\b(?:git|fixture_git)\b[^\n]*\bpush\b"#,
             #"\bgh\b[^\n]*\bpr\s+create\b"#,
@@ -5967,6 +5983,13 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(workflow.contains("\"development_pr\""))
         XCTAssertTrue(workflow.contains("run_development_pr()"))
         XCTAssertTrue(workflow.contains("./script/check_runtime_development_pr_smoke.sh"))
+
+        XCTAssertTrue(appSource.contains("@State private var repositoryEditRelativePath"))
+        XCTAssertTrue(appSource.contains("@State private var repositoryEditContents"))
+        XCTAssertTrue(appSource.contains("project-development-automation-edit-path"))
+        XCTAssertTrue(appSource.contains("project-development-automation-edit-contents"))
+        XCTAssertTrue(appSource.contains("project-development-automation-edit-preview"))
+        XCTAssertTrue(appSource.contains("project-development-automation-edit-queue"))
     }
 
     func testRuntimeInboxTriageSmokeScriptVerifiesAllClassificationActionsAndUndo() throws {
