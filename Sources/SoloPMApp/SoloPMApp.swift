@@ -4586,7 +4586,8 @@ private enum AppRuntimeFactory {
                 secretStore: secretStore,
                 connection: connection,
                 calendarID: runtimeSettings.googleCalendarID,
-                timeZoneIdentifier: runtimeSettings.timeZoneIdentifier
+                timeZoneIdentifier: runtimeSettings.timeZoneIdentifier,
+                oauthClientID: googleCalendarOAuthClientID()
             )
         } catch {
             return GoogleCalendarRuntimeSyncStatus(
@@ -4628,7 +4629,8 @@ private enum AppRuntimeFactory {
             let secretStore = makeSecretStore()
             let client = try GoogleCalendarAppRuntimeFactory.makeCalendarListClient(
                 secretStore: secretStore,
-                connection: migratedConnection()
+                connection: migratedConnection(),
+                oauthClientID: googleCalendarOAuthClientID()
             )
             return GoogleCalendarRuntimeCalendarListProvider(client: client)
         } catch {
@@ -4964,7 +4966,8 @@ private enum AppRuntimeFactory {
                     connection: connection,
                     calendarID: settings.googleCalendarID,
                     timeZoneIdentifier: settings.timeZoneIdentifier,
-                    now: now
+                    now: now,
+                    oauthClientID: googleCalendarOAuthClientID()
                 )
             },
             syncFactory: { settings in
@@ -4998,7 +5001,8 @@ private enum AppRuntimeFactory {
             connection: connection,
             idempotencyNamespaceStore: SQLiteGoogleCalendarIdempotencyNamespaceStore(connection: connection),
             calendarID: calendarID,
-            timeZoneIdentifier: timeZoneIdentifier
+            timeZoneIdentifier: timeZoneIdentifier,
+            oauthClientID: googleCalendarOAuthClientID()
         )
     }
 
