@@ -144,6 +144,31 @@ public struct ProjectDevelopmentPullRequestCreationDraft: Equatable, Sendable {
     }
 }
 
+public enum ProjectDevelopmentRepositoryEditOperation: String, CaseIterable, Identifiable, Equatable, Hashable, Sendable {
+    case create
+    case update
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .create:
+            return String(localized: "Create project file")
+        case .update:
+            return String(localized: "Update project file")
+        }
+    }
+
+    public var tool: ActionTool {
+        switch self {
+        case .create:
+            return .developmentRepositoryCreateFile
+        case .update:
+            return .developmentRepositoryUpdateFile
+        }
+    }
+}
+
 public enum ProjectDevelopmentAutomationProgressStageStatus: String, Equatable, Sendable {
     case waiting
     case ready
@@ -259,6 +284,7 @@ public struct ProjectDevelopmentAutomationProgress: Equatable, Sendable {
     public var baseBranch: String?
     public var latestCommitOID: String?
     public var stages: [ProjectDevelopmentAutomationProgressStage]
+    public var canQueueRepositoryEditReview: Bool
     public var canQueueVerificationReview: Bool
     public var canQueueCommitReview: Bool
     public var canQueueBranchPushReview: Bool
@@ -278,6 +304,7 @@ public struct ProjectDevelopmentAutomationProgress: Equatable, Sendable {
         baseBranch: String?,
         latestCommitOID: String?,
         stages: [ProjectDevelopmentAutomationProgressStage],
+        canQueueRepositoryEditReview: Bool = false,
         canQueueVerificationReview: Bool,
         canQueueCommitReview: Bool,
         canQueueBranchPushReview: Bool,
@@ -296,6 +323,7 @@ public struct ProjectDevelopmentAutomationProgress: Equatable, Sendable {
         self.baseBranch = baseBranch
         self.latestCommitOID = latestCommitOID
         self.stages = stages
+        self.canQueueRepositoryEditReview = canQueueRepositoryEditReview
         self.canQueueVerificationReview = canQueueVerificationReview
         self.canQueueCommitReview = canQueueCommitReview
         self.canQueueBranchPushReview = canQueueBranchPushReview
@@ -1855,6 +1883,177 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     @discardableResult
+    public func prepareDevelopmentRepositoryEditReview(
+        for project: ProjectBoardProject,
+        task: ProjectBoardTask?,
+        operation: ProjectDevelopmentRepositoryEditOperation,
+        relativePath: String,
+        contents: String,
+        expectedSHA256: String?
+    ) -> ActionPlan? {
+        let readiness = developmentAutomationReadiness(for: project, task: task)
+        guard readiness.isReady,
+              let task,
+              let branchName = readiness.branchNamePreview else {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = readiness.blockingReason
+            integrationStatusMessage = nil
+            return nil
+        }
+
+        let progress = developmentAutomationProgress(for: project, task: task)
+        guard progress.canQueueRepositoryEditReview else {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = progress.nextApproval?.detail
+                ?? String(localized: "Prepare the development branch before queueing repository edits.")
+            integrationStatusMessage = nil
+            return nil
+        }
+
+        do {
+            let reviewedRelativePath = try DevelopmentRepositoryFilePathPolicy.validatedRelativePath(relativePath)
+            try DevelopmentRepositoryFilePathPolicy.validateTextContent(contents)
+            let contentRedaction = DeveloperSecretRedactor().redact(contents)
+            guard contentRedaction.report.matchedPatternNames.isEmpty else {
+                throw DevelopmentRepositoryFileError.secretLikeContent(contentRedaction.report.matchedPatternNames)
+            }
+
+            var arguments: [String: JSONValue] = [
+                "projectId": .number(Double(project.id)),
+                "taskId": .number(Double(task.id)),
+                "branchName": .string(branchName),
+                "relativePath": .string(reviewedRelativePath),
+                "contents": .string(contents)
+            ]
+            let reviewedExpectedSHA256 = expectedSHA256?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if operation == .update {
+                guard let reviewedExpectedSHA256, !reviewedExpectedSHA256.isEmpty else {
+                    developmentAutomationReviewPlan = nil
+                    todayCommandFeedback = String(localized: "Review the repository edit before queueing verification.")
+                    errorMessage = String(localized: "Expected SHA is required before queueing a repository update.")
+                    integrationStatusMessage = nil
+                    return nil
+                }
+                arguments["expectedSHA256"] = .string(
+                    try DevelopmentRepositoryFilePathPolicy.validatedExpectedSHA256(reviewedExpectedSHA256)
+                )
+            }
+
+            let plan = ActionPlan(
+                id: "development-repository-edit:\(project.id):\(task.id):\(Self.developmentRepositoryEditPlanDigest(projectID: project.id, taskID: task.id, branchName: branchName, operation: operation, relativePath: reviewedRelativePath, contents: contents, expectedSHA256: reviewedExpectedSHA256))",
+                userInput: "Review repository \(operation.rawValue) for \(task.title).",
+                summary: "Review \(operation.rawValue) for \(reviewedRelativePath) on branch \(branchName) before verification. File contents stay redacted in receipts.",
+                actions: [
+                    PlanAction(
+                        id: "development-repository-edit",
+                        tool: operation.tool,
+                        arguments: arguments,
+                        riskLevel: .write,
+                        requiresUserConfirmation: true
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+            // This review captures the exact relative path and content intended for
+            // the approved workspace. Execution still revalidates the bookmark and
+            // path, so stale UI state cannot write outside the user-approved repo.
+            developmentAutomationReviewPlan = plan
+            integrationStatusMessage = String(localized: "Development repository edit review is prepared.")
+            todayCommandFeedback = nil
+            errorMessage = nil
+            return plan
+        } catch let error as DevelopmentRepositoryFileError {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = String(localized: "Review the repository edit before queueing verification.")
+            errorMessage = Self.sanitizedDevelopmentAutomationReviewText(error.userMessage)
+            integrationStatusMessage = nil
+            return nil
+        } catch {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = String(localized: "Review the repository edit before queueing verification.")
+            errorMessage = Self.sanitizedDevelopmentAutomationReviewText(String(describing: error))
+            integrationStatusMessage = nil
+            return nil
+        }
+    }
+
+    @discardableResult
+    public func enqueueDevelopmentRepositoryEditReview(
+        for project: ProjectBoardProject,
+        task: ProjectBoardTask?,
+        operation: ProjectDevelopmentRepositoryEditOperation,
+        relativePath: String,
+        contents: String,
+        expectedSHA256: String?
+    ) -> Bool {
+        guard let assistantQueueStore else {
+            assistantQueueSnapshot = .empty
+            assistantQueueSelectedItemIDs = []
+            errorMessage = String(localized: "Assistant Queue is unavailable in this build.")
+            integrationStatusMessage = nil
+            return false
+        }
+        guard var plan = prepareDevelopmentRepositoryEditReview(
+            for: project,
+            task: task,
+            operation: operation,
+            relativePath: relativePath,
+            contents: contents,
+            expectedSHA256: expectedSHA256
+        ) else {
+            return false
+        }
+
+        let validator = ActionPlanValidator()
+        let validation = validator.validate(plan)
+        guard validation.isValid else {
+            errorMessage = String(localized: "Development automation generated an invalid action plan.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        plan.userInput = Self.sanitizedDevelopmentAutomationReviewText(plan.userInput)
+        plan.summary = Self.sanitizedDevelopmentAutomationReviewText(plan.summary)
+        let persistedValidation = validator.validate(plan)
+        guard persistedValidation.isValid else {
+            errorMessage = String(localized: "Development automation generated an invalid action plan.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        let item = AssistantQueueAdapter.makeItem(
+            actionPlan: plan,
+            sourceTranscript: plan.userInput,
+            interpretationSummary: plan.summary,
+            reason: Self.developmentRepositoryEditQueueReason(project: project),
+            costPreview: .localOnly()
+        )
+
+        do {
+            if try assistantQueueStore.insertIfAbsent(item) != nil {
+                focusAssistantQueueItem(id: item.id)
+                errorMessage = nil
+                integrationStatusMessage = String(localized: "Queued development repository edit review for approval.")
+                todayCommandFeedback = nil
+                onChange()
+                return true
+            }
+
+            focusAssistantQueueItem(id: item.id)
+            errorMessage = nil
+            integrationStatusMessage = String(localized: "Development repository edit review is already in Assistant Queue.")
+            todayCommandFeedback = nil
+            return true
+        } catch {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = AssistantQueueStoreError.userMessage(for: error)
+            integrationStatusMessage = nil
+            return false
+        }
+    }
+
+    @discardableResult
     public func prepareDevelopmentVerificationReview(
         for project: ProjectBoardProject,
         task: ProjectBoardTask?,
@@ -2720,6 +2919,18 @@ public final class ProjectBoardViewModel: ObservableObject {
             toolName: ActionTool.developmentPreparePullRequestWorkflow.rawValue,
             receipts: receipts
         )
+        let repositoryCreateReceipt = latestDevelopmentAutomationReceipt(
+            toolName: ActionTool.developmentRepositoryCreateFile.rawValue,
+            receipts: receipts
+        )
+        let repositoryUpdateReceipt = latestDevelopmentAutomationReceipt(
+            toolName: ActionTool.developmentRepositoryUpdateFile.rawValue,
+            receipts: receipts
+        )
+        let repositoryEditReceipt = [repositoryCreateReceipt, repositoryUpdateReceipt]
+            .compactMap { $0 }
+            .sorted { $0.createdAt > $1.createdAt }
+            .first
         let verificationReceipt = latestDevelopmentAutomationReceipt(
             toolName: ActionTool.developmentRunVerification.rawValue,
             receipts: receipts
@@ -2746,6 +2957,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         )
 
         let successfulPrepareReceipt = prepareReceipt?.status == .succeeded ? prepareReceipt : nil
+        let successfulRepositoryEditReceipt = repositoryEditReceipt?.status == .succeeded ? repositoryEditReceipt : nil
         let successfulVerificationReceipt = verificationReceipt?.status == .succeeded ? verificationReceipt : nil
         let successfulCommitReceipt = commitReceipt?.status == .succeeded ? commitReceipt : nil
         let successfulPushReceipt = pushReceipt?.status == .succeeded ? pushReceipt : nil
@@ -2775,11 +2987,17 @@ public final class ProjectBoardViewModel: ObservableObject {
             || successfulPullRequestReceipt != nil
             || successfulReviewReceipt != nil
             || successfulMergeReceipt != nil
+        let hasLaterThanRepositoryEditEvidence = successfulVerificationReceipt != nil
+            || hasLaterThanVerificationEvidence
         let hasLaterThanCommitEvidence = successfulPushReceipt != nil
             || successfulPullRequestReceipt != nil
             || successfulReviewReceipt != nil
             || successfulMergeReceipt != nil
+        let canQueueRepositoryEdit = successfulPrepareReceipt != nil
+            && repositoryEditReceipt == nil
+            && !hasLaterThanRepositoryEditEvidence
         let canQueueVerification = successfulPrepareReceipt != nil
+            && successfulRepositoryEditReceipt != nil
             && verificationReceipt == nil
             && !hasLaterThanVerificationEvidence
         let canQueueCommit = successfulVerificationReceipt != nil
@@ -2808,6 +3026,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         let progressBlockingReason = blockingReason
             ?? developmentAutomationProgressBlockingReason(
                 prepareReceipt: prepareReceipt,
+                repositoryEditReceipt: repositoryEditReceipt,
                 verificationReceipt: verificationReceipt,
                 commitReceipt: commitReceipt,
                 pushReceipt: pushReceipt,
@@ -2819,6 +3038,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             )
         let nextApproval = developmentAutomationNextApproval(
             prepareReceipt: prepareReceipt,
+            repositoryEditReceipt: repositoryEditReceipt,
             verificationReceipt: verificationReceipt,
             commitReceipt: commitReceipt,
             pushReceipt: pushReceipt,
@@ -2826,8 +3046,10 @@ public final class ProjectBoardViewModel: ObservableObject {
             reviewReceipt: reviewReceipt,
             mergeReceipt: mergeReceipt,
             successfulPrepareReceipt: successfulPrepareReceipt,
+            successfulRepositoryEditReceipt: successfulRepositoryEditReceipt,
             successfulVerificationReceipt: successfulVerificationReceipt,
             successfulCommitReceipt: successfulCommitReceipt,
+            canQueueRepositoryEdit: canQueueRepositoryEdit,
             canQueueVerification: canQueueVerification,
             canQueueCommit: canQueueCommit,
             canQueuePush: canQueuePush,
@@ -2855,6 +3077,12 @@ public final class ProjectBoardViewModel: ObservableObject {
                     id: "branch-prepared",
                     title: String(localized: "Branch prepared"),
                     receipt: prepareReceipt
+                ),
+                developmentAutomationProgressStage(
+                    id: "repository-edited",
+                    title: String(localized: "Repository edit"),
+                    receipt: repositoryEditReceipt,
+                    readyWhenMissing: canQueueRepositoryEdit
                 ),
                 developmentAutomationProgressStage(
                     id: "verification-run",
@@ -2892,6 +3120,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                     readyWhenMissing: canQueueMerge
                 )
             ],
+            canQueueRepositoryEditReview: canQueueRepositoryEdit,
             canQueueVerificationReview: canQueueVerification,
             canQueueCommitReview: canQueueCommit,
             canQueueBranchPushReview: canQueuePush,
@@ -2951,6 +3180,7 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     private static func developmentAutomationNextApproval(
         prepareReceipt: ExecutionReceipt?,
+        repositoryEditReceipt: ExecutionReceipt?,
         verificationReceipt: ExecutionReceipt?,
         commitReceipt: ExecutionReceipt?,
         pushReceipt: ExecutionReceipt?,
@@ -2958,8 +3188,10 @@ public final class ProjectBoardViewModel: ObservableObject {
         reviewReceipt: ExecutionReceipt?,
         mergeReceipt: ExecutionReceipt?,
         successfulPrepareReceipt: ExecutionReceipt?,
+        successfulRepositoryEditReceipt: ExecutionReceipt?,
         successfulVerificationReceipt: ExecutionReceipt?,
         successfulCommitReceipt: ExecutionReceipt?,
+        canQueueRepositoryEdit: Bool,
         canQueueVerification: Bool,
         canQueueCommit: Bool,
         canQueuePush: Bool,
@@ -2988,6 +3220,7 @@ public final class ProjectBoardViewModel: ObservableObject {
 
         if let failedApproval = failedDevelopmentAutomationNextApproval(
             prepareReceipt: prepareReceipt,
+            repositoryEditReceipt: repositoryEditReceipt,
             verificationReceipt: verificationReceipt,
             commitReceipt: commitReceipt,
             pushReceipt: pushReceipt,
@@ -3034,7 +3267,15 @@ public final class ProjectBoardViewModel: ObservableObject {
             return ProjectDevelopmentAutomationNextApproval(
                 id: "verification-run",
                 title: String(localized: "Queue verification review"),
-                detail: String(localized: "Use the branch preparation receipt to run a local verification command before commit or push.")
+                detail: String(localized: "Use the repository edit receipt to run a local verification command before commit or push.")
+            )
+        }
+
+        if canQueueRepositoryEdit {
+            return ProjectDevelopmentAutomationNextApproval(
+                id: "repository-edit",
+                title: String(localized: "Queue repository edit review"),
+                detail: String(localized: "Review the scoped create or update file operation before verification runs.")
             )
         }
 
@@ -3047,6 +3288,13 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         if pushReceipt == nil, successfulPrepareReceipt != nil {
+            if successfulRepositoryEditReceipt == nil {
+                return ProjectDevelopmentAutomationNextApproval(
+                    id: "repository-edit-pending",
+                    title: String(localized: "Wait for repository edit receipt"),
+                    detail: String(localized: "The branch is prepared; wait for repository edit evidence before queueing verification.")
+                )
+            }
             if successfulVerificationReceipt == nil {
                 return ProjectDevelopmentAutomationNextApproval(
                     id: "verification-pending",
@@ -3085,6 +3333,7 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     private static func failedDevelopmentAutomationNextApproval(
         prepareReceipt: ExecutionReceipt?,
+        repositoryEditReceipt: ExecutionReceipt?,
         verificationReceipt: ExecutionReceipt?,
         commitReceipt: ExecutionReceipt?,
         pushReceipt: ExecutionReceipt?,
@@ -3099,6 +3348,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             (pushReceipt, String(localized: "Review failed branch push")),
             (commitReceipt, String(localized: "Review failed commit")),
             (verificationReceipt, String(localized: "Review failed verification")),
+            (repositoryEditReceipt, String(localized: "Review failed repository edit")),
             (prepareReceipt, String(localized: "Review failed branch preparation"))
         ]
         let failedReceipt: (id: String, title: String)? = candidates.compactMap { candidate -> (id: String, title: String)? in
@@ -3180,6 +3430,18 @@ public final class ProjectBoardViewModel: ObservableObject {
             toolName: ActionTool.developmentPreparePullRequestWorkflow.rawValue,
             receipts: receipts
         )
+        let repositoryCreateReceipt = latestDevelopmentAutomationReceipt(
+            toolName: ActionTool.developmentRepositoryCreateFile.rawValue,
+            receipts: receipts
+        )
+        let repositoryUpdateReceipt = latestDevelopmentAutomationReceipt(
+            toolName: ActionTool.developmentRepositoryUpdateFile.rawValue,
+            receipts: receipts
+        )
+        let repositoryEditReceipt = [repositoryCreateReceipt, repositoryUpdateReceipt]
+            .compactMap { $0 }
+            .sorted { $0.createdAt > $1.createdAt }
+            .first
         let verificationReceipt = latestDevelopmentAutomationReceipt(
             toolName: ActionTool.developmentRunVerification.rawValue,
             receipts: receipts
@@ -3216,6 +3478,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             pushReceipt,
             commitReceipt,
             verificationReceipt,
+            repositoryEditReceipt,
             prepareReceipt
         ].compactMap({ $0 }).first(where: { receipt in
             receipt.status == .failed || receipt.status == .canceled
@@ -3224,6 +3487,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         let successfulPrepareReceipt = prepareReceipt?.status == .succeeded ? prepareReceipt : nil
+        let successfulRepositoryEditReceipt = repositoryEditReceipt?.status == .succeeded ? repositoryEditReceipt : nil
         let successfulVerificationReceipt = verificationReceipt?.status == .succeeded ? verificationReceipt : nil
         let successfulCommitReceipt = commitReceipt?.status == .succeeded ? commitReceipt : nil
         let successfulPushReceipt = pushReceipt?.status == .succeeded ? pushReceipt : nil
@@ -3232,6 +3496,12 @@ public final class ProjectBoardViewModel: ObservableObject {
 
         if successfulPrepareReceipt == nil {
             return [ActionTool.developmentPreparePullRequestWorkflow.rawValue]
+        }
+        if successfulRepositoryEditReceipt == nil {
+            return [
+                ActionTool.developmentRepositoryCreateFile.rawValue,
+                ActionTool.developmentRepositoryUpdateFile.rawValue
+            ]
         }
         if successfulVerificationReceipt == nil {
             return [ActionTool.developmentRunVerification.rawValue]
@@ -3370,6 +3640,7 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     private static func developmentAutomationProgressBlockingReason(
         prepareReceipt: ExecutionReceipt?,
+        repositoryEditReceipt: ExecutionReceipt?,
         verificationReceipt: ExecutionReceipt?,
         commitReceipt: ExecutionReceipt?,
         pushReceipt: ExecutionReceipt?,
@@ -3388,6 +3659,12 @@ public final class ProjectBoardViewModel: ObservableObject {
         if prepareReceipt?.status == .failed || prepareReceipt?.status == .canceled {
             return String(localized: "Branch preparation failed. Review the execution receipt before queueing verification.")
         }
+        let hasEvidenceAfterRepositoryEdit = verificationReceipt != nil
+            || commitReceipt != nil
+            || pushReceipt != nil
+            || pullRequestReceipt != nil
+            || reviewReceipt != nil
+            || mergeReceipt != nil
         let hasEvidenceAfterVerification = commitReceipt != nil
             || pushReceipt != nil
             || pullRequestReceipt != nil
@@ -3397,6 +3674,12 @@ public final class ProjectBoardViewModel: ObservableObject {
             || pullRequestReceipt != nil
             || reviewReceipt != nil
             || mergeReceipt != nil
+        if repositoryEditReceipt == nil, !hasEvidenceAfterRepositoryEdit {
+            return String(localized: "Queue a repository edit and wait for its execution receipt before verification.")
+        }
+        if repositoryEditReceipt?.status == .failed || repositoryEditReceipt?.status == .canceled {
+            return String(localized: "Repository edit failed. Review the execution receipt before queueing verification.")
+        }
         if verificationReceipt == nil, !hasEvidenceAfterVerification {
             return String(localized: "Run verification and wait for its execution receipt before commit.")
         }
@@ -3486,6 +3769,13 @@ public final class ProjectBoardViewModel: ObservableObject {
     private static func developmentVerificationQueueReason(project: ProjectBoardProject) -> String {
         String(
             format: String(localized: "Development verification needs review for %@."),
+            sanitizedDevelopmentAutomationReviewText(project.title)
+        )
+    }
+
+    private static func developmentRepositoryEditQueueReason(project: ProjectBoardProject) -> String {
+        String(
+            format: String(localized: "Development repository edit needs review for %@."),
             sanitizedDevelopmentAutomationReviewText(project.title)
         )
     }
@@ -3722,6 +4012,20 @@ public final class ProjectBoardViewModel: ObservableObject {
         commandID: String
     ) -> String {
         developmentReviewedInputDigest([String(projectID), String(taskID), branchName, commandID])
+    }
+
+    private static func developmentRepositoryEditPlanDigest(
+        projectID: Int64,
+        taskID: Int64,
+        branchName: String,
+        operation: ProjectDevelopmentRepositoryEditOperation,
+        relativePath: String,
+        contents: String,
+        expectedSHA256: String?
+    ) -> String {
+        developmentReviewedInputDigest(
+            [String(projectID), String(taskID), branchName, operation.rawValue, relativePath, contents, expectedSHA256 ?? ""]
+        )
     }
 
     private static func developmentCommitPlanDigest(

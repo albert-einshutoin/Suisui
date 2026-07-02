@@ -1298,12 +1298,66 @@ final class ProjectBoardStoreTests: XCTestCase {
         ))
 
         let preparedProgress = viewModel.developmentAutomationProgress(for: assignedProject, task: currentTask)
-        XCTAssertTrue(preparedProgress.canQueueVerificationReview)
+        XCTAssertTrue(preparedProgress.canQueueRepositoryEditReview)
+        XCTAssertFalse(preparedProgress.canQueueVerificationReview)
         XCTAssertFalse(preparedProgress.canQueueCommitReview)
         XCTAssertFalse(preparedProgress.canQueueBranchPushReview)
         XCTAssertFalse(preparedProgress.canQueuePullRequestCreationReview)
-        XCTAssertEqual(preparedProgress.nextApproval?.id, "verification-run")
-        XCTAssertEqual(preparedProgress.nextApproval?.title, "Queue verification review")
+        XCTAssertEqual(preparedProgress.nextApproval?.id, "repository-edit")
+        XCTAssertEqual(preparedProgress.nextApproval?.title, "Queue repository edit review")
+
+        XCTAssertTrue(viewModel.enqueueDevelopmentRepositoryEditReview(
+            for: assignedProject,
+            task: currentTask,
+            operation: .create,
+            relativePath: "Sources/App/AuthCallback.swift",
+            contents: "func handleOAuthCallback() {}\n",
+            expectedSHA256: nil
+        ))
+        let repositoryEditItemID = try XCTUnwrap(viewModel.assistantQueueSelectedItemIDs.first)
+        let repositoryEditItem = try assistantQueueStore.get(id: repositoryEditItemID)
+        XCTAssertEqual(repositoryEditItem.state, .waitingReview)
+        XCTAssertEqual(repositoryEditItem.requiredCapabilities, [
+            .tool(.developmentRepositoryCreateFile),
+            .providerExecutionApproval
+        ])
+        guard case .actionPlan(let repositoryEditPlan) = repositoryEditItem.payload else {
+            return XCTFail("Expected repository edit action plan payload")
+        }
+        let repositoryEditAction = try XCTUnwrap(repositoryEditPlan.actions.first)
+        XCTAssertEqual(repositoryEditAction.tool, .developmentRepositoryCreateFile)
+        XCTAssertEqual(repositoryEditAction.arguments["projectId"], .number(Double(project.id)))
+        XCTAssertEqual(repositoryEditAction.arguments["taskId"], .number(Double(task.id)))
+        XCTAssertEqual(repositoryEditAction.arguments["branchName"], .string(branchName))
+        XCTAssertEqual(repositoryEditAction.arguments["relativePath"], .string("Sources/App/AuthCallback.swift"))
+        XCTAssertEqual(repositoryEditAction.arguments["contents"], .string("func handleOAuthCallback() {}\n"))
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Queued development repository edit review for approval.")
+
+        let repositoryEditRow = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first { $0.id == repositoryEditItemID })
+        let repositoryEditQueueProgress = viewModel.developmentAutomationProgress(for: assignedProject, task: currentTask)
+        XCTAssertEqual(repositoryEditQueueProgress.queueHandoff?.id, repositoryEditItemID)
+        XCTAssertEqual(repositoryEditQueueProgress.queueHandoff?.state, .waitingReview)
+        XCTAssertEqual(repositoryEditQueueProgress.queueHandoff?.title, repositoryEditRow.title)
+        XCTAssertFalse(repositoryEditQueueProgress.queueHandoff?.reviewReason.contains("/tmp/client-portal") ?? true)
+
+        try receiptStore.save(developmentAutomationReceipt(
+            id: "receipt-repository-edit",
+            projectID: project.id,
+            branchName: branchName,
+            toolName: ActionTool.developmentRepositoryCreateFile.rawValue
+        ))
+        try assistantQueueStore.transition(id: repositoryEditItemID) { item in
+            let approved = try AssistantQueueStateMachine.approve(item, reviewerID: "tester")
+            let running = try AssistantQueueStateMachine.startRunning(approved)
+            return try AssistantQueueStateMachine.markDone(running)
+        }
+
+        let editedProgress = viewModel.developmentAutomationProgress(for: assignedProject, task: currentTask)
+        XCTAssertNil(editedProgress.queueHandoff)
+        XCTAssertFalse(editedProgress.canQueueRepositoryEditReview)
+        XCTAssertTrue(editedProgress.canQueueVerificationReview)
+        XCTAssertEqual(editedProgress.nextApproval?.id, "verification-run")
+        XCTAssertEqual(editedProgress.nextApproval?.title, "Queue verification review")
 
         XCTAssertTrue(viewModel.enqueueDevelopmentVerificationReview(for: assignedProject, task: currentTask))
         let verificationItemID = try XCTUnwrap(viewModel.assistantQueueSelectedItemIDs.first)
@@ -1452,6 +1506,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(progress.nextApproval?.title, "Queue pull request review gate")
         XCTAssertEqual(progress.stages.map(\.id), [
             "branch-prepared",
+            "repository-edited",
             "verification-run",
             "commit-created",
             "branch-pushed",
@@ -1460,6 +1515,7 @@ final class ProjectBoardStoreTests: XCTestCase {
             "pull-request-merged"
         ])
         XCTAssertEqual(progress.stages.map(\.status), [
+            .succeeded,
             .succeeded,
             .succeeded,
             .succeeded,
@@ -1543,6 +1599,83 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(mergeRequest.developmentPullRequest?.operation, .merge)
         XCTAssertEqual(mergeRequest.developmentPullRequest?.taskID, task.id)
         XCTAssertEqual(mergeRequest.developmentPullRequest?.pullRequestURL, pullRequestURL)
+    }
+
+    @MainActor
+    func testDevelopmentRepositoryUpdateReviewRequiresExpectedSHA() throws {
+        let stores = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let viewModel = ProjectBoardViewModel(
+            store: stores.board,
+            assistantQueueStore: assistantQueueStore,
+            executionReceiptStore: receiptStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Client Portal"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Update OAuth callback",
+            projectID: project.id,
+            status: .planned,
+            priority: .high
+        ))
+        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
+            "/tmp/client-portal",
+            bookmarkData: Data([1, 2, 3]),
+            projectID: project.id
+        ))
+        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+        let branchName = "feature/solopm-\(project.id)-\(task.id)-update-oauth-callback"
+
+        try receiptStore.save(developmentAutomationReceipt(
+            id: "receipt-prepare",
+            projectID: project.id,
+            branchName: branchName,
+            toolName: ActionTool.developmentPreparePullRequestWorkflow.rawValue
+        ))
+
+        XCTAssertTrue(viewModel.developmentAutomationProgress(for: assignedProject, task: currentTask).canQueueRepositoryEditReview)
+        XCTAssertFalse(viewModel.enqueueDevelopmentRepositoryEditReview(
+            for: assignedProject,
+            task: currentTask,
+            operation: .update,
+            relativePath: "Sources/App/AuthCallback.swift",
+            contents: "func handleOAuthCallback() {}\n",
+            expectedSHA256: "  "
+        ))
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows, [])
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Review the repository edit before queueing verification.")
+        XCTAssertEqual(viewModel.errorMessage, "Expected SHA is required before queueing a repository update.")
+
+        XCTAssertFalse(viewModel.enqueueDevelopmentRepositoryEditReview(
+            for: assignedProject,
+            task: currentTask,
+            operation: .update,
+            relativePath: "Sources/App/AuthCallback.swift",
+            contents: "func handleOAuthCallback() {}\n",
+            expectedSHA256: "not-a-sha"
+        ))
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows, [])
+        XCTAssertEqual(viewModel.errorMessage, "Expected SHA must be a 64 character hex digest.")
+
+        XCTAssertTrue(viewModel.enqueueDevelopmentRepositoryEditReview(
+            for: assignedProject,
+            task: currentTask,
+            operation: .update,
+            relativePath: "Sources/App/AuthCallback.swift",
+            contents: "func handleOAuthCallback() {}\n",
+            expectedSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        ))
+
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSelectedItemIDs.first)
+        let item = try assistantQueueStore.get(id: itemID)
+        guard case .actionPlan(let plan) = item.payload else {
+            return XCTFail("Expected repository update action plan payload")
+        }
+        let action = try XCTUnwrap(plan.actions.first)
+        XCTAssertEqual(action.tool, .developmentRepositoryUpdateFile)
+        XCTAssertEqual(action.arguments["expectedSHA256"], .string("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"))
     }
 
     @MainActor
@@ -1648,6 +1781,12 @@ final class ProjectBoardStoreTests: XCTestCase {
             branchName: branchName,
             toolName: ActionTool.developmentPreparePullRequestWorkflow.rawValue
         ))
+        try receiptStore.save(developmentAutomationReceipt(
+            id: "receipt-repository-edit",
+            projectID: project.id,
+            branchName: branchName,
+            toolName: ActionTool.developmentRepositoryCreateFile.rawValue
+        ))
 
         let olderPlan = ActionPlan(
             id: "development-verification:\(project.id):\(task.id):old",
@@ -1720,6 +1859,7 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         for (id, toolName) in [
             ("receipt-prepare", ActionTool.developmentPreparePullRequestWorkflow.rawValue),
+            ("receipt-repository-edit", ActionTool.developmentRepositoryCreateFile.rawValue),
             ("receipt-verification", ActionTool.developmentRunVerification.rawValue),
             ("receipt-commit", ActionTool.developmentCommitChanges.rawValue),
             ("receipt-push", ActionTool.developmentPushBranch.rawValue),

@@ -16,6 +16,9 @@ public enum DevelopmentRepositoryFileError: Error, Equatable, Sendable {
     case binaryOrNonUTF8Content
     case secretLikeContent([String])
     case staleDigest
+    case invalidExpectedSHA256
+    case currentBranchUnavailable
+    case branchMismatch(expected: String, actual: String)
 
     public var userMessage: String {
         switch self {
@@ -47,6 +50,12 @@ public enum DevelopmentRepositoryFileError: Error, Equatable, Sendable {
             return "Repository file content looks like it contains credentials or secrets."
         case .staleDigest:
             return "File changed since review; refresh the diff before updating."
+        case .invalidExpectedSHA256:
+            return "Expected SHA must be a 64 character hex digest."
+        case .currentBranchUnavailable:
+            return "Could not confirm the current repository branch before writing."
+        case .branchMismatch(let expected, let actual):
+            return "Repository branch mismatch: expected \(expected), found \(actual)."
         }
     }
 }
@@ -225,6 +234,16 @@ public enum DevelopmentRepositoryFilePathPolicy {
         }
     }
 
+    public static func validatedExpectedSHA256(_ rawDigest: String) throws -> String {
+        let digest = rawDigest.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hexCharacters = CharacterSet(charactersIn: "0123456789abcdefABCDEF")
+        guard digest.count == 64,
+              digest.unicodeScalars.allSatisfy({ hexCharacters.contains($0) }) else {
+            throw DevelopmentRepositoryFileError.invalidExpectedSHA256
+        }
+        return digest.lowercased()
+    }
+
     private static func isSupportedTextPath(filename: String) -> Bool {
         let lowercased = filename.lowercased()
         if allowedExtensionlessFilenames.contains(lowercased) {
@@ -266,17 +285,20 @@ public struct DevelopmentRepositoryFileClient: Sendable {
     private let redactor: DeveloperSecretRedactor
     private let bookmarkResolver: any ProjectWorkspaceBookmarkResolving
     private let requireBookmark: Bool
+    private let gitRunner: any GitCommandRunner
 
     public init(
         project: ProjectRecord,
         redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
         bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver(),
-        requireBookmark: Bool = false
+        requireBookmark: Bool = false,
+        gitRunner: any GitCommandRunner = ProcessGitCommandRunner()
     ) {
         self.project = project
         self.redactor = redactor
         self.bookmarkResolver = bookmarkResolver
         self.requireBookmark = requireBookmark
+        self.gitRunner = gitRunner
     }
 
     public func list(relativePath rawPath: String? = nil) throws -> DevelopmentRepositoryFileList {
@@ -314,7 +336,11 @@ public struct DevelopmentRepositoryFileClient: Sendable {
         }
     }
 
-    public func create(relativePath rawPath: String, contents: String) throws -> DevelopmentRepositoryFileRecord {
+    public func create(
+        relativePath rawPath: String,
+        contents: String,
+        branchName: String? = nil
+    ) throws -> DevelopmentRepositoryFileRecord {
         let relativePath = try DevelopmentRepositoryFilePathPolicy.validatedRelativePath(rawPath)
         try DevelopmentRepositoryFilePathPolicy.validateTextContent(contents)
         // Avoid writing credential-looking material into a repo file through the
@@ -326,6 +352,7 @@ public struct DevelopmentRepositoryFileClient: Sendable {
             requireBookmark: requireBookmark
         )
         return try withExtendedLifetime(scope) {
+            try ensureCurrentBranch(matches: branchName, scope: scope)
             let fileURL = try resolveNewFile(relativePath: relativePath, scope: scope)
 
             try FileManager.default.createDirectory(
@@ -341,9 +368,11 @@ public struct DevelopmentRepositoryFileClient: Sendable {
     public func update(
         relativePath rawPath: String,
         contents: String,
-        expectedSHA256: String?
+        expectedSHA256: String,
+        branchName: String? = nil
     ) throws -> DevelopmentRepositoryFileRecord {
         let relativePath = try DevelopmentRepositoryFilePathPolicy.validatedRelativePath(rawPath)
+        let expectedDigest = try DevelopmentRepositoryFilePathPolicy.validatedExpectedSHA256(expectedSHA256)
         try DevelopmentRepositoryFilePathPolicy.validateTextContent(contents)
         try failIfSecretLikeContent(contents)
         let scope = try ProjectWorkspaceScope(
@@ -352,15 +381,14 @@ public struct DevelopmentRepositoryFileClient: Sendable {
             requireBookmark: requireBookmark
         )
         return try withExtendedLifetime(scope) {
+            try ensureCurrentBranch(matches: branchName, scope: scope)
             let fileURL = try resolveExistingFile(relativePath: relativePath, scope: scope)
 
-            if let expectedSHA256 {
-                // The digest is a cheap compare-and-swap guard: the user reviews one
-                // file version, and SoloPM refuses to overwrite a later edit.
-                let currentDigest = sha256(try readData(at: fileURL))
-                guard currentDigest == expectedSHA256.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else {
-                    throw DevelopmentRepositoryFileError.staleDigest
-                }
+            // The digest is a cheap compare-and-swap guard: the user reviews one
+            // file version, and SoloPM refuses to overwrite a later edit.
+            let currentDigest = sha256(try readData(at: fileURL))
+            guard currentDigest == expectedDigest else {
+                throw DevelopmentRepositoryFileError.staleDigest
             }
 
             try Data(contents.utf8).write(to: fileURL, options: [.atomic])
@@ -604,6 +632,32 @@ public struct DevelopmentRepositoryFileClient: Sendable {
         let path = url.standardizedFileURL.path
         return path == rootPath || path.hasPrefix(rootPath + "/")
     }
+
+    private func ensureCurrentBranch(matches rawBranchName: String?, scope: ProjectWorkspaceScope) throws {
+        guard let rawBranchName else {
+            return
+        }
+
+        let expectedBranch = try DevelopmentBranchNamePolicy.validated(rawBranchName)
+        do {
+            let output = try gitRunner.runGit(arguments: ["branch", "--show-current"], workingDirectory: scope.rootURL)
+            guard output.exitCode == 0 else {
+                throw DevelopmentRepositoryFileError.currentBranchUnavailable
+            }
+
+            let currentBranch = output.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !currentBranch.isEmpty else {
+                throw DevelopmentRepositoryFileError.currentBranchUnavailable
+            }
+            guard currentBranch == expectedBranch else {
+                throw DevelopmentRepositoryFileError.branchMismatch(expected: expectedBranch, actual: currentBranch)
+            }
+        } catch let error as DevelopmentRepositoryFileError {
+            throw error
+        } catch {
+            throw DevelopmentRepositoryFileError.currentBranchUnavailable
+        }
+    }
 }
 
 public struct DevelopmentRepositoryFileTool: Tool {
@@ -640,19 +694,27 @@ public struct DevelopmentRepositoryFileTool: Tool {
         case .developmentRepositoryCreateFile:
             return ToolInputSchema(
                 required: ["projectId", "relativePath", "contents"],
-                properties: ["projectId": "integer", "relativePath": "string", "contents": "string"],
-                nonBlank: ["relativePath"]
+                properties: [
+                    "projectId": "integer",
+                    "taskId": "integer",
+                    "branchName": "string",
+                    "relativePath": "string",
+                    "contents": "string"
+                ],
+                nonBlank: ["branchName", "relativePath"]
             )
         case .developmentRepositoryUpdateFile:
             return ToolInputSchema(
-                required: ["projectId", "relativePath", "contents"],
+                required: ["projectId", "relativePath", "contents", "expectedSHA256"],
                 properties: [
                     "projectId": "integer",
+                    "taskId": "integer",
+                    "branchName": "string",
                     "relativePath": "string",
                     "contents": "string",
                     "expectedSHA256": "string"
                 ],
-                nonBlank: ["relativePath", "expectedSHA256"]
+                nonBlank: ["branchName", "relativePath", "expectedSHA256"]
             )
         default:
             return ToolInputSchema()
@@ -668,6 +730,7 @@ public struct DevelopmentRepositoryFileTool: Tool {
     private let redactor: DeveloperSecretRedactor
     private let bookmarkResolver: any ProjectWorkspaceBookmarkResolving
     private let requireBookmark: Bool
+    private let gitRunner: any GitCommandRunner
 
     public init(
         name: ActionTool,
@@ -675,7 +738,8 @@ public struct DevelopmentRepositoryFileTool: Tool {
         artifactStore: SQLiteArtifactStore? = nil,
         redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
         bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver(),
-        requireBookmark: Bool = false
+        requireBookmark: Bool = false,
+        gitRunner: any GitCommandRunner = ProcessGitCommandRunner()
     ) {
         self.name = name
         self.projectStore = projectStore
@@ -683,6 +747,7 @@ public struct DevelopmentRepositoryFileTool: Tool {
         self.redactor = redactor
         self.bookmarkResolver = bookmarkResolver
         self.requireBookmark = requireBookmark
+        self.gitRunner = gitRunner
     }
 
     public func execute(arguments: [String: JSONValue], context: ToolExecutionContext) throws -> ToolResult {
@@ -698,8 +763,11 @@ public struct DevelopmentRepositoryFileTool: Tool {
                 project: project,
                 redactor: redactor,
                 bookmarkResolver: bookmarkResolver,
-                requireBookmark: requireBookmark
+                requireBookmark: requireBookmark,
+                gitRunner: gitRunner
             )
+            let taskID = try args.optionalInt64("taskId")
+            let branchName = try args.optionalTrimmedString("branchName")
 
             switch name {
             case .developmentRepositoryListFiles:
@@ -725,17 +793,19 @@ public struct DevelopmentRepositoryFileTool: Tool {
                 let relativePath = try args.requiredTrimmedString("relativePath")
                 let record = try client.create(
                     relativePath: relativePath,
-                    contents: try args.requiredString("contents")
+                    contents: try args.requiredString("contents"),
+                    branchName: branchName
                 )
-                return try result(record: record, project: project, linkArtifact: true)
+                return try result(record: record, project: project, taskID: taskID, branchName: branchName, linkArtifact: true)
             case .developmentRepositoryUpdateFile:
                 let relativePath = try args.requiredTrimmedString("relativePath")
                 let record = try client.update(
                     relativePath: relativePath,
                     contents: try args.requiredString("contents"),
-                    expectedSHA256: try args.optionalTrimmedString("expectedSHA256")
+                    expectedSHA256: try args.requiredTrimmedString("expectedSHA256"),
+                    branchName: branchName
                 )
-                return try result(record: record, project: project, linkArtifact: true)
+                return try result(record: record, project: project, taskID: taskID, branchName: branchName, linkArtifact: true)
             default:
                 throw DevelopmentRepositoryFileError.unsupportedTool(name)
             }
@@ -768,15 +838,25 @@ public struct DevelopmentRepositoryFileTool: Tool {
     private func result(
         record: DevelopmentRepositoryFileRecord,
         project: ProjectRecord,
+        taskID: Int64? = nil,
+        branchName: String? = nil,
         linkArtifact: Bool = false
     ) throws -> ToolResult {
         let artifact = try linkArtifact ? persistedArtifactLink(for: record, project: project) : nil
         var output = record.output
+        output["projectId"] = .number(Double(project.id))
         var rollbackMetadata: [String: JSONValue] = [
             "projectId": .number(Double(project.id)),
             "relativePath": .string(record.relativePath),
             "sha256": .string(record.sha256)
         ]
+        if let taskID {
+            output["taskId"] = .number(Double(taskID))
+        }
+        if let branchName {
+            output["branchName"] = .string(branchName)
+            rollbackMetadata["branchName"] = .string(branchName)
+        }
         if let artifact {
             output["artifactId"] = .number(Double(artifact.id))
             rollbackMetadata["artifactId"] = .number(Double(artifact.id))
