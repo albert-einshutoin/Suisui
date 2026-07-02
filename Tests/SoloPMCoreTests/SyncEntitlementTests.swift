@@ -1,3 +1,5 @@
+import Foundation
+import CryptoKit
 import XCTest
 @testable import SoloPMCore
 
@@ -51,6 +53,142 @@ final class SyncEntitlementTests: XCTestCase {
 
         XCTAssertEqual(snapshot.plan, .free)
         XCTAssertEqual(snapshot.source, .invalidLocalLicense)
+    }
+
+    func testKeychainEntitlementStoreAcceptsSignedFounderLocalLicense() throws {
+        let signingKey = Curve25519.Signing.PrivateKey()
+        let license = signedLocalLicense(
+            id: "founder-local-001",
+            plan: .founder,
+            signingKey: signingKey
+        )
+        let store = KeychainEntitlementStore(
+            secretStore: InMemorySecretStore(values: [.subscriptionLicense: license]),
+            verifier: SignedLocalLicenseVerifier(publicKeyBase64: signingKey.publicKey.rawRepresentation.base64EncodedString())
+        )
+
+        let snapshot = try store.snapshot()
+
+        XCTAssertEqual(snapshot.plan, .founder)
+        XCTAssertEqual(snapshot.source, .localLicense)
+    }
+
+    func testKeychainEntitlementStoreMapsSignedPersonalPlusLocalLicenseToPro() throws {
+        let signingKey = Curve25519.Signing.PrivateKey()
+        let license = signedLocalLicense(
+            id: "personal-plus-001",
+            plan: .personalPlus,
+            signingKey: signingKey
+        )
+        let store = KeychainEntitlementStore(
+            secretStore: InMemorySecretStore(values: [.subscriptionLicense: license]),
+            verifier: SignedLocalLicenseVerifier(publicKeyBase64: signingKey.publicKey.rawRepresentation.base64EncodedString())
+        )
+
+        let snapshot = try store.snapshot()
+
+        XCTAssertEqual(snapshot.plan, .pro)
+        XCTAssertEqual(snapshot.source, .localLicense)
+    }
+
+    func testKeychainEntitlementStoreRejectsTamperedSignedLocalLicense() throws {
+        let signingKey = Curve25519.Signing.PrivateKey()
+        let license = signedLocalLicense(
+            id: "founder-local-001",
+            plan: .founder,
+            signingKey: signingKey
+        ).replacingOccurrences(of: "\"plan\":\"founder\"", with: "\"plan\":\"personalPlus\"")
+        let store = KeychainEntitlementStore(
+            secretStore: InMemorySecretStore(values: [.subscriptionLicense: license]),
+            verifier: SignedLocalLicenseVerifier(publicKeyBase64: signingKey.publicKey.rawRepresentation.base64EncodedString())
+        )
+
+        let snapshot = try store.snapshot()
+
+        XCTAssertEqual(snapshot.plan, .free)
+        XCTAssertEqual(snapshot.source, .invalidLocalLicense)
+    }
+
+    func testKeychainEntitlementStoreRejectsUnsignedLocalLicenseJSON() throws {
+        let signingKey = Curve25519.Signing.PrivateKey()
+        let license = """
+        {
+          "id": "founder-local-001",
+          "plan": "founder",
+          "issuedAt": "2026-06-01T00:00:00Z",
+          "expiresAt": null,
+          "features": ["unlimitedProjects"],
+          "signature": "local-alpha-placeholder"
+        }
+        """
+        let store = KeychainEntitlementStore(
+            secretStore: InMemorySecretStore(values: [.subscriptionLicense: license]),
+            verifier: SignedLocalLicenseVerifier(publicKeyBase64: signingKey.publicKey.rawRepresentation.base64EncodedString())
+        )
+
+        let snapshot = try store.snapshot()
+
+        XCTAssertEqual(snapshot.plan, .free)
+        XCTAssertEqual(snapshot.source, .invalidLocalLicense)
+    }
+
+    func testKeychainEntitlementStoreRejectsExpiredSignedLocalLicense() throws {
+        let signingKey = Curve25519.Signing.PrivateKey()
+        let license = signedLocalLicense(
+            id: "expired-personal-plus-001",
+            plan: .personalPlus,
+            signingKey: signingKey,
+            issuedAt: ISO8601DateFormatter().date(from: "2019-01-01T00:00:00Z")!,
+            expiresAt: ISO8601DateFormatter().date(from: "2020-01-01T00:00:00Z")!
+        )
+        let store = KeychainEntitlementStore(
+            secretStore: InMemorySecretStore(values: [.subscriptionLicense: license]),
+            verifier: SignedLocalLicenseVerifier(publicKeyBase64: signingKey.publicKey.rawRepresentation.base64EncodedString())
+        )
+
+        let snapshot = try store.snapshot()
+
+        XCTAssertEqual(snapshot.plan, .free)
+        XCTAssertEqual(snapshot.source, .invalidLocalLicense)
+    }
+
+    func testKeychainEntitlementStoreRejectsSignedLocalLicenseWhenPublicKeyIsInvalid() throws {
+        let signingKey = Curve25519.Signing.PrivateKey()
+        let license = signedLocalLicense(
+            id: "founder-local-001",
+            plan: .founder,
+            signingKey: signingKey
+        )
+        let store = KeychainEntitlementStore(
+            secretStore: InMemorySecretStore(values: [.subscriptionLicense: license]),
+            verifier: SignedLocalLicenseVerifier(publicKeyBase64: "not a base64 public key")
+        )
+
+        let snapshot = try store.snapshot()
+
+        XCTAssertEqual(snapshot.plan, .free)
+        XCTAssertEqual(snapshot.source, .invalidLocalLicense)
+    }
+
+    func testSignedLocalLicensePayloadFramesFeatureValues() {
+        let issuedAt = ISO8601DateFormatter().date(from: "2026-06-17T00:00:00Z")!
+        let singleCommaFeature = LocalLicense(
+            id: "feature-framing-001",
+            plan: .founder,
+            issuedAt: issuedAt,
+            features: ["a,b"]
+        )
+        let multipleFeatures = LocalLicense(
+            id: "feature-framing-001",
+            plan: .founder,
+            issuedAt: issuedAt,
+            features: ["a", "b"]
+        )
+
+        XCTAssertNotEqual(
+            SignedLocalLicenseVerifier.signingPayload(for: singleCommaFeature),
+            SignedLocalLicenseVerifier.signingPayload(for: multipleFeatures)
+        )
     }
 
     func testEntitlementCheckerStopsFreeFeatureBeforeWorkStarts() throws {
@@ -152,6 +290,37 @@ final class SyncEntitlementTests: XCTestCase {
 
         XCTAssertEqual(viewModel.errorMessage, "Upgrade to Sync to sync SoloPM data.")
         XCTAssertEqual(networkClient.startCallCount, 0)
+    }
+
+    private func signedLocalLicense(
+        id: String,
+        plan: LicensePlan,
+        signingKey: Curve25519.Signing.PrivateKey,
+        issuedAt: Date = ISO8601DateFormatter().date(from: "2026-06-17T00:00:00Z")!,
+        expiresAt: Date? = nil,
+        features: [String] = []
+    ) -> String {
+        let unsigned = LocalLicense(
+            id: id,
+            plan: plan,
+            issuedAt: issuedAt,
+            expiresAt: expiresAt,
+            features: features,
+            signature: nil
+        )
+        let signature = try! signingKey.signature(for: SignedLocalLicenseVerifier.signingPayload(for: unsigned))
+        let signed = LocalLicense(
+            id: id,
+            plan: plan,
+            issuedAt: issuedAt,
+            expiresAt: expiresAt,
+            features: features,
+            signature: signature.base64EncodedString()
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        return String(data: try! encoder.encode(signed), encoding: .utf8)!
     }
 
     @MainActor

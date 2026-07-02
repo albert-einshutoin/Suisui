@@ -68,6 +68,27 @@ final class LocalLicenseTests: XCTestCase {
         XCTAssertEqual(result.displayState, .invalid(message: "License file must not contain personal information fields."))
     }
 
+    func testLicenseRejectsNestedPersonalInformationFieldsCaseInsensitively() throws {
+        let license = """
+        {
+          "id": "founder-local-001",
+          "plan": "founder",
+          "issuedAt": "2026-06-01T00:00:00Z",
+          "metadata": {
+            "FullName": "Example User"
+          },
+          "features": [],
+          "signature": "local-alpha-placeholder"
+        }
+        """.data(using: .utf8)!
+
+        let validator = LocalLicenseValidator()
+        let result = validator.validate(data: license, now: referenceDate)
+
+        XCTAssertEqual(result.status, .invalid(reason: "License file must not contain personal information fields."))
+        XCTAssertEqual(result.displayState, .invalid(message: "License file must not contain personal information fields."))
+    }
+
     private var referenceDate: Date {
         ISO8601DateFormatter().date(from: "2026-06-17T00:00:00Z")!
     }
