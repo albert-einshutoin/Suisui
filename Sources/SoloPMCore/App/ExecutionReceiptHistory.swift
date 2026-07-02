@@ -238,6 +238,8 @@ public enum ExecutionReceiptHistoryReadModel {
             return String(localized: "Reminder")
         case .developmentBranch:
             return String(localized: "Development Branch")
+        case .developmentBaseBranch:
+            return String(localized: "Development Base Branch")
         case .developmentCommit:
             return String(localized: "Development Commit")
         case .file:

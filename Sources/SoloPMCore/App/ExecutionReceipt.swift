@@ -29,6 +29,7 @@ public enum ExecutionReceiptReferenceKind: String, Codable, Equatable, Hashable,
     case notification
     case reminder
     case developmentBranch = "development_branch"
+    case developmentBaseBranch = "development_base_branch"
     case developmentCommit = "development_commit"
     case file
     case pullRequest = "pull_request"
@@ -1908,17 +1909,20 @@ public enum ExecutionReceiptFactory {
         case .developmentCreatePullRequest:
             appendReference(kind: .project, keys: ["projectId", "projectID"], output: values, references: &references)
             appendReference(kind: .developmentBranch, keys: ["branchName"], output: values, references: &references)
-            appendReference(kind: .developmentCommit, keys: ["headRefOid", "headRefOID"], output: values, references: &references)
+            appendReference(kind: .developmentBaseBranch, keys: ["baseBranch"], output: values, references: &references)
+            appendReference(kind: .developmentCommit, keys: ["headRefOid", "headRefOID", "headOid", "headOID"], output: values, references: &references)
             appendReference(kind: .pullRequest, keys: ["pullRequestURL"], output: values, references: &references)
         case .developmentReviewPullRequestGate:
             appendReference(kind: .project, keys: ["projectId", "projectID"], output: values, references: &references)
             appendReference(kind: .developmentBranch, keys: ["branchName"], output: values, references: &references)
-            appendReference(kind: .developmentCommit, keys: ["headRefOid", "headRefOID"], output: values, references: &references)
+            appendReference(kind: .developmentBaseBranch, keys: ["baseBranch"], output: values, references: &references)
+            appendReference(kind: .developmentCommit, keys: ["headRefOid", "headRefOID", "headOid", "headOID"], output: values, references: &references)
             appendReference(kind: .pullRequest, keys: ["pullRequestURL"], output: values, references: &references)
         case .developmentMergePullRequest:
             appendReference(kind: .project, keys: ["projectId", "projectID"], output: values, references: &references)
             appendReference(kind: .developmentBranch, keys: ["branchName"], output: values, references: &references)
-            appendReference(kind: .developmentCommit, keys: ["headRefOid", "headRefOID"], output: values, references: &references)
+            appendReference(kind: .developmentBaseBranch, keys: ["baseBranch"], output: values, references: &references)
+            appendReference(kind: .developmentCommit, keys: ["headRefOid", "headRefOID", "headOid", "headOID"], output: values, references: &references)
             appendReference(kind: .pullRequest, keys: ["pullRequestURL"], output: values, references: &references)
         default:
             return

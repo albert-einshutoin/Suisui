@@ -3456,6 +3456,10 @@ private struct ProjectDevelopmentAutomationPanel: View {
         viewModel.developmentAutomationReadiness(for: project, task: viewModel.selectedTask)
     }
 
+    private var developmentProgress: ProjectDevelopmentAutomationProgress {
+        viewModel.developmentAutomationProgress(for: project, task: viewModel.selectedTask)
+    }
+
     private var pullRequestDraft: ProjectDevelopmentPullRequestCreationDraft? {
         viewModel.developmentPullRequestCreationDraft(for: project, task: viewModel.selectedTask)
     }
@@ -3568,6 +3572,91 @@ private struct ProjectDevelopmentAutomationPanel: View {
                 }
             }
 
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Pull request progress")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                ForEach(developmentProgress.stages) { stage in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: progressStageIcon(for: stage.status))
+                            .foregroundStyle(progressStageColor(for: stage.status))
+                            .frame(width: 16)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Text(LocalizedStringKey(stage.title))
+                                    .font(.caption)
+                                Text(LocalizedStringKey(stage.status.label))
+                                    .font(.caption2)
+                                    .foregroundStyle(progressStageColor(for: stage.status))
+                            }
+                            if let detail = stage.detail {
+                                Text(verbatim: detail)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("project-development-automation-progress-stage-\(stage.id)")
+                }
+
+                if let pullRequestURL = developmentProgress.pullRequestURL {
+                    LabeledContent("Pull Request", value: pullRequestURL)
+                        .font(.caption)
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("project-development-automation-progress-pr-url")
+                }
+                if let baseBranch = developmentProgress.baseBranch {
+                    LabeledContent("Base Branch", value: baseBranch)
+                        .font(.caption)
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("project-development-automation-progress-base")
+                }
+
+                HStack(spacing: 8) {
+                    Button {
+                        _ = viewModel.enqueueDevelopmentPullRequestLifecycleReview(
+                            for: project,
+                            task: viewModel.selectedTask,
+                            operation: .reviewGate
+                        )
+                    } label: {
+                        Label("Queue pull request review gate", systemImage: "checkmark.shield")
+                    }
+                    .disabled(!developmentProgress.canQueuePullRequestReviewGate)
+                    .help("Uses the pull request creation receipt to queue review, CI, unresolved thread, and mergeability checks.")
+                    .accessibilityIdentifier("project-development-automation-pr-review-queue")
+                    .accessibilityHint("Adds only the receipt-backed pull request review gate to Assistant Queue; merge still needs separate approval.")
+
+                    Button {
+                        _ = viewModel.enqueueDevelopmentPullRequestLifecycleReview(
+                            for: project,
+                            task: viewModel.selectedTask,
+                            operation: .merge
+                        )
+                    } label: {
+                        Label("Queue pull request merge gate", systemImage: "arrow.triangle.merge")
+                    }
+                    .disabled(!developmentProgress.canQueuePullRequestMergeGate)
+                    .help("Uses the review gate receipt to queue merge approval; execution rechecks the approved pull request before merging.")
+                    .accessibilityIdentifier("project-development-automation-pr-merge-queue")
+                    .accessibilityHint("Adds the receipt-backed merge gate to Assistant Queue after review evidence exists.")
+                }
+
+                if let blockingReason = developmentProgress.blockingReason {
+                    Text(LocalizedStringKey(blockingReason))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("project-development-automation-progress-message")
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("project-development-automation-progress")
+
             if hasMatchingReviewPlan {
                 Text(LocalizedStringKey("Review plan is ready. Approve and execute it before any local branch is created."))
                     .font(.caption)
@@ -3660,6 +3749,32 @@ private struct ProjectDevelopmentAutomationPanel: View {
         pullRequestBaseBranch = draft.baseBranch
         pullRequestTitle = draft.title
         pullRequestBody = draft.body
+    }
+
+    private func progressStageIcon(for status: ProjectDevelopmentAutomationProgressStageStatus) -> String {
+        switch status {
+        case .waiting:
+            return "circle"
+        case .ready:
+            return "arrow.right.circle"
+        case .succeeded:
+            return "checkmark.circle"
+        case .failed:
+            return "xmark.octagon"
+        }
+    }
+
+    private func progressStageColor(for status: ProjectDevelopmentAutomationProgressStageStatus) -> Color {
+        switch status {
+        case .waiting:
+            return .secondary
+        case .ready:
+            return .accentColor
+        case .succeeded:
+            return .green
+        case .failed:
+            return .red
+        }
     }
 
     private func lifecycleToolIcon(for toolName: String) -> String {

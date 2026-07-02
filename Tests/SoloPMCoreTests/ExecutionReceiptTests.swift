@@ -570,6 +570,7 @@ final class ExecutionReceiptTests: XCTestCase {
         let branchName = "feature/solopm-7-publish-gate"
         let baseBranch = "feature/phase14-product-completion"
         let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/106"
+        let headOID = "0123456789abcdef0123456789abcdef01234567"
         let pushSecret = "token" + "=" + "push-secret"
         let prSecret = "ghp_supersecret"
         var session = ReviewSession(
@@ -634,6 +635,7 @@ final class ExecutionReceiptTests: XCTestCase {
                     "branchName": .string(branchName),
                     "baseBranch": .string(baseBranch),
                     "pullRequestURL": .string(pullRequestURL),
+                    "headOid": .string(headOID),
                     "title": .string("Add \(prSecret)")
                 ]
             )
@@ -655,6 +657,8 @@ final class ExecutionReceiptTests: XCTestCase {
 
         XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .project, id: "7")))
         XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBranch, id: branchName)))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBaseBranch, id: baseBranch)))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentCommit, id: headOID)))
         XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .pullRequest, id: pullRequestURL)))
         XCTAssertEqual(receipt.visibleSurfaces, [.projectDetail, .auditLog])
         XCTAssertTrue(displayedText.contains("Development Branch"))

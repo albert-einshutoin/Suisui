@@ -144,6 +144,82 @@ public struct ProjectDevelopmentPullRequestCreationDraft: Equatable, Sendable {
     }
 }
 
+public enum ProjectDevelopmentAutomationProgressStageStatus: String, Equatable, Sendable {
+    case waiting
+    case ready
+    case succeeded
+    case failed
+
+    public var label: String {
+        switch self {
+        case .waiting:
+            return String(localized: "Waiting")
+        case .ready:
+            return String(localized: "Ready")
+        case .succeeded:
+            return String(localized: "Done")
+        case .failed:
+            return String(localized: "Failed")
+        }
+    }
+}
+
+public struct ProjectDevelopmentAutomationProgressStage: Identifiable, Equatable, Sendable {
+    public var id: String
+    public var title: String
+    public var status: ProjectDevelopmentAutomationProgressStageStatus
+    public var detail: String?
+
+    public init(
+        id: String,
+        title: String,
+        status: ProjectDevelopmentAutomationProgressStageStatus,
+        detail: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.status = status
+        self.detail = detail
+    }
+}
+
+public struct ProjectDevelopmentAutomationProgress: Equatable, Sendable {
+    public var projectID: Int64
+    public var taskID: Int64?
+    public var branchName: String?
+    public var pullRequestURL: String?
+    public var baseBranch: String?
+    public var latestCommitOID: String?
+    public var stages: [ProjectDevelopmentAutomationProgressStage]
+    public var canQueuePullRequestReviewGate: Bool
+    public var canQueuePullRequestMergeGate: Bool
+    public var blockingReason: String?
+
+    public init(
+        projectID: Int64,
+        taskID: Int64?,
+        branchName: String?,
+        pullRequestURL: String?,
+        baseBranch: String?,
+        latestCommitOID: String?,
+        stages: [ProjectDevelopmentAutomationProgressStage],
+        canQueuePullRequestReviewGate: Bool,
+        canQueuePullRequestMergeGate: Bool,
+        blockingReason: String?
+    ) {
+        self.projectID = projectID
+        self.taskID = taskID
+        self.branchName = branchName
+        self.pullRequestURL = pullRequestURL
+        self.baseBranch = baseBranch
+        self.latestCommitOID = latestCommitOID
+        self.stages = stages
+        self.canQueuePullRequestReviewGate = canQueuePullRequestReviewGate
+        self.canQueuePullRequestMergeGate = canQueuePullRequestMergeGate
+        self.blockingReason = blockingReason
+    }
+}
+
 public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
     public var id: Int64
     public var title: String
@@ -1975,6 +2051,408 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    public func developmentAutomationProgress(
+        for project: ProjectBoardProject,
+        task: ProjectBoardTask?
+    ) -> ProjectDevelopmentAutomationProgress {
+        let readiness = developmentAutomationReadiness(for: project, task: task)
+        guard readiness.isReady,
+              let branchName = readiness.branchNamePreview else {
+            return Self.developmentAutomationProgress(
+                projectID: project.id,
+                taskID: task?.id,
+                branchName: readiness.branchNamePreview,
+                receipts: [],
+                blockingReason: readiness.blockingReason
+            )
+        }
+
+        guard let executionReceiptStore else {
+            return Self.developmentAutomationProgress(
+                projectID: project.id,
+                taskID: task?.id,
+                branchName: branchName,
+                receipts: [],
+                blockingReason: String(localized: "Execution receipts are unavailable, so SoloPM cannot confirm which development approval comes next.")
+            )
+        }
+
+        do {
+            let receipts = try executionReceiptStore.list(
+                matching: ExecutionReceiptSearchFilter(
+                    toolNames: Set(Self.developmentAutomationLifecycleToolNames),
+                    visibleSurface: .projectDetail
+                ),
+                limit: 500
+            ).filter { receipt in
+                Self.developmentAutomationReceiptMatches(
+                    receipt,
+                    projectID: project.id,
+                    branchName: branchName
+                )
+            }
+
+            return Self.developmentAutomationProgress(
+                projectID: project.id,
+                taskID: task?.id,
+                branchName: branchName,
+                receipts: receipts,
+                blockingReason: nil
+            )
+        } catch {
+            return Self.developmentAutomationProgress(
+                projectID: project.id,
+                taskID: task?.id,
+                branchName: branchName,
+                receipts: [],
+                blockingReason: String(localized: "Execution receipts could not be read, so SoloPM cannot confirm which development approval comes next.")
+            )
+        }
+    }
+
+    @discardableResult
+    public func enqueueDevelopmentPullRequestLifecycleReview(
+        for project: ProjectBoardProject,
+        task: ProjectBoardTask?,
+        operation: SyncDevelopmentPullRequestOperation
+    ) -> Bool {
+        guard let assistantQueueStore else {
+            assistantQueueSnapshot = .empty
+            assistantQueueSelectedItemIDs = []
+            errorMessage = String(localized: "Assistant Queue is unavailable in this build.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        let readiness = developmentAutomationReadiness(for: project, task: task)
+        guard readiness.isReady,
+              let task,
+              task.projectID == project.id else {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = readiness.blockingReason
+            integrationStatusMessage = nil
+            return false
+        }
+
+        let progress = developmentAutomationProgress(for: project, task: task)
+        let canQueue = operation == .reviewGate
+            ? progress.canQueuePullRequestReviewGate
+            : progress.canQueuePullRequestMergeGate
+        guard canQueue,
+              let rawPullRequestURL = progress.pullRequestURL,
+              let rawBranchName = progress.branchName,
+              let rawBaseBranch = progress.baseBranch else {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = progress.blockingReason
+                ?? Self.developmentPullRequestLifecycleMissingEvidenceMessage(for: operation)
+            integrationStatusMessage = nil
+            return false
+        }
+
+        do {
+            let redactor = DeveloperSecretRedactor()
+            let pullRequestURL = try DevelopmentGitHubPRCommandPolicy.validatedPullRequestURL(
+                rawPullRequestURL.trimmingCharacters(in: .whitespacesAndNewlines),
+                redactor: redactor
+            )
+            let branchName = try DevelopmentPublishGitCommandPolicy.validatedPublishHeadBranch(
+                rawBranchName.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            let baseBranch = try DevelopmentBranchNamePolicy.validated(
+                rawBaseBranch.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            try DevelopmentGitHubPRCommandPolicy.validateBaseAndHead(
+                baseBranch: baseBranch,
+                headBranch: branchName
+            )
+
+            let request = SyncAutomationRequestPayload(
+                id: Self.developmentPullRequestLifecycleRequestID(
+                    projectID: project.id,
+                    taskID: task.id,
+                    operation: operation,
+                    pullRequestURL: pullRequestURL,
+                    branchName: branchName,
+                    baseBranch: baseBranch
+                ),
+                source: .localDatabase,
+                approvalState: .pendingApproval,
+                sourceClientID: "project-board",
+                toolName: Self.developmentPullRequestLifecycleToolName(for: operation),
+                redactedArgumentSummary: Self.developmentPullRequestLifecycleSummary(
+                    operation: operation,
+                    pullRequestURL: pullRequestURL,
+                    branchName: branchName,
+                    baseBranch: baseBranch
+                ),
+                developmentPullRequest: SyncDevelopmentPullRequestPayload(
+                    projectID: project.id,
+                    operation: operation,
+                    pullRequestURL: pullRequestURL,
+                    branchName: branchName,
+                    baseBranch: baseBranch
+                )
+            )
+
+            var item = AssistantQueueAdapter.makeItem(automationRequest: request)
+            item.reviewReason = Self.developmentPullRequestLifecycleQueueReason(
+                project: project,
+                operation: operation
+            )
+
+            do {
+                if try assistantQueueStore.insertIfAbsent(item) != nil {
+                    focusAssistantQueueItem(id: item.id)
+                    errorMessage = nil
+                    integrationStatusMessage = Self.developmentPullRequestLifecycleQueuedMessage(for: operation)
+                    todayCommandFeedback = nil
+                    onChange()
+                    return true
+                }
+
+                focusAssistantQueueItem(id: item.id)
+                errorMessage = nil
+                integrationStatusMessage = Self.developmentPullRequestLifecycleAlreadyQueuedMessage(for: operation)
+                todayCommandFeedback = nil
+                return true
+            } catch {
+                _ = refreshAssistantQueueSnapshot()
+                errorMessage = AssistantQueueStoreError.userMessage(for: error)
+                integrationStatusMessage = nil
+                return false
+            }
+        } catch let error as DevelopmentPRPublishWorkflowError {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = String(localized: "Review the pull request execution receipt before queueing.")
+            errorMessage = Self.sanitizedDevelopmentAutomationReviewText(error.userMessage)
+            integrationStatusMessage = nil
+            return false
+        } catch let error as DevelopmentPRWorkflowError {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = String(localized: "Review the pull request execution receipt before queueing.")
+            errorMessage = Self.sanitizedDevelopmentAutomationReviewText(error.userMessage)
+            integrationStatusMessage = nil
+            return false
+        } catch {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = String(localized: "Review the pull request execution receipt before queueing.")
+            errorMessage = Self.sanitizedDevelopmentAutomationReviewText(String(describing: error))
+            integrationStatusMessage = nil
+            return false
+        }
+    }
+
+    private static func developmentAutomationProgress(
+        projectID: Int64,
+        taskID: Int64?,
+        branchName: String?,
+        receipts: [ExecutionReceipt],
+        blockingReason: String?
+    ) -> ProjectDevelopmentAutomationProgress {
+        let prepareReceipt = latestDevelopmentAutomationReceipt(
+            toolName: ActionTool.developmentPreparePullRequestWorkflow.rawValue,
+            receipts: receipts
+        )
+        let pushReceipt = latestDevelopmentAutomationReceipt(
+            toolName: ActionTool.developmentPushBranch.rawValue,
+            receipts: receipts
+        )
+        let pullRequestReceipt = latestDevelopmentAutomationReceipt(
+            toolName: ActionTool.developmentCreatePullRequest.rawValue,
+            receipts: receipts
+        )
+        let reviewReceipt = latestDevelopmentAutomationReceipt(
+            toolName: ActionTool.developmentReviewPullRequestGate.rawValue,
+            receipts: receipts
+        )
+        let mergeReceipt = latestDevelopmentAutomationReceipt(
+            toolName: ActionTool.developmentMergePullRequest.rawValue,
+            receipts: receipts
+        )
+
+        let successfulPullRequestReceipt = pullRequestReceipt?.status == .succeeded ? pullRequestReceipt : nil
+        let successfulReviewReceipt = reviewReceipt?.status == .succeeded ? reviewReceipt : nil
+        let successfulMergeReceipt = mergeReceipt?.status == .succeeded ? mergeReceipt : nil
+        let pullRequestURL = developmentAutomationReferenceID(
+            kind: .pullRequest,
+            receipts: [successfulPullRequestReceipt, successfulReviewReceipt, successfulMergeReceipt].compactMap { $0 }
+        )
+        let baseBranch = developmentAutomationReferenceID(
+            kind: .developmentBaseBranch,
+            receipts: [successfulPullRequestReceipt, successfulReviewReceipt, successfulMergeReceipt].compactMap { $0 }
+        )
+        let latestCommitOID = developmentAutomationReferenceID(
+            kind: .developmentCommit,
+            receipts: [successfulReviewReceipt, successfulPullRequestReceipt, pushReceipt].compactMap { $0 }
+        )
+        let hasReviewEvidence = successfulReviewReceipt != nil
+        let hasMergeEvidence = successfulMergeReceipt != nil
+        let canQueueReview = successfulPullRequestReceipt != nil
+            && pullRequestURL != nil
+            && baseBranch != nil
+            && !hasReviewEvidence
+            && !hasMergeEvidence
+        let canQueueMerge = hasReviewEvidence
+            && pullRequestURL != nil
+            && baseBranch != nil
+            && !hasMergeEvidence
+        let progressBlockingReason = blockingReason
+            ?? developmentAutomationProgressBlockingReason(
+                pullRequestReceipt: pullRequestReceipt,
+                reviewReceipt: reviewReceipt,
+                mergeReceipt: mergeReceipt,
+                pullRequestURL: pullRequestURL,
+                baseBranch: baseBranch
+            )
+
+        return ProjectDevelopmentAutomationProgress(
+            projectID: projectID,
+            taskID: taskID,
+            branchName: branchName,
+            pullRequestURL: pullRequestURL,
+            baseBranch: baseBranch,
+            latestCommitOID: latestCommitOID,
+            stages: [
+                developmentAutomationProgressStage(
+                    id: "branch-prepared",
+                    title: String(localized: "Branch prepared"),
+                    receipt: prepareReceipt
+                ),
+                developmentAutomationProgressStage(
+                    id: "branch-pushed",
+                    title: String(localized: "Branch pushed"),
+                    receipt: pushReceipt
+                ),
+                developmentAutomationProgressStage(
+                    id: "pull-request-created",
+                    title: String(localized: "Pull request created"),
+                    receipt: pullRequestReceipt
+                ),
+                developmentAutomationProgressStage(
+                    id: "pull-request-reviewed",
+                    title: String(localized: "Pull request review gate"),
+                    receipt: reviewReceipt,
+                    readyWhenMissing: canQueueReview
+                ),
+                developmentAutomationProgressStage(
+                    id: "pull-request-merged",
+                    title: String(localized: "Pull request merge gate"),
+                    receipt: mergeReceipt,
+                    readyWhenMissing: canQueueMerge
+                )
+            ],
+            canQueuePullRequestReviewGate: canQueueReview,
+            canQueuePullRequestMergeGate: canQueueMerge,
+            blockingReason: progressBlockingReason
+        )
+    }
+
+    private static func developmentAutomationProgressStage(
+        id: String,
+        title: String,
+        receipt: ExecutionReceipt?,
+        readyWhenMissing: Bool = false
+    ) -> ProjectDevelopmentAutomationProgressStage {
+        let status: ProjectDevelopmentAutomationProgressStageStatus
+        if let receipt {
+            switch receipt.status {
+            case .succeeded:
+                status = .succeeded
+            case .failed, .canceled:
+                status = .failed
+            case .running, .notStarted, .skipped:
+                status = .waiting
+            }
+        } else {
+            status = readyWhenMissing ? .ready : .waiting
+        }
+
+        return ProjectDevelopmentAutomationProgressStage(
+            id: id,
+            title: title,
+            status: status,
+            detail: receipt.map { summarizedDevelopmentAutomationReceipt($0) }
+        )
+    }
+
+    private static func summarizedDevelopmentAutomationReceipt(_ receipt: ExecutionReceipt) -> String {
+        let summary = sanitizedDevelopmentAutomationReviewText(receipt.outputSummary)
+        guard summary.count > 180 else {
+            return summary
+        }
+        return "\(summary.prefix(177))..."
+    }
+
+    private static func latestDevelopmentAutomationReceipt(
+        toolName: String,
+        receipts: [ExecutionReceipt]
+    ) -> ExecutionReceipt? {
+        receipts.first { receipt in
+            receipt.primaryToolName == toolName
+                || receipt.actions.contains { $0.toolName == toolName }
+        }
+    }
+
+    private static func developmentAutomationReferenceID(
+        kind: ExecutionReceiptReferenceKind,
+        receipts: [ExecutionReceipt]
+    ) -> String? {
+        receipts
+            .lazy
+            .flatMap(\.references)
+            .first { $0.kind == kind }?
+            .id
+    }
+
+    private static func developmentAutomationReceiptMatches(
+        _ receipt: ExecutionReceipt,
+        projectID: Int64,
+        branchName: String
+    ) -> Bool {
+        let references = receipt.references
+        return references.contains { $0.kind == .project && $0.id == String(projectID) }
+            && references.contains { $0.kind == .developmentBranch && $0.id == branchName }
+    }
+
+    private static func developmentAutomationProgressBlockingReason(
+        pullRequestReceipt: ExecutionReceipt?,
+        reviewReceipt: ExecutionReceipt?,
+        mergeReceipt: ExecutionReceipt?,
+        pullRequestURL: String?,
+        baseBranch: String?
+    ) -> String? {
+        if mergeReceipt?.status == .succeeded {
+            return String(localized: "Pull request merge receipt is complete.")
+        }
+        if pullRequestReceipt == nil {
+            return String(localized: "Create the pull request and wait for its execution receipt before queueing review or merge.")
+        }
+        if pullRequestReceipt?.status == .failed {
+            return String(localized: "Pull request creation failed. Review the execution receipt before queueing review or merge.")
+        }
+        if pullRequestURL == nil || baseBranch == nil {
+            return String(localized: "Pull request receipt is missing URL or base branch evidence, so SoloPM will not draft review or merge approval.")
+        }
+        if reviewReceipt?.status == .failed {
+            return String(localized: "Pull request review gate failed. Resolve the receipt before queueing merge.")
+        }
+        if reviewReceipt == nil {
+            return String(localized: "Pull request is ready for a review gate approval.")
+        }
+        return String(localized: "Pull request is ready for a merge gate approval.")
+    }
+
+    private static func developmentPullRequestLifecycleMissingEvidenceMessage(
+        for operation: SyncDevelopmentPullRequestOperation
+    ) -> String {
+        switch operation {
+        case .reviewGate:
+            return String(localized: "Create the pull request and wait for its receipt before queueing review.")
+        case .merge:
+            return String(localized: "Run the pull request review gate and wait for its receipt before queueing merge.")
+        }
+    }
+
     private func task(id: Int64) -> ProjectBoardTask? {
         snapshot.projects
             .flatMap(\.tasks)
@@ -2018,6 +2496,90 @@ public final class ProjectBoardViewModel: ObservableObject {
         String(
             format: String(localized: "Development pull request creation needs base, title, and body review for %@."),
             sanitizedDevelopmentAutomationReviewText(project.title)
+        )
+    }
+
+    private static func developmentPullRequestLifecycleQueueReason(
+        project: ProjectBoardProject,
+        operation: SyncDevelopmentPullRequestOperation
+    ) -> String {
+        String(
+            format: String(localized: "Development pull request %@ gate needs review for %@."),
+            developmentPullRequestLifecycleOperationLabel(for: operation),
+            sanitizedDevelopmentAutomationReviewText(project.title)
+        )
+    }
+
+    private static func developmentPullRequestLifecycleQueuedMessage(
+        for operation: SyncDevelopmentPullRequestOperation
+    ) -> String {
+        switch operation {
+        case .reviewGate:
+            return String(localized: "Queued development pull request review gate for approval.")
+        case .merge:
+            return String(localized: "Queued development pull request merge gate for approval.")
+        }
+    }
+
+    private static func developmentPullRequestLifecycleAlreadyQueuedMessage(
+        for operation: SyncDevelopmentPullRequestOperation
+    ) -> String {
+        switch operation {
+        case .reviewGate:
+            return String(localized: "Development pull request review gate is already in Assistant Queue.")
+        case .merge:
+            return String(localized: "Development pull request merge gate is already in Assistant Queue.")
+        }
+    }
+
+    private static func developmentPullRequestLifecycleToolName(
+        for operation: SyncDevelopmentPullRequestOperation
+    ) -> String {
+        switch operation {
+        case .reviewGate:
+            return ActionTool.developmentReviewPullRequestGate.rawValue
+        case .merge:
+            return ActionTool.developmentMergePullRequest.rawValue
+        }
+    }
+
+    private static func developmentPullRequestLifecycleOperationID(
+        for operation: SyncDevelopmentPullRequestOperation
+    ) -> String {
+        switch operation {
+        case .reviewGate:
+            return "review"
+        case .merge:
+            return "merge"
+        }
+    }
+
+    private static func developmentPullRequestLifecycleOperationLabel(
+        for operation: SyncDevelopmentPullRequestOperation
+    ) -> String {
+        switch operation {
+        case .reviewGate:
+            return String(localized: "review")
+        case .merge:
+            return String(localized: "merge")
+        }
+    }
+
+    private static func developmentPullRequestLifecycleSummary(
+        operation: SyncDevelopmentPullRequestOperation,
+        pullRequestURL: String,
+        branchName: String,
+        baseBranch: String
+    ) -> String {
+        let action: String
+        switch operation {
+        case .reviewGate:
+            action = "Review CI, review decision, unresolved threads, and mergeability before merge approval."
+        case .merge:
+            action = "Merge only after the review gate passes and execution rechecks the approved head commit."
+        }
+        return sanitizedDevelopmentAutomationReviewText(
+            "Project development PR \(developmentPullRequestLifecycleOperationID(for: operation)): \(pullRequestURL) head \(branchName) into \(baseBranch). \(action)"
         )
     }
 
@@ -2138,6 +2700,34 @@ public final class ProjectBoardViewModel: ObservableObject {
             .joined(separator: "|")
         let digest = SHA256.hash(data: Data(input.utf8))
         return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func developmentPullRequestLifecycleRequestID(
+        projectID: Int64,
+        taskID: Int64,
+        operation: SyncDevelopmentPullRequestOperation,
+        pullRequestURL: String,
+        branchName: String,
+        baseBranch: String
+    ) -> String {
+        // Review and merge are separate approval surfaces. Include every reviewed
+        // PR identity field so Assistant Queue cannot reuse approval after edits.
+        let parts = [
+            String(projectID),
+            String(taskID),
+            operation.rawValue,
+            pullRequestURL,
+            branchName,
+            baseBranch
+        ]
+        let input = parts
+            .map { "\($0.utf8.count):\($0)" }
+            .joined(separator: "|")
+        let digest = SHA256.hash(data: Data(input.utf8))
+            .prefix(8)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return "project-development-pr-\(developmentPullRequestLifecycleOperationID(for: operation)):\(projectID):\(taskID):\(digest)"
     }
 
     public var canSyncGoogleCalendar: Bool {
