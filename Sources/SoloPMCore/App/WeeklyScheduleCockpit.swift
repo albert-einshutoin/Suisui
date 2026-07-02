@@ -160,6 +160,7 @@ enum WeeklyScheduleCockpitBuilder {
             grouping: draftBlocks,
             by: \.dayKey
         ).mapValues { Set($0.map(\.task.id)) }
+        let draftedTaskIDs = Set(draftBlocks.map(\.task.id))
         let completionHistoryCounts = completionHistoryCountsByDay(
             from: snapshot,
             calendar: calendar
@@ -201,7 +202,7 @@ enum WeeklyScheduleCockpitBuilder {
 
         return WeeklyScheduleCockpit(
             days: days,
-            unscheduledTasks: workload.unscheduledTasks,
+            unscheduledTasks: workload.unscheduledTasks.filter { !draftedTaskIDs.contains($0.id) },
             agendaDay: agendaDay,
             focusForecast: focusForecast
         )

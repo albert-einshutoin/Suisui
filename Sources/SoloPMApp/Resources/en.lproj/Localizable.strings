@@ -1377,3 +1377,10 @@
 "Review pull request" = "Review pull request";
 "Merge pull request" = "Merge pull request";
 "Development tool" = "Development tool";
+"Add to Draft" = "Add to Draft";
+"Add %@ to Draft" = "Add %@ to Draft";
+"Adds this local task to the reviewable schedule draft without writing Calendar." = "Adds this local task to the reviewable schedule draft without writing Calendar.";
+"Added \"%@\" to the local schedule draft." = "Added \"%@\" to the local schedule draft.";
+"Unscheduled task is already in the schedule draft." = "Unscheduled task is already in the schedule draft.";
+"Select an unscheduled task before adding it to the draft." = "Select an unscheduled task before adding it to the draft.";
+"Schedule draft could not add the unscheduled task." = "Schedule draft could not add the unscheduled task.";
