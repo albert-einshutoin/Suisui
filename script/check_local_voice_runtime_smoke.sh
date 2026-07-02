@@ -238,6 +238,17 @@ check_output_dir_policy() {
   esac
 }
 
+has_tts_language() {
+  local expected="$1"
+  local language
+  for language in "${tts_languages[@]}"; do
+    if [[ "$language" == "$expected" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 check_evidence_file_policy() {
   local evidence_file
   evidence_file="$(absolute_path "$EVIDENCE_FILE")"
@@ -247,10 +258,9 @@ check_evidence_file_policy() {
     blocker "SOLOPM_STT_EXPECTED_TRANSCRIPT_CONTAINS is required when writing local voice runtime evidence"
   fi
   if [[ "$STT_ONLY_MODE" -eq 0 ]]; then
-    case " ${tts_languages[*]} " in
-      *" ja "*" en "*) ;;
-      *) blocker "SOLOPM_LOCAL_VOICE_EVIDENCE_FILE requires SOLOPM_TTS_LANGUAGES to include both ja and en" ;;
-    esac
+    if ! has_tts_language ja || ! has_tts_language en; then
+      blocker "SOLOPM_LOCAL_VOICE_EVIDENCE_FILE requires SOLOPM_TTS_LANGUAGES to include both ja and en"
+    fi
   fi
   case "$evidence_file" in
     "$ROOT_DIR/docs/release/evidence/"*.md) ;;

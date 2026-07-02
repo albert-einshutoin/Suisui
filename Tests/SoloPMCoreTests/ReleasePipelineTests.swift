@@ -8344,6 +8344,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("BLOCKER: local voice runtime smoke found"))
         XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" check-ignore -q"))
         XCTAssertTrue(script.contains("SOLOPM_LOCAL_VOICE_SMOKE_OUTPUT_DIR inside repo must be ignored by git"))
+        XCTAssertTrue(script.contains("has_tts_language()"))
+        XCTAssertTrue(script.contains("if ! has_tts_language ja || ! has_tts_language en; then"))
         XCTAssertTrue(script.contains("STT sample WAV path must be absolute"))
         XCTAssertTrue(script.contains("STT sample WAV must use a .wav file"))
         XCTAssertTrue(script.contains("Kokoro voice id must not contain whitespace"))
