@@ -1377,3 +1377,10 @@
 "Review pull request" = "Pull Requestをレビュー";
 "Merge pull request" = "Pull Requestをマージ";
 "Development tool" = "開発ツール";
+"Add to Draft" = "下書きに追加";
+"Add %@ to Draft" = "%@を下書きに追加";
+"Adds this local task to the reviewable schedule draft without writing Calendar." = "Calendarへ書き込まず、このローカルタスクをレビュー可能なスケジュール下書きに追加します。";
+"Added \"%@\" to the local schedule draft." = "「%@」をローカルスケジュール下書きに追加しました。";
+"Unscheduled task is already in the schedule draft." = "未スケジュールタスクは既にスケジュール下書きにあります。";
+"Select an unscheduled task before adding it to the draft." = "下書きに追加する前に未スケジュールタスクを選択してください。";
+"Schedule draft could not add the unscheduled task." = "スケジュール下書きに未スケジュールタスクを追加できませんでした。";

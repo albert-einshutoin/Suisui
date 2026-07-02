@@ -3697,6 +3697,85 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testScheduleUnscheduledTaskCanBeAddedToDraftWithoutWritingStoreOrCalendar() throws {
+        var changeCount = 0
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 21, hour: 9, minute: 10).date)
+        let calendarClient = InMemoryCalendarClient()
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            scheduleCalendarClient: calendarClient,
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Schedule Draft"))
+        let dueTask = try XCTUnwrap(viewModel.createTask(title: "Today task", projectID: project.id, status: .planned, dueAt: "2026-06-21"))
+        let unscheduled = try XCTUnwrap(viewModel.createTask(title: "Unscheduled task", projectID: project.id, status: .planned, dueAt: nil))
+        changeCount = 0
+
+        let added = viewModel.addUnscheduledTaskToScheduleDraft(
+            taskID: unscheduled.id,
+            on: referenceDate,
+            calendar: calendar
+        )
+
+        XCTAssertTrue(added)
+        XCTAssertEqual(changeCount, 0)
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Added \"Unscheduled task\" to the local schedule draft.")
+        XCTAssertEqual(viewModel.scheduleDraft?.timeBlocks.map(\.task.id), [dueTask.id, unscheduled.id])
+        XCTAssertEqual(viewModel.scheduleDraft?.timeBlocks.map(\.label), ["09:30-10:00", "10:00-10:30"])
+        XCTAssertEqual(viewModel.scheduleDraft?.unscheduledTasks.map(\.id), [])
+        XCTAssertEqual(viewModel.unscheduledScheduleTasks().map(\.id), [])
+        let cockpit = viewModel.weeklyScheduleCockpit(around: referenceDate, calendar: calendar)
+        XCTAssertEqual(cockpit.days.flatMap(\.blocks).map(\.task.id), [dueTask.id, unscheduled.id])
+        XCTAssertTrue(cockpit.days.flatMap(\.blocks).allSatisfy { $0.source == .scheduleDraft })
+        XCTAssertEqual(cockpit.unscheduledTasks.map(\.id), [])
+        XCTAssertNil(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == unscheduled.id }?.dueAt)
+        XCTAssertTrue(try calendarClient.listEvents().isEmpty)
+    }
+
+    @MainActor
+    func testScheduleUnscheduledTaskDraftActionDoesNotDuplicateExistingDraftBlock() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 21, hour: 9, minute: 10).date)
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Schedule Draft"))
+        let unscheduled = try XCTUnwrap(viewModel.createTask(title: "Unscheduled task", projectID: project.id, status: .planned, dueAt: nil))
+
+        XCTAssertTrue(viewModel.addUnscheduledTaskToScheduleDraft(taskID: unscheduled.id, on: referenceDate, calendar: calendar))
+        XCTAssertTrue(viewModel.addUnscheduledTaskToScheduleDraft(taskID: unscheduled.id, on: referenceDate, calendar: calendar))
+
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Unscheduled task is already in the schedule draft.")
+        XCTAssertEqual(viewModel.scheduleDraft?.timeBlocks.map(\.task.id), [unscheduled.id])
+        XCTAssertEqual(viewModel.scheduleDraft?.unscheduledTasks.map(\.id), [])
+    }
+
+    @MainActor
+    func testScheduleUnscheduledTaskDraftActionRegeneratesStaleDraftForVisibleDay() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let oldReferenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 14, hour: 9, minute: 10).date)
+        let visibleReferenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 21, hour: 9, minute: 10).date)
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Schedule Draft"))
+        let oldDueTask = try XCTUnwrap(viewModel.createTask(title: "Old due task", projectID: project.id, status: .planned, dueAt: "2026-06-14"))
+        let visibleDueTask = try XCTUnwrap(viewModel.createTask(title: "Visible due task", projectID: project.id, status: .planned, dueAt: "2026-06-21"))
+        let unscheduled = try XCTUnwrap(viewModel.createTask(title: "Unscheduled task", projectID: project.id, status: .planned, dueAt: nil))
+
+        let staleDraft = viewModel.prepareScheduleDraft(on: oldReferenceDate, calendar: calendar)
+        XCTAssertEqual(staleDraft.timeBlocks.map(\.task.id), [oldDueTask.id])
+
+        XCTAssertTrue(viewModel.addUnscheduledTaskToScheduleDraft(taskID: unscheduled.id, on: visibleReferenceDate, calendar: calendar))
+
+        XCTAssertEqual(viewModel.scheduleDraft?.timeBlocks.map(\.task.id), [oldDueTask.id, visibleDueTask.id, unscheduled.id])
+        XCTAssertTrue(viewModel.scheduleDraft?.timeBlocks.allSatisfy { $0.startAt?.contains("2026-06-21") == true } ?? false)
+    }
+
+    @MainActor
     func testDailyWorkloadOverviewAggregatesWeekCountsProgressAndUnscheduledBuckets() throws {
         var calendar = utcCalendar()
         calendar.firstWeekday = 2

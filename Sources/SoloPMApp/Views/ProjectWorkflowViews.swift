@@ -200,7 +200,11 @@ struct ScheduleWorkflowView: View {
 
                 HStack(alignment: .top, spacing: 12) {
                     ScheduleDraftPanel(viewModel: viewModel)
-                    ScheduleUnscheduledPanel(tasks: viewModel.unscheduledScheduleTasks())
+                    ScheduleUnscheduledPanel(
+                        tasks: viewModel.unscheduledScheduleTasks(),
+                        viewModel: viewModel,
+                        referenceDate: workloadReferenceDate
+                    )
                 }
 
                 HStack(spacing: 8) {
@@ -1900,6 +1904,8 @@ private struct ScheduleDraftPanel: View {
 
 private struct ScheduleUnscheduledPanel: View {
     let tasks: [ProjectBoardTask]
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    let referenceDate: Date
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1911,10 +1917,25 @@ private struct ScheduleUnscheduledPanel: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(tasks.prefix(8)) { task in
-                    Label(task.title, systemImage: "circle")
-                        .font(.caption)
-                        .lineLimit(1)
-                        .accessibilityIdentifier("schedule-unscheduled-task-\(task.id)")
+                    HStack(spacing: 8) {
+                        Label(task.title, systemImage: "circle")
+                            .font(.caption)
+                            .lineLimit(1)
+                            .accessibilityIdentifier("schedule-unscheduled-task-\(task.id)")
+                        Spacer(minLength: 8)
+                        Button {
+                            _ = viewModel.addUnscheduledTaskToScheduleDraft(
+                                taskID: task.id,
+                                on: referenceDate
+                            )
+                        } label: {
+                            Label("Add to Draft", systemImage: "calendar.badge.plus")
+                        }
+                        .controlSize(.small)
+                        .accessibilityIdentifier("schedule-unscheduled-add-draft-\(task.id)")
+                        .accessibilityLabel(String(format: String(localized: "Add %@ to Draft"), task.title))
+                        .accessibilityHint("Adds this local task to the reviewable schedule draft without writing Calendar.")
+                    }
                 }
             }
         }

@@ -4256,13 +4256,18 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     public func unscheduledScheduleTasks() -> [ProjectBoardTask] {
+        let draftedTaskIDs = Set(scheduleDraft?.timeBlocks.map(\.task.id) ?? [])
+        return unscheduledScheduleTasks(excludingTaskIDs: draftedTaskIDs)
+    }
+
+    private func unscheduledScheduleTasks(excludingTaskIDs excludedTaskIDs: Set<Int64>) -> [ProjectBoardTask] {
         snapshot.projects
             .filter { project in
                 !project.isArchived && !project.isCompleted
             }
             .flatMap(\.tasks)
             .filter { task in
-                task.status != .done && task.dueAt == nil
+                task.status != .done && task.dueAt == nil && !excludedTaskIDs.contains(task.id)
             }
             .sorted { lhs, rhs in
                 if lhs.priority.sortRank != rhs.priority.sortRank {
@@ -5891,7 +5896,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         let todayDraft = prepareTodayScheduleDraft(on: referenceDate, calendar: calendar)
         let draft = ScheduleDraft(
             timeBlocks: todayDraft.timeBlocks,
-            unscheduledTasks: unscheduledScheduleTasks()
+            unscheduledTasks: unscheduledScheduleTasks(excludingTaskIDs: [])
         )
         scheduleDraft = draft
         scheduleApplyResult = nil
@@ -5901,6 +5906,81 @@ public final class ProjectBoardViewModel: ObservableObject {
             draft.unscheduledTasks.count
         )
         return draft
+    }
+
+    @discardableResult
+    public func addUnscheduledTaskToScheduleDraft(
+        taskID: Int64,
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Bool {
+        guard let task = unscheduledScheduleTasks(excludingTaskIDs: []).first(where: { $0.id == taskID }) else {
+            errorMessage = String(localized: "Select an unscheduled task before adding it to the draft.")
+            todayCommandFeedback = errorMessage
+            return false
+        }
+
+        var draft = scheduleDraftForAddingUnscheduledTask(on: referenceDate, calendar: calendar)
+        if draft.timeBlocks.contains(where: { $0.task.id == taskID }) {
+            todayCommandFeedback = String(localized: "Unscheduled task is already in the schedule draft.")
+            errorMessage = nil
+            return true
+        }
+
+        guard let block = scheduleDraftTimeBlock(
+            for: task,
+            existingBlocks: draft.timeBlocks,
+            referenceDate: referenceDate,
+            calendar: calendar
+        ) else {
+            errorMessage = String(localized: "Schedule draft could not add the unscheduled task.")
+            todayCommandFeedback = errorMessage
+            return false
+        }
+
+        // This is a local review artifact, not task scheduling. The task keeps
+        // its nil due date until the user separately approves Calendar/app writes.
+        draft.timeBlocks.append(block)
+        draft.unscheduledTasks.removeAll { $0.id == taskID }
+        scheduleDraft = draft
+        scheduleApplyResult = nil
+        errorMessage = nil
+        todayCommandFeedback = String(format: String(localized: "Added \"%@\" to the local schedule draft."), task.title)
+        return true
+    }
+
+    private func scheduleDraftForAddingUnscheduledTask(
+        on referenceDate: Date,
+        calendar: Calendar
+    ) -> ScheduleDraft {
+        guard let draft = scheduleDraft else {
+            return prepareScheduleDraft(on: referenceDate, calendar: calendar)
+        }
+        guard scheduleDraft(draft, isAlignedWith: referenceDate, calendar: calendar) else {
+            // A Schedule draft is approval payload. Regenerating stale day-local
+            // blocks prevents a visible-day Add action from queuing old Calendar writes.
+            return prepareScheduleDraft(on: referenceDate, calendar: calendar)
+        }
+        return draft
+    }
+
+    private func scheduleDraft(
+        _ draft: ScheduleDraft,
+        isAlignedWith referenceDate: Date,
+        calendar: Calendar
+    ) -> Bool {
+        guard !draft.timeBlocks.isEmpty else {
+            return true
+        }
+        let formatter = ISO8601DateFormatter()
+        let referenceDayKey = Self.scheduleDraftDayKey(referenceDate: referenceDate, calendar: calendar)
+        return draft.timeBlocks.allSatisfy { block in
+            guard let rawStartAt = block.startAt,
+                  let start = formatter.date(from: rawStartAt) else {
+                return false
+            }
+            return Self.scheduleDraftDayKey(referenceDate: start, calendar: calendar) == referenceDayKey
+        }
     }
 
     @discardableResult
@@ -8444,6 +8524,27 @@ public final class ProjectBoardViewModel: ObservableObject {
                 endAt: isoFormatter.string(from: end)
             )
         }
+    }
+
+    private func scheduleDraftTimeBlock(
+        for task: ProjectBoardTask,
+        existingBlocks: [TodayTimeBlock],
+        referenceDate: Date,
+        calendar: Calendar
+    ) -> TodayTimeBlock? {
+        let isoFormatter = ISO8601DateFormatter()
+        let nextStart = existingBlocks.last?.endAt.flatMap { isoFormatter.date(from: $0) }
+            ?? calendar.date(
+                byAdding: .minute,
+                value: existingBlocks.count * 30,
+                to: roundedTimeBlockStart(from: referenceDate, calendar: calendar)
+            )
+            ?? referenceDate
+        return timeBlocks(
+            for: [task],
+            startingAt: nextStart,
+            calendar: calendar
+        ).first
     }
 
     private func roundedTimeBlockStart(from referenceDate: Date, calendar: Calendar) -> Date {
