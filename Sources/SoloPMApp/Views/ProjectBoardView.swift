@@ -3577,6 +3577,21 @@ private struct ProjectDevelopmentAutomationPanel: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
+                if let nextApproval = developmentProgress.nextApproval {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label(LocalizedStringKey(nextApproval.title), systemImage: "arrow.right.circle")
+                            .font(.caption)
+                            .foregroundStyle(Color.accentColor)
+                        Text(LocalizedStringKey(nextApproval.detail))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("project-development-automation-next-approval")
+                    .accessibilityHint("Shows the next receipt-backed approval to prevent pull requests from being left unreviewed.")
+                }
+
                 ForEach(developmentProgress.stages) { stage in
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: progressStageIcon(for: stage.status))

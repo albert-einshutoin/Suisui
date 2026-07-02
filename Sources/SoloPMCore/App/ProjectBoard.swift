@@ -183,6 +183,18 @@ public struct ProjectDevelopmentAutomationProgressStage: Identifiable, Equatable
     }
 }
 
+public struct ProjectDevelopmentAutomationNextApproval: Identifiable, Equatable, Sendable {
+    public var id: String
+    public var title: String
+    public var detail: String
+
+    public init(id: String, title: String, detail: String) {
+        self.id = id
+        self.title = title
+        self.detail = detail
+    }
+}
+
 public struct ProjectDevelopmentAutomationProgress: Equatable, Sendable {
     public var projectID: Int64
     public var taskID: Int64?
@@ -194,6 +206,7 @@ public struct ProjectDevelopmentAutomationProgress: Equatable, Sendable {
     public var canQueuePullRequestReviewGate: Bool
     public var canQueuePullRequestMergeGate: Bool
     public var blockingReason: String?
+    public var nextApproval: ProjectDevelopmentAutomationNextApproval?
 
     public init(
         projectID: Int64,
@@ -205,7 +218,8 @@ public struct ProjectDevelopmentAutomationProgress: Equatable, Sendable {
         stages: [ProjectDevelopmentAutomationProgressStage],
         canQueuePullRequestReviewGate: Bool,
         canQueuePullRequestMergeGate: Bool,
-        blockingReason: String?
+        blockingReason: String?,
+        nextApproval: ProjectDevelopmentAutomationNextApproval?
     ) {
         self.projectID = projectID
         self.taskID = taskID
@@ -217,6 +231,7 @@ public struct ProjectDevelopmentAutomationProgress: Equatable, Sendable {
         self.canQueuePullRequestReviewGate = canQueuePullRequestReviewGate
         self.canQueuePullRequestMergeGate = canQueuePullRequestMergeGate
         self.blockingReason = blockingReason
+        self.nextApproval = nextApproval
     }
 }
 
@@ -2270,6 +2285,8 @@ public final class ProjectBoardViewModel: ObservableObject {
             receipts: receipts
         )
 
+        let successfulPrepareReceipt = prepareReceipt?.status == .succeeded ? prepareReceipt : nil
+        let successfulPushReceipt = pushReceipt?.status == .succeeded ? pushReceipt : nil
         let successfulPullRequestReceipt = pullRequestReceipt?.status == .succeeded ? pullRequestReceipt : nil
         let successfulReviewReceipt = reviewReceipt?.status == .succeeded ? reviewReceipt : nil
         let successfulMergeReceipt = mergeReceipt?.status == .succeeded ? mergeReceipt : nil
@@ -2304,6 +2321,18 @@ public final class ProjectBoardViewModel: ObservableObject {
                 pullRequestURL: pullRequestURL,
                 baseBranch: baseBranch
             )
+        let nextApproval = developmentAutomationNextApproval(
+            prepareReceipt: prepareReceipt,
+            pushReceipt: pushReceipt,
+            pullRequestReceipt: pullRequestReceipt,
+            reviewReceipt: reviewReceipt,
+            mergeReceipt: mergeReceipt,
+            successfulPrepareReceipt: successfulPrepareReceipt,
+            successfulPushReceipt: successfulPushReceipt,
+            canQueueReview: canQueueReview,
+            canQueueMerge: canQueueMerge,
+            blockingReason: blockingReason
+        )
 
         return ProjectDevelopmentAutomationProgress(
             projectID: projectID,
@@ -2343,7 +2372,129 @@ public final class ProjectBoardViewModel: ObservableObject {
             ],
             canQueuePullRequestReviewGate: canQueueReview,
             canQueuePullRequestMergeGate: canQueueMerge,
-            blockingReason: progressBlockingReason
+            blockingReason: progressBlockingReason,
+            nextApproval: nextApproval
+        )
+    }
+
+    private static func developmentAutomationNextApproval(
+        prepareReceipt: ExecutionReceipt?,
+        pushReceipt: ExecutionReceipt?,
+        pullRequestReceipt: ExecutionReceipt?,
+        reviewReceipt: ExecutionReceipt?,
+        mergeReceipt: ExecutionReceipt?,
+        successfulPrepareReceipt: ExecutionReceipt?,
+        successfulPushReceipt: ExecutionReceipt?,
+        canQueueReview: Bool,
+        canQueueMerge: Bool,
+        blockingReason: String?
+    ) -> ProjectDevelopmentAutomationNextApproval? {
+        // Resume guidance must come from persisted receipts, not transient UI state,
+        // so a reopened project still points users toward review and merge instead of leaving PRs behind.
+        if let blockingReason {
+            return ProjectDevelopmentAutomationNextApproval(
+                id: "setup-required",
+                title: String(localized: "Resolve development automation setup"),
+                detail: blockingReason
+            )
+        }
+
+        if mergeReceipt?.status == .succeeded {
+            return ProjectDevelopmentAutomationNextApproval(
+                id: "lifecycle-complete",
+                title: String(localized: "Pull request lifecycle complete"),
+                detail: String(localized: "The merge receipt is complete; no PR lifecycle approval is pending.")
+            )
+        }
+
+        if let failedApproval = failedDevelopmentAutomationNextApproval(
+            prepareReceipt: prepareReceipt,
+            pushReceipt: pushReceipt,
+            pullRequestReceipt: pullRequestReceipt,
+            reviewReceipt: reviewReceipt,
+            mergeReceipt: mergeReceipt
+        ) {
+            return failedApproval
+        }
+
+        if canQueueMerge {
+            return ProjectDevelopmentAutomationNextApproval(
+                id: "pull-request-merge",
+                title: String(localized: "Queue pull request merge gate"),
+                detail: String(localized: "Use the review gate receipt to queue the final merge approval.")
+            )
+        }
+
+        if canQueueReview {
+            return ProjectDevelopmentAutomationNextApproval(
+                id: "pull-request-review",
+                title: String(localized: "Queue pull request review gate"),
+                detail: String(localized: "Use the PR creation receipt to queue CI, thread, and mergeability checks before merge.")
+            )
+        }
+
+        if pullRequestReceipt == nil, successfulPushReceipt != nil {
+            return ProjectDevelopmentAutomationNextApproval(
+                id: "pull-request-create",
+                title: String(localized: "Queue pull request creation review"),
+                detail: String(localized: "Review base branch, title, and body before queueing GitHub pull request creation.")
+            )
+        }
+
+        if pushReceipt == nil, successfulPrepareReceipt != nil {
+            return ProjectDevelopmentAutomationNextApproval(
+                id: "branch-push",
+                title: String(localized: "Queue branch push review"),
+                detail: String(localized: "Push is a separate external write approval after branch preparation evidence exists.")
+            )
+        }
+
+        if prepareReceipt == nil {
+            return ProjectDevelopmentAutomationNextApproval(
+                id: "branch-prepare",
+                title: String(localized: "Queue branch automation"),
+                detail: String(localized: "Start with the Assistant Queue branch preparation approval before any git mutation runs.")
+            )
+        }
+
+        return ProjectDevelopmentAutomationNextApproval(
+            id: "receipt-pending",
+            title: String(localized: "Wait for execution receipt"),
+            detail: String(localized: "The current development approval is still waiting for execution evidence before the next approval can be queued.")
+        )
+    }
+
+    private static func failedDevelopmentAutomationNextApproval(
+        prepareReceipt: ExecutionReceipt?,
+        pushReceipt: ExecutionReceipt?,
+        pullRequestReceipt: ExecutionReceipt?,
+        reviewReceipt: ExecutionReceipt?,
+        mergeReceipt: ExecutionReceipt?
+    ) -> ProjectDevelopmentAutomationNextApproval? {
+        let candidates: [(ExecutionReceipt?, String)] = [
+            (mergeReceipt, String(localized: "Review failed pull request merge")),
+            (reviewReceipt, String(localized: "Review failed pull request gate")),
+            (pullRequestReceipt, String(localized: "Review failed pull request creation")),
+            (pushReceipt, String(localized: "Review failed branch push")),
+            (prepareReceipt, String(localized: "Review failed branch preparation"))
+        ]
+        let failedReceipt: (id: String, title: String)? = candidates.compactMap { candidate -> (id: String, title: String)? in
+            let (receipt, title) = candidate
+            guard let receipt,
+                  receipt.status == .failed || receipt.status == .canceled else {
+                return nil
+            }
+            return (id: receipt.id, title: title)
+        }.first
+
+        guard let failedReceipt else {
+            return nil
+        }
+
+        return ProjectDevelopmentAutomationNextApproval(
+            id: "receipt-failed-\(failedReceipt.id)",
+            title: failedReceipt.title,
+            detail: String(localized: "Resolve the failed execution receipt before queueing the next development approval.")
         )
     }
 
