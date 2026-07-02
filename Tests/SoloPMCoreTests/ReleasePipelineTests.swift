@@ -5791,14 +5791,15 @@ final class ReleasePipelineTests: XCTestCase {
     func testRuntimeWorkflowSmokeScriptDefinesScenarioRegistryAndFailureArtifacts() throws {
         let script = try readPackageFile("script/check_runtime_workflow_smoke.sh")
 
-        XCTAssertTrue(script.contains("SCENARIOS=(\"project_task_crud\" \"inbox_triage\" \"today_complete\" \"settings_save\" \"voice_review\" \"development_pr\")"))
+        XCTAssertTrue(script.contains("SCENARIOS=(\"project_task_crud\" \"inbox_triage\" \"today_complete\" \"settings_save\" \"voice_review\" \"development_pr\" \"schedule_cockpit\")"))
         for scenario in [
             "project_task_crud",
             "inbox_triage",
             "today_complete",
             "settings_save",
             "voice_review",
-            "development_pr"
+            "development_pr",
+            "schedule_cockpit"
         ] {
             XCTAssertTrue(script.contains("run_\(scenario)()"), "workflow smoke must define \(scenario)")
             XCTAssertTrue(script.contains("write_scenario_artifact \"\(scenario)\""))
@@ -5814,21 +5815,70 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("./script/check_runtime_settings_save_smoke.sh"))
         XCTAssertTrue(script.contains("./script/check_runtime_voice_review_smoke.sh"))
         XCTAssertTrue(script.contains("./script/check_runtime_development_pr_smoke.sh"))
+        XCTAssertTrue(script.contains("./script/check_runtime_schedule_cockpit_smoke.sh"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_ACCESSIBLE_CRUD_KEEP_DATABASE=1"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_INBOX_TRIAGE_KEEP_DATABASE=1"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_TODAY_COMPLETE_KEEP_DATABASE=1"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_SETTINGS_SAVE_KEEP_HOME=1"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_VOICE_REVIEW_KEEP_DATABASE=1"))
         XCTAssertTrue(script.contains("SOLOPM_RUNTIME_DEVELOPMENT_PR_KEEP_WORKSPACE=1"))
+        XCTAssertTrue(script.contains("SOLOPM_RUNTIME_SCHEDULE_COCKPIT_KEEP_DATABASE=1"))
         XCTAssertTrue(script.contains("BLOCKER: runtime workflow scenario failed"))
         XCTAssertTrue(script.contains("Last visible window"))
         XCTAssertFalse(script.contains("inbox_triage runtime DB assertion is not implemented yet"))
         XCTAssertFalse(script.contains("today_complete runtime DB assertion is not implemented yet"))
         XCTAssertFalse(script.contains("settings_save runtime store assertion is not implemented yet"))
         XCTAssertFalse(script.contains("voice_review approval-boundary runtime assertion is not implemented yet"))
+        XCTAssertFalse(script.contains("schedule_cockpit runtime DB assertion is not implemented yet"))
         XCTAssertFalse(script.contains("SKIP"))
         XCTAssertFalse(script.contains("TODO"))
         XCTAssertFalse(script.contains("fake success"))
+    }
+
+    func testRuntimeScheduleCockpitSmokeScriptVerifiesDraftGridAndApprovalBoundary() throws {
+        let script = try readPackageFile("script/check_runtime_schedule_cockpit_smoke.sh")
+        let markerHelper = try readPackageFile("script/ui_evidence_ax_marker_check.swift")
+
+        XCTAssertTrue(script.contains("SOLOPM_DATABASE_PATH"))
+        XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
+        XCTAssertTrue(script.contains("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"))
+        XCTAssertTrue(script.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION=\"schedule\""))
+        XCTAssertFalse(script.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
+        XCTAssertTrue(script.contains("./script/build_and_run.sh --build-only"))
+        XCTAssertTrue(script.contains("seed_schedule_tasks()"))
+        XCTAssertTrue(script.contains("source_command='runtime-schedule-cockpit-smoke'"))
+        XCTAssertTrue(script.contains("AX Runtime Schedule Due"))
+        XCTAssertTrue(script.contains("AX Runtime Schedule Unscheduled"))
+        XCTAssertTrue(script.contains("schedule-workflow"))
+        XCTAssertTrue(script.contains("schedule-week-grid"))
+        XCTAssertTrue(script.contains("schedule-status-banner"))
+        XCTAssertTrue(script.contains("schedule-unscheduled-add-draft-$unscheduled_task_id"))
+        XCTAssertTrue(script.contains("schedule-feedback"))
+        XCTAssertTrue(script.contains("schedule-apply-calendar"))
+        XCTAssertTrue(script.contains("waitForAXElementContaining()"))
+        XCTAssertTrue(script.contains("pressButtonUntilSQLiteValue()"))
+        XCTAssertTrue(script.contains("ui_evidence_ax_marker_check.swift"))
+        XCTAssertTrue(script.contains("ui_evidence_ax_press_button.swift"))
+        XCTAssertTrue(script.contains("SOLOPM_RUNTIME_SCHEDULE_COCKPIT_AX_MAX_NODES"))
+        XCTAssertTrue(script.contains("SOLOPM_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1"))
+        XCTAssertTrue(script.contains("id LIKE 'action-plan:schedule-draft-calendar-apply:%:task:%$unscheduled_task_id%'"))
+        XCTAssertTrue(script.contains("payload_kind='action_plan'"))
+        XCTAssertTrue(script.contains("state='waitingReview'"))
+        XCTAssertTrue(script.contains("risk_level='write'"))
+        XCTAssertTrue(script.contains("approval_json IS NULL"))
+        XCTAssertTrue(script.contains("required_capabilities_json LIKE '%calendarCreateWorkBlock%'"))
+        XCTAssertTrue(script.contains("required_capabilities_json LIKE '%providerExecutionApproval%'"))
+        XCTAssertTrue(script.contains("required_capabilities_json LIKE '%appPermission%'"))
+        XCTAssertTrue(script.contains("payload_json LIKE '%\\\"requiresApproval\\\":true%'"))
+        XCTAssertTrue(script.contains("status='planned' AND due_at IS NULL"))
+        XCTAssertTrue(script.contains("status='planned' AND due_at='$runtime_day_key'"))
+        XCTAssertTrue(script.contains("OK: runtime schedule cockpit smoke covered weekly grid, unscheduled add-to-draft, and approval-gated Calendar apply"))
+        XCTAssertFalse(script.contains(":memory:"))
+        XCTAssertFalse(script.contains("not implemented yet"))
+        XCTAssertFalse(script.contains("fake success"))
+
+        XCTAssertTrue(markerHelper.contains("SOLOPM_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE"))
+        XCTAssertTrue(markerHelper.contains("subtreeContainsText(startingAt:"))
     }
 
     func testRuntimeDevelopmentPRSmokeScriptRunsApprovedDirectoryFixtureFlow() throws {

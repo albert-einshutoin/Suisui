@@ -2,20 +2,18 @@ import ApplicationServices
 import AppKit
 import Foundation
 
-guard CommandLine.arguments.count == 4 else {
-    fputs("AX marker check requires app name, AX identifier marker, and text marker.\n", stderr)
+guard CommandLine.arguments.count == 3 else {
+    fputs("AX button press requires app name and button identifier/text marker.\n", stderr)
     exit(2)
 }
 
 let appName = CommandLine.arguments[1]
-let identifierNeedle = CommandLine.arguments[2]
-let textNeedle = CommandLine.arguments[3]
+let marker = CommandLine.arguments[2]
 let environment = ProcessInfo.processInfo.environment
 let maxNodes = Int(environment["SOLOPM_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
-let requireIdentifierSubtree = environment["SOLOPM_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE"] == "1"
 
 guard AXIsProcessTrusted() else {
-    fputs("Accessibility permission is required to inspect SoloPM UI evidence markers.\n", stderr)
+    fputs("Accessibility permission is required to press SoloPM UI evidence buttons.\n", stderr)
     exit(2)
 }
 
@@ -47,6 +45,14 @@ func stringValue(_ value: CFTypeRef?) -> String? {
     return nil
 }
 
+func boolValue(_ value: CFTypeRef?) -> Bool? {
+    guard let value else { return nil }
+    if let number = value as? NSNumber {
+        return number.boolValue
+    }
+    return nil
+}
+
 func elements(from value: CFTypeRef?) -> [AXUIElement] {
     guard let value else { return [] }
     if CFGetTypeID(value) == AXUIElementGetTypeID() {
@@ -60,21 +66,21 @@ func elements(from value: CFTypeRef?) -> [AXUIElement] {
     }
 }
 
-func signalParts(for element: AXUIElement) -> (identifier: String, signal: String) {
-    let identifier = stringValue(copyAttribute(element, "AXIdentifier" as CFString)) ?? ""
+func signalParts(for element: AXUIElement) -> (role: String, enabled: Bool, signal: String) {
+    let role = stringValue(copyAttribute(element, kAXRoleAttribute as CFString)) ?? ""
+    let enabled = boolValue(copyAttribute(element, kAXEnabledAttribute as CFString)) ?? true
     let attributes = [
+        "AXIdentifier",
         "AXTitle",
         "AXDescription",
         "AXHelp",
         "AXValue",
-        "AXRole",
-        "AXSubrole",
         "AXLabel"
     ]
-    let signal = ([identifier] + attributes.compactMap { attribute in
+    let signal = attributes.compactMap { attribute in
         stringValue(copyAttribute(element, attribute as CFString))
-    }).joined(separator: " ")
-    return (identifier, signal)
+    }.joined(separator: " ")
+    return (role, enabled, signal)
 }
 
 let childAttributes = [
@@ -85,34 +91,6 @@ let childAttributes = [
     "AXColumns",
     "AXDisclosedRows"
 ]
-
-func subtreeContainsText(startingAt root: AXUIElement, textNeedle: String) -> Bool {
-    var visitedCount = 0
-    var queue = [root]
-    var cursor = 0
-
-    while cursor < queue.count && visitedCount < maxNodes {
-        let element = queue[cursor]
-        cursor += 1
-        visitedCount += 1
-
-        if signalParts(for: element).signal.contains(textNeedle) {
-            return true
-        }
-
-        let children = childAttributes.flatMap { attribute in
-            elements(from: copyAttribute(element, attribute as CFString))
-        }
-        if !children.isEmpty {
-            queue.append(contentsOf: children)
-        }
-    }
-
-    if visitedCount >= maxNodes {
-        fputs("AX marker subtree scan reached SOLOPM_UI_EVIDENCE_AX_MAX_NODES=\(maxNodes).\n", stderr)
-    }
-    return false
-}
 
 guard let windowsValue = copyAttribute(appElement, kAXWindowsAttribute as CFString) else {
     fputs("\(appName) has no visible AX windows.\n", stderr)
@@ -125,9 +103,8 @@ guard !windows.isEmpty else {
     exit(2)
 }
 
-var foundIdentifier = false
-var foundText = false
 var visitedCount = 0
+var foundDisabledMatch = false
 var queue = windows
 var cursor = 0
 
@@ -137,23 +114,11 @@ while cursor < queue.count && visitedCount < maxNodes {
     visitedCount += 1
 
     let signal = signalParts(for: element)
-    if requireIdentifierSubtree {
-        if signal.identifier.contains(identifierNeedle) {
-            foundIdentifier = true
-            if subtreeContainsText(startingAt: element, textNeedle: textNeedle) {
-                print("present")
-                exit(0)
-            }
-        }
-    } else {
-        if signal.identifier.contains(identifierNeedle) {
-            foundIdentifier = true
-        }
-        if signal.signal.contains(textNeedle) {
-            foundText = true
-        }
-        if foundIdentifier && foundText {
-            print("present")
+    if signal.role == (kAXButtonRole as String), signal.signal.contains(marker) {
+        if !signal.enabled {
+            foundDisabledMatch = true
+        } else if AXUIElementPerformAction(element, kAXPressAction as CFString) == .success {
+            print("pressed")
             exit(0)
         }
     }
@@ -167,12 +132,11 @@ while cursor < queue.count && visitedCount < maxNodes {
 }
 
 if visitedCount >= maxNodes {
-    fputs("AX marker scan reached SOLOPM_UI_EVIDENCE_AX_MAX_NODES=\(maxNodes).\n", stderr)
+    fputs("AX button scan reached SOLOPM_UI_EVIDENCE_AX_MAX_NODES=\(maxNodes).\n", stderr)
 }
-if !foundIdentifier {
-    fputs("missing AX identifier marker: \(identifierNeedle)\n", stderr)
-}
-if !foundText {
-    fputs("missing AX text marker: \(textNeedle)\n", stderr)
+if foundDisabledMatch {
+    fputs("button marker matched but was disabled: \(marker)\n", stderr)
+} else {
+    fputs("missing enabled AX button marker: \(marker)\n", stderr)
 }
 exit(1)
