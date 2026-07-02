@@ -220,6 +220,8 @@
 
 - [x] `script/check_local_voice_runtime_smoke.sh` は whisper.cpp tiny / Kokoro model の checksum、実行ファイル、STT sample WAV を検証し、不足時は `BLOCKER:` を集約して fail-closed にする。
 - [x] `docs/voice-models.md` は #13/#14 closeout 用の no network download runtime smoke 手順と env vars を明記する。
+- [x] Issue #13 STT-only smoke は `--stt-only` で whisper.cpp のみを証明し、Issue #14 full TTS smoke とは分離して進められる。
+- [x] STT-only evidence は `docs/release/evidence/*stt-only*.md` にだけ書け、TTS を証明しないことと #14 / full release closeout には使えないことを明記する。
 - [x] `script/check_security_regressions.sh` は `.tmp/local-voice-runtime-smoke` を ignored runtime artifact path として検証する。
 - [x] `release_readiness_report.sh` は `docs/release/evidence/local-voice-runtime.md` を検証し、実STT markerと日英TTS WAV証跡が無い場合はrelease blockerにする。
 - [ ] checksum 済み `ggml-tiny.bin` と `whisper-cli` で日本語または英語 sample WAV の実 transcription 証跡を取る。

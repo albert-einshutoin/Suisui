@@ -8361,6 +8361,93 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("BLOCKER: local voice runtime smoke found 5 prerequisite problem(s)"))
     }
 
+    func testLocalVoiceRuntimeSmokeScriptSupportsExplicitSttOnlyMode() throws {
+        let docs = try readPackageFile("docs/voice-models.md")
+        let script = try readPackageFile("script/check_local_voice_runtime_smoke.sh")
+        let phase10 = try readPackageFile("tasks/Phase10-ReleaseReadinessRuntime.md")
+
+        XCTAssertTrue(script.contains("--stt-only"))
+        XCTAssertTrue(script.contains("Runs fail-closed local STT/TTS runtime proof"))
+        XCTAssertTrue(script.contains("SOLOPM_LOCAL_VOICE_EVIDENCE_FILE in --stt-only mode must state that TTS was not verified"))
+        XCTAssertTrue(script.contains("STT-only smoke cannot prove #14 / full release closeout"))
+        XCTAssertTrue(script.contains("SOLOPM_LOCAL_VOICE_EVIDENCE_FILE in --stt-only mode must use an explicit *stt-only*.md filename and must not overwrite local-voice-runtime.md"))
+        XCTAssertTrue(script.contains("Required environment for all modes:"))
+        XCTAssertTrue(script.contains("Required environment for default full STT+TTS mode:"))
+        XCTAssertTrue(script.contains("MODE_LABEL=\"STT-only\""))
+        XCTAssertTrue(script.contains("Evidence source: `local whisper.cpp STT runtime smoke only (no Kokoro TTS proof)`"))
+        XCTAssertTrue(script.contains("TTS proof: not run - --stt-only mode does not verify Kokoro runtime"))
+        XCTAssertTrue(script.contains("Release closeout scope: issue #13 STT-only smoke only"))
+        XCTAssertTrue(script.contains("Full release closeout: blocked - rerun without --stt-only to prove Kokoro Japanese/English TTS"))
+        XCTAssertFalse(script.contains("curl "))
+        XCTAssertFalse(script.contains("wget "))
+        XCTAssertFalse(script.contains("git clone"))
+
+        XCTAssertTrue(docs.contains("--stt-only"))
+        XCTAssertTrue(docs.contains("Issue #13 STT-only smoke"))
+        XCTAssertTrue(docs.contains("Issue #14 full STT + TTS smoke"))
+        XCTAssertTrue(docs.contains("does not prove Kokoro TTS"))
+        XCTAssertTrue(docs.contains("cannot be used for #14 or full release closeout"))
+
+        XCTAssertTrue(phase10.contains("Issue #13 STT-only smoke"))
+        XCTAssertTrue(phase10.contains("Issue #14 full TTS smoke"))
+
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-local-voice-runtime-smoke-stt-only-missing-inputs", isDirectory: true)
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        let emptyCacheRoot = fixtureRoot.appendingPathComponent("VoiceModels", isDirectory: true)
+        let outputRoot = fixtureRoot.appendingPathComponent("smoke-output", isDirectory: true)
+        let result = try runTool(
+            [
+                "bash",
+                "script/check_local_voice_runtime_smoke.sh",
+                "--stt-only"
+            ],
+            environment: [
+                "SOLOPM_LOCAL_VOICE_CACHE_ROOT": emptyCacheRoot.path,
+                "SOLOPM_WHISPER_CPP_EXECUTABLE": fixtureRoot.appendingPathComponent("missing-whisper-cli").path,
+                "SOLOPM_STT_SAMPLE_WAV": fixtureRoot.appendingPathComponent("missing-sample.wav").path,
+                "SOLOPM_LOCAL_VOICE_SMOKE_OUTPUT_DIR": outputRoot.path
+            ]
+        )
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("BLOCKER: whisper.cpp executable is missing or not executable"))
+        XCTAssertTrue(result.output.contains("BLOCKER: STT sample WAV is missing"))
+        XCTAssertTrue(result.output.contains("BLOCKER: whisper.cpp tiny model is missing"))
+        XCTAssertFalse(result.output.contains("BLOCKER: Kokoro executable is missing or not executable"))
+        XCTAssertFalse(result.output.contains("BLOCKER: Kokoro model is missing"))
+        XCTAssertTrue(result.output.contains("BLOCKER: local voice runtime smoke found 3 prerequisite problem(s)"))
+
+        let canonicalEvidenceResult = try runTool(
+            [
+                "bash",
+                "script/check_local_voice_runtime_smoke.sh",
+                "--stt-only"
+            ],
+            environment: [
+                "SOLOPM_LOCAL_VOICE_CACHE_ROOT": emptyCacheRoot.path,
+                "SOLOPM_WHISPER_CPP_EXECUTABLE": fixtureRoot.appendingPathComponent("missing-whisper-cli").path,
+                "SOLOPM_STT_SAMPLE_WAV": fixtureRoot.appendingPathComponent("missing-sample.wav").path,
+                "SOLOPM_STT_EXPECTED_TRANSCRIPT_CONTAINS": "sample",
+                "SOLOPM_LOCAL_VOICE_EVIDENCE_FILE": packageRoot()
+                    .appendingPathComponent("docs", isDirectory: true)
+                    .appendingPathComponent("release", isDirectory: true)
+                    .appendingPathComponent("evidence", isDirectory: true)
+                    .appendingPathComponent("local-voice-runtime.md")
+                    .path,
+                "SOLOPM_LOCAL_VOICE_SMOKE_OUTPUT_DIR": outputRoot.path
+            ]
+        )
+
+        XCTAssertNotEqual(canonicalEvidenceResult.exitCode, 0)
+        XCTAssertTrue(canonicalEvidenceResult.output.contains("SOLOPM_LOCAL_VOICE_EVIDENCE_FILE in --stt-only mode must use an explicit *stt-only*.md filename and must not overwrite local-voice-runtime.md"))
+        XCTAssertFalse(canonicalEvidenceResult.output.contains("BLOCKER: Kokoro executable is missing or not executable"))
+        XCTAssertFalse(canonicalEvidenceResult.output.contains("BLOCKER: Kokoro model is missing"))
+    }
+
     func testReleaseReadinessReportRequiresLocalVoiceRuntimeEvidence() throws {
         let currentShortCommit = try currentShortGitCommit()
         let fixtureRoot = packageRoot()
