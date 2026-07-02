@@ -207,6 +207,7 @@ public enum SyncDevelopmentPullRequestOperation: String, Codable, Equatable, Sen
 
 public struct SyncDevelopmentPullRequestPayload: Codable, Equatable, Sendable {
     public var projectID: Int64
+    public var taskID: Int64?
     public var operation: SyncDevelopmentPullRequestOperation
     public var pullRequestURL: String
     public var branchName: String
@@ -214,12 +215,14 @@ public struct SyncDevelopmentPullRequestPayload: Codable, Equatable, Sendable {
 
     public init(
         projectID: Int64,
+        taskID: Int64? = nil,
         operation: SyncDevelopmentPullRequestOperation,
         pullRequestURL: String,
         branchName: String,
         baseBranch: String
     ) {
         self.projectID = projectID
+        self.taskID = taskID
         self.operation = operation
         self.pullRequestURL = pullRequestURL
         self.branchName = branchName

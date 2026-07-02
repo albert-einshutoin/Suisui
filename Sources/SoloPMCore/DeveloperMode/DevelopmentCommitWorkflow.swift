@@ -88,6 +88,7 @@ public struct DevelopmentCommitWorkflowTool: Tool {
         required: ["projectId", "relativePaths", "commitMessage"],
         properties: [
             "projectId": "integer",
+            "taskId": "integer",
             "relativePaths": "array",
             "commitMessage": "string"
         ],

@@ -1032,6 +1032,7 @@ public struct DevelopmentPullRequestReviewGateTool: Tool {
         required: ["projectId", "pullRequestURL", "branchName", "baseBranch"],
         properties: [
             "projectId": "integer",
+            "taskId": "integer",
             "pullRequestURL": "string",
             "branchName": "string",
             "baseBranch": "string"
@@ -1105,6 +1106,7 @@ public struct DevelopmentPullRequestMergeTool: Tool {
         required: ["projectId", "pullRequestURL", "branchName", "baseBranch"],
         properties: [
             "projectId": "integer",
+            "taskId": "integer",
             "pullRequestURL": "string",
             "branchName": "string",
             "baseBranch": "string"
@@ -1244,6 +1246,7 @@ public struct DevelopmentPushWorkflowTool: Tool {
         required: ["projectId", "branchName"],
         properties: [
             "projectId": "integer",
+            "taskId": "integer",
             "branchName": "string"
         ],
         nonBlank: ["branchName"]
@@ -1470,6 +1473,7 @@ public struct DevelopmentPullRequestCreationTool: Tool {
         required: ["projectId", "branchName", "baseBranch", "title", "body"],
         properties: [
             "projectId": "integer",
+            "taskId": "integer",
             "branchName": "string",
             "baseBranch": "string",
             "title": "string",

@@ -1319,9 +1319,21 @@ final class ProjectBoardStoreTests: XCTestCase {
         let verificationAction = try XCTUnwrap(verificationPlan.actions.first)
         XCTAssertEqual(verificationAction.tool, .developmentRunVerification)
         XCTAssertEqual(verificationAction.arguments["projectId"], .number(Double(project.id)))
+        XCTAssertEqual(verificationAction.arguments["taskId"], .number(Double(task.id)))
         XCTAssertEqual(verificationAction.arguments["branchName"], .string(branchName))
         XCTAssertEqual(verificationAction.arguments["commandId"], .string("git.diff_check"))
         XCTAssertEqual(viewModel.integrationStatusMessage, "Queued development verification review for approval.")
+
+        let verificationRow = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first { $0.id == verificationItemID })
+        let verificationQueueProgress = viewModel.developmentAutomationProgress(for: assignedProject, task: currentTask)
+        XCTAssertEqual(verificationQueueProgress.queueHandoff?.id, verificationItemID)
+        XCTAssertEqual(verificationQueueProgress.queueHandoff?.state, .waitingReview)
+        XCTAssertEqual(verificationQueueProgress.queueHandoff?.stateLabel, "Waiting Review")
+        XCTAssertEqual(verificationQueueProgress.queueHandoff?.title, verificationRow.title)
+        XCTAssertEqual(verificationQueueProgress.queueHandoff?.reviewReason, verificationItem.reviewReason)
+        XCTAssertEqual(verificationQueueProgress.queueHandoff?.canApprove, true)
+        XCTAssertEqual(verificationQueueProgress.queueHandoff?.canRun, false)
+        XCTAssertFalse(verificationQueueProgress.queueHandoff?.reviewReason.contains("/tmp/client-portal") ?? true)
 
         try receiptStore.save(developmentAutomationReceipt(
             id: "receipt-verification",
@@ -1329,8 +1341,14 @@ final class ProjectBoardStoreTests: XCTestCase {
             branchName: branchName,
             toolName: ActionTool.developmentRunVerification.rawValue
         ))
+        try assistantQueueStore.transition(id: verificationItemID) { item in
+            let approved = try AssistantQueueStateMachine.approve(item, reviewerID: "tester")
+            let running = try AssistantQueueStateMachine.startRunning(approved)
+            return try AssistantQueueStateMachine.markDone(running)
+        }
 
         let verifiedProgress = viewModel.developmentAutomationProgress(for: assignedProject, task: currentTask)
+        XCTAssertNil(verifiedProgress.queueHandoff)
         XCTAssertFalse(verifiedProgress.canQueueVerificationReview)
         XCTAssertTrue(verifiedProgress.canQueueCommitReview)
         XCTAssertFalse(verifiedProgress.canQueueBranchPushReview)
@@ -1357,6 +1375,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         let commitAction = try XCTUnwrap(commitPlan.actions.first)
         XCTAssertEqual(commitAction.tool, .developmentCommitChanges)
         XCTAssertEqual(commitAction.arguments["projectId"], .number(Double(project.id)))
+        XCTAssertEqual(commitAction.arguments["taskId"], .number(Double(task.id)))
         XCTAssertEqual(commitAction.arguments["branchName"], .string(branchName))
         XCTAssertEqual(
             commitAction.arguments["relativePaths"],
@@ -1460,6 +1479,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(reviewRequest.toolName, ActionTool.developmentReviewPullRequestGate.rawValue)
         XCTAssertEqual(reviewRequest.developmentPullRequest, SyncDevelopmentPullRequestPayload(
             projectID: project.id,
+            taskID: task.id,
             operation: .reviewGate,
             pullRequestURL: pullRequestURL,
             branchName: branchName,
@@ -1494,7 +1514,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         let mergeItemID = try XCTUnwrap(viewModel.assistantQueueSelectedItemIDs.first)
         let mergeItem = try assistantQueueStore.get(id: mergeItemID)
         XCTAssertTrue(mergeItemID.hasPrefix("automation-request:project-development-pr-merge:"))
-        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.count, 4)
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.count, 3)
         XCTAssertEqual(mergeItem.requiredCapabilities, [
             .connectedMacRequired,
             .tool(.developmentMergePullRequest),
@@ -1506,7 +1526,220 @@ final class ProjectBoardStoreTests: XCTestCase {
         }
         XCTAssertEqual(mergeRequest.toolName, ActionTool.developmentMergePullRequest.rawValue)
         XCTAssertEqual(mergeRequest.developmentPullRequest?.operation, .merge)
+        XCTAssertEqual(mergeRequest.developmentPullRequest?.taskID, task.id)
         XCTAssertEqual(mergeRequest.developmentPullRequest?.pullRequestURL, pullRequestURL)
+    }
+
+    @MainActor
+    func testDevelopmentAutomationQueueHandoffIgnoresSplitActionTupleMismatches() throws {
+        let stores = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let viewModel = ProjectBoardViewModel(
+            store: stores.board,
+            assistantQueueStore: assistantQueueStore,
+            executionReceiptStore: receiptStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Client Portal"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Implement OAuth callback",
+            projectID: project.id,
+            status: .planned,
+            priority: .high
+        ))
+        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
+            "/tmp/client-portal",
+            bookmarkData: Data([1, 2, 3]),
+            projectID: project.id
+        ))
+        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+        let branchName = "feature/solopm-\(project.id)-\(task.id)-implement-oauth-callback"
+
+        let splitPlan = ActionPlan(
+            id: "development-pr-prepare:\(project.id):\(task.id):split-mismatch",
+            userInput: "Mismatched queue item",
+            summary: "Mismatched queue item",
+            actions: [
+                PlanAction(
+                    id: "wrong-branch",
+                    tool: .developmentPreparePullRequestWorkflow,
+                    arguments: [
+                        "projectId": .number(Double(project.id)),
+                        "taskId": .number(Double(task.id)),
+                        "branchName": .string("feature/wrong-branch")
+                    ],
+                    riskLevel: .write,
+                    requiresUserConfirmation: true
+                ),
+                PlanAction(
+                    id: "wrong-project",
+                    tool: .developmentPreparePullRequestWorkflow,
+                    arguments: [
+                        "projectId": .number(Double(project.id + 100)),
+                        "taskId": .number(Double(task.id)),
+                        "branchName": .string(branchName)
+                    ],
+                    riskLevel: .write,
+                    requiresUserConfirmation: true
+                )
+            ],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+        try assistantQueueStore.save(AssistantQueueAdapter.makeItem(
+            actionPlan: splitPlan,
+            sourceTranscript: splitPlan.userInput,
+            interpretationSummary: splitPlan.summary,
+            reason: "Split tuple mismatch",
+            costPreview: .localOnly()
+        ))
+
+        let progress = viewModel.developmentAutomationProgress(for: assignedProject, task: currentTask)
+        XCTAssertNil(progress.queueHandoff)
+    }
+
+    @MainActor
+    func testDevelopmentAutomationQueueHandoffPrefersFocusedCurrentStageItem() throws {
+        let stores = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let viewModel = ProjectBoardViewModel(
+            store: stores.board,
+            assistantQueueStore: assistantQueueStore,
+            executionReceiptStore: receiptStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Client Portal"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Implement OAuth callback",
+            projectID: project.id,
+            status: .planned,
+            priority: .high
+        ))
+        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
+            "/tmp/client-portal",
+            bookmarkData: Data([1, 2, 3]),
+            projectID: project.id
+        ))
+        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+        let branchName = "feature/solopm-\(project.id)-\(task.id)-implement-oauth-callback"
+
+        try receiptStore.save(developmentAutomationReceipt(
+            id: "receipt-prepare",
+            projectID: project.id,
+            branchName: branchName,
+            toolName: ActionTool.developmentPreparePullRequestWorkflow.rawValue
+        ))
+
+        let olderPlan = ActionPlan(
+            id: "development-verification:\(project.id):\(task.id):old",
+            userInput: "Older verification review",
+            summary: "Older verification review",
+            actions: [
+                PlanAction(
+                    id: "development-verification-old",
+                    tool: .developmentRunVerification,
+                    arguments: [
+                        "projectId": .number(Double(project.id)),
+                        "taskId": .number(Double(task.id)),
+                        "branchName": .string(branchName),
+                        "commandId": .string("git.diff_check")
+                    ],
+                    riskLevel: .write,
+                    requiresUserConfirmation: true
+                )
+            ],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+        var olderItem = AssistantQueueAdapter.makeItem(
+            actionPlan: olderPlan,
+            sourceTranscript: olderPlan.userInput,
+            interpretationSummary: olderPlan.summary,
+            reason: "Older verification gate",
+            costPreview: .localOnly()
+        )
+        olderItem.state = .blocked
+        olderItem.blockingReason = "Older blocked review"
+        try assistantQueueStore.save(olderItem)
+
+        XCTAssertTrue(viewModel.enqueueDevelopmentVerificationReview(for: assignedProject, task: currentTask))
+        let selectedID = try XCTUnwrap(viewModel.assistantQueueSelectedItemIDs.first)
+        let progress = viewModel.developmentAutomationProgress(for: assignedProject, task: currentTask)
+
+        XCTAssertEqual(progress.queueHandoff?.id, selectedID)
+        XCTAssertNotEqual(progress.queueHandoff?.id, olderItem.id)
+    }
+
+    @MainActor
+    func testDevelopmentAutomationQueueHandoffMatchesPullRequestPayloadWithoutRequestIDCoupling() throws {
+        let stores = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let viewModel = ProjectBoardViewModel(
+            store: stores.board,
+            assistantQueueStore: assistantQueueStore,
+            executionReceiptStore: receiptStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Client Portal"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Implement OAuth callback",
+            projectID: project.id,
+            status: .planned,
+            priority: .high
+        ))
+        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
+            "/tmp/client-portal",
+            bookmarkData: Data([1, 2, 3]),
+            projectID: project.id
+        ))
+        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+        let branchName = "feature/solopm-\(project.id)-\(task.id)-implement-oauth-callback"
+        let baseBranch = "feature/phase14-product-completion"
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+
+        for (id, toolName) in [
+            ("receipt-prepare", ActionTool.developmentPreparePullRequestWorkflow.rawValue),
+            ("receipt-verification", ActionTool.developmentRunVerification.rawValue),
+            ("receipt-commit", ActionTool.developmentCommitChanges.rawValue),
+            ("receipt-push", ActionTool.developmentPushBranch.rawValue),
+            ("receipt-pr-create", ActionTool.developmentCreatePullRequest.rawValue)
+        ] {
+            try receiptStore.save(developmentAutomationReceipt(
+                id: id,
+                projectID: project.id,
+                branchName: branchName,
+                baseBranch: toolName == ActionTool.developmentCreatePullRequest.rawValue ? baseBranch : nil,
+                pullRequestURL: toolName == ActionTool.developmentCreatePullRequest.rawValue ? pullRequestURL : nil,
+                toolName: toolName
+            ))
+        }
+
+        let request = SyncAutomationRequestPayload(
+            id: "voice-pr-review-request",
+            source: .conversation,
+            approvalState: .pendingApproval,
+            sourceClientID: "voice",
+            toolName: ActionTool.developmentReviewPullRequestGate.rawValue,
+            redactedArgumentSummary: "Voice requested PR review gate",
+            developmentPullRequest: SyncDevelopmentPullRequestPayload(
+                projectID: project.id,
+                operation: .reviewGate,
+                pullRequestURL: pullRequestURL,
+                branchName: branchName,
+                baseBranch: baseBranch
+            )
+        )
+        let item = AssistantQueueAdapter.makeItem(automationRequest: request)
+        try assistantQueueStore.save(item)
+
+        let progress = viewModel.developmentAutomationProgress(for: assignedProject, task: currentTask)
+        XCTAssertEqual(progress.queueHandoff?.id, item.id)
     }
 
     @MainActor

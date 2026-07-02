@@ -291,12 +291,14 @@ enum AssistantQueueExecutableActionPlanFactory {
     }
 
     private static func arguments(for pullRequest: SyncDevelopmentPullRequestPayload) -> [String: JSONValue] {
-        [
+        var arguments: [String: JSONValue] = [
             "projectId": .number(Double(pullRequest.projectID)),
             "pullRequestURL": .string(normalizedString(pullRequest.pullRequestURL) ?? ""),
             "branchName": .string(normalizedString(pullRequest.branchName) ?? ""),
             "baseBranch": .string(normalizedString(pullRequest.baseBranch) ?? "")
         ]
+        putInt64(pullRequest.taskID, key: "taskId", into: &arguments)
+        return arguments
     }
 
     private static func mutationReviewSummary(
@@ -326,6 +328,7 @@ enum AssistantQueueExecutableActionPlanFactory {
             parts.append("toolName=\(redacted(toolName))")
         }
         parts.append("projectID=\(pullRequest.projectID)")
+        append("taskID", pullRequest.taskID, to: &parts)
         append("pullRequestURL", pullRequest.pullRequestURL, to: &parts)
         append("branchName", pullRequest.branchName, to: &parts)
         append("baseBranch", pullRequest.baseBranch, to: &parts)
