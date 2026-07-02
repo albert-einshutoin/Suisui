@@ -1211,6 +1211,189 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDevelopmentAutomationProgressQueuesReviewAndMergeFromReceipts() throws {
+        let stores = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let viewModel = ProjectBoardViewModel(
+            store: stores.board,
+            assistantQueueStore: assistantQueueStore,
+            executionReceiptStore: receiptStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Client Portal"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Implement OAuth callback",
+            projectID: project.id,
+            status: .planned,
+            priority: .high
+        ))
+        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
+            "/tmp/client-portal",
+            bookmarkData: Data([1, 2, 3]),
+            projectID: project.id
+        ))
+        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/116"
+        let branchName = "feature/solopm-\(project.id)-\(task.id)-implement-oauth-callback"
+        let baseBranch = "feature/phase14-product-completion"
+        let headOID = "0123456789abcdef0123456789abcdef01234567"
+
+        try receiptStore.save(developmentAutomationReceipt(
+            id: "receipt-pr-create",
+            projectID: project.id,
+            branchName: branchName,
+            baseBranch: baseBranch,
+            pullRequestURL: pullRequestURL,
+            commitOID: headOID,
+            toolName: ActionTool.developmentCreatePullRequest.rawValue
+        ))
+
+        let progress = viewModel.developmentAutomationProgress(for: assignedProject, task: currentTask)
+
+        XCTAssertEqual(progress.branchName, branchName)
+        XCTAssertEqual(progress.pullRequestURL, pullRequestURL)
+        XCTAssertEqual(progress.baseBranch, baseBranch)
+        XCTAssertEqual(progress.latestCommitOID, headOID)
+        XCTAssertTrue(progress.canQueuePullRequestReviewGate)
+        XCTAssertFalse(progress.canQueuePullRequestMergeGate)
+        XCTAssertEqual(progress.stages.map(\.id), [
+            "branch-prepared",
+            "branch-pushed",
+            "pull-request-created",
+            "pull-request-reviewed",
+            "pull-request-merged"
+        ])
+        XCTAssertEqual(progress.stages.map(\.status), [
+            .waiting,
+            .waiting,
+            .succeeded,
+            .ready,
+            .waiting
+        ])
+
+        XCTAssertTrue(viewModel.enqueueDevelopmentPullRequestLifecycleReview(
+            for: assignedProject,
+            task: currentTask,
+            operation: .reviewGate
+        ))
+
+        let reviewItemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        let reviewItem = try assistantQueueStore.get(id: reviewItemID)
+        XCTAssertTrue(reviewItemID.hasPrefix("automation-request:project-development-pr-review:"))
+        XCTAssertEqual(reviewItem.state, .waitingReview)
+        XCTAssertEqual(reviewItem.riskLevel, .write)
+        XCTAssertEqual(reviewItem.requiredCapabilities, [
+            .connectedMacRequired,
+            .tool(.developmentReviewPullRequestGate),
+            .providerExecutionApproval
+        ])
+        XCTAssertEqual(reviewItem.costPreview?.billingMode, .localOnly)
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Queued development pull request review gate for approval.")
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, [reviewItemID])
+        guard case .automationRequest(let reviewRequest) = reviewItem.payload else {
+            return XCTFail("Expected automation request payload")
+        }
+        XCTAssertEqual(reviewRequest.toolName, ActionTool.developmentReviewPullRequestGate.rawValue)
+        XCTAssertEqual(reviewRequest.developmentPullRequest, SyncDevelopmentPullRequestPayload(
+            projectID: project.id,
+            operation: .reviewGate,
+            pullRequestURL: pullRequestURL,
+            branchName: branchName,
+            baseBranch: baseBranch
+        ))
+        XCTAssertFalse(reviewItem.redactedSummary.contains("/tmp/client-portal"))
+
+        try receiptStore.save(developmentAutomationReceipt(
+            id: "receipt-pr-review",
+            projectID: project.id,
+            branchName: branchName,
+            baseBranch: baseBranch,
+            pullRequestURL: pullRequestURL,
+            commitOID: headOID,
+            toolName: ActionTool.developmentReviewPullRequestGate.rawValue
+        ))
+
+        let mergeProgress = viewModel.developmentAutomationProgress(for: assignedProject, task: currentTask)
+        XCTAssertFalse(mergeProgress.canQueuePullRequestReviewGate)
+        XCTAssertTrue(mergeProgress.canQueuePullRequestMergeGate)
+        XCTAssertEqual(mergeProgress.stages.first { $0.id == "pull-request-reviewed" }?.status, .succeeded)
+        XCTAssertEqual(mergeProgress.stages.first { $0.id == "pull-request-merged" }?.status, .ready)
+
+        XCTAssertTrue(viewModel.enqueueDevelopmentPullRequestLifecycleReview(
+            for: assignedProject,
+            task: currentTask,
+            operation: .merge
+        ))
+
+        let mergeItemID = try XCTUnwrap(viewModel.assistantQueueSelectedItemIDs.first)
+        let mergeItem = try assistantQueueStore.get(id: mergeItemID)
+        XCTAssertTrue(mergeItemID.hasPrefix("automation-request:project-development-pr-merge:"))
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.count, 2)
+        XCTAssertEqual(mergeItem.requiredCapabilities, [
+            .connectedMacRequired,
+            .tool(.developmentMergePullRequest),
+            .providerExecutionApproval
+        ])
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Queued development pull request merge gate for approval.")
+        guard case .automationRequest(let mergeRequest) = mergeItem.payload else {
+            return XCTFail("Expected automation request payload")
+        }
+        XCTAssertEqual(mergeRequest.toolName, ActionTool.developmentMergePullRequest.rawValue)
+        XCTAssertEqual(mergeRequest.developmentPullRequest?.operation, .merge)
+        XCTAssertEqual(mergeRequest.developmentPullRequest?.pullRequestURL, pullRequestURL)
+    }
+
+    @MainActor
+    func testDevelopmentAutomationProgressBlocksLifecycleQueueWithoutReceiptEvidence() throws {
+        let stores = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let viewModel = ProjectBoardViewModel(
+            store: stores.board,
+            assistantQueueStore: assistantQueueStore,
+            executionReceiptStore: receiptStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Client Portal"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Implement OAuth callback",
+            projectID: project.id,
+            status: .planned,
+            priority: .high
+        ))
+        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
+            "/tmp/client-portal",
+            bookmarkData: Data([1, 2, 3]),
+            projectID: project.id
+        ))
+        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+
+        let progress = viewModel.developmentAutomationProgress(for: assignedProject, task: currentTask)
+
+        XCTAssertFalse(progress.canQueuePullRequestReviewGate)
+        XCTAssertFalse(progress.canQueuePullRequestMergeGate)
+        XCTAssertEqual(
+            progress.blockingReason,
+            "Create the pull request and wait for its execution receipt before queueing review or merge."
+        )
+        XCTAssertFalse(viewModel.enqueueDevelopmentPullRequestLifecycleReview(
+            for: assignedProject,
+            task: currentTask,
+            operation: .reviewGate
+        ))
+
+        XCTAssertTrue(viewModel.assistantQueueSnapshot.rows.isEmpty)
+        XCTAssertEqual(
+            viewModel.todayCommandFeedback,
+            "Create the pull request and wait for its execution receipt before queueing review or merge."
+        )
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
     func testDevelopmentAutomationQueueDraftRedactsSensitiveTaskTitleFromPersistentBranchName() throws {
         let stores = try makeStoreBundle()
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
@@ -6382,6 +6565,50 @@ final class ProjectBoardStoreTests: XCTestCase {
             SQLiteTaskStore(connection: connection),
             SQLiteArtifactStore(connection: connection),
             SQLiteProjectMilestoneStore(connection: connection)
+        )
+    }
+
+    private func developmentAutomationReceipt(
+        id: String,
+        projectID: Int64,
+        branchName: String,
+        baseBranch: String? = nil,
+        pullRequestURL: String? = nil,
+        commitOID: String? = nil,
+        toolName: String,
+        status: ExecutionReceiptStatus = .succeeded
+    ) -> ExecutionReceipt {
+        var references = [
+            ExecutionReceiptReference(kind: .project, id: String(projectID)),
+            ExecutionReceiptReference(kind: .developmentBranch, id: branchName)
+        ]
+        if let baseBranch {
+            references.append(ExecutionReceiptReference(kind: .developmentBaseBranch, id: baseBranch))
+        }
+        if let pullRequestURL {
+            references.append(ExecutionReceiptReference(kind: .pullRequest, id: pullRequestURL))
+        }
+        if let commitOID {
+            references.append(ExecutionReceiptReference(kind: .developmentCommit, id: commitOID))
+        }
+        return ExecutionReceipt(
+            id: id,
+            runID: "run-\(id)",
+            createdAt: Date(timeIntervalSince1970: 1),
+            status: status,
+            inputPreview: "Project development automation receipt",
+            outputSummary: "Project development automation \(toolName) \(status.rawValue).",
+            primaryToolName: toolName,
+            references: references,
+            actions: [
+                ExecutionReceiptActionSummary(
+                    id: "action-\(id)",
+                    toolName: toolName,
+                    status: status,
+                    inputPreview: "Receipt-backed project development automation."
+                )
+            ],
+            visibleSurfaces: [.projectDetail, .auditLog]
         )
     }
 }
