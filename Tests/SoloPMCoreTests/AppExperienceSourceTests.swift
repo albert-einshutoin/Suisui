@@ -2283,9 +2283,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("!trimmedCommandTitle.hasSuffix(\":\")"))
         XCTAssertTrue(workflowSource.contains("onSelectTask: selectTodayTask"))
         XCTAssertTrue(workflowSource.contains("openInspector(task.id)"))
+        XCTAssertTrue(workflowSource.contains("commandTitle = String(format: String(localized: \"Subtask for %@: \"), task.title)"))
         XCTAssertTrue(boardSource.contains("isInspectorPresented = false"))
         XCTAssertTrue(boardSource.contains("selectTodayTask"))
+        XCTAssertTrue(boardSource.contains("openInspectorForTodayRailTask: openInspectorForTodayRailTask"))
         XCTAssertTrue(boardSource.contains("openInspectorForTodayRailTask"))
+        XCTAssertTrue(boardSource.contains("isInspectorPresented = true"))
     }
 
     func testScheduleWorkflowIsReachableAndApprovalFirst() throws {

@@ -451,6 +451,7 @@
 "Saves edits to the selected project in the local SoloPM database." = "Saves edits to the selected project in the local SoloPM database.";
 "Saves edits to the selected task in the local SoloPM database" = "Saves edits to the selected task in the local SoloPM database";
 "Saves edits to the selected task in the local SoloPM database." = "Saves edits to the selected task in the local SoloPM database.";
+"Edit and save the selected task." = "Edit and save the selected task.";
 "Schedule Today" = "Schedule Today";
 "Schedule selected Inbox item for today" = "Schedule selected Inbox item for today";
 "Secret Key" = "Secret Key";

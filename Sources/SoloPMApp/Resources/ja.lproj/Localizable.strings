@@ -451,6 +451,7 @@
 "Saves edits to the selected project in the local SoloPM database." = "選択中のプロジェクト編集をローカルSoloPMデータベースに保存します。";
 "Saves edits to the selected task in the local SoloPM database" = "選択中のタスク編集をローカルSoloPMデータベースに保存します";
 "Saves edits to the selected task in the local SoloPM database." = "選択中のタスク編集をローカルSoloPMデータベースに保存します。";
+"Edit and save the selected task." = "選択中のタスクを編集して保存します。";
 "Schedule Today" = "今日に予定";
 "Schedule selected Inbox item for today" = "選択中のインボックス項目を今日に予定";
 "Secret Key" = "シークレットキー";

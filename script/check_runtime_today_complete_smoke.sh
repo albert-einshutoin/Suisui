@@ -20,6 +20,7 @@ KEEP_DATABASE="${SOLOPM_RUNTIME_TODAY_COMPLETE_KEEP_DATABASE:-0}"
 SQLITE3="${SQLITE3:-sqlite3}"
 WINDOW_WIDTH="${SOLOPM_RUNTIME_TODAY_COMPLETE_WINDOW_WIDTH:-1300}"
 WINDOW_HEIGHT="${SOLOPM_RUNTIME_TODAY_COMPLETE_WINDOW_HEIGHT:-860}"
+AX_MAX_NODES="${SOLOPM_RUNTIME_TODAY_COMPLETE_AX_MAX_NODES:-9000}"
 
 if [[ ! "$TIMEOUT_SECONDS" =~ ^[0-9]+$ || "$TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "SOLOPM_RUNTIME_TODAY_COMPLETE_TIMEOUT_SECONDS must be a positive integer" >&2
@@ -176,12 +177,24 @@ launch_app_for_today() {
     SOLOPM_DATABASE_PATH="$database_path" \
     SOLOPM_LAUNCH_RECOVERY_MODE=1 \
     SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION="today" \
+    SOLOPM_PROJECT_BOARD_SELECTED_TASK_ID="$today_task_id" \
     "$APP_BINARY" &
   app_pid=$!
   wait_for_app_process
   activate_app
   wait_for_visible_windows
   set_today_window_size "$WINDOW_WIDTH" "$WINDOW_HEIGHT"
+}
+
+launch_app_for_database_migration() {
+  terminate_app
+  SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SOLOPM_DATABASE_PATH="$database_path" \
+    "$APP_BINARY" &
+  app_pid=$!
+  wait_for_app_process
+  activate_app
+  wait_for_visible_windows
 }
 
 wait_for_database_table() {
@@ -358,6 +371,90 @@ APPLESCRIPT
   done
 }
 
+waitForAXSubtreeMarkerContaining() {
+  local identifier_fragment="$1"
+  local required_text="$2"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local error_file
+  local checker_pid
+  local watchdog_pid
+  local status
+
+  while true; do
+    error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-today-ax-marker-error.XXXXXX")"
+    SOLOPM_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1 \
+      SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
+      /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_marker_check.swift" "$APP_NAME" "$identifier_fragment" "$required_text" \
+      >/dev/null 2>"$error_file" &
+    checker_pid=$!
+    (
+      sleep "$TIMEOUT_SECONDS"
+      kill "$checker_pid" >/dev/null 2>&1 || true
+    ) &
+    watchdog_pid=$!
+    set +e
+    wait "$checker_pid"
+    status=$?
+    set -e
+    kill "$watchdog_pid" >/dev/null 2>&1 || true
+    wait "$watchdog_pid" >/dev/null 2>&1 || true
+    if [[ "$status" -eq 0 ]]; then
+      rm -f "$error_file"
+      return 0
+    fi
+    cat "$error_file" >&2
+    rm -f "$error_file"
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: AX subtree marker did not expose required signal: $identifier_fragment => $required_text" >&2
+      return 1
+    fi
+    activate_app
+    wait_for_visible_windows >/dev/null 2>&1 || true
+    sleep 1
+  done
+}
+
+pressButtonContainingBounded() {
+  local fragment="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local error_file
+  local checker_pid
+  local watchdog_pid
+  local status
+
+  while true; do
+    error_file="$(mktemp "${TMPDIR:-/tmp}/solopm-today-ax-button-error.XXXXXX")"
+    SOLOPM_UI_EVIDENCE_AX_MAX_NODES="$AX_MAX_NODES" \
+      /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" "$APP_NAME" "$fragment" \
+      >/dev/null 2>"$error_file" &
+    checker_pid=$!
+    (
+      sleep "$TIMEOUT_SECONDS"
+      kill "$checker_pid" >/dev/null 2>&1 || true
+    ) &
+    watchdog_pid=$!
+    set +e
+    wait "$checker_pid"
+    status=$?
+    set -e
+    kill "$watchdog_pid" >/dev/null 2>&1 || true
+    wait "$watchdog_pid" >/dev/null 2>&1 || true
+    if [[ "$status" -eq 0 ]]; then
+      rm -f "$error_file"
+      return 0
+    fi
+    cat "$error_file" >&2
+    rm -f "$error_file"
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: failed to press bounded AX button: $fragment" >&2
+      return 1
+    fi
+    activate_app
+    wait_for_visible_windows >/dev/null 2>&1 || true
+    sleep 1
+  done
+}
+
 pressButtonContaining() {
   local fragment="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
@@ -461,13 +558,24 @@ if [[ ! -x "$APP_BINARY" ]]; then
   exit 2
 fi
 
-launch_app_for_today
+launch_app_for_database_migration
 wait_for_database_table "projects"
 wait_for_database_table "tasks"
 terminate_app
 wait_for_no_app_process
 
 today_task_id="$(seed_today_task)"
+launch_app_for_today
+wait_for_database_table "assistant_queue_items"
+waitForAXElementContaining "today-command-capture-field"
+pressButtonContainingBounded "today-rail-add-subtask"
+waitForAXElementContaining "today-command-capture-field" "AX Runtime Today Complete"
+verify_single_value "subtask prefill kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
+pressButtonContainingBounded "today-rail-edit-task"
+waitForAXSubtreeMarkerContaining "task-inspector-title" "AX Runtime Today Complete"
+verify_single_value "edit inspector kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
+terminate_app
+wait_for_no_app_process
 launch_app_for_today
 wait_for_database_table "assistant_queue_items"
 verify_single_value "seeded today task is open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL AND due_at='2026-01-01T09:00:00Z' THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
@@ -481,4 +589,4 @@ pressButtonUntilSQLiteValue "queue Today rail reminder draft" "today-rail-remind
 verify_single_value "rail actions kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
 pressButtonUntilSQLiteValue "complete today task" "workflow-task-completion-$today_task_id" "SELECT CASE WHEN status='completed' AND completed_at IS NOT NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
 
-printf "OK: runtime today complete smoke covered Today rail focus, schedule draft, reminder draft, and visible row completion\n"
+printf "OK: runtime today complete smoke covered Today rail focus, schedule draft, edit inspector, subtask prefill, reminder draft, and visible row completion\n"
