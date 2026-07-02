@@ -1716,6 +1716,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("Queue branch push review"))
         XCTAssertTrue(source.contains("execution rechecks the current branch, clean workspace, and GitHub origin before running"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-push-queue\")"))
+        XCTAssertTrue(source.contains("viewModel.developmentPullRequestCreationDraft(for: project, task: viewModel.selectedTask)"))
+        XCTAssertTrue(source.contains("viewModel.enqueueDevelopmentPullRequestCreationReview("))
+        XCTAssertTrue(source.contains("Queue pull request creation review"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-pr-base\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-pr-title\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-pr-body\")"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Pull request body\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-pr-create-queue\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-review-sheet\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-step-\\(index)\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-development-automation-lifecycle-tool-\\(index)\")"))
@@ -2845,12 +2853,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(registryFactory.contains("name: .developmentRepositoryUpdateFile"))
         XCTAssertTrue(registryFactory.contains("DevelopmentVerificationCommandTool("))
         XCTAssertTrue(registryFactory.contains("DevelopmentPushWorkflowTool("))
+        XCTAssertTrue(registryFactory.contains("DevelopmentPullRequestCreationTool("))
         XCTAssertTrue(registryFactory.contains("taskStore: taskStore"))
         XCTAssertTrue(registryFactory.contains("requireBookmark: true"))
-        XCTAssertTrue(registryFactory.contains("for prohibitedTool in ["))
+        XCTAssertFalse(registryFactory.contains("for prohibitedTool in ["))
         XCTAssertTrue(registryFactory.contains(".developmentCreatePullRequest"))
-        XCTAssertTrue(registryFactory.contains("throw ToolExecutionError.dangerousToolBlocked(prohibitedTool)"))
-        XCTAssertFalse(registryFactory.contains("DevelopmentPullRequestCreationTool("))
         XCTAssertFalse(registryFactory.contains(".gitReadOnly"))
 
         func auditedRegistrationBlock(containing needle: String) throws -> String {
@@ -2882,6 +2889,9 @@ final class AppExperienceSourceTests: XCTestCase {
         let pushBlock = try auditedRegistrationBlock(containing: "DevelopmentPushWorkflowTool(")
         XCTAssertTrue(pushBlock.contains("AuditedTool("))
         XCTAssertTrue(pushBlock.contains("logger: auditLogger"))
+        let createPullRequestBlock = try auditedRegistrationBlock(containing: "DevelopmentPullRequestCreationTool(")
+        XCTAssertTrue(createPullRequestBlock.contains("AuditedTool("))
+        XCTAssertTrue(createPullRequestBlock.contains("logger: auditLogger"))
     }
 
     func testReviewRuntimeRequiresAuditLoggerBeforeWriteExecution() throws {

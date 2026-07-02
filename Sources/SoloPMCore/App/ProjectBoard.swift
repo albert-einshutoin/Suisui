@@ -119,6 +119,31 @@ public struct ProjectDevelopmentAutomationReadiness: Equatable, Sendable {
     }
 }
 
+public struct ProjectDevelopmentPullRequestCreationDraft: Equatable, Sendable {
+    public var projectID: Int64
+    public var taskID: Int64
+    public var branchName: String
+    public var baseBranch: String
+    public var title: String
+    public var body: String
+
+    public init(
+        projectID: Int64,
+        taskID: Int64,
+        branchName: String,
+        baseBranch: String,
+        title: String,
+        body: String
+    ) {
+        self.projectID = projectID
+        self.taskID = taskID
+        self.branchName = branchName
+        self.baseBranch = baseBranch
+        self.title = title
+        self.body = body
+    }
+}
+
 public struct ProjectBoardProject: Identifiable, Equatable, Sendable {
     public var id: Int64
     public var title: String
@@ -1772,6 +1797,184 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    public func developmentPullRequestCreationDraft(
+        for project: ProjectBoardProject,
+        task: ProjectBoardTask?
+    ) -> ProjectDevelopmentPullRequestCreationDraft? {
+        let readiness = developmentAutomationReadiness(for: project, task: task)
+        guard readiness.isReady,
+              let task,
+              let branchName = readiness.branchNamePreview else {
+            return nil
+        }
+
+        let baseBranch = Self.defaultDevelopmentPullRequestBaseBranch
+        return ProjectDevelopmentPullRequestCreationDraft(
+            projectID: project.id,
+            taskID: task.id,
+            branchName: branchName,
+            baseBranch: baseBranch,
+            title: Self.developmentPullRequestTitle(project: project, task: task),
+            body: Self.developmentPullRequestBody(
+                project: project,
+                task: task,
+                branchName: branchName,
+                baseBranch: baseBranch
+            )
+        )
+    }
+
+    @discardableResult
+    public func prepareDevelopmentPullRequestCreationReview(
+        for project: ProjectBoardProject,
+        task: ProjectBoardTask?,
+        baseBranch: String? = nil,
+        title: String? = nil,
+        body: String? = nil
+    ) -> ActionPlan? {
+        guard let draft = developmentPullRequestCreationDraft(for: project, task: task) else {
+            let readiness = developmentAutomationReadiness(for: project, task: task)
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = readiness.blockingReason
+            integrationStatusMessage = nil
+            return nil
+        }
+
+        do {
+            let reviewedBaseBranch = try DevelopmentBranchNamePolicy.validated(
+                (baseBranch ?? draft.baseBranch).trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            try DevelopmentGitHubPRCommandPolicy.validateBaseAndHead(
+                baseBranch: reviewedBaseBranch,
+                headBranch: draft.branchName
+            )
+            let reviewedTitle = try DevelopmentGitHubPRCommandPolicy.validatedPullRequestTitle(
+                title ?? draft.title,
+                redactor: DeveloperSecretRedactor()
+            )
+            let reviewedBody = try DevelopmentGitHubPRCommandPolicy.validatedPullRequestBody(
+                body ?? draft.body,
+                redactor: DeveloperSecretRedactor()
+            )
+
+            let plan = ActionPlan(
+                id: "development-pr-create:\(project.id):\(draft.taskID):\(Self.developmentPullRequestCreationPlanDigest(projectID: project.id, taskID: draft.taskID, branchName: draft.branchName, baseBranch: reviewedBaseBranch, title: reviewedTitle, body: reviewedBody))",
+                userInput: "Create a GitHub pull request for \(draft.branchName) after reviewing base branch, title, and body.",
+                summary: "Create pull request from \(draft.branchName) into \(reviewedBaseBranch). Base branch \(reviewedBaseBranch), title and body were reviewed before queueing. Execution rechecks the current branch, clean workspace, and GitHub origin before creating the pull request.",
+                actions: [
+                    PlanAction(
+                        id: "development-pr-create",
+                        tool: .developmentCreatePullRequest,
+                        arguments: [
+                            "projectId": .number(Double(project.id)),
+                            "branchName": .string(draft.branchName),
+                            "baseBranch": .string(reviewedBaseBranch),
+                            "title": .string(reviewedTitle),
+                            "body": .string(reviewedBody)
+                        ],
+                        riskLevel: .write,
+                        requiresUserConfirmation: true
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+            // PR creation is a second external write after push. Keeping a distinct
+            // plan ID prevents an approved push queue item from being reused to create
+            // a GitHub pull request with unreviewed base/title/body fields.
+            developmentAutomationReviewPlan = plan
+            integrationStatusMessage = String(localized: "Development pull request creation review is prepared.")
+            todayCommandFeedback = nil
+            errorMessage = nil
+            return plan
+        } catch let error as DevelopmentPRPublishWorkflowError {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = String(localized: "Review the pull request base branch, title, and body before queueing.")
+            errorMessage = Self.sanitizedDevelopmentAutomationReviewText(error.userMessage)
+            integrationStatusMessage = nil
+            return nil
+        } catch {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = String(localized: "Review the pull request base branch, title, and body before queueing.")
+            errorMessage = Self.sanitizedDevelopmentAutomationReviewText(String(describing: error))
+            integrationStatusMessage = nil
+            return nil
+        }
+    }
+
+    @discardableResult
+    public func enqueueDevelopmentPullRequestCreationReview(
+        for project: ProjectBoardProject,
+        task: ProjectBoardTask?,
+        baseBranch: String? = nil,
+        title: String? = nil,
+        body: String? = nil
+    ) -> Bool {
+        guard let assistantQueueStore else {
+            assistantQueueSnapshot = .empty
+            assistantQueueSelectedItemIDs = []
+            errorMessage = String(localized: "Assistant Queue is unavailable in this build.")
+            integrationStatusMessage = nil
+            return false
+        }
+        guard var plan = prepareDevelopmentPullRequestCreationReview(
+            for: project,
+            task: task,
+            baseBranch: baseBranch,
+            title: title,
+            body: body
+        ) else {
+            return false
+        }
+
+        let validator = ActionPlanValidator()
+        let validation = validator.validate(plan)
+        guard validation.isValid else {
+            errorMessage = String(localized: "Development automation generated an invalid action plan.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        plan.userInput = Self.sanitizedDevelopmentAutomationReviewText(plan.userInput)
+        plan.summary = Self.sanitizedDevelopmentAutomationReviewText(plan.summary)
+        let persistedValidation = validator.validate(plan)
+        guard persistedValidation.isValid else {
+            errorMessage = String(localized: "Development automation generated an invalid action plan.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        let item = AssistantQueueAdapter.makeItem(
+            actionPlan: plan,
+            sourceTranscript: plan.userInput,
+            interpretationSummary: plan.summary,
+            reason: Self.developmentPullRequestCreationQueueReason(project: project),
+            costPreview: .localOnly()
+        )
+
+        do {
+            if try assistantQueueStore.insertIfAbsent(item) != nil {
+                focusAssistantQueueItem(id: item.id)
+                errorMessage = nil
+                integrationStatusMessage = String(localized: "Queued development pull request creation review for approval.")
+                todayCommandFeedback = nil
+                onChange()
+                return true
+            }
+
+            focusAssistantQueueItem(id: item.id)
+            errorMessage = nil
+            integrationStatusMessage = String(localized: "Development pull request creation review is already in Assistant Queue.")
+            todayCommandFeedback = nil
+            return true
+        } catch {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = AssistantQueueStoreError.userMessage(for: error)
+            integrationStatusMessage = nil
+            return false
+        }
+    }
+
     private func task(id: Int64) -> ProjectBoardTask? {
         snapshot.projects
             .flatMap(\.tasks)
@@ -1779,6 +1982,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     private static let developmentAutomationAllowedFileOperations = ["create", "read", "update"]
+    private static let defaultDevelopmentPullRequestBaseBranch = "main"
 
     private static let developmentAutomationLifecycleToolNames = [
         ActionTool.developmentPreparePullRequestWorkflow.rawValue,
@@ -1808,6 +2012,60 @@ public final class ProjectBoardViewModel: ObservableObject {
             format: String(localized: "Development branch push needs review for %@."),
             sanitizedDevelopmentAutomationReviewText(project.title)
         )
+    }
+
+    private static func developmentPullRequestCreationQueueReason(project: ProjectBoardProject) -> String {
+        String(
+            format: String(localized: "Development pull request creation needs base, title, and body review for %@."),
+            sanitizedDevelopmentAutomationReviewText(project.title)
+        )
+    }
+
+    private static func developmentPullRequestTitle(
+        project: ProjectBoardProject,
+        task: ProjectBoardTask
+    ) -> String {
+        let taskTitle = sanitizedSingleLineDevelopmentAutomationText(task.title, fallback: "task \(task.id)")
+        return truncatedPullRequestTitle("SoloPM: \(taskTitle)")
+    }
+
+    private static func developmentPullRequestBody(
+        project: ProjectBoardProject,
+        task: ProjectBoardTask,
+        branchName: String,
+        baseBranch: String
+    ) -> String {
+        let projectTitle = sanitizedSingleLineDevelopmentAutomationText(project.title, fallback: "project \(project.id)")
+        let taskTitle = sanitizedSingleLineDevelopmentAutomationText(task.title, fallback: "task \(task.id)")
+        return """
+        ## Summary
+        - Prepare \(taskTitle) for \(projectTitle).
+
+        ## Pull Request
+        - Base branch: \(baseBranch)
+        - Head branch: \(branchName)
+
+        ## Review
+        - Created from SoloPM development automation after separate branch preparation, verification, commit, and push gates.
+        - Review CI, code review, and merge readiness before merging.
+        """
+    }
+
+    private static func sanitizedSingleLineDevelopmentAutomationText(_ text: String, fallback: String) -> String {
+        let sanitized = sanitizedDevelopmentAutomationReviewText(text)
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        return sanitized.isEmpty ? fallback : sanitized
+    }
+
+    private static func truncatedPullRequestTitle(_ title: String) -> String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > 200 else {
+            return trimmed
+        }
+        return String(trimmed.prefix(197)) + "..."
     }
 
     private static func sanitizedDevelopmentAutomationReviewText(_ text: String) -> String {
@@ -1860,6 +2118,24 @@ public final class ProjectBoardViewModel: ObservableObject {
         branchName: String
     ) -> String {
         let input = "\(projectID):\(taskID):\(branchName)"
+        let digest = SHA256.hash(data: Data(input.utf8))
+        return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func developmentPullRequestCreationPlanDigest(
+        projectID: Int64,
+        taskID: Int64,
+        branchName: String,
+        baseBranch: String,
+        title: String,
+        body: String
+    ) -> String {
+        // Approval identity must change when any reviewed PR field changes; otherwise
+        // Assistant Queue's duplicate protection can preserve an approval for stale text.
+        let parts = [String(projectID), String(taskID), branchName, baseBranch, title, body]
+        let input = parts
+            .map { "\($0.utf8.count):\($0)" }
+            .joined(separator: "|")
         let digest = SHA256.hash(data: Data(input.utf8))
         return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
     }

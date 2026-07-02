@@ -150,6 +150,14 @@ final class DevelopmentAutomationRuntimeSmokeTests: XCTestCase {
         XCTAssertFalse(status.standardOutput.contains("runtime-smoke.md"))
 
         try runGit(["remote", "add", "origin", "https://github.com/albert-einshutoin/soloPM.git"], in: workspace)
+        let headOID = try runGit(["rev-parse", "HEAD"], in: workspace)
+            .standardOutput
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let pullRequestGitRunner = RuntimeSmokePullRequestGitRunner(
+            remoteURL: "https://github.com/albert-einshutoin/soloPM.git",
+            branchName: branchName,
+            headOID: headOID
+        )
         let githubRunner = RuntimeSmokeGitHubRunner(
             output: GitHubCLICommandOutput(
                 standardOutput: "https://github.com/albert-einshutoin/soloPM/pull/9999\n",
@@ -159,6 +167,7 @@ final class DevelopmentAutomationRuntimeSmokeTests: XCTestCase {
         )
         let pullRequestResult = try DevelopmentPullRequestCreationTool(
             projectStore: stores.projects,
+            gitRunner: pullRequestGitRunner,
             githubRunner: githubRunner,
             bookmarkResolver: resolver
         ).execute(
@@ -180,19 +189,26 @@ final class DevelopmentAutomationRuntimeSmokeTests: XCTestCase {
         let githubInvocation = try XCTUnwrap(githubRunner.recordedInvocations.first)
         XCTAssertEqual(githubRunner.recordedInvocations.count, 1)
         XCTAssertEqual(githubInvocation.workingDirectory, workspace.resolvingSymlinksInPath().standardizedFileURL)
-        XCTAssertEqual(githubInvocation.arguments.count, 10)
-        XCTAssertEqual(Array(githubInvocation.arguments.prefix(8)), [
+        XCTAssertEqual(githubInvocation.arguments.count, 12)
+        XCTAssertEqual(Array(githubInvocation.arguments.prefix(10)), [
             "pr", "create",
+            "--repo", "albert-einshutoin/soloPM",
             "--base", "feature/phase14-product-completion",
             "--head", branchName,
             "--title", "Add development runtime smoke fixture"
         ])
-        XCTAssertEqual(githubInvocation.arguments[8], "--body-file")
+        XCTAssertEqual(githubInvocation.arguments[10], "--body-file")
         XCTAssertEqual(githubRunner.recordedBodyFiles, [
             "## Summary\n- Adds approved project-directory runtime smoke evidence\n"
         ])
         XCTAssertFalse(githubInvocation.arguments.contains("--body"))
         XCTAssertFalse(githubInvocation.arguments.contains("--fill"))
+        XCTAssertEqual(pullRequestGitRunner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL),
+            GitCommandInvocation(arguments: ["remote", "get-url", "--push", "--all", "origin"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL),
+            GitCommandInvocation(arguments: ["rev-parse", "HEAD"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL),
+            GitCommandInvocation(arguments: ["ls-remote", "https://github.com/albert-einshutoin/soloPM.git", "refs/heads/\(branchName)"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL)
+        ])
 
         XCTAssertGreaterThanOrEqual(resolver.resolvedBookmarks.count, 7)
         XCTAssertEqual(Set(resolver.resolvedBookmarks), [bookmarkData])
@@ -259,6 +275,41 @@ final class DevelopmentAutomationRuntimeSmokeTests: XCTestCase {
     private func write(_ contents: String, to url: URL) throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try contents.write(to: url, atomically: true, encoding: .utf8)
+    }
+}
+
+private final class RuntimeSmokePullRequestGitRunner: GitCommandRunner, @unchecked Sendable {
+    private let remoteURL: String
+    private let branchName: String
+    private let headOID: String
+    private let processRunner = ProcessGitCommandRunner()
+    private(set) var recordedInvocations: [GitCommandInvocation] = []
+
+    init(remoteURL: String, branchName: String, headOID: String) {
+        self.remoteURL = remoteURL
+        self.branchName = branchName
+        self.headOID = headOID
+    }
+
+    func runGit(arguments: [String], workingDirectory: URL) throws -> GitCommandOutput {
+        let normalizedWorkingDirectory = workingDirectory.resolvingSymlinksInPath().standardizedFileURL
+        recordedInvocations.append(GitCommandInvocation(arguments: arguments, workingDirectory: normalizedWorkingDirectory))
+        switch arguments {
+        case ["status", "--short", "--branch"]:
+            return try processRunner.runGit(arguments: arguments, workingDirectory: workingDirectory)
+        case ["remote", "get-url", "--push", "--all", "origin"]:
+            return GitCommandOutput(standardOutput: "\(remoteURL)\n", standardError: "", exitCode: 0)
+        case ["rev-parse", "HEAD"]:
+            return GitCommandOutput(standardOutput: "\(headOID)\n", standardError: "", exitCode: 0)
+        case ["ls-remote", remoteURL, "refs/heads/\(branchName)"]:
+            return GitCommandOutput(
+                standardOutput: "\(headOID)\trefs/heads/\(branchName)\n",
+                standardError: "",
+                exitCode: 0
+            )
+        default:
+            return GitCommandOutput(standardOutput: "", standardError: "unexpected git command", exitCode: 127)
+        }
     }
 }
 

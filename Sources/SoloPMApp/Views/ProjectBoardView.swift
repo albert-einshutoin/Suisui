@@ -3447,8 +3447,17 @@ private struct ProjectDevelopmentAutomationPanel: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
     let onReviewDevelopmentAutomation: (ActionPlan) -> Void
 
+    @State private var pullRequestDraftKey: String?
+    @State private var pullRequestBaseBranch = ""
+    @State private var pullRequestTitle = ""
+    @State private var pullRequestBody = ""
+
     private var readiness: ProjectDevelopmentAutomationReadiness {
         viewModel.developmentAutomationReadiness(for: project, task: viewModel.selectedTask)
+    }
+
+    private var pullRequestDraft: ProjectDevelopmentPullRequestCreationDraft? {
+        viewModel.developmentPullRequestCreationDraft(for: project, task: viewModel.selectedTask)
     }
 
     var body: some View {
@@ -3510,6 +3519,54 @@ private struct ProjectDevelopmentAutomationPanel: View {
             .help("Queues a branch push approval; execution rechecks the current branch, clean workspace, and GitHub origin before running.")
             .accessibilityIdentifier("project-development-automation-push-queue")
             .accessibilityHint("Adds only the branch push review to Assistant Queue; pull request creation still needs a separate approval.")
+
+            if let pullRequestDraft {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Pull request creation")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    TextField("Base branch", text: $pullRequestBaseBranch)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("project-development-automation-pr-base")
+
+                    TextField("Pull request title", text: $pullRequestTitle)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("project-development-automation-pr-title")
+
+                    TextEditor(text: $pullRequestBody)
+                        .font(.caption)
+                        .frame(minHeight: 96)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(.quaternary)
+                        )
+                        .accessibilityLabel("Pull request body")
+                        .accessibilityIdentifier("project-development-automation-pr-body")
+
+                    Button {
+                        _ = viewModel.enqueueDevelopmentPullRequestCreationReview(
+                            for: project,
+                            task: viewModel.selectedTask,
+                            baseBranch: pullRequestBaseBranch,
+                            title: pullRequestTitle,
+                            body: pullRequestBody
+                        )
+                    } label: {
+                        Label("Queue pull request creation review", systemImage: "arrow.up.right.square")
+                    }
+                    .disabled(!canQueuePullRequestCreationReview)
+                    .help("Queues GitHub pull request creation for approval after reviewing the base branch, title, and body.")
+                    .accessibilityIdentifier("project-development-automation-pr-create-queue")
+                    .accessibilityHint("Adds only the pull request creation review to Assistant Queue; review and merge still need separate approval.")
+                }
+                .onAppear {
+                    syncPullRequestDraftIfNeeded(pullRequestDraft)
+                }
+                .onChange(of: pullRequestDraft) { _, newValue in
+                    syncPullRequestDraftIfNeeded(newValue)
+                }
+            }
 
             if hasMatchingReviewPlan {
                 Text(LocalizedStringKey("Review plan is ready. Approve and execute it before any local branch is created."))
@@ -3585,6 +3642,24 @@ private struct ProjectDevelopmentAutomationPanel: View {
         return action.arguments["projectId"] == .number(Double(project.id))
             && action.arguments["taskId"] == readiness.taskID.map { .number(Double($0)) }
             && action.arguments["branchName"] == readiness.branchNamePreview.map(JSONValue.string)
+    }
+
+    private var canQueuePullRequestCreationReview: Bool {
+        readiness.isReady
+            && !pullRequestBaseBranch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !pullRequestTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !pullRequestBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func syncPullRequestDraftIfNeeded(_ draft: ProjectDevelopmentPullRequestCreationDraft) {
+        let key = "\(draft.projectID):\(draft.taskID):\(draft.branchName)"
+        guard pullRequestDraftKey != key else {
+            return
+        }
+        pullRequestDraftKey = key
+        pullRequestBaseBranch = draft.baseBranch
+        pullRequestTitle = draft.title
+        pullRequestBody = draft.body
     }
 
     private func lifecycleToolIcon(for toolName: String) -> String {

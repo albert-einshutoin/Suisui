@@ -1124,6 +1124,93 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDevelopmentAutomationPullRequestCreationQueueDraftRequiresReviewedBaseTitleAndBody() throws {
+        let stores = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: stores.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Client Portal"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Implement OAuth callback",
+            projectID: project.id,
+            status: .planned,
+            priority: .high
+        ))
+        XCTAssertTrue(viewModel.assignProjectWorkspacePath(
+            "/tmp/client-portal",
+            bookmarkData: Data([1, 2, 3]),
+            projectID: project.id
+        ))
+        let assignedProject = try XCTUnwrap(viewModel.snapshot.projects.first { $0.id == project.id })
+        let currentTask = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+        let draft = try XCTUnwrap(viewModel.developmentPullRequestCreationDraft(for: assignedProject, task: currentTask))
+
+        XCTAssertEqual(draft.baseBranch, "main")
+        XCTAssertEqual(draft.branchName, "feature/solopm-\(project.id)-\(task.id)-implement-oauth-callback")
+        XCTAssertTrue(draft.title.contains("Implement OAuth callback"))
+        XCTAssertTrue(draft.body.contains("Base branch: main"))
+        XCTAssertTrue(draft.body.contains("Head branch: feature/solopm-\(project.id)-\(task.id)-implement-oauth-callback"))
+
+        XCTAssertTrue(viewModel.enqueueDevelopmentPullRequestCreationReview(
+            for: assignedProject,
+            task: currentTask,
+            baseBranch: "feature/phase14-product-completion",
+            title: "Add OAuth callback support",
+            body: "## Summary\n- Add reviewed OAuth callback support\n"
+        ))
+
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        let item = try assistantQueueStore.get(id: itemID)
+        XCTAssertTrue(itemID.hasPrefix("action-plan:development-pr-create:"))
+        XCTAssertEqual(item.state, .waitingReview)
+        XCTAssertEqual(item.riskLevel, .write)
+        XCTAssertEqual(item.requiredCapabilities, [.tool(.developmentCreatePullRequest), .providerExecutionApproval])
+        XCTAssertEqual(item.costPreview?.billingMode, .localOnly)
+        XCTAssertEqual(item.reviewReason, "Development pull request creation needs base, title, and body review for Client Portal.")
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Queued development pull request creation review for approval.")
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, [itemID])
+        guard case .actionPlan(let plan) = item.payload else {
+            return XCTFail("Expected action plan payload")
+        }
+        XCTAssertEqual(plan.actions.count, 1)
+        let action = try XCTUnwrap(plan.actions.first)
+        XCTAssertEqual(action.tool, .developmentCreatePullRequest)
+        XCTAssertTrue(action.requiresUserConfirmation)
+        XCTAssertEqual(action.arguments["projectId"], .number(Double(project.id)))
+        XCTAssertEqual(action.arguments["branchName"], .string("feature/solopm-\(project.id)-\(task.id)-implement-oauth-callback"))
+        XCTAssertEqual(action.arguments["baseBranch"], .string("feature/phase14-product-completion"))
+        XCTAssertEqual(action.arguments["title"], .string("Add OAuth callback support"))
+        XCTAssertEqual(action.arguments["body"], .string("## Summary\n- Add reviewed OAuth callback support\n"))
+        XCTAssertTrue(plan.summary.contains("Base branch feature/phase14-product-completion"))
+        XCTAssertTrue(plan.summary.contains("title and body were reviewed before queueing"))
+
+        XCTAssertTrue(viewModel.enqueueDevelopmentPullRequestCreationReview(
+            for: assignedProject,
+            task: currentTask,
+            baseBranch: "feature/phase14-product-completion",
+            title: "Add reviewed OAuth callback retry",
+            body: "## Summary\n- Add reviewed OAuth callback support after review edits\n"
+        ))
+
+        let editedItemID = try XCTUnwrap(viewModel.assistantQueueSelectedItemIDs.first)
+        XCTAssertNotEqual(editedItemID, itemID)
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.count, 2)
+        let editedItem = try assistantQueueStore.get(id: editedItemID)
+        guard case .actionPlan(let editedPlan) = editedItem.payload else {
+            return XCTFail("Expected edited action plan payload")
+        }
+        let editedAction = try XCTUnwrap(editedPlan.actions.first)
+        XCTAssertEqual(editedAction.arguments["title"], .string("Add reviewed OAuth callback retry"))
+        XCTAssertEqual(
+            editedAction.arguments["body"],
+            .string("## Summary\n- Add reviewed OAuth callback support after review edits\n")
+        )
+    }
+
+    @MainActor
     func testDevelopmentAutomationQueueDraftRedactsSensitiveTaskTitleFromPersistentBranchName() throws {
         let stores = try makeStoreBundle()
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
