@@ -169,7 +169,7 @@ open_evidence_app() {
   while IFS= read -r -d '' env_arg; do
     env_args+=("$env_arg")
   done < <(app_env_args)
-  if [[ "$SCHEDULE_COCKPIT" == "1" || "$DONE_ANALYTICS" == "1" ]]; then
+  if [[ "$P0_WORKFLOWS" == "1" || "$SCHEDULE_COCKPIT" == "1" || "$DONE_ANALYTICS" == "1" ]]; then
     wait_for_app_process_exit
     # Targeted recovery captures need the explicit SQLite DB but LaunchServices
     # can keep the window off-screen with that env; direct launch matches runtime smokes.

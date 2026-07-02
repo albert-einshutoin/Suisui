@@ -568,12 +568,20 @@ today_task_id="$(seed_today_task)"
 launch_app_for_today
 wait_for_database_table "assistant_queue_items"
 waitForAXElementContaining "today-command-capture-field"
-pressButtonContainingBounded "today-rail-add-subtask"
-waitForAXElementContaining "today-command-capture-field" "AX Runtime Today Complete"
-verify_single_value "subtask prefill kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
 pressButtonContainingBounded "today-rail-edit-task"
 waitForAXSubtreeMarkerContaining "task-inspector-title" "AX Runtime Today Complete"
 verify_single_value "edit inspector kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
+terminate_app
+wait_for_no_app_process
+launch_app_for_today
+wait_for_database_table "assistant_queue_items"
+waitForAXElementContaining "today-command-capture-field"
+# Keep the edit and subtask checks in separate launches. The subtask action
+# intentionally moves focus into the command field, and isolating the checks
+# keeps this runtime smoke about product behavior rather than AX focus residue.
+pressButtonContainingBounded "today-rail-add-subtask"
+waitForAXElementContaining "today-command-capture-field" "AX Runtime Today Complete"
+verify_single_value "subtask prefill kept Today task open" "SELECT CASE WHEN status='planned' AND completed_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$today_task_id;" "1"
 terminate_app
 wait_for_no_app_process
 launch_app_for_today
