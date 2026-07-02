@@ -73,6 +73,7 @@ local_voice_evidence_source_commit() {
       Sources/SoloPMApp \
       Package.swift \
       packaging/app_metadata.env \
+      script/kokoro_tts_runtime.py \
       script/check_local_voice_runtime_smoke.sh \
       docs/voice-models.md 2>/dev/null || true
   )"

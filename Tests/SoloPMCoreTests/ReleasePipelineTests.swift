@@ -8288,6 +8288,39 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(docs.contains("they do not by themselves prove the whisper.cpp STT or Kokoro TTS providers are ready in a packaged app"))
     }
 
+    func testKokoroRuntimeWrapperUsesLocalCacheOnlyContract() throws {
+        let docs = try readPackageFile("docs/voice-models.md")
+        let wrapper = try readPackageFile("script/kokoro_tts_runtime.py")
+        let smokeScript = try readPackageFile("script/check_local_voice_runtime_smoke.sh")
+
+        for marker in [
+            "--model",
+            "--text-file",
+            "--language",
+            "--voice",
+            "--output",
+            "config.json",
+            "voices",
+            "HF_HUB_OFFLINE",
+            "TRANSFORMERS_OFFLINE",
+            "check_offline_language_assets",
+            "en_core_web_sm",
+            "prefer_unidic_lite_for_japanese",
+            "unidic_lite.DICDIR",
+            "SAFE_VOICE_ID",
+            "KModel(",
+            "KPipeline("
+        ] {
+            XCTAssertTrue(wrapper.contains(marker), "Missing Kokoro wrapper marker: \(marker)")
+        }
+        for networkMarker in ["hf_hub_download", "requests.", "curl ", "wget ", "huggingface.co"] {
+            XCTAssertFalse(wrapper.contains(networkMarker), "Kokoro wrapper must not fetch network resources during smoke: \(networkMarker)")
+        }
+        XCTAssertTrue(smokeScript.contains("script/kokoro_tts_runtime.py"))
+        XCTAssertTrue(docs.contains("script/kokoro_tts_runtime.py"))
+        XCTAssertTrue(docs.contains("sets Hugging Face/Transformers offline flags"))
+    }
+
     func testLocalVoiceRuntimeSmokeScriptFailsClosedAndDocumentsIssueCloseout() throws {
         let docs = try readPackageFile("docs/voice-models.md")
         let script = try readPackageFile("script/check_local_voice_runtime_smoke.sh")
