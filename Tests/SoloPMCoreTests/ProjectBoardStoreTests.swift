@@ -4914,6 +4914,70 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testScheduleReminderDraftQueuesTaskLevelReminderActionForReviewWithoutReminderWrite() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-07-01T09:10:00Z")
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Schedule Reminder Queue"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Review proposal before standup",
+            projectID: project.id,
+            status: .blocked,
+            priority: .high,
+            dueAt: "2026-07-01T10:00:00Z"
+        ))
+
+        let cockpit = viewModel.weeklyScheduleCockpit(around: referenceDate, calendar: calendar)
+        XCTAssertEqual(cockpit.focusForecast.reminderProposalCount, 1)
+        XCTAssertEqual(cockpit.days.first { $0.dateKey == "2026-07-01" }?.reminderProposalCount, 1)
+
+        let queued = viewModel.enqueueScheduleReminderDraft(
+            for: task.id,
+            sourceTranscript: "Scheduleからリマインダー token=schedule-secret",
+            on: referenceDate,
+            calendar: calendar
+        )
+
+        XCTAssertTrue(queued)
+        XCTAssertEqual(viewModel.errorMessage, nil)
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Queued Schedule reminder draft for approval.")
+        XCTAssertEqual(viewModel.todayCommandFeedback, "Queued Schedule reminder draft for approval.")
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        XCTAssertTrue(itemID.hasPrefix("action-plan:schedule-reminder:2026-07-01:"))
+        XCTAssertTrue(itemID.hasSuffix(":task:\(task.id)"))
+        XCTAssertEqual(viewModel.snapshot.projects.first { $0.id == project.id }?.column(.blocked)?.tasks.map(\.id), [task.id])
+
+        let item = try assistantQueueStore.get(id: itemID)
+        XCTAssertEqual(item.state, .waitingReview)
+        XCTAssertEqual(item.riskLevel, .write)
+        XCTAssertEqual(item.reviewReason, "Schedule assistant suggested a Reminders draft for 1 task.")
+        XCTAssertEqual(item.requiredCapabilities, [.tool(.remindersCreate), .appPermission(.reminders), .providerExecutionApproval])
+        XCTAssertTrue(item.sourceTranscript?.contains("[REDACTED_SECRET]") ?? false)
+        XCTAssertFalse(item.sourceTranscript?.contains("schedule-secret") ?? true)
+        guard case .actionPlan(let plan) = item.payload else {
+            return XCTFail("Expected action plan payload")
+        }
+        XCTAssertEqual("action-plan:\(plan.id)", itemID)
+        XCTAssertEqual(plan.userInput, "Queue Schedule reminder for approval")
+        XCTAssertEqual(plan.summary, "Schedule reminder draft for 1 task.")
+        XCTAssertEqual(plan.requiresApproval, true)
+        XCTAssertEqual(plan.riskLevel, .write)
+        XCTAssertEqual(plan.actions.map(\.tool), [.remindersCreate])
+        XCTAssertEqual(plan.actions.first?.id, "schedule-reminder-task-\(task.id)")
+        XCTAssertEqual(plan.actions.first?.arguments["title"], .string("Reminder for Review proposal before standup"))
+        XCTAssertEqual(plan.actions.first?.arguments["dueAt"], .string("2026-07-01T10:00:00Z"))
+        XCTAssertEqual(plan.actions.first?.arguments["taskId"], .number(Double(task.id)))
+        XCTAssertEqual(plan.actions.first?.arguments["projectId"], .number(Double(project.id)))
+    }
+
+    @MainActor
     func testTodayReminderDraftDoesNotOverwriteExistingQueueItem() throws {
         var calendar = utcCalendar()
         calendar.firstWeekday = 2
@@ -4957,6 +5021,55 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(stored.state, .approved)
         XCTAssertEqual(stored.reviewReason, "Existing approved reminder review.")
         XCTAssertEqual(viewModel.integrationStatusMessage, "Today reminder draft is already in Assistant Queue.")
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, [itemID])
+    }
+
+    @MainActor
+    func testScheduleReminderDraftDoesNotOverwriteExistingQueueItem() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-07-01T09:10:00Z")
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Schedule Reminder Queue"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Review proposal before standup",
+            projectID: project.id,
+            status: .blocked,
+            priority: .high,
+            dueAt: "2026-07-01T10:00:00Z"
+        ))
+        XCTAssertTrue(viewModel.enqueueScheduleReminderDraft(
+            for: task.id,
+            sourceTranscript: "初回のScheduleリマインダー",
+            on: referenceDate,
+            calendar: calendar
+        ))
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        XCTAssertTrue(itemID.hasPrefix("action-plan:schedule-reminder:2026-07-01:"))
+        var existing = try assistantQueueStore.get(id: itemID)
+        existing.reviewReason = "Existing approved schedule reminder review."
+        existing = try AssistantQueueStateMachine.approve(existing, reviewerID: "tester")
+        try assistantQueueStore.save(existing)
+
+        let queued = viewModel.enqueueScheduleReminderDraft(
+            for: task.id,
+            sourceTranscript: "更新されたScheduleリマインダー",
+            on: referenceDate,
+            calendar: calendar
+        )
+
+        let stored = try assistantQueueStore.get(id: itemID)
+        XCTAssertTrue(queued)
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.map(\.id), [itemID])
+        XCTAssertEqual(stored.state, .approved)
+        XCTAssertEqual(stored.reviewReason, "Existing approved schedule reminder review.")
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Schedule reminder draft is already in Assistant Queue.")
         XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, [itemID])
     }
 

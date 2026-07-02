@@ -624,7 +624,9 @@
 "Subtask for %@: " = "%@ のサブタスク: ";
 "Prefills the Today command field for a local subtask draft." = "ローカルサブタスク下書き用にTodayコマンド欄を事前入力します。";
 "Add Reminder Draft" = "リマインダー下書き";
+"Queue Reminder Draft" = "リマインダー下書きをキュー";
 "Reminder for %@" = "%@ のリマインダー";
+"Queue reminder draft for %@" = "%@ のリマインダー下書きをキュー";
 "Queues a Reminders draft for approval before any external write." = "外部書き込みの前に、Reminders下書きを承認キューへ追加します。";
 "Review selected task" = "選択中タスクを確認";
 "Resume focused task" = "集中タスクを再開";
@@ -644,6 +646,13 @@
 "Select an existing Today task before queuing a reminder." = "リマインダーをキューに追加する前に、既存のTodayタスクを選択してください。";
 "Today assistant suggested a Reminders draft for 1 task." = "Todayアシスタントが1件のタスク用Reminders下書きを提案しました。";
 "Today assistant suggested Reminders drafts for %d tasks." = "Todayアシスタントが%d件のタスク用Reminders下書きを提案しました。";
+"Schedule reminder draft" = "Scheduleリマインダー下書き";
+"Reminder draft generated an invalid action plan." = "リマインダー下書きが無効なアクションプランを生成しました。";
+"Schedule reminder draft is already in Assistant Queue." = "Scheduleリマインダー下書きは既にAssistant Queueにあります。";
+"Queued Schedule reminder draft for approval." = "Scheduleリマインダー下書きを承認待ちに追加しました。";
+"Select an existing Schedule task before queuing a reminder." = "リマインダーをキューに追加する前に、既存のScheduleタスクを選択してください。";
+"Schedule assistant suggested a Reminders draft for 1 task." = "Scheduleアシスタントが1件のタスク用Reminders下書きを提案しました。";
+"Schedule assistant suggested Reminders drafts for %d tasks." = "Scheduleアシスタントが%d件のタスク用Reminders下書きを提案しました。";
 "Overdue %@" = "期限超過 %@";
 "Today %@" = "今日 %@";
 "Due %@" = "期限 %@";
