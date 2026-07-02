@@ -324,7 +324,22 @@ Each competitor note and Ship / Defer / Reject delta must identify what was actu
   --confirm-manual-hands-on
 ```
 
-13. final readiness report
+13. local OSS voice runtime evidence
+
+Before closing local OSS STT/TTS issues, run the local runtime smoke with checksum-verified user-cache models, absolute user-selected runtime executables, a real STT sample WAV, and both Japanese and English Kokoro prompts:
+
+```bash
+SOLOPM_WHISPER_CPP_EXECUTABLE=/absolute/path/to/whisper-cli \
+SOLOPM_STT_SAMPLE_WAV=/absolute/path/to/sample-ja-or-en.wav \
+SOLOPM_STT_EXPECTED_TRANSCRIPT_CONTAINS="<expected words>" \
+SOLOPM_KOKORO_EXECUTABLE=/absolute/path/to/kokoro-runtime \
+SOLOPM_LOCAL_VOICE_EVIDENCE_FILE=docs/release/evidence/local-voice-runtime.md \
+./script/check_local_voice_runtime_smoke.sh
+```
+
+`release_readiness_report.sh` rejects missing, pending, hand-written, stale, local-path-leaking, or incomplete `docs/release/evidence/local-voice-runtime.md`. The evidence must include the generator provenance, current local voice source commit, no-network and no-bundled-model boundaries, checksum markers for `ggml-tiny.bin` and `kokoro-v1_0.pth`, a concrete STT expected transcript marker, and both Japanese and English TTS WAV markers. This product TTS evidence does not replace Settings Test Play closeout or manual VoiceOver accessibility evidence.
+
+14. final readiness report
 
 Run the automated local gate sweep first. It verifies CI, SQLite CRUD, runtime accessible CRUD, layout stability, Xcode build, visible-window launch, seeded-candidate runtime AX, and MCP compliance gates in one command. The runtime AX step opens the same deterministic VoiceOver review candidate with `./script/prepare_voiceover_review_candidate.sh --skip-build` before checking `crudSignals=8/8`, `focusPathSignals=6/6`, and `destructiveCancelSignals=1/1`, then writes the captured `Runtime AX smoke: OK: runtime AX smoke visible...` line into the automated preflight evidence. The automated preflight evidence also records the seeded VoiceOver candidate source commit, project ID, database path, and selected destination used for runtime AX smoke. The seeded runtime AX gate uses `--timeout 30` because macOS accessibility tree updates can lag behind the visible Project Board window after launch. After automated preflight passes, it refreshes VoiceOver and competitor helper files for the release-candidate product source commit and release-machine helper files for the current release evidence source commit without writing passed evidence. This automated sweep does not replace manual VoiceOver, competitor hands-on, signing, notarization, Sparkle, or Gatekeeper evidence.
 
