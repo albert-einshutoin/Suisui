@@ -1023,7 +1023,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-workflow\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-reopen-task-\\(task.id)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-completion-heatmap\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-heatmap-day-\\(bucket.dayKey)\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-productivity-insight\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-best-weekday-summary\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-best-hour-summary\")"))
+        XCTAssertTrue(workflowSource.contains("analytics.completionHeatmapBuckets"))
+        XCTAssertTrue(workflowSource.contains("analytics.bestWeekdaySummary"))
+        XCTAssertTrue(workflowSource.contains("analytics.bestHourSummary"))
         XCTAssertTrue(coreSource.contains("public func doneAnalytics("))
+        XCTAssertTrue(coreSource.contains("public struct DoneAnalyticsDayBucket"))
+        XCTAssertTrue(coreSource.contains("DoneAnalyticsBestWeekdaySummary"))
+        XCTAssertTrue(coreSource.contains("DoneAnalyticsBestHourSummary"))
         XCTAssertTrue(coreSource.contains("public func reopenCompletedTask(id: Int64)"))
     }
 

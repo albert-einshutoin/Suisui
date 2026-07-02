@@ -6963,33 +6963,87 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testDoneAnalyticsCalculatesDailyWeeklyCountsAndStreak() throws {
-        let calendar = Calendar(identifier: .gregorian)
+    func testDoneAnalyticsCalculatesCountsHeatmapBestSummariesAndKeepsReopenedHistory() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))
+        calendar.locale = Locale(identifier: "en_US_POSIX")
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
             ProjectBoardProject(
                 id: 1,
                 title: "Launch",
-                status: "active",
-                subtitle: "0 open / 3 total",
+                status: "completed",
+                subtitle: "0 open / 4 total",
                 columns: ProjectTaskStatus.allCases.map { status in
                     ProjectBoardColumn(status: status, tasks: status == .done ? [
-                        ProjectBoardTask(id: 1, projectID: 1, title: "Today", detail: "", status: .done, priority: .medium, dueAt: nil, completedAt: "2026-06-21T08:00:00Z"),
-                        ProjectBoardTask(id: 2, projectID: 1, title: "Yesterday", detail: "", status: .done, priority: .medium, dueAt: nil, completedAt: "2026-06-20T08:00:00Z"),
-                        ProjectBoardTask(id: 3, projectID: 1, title: "Earlier week", detail: "", status: .done, priority: .medium, dueAt: nil, completedAt: "2026-06-18T08:00:00Z")
+                        ProjectBoardTask(id: 1, projectID: 1, title: "Today", detail: "", status: .done, priority: .medium, dueAt: nil, completedAt: "2026-06-21T01:30:00Z"),
+                        ProjectBoardTask(id: 2, projectID: 1, title: "Yesterday", detail: "", status: .done, priority: .medium, dueAt: nil, completedAt: "2026-06-20T00:15:00Z"),
+                        ProjectBoardTask(id: 3, projectID: 1, title: "Earlier week", detail: "", status: .done, priority: .medium, dueAt: nil, completedAt: "2026-06-18T14:00:00Z")
+                    ] : status == .planned ? [
+                        ProjectBoardTask(id: 4, projectID: 1, title: "Reopened", detail: "", status: .planned, priority: .medium, dueAt: nil, completedAt: "2026-06-20T01:15:00Z")
                     ] : [])
                 }
             )
         ])))
         viewModel.load()
 
-        let analytics = viewModel.doneAnalytics(on: try isoDate("2026-06-21T09:00:00Z"), calendar: calendar)
+        let analytics = viewModel.doneAnalytics(on: try isoDate("2026-06-21T12:00:00Z"), calendar: calendar)
 
-        XCTAssertEqual(analytics.completedTaskCount, 3)
+        XCTAssertEqual(analytics.completedTaskCount, 4)
+        XCTAssertEqual(analytics.completedProjectCount, 1)
         XCTAssertEqual(analytics.completedTodayCount, 1)
-        XCTAssertEqual(analytics.completedThisWeekCount, 3)
+        XCTAssertEqual(analytics.completedThisWeekCount, 4)
         XCTAssertEqual(analytics.streakDays, 2)
-        XCTAssertEqual(analytics.recentTasks.map(\.title), ["Today", "Yesterday", "Earlier week"])
+        XCTAssertEqual(analytics.completionHeatmapBuckets.count, 28)
+        XCTAssertEqual(analytics.completionHeatmapBuckets.first?.dayKey, "2026-05-25")
+        XCTAssertEqual(analytics.completionHeatmapBuckets.last?.dayKey, "2026-06-21")
+        XCTAssertEqual(analytics.completionHeatmapBuckets.first { $0.dayKey == "2026-06-20" }?.completedCount, 2)
+        XCTAssertEqual(analytics.completionHeatmapBuckets.first { $0.dayKey == "2026-06-19" }?.completedCount, 0)
+        XCTAssertEqual(analytics.bestWeekdaySummary, DoneAnalyticsBestWeekdaySummary(weekday: 7, completedCount: 2))
+        XCTAssertEqual(analytics.bestHourSummary, DoneAnalyticsBestHourSummary(hour: 10, timeOfDay: .morning, completedCount: 2))
+        XCTAssertEqual(analytics.recentTasks.map(\.title), ["Today", "Reopened", "Yesterday", "Earlier week"])
         XCTAssertEqual(analytics.localRuleInsight, "Done analytics uses local completed_at history; reopened tasks remain visible in completion history.")
+    }
+
+    @MainActor
+    func testDoneAnalyticsReturnsEmptyBestSummariesWithoutCompletionHistory() throws {
+        let calendar = utcCalendar()
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
+            ProjectBoardProject(
+                id: 1,
+                title: "Inbox",
+                status: "active",
+                subtitle: "2 open / 2 total",
+                columns: ProjectTaskStatus.allCases.map { status in
+                    let tasks: [ProjectBoardTask]
+                    switch status {
+                    case .planned:
+                        tasks = [
+                            ProjectBoardTask(id: 1, projectID: 1, title: "Plan", detail: "", status: .planned, priority: .medium, dueAt: nil)
+                        ]
+                    case .backlog:
+                        tasks = [
+                            ProjectBoardTask(id: 2, projectID: 1, title: "Draft", detail: "", status: .backlog, priority: .medium, dueAt: nil)
+                        ]
+                    default:
+                        tasks = []
+                    }
+                    return ProjectBoardColumn(status: status, tasks: tasks)
+                }
+            )
+        ])))
+        viewModel.load()
+
+        let analytics = viewModel.doneAnalytics(on: try isoDate("2026-06-21T12:00:00Z"), calendar: calendar)
+
+        XCTAssertEqual(analytics.completedTaskCount, 0)
+        XCTAssertEqual(analytics.completedTodayCount, 0)
+        XCTAssertEqual(analytics.completedThisWeekCount, 0)
+        XCTAssertEqual(analytics.streakDays, 0)
+        XCTAssertEqual(analytics.completionHeatmapBuckets.count, 28)
+        XCTAssertTrue(analytics.completionHeatmapBuckets.allSatisfy { $0.completedCount == 0 })
+        XCTAssertEqual(analytics.bestWeekdaySummary, DoneAnalyticsBestWeekdaySummary.empty)
+        XCTAssertEqual(analytics.bestHourSummary, DoneAnalyticsBestHourSummary.empty)
+        XCTAssertTrue(analytics.recentTasks.isEmpty)
     }
 
     @MainActor
