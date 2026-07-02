@@ -2022,6 +2022,20 @@ public final class ProjectBoardViewModel: ObservableObject {
                     value: Self.developmentRepositoryEditContentSummary(contents)
                 ),
                 ProjectDevelopmentAutomationApprovalPreviewRow(
+                    id: "reviewed-change-scope",
+                    label: String(localized: "Reviewed Change Scope"),
+                    value: Self.developmentRepositoryEditReviewedLineSummary(contents)
+                ),
+                ProjectDevelopmentAutomationApprovalPreviewRow(
+                    id: "reviewed-replacement",
+                    label: String(localized: "Reviewed Replacement"),
+                    value: Self.developmentRepositoryEditReviewedReplacementPreview(
+                        operation: operation,
+                        relativePath: reviewedRelativePath,
+                        contents: contents
+                    )
+                ),
+                ProjectDevelopmentAutomationApprovalPreviewRow(
                     id: "content-digest",
                     label: String(localized: "Content SHA-256"),
                     value: Self.developmentRepositoryEditContentDigest(contents)
@@ -4011,7 +4025,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         return "\(redacted.prefix(maxLength))..."
     }
 
-    private static func developmentRepositoryEditContentSummary(_ contents: String) -> String {
+    private static func developmentRepositoryEditLineCount(_ contents: String) -> Int {
         // Treat a final newline as file formatting, not an extra blank line, so
         // the preview matches how users normally describe source-file edits.
         let newlineCount = contents.reduce(into: 0) { count, character in
@@ -4019,12 +4033,45 @@ public final class ProjectBoardViewModel: ObservableObject {
                 count += 1
             }
         }
-        let lineCount = max(1, 1 + newlineCount - (contents.last?.isNewline == true ? 1 : 0))
+        return max(1, 1 + newlineCount - (contents.last?.isNewline == true ? 1 : 0))
+    }
+
+    private static func developmentRepositoryEditContentSummary(_ contents: String) -> String {
+        let lineCount = developmentRepositoryEditLineCount(contents)
         let byteCount = contents.utf8.count
         if lineCount == 1 {
             return String(format: String(localized: "%d line / %d bytes"), lineCount, byteCount)
         }
         return String(format: String(localized: "%d lines / %d bytes"), lineCount, byteCount)
+    }
+
+    private static func developmentRepositoryEditReviewedLineSummary(_ contents: String) -> String {
+        String(format: String(localized: "Reviewed replacement lines: %d"), developmentRepositoryEditLineCount(contents))
+    }
+
+    private static func developmentRepositoryEditReviewedReplacementPreview(
+        operation: ProjectDevelopmentRepositoryEditOperation,
+        relativePath: String,
+        contents: String
+    ) -> String {
+        // Preview must not read the user's repository before approval, so avoid
+        // add/delete counts that would imply SoloPM compared against existing content.
+        let sanitizedPath = sanitizedDevelopmentAutomationReviewText(relativePath)
+        let lineCount = developmentRepositoryEditLineCount(contents)
+        switch operation {
+        case .create:
+            return String(
+                format: String(localized: "Create replacement: %@ (reviewed lines: %d)"),
+                sanitizedPath,
+                lineCount
+            )
+        case .update:
+            return String(
+                format: String(localized: "Update replacement: %@ (reviewed lines: %d)"),
+                sanitizedPath,
+                lineCount
+            )
+        }
     }
 
     private static func developmentRepositoryEditContentDigest(_ contents: String) -> String {
