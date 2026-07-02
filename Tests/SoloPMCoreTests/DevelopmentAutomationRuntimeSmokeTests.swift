@@ -80,6 +80,8 @@ final class DevelopmentAutomationRuntimeSmokeTests: XCTestCase {
         ).execute(
             arguments: [
                 "projectId": .number(Double(project.id)),
+                "taskId": .number(Double(task.id)),
+                "branchName": .string(branchName),
                 "relativePath": .string("docs/runtime-smoke.md"),
                 "contents": .string("# Runtime Smoke\n\n- Runs inside the approved project directory.\n")
             ],
@@ -98,6 +100,8 @@ final class DevelopmentAutomationRuntimeSmokeTests: XCTestCase {
         ).execute(
             arguments: [
                 "projectId": .number(Double(project.id)),
+                "taskId": .number(Double(task.id)),
+                "branchName": .string(branchName),
                 "relativePath": .string("README.md"),
                 "expectedSHA256": .string(readSHA),
                 "contents": .string("# Runtime Dev Repo\n\nUpdated by SoloPM development runtime smoke.\n")

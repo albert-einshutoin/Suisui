@@ -151,6 +151,102 @@ final class AssistantQueueExecutionTests: XCTestCase {
         ])
     }
 
+    func testCoordinatorRunsQueuedDevelopmentRepositoryCreateWithBranchAndReceiptReferences() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let queueStore = SQLiteAssistantQueueStore(connection: connection)
+        let receiptStore = InMemoryExecutionReceiptStore()
+        let projectStore = SQLiteProjectStore(connection: connection)
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let artifactStore = SQLiteArtifactStore(connection: connection)
+        let workspace = temporaryDirectory()
+        let project = try projectStore.create(
+            title: "SoloPM",
+            workspacePath: workspace.path,
+            workspaceBookmarkData: Data("approved-repository-edit-bookmark".utf8)
+        )
+        let task = try taskStore.create(
+            title: "Create repository file",
+            projectID: project.id,
+            sourceCommand: "voice"
+        )
+        let branchName = "feature/solopm-\(project.id)-\(task.id)-repository-edit"
+        let source = "func reviewedRepositoryEdit() {}\n"
+        let item = AssistantQueueAdapter.makeItem(
+            actionPlan: ActionPlan(
+                id: "development-repository-create-queue",
+                userInput: "Create a reviewed repository file",
+                summary: "Create reviewed repository file on \(branchName).",
+                actions: [
+                    PlanAction(
+                        id: "development-repository-create",
+                        tool: .developmentRepositoryCreateFile,
+                        arguments: [
+                            "projectId": .number(Double(project.id)),
+                            "taskId": .number(Double(task.id)),
+                            "branchName": .string(branchName),
+                            "relativePath": .string("Sources/ReviewedEdit.swift"),
+                            "contents": .string(source)
+                        ],
+                        riskLevel: .write,
+                        requiresUserConfirmation: true
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            sourceTranscript: "Create a reviewed repository file",
+            interpretationSummary: "Repository create review",
+            reason: "Needs review before writing an approved repository file."
+        )
+        let approved = try AssistantQueueStateMachine.approve(item, reviewerID: "local-user")
+        try queueStore.save(approved)
+        let gitRunner = RecordingAssistantQueueGitRunner()
+        gitRunner.stub(
+            arguments: ["branch", "--show-current"],
+            output: GitCommandOutput(standardOutput: "\(branchName)\n", standardError: "", exitCode: 0)
+        )
+        let registry = try ToolRegistry(tools: [
+            DevelopmentRepositoryFileTool(
+                name: .developmentRepositoryCreateFile,
+                projectStore: projectStore,
+                artifactStore: artifactStore,
+                bookmarkResolver: AssistantQueueStaticBookmarkResolver(url: workspace),
+                requireBookmark: true,
+                gitRunner: gitRunner
+            )
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-development-repository-create" },
+            now: { Date(timeIntervalSince1970: 172) }
+        )
+
+        let result = try coordinator.execute(id: approved.id)
+
+        XCTAssertEqual(result.item.state, .done)
+        XCTAssertEqual(try queueStore.get(id: approved.id).state, .done)
+        XCTAssertEqual(
+            try String(contentsOf: workspace.appendingPathComponent("Sources/ReviewedEdit.swift"), encoding: .utf8),
+            source
+        )
+        let receipt = try XCTUnwrap(receiptStore.receipts.first)
+        XCTAssertEqual(receipt.status, .succeeded)
+        XCTAssertEqual(receipt.primaryToolName, ActionTool.developmentRepositoryCreateFile.rawValue)
+        XCTAssertEqual(receipt.visibleSurfaces, [.assistantQueue, .taskDetail, .projectDetail, .auditLog])
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .project, id: String(project.id))))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .task, id: String(task.id))))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBranch, id: branchName)))
+        let actionInputs = receipt.actions.map(\.inputPreview).joined(separator: "\n")
+        XCTAssertTrue(actionInputs.contains("contents: [REDACTED_REPOSITORY_FILE_CONTENT]"))
+        XCTAssertFalse(actionInputs.contains("reviewedRepositoryEdit"))
+        XCTAssertEqual(gitRunner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["branch", "--show-current"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
+        ])
+    }
+
     func testCoordinatorRunsQueuedDevelopmentPushWorkflowWithApprovedProjectBookmark() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)

@@ -184,28 +184,32 @@ public extension ToolRegistryFactory {
                     projectStore: projectStore,
                     artifactStore: artifactStore,
                     bookmarkResolver: bookmarkResolver,
-                    requireBookmark: true
+                    requireBookmark: true,
+                    gitRunner: gitRunner
                 ),
                 DevelopmentRepositoryFileTool(
                     name: .developmentRepositoryReadFile,
                     projectStore: projectStore,
                     artifactStore: artifactStore,
                     bookmarkResolver: bookmarkResolver,
-                    requireBookmark: true
+                    requireBookmark: true,
+                    gitRunner: gitRunner
                 ),
                 DevelopmentRepositoryFileTool(
                     name: .developmentRepositoryCreateFile,
                     projectStore: projectStore,
                     artifactStore: artifactStore,
                     bookmarkResolver: bookmarkResolver,
-                    requireBookmark: true
+                    requireBookmark: true,
+                    gitRunner: gitRunner
                 ),
                 DevelopmentRepositoryFileTool(
                     name: .developmentRepositoryUpdateFile,
                     projectStore: projectStore,
                     artifactStore: artifactStore,
                     bookmarkResolver: bookmarkResolver,
-                    requireBookmark: true
+                    requireBookmark: true,
+                    gitRunner: gitRunner
                 )
             ])
         }

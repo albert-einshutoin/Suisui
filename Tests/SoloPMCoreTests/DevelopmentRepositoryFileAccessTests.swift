@@ -521,12 +521,28 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
             bookmarkResolver: resolver,
             requireBookmark: true
         )
+        let readTool = DevelopmentRepositoryFileTool(
+            name: .developmentRepositoryReadFile,
+            projectStore: stores.projects,
+            artifactStore: stores.artifacts,
+            bookmarkResolver: resolver,
+            requireBookmark: true
+        )
+        let readResult = try readTool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "relativePath": .string("docs/plan.md")
+            ],
+            context: ToolExecutionContext(source: .reviewUI)
+        )
+        let expectedSHA256 = try XCTUnwrap(readResult.output["sha256"]?.stringValue)
 
         let result = try updateTool.execute(
             arguments: [
                 "projectId": .number(Double(project.id)),
                 "relativePath": .string("docs/plan.md"),
-                "contents": .string("# Updated\n")
+                "contents": .string("# Updated\n"),
+                "expectedSHA256": .string(expectedSHA256)
             ],
             context: approvedContext()
         )
@@ -593,6 +609,90 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
         }
 
         XCTAssertEqual(try String(contentsOf: workspace.appendingPathComponent("docs/plan.md"), encoding: .utf8), "old\n")
+    }
+
+    func testUpdateRequiresExpectedSHAAndValidatesDigestShapeBeforeWriting() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        try write("old\n", to: workspace.appendingPathComponent("docs/plan.md"))
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let updateTool = DevelopmentRepositoryFileTool(name: .developmentRepositoryUpdateFile, projectStore: stores.projects)
+
+        XCTAssertThrowsError(
+            try updateTool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "relativePath": .string("docs/plan.md"),
+                    "contents": .string("new\n")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .validationFailed(.developmentRepositoryUpdateFile, "Missing required argument 'expectedSHA256'.")
+            )
+        }
+
+        XCTAssertThrowsError(
+            try updateTool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "relativePath": .string("docs/plan.md"),
+                    "contents": .string("new\n"),
+                    "expectedSHA256": .string("not-a-sha")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentRepositoryUpdateFile, "Expected SHA must be a 64 character hex digest.")
+            )
+        }
+
+        XCTAssertEqual(try String(contentsOf: workspace.appendingPathComponent("docs/plan.md"), encoding: .utf8), "old\n")
+    }
+
+    func testRepositoryWriteRejectsReviewedBranchMismatchBeforeWriting() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let gitRunner = RecordingRepositoryFileGitRunner()
+        gitRunner.stub(
+            arguments: ["branch", "--show-current"],
+            output: GitCommandOutput(standardOutput: "feature/other\n", standardError: "", exitCode: 0)
+        )
+        let createTool = DevelopmentRepositoryFileTool(
+            name: .developmentRepositoryCreateFile,
+            projectStore: stores.projects,
+            gitRunner: gitRunner
+        )
+
+        XCTAssertThrowsError(
+            try createTool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string("feature/reviewed"),
+                    "relativePath": .string("docs/plan.md"),
+                    "contents": .string("# Plan\n")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(
+                    .developmentRepositoryCreateFile,
+                    "Repository branch mismatch: expected feature/reviewed, found feature/other."
+                )
+            )
+        }
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: workspace.appendingPathComponent("docs/plan.md").path))
+        XCTAssertEqual(gitRunner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["branch", "--show-current"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
+        ])
     }
 
     func testCreateRejectsOverwriteAndSecretLikeContents() throws {
@@ -995,6 +1095,24 @@ private final class RecordingProjectWorkspaceBookmarkResolver: ProjectWorkspaceB
     func resolve(bookmarkData: Data) throws -> ProjectWorkspaceBookmarkResolution {
         resolvedBookmarks.append(bookmarkData)
         return resolution
+    }
+}
+
+private final class RecordingRepositoryFileGitRunner: GitCommandRunner, @unchecked Sendable {
+    private var stubs: [String: GitCommandOutput] = [:]
+    private(set) var recordedInvocations: [GitCommandInvocation] = []
+
+    func stub(arguments: [String], output: GitCommandOutput) {
+        stubs[arguments.joined(separator: "\u{1f}")] = output
+    }
+
+    func runGit(arguments: [String], workingDirectory: URL) throws -> GitCommandOutput {
+        recordedInvocations.append(GitCommandInvocation(arguments: arguments, workingDirectory: workingDirectory))
+        return stubs[arguments.joined(separator: "\u{1f}")] ?? GitCommandOutput(
+            standardOutput: "",
+            standardError: "unexpected command",
+            exitCode: 127
+        )
     }
 }
 

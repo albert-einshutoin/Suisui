@@ -3454,6 +3454,10 @@ private struct ProjectDevelopmentAutomationPanel: View {
     @State private var commitDraftKey: String?
     @State private var commitRelativePaths = ""
     @State private var commitMessage = ""
+    @State private var repositoryEditOperation: ProjectDevelopmentRepositoryEditOperation = .create
+    @State private var repositoryEditRelativePath = ""
+    @State private var repositoryEditExpectedSHA256 = ""
+    @State private var repositoryEditContents = ""
 
     private var readiness: ProjectDevelopmentAutomationReadiness {
         viewModel.developmentAutomationReadiness(for: project, task: viewModel.selectedTask)
@@ -3516,6 +3520,55 @@ private struct ProjectDevelopmentAutomationPanel: View {
             .help("Adds the development branch preparation plan to Assistant Queue without creating a branch.")
             .accessibilityIdentifier("project-development-automation-queue")
             .accessibilityHint("Adds the development branch preparation plan to Assistant Queue for review and approval.")
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Repository edit review")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Picker("Repository edit operation", selection: $repositoryEditOperation) {
+                    ForEach(ProjectDevelopmentRepositoryEditOperation.allCases) { operation in
+                        Text(LocalizedStringKey(operation.title)).tag(operation)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("project-development-automation-edit-operation")
+
+                TextField("Repository file path", text: $repositoryEditRelativePath)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("project-development-automation-edit-path")
+
+                TextField("Expected SHA for updates", text: $repositoryEditExpectedSHA256)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("project-development-automation-edit-expected-sha")
+
+                TextEditor(text: $repositoryEditContents)
+                    .font(.caption)
+                    .frame(minHeight: 96)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(.quaternary)
+                    )
+                    .accessibilityLabel("Repository file contents")
+                    .accessibilityIdentifier("project-development-automation-edit-contents")
+
+                Button {
+                    _ = viewModel.enqueueDevelopmentRepositoryEditReview(
+                        for: project,
+                        task: viewModel.selectedTask,
+                        operation: repositoryEditOperation,
+                        relativePath: repositoryEditRelativePath,
+                        contents: repositoryEditContents,
+                        expectedSHA256: repositoryEditExpectedSHA256
+                    )
+                } label: {
+                    Label("Queue repository edit review", systemImage: "doc.badge.gearshape")
+                }
+                .disabled(!canQueueRepositoryEditReview)
+                .help("Queues a scoped create or update file review after branch preparation evidence exists.")
+                .accessibilityIdentifier("project-development-automation-edit-queue")
+                .accessibilityHint("Adds the reviewed repository edit to Assistant Queue before verification.")
+            }
 
             Button {
                 _ = viewModel.enqueueDevelopmentVerificationReview(for: project, task: viewModel.selectedTask)
@@ -3874,6 +3927,15 @@ private struct ProjectDevelopmentAutomationPanel: View {
         developmentProgress.canQueueCommitReview
             && !commitRelativePaths.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canQueueRepositoryEditReview: Bool {
+        let hasRequiredUpdateDigest = repositoryEditOperation == .create
+            || !repositoryEditExpectedSHA256.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return developmentProgress.canQueueRepositoryEditReview
+            && !repositoryEditRelativePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !repositoryEditContents.isEmpty
+            && hasRequiredUpdateDigest
     }
 
     private func syncPullRequestDraftIfNeeded(_ draft: ProjectDevelopmentPullRequestCreationDraft) {

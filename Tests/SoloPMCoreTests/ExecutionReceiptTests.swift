@@ -562,6 +562,7 @@ final class ExecutionReceiptTests: XCTestCase {
 
     func testReviewExecutionReceiptRedactsRepositoryFileWriteContents() throws {
         let privateSource = "func proprietaryBillingFormula() { let multiplier = 42 }"
+        let branchName = "feature/solopm-7-42-billing"
         var session = ReviewSession(
             id: "review-development-file-write",
             plan: ActionPlan(
@@ -574,6 +575,8 @@ final class ExecutionReceiptTests: XCTestCase {
                         tool: .developmentRepositoryCreateFile,
                         arguments: [
                             "projectId": .number(7),
+                            "taskId": .number(42),
+                            "branchName": .string(branchName),
                             "relativePath": .string("Sources/Billing.swift"),
                             "contents": .string(privateSource)
                         ],
@@ -584,6 +587,8 @@ final class ExecutionReceiptTests: XCTestCase {
                         tool: .developmentRepositoryUpdateFile,
                         arguments: [
                             "projectId": .number(7),
+                            "taskId": .number(42),
+                            "branchName": .string(branchName),
                             "relativePath": .string("Sources/Billing.swift"),
                             "expectedSHA256": .string("sha256-old"),
                             "contents": .string(privateSource + "\n// revised")
@@ -645,6 +650,10 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertFalse(actionInputs.contains("proprietaryBillingFormula"))
         XCTAssertFalse(actionInputs.contains("multiplier"))
         XCTAssertFalse(actionInputs.contains("revised"))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .project, id: "7")))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .task, id: "42")))
+        XCTAssertTrue(receipt.references.contains(ExecutionReceiptReference(kind: .developmentBranch, id: branchName)))
+        XCTAssertEqual(receipt.visibleSurfaces, [.taskDetail, .projectDetail, .auditLog])
     }
 
     func testDevelopmentPublishReceiptKeepsBranchAndPullRequestReferencesWithoutCommandLeakage() throws {
