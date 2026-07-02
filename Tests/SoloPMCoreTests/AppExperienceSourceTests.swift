@@ -1028,6 +1028,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-productivity-insight\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-best-weekday-summary\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-best-hour-summary\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-follow-up-task-\\(task.id)\")"))
+        XCTAssertTrue(workflowSource.contains("viewModel.enqueueDoneFollowUpDraft(for: task.id)"))
         XCTAssertTrue(workflowSource.contains("analytics.completionHeatmapBuckets"))
         XCTAssertTrue(workflowSource.contains("analytics.bestWeekdaySummary"))
         XCTAssertTrue(workflowSource.contains("analytics.bestHourSummary"))
@@ -1036,6 +1038,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("DoneAnalyticsBestWeekdaySummary"))
         XCTAssertTrue(coreSource.contains("DoneAnalyticsBestHourSummary"))
         XCTAssertTrue(coreSource.contains("public func reopenCompletedTask(id: Int64)"))
+        XCTAssertTrue(coreSource.contains("public func enqueueDoneFollowUpDraft(\n        for taskID: Int64"))
+        XCTAssertTrue(coreSource.contains("DoneFollowUpActionDraftBuilder"))
     }
 
     func testProjectBoardSupportsPersistentLightDarkAppearanceSelection() throws {
