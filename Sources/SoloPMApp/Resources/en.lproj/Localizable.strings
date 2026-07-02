@@ -1264,6 +1264,11 @@
 "Queues GitHub pull request creation for approval after reviewing the base branch, title, and body." = "Queues GitHub pull request creation for approval after reviewing the base branch, title, and body.";
 "Adds only the pull request creation review to Assistant Queue; review and merge still need separate approval." = "Adds only the pull request creation review to Assistant Queue; review and merge still need separate approval.";
 "Pull request progress" = "Pull request progress";
+"Approval Preview" = "Approval Preview";
+"Branch" = "Branch";
+"Base Branch" = "Base Branch";
+"Latest Commit" = "Latest Commit";
+"Shows the receipt-backed branch, commit, and pull request evidence for the next development approval." = "Shows the receipt-backed branch, commit, and pull request evidence for the next development approval.";
 "Queue pull request review gate" = "Queue pull request review gate";
 "Queue pull request merge gate" = "Queue pull request merge gate";
 "Uses the pull request creation receipt to queue review, CI, unresolved thread, and mergeability checks." = "Uses the pull request creation receipt to queue review, CI, unresolved thread, and mergeability checks.";
