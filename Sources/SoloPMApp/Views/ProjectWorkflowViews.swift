@@ -1548,6 +1548,12 @@ struct DoneWorkflowView: View {
                     DoneStatTile(title: "Streak", value: analytics.streakDays, systemImage: "flame")
                 }
 
+                DoneCompletionHeatmapView(buckets: analytics.completionHeatmapBuckets)
+                DoneProductivityInsightView(
+                    bestWeekdaySummary: analytics.bestWeekdaySummary,
+                    bestHourSummary: analytics.bestHourSummary
+                )
+
                 Label {
                     Text(LocalizedStringKey(analytics.localRuleInsight))
                 } icon: {
@@ -1956,6 +1962,190 @@ private struct DoneStatTile: View {
         .frame(minWidth: 112, maxWidth: .infinity, alignment: .leading)
         .padding(10)
         .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct DoneCompletionHeatmapView: View {
+    let buckets: [DoneAnalyticsDayBucket]
+    private let columns = [
+        GridItem(.adaptive(minimum: 18, maximum: 18), spacing: 4)
+    ]
+
+    private var maxCompletedCount: Int {
+        max(buckets.map(\.completedCount).max() ?? 0, 1)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Label("Completion Heatmap", systemImage: "square.grid.3x3")
+                    .font(.headline)
+                Spacer(minLength: 8)
+                Text("Last 28 days")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 4) {
+                ForEach(buckets, id: \.dayKey) { bucket in
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(heatmapColor(for: bucket.completedCount))
+                        .frame(width: 18, height: 18)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(Color.secondary.opacity(0.18), lineWidth: 0.5)
+                        )
+                        .accessibilityIdentifier("done-heatmap-day-\(bucket.dayKey)")
+                        .accessibilityLabel(String(format: String(localized: "Completed tasks on %@"), bucket.dayKey))
+                        .accessibilityValue(String(format: String(localized: "%d tasks"), bucket.completedCount))
+                }
+            }
+
+            Text("Heatmap intensity is based on local completion history only.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("done-completion-heatmap")
+    }
+
+    private func heatmapColor(for count: Int) -> Color {
+        guard count > 0 else {
+            return Color.secondary.opacity(0.10)
+        }
+        let normalized = min(Double(count) / Double(maxCompletedCount), 1.0)
+        return Color.green.opacity(0.25 + normalized * 0.55)
+    }
+}
+
+private struct DoneProductivityInsightView: View {
+    let bestWeekdaySummary: DoneAnalyticsBestWeekdaySummary
+    let bestHourSummary: DoneAnalyticsBestHourSummary
+    @Environment(\.calendar) private var calendar
+    @Environment(\.locale) private var locale
+    @Environment(\.timeZone) private var timeZone
+    private let columns = [
+        GridItem(.adaptive(minimum: 180), spacing: 10, alignment: .top)
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
+            DoneInsightTile(
+                title: "Best Day",
+                value: bestWeekdayValue,
+                detail: bestWeekdayDetail,
+                systemImage: "calendar.badge.clock"
+            )
+            .accessibilityIdentifier("done-best-weekday-summary")
+
+            DoneInsightTile(
+                title: "Peak Time",
+                value: bestHourValue,
+                detail: bestHourDetail,
+                systemImage: "clock.badge.checkmark"
+            )
+            .accessibilityIdentifier("done-best-hour-summary")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("done-productivity-insight")
+    }
+
+    private var bestWeekdayValue: String {
+        guard let weekday = bestWeekdaySummary.weekday else {
+            return String(localized: "No completion history yet")
+        }
+        return Self.weekdayLabel(for: weekday, calendar: calendar, locale: locale, timeZone: timeZone)
+    }
+
+    private var bestWeekdayDetail: String {
+        guard !bestWeekdaySummary.isEmpty else {
+            return String(localized: "Complete tasks to build weekday trends.")
+        }
+        return String(
+            format: String(localized: "%d tasks completed on this weekday."),
+            bestWeekdaySummary.completedCount
+        )
+    }
+
+    private var bestHourValue: String {
+        guard let hour = bestHourSummary.hour else {
+            return String(localized: "No peak time yet")
+        }
+        return Self.hourLabel(for: hour)
+    }
+
+    private var bestHourDetail: String {
+        guard !bestHourSummary.isEmpty else {
+            return String(localized: "Completed tasks with timestamps will show hourly trends.")
+        }
+        return String(
+            format: String(localized: "%d tasks around %@, usually %@."),
+            bestHourSummary.completedCount,
+            bestHourValue,
+            localizedTimeOfDayLabel
+        )
+    }
+
+    private var localizedTimeOfDayLabel: String {
+        switch bestHourSummary.timeOfDay {
+        case .morning:
+            return String(localized: "Morning")
+        case .afternoon:
+            return String(localized: "Afternoon")
+        case .evening:
+            return String(localized: "Evening")
+        case .night:
+            return String(localized: "Night")
+        case nil:
+            return String(localized: "No peak time yet")
+        }
+    }
+
+    private static func weekdayLabel(
+        for weekday: Int,
+        calendar: Calendar,
+        locale: Locale,
+        timeZone: TimeZone
+    ) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = locale
+        formatter.timeZone = timeZone
+        let labels = formatter.weekdaySymbols ?? []
+        let labelIndex = weekday - 1
+        return labels.indices.contains(labelIndex) ? labels[labelIndex] : String(localized: "Weekday")
+    }
+
+    private static func hourLabel(for hour: Int) -> String {
+        String(format: "%02d:00", hour)
+    }
+}
+
+private struct DoneInsightTile: View {
+    let title: LocalizedStringKey
+    let value: String
+    let detail: String
+    let systemImage: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(title, systemImage: systemImage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.callout.weight(.semibold))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 

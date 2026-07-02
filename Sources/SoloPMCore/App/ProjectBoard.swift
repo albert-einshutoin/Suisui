@@ -860,6 +860,9 @@ public struct DoneAnalyticsSummary: Equatable, Sendable {
     public var completedTodayCount: Int
     public var completedThisWeekCount: Int
     public var streakDays: Int
+    public var completionHeatmapBuckets: [DoneAnalyticsDayBucket]
+    public var bestWeekdaySummary: DoneAnalyticsBestWeekdaySummary
+    public var bestHourSummary: DoneAnalyticsBestHourSummary
     public var recentTasks: [ProjectBoardTask]
     public var localRuleInsight: String
 
@@ -869,6 +872,9 @@ public struct DoneAnalyticsSummary: Equatable, Sendable {
         completedTodayCount: Int,
         completedThisWeekCount: Int,
         streakDays: Int,
+        completionHeatmapBuckets: [DoneAnalyticsDayBucket] = [],
+        bestWeekdaySummary: DoneAnalyticsBestWeekdaySummary = .empty,
+        bestHourSummary: DoneAnalyticsBestHourSummary = .empty,
         recentTasks: [ProjectBoardTask],
         localRuleInsight: String
     ) {
@@ -877,9 +883,74 @@ public struct DoneAnalyticsSummary: Equatable, Sendable {
         self.completedTodayCount = completedTodayCount
         self.completedThisWeekCount = completedThisWeekCount
         self.streakDays = streakDays
+        self.completionHeatmapBuckets = completionHeatmapBuckets
+        self.bestWeekdaySummary = bestWeekdaySummary
+        self.bestHourSummary = bestHourSummary
         self.recentTasks = recentTasks
         self.localRuleInsight = localRuleInsight
     }
+}
+
+public struct DoneAnalyticsDayBucket: Equatable, Sendable {
+    public var dayKey: String
+    public var completedCount: Int
+
+    public init(dayKey: String, completedCount: Int) {
+        self.dayKey = dayKey
+        self.completedCount = completedCount
+    }
+}
+
+public struct DoneAnalyticsBestWeekdaySummary: Equatable, Sendable {
+    public var weekday: Int?
+    public var completedCount: Int
+
+    public var isEmpty: Bool {
+        weekday == nil
+    }
+
+    public init(weekday: Int?, completedCount: Int = 0) {
+        self.weekday = weekday
+        self.completedCount = completedCount
+    }
+
+    public static let empty = DoneAnalyticsBestWeekdaySummary(
+        weekday: nil,
+        completedCount: 0
+    )
+}
+
+public struct DoneAnalyticsBestHourSummary: Equatable, Sendable {
+    public var hour: Int?
+    public var timeOfDay: DoneAnalyticsTimeOfDay?
+    public var completedCount: Int
+
+    public init(
+        hour: Int?,
+        timeOfDay: DoneAnalyticsTimeOfDay?,
+        completedCount: Int = 0
+    ) {
+        self.hour = hour
+        self.timeOfDay = timeOfDay
+        self.completedCount = completedCount
+    }
+
+    public var isEmpty: Bool {
+        hour == nil || timeOfDay == nil
+    }
+
+    public static let empty = DoneAnalyticsBestHourSummary(
+        hour: nil,
+        timeOfDay: nil,
+        completedCount: 0
+    )
+}
+
+public enum DoneAnalyticsTimeOfDay: String, Equatable, Sendable {
+    case morning
+    case afternoon
+    case evening
+    case night
 }
 
 public struct ProjectAssistantAnswer: Equatable, Sendable {
@@ -1568,6 +1639,8 @@ private extension LocalStoreDecodingError {
 
 @MainActor
 public final class ProjectBoardViewModel: ObservableObject {
+    private static let doneAnalyticsHeatmapWindowDays = 28
+
     @Published public private(set) var snapshot: ProjectBoardSnapshot
     @Published public var selectedProjectID: Int64?
     @Published public var selectedTaskID: Int64?
@@ -6390,6 +6463,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         let historyTasks = snapshot.projects
             .filter { !$0.isArchived }
             .flatMap(\.tasks)
+            // Reopened tasks keep their completedAt timestamp so Done analytics can preserve actual completion history.
             .filter { task in task.completedAt != nil || task.status == .done }
         let dayInterval = calendar.dateInterval(of: .day, for: referenceDate)
         let rollingWeekStart = calendar.date(byAdding: .day, value: -6, to: dayInterval?.start ?? referenceDate) ?? referenceDate
@@ -6405,12 +6479,27 @@ public final class ProjectBoardViewModel: ObservableObject {
             }
             return completedDate >= rollingWeekStart && completedDate <= referenceDate
         }.count
-        let completedDayStarts = Set(historyTasks.compactMap { task -> Date? in
-            guard let completedDate = completedDate(for: task) else {
-                return nil
+        let completedDates = historyTasks.compactMap(completedDate(for:))
+        let completedCountsByDayStart = completedDates.reduce(into: [Date: Int]()) { partialResult, completedDate in
+            guard let dayStart = calendar.dateInterval(of: .day, for: completedDate)?.start else {
+                return
             }
-            return calendar.dateInterval(of: .day, for: completedDate)?.start
-        })
+            partialResult[dayStart, default: 0] += 1
+        }
+        let completedDayStarts = Set(completedCountsByDayStart.keys)
+        let completionHeatmapBuckets = Self.doneAnalyticsHeatmapBuckets(
+            from: completedCountsByDayStart,
+            on: referenceDate,
+            calendar: calendar
+        )
+        let bestWeekdaySummary = Self.doneAnalyticsBestWeekdaySummary(
+            from: completedDates,
+            calendar: calendar
+        )
+        let bestHourSummary = Self.doneAnalyticsBestHourSummary(
+            from: completedDates,
+            calendar: calendar
+        )
         let streakDays = Self.doneStreakDays(
             from: completedDayStarts,
             on: referenceDate,
@@ -6439,6 +6528,9 @@ public final class ProjectBoardViewModel: ObservableObject {
             completedTodayCount: completedTodayCount,
             completedThisWeekCount: completedThisWeekCount,
             streakDays: streakDays,
+            completionHeatmapBuckets: completionHeatmapBuckets,
+            bestWeekdaySummary: bestWeekdaySummary,
+            bestHourSummary: bestHourSummary,
             recentTasks: Array(recentTasks.prefix(12)),
             localRuleInsight: "Done analytics uses local completed_at history; reopened tasks remain visible in completion history."
         )
@@ -8471,6 +8563,91 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.date(from: rawCompletedAt)
+    }
+
+    private static func doneAnalyticsHeatmapBuckets(
+        from completedCountsByDayStart: [Date: Int],
+        on referenceDate: Date,
+        calendar: Calendar
+    ) -> [DoneAnalyticsDayBucket] {
+        guard let referenceDayStart = calendar.dateInterval(of: .day, for: referenceDate)?.start,
+              let firstDay = calendar.date(byAdding: .day, value: -(doneAnalyticsHeatmapWindowDays - 1), to: referenceDayStart) else {
+            return []
+        }
+
+        return (0..<doneAnalyticsHeatmapWindowDays).compactMap { offset in
+            guard let day = calendar.date(byAdding: .day, value: offset, to: firstDay) else {
+                return nil
+            }
+            return DoneAnalyticsDayBucket(
+                dayKey: doneAnalyticsDayKey(for: day, calendar: calendar),
+                completedCount: completedCountsByDayStart[day, default: 0]
+            )
+        }
+    }
+
+    private static func doneAnalyticsBestWeekdaySummary(
+        from completedDates: [Date],
+        calendar: Calendar
+    ) -> DoneAnalyticsBestWeekdaySummary {
+        let counts = completedDates.reduce(into: [Int: Int]()) { partialResult, date in
+            partialResult[calendar.component(.weekday, from: date), default: 0] += 1
+        }
+        guard let bestWeekday = counts.max(by: { lhs, rhs in
+            if lhs.value == rhs.value {
+                return lhs.key > rhs.key
+            }
+            return lhs.value < rhs.value
+        }) else {
+            return .empty
+        }
+
+        return DoneAnalyticsBestWeekdaySummary(weekday: bestWeekday.key, completedCount: bestWeekday.value)
+    }
+
+    private static func doneAnalyticsBestHourSummary(
+        from completedDates: [Date],
+        calendar: Calendar
+    ) -> DoneAnalyticsBestHourSummary {
+        let counts = completedDates.reduce(into: [Int: Int]()) { partialResult, date in
+            partialResult[calendar.component(.hour, from: date), default: 0] += 1
+        }
+        guard let bestHour = counts.max(by: { lhs, rhs in
+            if lhs.value == rhs.value {
+                return lhs.key > rhs.key
+            }
+            return lhs.value < rhs.value
+        }) else {
+            return .empty
+        }
+
+        return DoneAnalyticsBestHourSummary(
+            hour: bestHour.key,
+            timeOfDay: doneAnalyticsTimeOfDay(for: bestHour.key),
+            completedCount: bestHour.value
+        )
+    }
+
+    private static func doneAnalyticsDayKey(for date: Date, calendar: Calendar) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+
+    private static func doneAnalyticsTimeOfDay(for hour: Int) -> DoneAnalyticsTimeOfDay {
+        switch hour {
+        case 5..<12:
+            return .morning
+        case 12..<17:
+            return .afternoon
+        case 17..<21:
+            return .evening
+        default:
+            return .night
+        }
     }
 
     private static func doneStreakDays(
