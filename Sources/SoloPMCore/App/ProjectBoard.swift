@@ -5249,9 +5249,13 @@ public final class ProjectBoardViewModel: ObservableObject {
         func firstTask(
             matching predicate: (ProjectBoardTask) -> Bool
         ) -> ProjectBoardTask? {
-            tasks.first { task in
-                !usedTaskIDs.contains(task.id) && predicate(task)
+            for task in tasks {
+                guard !usedTaskIDs.contains(task.id), predicate(task) else {
+                    continue
+                }
+                return task
             }
+            return nil
         }
 
         var chips: [TodayRecommendationChip] = []
