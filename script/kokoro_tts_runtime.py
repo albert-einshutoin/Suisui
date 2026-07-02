@@ -110,8 +110,10 @@ def main() -> int:
     if not prompt:
         fail("Kokoro prompt is empty")
 
-    os.environ.setdefault("HF_HUB_OFFLINE", "1")
-    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+    language_code = kokoro_language_code(args.language, args.voice)
+
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
     check_offline_language_assets(args.language)
     if args.language == "ja":
         prefer_unidic_lite_for_japanese()
@@ -130,7 +132,7 @@ def main() -> int:
             model=str(model_path),
         ).to(args.device).eval()
         pipeline = KPipeline(
-            lang_code=kokoro_language_code(args.language, args.voice),
+            lang_code=language_code,
             repo_id="hexgrad/Kokoro-82M",
             model=model,
             device=args.device,
