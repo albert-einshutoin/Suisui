@@ -3786,10 +3786,13 @@ final class ReleasePipelineTests: XCTestCase {
         let taskContentExecutionNote = "Approved execution announced the reviewed task title and detail, then left a redacted receipt with task identity, reviewed detail, and before/after status."
         let inboxVoiceTriageNote = "Inbox voice capture detail announces transcript, AI interpretation, source metadata, memo field, and make task schedule review later project triage actions."
         let todayRailActionsNote = "Today assistant rail announces next action and task detail before focus schedule draft edit subtask draft and reminder draft controls."
+        let unsafeEvidenceSource = "dist/SoloPM.app manual VoiceOver pass using \(packageRoot().path)/.tmp/voiceover-review/SoloPM-voiceover-review.sqlite project:119 file:///Users/alice/private.wav"
+        let sanitizedEvidenceSource = "dist/SoloPM.app manual VoiceOver pass using isolated .tmp voiceover review database project:119"
+        let localPathMarkers = [packageRoot().path, "/Users/", "/Volumes/", "file://"]
 
         let pendingResult = try runScript(
             "script/create_voiceover_evidence.sh",
-            arguments: ["--pending", "--output", pendingURL.path]
+            arguments: ["--pending", "--evidence-source", unsafeEvidenceSource, "--output", pendingURL.path]
         )
 
         XCTAssertEqual(pendingResult.exitCode, 0, pendingResult.output)
@@ -3811,6 +3814,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(pendingEvidence.contains("confirmation dialogs"))
         XCTAssertFalse(pendingEvidence.contains("complete/archive"))
         XCTAssertTrue(pendingEvidence.contains("Do not set `Status: passed` until every item below is verified"))
+        XCTAssertTrue(pendingEvidence.contains("- Evidence source: `\(sanitizedEvidenceSource)`"))
+        for marker in localPathMarkers {
+            XCTAssertFalse(pendingEvidence.contains(marker), "pending VoiceOver evidence must not leak \(marker)")
+        }
 
         let unsafePassedResult = try runScript(
             "script/create_voiceover_evidence.sh",
@@ -4412,6 +4419,7 @@ final class ReleasePipelineTests: XCTestCase {
                 "--task-inspector-note", "Title, detail, status, priority, due, summary, save, suggestion, and danger actions are reachable.",
                 "--inbox-voice-triage-note", inboxVoiceTriageNote,
                 "--today-rail-actions-note", todayRailActionsNote,
+                "--evidence-source", unsafeEvidenceSource,
                 "--save-changes-note", "Keyboard activation reaches the local task save action and returns without a trap.",
                 "--task-content-execution-note", taskContentExecutionNote,
                 "--delete-confirmation-note", "Delete opens confirmation before local deletion and exposes cancel.",
@@ -4431,6 +4439,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(passedEvidence.contains("- Source commit: `\(currentShortCommit)`"))
         XCTAssertTrue(passedEvidence.contains("- Checked by: SoloPM Release Owner"))
         XCTAssertTrue(passedEvidence.contains("- Check date: 2026-06-19"))
+        XCTAssertTrue(passedEvidence.contains("- Evidence source: `\(sanitizedEvidenceSource)`"))
         XCTAssertTrue(passedEvidence.contains("- Accessibility environment: VoiceOver on macOS 15.5, built-in keyboard, trackpad, 14-inch display"))
         XCTAssertTrue(passedEvidence.contains("- Runtime AX smoke: OK: runtime AX smoke visible, windows=1, window=1 name=SoloPM, buttons=28, textFields=1, staticTexts=24, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1"))
         XCTAssertTrue(passedEvidence.contains("- Project navigation: passed - Sidebar Inbox, Today, and selected project rows announce destination and counts in order."))
@@ -4450,6 +4459,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(passedEvidence.localizedCaseInsensitiveContains("pending"))
         XCTAssertFalse(passedEvidence.contains("- [ ]"))
         XCTAssertFalse(passedEvidence.localizedCaseInsensitiveContains("placeholder"))
+        for marker in localPathMarkers {
+            XCTAssertFalse(passedEvidence.contains(marker), "passed VoiceOver evidence must not leak \(marker)")
+        }
     }
 
     func testVoiceOverPendingDefaultsUseIgnoredCurrentCommitPreview() throws {
@@ -6120,6 +6132,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("evidence_command_file=\"$ROOT_DIR/.tmp/voiceover-review/create-evidence-command.sh\""))
         XCTAssertTrue(script.contains("worksheet_file=\"$ROOT_DIR/.tmp/voiceover-review/voiceover-worksheet.md\""))
         XCTAssertTrue(script.contains("pending_evidence_file=\"$ROOT_DIR/.tmp/voiceover-review/accessibility-voiceover-pending-$SOURCE_COMMIT.md\""))
+        XCTAssertTrue(script.contains("voiceover_evidence_source_for_candidate()"))
+        XCTAssertTrue(script.contains("isolated .tmp voiceover review database"))
+        XCTAssertFalse(script.contains("pending_evidence_source=\"dist/$APP_NAME.app manual VoiceOver pass using $database_path project:$seed_project_id\""))
         XCTAssertTrue(script.contains("write_voiceover_review_worksheet()"))
         XCTAssertTrue(script.contains("./script/create_voiceover_evidence.sh --pending --output \"$pending_evidence_file\""))
         XCTAssertTrue(script.contains("printf 'SOLOPM_VOICEOVER_REVIEW_SOURCE_COMMIT=%q\\n' \"$SOURCE_COMMIT\""))
