@@ -19,6 +19,8 @@ OUTPUT_DIR="${SOLOPM_LOCAL_VOICE_SMOKE_OUTPUT_DIR:-$ROOT_DIR/.tmp/local-voice-ru
 EVIDENCE_FILE="${SOLOPM_LOCAL_VOICE_EVIDENCE_FILE:-}"
 STT_EXPECTED_TRANSCRIPT_CONTAINS="${SOLOPM_STT_EXPECTED_TRANSCRIPT_CONTAINS:-}"
 TIMEOUT_SECONDS="${SOLOPM_LOCAL_VOICE_TIMEOUT_SECONDS:-120}"
+MODE_LABEL="full STT+TTS"
+STT_ONLY_MODE=0
 
 WHISPER_MODEL="$VOICE_CACHE_ROOT/whisper.cpp/ggml-tiny.bin"
 KOKORO_MODEL="$VOICE_CACHE_ROOT/Kokoro/kokoro-v1_0.pth"
@@ -32,12 +34,17 @@ KOKORO_82M_SHA256="496dba118d1a58f5f3db2efc88dbdc216e0483fc89fe6e47ee1f2c53f18ad
 usage() {
   cat <<'USAGE'
 usage: script/check_local_voice_runtime_smoke.sh
+       script/check_local_voice_runtime_smoke.sh --stt-only
 
 Runs fail-closed local STT/TTS runtime proof for the cached SoloPM voice models.
+`--stt-only` runs only the whisper.cpp smoke needed to advance Issue #13
+without claiming Kokoro TTS proof for Issue #14 or full release closeout.
 
-Required environment:
+Required environment for all modes:
   SOLOPM_WHISPER_CPP_EXECUTABLE   Absolute path to whisper-cli
   SOLOPM_STT_SAMPLE_WAV           Japanese or English sample WAV for local STT
+
+Required environment for default full STT+TTS mode:
   SOLOPM_KOKORO_EXECUTABLE        Absolute path to the Kokoro runtime
 
 Optional environment:
@@ -88,10 +95,25 @@ relative_or_redacted_path() {
   esac
 }
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  usage
-  exit 0
-fi
+case "${1:-}" in
+  "")
+    ;;
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  --stt-only)
+    MODE_LABEL="STT-only"
+    STT_ONLY_MODE=1
+    shift
+    ;;
+  *)
+    printf 'unknown argument: %s\n' "$1" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
+
 if [[ "$#" -gt 0 ]]; then
   printf 'unknown argument: %s\n' "$1" >&2
   usage >&2
@@ -223,14 +245,22 @@ check_evidence_file_policy() {
   if [[ -z "$STT_EXPECTED_TRANSCRIPT_CONTAINS" ]]; then
     blocker "SOLOPM_STT_EXPECTED_TRANSCRIPT_CONTAINS is required when writing local voice runtime evidence"
   fi
-  case " ${tts_languages[*]} " in
-    *" ja "*" en "*) ;;
-    *) blocker "SOLOPM_LOCAL_VOICE_EVIDENCE_FILE requires SOLOPM_TTS_LANGUAGES to include both ja and en" ;;
-  esac
+  if [[ "$STT_ONLY_MODE" -eq 0 ]]; then
+    case " ${tts_languages[*]} " in
+      *" ja "*" en "*) ;;
+      *) blocker "SOLOPM_LOCAL_VOICE_EVIDENCE_FILE requires SOLOPM_TTS_LANGUAGES to include both ja and en" ;;
+    esac
+  fi
   case "$evidence_file" in
     "$ROOT_DIR/docs/release/evidence/"*.md) ;;
     *) blocker "SOLOPM_LOCAL_VOICE_EVIDENCE_FILE must point to docs/release/evidence/*.md" ;;
   esac
+  if [[ "$STT_ONLY_MODE" -eq 1 ]]; then
+    case "$(basename "$evidence_file")" in
+      *stt-only*.md) ;;
+      *) blocker "SOLOPM_LOCAL_VOICE_EVIDENCE_FILE in --stt-only mode must use an explicit *stt-only*.md filename and must not overwrite local-voice-runtime.md" ;;
+    esac
+  fi
 }
 
 check_model() {
@@ -310,30 +340,34 @@ fi
 check_executable "whisper.cpp" "$WHISPER_EXECUTABLE"
 check_stt_sample_wav "$STT_SAMPLE_WAV"
 check_model "whisper.cpp tiny model" "$WHISPER_MODEL" "$WHISPER_TINY_SHA256"
-check_executable "Kokoro" "$KOKORO_EXECUTABLE"
-check_model "Kokoro model" "$KOKORO_MODEL" "$KOKORO_82M_SHA256"
 check_output_dir_policy
 
-read -r -a tts_languages <<<"$TTS_LANGUAGES" || true
-if [[ "${#tts_languages[@]}" -eq 0 ]]; then
-  blocker "SOLOPM_TTS_LANGUAGES must include ja, en, or both"
+tts_languages=()
+if [[ "$STT_ONLY_MODE" -eq 0 ]]; then
+  check_executable "Kokoro" "$KOKORO_EXECUTABLE"
+  check_model "Kokoro model" "$KOKORO_MODEL" "$KOKORO_82M_SHA256"
+
+  read -r -a tts_languages <<<"$TTS_LANGUAGES" || true
+  if [[ "${#tts_languages[@]}" -eq 0 ]]; then
+    blocker "SOLOPM_TTS_LANGUAGES must include ja, en, or both"
+  fi
+  for language in "${tts_languages[@]}"; do
+    case "$language" in
+      ja|en) ;;
+      *) blocker "SOLOPM_TTS_LANGUAGES entries must be ja or en" ;;
+    esac
+    voice_id="$(tts_voice_for_language "$language")"
+    if [[ "$voice_id" =~ [[:space:]] ]]; then
+      blocker "Kokoro voice id must not contain whitespace"
+    fi
+    if [[ "$language" == "ja" && "$voice_id" != j* ]]; then
+      blocker "Kokoro Japanese voice id must start with j"
+    fi
+    if [[ "$language" == "en" && "$voice_id" != a* ]]; then
+      blocker "Kokoro English voice id must start with a"
+    fi
+  done
 fi
-for language in "${tts_languages[@]}"; do
-  case "$language" in
-    ja|en) ;;
-    *) blocker "SOLOPM_TTS_LANGUAGES entries must be ja or en" ;;
-  esac
-  voice_id="$(tts_voice_for_language "$language")"
-  if [[ "$voice_id" =~ [[:space:]] ]]; then
-    blocker "Kokoro voice id must not contain whitespace"
-  fi
-  if [[ "$language" == "ja" && "$voice_id" != j* ]]; then
-    blocker "Kokoro Japanese voice id must start with j"
-  fi
-  if [[ "$language" == "en" && "$voice_id" != a* ]]; then
-    blocker "Kokoro English voice id must start with a"
-  fi
-done
 
 if [[ -n "$EVIDENCE_FILE" ]]; then
   check_evidence_file_policy
@@ -370,37 +404,39 @@ if [[ -n "$STT_EXPECTED_TRANSCRIPT_CONTAINS" ]] &&
   exit 1
 fi
 
-for language in "${tts_languages[@]}"; do
-  voice_id="$(tts_voice_for_language "$language")"
-  tts_prompt_file="$OUTPUT_DIR/kokoro-${language}-prompt.txt"
-  tts_output="$OUTPUT_DIR/kokoro-${language}.wav"
-  tts_stdout="$OUTPUT_DIR/tts-${language}.stdout.txt"
-  tts_stderr="$OUTPUT_DIR/tts-${language}.stderr.txt"
-  printf '%s\n' "$(tts_prompt_for_language "$language")" >"$tts_prompt_file"
-  if ! run_with_timeout "Kokoro $language" "$KOKORO_EXECUTABLE" \
-    --model "$KOKORO_MODEL" \
-    --text-file "$tts_prompt_file" \
-    --language "$language" \
-    --voice "$voice_id" \
-    --output "$tts_output" \
-    >"$tts_stdout" 2>"$tts_stderr"; then
-    echo "BLOCKER: Kokoro runtime smoke failed for $language; see $(redacted_path "$tts_stderr")" >&2
-    exit 1
-  fi
-
-  if [[ ! -s "$tts_output" ]]; then
-    echo "BLOCKER: Kokoro runtime smoke did not create a non-empty $language WAV file" >&2
-    exit 1
-  fi
-
-  if command -v afinfo >/dev/null 2>&1; then
-    if ! afinfo "$tts_output" >"$OUTPUT_DIR/kokoro-${language}-afinfo.txt" 2>&1; then
-      echo "BLOCKER: Kokoro runtime smoke $language output is not readable by afinfo" >&2
+if [[ "$STT_ONLY_MODE" -eq 0 ]]; then
+  for language in "${tts_languages[@]}"; do
+    voice_id="$(tts_voice_for_language "$language")"
+    tts_prompt_file="$OUTPUT_DIR/kokoro-${language}-prompt.txt"
+    tts_output="$OUTPUT_DIR/kokoro-${language}.wav"
+    tts_stdout="$OUTPUT_DIR/tts-${language}.stdout.txt"
+    tts_stderr="$OUTPUT_DIR/tts-${language}.stderr.txt"
+    printf '%s\n' "$(tts_prompt_for_language "$language")" >"$tts_prompt_file"
+    if ! run_with_timeout "Kokoro $language" "$KOKORO_EXECUTABLE" \
+      --model "$KOKORO_MODEL" \
+      --text-file "$tts_prompt_file" \
+      --language "$language" \
+      --voice "$voice_id" \
+      --output "$tts_output" \
+      >"$tts_stdout" 2>"$tts_stderr"; then
+      echo "BLOCKER: Kokoro runtime smoke failed for $language; see $(redacted_path "$tts_stderr")" >&2
       exit 1
     fi
-  fi
-  printf 'OK: TTS WAV captured at %s\n' "$(redacted_path "$tts_output")"
-done
+
+    if [[ ! -s "$tts_output" ]]; then
+      echo "BLOCKER: Kokoro runtime smoke did not create a non-empty $language WAV file" >&2
+      exit 1
+    fi
+
+    if command -v afinfo >/dev/null 2>&1; then
+      if ! afinfo "$tts_output" >"$OUTPUT_DIR/kokoro-${language}-afinfo.txt" 2>&1; then
+        echo "BLOCKER: Kokoro runtime smoke $language output is not readable by afinfo" >&2
+        exit 1
+      fi
+    fi
+    printf 'OK: TTS WAV captured at %s\n' "$(redacted_path "$tts_output")"
+  done
+fi
 
 write_local_voice_runtime_evidence() {
   local generated_at
@@ -415,14 +451,24 @@ write_local_voice_runtime_evidence() {
   {
     printf '%s\n' '# Local Voice Runtime Evidence'
     printf '\n'
-    printf '%s\n' 'Status: passed'
+    if [[ "$STT_ONLY_MODE" -eq 1 ]]; then
+      printf '%s\n' 'Status: limited-pass (STT-only)'
+    else
+      printf '%s\n' 'Status: passed'
+    fi
     printf '%s\n' 'Generated by: script/check_local_voice_runtime_smoke.sh'
     printf '\n'
     printf '%s\n' '## Runtime Context'
     printf '\n'
     printf -- '- Source commit: `%s`\n' "$source_commit"
     printf -- '- Generated at: %s\n' "$generated_at"
-    printf '%s\n' '- Evidence source: `local whisper.cpp STT and Kokoro TTS runtime smoke`'
+    if [[ "$STT_ONLY_MODE" -eq 1 ]]; then
+      # STT-only evidence exists to let Issue #13 progress without being
+      # mistaken for the full Kokoro closeout required by Issue #14.
+      printf '%s\n' '- Evidence source: `local whisper.cpp STT runtime smoke only (no Kokoro TTS proof)`'
+    else
+      printf '%s\n' '- Evidence source: `local whisper.cpp STT and Kokoro TTS runtime smoke`'
+    fi
     printf '%s\n' '- No network download: passed - local cache and user-configured executables only'
     printf '%s\n' '- No model binary committed or bundled: passed - model files remained outside git and app artifacts'
     printf '%s\n' '- Voice cache: checksum-verified user cache; model binaries are not bundled in git or app artifacts'
@@ -430,19 +476,31 @@ write_local_voice_runtime_evidence() {
     printf -- '- STT expected transcript marker: `%s`\n' "$STT_EXPECTED_TRANSCRIPT_CONTAINS"
     printf '%s\n' '- STT transcript: passed - transcript contains the expected marker'
     printf -- '- whisper.cpp tiny model SHA-256: `%s`\n' "$WHISPER_TINY_SHA256"
-    printf -- '- Kokoro model SHA-256: `%s`\n' "$KOKORO_82M_SHA256"
-    printf -- '- TTS languages: `%s`\n' "$TTS_LANGUAGES"
-    printf '%s\n' '- TTS Japanese WAV: passed - generated non-empty WAV and afinfo-readable when afinfo is available'
-    printf '%s\n' '- TTS English WAV: passed - generated non-empty WAV and afinfo-readable when afinfo is available'
+    if [[ "$STT_ONLY_MODE" -eq 1 ]]; then
+      printf '%s\n' '- TTS proof: not run - --stt-only mode does not verify Kokoro runtime'
+      printf '%s\n' '- Release closeout scope: issue #13 STT-only smoke only'
+      printf '%s\n' '- Full release closeout: blocked - rerun without --stt-only to prove Kokoro Japanese/English TTS'
+    else
+      printf -- '- Kokoro model SHA-256: `%s`\n' "$KOKORO_82M_SHA256"
+      printf -- '- TTS languages: `%s`\n' "$TTS_LANGUAGES"
+      printf '%s\n' '- TTS Japanese WAV: passed - generated non-empty WAV and afinfo-readable when afinfo is available'
+      printf '%s\n' '- TTS English WAV: passed - generated non-empty WAV and afinfo-readable when afinfo is available'
+    fi
     printf -- '- Runtime artifacts: `%s`\n' "$output_relative"
   } >"$EVIDENCE_FILE"
 }
 
 if [[ -n "$EVIDENCE_FILE" ]]; then
   write_local_voice_runtime_evidence
+  if [[ "$STT_ONLY_MODE" -eq 1 ]]; then
+    printf '%s\n' 'OK: SOLOPM_LOCAL_VOICE_EVIDENCE_FILE in --stt-only mode must state that TTS was not verified'
+    printf '%s\n' 'OK: STT-only smoke cannot prove #14 / full release closeout'
+  fi
   printf 'OK: local voice runtime evidence written: %s\n' "$(relative_or_redacted_path "$EVIDENCE_FILE")"
 fi
 
-printf 'OK: local voice runtime smoke passed\n'
+printf 'OK: %s local voice runtime smoke passed\n' "$MODE_LABEL"
 printf 'OK: STT transcript captured at %s\n' "$(redacted_path "$stt_stdout")"
-printf 'OK: TTS WAV files captured under %s\n' "$(redacted_path "$OUTPUT_DIR")"
+if [[ "$STT_ONLY_MODE" -eq 0 ]]; then
+  printf 'OK: TTS WAV files captured under %s\n' "$(redacted_path "$OUTPUT_DIR")"
+fi
