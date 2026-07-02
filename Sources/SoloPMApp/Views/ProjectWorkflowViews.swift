@@ -500,6 +500,8 @@ private struct WeeklyScheduleCockpitPanel: View {
             .accessibilityLabel("Weekly schedule grid")
             .accessibilityHint("Shows local schedule draft and due-task blocks. It does not write Calendar events.")
 
+            WeeklyScheduleTimeAxisGrid(cockpit: cockpit)
+
             HStack(alignment: .top, spacing: 12) {
                 WeeklyScheduleAgendaPanel(day: cockpit.agendaDay)
                 WeeklyScheduleReminderPanel(
@@ -538,6 +540,156 @@ private struct WeeklyScheduleCockpitPanel: View {
             format: String(localized: "%d completed this week."),
             cockpit.focusForecast.completionHistoryCount
         )
+    }
+}
+
+private struct WeeklyScheduleTimeAxisGrid: View {
+    let cockpit: WeeklyScheduleCockpit
+
+    private var slotHours: [Int] {
+        let hours = cockpit.days
+            .flatMap(\.blocks)
+            .compactMap(hour(for:))
+        guard !hours.isEmpty else {
+            return [9, 12, 15, 18]
+        }
+        return Array(Set(hours)).sorted()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Time Axis", systemImage: "clock")
+                .font(.subheadline.weight(.semibold))
+            ScrollView(.horizontal, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .top, spacing: 6) {
+                        Text("All day")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 56, alignment: .topLeading)
+                            .frame(minHeight: 34, alignment: .topLeading)
+                        ForEach(cockpit.days) { day in
+                            WeeklyScheduleTimeAxisSlot(
+                                day: day,
+                                label: String(localized: "All day"),
+                                blocks: allDayBlocks(for: day),
+                                emptyLabel: String(localized: "No all-day blocks")
+                            )
+                            .accessibilityIdentifier("schedule-week-time-axis-all-day-slot-\(day.dateKey)")
+                        }
+                    }
+                    ForEach(slotHours, id: \.self) { hour in
+                        HStack(alignment: .top, spacing: 6) {
+                            Text(hourLabel(hour))
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .frame(width: 56, alignment: .topLeading)
+                                .frame(minHeight: 34, alignment: .topLeading)
+                            ForEach(cockpit.days) { day in
+                                WeeklyScheduleTimeAxisSlot(
+                                    day: day,
+                                    label: hourLabel(hour),
+                                    blocks: timedBlocks(for: day, hour: hour),
+                                    emptyLabel: String(localized: "No timed blocks")
+                                )
+                                .accessibilityIdentifier("schedule-week-time-axis-slot-\(day.dateKey)-\(hour)")
+                            }
+                        }
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("schedule-week-time-axis-grid")
+        .accessibilityLabel("Schedule time axis grid")
+        .accessibilityHint("Shows the same weekly blocks by hour so empty days and overlapping blocks are easier to scan.")
+    }
+
+    private func allDayBlocks(for day: WeeklyScheduleDay) -> [WeeklyScheduleBlock] {
+        day.blocks.filter { $0.startAt == nil }
+    }
+
+    private func timedBlocks(for day: WeeklyScheduleDay, hour: Int) -> [WeeklyScheduleBlock] {
+        day.blocks.filter { block in
+            guard block.startAt != nil else {
+                return false
+            }
+            return self.hour(for: block) == hour
+        }
+    }
+
+    private func hour(for block: WeeklyScheduleBlock) -> Int? {
+        block.startHour
+    }
+
+    private func hourLabel(_ hour: Int) -> String {
+        String(format: "%02d:00", hour)
+    }
+}
+
+private struct WeeklyScheduleTimeAxisSlot: View {
+    let day: WeeklyScheduleDay
+    let label: String
+    let blocks: [WeeklyScheduleBlock]
+    let emptyLabel: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if blocks.isEmpty {
+                Text(emptyLabel)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .opacity(0.65)
+            } else {
+                ForEach(blocks) { block in
+                    WeeklyScheduleTimeAxisBlock(block: block)
+                }
+            }
+        }
+        .padding(6)
+        .frame(width: 132, alignment: .topLeading)
+        .frame(minHeight: 34, alignment: .topLeading)
+        .background(Color.secondary.opacity(blocks.isEmpty ? 0.03 : 0.07), in: RoundedRectangle(cornerRadius: 6))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Time axis slot")
+        .accessibilityValue(accessibilityValue)
+    }
+
+    private var accessibilityValue: String {
+        let blockSummary = blocks.isEmpty
+            ? emptyLabel
+            : blocks.map { block in
+                let source = block.source == .scheduleDraft ? String(localized: "Schedule draft") : String(localized: "Due task")
+                if block.overlapGroupSize > 1 {
+                    return "\(block.timeLabel), \(block.task.title), \(block.projectTitle), \(source), \(String(format: String(localized: "Lane %d of %d"), block.overlapLane + 1, block.overlapGroupSize))"
+                }
+                return "\(block.timeLabel), \(block.task.title), \(block.projectTitle), \(source)"
+            }.joined(separator: ", ")
+        return "\(day.dateKey), \(label), \(blockSummary)"
+    }
+}
+
+private struct WeeklyScheduleTimeAxisBlock: View {
+    let block: WeeklyScheduleBlock
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: block.source == .scheduleDraft ? "wand.and.stars" : "clock")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(block.task.title)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(1)
+            if block.overlapGroupSize > 1 {
+                Text(String(format: String(localized: "Lane %d/%d"), block.overlapLane + 1, block.overlapGroupSize))
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .lineLimit(1)
+            }
+        }
     }
 }
 

@@ -4025,6 +4025,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(wednesday.blocks.map(\.source), [.dueTask, .dueTask, .dueTask])
         XCTAssertEqual(wednesday.blocks.map(\.overlapGroupSize), [2, 2, 1])
         XCTAssertEqual(wednesday.blocks.map(\.overlapLane), [0, 1, 0])
+        XCTAssertEqual(wednesday.blocks.map(\.startHour), [11, 11, 12].map(Optional.some))
     }
 
     @MainActor
@@ -4045,6 +4046,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(dueOnlyCockpit.agendaDay?.dateKey, "2026-06-24")
         XCTAssertEqual(dueOnlyWednesday.blocks.map(\.task.id), [afterMidnight.id, allDay.id])
         XCTAssertEqual(dueOnlyWednesday.blocks.map(\.source), [.dueTask, .dueTask])
+        XCTAssertEqual(dueOnlyWednesday.blocks.map(\.startHour), [Optional.some(0), nil])
         XCTAssertEqual(dueOnlyWednesday.blocks.last?.timeLabel, "All day")
         XCTAssertEqual(dueOnlyWednesday.loadLevel, .focused)
 

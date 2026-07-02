@@ -1025,6 +1025,12 @@
 "Agenda" = "予定";
 "All day" = "終日";
 "Due task" = "期限付きタスク";
+"No all-day blocks" = "終日ブロックなし";
+"No timed blocks" = "時間指定ブロックなし";
+"Schedule time axis grid" = "Schedule時間軸グリッド";
+"Shows the same weekly blocks by hour so empty days and overlapping blocks are easier to scan." = "同じ週次ブロックを時間ごとに表示し、空き日と重複ブロックを確認しやすくします。";
+"Time Axis" = "時間軸";
+"Time axis slot" = "時間軸スロット";
 "Focused" = "集中";
 "Heavy" = "多め";
 "Lane %d of %d" = "レーン %d / %d";
