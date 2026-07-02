@@ -18,6 +18,7 @@ APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 SCREENSHOT_DIR="${SOLOPM_UI_EVIDENCE_DIR:-$ROOT_DIR/docs/release/evidence/ui-screenshots}"
 EVIDENCE_FILE="${SOLOPM_UI_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/ui-screenshots.md}"
+SCHEDULE_COCKPIT_EVIDENCE_FILE="${SOLOPM_SCHEDULE_COCKPIT_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/schedule-cockpit-screenshots.md}"
 EVIDENCE_TMPDIR="${SOLOPM_UI_EVIDENCE_TMPDIR:-$ROOT_DIR/.tmp}"
 VISUAL_BASELINE_MANIFEST="$ROOT_DIR/docs/quality/visual-baseline-manifest.json"
 VISUAL_BASELINE_VIEWPORT="${SOLOPM_VISUAL_BASELINE_VIEWPORT:-1560x860}"
@@ -31,6 +32,7 @@ KEEP_HOME="${SOLOPM_UI_EVIDENCE_KEEP_HOME:-0}"
 DRY_RUN=0
 DOCTOR=0
 P0_WORKFLOWS=0
+SCHEDULE_COCKPIT=0
 SCHEDULE_WORKLOAD=0
 PROJECT_BOARD_SELECTION_OVERRIDE=""
 PROJECT_BOARD_SELECTED_TASK_OVERRIDE=""
@@ -54,18 +56,21 @@ for arg in "$@"; do
     --p0-workflows)
       P0_WORKFLOWS=1
       ;;
+    --schedule-cockpit)
+      SCHEDULE_COCKPIT=1
+      ;;
     --schedule-workload)
       SCHEDULE_WORKLOAD=1
       ;;
     *)
-      echo "usage: $0 [--dry-run|--doctor|--p0-workflows|--schedule-workload]" >&2
+      echo "usage: $0 [--dry-run|--doctor|--p0-workflows|--schedule-cockpit|--schedule-workload]" >&2
       exit 2
       ;;
   esac
 done
 
-if [[ $((DRY_RUN + DOCTOR + P0_WORKFLOWS + SCHEDULE_WORKLOAD)) -gt 1 ]]; then
-  echo "usage: $0 [--dry-run|--doctor|--p0-workflows|--schedule-workload]" >&2
+if [[ $((DRY_RUN + DOCTOR + P0_WORKFLOWS + SCHEDULE_COCKPIT + SCHEDULE_WORKLOAD)) -gt 1 ]]; then
+  echo "usage: $0 [--dry-run|--doctor|--p0-workflows|--schedule-cockpit|--schedule-workload]" >&2
   exit 2
 fi
 
@@ -119,17 +124,18 @@ ui_evidence_source_commit() {
 }
 
 app_env_args() {
-  local args=(
-    "HOME=$EVIDENCE_HOME"
-    "CFFIXED_USER_HOME=$EVIDENCE_HOME"
-    "SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1"
-  )
+  local args=("SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1")
+  if [[ "$SCHEDULE_COCKPIT" != "1" ]]; then
+    args+=("HOME=$EVIDENCE_HOME")
+    args+=("CFFIXED_USER_HOME=$EVIDENCE_HOME")
+  fi
+  args+=("SOLOPM_FORCE_PROJECT_BOARD_FALLBACK=1")
   if [[ -n "$DATABASE_PATH" ]]; then
     # Screenshot evidence must open the exact SQLite file seeded below; relying
     # on HOME-derived defaults can silently fall back to another database.
     args+=("SOLOPM_DATABASE_PATH=$DATABASE_PATH")
   fi
-  if [[ "$P0_WORKFLOWS" == "1" ]]; then
+  if [[ "$P0_WORKFLOWS" == "1" || "$SCHEDULE_COCKPIT" == "1" ]]; then
     args+=("SOLOPM_LAUNCH_RECOVERY_MODE=1")
   fi
   if [[ -n "$PROJECT_BOARD_SELECTION_OVERRIDE" ]]; then
@@ -158,9 +164,33 @@ open_evidence_app() {
   while IFS= read -r -d '' env_arg; do
     env_args+=("$env_arg")
   done < <(app_env_args)
+  if [[ "$SCHEDULE_COCKPIT" == "1" ]]; then
+    wait_for_app_process_exit
+    # Schedule recovery needs the explicit SQLite DB but LaunchServices can keep
+    # the window off-screen with that env; direct launch matches runtime smokes.
+    /usr/bin/env "${env_args[@]}" "$APP_BINARY" >/dev/null 2>&1 &
+    EVIDENCE_APP_PID=$!
+    return
+  fi
+  local open_args=(-n -F "$APP_BUNDLE")
+  local env_arg
+  for env_arg in "${env_args[@]}"; do
+    open_args+=(--env "$env_arg")
+  done
   wait_for_app_process_exit
-  /usr/bin/env "${env_args[@]}" "$APP_BINARY" >/dev/null 2>&1 &
-  EVIDENCE_APP_PID=$!
+  # Launch through LaunchServices so SwiftUI windows become on-screen, while
+  # still passing the isolated database, appearance, and target-selection env.
+  /usr/bin/open "${open_args[@]}" >/dev/null
+  EVIDENCE_APP_PID=""
+  for _ in {1..40}; do
+    EVIDENCE_APP_PID="$(pgrep -x "$APP_NAME" | head -n 1 || true)"
+    if [[ -n "$EVIDENCE_APP_PID" ]]; then
+      return
+    fi
+    sleep 0.25
+  done
+  echo "$APP_NAME did not launch after open." >&2
+  exit 1
 }
 
 wait_for_app_process_exit() {
@@ -259,10 +289,16 @@ find_window_capture_metadata() {
 wait_for_window_capture_metadata() {
   local window_name="${1:-}"
   local metadata
-  for _ in {1..40}; do
+  local deadline=$((SECONDS + TARGET_TIMEOUT_SECONDS))
+  while true; do
     if metadata="$(find_window_capture_metadata "$window_name" 2>/dev/null)"; then
       printf '%s\n' "$metadata"
       return 0
+    fi
+    # Window restoration can be slower than process launch, so share the same
+    # operator-controlled timeout as target marker validation.
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      break
     fi
     sleep 0.25
   done
@@ -1064,6 +1100,38 @@ write_p0_workflow_evidence_file() {
   } >"$ROOT_DIR/docs/release/evidence/p0-workflow-screenshots.md"
 }
 
+write_schedule_cockpit_evidence_file() {
+  local generated_at="$1"
+  local schedule_light_path="$2"
+  local schedule_dark_path="$3"
+  local source_commit
+  source_commit="$(ui_evidence_source_commit)"
+
+  {
+    printf '%s\n' '# Schedule Cockpit Screenshot Evidence'
+    printf '\n'
+    printf '%s\n' 'Generated with `script/capture_ui_evidence.sh --schedule-cockpit`.'
+    printf '%s\n' 'This targeted evidence covers issue #9 Schedule cockpit light/dark closeout without rewriting the full release screenshot set.'
+    printf '\n'
+    printf -- '- Generated at: `%s`\n' "$generated_at"
+    printf -- '- Source commit: `%s`\n' "$source_commit"
+    printf -- '- Screen Recording preflight: `script/capture_ui_evidence.sh --doctor`\n'
+    printf -- '- Target markers: `schedule-workflow`, `schedule-week-grid`, `schedule-week-time-axis-grid`\n'
+    printf '\n'
+    printf '%s\n' '## Schedule Cockpit'
+    printf '\n'
+    printf -- '- Light: `%s`\n' "$(relative_path "$schedule_light_path")"
+    printf -- '- Dark: `%s`\n' "$(relative_path "$schedule_dark_path")"
+    printf '\n'
+    printf '%s\n' '## Guardrails'
+    printf '\n'
+    printf '%s\n' '- The cockpit is seeded from local ProjectBoard tasks in an isolated SQLite database.'
+    printf '%s\n' '- Opening the cockpit does not enqueue or execute external Calendar or Reminder writes.'
+    printf '%s\n' '- API keys, provider tokens, OAuth tokens, calendar contents, and customer file contents are not captured.'
+    printf '%s\n' '- The app runs with `SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1`, an explicit isolated SQLite database, and env-driven Schedule selection.'
+  } >"$SCHEDULE_COCKPIT_EVIDENCE_FILE"
+}
+
 write_schedule_workload_evidence_file() {
   local generated_at="$1"
   local schedule_workload_light_path="$2"
@@ -1235,7 +1303,8 @@ P0_INBOX_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Inbox"
 P0_TODAY_TARGET_MARKERS="today-workflow=>Today|today-briefing-panel=>Today|today-assistant-rail=>Today"
 P0_INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>Inbox|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-make-task=>Inbox classification actions"
 PROJECTS_TARGET_MARKERS="sidebar-destination-projects=>Projects|projects-portfolio-overview=>Projects"
-SCHEDULE_TARGET_MARKERS="sidebar-destination-schedule=>Schedule|schedule-workflow=>Schedule"
+SCHEDULE_TARGET_MARKERS="sidebar-destination-schedule=>Schedule|schedule-workflow=>Schedule|schedule-week-grid=>Weekly schedule grid|schedule-week-time-axis-grid=>Schedule time axis grid"
+SCHEDULE_COCKPIT_TARGET_MARKERS="schedule-workflow=>Schedule|schedule-week-grid=>schedule-week-grid|schedule-week-time-axis-grid=>schedule-week-time-axis-grid"
 SCHEDULE_WORKLOAD_TARGET_MARKERS="sidebar-destination-schedule=>Schedule|schedule-workflow=>Schedule|schedule-workload-dashboard=>schedule-workload-dashboard|schedule-workload-attention-banner=>schedule-workload-attention-banner|schedule-workload-day-detail=>schedule-workload-day-detail"
 DONE_TARGET_MARKERS="sidebar-destination-done=>Done|done-workflow=>Done"
 VOICE_COMMAND_TARGET_MARKERS="voice-command-root=>Voice Command|voice-command-input=>Voice Command"
@@ -1255,6 +1324,19 @@ if [[ "$P0_WORKFLOWS" == "1" ]]; then
 
   echo "P0 workflow screenshot evidence generated:"
   echo "evidence: $ROOT_DIR/docs/release/evidence/p0-workflow-screenshots.md"
+  echo "screenshots: $SCREENSHOT_DIR"
+  exit 0
+fi
+
+if [[ "$SCHEDULE_COCKPIT" == "1" ]]; then
+  capture_project_board_destination light schedule "$SCHEDULE_LIGHT_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_COCKPIT_TARGET_MARKERS"
+  capture_project_board_destination dark schedule "$SCHEDULE_DARK_SCREENSHOT" "Schedule cockpit" "$SCHEDULE_COCKPIT_TARGET_MARKERS"
+
+  GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  write_schedule_cockpit_evidence_file "$GENERATED_AT" "$SCHEDULE_LIGHT_SCREENSHOT" "$SCHEDULE_DARK_SCREENSHOT"
+
+  echo "Schedule cockpit screenshot evidence generated:"
+  echo "evidence: $SCHEDULE_COCKPIT_EVIDENCE_FILE"
   echo "screenshots: $SCREENSHOT_DIR"
   exit 0
 fi
