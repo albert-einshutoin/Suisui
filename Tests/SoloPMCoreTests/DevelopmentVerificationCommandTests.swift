@@ -28,6 +28,86 @@ final class DevelopmentVerificationCommandTests: XCTestCase {
         XCTAssertEqual(registry.validate(action: action), [])
     }
 
+    func testVerificationCommandChecksReviewedBranchBeforeRunningCommand() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let commandRunner = RecordingDevelopmentCommandRunner(output: DevelopmentCommandOutput(
+            standardOutput: "clean\n",
+            standardError: "",
+            exitCode: 0
+        ))
+        let gitRunner = RecordingDevelopmentVerificationGitRunner(output: GitCommandOutput(
+            standardOutput: "feature/solopm-1-1-runtime-smoke\n",
+            standardError: "",
+            exitCode: 0
+        ))
+        let tool = DevelopmentVerificationCommandTool(
+            projectStore: stores.projects,
+            commandRunner: commandRunner,
+            gitRunner: gitRunner
+        )
+
+        let result = try tool.execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "branchName": .string("feature/solopm-1-1-runtime-smoke"),
+                "commandId": .string("git.diff_check")
+            ],
+            context: approvedContext()
+        )
+
+        XCTAssertEqual(result.status, .succeeded)
+        XCTAssertEqual(gitRunner.recordedInvocations, [
+            GitCommandInvocation(
+                arguments: ["branch", "--show-current"],
+                workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL
+            )
+        ])
+        XCTAssertEqual(commandRunner.recordedInvocations.map(\.commandDisplay), ["git diff --check"])
+    }
+
+    func testVerificationCommandRejectsReviewedBranchMismatchBeforeRunningCommand() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let commandRunner = RecordingDevelopmentCommandRunner(output: DevelopmentCommandOutput(
+            standardOutput: "clean\n",
+            standardError: "",
+            exitCode: 0
+        ))
+        let gitRunner = RecordingDevelopmentVerificationGitRunner(output: GitCommandOutput(
+            standardOutput: "main\n",
+            standardError: "",
+            exitCode: 0
+        ))
+        let tool = DevelopmentVerificationCommandTool(
+            projectStore: stores.projects,
+            commandRunner: commandRunner,
+            gitRunner: gitRunner
+        )
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string("feature/solopm-1-1-runtime-smoke"),
+                    "commandId": .string("git.diff_check")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(
+                    .developmentRunVerification,
+                    "Repository branch mismatch before verification: expected feature/solopm-1-1-runtime-smoke, found main."
+                )
+            )
+        }
+        XCTAssertEqual(commandRunner.recordedInvocations, [])
+    }
+
     func testVerificationCommandRequiresApprovalAndRunsAllowlistedCommandInApprovedWorkspace() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
@@ -529,6 +609,33 @@ private final class RecordingDevelopmentCommandRunner: DevelopmentCommandRunner,
         invocations.append(invocation)
         lock.unlock()
         onInvocation?(invocation)
+        return output
+    }
+}
+
+private final class RecordingDevelopmentVerificationGitRunner: GitCommandRunner, @unchecked Sendable {
+    private let output: GitCommandOutput
+    private let lock = NSLock()
+    private var invocations: [GitCommandInvocation] = []
+
+    init(output: GitCommandOutput) {
+        self.output = output
+    }
+
+    var recordedInvocations: [GitCommandInvocation] {
+        lock.lock()
+        defer { lock.unlock() }
+        return invocations
+    }
+
+    func runGit(arguments: [String], workingDirectory: URL) throws -> GitCommandOutput {
+        let invocation = GitCommandInvocation(
+            arguments: arguments,
+            workingDirectory: workingDirectory.resolvingSymlinksInPath().standardizedFileURL
+        )
+        lock.lock()
+        invocations.append(invocation)
+        lock.unlock()
         return output
     }
 }
