@@ -6380,6 +6380,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(releaseChecklist.contains("The generated VoiceOver evidence command also rejects boilerplate worksheet values such as `TBD`, `Verified`, `OK`, or `No issues`; each required worksheet field must contain concrete VoiceOver observations."))
         XCTAssertTrue(releaseChecklist.contains("The worksheet maps `approved-execution-receipt` to the Task content execution note so manual reviewers confirm the approved execution receipt, not only the Run approved plan button."))
         XCTAssertTrue(releaseChecklist.contains("The seeded VoiceOver candidate includes a dedicated approved execution receipt task so the manual pass has a concrete task title/detail pair to run and hear back from `approved-execution-receipt`."))
+        XCTAssertTrue(releaseChecklist.contains("The seeded VoiceOver candidate also includes a due-today Today rail task so manual reviewers select a concrete task before checking next action, task detail, focus, schedule draft, edit, subtask draft, and reminder draft controls."))
         XCTAssertTrue(releaseChecklist.contains("The Task content execution observation must explicitly mention the redacted receipt, reviewed title, and reviewed detail"))
         XCTAssertTrue(releaseChecklist.contains("--task-content-execution-note"))
         let phase11 = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
