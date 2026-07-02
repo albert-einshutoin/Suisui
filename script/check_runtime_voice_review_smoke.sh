@@ -474,6 +474,11 @@ if [[ ! -x "$APP_BINARY" ]]; then
 fi
 
 launch_app_for_voice_review
+planning_initial_project_count="$(sqlite_scalar "SELECT count(*) FROM projects;")"
+if [[ -z "$planning_initial_project_count" ]]; then
+  echo "BLOCKER: initial project count before planning was not readable" >&2
+  exit 2
+fi
 setTextAreaContaining "voice-command-input" "Create a task called Runtime Voice Review Smoke."
 pressControlContaining "voice-command-generate-plan"
 waitForTextContaining "The AI provider rejected the configured API key."
@@ -482,6 +487,7 @@ wait_for_sql_value "1" "planning audit started" "SELECT count(*) FROM audit_logs
 wait_for_sql_value "1" "planning audit failed" "SELECT count(*) FROM audit_logs WHERE category='planning' AND action='generate_plan' AND status='failed' AND metadata_json LIKE '%The AI provider rejected the configured API key.%';"
 verify_sql_value "0" "planning audit succeeded" "SELECT count(*) FROM audit_logs WHERE category='planning' AND action='generate_plan' AND status='succeeded';"
 verify_sql_value "0" "task writes before approval" "SELECT count(*) FROM tasks;"
+verify_sql_value "$planning_initial_project_count" "project count unchanged after rejected planning" "SELECT count(*) FROM projects;"
 verify_sql_value "0" "review execution before approval" "SELECT count(*) FROM audit_logs WHERE category='review' OR action LIKE 'execution.%';"
 
 printf "OK: runtime voice review smoke verified fail-closed planning audit and no pre-approval writes\n"
@@ -540,6 +546,18 @@ verify_sql_value \
   "1" \
   "daily planning task due date remains unchanged before move-to-today approval" \
   "SELECT count(*) FROM tasks WHERE id=${daily_planning_seed_task_id} AND due_at='2026-01-01T09:00:00Z';"
+verify_sql_value \
+  "1" \
+  "no extra daily planning tasks before move-to-today approval" \
+  "SELECT count(*) FROM tasks;"
+verify_sql_value \
+  "1" \
+  "no extra daily planning projects before move-to-today approval" \
+  "SELECT count(*) FROM projects WHERE source_command='runtime-voice-review-smoke';"
+verify_sql_value \
+  "$daily_planning_seed_project_count" \
+  "total project count unchanged after move-to-today daily planning handoff" \
+  "SELECT count(*) FROM projects;"
 verify_sql_value \
   "2" \
   "two daily planning queue drafts before approval" \
