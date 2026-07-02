@@ -1025,6 +1025,12 @@
 "Agenda" = "Agenda";
 "All day" = "All day";
 "Due task" = "Due task";
+"No all-day blocks" = "No all-day blocks";
+"No timed blocks" = "No timed blocks";
+"Schedule time axis grid" = "Schedule time axis grid";
+"Shows the same weekly blocks by hour so empty days and overlapping blocks are easier to scan." = "Shows the same weekly blocks by hour so empty days and overlapping blocks are easier to scan.";
+"Time Axis" = "Time Axis";
+"Time axis slot" = "Time axis slot";
 "Focused" = "Focused";
 "Heavy" = "Heavy";
 "Lane %d of %d" = "Lane %d of %d";

@@ -39,6 +39,8 @@ public struct WeeklyScheduleBlock: Identifiable, Equatable, Sendable {
     public var source: WeeklyScheduleBlockSource
     public var startAt: Date?
     public var endAt: Date?
+    // Keep the machine-readable hour separate from localized timeLabel so views never parse presentation text.
+    public var startHour: Int?
     public var timeLabel: String
     public var overlapLane: Int
     public var overlapGroupSize: Int
@@ -51,6 +53,7 @@ public struct WeeklyScheduleBlock: Identifiable, Equatable, Sendable {
         source: WeeklyScheduleBlockSource,
         startAt: Date?,
         endAt: Date?,
+        startHour: Int? = nil,
         timeLabel: String,
         overlapLane: Int = 0,
         overlapGroupSize: Int = 1
@@ -62,6 +65,7 @@ public struct WeeklyScheduleBlock: Identifiable, Equatable, Sendable {
         self.source = source
         self.startAt = startAt
         self.endAt = endAt
+        self.startHour = startHour
         self.timeLabel = timeLabel
         self.overlapLane = overlapLane
         self.overlapGroupSize = overlapGroupSize
@@ -235,6 +239,7 @@ enum WeeklyScheduleCockpitBuilder {
                 source: .scheduleDraft,
                 startAt: start,
                 endAt: end,
+                startHour: calendar.component(.hour, from: start),
                 timeLabel: block.label
             )
         }
@@ -276,6 +281,7 @@ enum WeeklyScheduleCockpitBuilder {
                     source: .dueTask,
                     startAt: dueDate,
                     endAt: end,
+                    startHour: calendar.component(.hour, from: dueDate),
                     timeLabel: timeLabel(start: dueDate, end: end, calendar: calendar)
                 )
             }
