@@ -2167,6 +2167,14 @@ private struct DoneTaskHistoryRow: View {
                     .lineLimit(1)
             }
             Spacer()
+            Button {
+                viewModel.enqueueDoneFollowUpDraft(for: task.id)
+            } label: {
+                Label("Follow Up", systemImage: "plus.bubble")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("done-follow-up-task-\(task.id)")
+            .accessibilityHint("Creates an Assistant Queue approval item; no tasks are created until approval.")
             if task.status == .done {
                 Button {
                     viewModel.reopenCompletedTask(id: task.id)

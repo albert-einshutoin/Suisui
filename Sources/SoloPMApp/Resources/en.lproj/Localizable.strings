@@ -1432,3 +1432,10 @@
 "Unscheduled task is already in the schedule draft." = "Unscheduled task is already in the schedule draft.";
 "Select an unscheduled task before adding it to the draft." = "Select an unscheduled task before adding it to the draft.";
 "Schedule draft could not add the unscheduled task." = "Schedule draft could not add the unscheduled task.";
+"Follow Up" = "Follow Up";
+"Creates an Assistant Queue approval item; no tasks are created until approval." = "Creates an Assistant Queue approval item; no tasks are created until approval.";
+"Done follow-up draft" = "Done follow-up draft";
+"Select a completed task before queuing a Done follow-up." = "Select a completed task before queuing a Done follow-up.";
+"Done follow-up generated an invalid action plan." = "Done follow-up generated an invalid action plan.";
+"Done follow-up draft is already in Assistant Queue." = "Done follow-up draft is already in Assistant Queue.";
+"Queued Done follow-up draft for approval." = "Queued Done follow-up draft for approval.";

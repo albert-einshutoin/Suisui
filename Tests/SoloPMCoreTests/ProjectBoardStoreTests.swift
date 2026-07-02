@@ -7062,6 +7062,165 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDoneFollowUpDraftQueuesTaskCreateProposalWithoutMutatingTasks() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-07-02T09:10:00Z")
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let secret = "done-secret"
+        let project = try XCTUnwrap(viewModel.createProject(title: "Done Follow Up"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Ship recap token=\(secret) /Users/shutoide/Private",
+            detail: "Original detail api_key=\(secret) file:///Users/shutoide/Private/report.md",
+            projectID: project.id,
+            status: .done,
+            priority: .high
+        ))
+        let completedAt = try XCTUnwrap(
+            viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id }?.completedAt
+        )
+
+        let queued = viewModel.enqueueDoneFollowUpDraft(
+            for: task.id,
+            sourceTranscript: "Doneから次の作業を作る token=\(secret) ~/vault /var/tmp/work",
+            on: referenceDate,
+            calendar: calendar
+        )
+
+        XCTAssertTrue(queued)
+        XCTAssertEqual(viewModel.errorMessage, nil)
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Queued Done follow-up draft for approval.")
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        XCTAssertTrue(itemID.hasPrefix("action-plan:done-follow-up:2026-07-02:"))
+        XCTAssertTrue(itemID.hasSuffix(":task:\(task.id)"))
+        XCTAssertFalse(itemID.contains(secret))
+        XCTAssertFalse(itemID.contains("/Users/shutoide"))
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, [itemID])
+        let item = try assistantQueueStore.get(id: itemID)
+        XCTAssertEqual(item.state, .waitingReview)
+        XCTAssertEqual(item.riskLevel, .write)
+        XCTAssertEqual(item.costPreview?.billingMode, .localOnly)
+        XCTAssertEqual(item.requiredCapabilities, [.tool(.taskCreate), .providerExecutionApproval])
+        XCTAssertTrue(item.sourceTranscript?.contains("[REDACTED_SECRET]") ?? false)
+        XCTAssertFalse(item.sourceTranscript?.contains(secret) ?? true)
+        XCTAssertFalse(item.sourceTranscript?.contains("/Users/shutoide") ?? true)
+        XCTAssertFalse(item.sourceTranscript?.contains("~/vault") ?? true)
+        guard case .actionPlan(let plan) = item.payload else {
+            return XCTFail("Expected action plan payload")
+        }
+        XCTAssertTrue(plan.requiresApproval)
+        XCTAssertEqual(plan.riskLevel, .write)
+        XCTAssertEqual(plan.actions.map(\.tool), [.taskCreate])
+        let action = try XCTUnwrap(plan.actions.first)
+        XCTAssertEqual(action.arguments["projectId"], .number(Double(project.id)))
+        XCTAssertEqual(action.arguments["priority"], .string(ProjectTaskPriority.high.rawValue))
+        XCTAssertEqual(action.arguments["sourceCommand"], .string("Done follow-up from task \(task.id)"))
+        XCTAssertTrue(String(describing: action.arguments["title"]).contains("Follow up: Ship recap"))
+        XCTAssertTrue(String(describing: action.arguments["detail"]).contains("Source task ID: \(task.id)"))
+        XCTAssertTrue(String(describing: action.arguments["detail"]).contains("Source completed at: \(completedAt)"))
+        let payloadJSON = try XCTUnwrap(bundle.connection.queryRows(
+            "SELECT payload_json FROM assistant_queue_items WHERE id = '\(itemID)' LIMIT 1;"
+        ).first?["payload_json"])
+        XCTAssertFalse(payloadJSON.contains(secret))
+        XCTAssertFalse(payloadJSON.contains("/Users/shutoide"))
+        XCTAssertFalse(payloadJSON.contains("file:///Users"))
+        XCTAssertFalse(payloadJSON.contains("/var/tmp"))
+        XCTAssertFalse(payloadJSON.contains("~/vault"))
+        XCTAssertEqual(viewModel.snapshot.projects.first { $0.id == project.id }?.column(.done)?.tasks.map(\.id), [task.id])
+        let taskRows = try bundle.connection.queryRows(
+            "SELECT id, status FROM tasks WHERE project_id = \(project.id) ORDER BY id ASC;"
+        )
+        XCTAssertEqual(taskRows.map { $0["id"] }, ["\(task.id)"])
+        XCTAssertEqual(taskRows.map { $0["status"] }, [ProjectTaskStatus.done.rawValue])
+    }
+
+    @MainActor
+    func testDoneFollowUpDraftDoesNotOverwriteExistingQueueItem() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-07-02T09:10:00Z")
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Done Follow Up"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Ship recap",
+            projectID: project.id,
+            status: .done,
+            priority: .high
+        ))
+        XCTAssertTrue(viewModel.enqueueDoneFollowUpDraft(
+            for: task.id,
+            sourceTranscript: "first follow-up",
+            on: referenceDate,
+            calendar: calendar
+        ))
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        var existing = try assistantQueueStore.get(id: itemID)
+        existing.reviewReason = "Existing approved Done follow-up review."
+        existing = try AssistantQueueStateMachine.approve(existing, reviewerID: "tester")
+        try assistantQueueStore.save(existing)
+
+        let queued = viewModel.enqueueDoneFollowUpDraft(
+            for: task.id,
+            sourceTranscript: "changed follow-up",
+            on: referenceDate,
+            calendar: calendar
+        )
+
+        let stored = try assistantQueueStore.get(id: itemID)
+        XCTAssertTrue(queued)
+        XCTAssertEqual(stored.state, .approved)
+        XCTAssertEqual(stored.reviewReason, "Existing approved Done follow-up review.")
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Done follow-up draft is already in Assistant Queue.")
+        XCTAssertEqual(viewModel.assistantQueueSelectedItemIDs, [itemID])
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.map(\.id), [itemID])
+    }
+
+    @MainActor
+    func testDoneFollowUpDraftAcceptsReopenedHistoryAndRejectsOpenTasks() throws {
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Done Follow Up"))
+        let completedTask = try XCTUnwrap(viewModel.createTask(
+            title: "Close launch loop",
+            projectID: project.id,
+            status: .done
+        ))
+        viewModel.reopenCompletedTask(id: completedTask.id)
+        let reopenedTask = try XCTUnwrap(
+            viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == completedTask.id }
+        )
+        let openTask = try XCTUnwrap(viewModel.createTask(
+            title: "Still open",
+            projectID: project.id,
+            status: .planned
+        ))
+
+        XCTAssertTrue(viewModel.enqueueDoneFollowUpDraft(for: reopenedTask.id))
+        let itemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        XCTAssertTrue(itemID.hasSuffix(":task:\(reopenedTask.id)"))
+        XCTAssertFalse(viewModel.enqueueDoneFollowUpDraft(for: openTask.id))
+        XCTAssertEqual(viewModel.errorMessage, "Select a completed task before queuing a Done follow-up.")
+        XCTAssertEqual(viewModel.assistantQueueSnapshot.rows.map(\.id), [itemID])
+    }
+
+    @MainActor
     func testProjectBoardViewModelSelectsProjectFromPortfolioCardWithoutChangingTaskSelection() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()

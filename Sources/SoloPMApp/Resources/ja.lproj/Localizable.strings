@@ -1432,3 +1432,10 @@
 "Unscheduled task is already in the schedule draft." = "未スケジュールタスクは既にスケジュール下書きにあります。";
 "Select an unscheduled task before adding it to the draft." = "下書きに追加する前に未スケジュールタスクを選択してください。";
 "Schedule draft could not add the unscheduled task." = "スケジュール下書きに未スケジュールタスクを追加できませんでした。";
+"Follow Up" = "フォローアップ";
+"Creates an Assistant Queue approval item; no tasks are created until approval." = "承認用のAssistant Queue項目を作成します。承認するまでタスクは作成されません。";
+"Done follow-up draft" = "Doneフォローアップ下書き";
+"Select a completed task before queuing a Done follow-up." = "Doneフォローアップをキューへ追加する前に完了済みタスクを選択してください。";
+"Done follow-up generated an invalid action plan." = "Doneフォローアップが無効なアクションプランを生成しました。";
+"Done follow-up draft is already in Assistant Queue." = "Doneフォローアップ下書きは既にAssistant Queueにあります。";
+"Queued Done follow-up draft for approval." = "Doneフォローアップ下書きを承認用にキューへ追加しました。";

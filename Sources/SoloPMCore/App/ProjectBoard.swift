@@ -4744,6 +4744,73 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     @discardableResult
+    public func enqueueDoneFollowUpDraft(
+        for taskID: Int64,
+        sourceTranscript: String = "Done follow-up draft",
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Bool {
+        guard let assistantQueueStore else {
+            assistantQueueSnapshot = .empty
+            assistantQueueSelectedItemIDs = []
+            errorMessage = String(localized: "Assistant Queue is unavailable in this build.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        guard let task = task(id: taskID),
+              let draft = DoneFollowUpActionDraftBuilder.makeDraft(
+                task: task,
+                projectTitle: projectTitle(for: task),
+                referenceDate: referenceDate,
+                calendar: calendar
+              ) else {
+            errorMessage = String(localized: "Select a completed task before queuing a Done follow-up.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        let validation = ActionPlanValidator().validate(draft.actionPlan)
+        guard validation.isValid else {
+            errorMessage = String(localized: "Done follow-up generated an invalid action plan.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        let item = AssistantQueueAdapter.makeItem(
+            actionPlan: draft.actionPlan,
+            sourceTranscript: Self.sanitizedDoneFollowUpSourceTranscript(sourceTranscript),
+            interpretationSummary: String(localized: "Done follow-up draft"),
+            reason: draft.queueReason,
+            costPreview: .localOnly()
+        )
+
+        do {
+            do {
+                _ = try assistantQueueStore.get(id: item.id)
+                focusAssistantQueueItem(id: item.id)
+                errorMessage = nil
+                integrationStatusMessage = String(localized: "Done follow-up draft is already in Assistant Queue.")
+                return true
+            } catch AssistantQueueStoreError.notFound {
+                // Continue to save the new item below.
+            }
+
+            _ = try assistantQueueStore.save(item)
+            focusAssistantQueueItem(id: item.id)
+            errorMessage = nil
+            integrationStatusMessage = String(localized: "Queued Done follow-up draft for approval.")
+            onChange()
+            return true
+        } catch {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = AssistantQueueStoreError.userMessage(for: error)
+            integrationStatusMessage = nil
+            return false
+        }
+    }
+
+    @discardableResult
     public func enqueueDailyPlanningActionDraft(
         kind: DailyPlanningActionDraftKind,
         transcript: String = "Today daily planning review",
@@ -5921,6 +5988,20 @@ public final class ProjectBoardViewModel: ObservableObject {
             return String(localized: "Schedule assistant suggested a Reminders draft for 1 task.")
         }
         return String(format: String(localized: "Schedule assistant suggested Reminders drafts for %d tasks."), taskCount)
+    }
+
+    private static func sanitizedDoneFollowUpSourceTranscript(_ sourceTranscript: String) -> String {
+        let trimmed = sourceTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let redacted = ExecutionReceiptRedactor().redact(trimmed)
+        let fallback = String(localized: "Done follow-up draft")
+        guard !redacted.isEmpty else {
+            return fallback
+        }
+        let maxLength = 300
+        guard redacted.count > maxLength else {
+            return redacted
+        }
+        return "\(redacted.prefix(maxLength))..."
     }
 
     private static func sanitizedReminderSourceTranscript(_ sourceTranscript: String, fallback: String) -> String {
