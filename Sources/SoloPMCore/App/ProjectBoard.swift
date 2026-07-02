@@ -1664,6 +1664,114 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    @discardableResult
+    public func prepareDevelopmentPushReview(
+        for project: ProjectBoardProject,
+        task: ProjectBoardTask?
+    ) -> ActionPlan? {
+        let readiness = developmentAutomationReadiness(for: project, task: task)
+        guard readiness.isReady,
+              let task,
+              let branchName = readiness.branchNamePreview else {
+            developmentAutomationReviewPlan = nil
+            todayCommandFeedback = readiness.blockingReason
+            integrationStatusMessage = nil
+            return nil
+        }
+
+        let plan = ActionPlan(
+            id: "development-pr-push:\(project.id):\(task.id):\(Self.developmentAutomationPlanDigest(projectID: project.id, taskID: task.id, branchName: branchName))",
+            userInput: "Review development branch push \(branchName) for \(task.title).",
+            summary: "Review branch \(branchName) push to origin for \(task.title). Execution rechecks the current branch, clean workspace, and GitHub origin before push. Pull request creation requires a separate approval.",
+            actions: [
+                PlanAction(
+                    id: "development-pr-push",
+                    tool: .developmentPushBranch,
+                    arguments: [
+                        "projectId": .number(Double(project.id)),
+                        "branchName": .string(branchName)
+                    ],
+                    riskLevel: .write,
+                    requiresUserConfirmation: true
+                )
+            ],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+        // Keep push separate from PR creation so a queued publish step cannot
+        // silently escalate into a second external write after the user reviews
+        // only the branch push boundary.
+        developmentAutomationReviewPlan = plan
+        integrationStatusMessage = "Development branch push review is prepared."
+        todayCommandFeedback = nil
+        errorMessage = nil
+        return plan
+    }
+
+    @discardableResult
+    public func enqueueDevelopmentPushReview(
+        for project: ProjectBoardProject,
+        task: ProjectBoardTask?
+    ) -> Bool {
+        guard let assistantQueueStore else {
+            assistantQueueSnapshot = .empty
+            assistantQueueSelectedItemIDs = []
+            errorMessage = String(localized: "Assistant Queue is unavailable in this build.")
+            integrationStatusMessage = nil
+            return false
+        }
+        guard var plan = prepareDevelopmentPushReview(for: project, task: task) else {
+            return false
+        }
+
+        let validator = ActionPlanValidator()
+        let validation = validator.validate(plan)
+        guard validation.isValid else {
+            errorMessage = String(localized: "Development automation generated an invalid action plan.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        plan.userInput = Self.sanitizedDevelopmentAutomationReviewText(plan.userInput)
+        plan.summary = Self.sanitizedDevelopmentAutomationReviewText(plan.summary)
+        let persistedValidation = validator.validate(plan)
+        guard persistedValidation.isValid else {
+            errorMessage = String(localized: "Development automation generated an invalid action plan.")
+            integrationStatusMessage = nil
+            return false
+        }
+
+        let item = AssistantQueueAdapter.makeItem(
+            actionPlan: plan,
+            sourceTranscript: plan.userInput,
+            interpretationSummary: plan.summary,
+            reason: Self.developmentAutomationPushQueueReason(project: project),
+            costPreview: .localOnly()
+        )
+
+        do {
+            if try assistantQueueStore.insertIfAbsent(item) != nil {
+                focusAssistantQueueItem(id: item.id)
+                errorMessage = nil
+                integrationStatusMessage = String(localized: "Queued development branch push review for approval.")
+                todayCommandFeedback = nil
+                onChange()
+                return true
+            }
+
+            focusAssistantQueueItem(id: item.id)
+            errorMessage = nil
+            integrationStatusMessage = String(localized: "Development branch push review is already in Assistant Queue.")
+            todayCommandFeedback = nil
+            return true
+        } catch {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = AssistantQueueStoreError.userMessage(for: error)
+            integrationStatusMessage = nil
+            return false
+        }
+    }
+
     private func task(id: Int64) -> ProjectBoardTask? {
         snapshot.projects
             .flatMap(\.tasks)
@@ -1691,6 +1799,13 @@ public final class ProjectBoardViewModel: ObservableObject {
     private static func developmentAutomationQueueReason(project: ProjectBoardProject) -> String {
         String(
             format: String(localized: "Development branch automation is ready for %@."),
+            sanitizedDevelopmentAutomationReviewText(project.title)
+        )
+    }
+
+    private static func developmentAutomationPushQueueReason(project: ProjectBoardProject) -> String {
+        String(
+            format: String(localized: "Development branch push needs review for %@."),
             sanitizedDevelopmentAutomationReviewText(project.title)
         )
     }

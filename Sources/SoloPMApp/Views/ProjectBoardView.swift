@@ -3501,6 +3501,16 @@ private struct ProjectDevelopmentAutomationPanel: View {
             .accessibilityIdentifier("project-development-automation-queue")
             .accessibilityHint("Adds the development branch preparation plan to Assistant Queue for review and approval.")
 
+            Button {
+                _ = viewModel.enqueueDevelopmentPushReview(for: project, task: viewModel.selectedTask)
+            } label: {
+                Label("Queue branch push review", systemImage: "arrow.up.circle")
+            }
+            .disabled(!readiness.isReady)
+            .help("Queues a branch push approval; execution rechecks the current branch, clean workspace, and GitHub origin before running.")
+            .accessibilityIdentifier("project-development-automation-push-queue")
+            .accessibilityHint("Adds only the branch push review to Assistant Queue; pull request creation still needs a separate approval.")
+
             if hasMatchingReviewPlan {
                 Text(LocalizedStringKey("Review plan is ready. Approve and execute it before any local branch is created."))
                     .font(.caption)

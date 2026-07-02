@@ -617,6 +617,7 @@ final class ExecutionReceiptTests: XCTestCase {
                 output: [
                     "projectId": .number(7),
                     "branchName": .string(branchName),
+                    "remoteRepository": .string("acme/solo-pm"),
                     "requiresPullRequestApproval": .bool(true)
                 ]
             )
@@ -658,6 +659,7 @@ final class ExecutionReceiptTests: XCTestCase {
         XCTAssertEqual(receipt.visibleSurfaces, [.projectDetail, .auditLog])
         XCTAssertTrue(displayedText.contains("Development Branch"))
         XCTAssertTrue(displayedText.contains("Pull Request"))
+        XCTAssertTrue(receipt.actions[0].outputSummary?.contains("Remote repository acme/solo-pm") == true)
         XCTAssertTrue(receipt.actions[0].outputSummary?.contains("Pull request approval required") == true)
         XCTAssertTrue(receipt.actions[1].outputSummary?.contains(pullRequestURL) == true)
         XCTAssertFalse(displayedText.contains(pushSecret))
