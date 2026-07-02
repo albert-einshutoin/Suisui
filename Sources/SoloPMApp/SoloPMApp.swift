@@ -214,6 +214,8 @@ private struct ProjectBoardLaunchRecoveryView: View {
                 selectTodayTask: selectWorkflowTask,
                 openInspectorForTodayRailTask: openInspectorForWorkflowTask
             )
+        case .done:
+            DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())
         }
     }
 
@@ -384,6 +386,7 @@ private enum ProjectBoardLaunchRecoveryDestination: String {
     case inbox
     case schedule
     case today
+    case done
 }
 
 #if canImport(AppKit)

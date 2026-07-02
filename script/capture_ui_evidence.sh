@@ -19,6 +19,7 @@ APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 SCREENSHOT_DIR="${SOLOPM_UI_EVIDENCE_DIR:-$ROOT_DIR/docs/release/evidence/ui-screenshots}"
 EVIDENCE_FILE="${SOLOPM_UI_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/ui-screenshots.md}"
 SCHEDULE_COCKPIT_EVIDENCE_FILE="${SOLOPM_SCHEDULE_COCKPIT_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/schedule-cockpit-screenshots.md}"
+DONE_ANALYTICS_EVIDENCE_FILE="${SOLOPM_DONE_ANALYTICS_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/done-analytics-screenshots.md}"
 EVIDENCE_TMPDIR="${SOLOPM_UI_EVIDENCE_TMPDIR:-$ROOT_DIR/.tmp}"
 VISUAL_BASELINE_MANIFEST="$ROOT_DIR/docs/quality/visual-baseline-manifest.json"
 VISUAL_BASELINE_VIEWPORT="${SOLOPM_VISUAL_BASELINE_VIEWPORT:-1560x860}"
@@ -34,6 +35,7 @@ DOCTOR=0
 P0_WORKFLOWS=0
 SCHEDULE_COCKPIT=0
 SCHEDULE_WORKLOAD=0
+DONE_ANALYTICS=0
 PROJECT_BOARD_SELECTION_OVERRIDE=""
 PROJECT_BOARD_SELECTED_TASK_OVERRIDE=""
 PROJECT_BOARD_TARGET_MARKERS=""
@@ -62,15 +64,18 @@ for arg in "$@"; do
     --schedule-workload)
       SCHEDULE_WORKLOAD=1
       ;;
+    --done-analytics)
+      DONE_ANALYTICS=1
+      ;;
     *)
-      echo "usage: $0 [--dry-run|--doctor|--p0-workflows|--schedule-cockpit|--schedule-workload]" >&2
+      echo "usage: $0 [--dry-run|--doctor|--p0-workflows|--schedule-cockpit|--schedule-workload|--done-analytics]" >&2
       exit 2
       ;;
   esac
 done
 
-if [[ $((DRY_RUN + DOCTOR + P0_WORKFLOWS + SCHEDULE_COCKPIT + SCHEDULE_WORKLOAD)) -gt 1 ]]; then
-  echo "usage: $0 [--dry-run|--doctor|--p0-workflows|--schedule-cockpit|--schedule-workload]" >&2
+if [[ $((DRY_RUN + DOCTOR + P0_WORKFLOWS + SCHEDULE_COCKPIT + SCHEDULE_WORKLOAD + DONE_ANALYTICS)) -gt 1 ]]; then
+  echo "usage: $0 [--dry-run|--doctor|--p0-workflows|--schedule-cockpit|--schedule-workload|--done-analytics]" >&2
   exit 2
 fi
 
@@ -135,7 +140,7 @@ app_env_args() {
     # on HOME-derived defaults can silently fall back to another database.
     args+=("SOLOPM_DATABASE_PATH=$DATABASE_PATH")
   fi
-  if [[ "$P0_WORKFLOWS" == "1" || "$SCHEDULE_COCKPIT" == "1" ]]; then
+  if [[ "$P0_WORKFLOWS" == "1" || "$SCHEDULE_COCKPIT" == "1" || "$DONE_ANALYTICS" == "1" ]]; then
     args+=("SOLOPM_LAUNCH_RECOVERY_MODE=1")
   fi
   if [[ -n "$PROJECT_BOARD_SELECTION_OVERRIDE" ]]; then
@@ -164,10 +169,10 @@ open_evidence_app() {
   while IFS= read -r -d '' env_arg; do
     env_args+=("$env_arg")
   done < <(app_env_args)
-  if [[ "$SCHEDULE_COCKPIT" == "1" ]]; then
+  if [[ "$SCHEDULE_COCKPIT" == "1" || "$DONE_ANALYTICS" == "1" ]]; then
     wait_for_app_process_exit
-    # Schedule recovery needs the explicit SQLite DB but LaunchServices can keep
-    # the window off-screen with that env; direct launch matches runtime smokes.
+    # Targeted recovery captures need the explicit SQLite DB but LaunchServices
+    # can keep the window off-screen with that env; direct launch matches runtime smokes.
     /usr/bin/env "${env_args[@]}" "$APP_BINARY" >/dev/null 2>&1 &
     EVIDENCE_APP_PID=$!
     return
@@ -1164,6 +1169,38 @@ write_schedule_workload_evidence_file() {
   } >"$ROOT_DIR/docs/release/evidence/schedule-workload-screenshots.md"
 }
 
+write_done_analytics_evidence_file() {
+  local generated_at="$1"
+  local done_light_path="$2"
+  local done_dark_path="$3"
+  local source_commit
+  source_commit="$(ui_evidence_source_commit)"
+
+  {
+    printf '%s\n' '# Done Analytics Screenshot Evidence'
+    printf '\n'
+    printf '%s\n' 'Generated with `script/capture_ui_evidence.sh --done-analytics`.'
+    printf '%s\n' 'This targeted evidence covers issue #10 Done analytics light/dark closeout without rewriting the full release screenshot set.'
+    printf '\n'
+    printf -- '- Generated at: `%s`\n' "$generated_at"
+    printf -- '- Source commit: `%s`\n' "$source_commit"
+    printf -- '- Screen Recording preflight: `script/capture_ui_evidence.sh --doctor`\n'
+    printf -- '- Target markers: `done-workflow`, `done-completion-heatmap`, `done-productivity-insight`, `done-local-rule-insight`\n'
+    printf '\n'
+    printf '%s\n' '## Done Analytics'
+    printf '\n'
+    printf -- '- Light: `%s`\n' "$(relative_path "$done_light_path")"
+    printf -- '- Dark: `%s`\n' "$(relative_path "$done_dark_path")"
+    printf '\n'
+    printf '%s\n' '## Guardrails'
+    printf '\n'
+    printf '%s\n' '- The Done dashboard is seeded from local ProjectBoard completion history in an isolated SQLite database.'
+    printf '%s\n' '- Opening Done analytics does not enqueue or execute external writes.'
+    printf '%s\n' '- API keys, provider tokens, OAuth tokens, calendar contents, and customer file contents are not captured.'
+    printf '%s\n' '- The app runs with `SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1`, an isolated HOME, and a seeded SQLite database.'
+  } >"$DONE_ANALYTICS_EVIDENCE_FILE"
+}
+
 write_visual_baseline_capture_manifest() {
   local generated_at="$1"
   local output_file="$SCREENSHOT_DIR/visual-baseline-capture-manifest.json"
@@ -1307,6 +1344,7 @@ SCHEDULE_TARGET_MARKERS="sidebar-destination-schedule=>Schedule|schedule-workflo
 SCHEDULE_COCKPIT_TARGET_MARKERS="schedule-workflow=>Schedule|schedule-week-grid=>schedule-week-grid|schedule-week-time-axis-grid=>schedule-week-time-axis-grid"
 SCHEDULE_WORKLOAD_TARGET_MARKERS="sidebar-destination-schedule=>Schedule|schedule-workflow=>Schedule|schedule-workload-dashboard=>schedule-workload-dashboard|schedule-workload-attention-banner=>schedule-workload-attention-banner|schedule-workload-day-detail=>schedule-workload-day-detail"
 DONE_TARGET_MARKERS="sidebar-destination-done=>Done|done-workflow=>Done"
+DONE_ANALYTICS_TARGET_MARKERS="done-workflow=>Done|done-completion-heatmap=>done-completion-heatmap|done-productivity-insight=>done-productivity-insight|done-local-rule-insight=>done-local-rule-insight"
 VOICE_COMMAND_TARGET_MARKERS="voice-command-root=>Voice Command|voice-command-input=>Voice Command"
 
 if [[ "$P0_WORKFLOWS" == "1" ]]; then
@@ -1350,6 +1388,19 @@ if [[ "$SCHEDULE_WORKLOAD" == "1" ]]; then
 
   echo "Schedule workload screenshot evidence generated:"
   echo "evidence: $ROOT_DIR/docs/release/evidence/schedule-workload-screenshots.md"
+  echo "screenshots: $SCREENSHOT_DIR"
+  exit 0
+fi
+
+if [[ "$DONE_ANALYTICS" == "1" ]]; then
+  capture_project_board_destination light done "$DONE_LIGHT_SCREENSHOT" "Done analytics" "$DONE_ANALYTICS_TARGET_MARKERS"
+  capture_project_board_destination dark done "$DONE_DARK_SCREENSHOT" "Done analytics" "$DONE_ANALYTICS_TARGET_MARKERS"
+
+  GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  write_done_analytics_evidence_file "$GENERATED_AT" "$DONE_LIGHT_SCREENSHOT" "$DONE_DARK_SCREENSHOT"
+
+  echo "Done analytics screenshot evidence generated:"
+  echo "evidence: $DONE_ANALYTICS_EVIDENCE_FILE"
   echo "screenshots: $SCREENSHOT_DIR"
   exit 0
 fi

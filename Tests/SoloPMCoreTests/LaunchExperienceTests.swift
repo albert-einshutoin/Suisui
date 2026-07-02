@@ -135,6 +135,7 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("private func openInspectorForWorkflowTask(_ taskID: Int64)"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"task-inspector-title\")"))
         XCTAssertTrue(source.contains("InboxWorkflowView(viewModel: viewModel"))
+        XCTAssertTrue(source.contains("case .done:\n            DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())"))
         XCTAssertTrue(source.contains("SOLOPM_PROJECT_BOARD_SELECTED_DESTINATION"))
         XCTAssertTrue(source.contains("ProjectBoardLaunchRecoveryDestination"))
         XCTAssertTrue(source.contains("ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID"))
@@ -182,8 +183,9 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(inboxSmoke.contains("SOLOPM_LAUNCH_RECOVERY_MODE=1"))
         XCTAssertTrue(screenshotCapture.contains("--p0-workflows"))
         XCTAssertTrue(screenshotCapture.contains("--schedule-cockpit"))
+        XCTAssertTrue(screenshotCapture.contains("--done-analytics"))
         XCTAssertTrue(screenshotCapture.contains("if [[ \"$P0_WORKFLOWS\" == \"1\" ]]"))
-        XCTAssertTrue(screenshotCapture.contains("if [[ \"$P0_WORKFLOWS\" == \"1\" || \"$SCHEDULE_COCKPIT\" == \"1\" ]]"))
+        XCTAssertTrue(screenshotCapture.contains("if [[ \"$P0_WORKFLOWS\" == \"1\" || \"$SCHEDULE_COCKPIT\" == \"1\" || \"$DONE_ANALYTICS\" == \"1\" ]]"))
         XCTAssertTrue(screenshotCapture.contains("args+=(\"SOLOPM_LAUNCH_RECOVERY_MODE=1\")"))
     }
 
@@ -195,6 +197,7 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("ProjectBoardView("))
         XCTAssertTrue(source.contains("case .schedule:\n            ScheduleWorkflowView(viewModel: viewModel)"))
         XCTAssertTrue(source.contains("case schedule"))
+        XCTAssertTrue(source.contains("case done"))
     }
 
     func testWorkflowRootAccessibilityKeepsNestedLaunchRecoveryIdentifiers() throws {
