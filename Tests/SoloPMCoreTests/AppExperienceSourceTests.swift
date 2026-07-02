@@ -4009,7 +4009,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("capture_project_board_destination light done \"$DONE_LIGHT_SCREENSHOT\" \"Done analytics\" \"$DONE_TARGET_MARKERS\""))
         XCTAssertTrue(script.contains("--done-analytics"))
         XCTAssertTrue(script.contains("DONE_ANALYTICS_TARGET_MARKERS"))
-        XCTAssertTrue(script.contains("\"$SCHEDULE_COCKPIT\" == \"1\" || \"$DONE_ANALYTICS\" == \"1\""))
+        XCTAssertTrue(script.contains("\"$P0_WORKFLOWS\" == \"1\" || \"$SCHEDULE_COCKPIT\" == \"1\" || \"$DONE_ANALYTICS\" == \"1\""))
         XCTAssertTrue(script.contains("write_done_analytics_evidence_file"))
         XCTAssertTrue(script.contains("docs/release/evidence/done-analytics-screenshots.md"))
         XCTAssertTrue(script.contains("inbox-action-panel=>Voice capture metadata available for Scheduled manual capture"))
