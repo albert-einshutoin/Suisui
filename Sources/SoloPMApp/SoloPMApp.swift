@@ -170,6 +170,7 @@ private struct ProjectBoardFallbackRootView: View {
 private struct ProjectBoardLaunchRecoveryView: View {
     @StateObject private var viewModel: ProjectBoardViewModel
     private let appSettings: () -> AppSettings
+    @State private var isInspectorPresented = false
 
     init(
         viewModel: ProjectBoardViewModel,
@@ -180,13 +181,9 @@ private struct ProjectBoardLaunchRecoveryView: View {
     }
 
     var body: some View {
-        Group {
-            switch selectedDestination {
-            case .inbox:
-                InboxWorkflowView(viewModel: viewModel, selectInboxTask: selectWorkflowTask)
-            case .today:
-                TodayWorkflowView(viewModel: viewModel, selectTodayTask: selectWorkflowTask)
-            }
+        HStack(alignment: .top, spacing: 0) {
+            workflowBody
+            recoveryInspector
         }
             .frame(minWidth: 960, idealWidth: 1_180, minHeight: 620, idealHeight: 760)
             .task {
@@ -195,6 +192,34 @@ private struct ProjectBoardLaunchRecoveryView: View {
             .onReceive(NotificationCenter.default.publisher(for: .soloPMProjectBoardDidChange)) { _ in
                 loadRuntimeState()
             }
+    }
+
+    @ViewBuilder
+    private var workflowBody: some View {
+        switch selectedDestination {
+        case .inbox:
+            InboxWorkflowView(viewModel: viewModel, selectInboxTask: selectWorkflowTask)
+        case .today:
+            TodayWorkflowView(
+                viewModel: viewModel,
+                selectTodayTask: selectWorkflowTask,
+                openInspectorForTodayRailTask: openInspectorForWorkflowTask
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var recoveryInspector: some View {
+        if isInspectorPresented, let task = viewModel.selectedTask {
+            ProjectBoardLaunchRecoveryTaskInspector(
+                task: task,
+                viewModel: viewModel,
+                onClose: { isInspectorPresented = false }
+            )
+            .frame(minWidth: 300, idealWidth: 320, maxWidth: 360, maxHeight: .infinity)
+            .padding(.vertical, 18)
+            .padding(.trailing, 18)
+        }
     }
 
     private var selectedDestination: ProjectBoardLaunchRecoveryDestination {
@@ -210,6 +235,16 @@ private struct ProjectBoardLaunchRecoveryView: View {
 
     private func selectWorkflowTask(_ task: ProjectBoardTask) {
         viewModel.selectedTaskID = task.id
+        isInspectorPresented = false
+    }
+
+    private func openInspectorForWorkflowTask(_ taskID: Int64) {
+        viewModel.selectedTaskID = taskID
+        guard viewModel.selectedTask != nil else {
+            return
+        }
+
+        isInspectorPresented = true
     }
 
     private func applySelectedTaskOverrideIfNeeded() {
@@ -217,10 +252,122 @@ private struct ProjectBoardLaunchRecoveryView: View {
               viewModel.snapshot.projects.flatMap(\.tasks).contains(where: { $0.id == taskID }) else {
             return
         }
-        // Recovery evidence does not render the broader Project Board
-        // inspector, so restore the selected task directly into the workflow
-        // rail. This keeps voice-detail screenshots deterministic.
+        // Recovery launches must not mutate persisted Project Board selection;
+        // the env override only restores deterministic rail context for smoke evidence.
         viewModel.selectedTaskID = taskID
+    }
+}
+
+private struct ProjectBoardLaunchRecoveryTaskInspector: View {
+    let task: ProjectBoardTask
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    let onClose: () -> Void
+
+    @State private var title: String
+    @State private var detail: String
+    @State private var status: ProjectTaskStatus
+    @State private var priority: ProjectTaskPriority
+    @State private var dueAt: String
+
+    init(task: ProjectBoardTask, viewModel: ProjectBoardViewModel, onClose: @escaping () -> Void) {
+        self.task = task
+        self.viewModel = viewModel
+        self.onClose = onClose
+        _title = State(initialValue: task.title)
+        _detail = State(initialValue: task.detail)
+        _status = State(initialValue: task.status)
+        _priority = State(initialValue: task.priority)
+        _dueAt = State(initialValue: task.dueAt ?? "")
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                HStack(spacing: 12) {
+                    Label("Task Details", systemImage: "checklist")
+                        .font(.headline)
+                    Spacer(minLength: 12)
+                    Button {
+                        onClose()
+                    } label: {
+                        Label("Close Task Details", systemImage: "xmark.circle")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Close Task Details")
+                    .accessibilityIdentifier("task-inspector-close")
+                    .accessibilityHint("Close Task Details")
+                }
+            }
+
+            Section("Edit") {
+                TextField("Title", text: $title)
+                    .accessibilityIdentifier("task-inspector-title")
+                TextField("Detail", text: $detail, axis: .vertical)
+                    .lineLimit(4...8)
+                    .accessibilityIdentifier("task-inspector-detail")
+            }
+
+            Section("Fields") {
+                Picker("Status", selection: $status) {
+                    ForEach(ProjectTaskStatus.allCases) { status in
+                        Text(LocalizedStringKey(status.title))
+                            .tag(status)
+                    }
+                }
+                .accessibilityIdentifier("task-inspector-status")
+
+                Picker("Priority", selection: $priority) {
+                    ForEach(ProjectTaskPriority.allCases) { priority in
+                        Text(LocalizedStringKey(priority.label))
+                            .tag(priority)
+                    }
+                }
+                .accessibilityIdentifier("task-inspector-priority")
+
+                TextField("Due", text: $dueAt)
+                    .accessibilityIdentifier("task-inspector-due")
+            }
+
+            Section("Save") {
+                Button {
+                    let trimmedDueAt = dueAt.trimmingCharacters(in: .whitespacesAndNewlines)
+                    viewModel.updateSelectedTask(
+                        title: title,
+                        detail: detail,
+                        status: status,
+                        priority: priority,
+                        dueAt: trimmedDueAt.isEmpty ? nil : trimmedDueAt
+                    )
+                } label: {
+                    Label("Save Changes", systemImage: "checkmark.circle")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .help("Saves edits to the selected task in the local SoloPM database")
+                .accessibilityIdentifier("task-inspector-save")
+                .accessibilityHint("Saves edits to the selected task in the local SoloPM database.")
+            }
+        }
+        .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("task-inspector")
+        .accessibilityLabel("Task inspector for \(task.title)")
+        .accessibilityHint("Edit and save the selected task.")
+        .onAppear {
+            refreshFields(from: task)
+        }
+        .onChange(of: task) { _, newTask in
+            refreshFields(from: newTask)
+        }
+    }
+
+    private func refreshFields(from task: ProjectBoardTask) {
+        title = task.title
+        detail = task.detail
+        status = task.status
+        priority = task.priority
+        dueAt = task.dueAt ?? ""
     }
 }
 
