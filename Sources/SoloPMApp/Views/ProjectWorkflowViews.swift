@@ -193,7 +193,14 @@ struct ScheduleWorkflowView: View {
                 )
 
                 WeeklyScheduleCockpitPanel(
-                    cockpit: viewModel.weeklyScheduleCockpit(around: workloadReferenceDate)
+                    cockpit: viewModel.weeklyScheduleCockpit(around: workloadReferenceDate),
+                    queueReminderDraft: { task, day in
+                        viewModel.enqueueScheduleReminderDraft(
+                            for: task.id,
+                            sourceTranscript: "Schedule smart reminder draft",
+                            on: day.date
+                        )
+                    }
                 )
 
                 ScheduleStatusBanner(result: viewModel.scheduleApplyResult)
@@ -464,6 +471,7 @@ private extension DailyWorkloadDay {
 
 private struct WeeklyScheduleCockpitPanel: View {
     let cockpit: WeeklyScheduleCockpit
+    let queueReminderDraft: (ProjectBoardTask, WeeklyScheduleDay) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -494,7 +502,10 @@ private struct WeeklyScheduleCockpitPanel: View {
 
             HStack(alignment: .top, spacing: 12) {
                 WeeklyScheduleAgendaPanel(day: cockpit.agendaDay)
-                WeeklyScheduleReminderPanel(cockpit: cockpit)
+                WeeklyScheduleReminderPanel(
+                    cockpit: cockpit,
+                    queueReminderDraft: queueReminderDraft
+                )
             }
         }
         .padding(12)
@@ -723,6 +734,7 @@ private struct WeeklyScheduleAgendaPanel: View {
 
 private struct WeeklyScheduleReminderPanel: View {
     let cockpit: WeeklyScheduleCockpit
+    let queueReminderDraft: (ProjectBoardTask, WeeklyScheduleDay) -> Void
 
     private var topDays: [WeeklyScheduleDay] {
         cockpit.days
@@ -751,6 +763,21 @@ private struct WeeklyScheduleReminderPanel: View {
                         .foregroundStyle(.secondary)
                     Text(String(format: String(localized: "%d reminders"), day.reminderProposalCount))
                         .font(.caption)
+                    if let task = reminderProposalTask(for: day) {
+                        Spacer(minLength: 6)
+                        Button {
+                            queueReminderDraft(task, day)
+                        } label: {
+                            Label("Queue Reminder Draft", systemImage: "bell.badge")
+                                .labelStyle(.iconOnly)
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                        .help("Queue Reminder Draft")
+                        .accessibilityIdentifier("schedule-smart-reminder-draft-\(task.id)")
+                        .accessibilityLabel(String(format: String(localized: "Queue reminder draft for %@"), task.title))
+                        .accessibilityHint("Queues a Reminders draft for approval before any external write.")
+                    }
                 }
             }
             if !cockpit.unscheduledTasks.isEmpty {
@@ -762,9 +789,33 @@ private struct WeeklyScheduleReminderPanel: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("schedule-smart-reminders")
         .accessibilityLabel("Smart reminder proposals")
+    }
+
+    private func reminderProposalTask(for day: WeeklyScheduleDay) -> ProjectBoardTask? {
+        day.workload.projectContributions
+            .flatMap(\.tasks)
+            .filter { $0.status != .done }
+            .sorted { lhs, rhs in
+                if lhs.priority != rhs.priority {
+                    return priorityRank(lhs.priority) < priorityRank(rhs.priority)
+                }
+                return lhs.id < rhs.id
+            }
+            .first
+    }
+
+    private func priorityRank(_ priority: ProjectTaskPriority) -> Int {
+        switch priority {
+        case .high:
+            0
+        case .medium:
+            1
+        case .low:
+            2
+        }
     }
 }
 

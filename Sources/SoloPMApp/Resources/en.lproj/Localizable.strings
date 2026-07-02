@@ -624,7 +624,9 @@
 "Subtask for %@: " = "Subtask for %@: ";
 "Prefills the Today command field for a local subtask draft." = "Prefills the Today command field for a local subtask draft.";
 "Add Reminder Draft" = "Add Reminder Draft";
+"Queue Reminder Draft" = "Queue Reminder Draft";
 "Reminder for %@" = "Reminder for %@";
+"Queue reminder draft for %@" = "Queue reminder draft for %@";
 "Queues a Reminders draft for approval before any external write." = "Queues a Reminders draft for approval before any external write.";
 "Review selected task" = "Review selected task";
 "Resume focused task" = "Resume focused task";
@@ -644,6 +646,13 @@
 "Select an existing Today task before queuing a reminder." = "Select an existing Today task before queuing a reminder.";
 "Today assistant suggested a Reminders draft for 1 task." = "Today assistant suggested a Reminders draft for 1 task.";
 "Today assistant suggested Reminders drafts for %d tasks." = "Today assistant suggested Reminders drafts for %d tasks.";
+"Schedule reminder draft" = "Schedule reminder draft";
+"Reminder draft generated an invalid action plan." = "Reminder draft generated an invalid action plan.";
+"Schedule reminder draft is already in Assistant Queue." = "Schedule reminder draft is already in Assistant Queue.";
+"Queued Schedule reminder draft for approval." = "Queued Schedule reminder draft for approval.";
+"Select an existing Schedule task before queuing a reminder." = "Select an existing Schedule task before queuing a reminder.";
+"Schedule assistant suggested a Reminders draft for 1 task." = "Schedule assistant suggested a Reminders draft for 1 task.";
+"Schedule assistant suggested Reminders drafts for %d tasks." = "Schedule assistant suggested Reminders drafts for %d tasks.";
 "Overdue %@" = "Overdue %@";
 "Today %@" = "Today %@";
 "Due %@" = "Due %@";
