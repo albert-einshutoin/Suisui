@@ -153,28 +153,45 @@ final class DevelopmentAutomationRuntimeSmokeTests: XCTestCase {
         let headOID = try runGit(["rev-parse", "HEAD"], in: workspace)
             .standardOutput
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let pullRequestGitRunner = RuntimeSmokePullRequestGitRunner(
+        let lifecycleGitRunner = RuntimeSmokePullRequestGitRunner(
             remoteURL: "https://github.com/albert-einshutoin/soloPM.git",
             branchName: branchName,
             headOID: headOID
         )
+        let pushResult = try DevelopmentPushWorkflowTool(
+            projectStore: stores.projects,
+            gitRunner: lifecycleGitRunner,
+            bookmarkResolver: resolver
+        ).execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "branchName": .string(branchName)
+            ],
+            context: context
+        )
+
+        XCTAssertEqual(pushResult.status, .succeeded)
+        XCTAssertEqual(pushResult.output["requiresPullRequestApproval"], .bool(true))
+        XCTAssertEqual(pushResult.output["remoteRepository"], .string("albert-einshutoin/soloPM"))
+
+        let pullRequestURL = "https://github.com/albert-einshutoin/soloPM/pull/9999"
+        let baseBranch = "feature/phase14-product-completion"
         let githubRunner = RuntimeSmokeGitHubRunner(
-            output: GitHubCLICommandOutput(
-                standardOutput: "https://github.com/albert-einshutoin/soloPM/pull/9999\n",
-                standardError: "",
-                exitCode: 0
-            )
+            pullRequestURL: pullRequestURL,
+            branchName: branchName,
+            baseBranch: baseBranch,
+            headOID: headOID
         )
         let pullRequestResult = try DevelopmentPullRequestCreationTool(
             projectStore: stores.projects,
-            gitRunner: pullRequestGitRunner,
+            gitRunner: lifecycleGitRunner,
             githubRunner: githubRunner,
             bookmarkResolver: resolver
         ).execute(
             arguments: [
                 "projectId": .number(Double(project.id)),
                 "branchName": .string(branchName),
-                "baseBranch": .string("feature/phase14-product-completion"),
+                "baseBranch": .string(baseBranch),
                 "title": .string("Add development runtime smoke fixture"),
                 "body": .string("## Summary\n- Adds approved project-directory runtime smoke evidence\n")
             ],
@@ -184,16 +201,58 @@ final class DevelopmentAutomationRuntimeSmokeTests: XCTestCase {
         XCTAssertEqual(pullRequestResult.status, .succeeded)
         XCTAssertEqual(
             pullRequestResult.output["pullRequestURL"],
-            .string("https://github.com/albert-einshutoin/soloPM/pull/9999")
+            .string(pullRequestURL)
         )
+        XCTAssertEqual(pullRequestResult.output["headOid"], .string(headOID))
+
+        let reviewGateResult = try DevelopmentPullRequestReviewGateTool(
+            projectStore: stores.projects,
+            gitRunner: lifecycleGitRunner,
+            githubRunner: githubRunner,
+            bookmarkResolver: resolver
+        ).execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "pullRequestURL": .string(pullRequestURL),
+                "branchName": .string(branchName),
+                "baseBranch": .string(baseBranch)
+            ],
+            context: context
+        )
+
+        XCTAssertEqual(reviewGateResult.status, .succeeded)
+        XCTAssertEqual(reviewGateResult.output["readyToMerge"], .bool(true))
+        XCTAssertEqual(reviewGateResult.output["headRefOid"], .string(headOID))
+        XCTAssertEqual(reviewGateResult.output["unresolvedReviewThreadCount"], .number(0))
+
+        let mergeResult = try DevelopmentPullRequestMergeTool(
+            projectStore: stores.projects,
+            gitRunner: lifecycleGitRunner,
+            githubRunner: githubRunner,
+            bookmarkResolver: resolver
+        ).execute(
+            arguments: [
+                "projectId": .number(Double(project.id)),
+                "pullRequestURL": .string(pullRequestURL),
+                "branchName": .string(branchName),
+                "baseBranch": .string(baseBranch)
+            ],
+            context: context
+        )
+
+        XCTAssertEqual(mergeResult.status, .succeeded)
+        XCTAssertEqual(mergeResult.output["merged"], .bool(true))
+        XCTAssertEqual(mergeResult.output["deletedRemoteBranch"], .bool(true))
+        XCTAssertEqual(mergeResult.output["headRefOid"], .string(headOID))
+
         let githubInvocation = try XCTUnwrap(githubRunner.recordedInvocations.first)
-        XCTAssertEqual(githubRunner.recordedInvocations.count, 1)
+        XCTAssertEqual(githubRunner.recordedInvocations.count, 6)
         XCTAssertEqual(githubInvocation.workingDirectory, workspace.resolvingSymlinksInPath().standardizedFileURL)
         XCTAssertEqual(githubInvocation.arguments.count, 12)
         XCTAssertEqual(Array(githubInvocation.arguments.prefix(10)), [
             "pr", "create",
             "--repo", "albert-einshutoin/soloPM",
-            "--base", "feature/phase14-product-completion",
+            "--base", baseBranch,
             "--head", branchName,
             "--title", "Add development runtime smoke fixture"
         ])
@@ -203,14 +262,41 @@ final class DevelopmentAutomationRuntimeSmokeTests: XCTestCase {
         ])
         XCTAssertFalse(githubInvocation.arguments.contains("--body"))
         XCTAssertFalse(githubInvocation.arguments.contains("--fill"))
-        XCTAssertEqual(pullRequestGitRunner.recordedInvocations, [
+        let pullRequestStatusArguments = [
+            "pr", "view", pullRequestURL,
+            "--json", DevelopmentGitHubPRCommandPolicy.statusJSONFields
+        ]
+        let reviewThreadsArguments = DevelopmentGitHubPRCommandPolicy.reviewThreadsArguments(
+            owner: "albert-einshutoin",
+            repository: "soloPM",
+            number: 9999
+        )
+        let mergeArguments = [
+            "pr", "merge", pullRequestURL,
+            "--merge", "--delete-branch",
+            "--match-head-commit", headOID
+        ]
+        XCTAssertEqual(githubRunner.recordedInvocations.map(\.arguments), [
+            githubInvocation.arguments,
+            pullRequestStatusArguments,
+            reviewThreadsArguments,
+            pullRequestStatusArguments,
+            reviewThreadsArguments,
+            mergeArguments
+        ])
+        XCTAssertEqual(lifecycleGitRunner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL),
+            GitCommandInvocation(arguments: ["remote", "get-url", "--push", "--all", "origin"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL),
+            GitCommandInvocation(arguments: ["push", "-u", "origin", branchName], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL),
             GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL),
             GitCommandInvocation(arguments: ["remote", "get-url", "--push", "--all", "origin"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL),
             GitCommandInvocation(arguments: ["rev-parse", "HEAD"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL),
-            GitCommandInvocation(arguments: ["ls-remote", "https://github.com/albert-einshutoin/soloPM.git", "refs/heads/\(branchName)"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL)
+            GitCommandInvocation(arguments: ["ls-remote", "https://github.com/albert-einshutoin/soloPM.git", "refs/heads/\(branchName)"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL),
+            GitCommandInvocation(arguments: ["remote", "get-url", "origin"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL),
+            GitCommandInvocation(arguments: ["remote", "get-url", "origin"], workingDirectory: workspace.resolvingSymlinksInPath().standardizedFileURL)
         ])
 
-        XCTAssertGreaterThanOrEqual(resolver.resolvedBookmarks.count, 7)
+        XCTAssertGreaterThanOrEqual(resolver.resolvedBookmarks.count, 9)
         XCTAssertEqual(Set(resolver.resolvedBookmarks), [bookmarkData])
     }
 
@@ -297,6 +383,8 @@ private final class RuntimeSmokePullRequestGitRunner: GitCommandRunner, @uncheck
         switch arguments {
         case ["status", "--short", "--branch"]:
             return try processRunner.runGit(arguments: arguments, workingDirectory: workingDirectory)
+        case ["remote", "get-url", "origin"]:
+            return GitCommandOutput(standardOutput: "\(remoteURL)\n", standardError: "", exitCode: 0)
         case ["remote", "get-url", "--push", "--all", "origin"]:
             return GitCommandOutput(standardOutput: "\(remoteURL)\n", standardError: "", exitCode: 0)
         case ["rev-parse", "HEAD"]:
@@ -304,6 +392,12 @@ private final class RuntimeSmokePullRequestGitRunner: GitCommandRunner, @uncheck
         case ["ls-remote", remoteURL, "refs/heads/\(branchName)"]:
             return GitCommandOutput(
                 standardOutput: "\(headOID)\trefs/heads/\(branchName)\n",
+                standardError: "",
+                exitCode: 0
+            )
+        case ["push", "-u", "origin", branchName]:
+            return GitCommandOutput(
+                standardOutput: "branch '\(branchName)' set up to track 'origin/\(branchName)'.\n",
                 standardError: "",
                 exitCode: 0
             )
@@ -345,12 +439,18 @@ private final class RuntimeSmokeBookmarkResolver: ProjectWorkspaceBookmarkResolv
 }
 
 private final class RuntimeSmokeGitHubRunner: GitHubCLICommandRunner, @unchecked Sendable {
-    private let output: GitHubCLICommandOutput
+    private let pullRequestURL: String
+    private let branchName: String
+    private let baseBranch: String
+    private let headOID: String
     private(set) var recordedInvocations: [GitHubCLICommandInvocation] = []
     private(set) var recordedBodyFiles: [String] = []
 
-    init(output: GitHubCLICommandOutput) {
-        self.output = output
+    init(pullRequestURL: String, branchName: String, baseBranch: String, headOID: String) {
+        self.pullRequestURL = pullRequestURL
+        self.branchName = branchName
+        self.baseBranch = baseBranch
+        self.headOID = headOID
     }
 
     func runGitHub(arguments: [String], workingDirectory: URL) throws -> GitHubCLICommandOutput {
@@ -367,7 +467,82 @@ private final class RuntimeSmokeGitHubRunner: GitHubCLICommandRunner, @unchecked
                 (try? String(contentsOfFile: bodyFile, encoding: .utf8)) ?? ""
             )
         }
-        return output
+
+        if Array(arguments.prefix(2)) == ["pr", "create"] {
+            return GitHubCLICommandOutput(standardOutput: "\(pullRequestURL)\n", standardError: "", exitCode: 0)
+        }
+        if Array(arguments.prefix(3)) == ["pr", "view", pullRequestURL] {
+            return GitHubCLICommandOutput(standardOutput: pullRequestStatusJSON, standardError: "", exitCode: 0)
+        }
+        if Array(arguments.prefix(2)) == ["api", "graphql"] {
+            return GitHubCLICommandOutput(standardOutput: reviewThreadsJSON, standardError: "", exitCode: 0)
+        }
+        if arguments == [
+            "pr", "merge", pullRequestURL,
+            "--merge", "--delete-branch",
+            "--match-head-commit", headOID
+        ] {
+            return GitHubCLICommandOutput(
+                standardOutput: "Merged pull request \(pullRequestURL)\n",
+                standardError: "",
+                exitCode: 0
+            )
+        }
+
+        return GitHubCLICommandOutput(standardOutput: "", standardError: "unexpected gh command", exitCode: 127)
+    }
+
+    private var pullRequestStatusJSON: String {
+        """
+        {
+          "url": "\(pullRequestURL)",
+          "headRefName": "\(branchName)",
+          "headRefOid": "\(headOID)",
+          "baseRefName": "\(baseBranch)",
+          "headRepository": {
+            "name": "soloPM",
+            "nameWithOwner": "albert-einshutoin/soloPM"
+          },
+          "headRepositoryOwner": {
+            "login": "albert-einshutoin"
+          },
+          "isCrossRepository": false,
+          "reviewDecision": "APPROVED",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [
+            {
+              "name": "SwiftPM macOS",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS"
+            }
+          ]
+        }
+        """
+    }
+
+    private var reviewThreadsJSON: String {
+        """
+        {
+          "data": {
+            "repository": {
+              "pullRequest": {
+                "reviewThreads": {
+                  "totalCount": 1,
+                  "nodes": [
+                    {
+                      "isResolved": true
+                    }
+                  ],
+                  "pageInfo": {
+                    "hasNextPage": false
+                  }
+                }
+              }
+            }
+          }
+        }
+        """
     }
 }
 
