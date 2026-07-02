@@ -876,7 +876,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         var changeCount = 0
         let viewModel = ProjectBoardViewModel(
             store: InMemoryProjectBoardStore(),
-            executionReceiptStore: InMemoryExecutionReceiptStore(),
+            executionReceiptStore: VolatileExecutionReceiptStore(),
             onChange: { changeCount += 1 }
         )
         viewModel.load()
@@ -1079,7 +1079,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     func testDevelopmentAutomationPushQueueDraftUsesSeparateApprovalGate() throws {
         let stores = try makeStoreBundle()
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let viewModel = ProjectBoardViewModel(
             store: stores.board,
             assistantQueueStore: assistantQueueStore,
@@ -1149,7 +1149,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     func testDevelopmentAutomationPullRequestCreationQueueDraftRequiresReviewedBaseTitleAndBody() throws {
         let stores = try makeStoreBundle()
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let viewModel = ProjectBoardViewModel(
             store: stores.board,
             assistantQueueStore: assistantQueueStore,
@@ -1264,7 +1264,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     func testDevelopmentAutomationProgressQueuesReviewAndMergeFromReceipts() throws {
         let stores = try makeStoreBundle()
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let viewModel = ProjectBoardViewModel(
             store: stores.board,
             assistantQueueStore: assistantQueueStore,
@@ -1693,7 +1693,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     func testDevelopmentRepositoryUpdateReviewRequiresExpectedSHA() throws {
         let stores = try makeStoreBundle()
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let viewModel = ProjectBoardViewModel(
             store: stores.board,
             assistantQueueStore: assistantQueueStore,
@@ -1770,7 +1770,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     func testDevelopmentAutomationQueueHandoffIgnoresSplitActionTupleMismatches() throws {
         let stores = try makeStoreBundle()
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let viewModel = ProjectBoardViewModel(
             store: stores.board,
             assistantQueueStore: assistantQueueStore,
@@ -1840,7 +1840,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     func testDevelopmentAutomationQueueHandoffPrefersFocusedCurrentStageItem() throws {
         let stores = try makeStoreBundle()
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let viewModel = ProjectBoardViewModel(
             store: stores.board,
             assistantQueueStore: assistantQueueStore,
@@ -1920,7 +1920,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     func testDevelopmentAutomationQueueHandoffMatchesPullRequestPayloadWithoutRequestIDCoupling() throws {
         let stores = try makeStoreBundle()
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let viewModel = ProjectBoardViewModel(
             store: stores.board,
             assistantQueueStore: assistantQueueStore,
@@ -1989,7 +1989,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     func testDevelopmentAutomationProgressBlocksLifecycleQueueWithoutReceiptEvidence() throws {
         let stores = try makeStoreBundle()
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let viewModel = ProjectBoardViewModel(
             store: stores.board,
             assistantQueueStore: assistantQueueStore,
@@ -2042,7 +2042,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     @MainActor
     func testDevelopmentAutomationProgressKeepsLegacyPushedReceiptMovingToPullRequestCreation() throws {
         let stores = try makeStoreBundle()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let viewModel = ProjectBoardViewModel(
             store: stores.board,
             executionReceiptStore: receiptStore
@@ -2250,7 +2250,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     func testProjectBoardViewModelRecordsTaskContentExecutionWhenApprovedAutomationRuns() throws {
         let viewModel = ProjectBoardViewModel(
             store: InMemoryProjectBoardStore(),
-            executionReceiptStore: InMemoryExecutionReceiptStore()
+            executionReceiptStore: VolatileExecutionReceiptStore()
         )
         viewModel.load()
         let task = try XCTUnwrap(viewModel.createTask(
@@ -2339,7 +2339,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     func testProjectBoardViewModelRecordsRedactedApprovedAutomationExecutionReceipt() throws {
         let viewModel = ProjectBoardViewModel(
             store: InMemoryProjectBoardStore(),
-            executionReceiptStore: InMemoryExecutionReceiptStore()
+            executionReceiptStore: VolatileExecutionReceiptStore()
         )
         viewModel.load()
         let task = try XCTUnwrap(viewModel.createTask(
@@ -2370,7 +2370,7 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     @MainActor
     func testProjectBoardViewModelLoadsGlobalExecutionReceiptHistory() throws {
-        let receiptStore = InMemoryExecutionReceiptStore(receipts: [
+        let receiptStore = VolatileExecutionReceiptStore(receipts: [
             ExecutionReceipt(
                 id: "receipt-board-history",
                 runID: "run-board-history",
@@ -2406,7 +2406,7 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     @MainActor
     func testProjectBoardViewModelLoadsExecutionUsageMeterFromReceiptsWithoutRawFields() throws {
-        let receiptStore = InMemoryExecutionReceiptStore(receipts: [
+        let receiptStore = VolatileExecutionReceiptStore(receipts: [
             ExecutionReceipt(
                 id: "receipt-usage-estimated-token=secret",
                 runID: "run-usage-estimated",
@@ -2535,7 +2535,7 @@ final class ProjectBoardStoreTests: XCTestCase {
             startedAt: Date(timeIntervalSince1970: 100),
             finishedAt: Date(timeIntervalSince1970: 120)
         )
-        let receiptStore = InMemoryExecutionReceiptStore(receipts: [externalMCPReceipt])
+        let receiptStore = VolatileExecutionReceiptStore(receipts: [externalMCPReceipt])
         let task = ProjectBoardTask(
             id: 42,
             projectID: 7,
@@ -2583,7 +2583,7 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     @MainActor
     func testProjectBoardViewModelHidesNonAuditReceiptsFromDoneHistoryAndExport() throws {
-        let receiptStore = InMemoryExecutionReceiptStore(receipts: [
+        let receiptStore = VolatileExecutionReceiptStore(receipts: [
             ExecutionReceipt(
                 id: "receipt-audit-visible",
                 runID: "run-audit-visible",
@@ -2639,7 +2639,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     func testProjectBoardViewModelFiltersAndExportsExecutionReceiptHistory() throws {
         let rawReceiptID = "receipt:https://docs.example.com/export?token=board-export-secret"
         let taskReferenceID = "task-board-export-secret"
-        let receiptStore = InMemoryExecutionReceiptStore(receipts: [
+        let receiptStore = VolatileExecutionReceiptStore(receipts: [
             ExecutionReceipt(
                 id: "receipt-unrelated-board-export",
                 runID: "run-unrelated-board-export",
@@ -2707,7 +2707,7 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     @MainActor
     func testProjectBoardViewModelPersistsApprovedAutomationReceiptToGlobalHistory() throws {
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let viewModel = ProjectBoardViewModel(
             store: InMemoryProjectBoardStore(),
             executionReceiptStore: receiptStore
@@ -2753,7 +2753,7 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     @MainActor
     func testProjectBoardViewModelPersistsDocumentDeliverableReceiptToGlobalAndScopedHistory() throws {
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let viewModel = ProjectBoardViewModel(
             store: InMemoryProjectBoardStore(),
             executionReceiptStore: receiptStore
@@ -2865,7 +2865,7 @@ final class ProjectBoardStoreTests: XCTestCase {
                 visibleSurfaces: [.doneList]
             )
         }
-        let receiptStore = InMemoryExecutionReceiptStore(receipts: [scopedReceipt] + newerUnrelatedReceipts + [
+        let receiptStore = VolatileExecutionReceiptStore(receipts: [scopedReceipt] + newerUnrelatedReceipts + [
             ExecutionReceipt(
                 id: "receipt-global-only",
                 runID: "run-global-only",
@@ -3035,7 +3035,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     func testProjectBoardViewModelPreservesBatchReviewAndReceiptHistoryAcrossApprovedTaskExecution() throws {
         let viewModel = ProjectBoardViewModel(
             store: InMemoryProjectBoardStore(),
-            executionReceiptStore: InMemoryExecutionReceiptStore()
+            executionReceiptStore: VolatileExecutionReceiptStore()
         )
         viewModel.load()
         _ = viewModel.createTask(title: "Low future", status: .planned, priority: .low, dueAt: "2026-06-24T08:00:00Z")
@@ -3098,7 +3098,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     func testProjectBoardViewModelBuildsTaskAutomationPlanningRequestWithDocumentDeliverables() throws {
         let viewModel = ProjectBoardViewModel(
             store: InMemoryProjectBoardStore(),
-            executionReceiptStore: InMemoryExecutionReceiptStore()
+            executionReceiptStore: VolatileExecutionReceiptStore()
         )
         viewModel.load()
         _ = viewModel.createTask(title: "Low future", status: .planned, priority: .low, dueAt: "2026-06-24T08:00:00Z")
@@ -3175,7 +3175,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     func testProjectBoardViewModelExposesDocumentDeliverableSourcesForAutomationReviewUI() throws {
         let viewModel = ProjectBoardViewModel(
             store: InMemoryProjectBoardStore(),
-            executionReceiptStore: InMemoryExecutionReceiptStore()
+            executionReceiptStore: VolatileExecutionReceiptStore()
         )
         viewModel.load()
         _ = viewModel.createTask(
@@ -3239,7 +3239,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     func testProjectBoardViewModelShowsOnlyProviderReviewableDocumentDeliverables() throws {
         let viewModel = ProjectBoardViewModel(
             store: InMemoryProjectBoardStore(),
-            executionReceiptStore: InMemoryExecutionReceiptStore()
+            executionReceiptStore: VolatileExecutionReceiptStore()
         )
         viewModel.load()
         _ = viewModel.createTask(
@@ -5399,7 +5399,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let referenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 21, hour: 9).date)
         let calendarClient = InMemoryCalendarClient()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let viewModel = ProjectBoardViewModel(
             store: InMemoryProjectBoardStore(),
             executionReceiptStore: receiptStore,
@@ -5531,7 +5531,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let referenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 21, hour: 9).date)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let viewModel = ProjectBoardViewModel(
             store: InMemoryProjectBoardStore(),
             executionReceiptStore: receiptStore
@@ -5554,7 +5554,7 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     @MainActor
     func testScheduleApplyWithoutDraftPersistsSkippedReceiptAfterApproval() throws {
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let viewModel = ProjectBoardViewModel(
             store: InMemoryProjectBoardStore(),
             executionReceiptStore: receiptStore,
@@ -5577,7 +5577,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let referenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 21, hour: 9).date)
         let calendarClient = InMemoryCalendarClient()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let viewModel = ProjectBoardViewModel(
             store: InMemoryProjectBoardStore(),
             executionReceiptStore: receiptStore,
@@ -5634,7 +5634,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let referenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 21, hour: 9).date)
         let calendarClient = InMemoryCalendarClient(authorizationStatus: .denied)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let viewModel = ProjectBoardViewModel(
             store: InMemoryProjectBoardStore(),
             executionReceiptStore: receiptStore,
@@ -5668,7 +5668,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let referenceDate = try XCTUnwrap(DateComponents(calendar: calendar, timeZone: calendar.timeZone, year: 2026, month: 6, day: 21, hour: 9).date)
         let calendarClient = FailingAfterFirstCalendarClient()
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let viewModel = ProjectBoardViewModel(
             store: InMemoryProjectBoardStore(),
             executionReceiptStore: receiptStore,

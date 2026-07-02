@@ -578,7 +578,7 @@ final class AssistantQueueStoreTests: XCTestCase {
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         let boardStore = SQLiteProjectBoardStore(connection: connection)
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let item = makeItem(id: "queue-project-board-receipt", state: .done, summary: "Create visible receipt task")
         try assistantQueueStore.save(item)
         try receiptStore.save(makeReceipt(
@@ -841,7 +841,7 @@ final class AssistantQueueStoreTests: XCTestCase {
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         let boardStore = SQLiteProjectBoardStore(connection: connection)
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let approved = try AssistantQueueStateMachine.approve(
             makeItem(id: "queue-visible-run", state: .waitingReview, summary: "Create runnable task"),
             reviewerID: "local-user"
@@ -944,7 +944,7 @@ final class AssistantQueueStoreTests: XCTestCase {
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         let boardStore = SQLiteProjectBoardStore(connection: connection)
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let approved = try AssistantQueueStateMachine.approve(
             makeItem(
                 id: "queue-managed-usage-ledger-failure",
@@ -1003,7 +1003,7 @@ final class AssistantQueueStoreTests: XCTestCase {
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         let boardStore = SQLiteProjectBoardStore(connection: connection)
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
-        let receiptStore = InMemoryExecutionReceiptStore()
+        let receiptStore = VolatileExecutionReceiptStore()
         let ledgerStore = SQLiteManagedAIUsageLedgerStore(connection: connection)
         try ledgerStore.record(ManagedAIUsageLedgerEntry(
             sourceReceiptDigest: ManagedAIUsageLedgerEntry.digestIdentifier(kind: "receipt", value: "existing-board-cap"),

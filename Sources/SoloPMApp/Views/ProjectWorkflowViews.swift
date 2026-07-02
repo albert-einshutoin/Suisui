@@ -4019,7 +4019,7 @@ private struct InboxVoiceIntakeDetail: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inbox-voice-playback")
         .accessibilityLabel("Voice playback")
-        .accessibilityValue("Playback unavailable in this MVP, duration \(capture.durationLabel), waveform preview placeholder")
+        .accessibilityValue("Playback unavailable in this MVP, duration \(capture.durationLabel), waveform preview only")
     }
 
     private var waveformBars: [CGFloat] {

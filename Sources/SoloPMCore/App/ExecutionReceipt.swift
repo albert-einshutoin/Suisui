@@ -421,7 +421,7 @@ public struct ExecutionReceiptSearchFilter: Equatable, Sendable {
     }
 }
 
-public final class InMemoryExecutionReceiptStore: ExecutionReceiptStore, @unchecked Sendable {
+public final class VolatileExecutionReceiptStore: ExecutionReceiptStore, @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [ExecutionReceipt]
 

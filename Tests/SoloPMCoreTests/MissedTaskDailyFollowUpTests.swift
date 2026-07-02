@@ -3,7 +3,7 @@ import XCTest
 
 final class MissedTaskDailyFollowUpTests: XCTestCase {
     func testSchedulerSchedulesOneCountOnlyFollowUpAndRecordsDay() throws {
-        let stateStore = InMemoryMissedTaskReviewStateStore()
+        let stateStore = VolatileMissedTaskReviewStateStore()
         let notificationClient = InMemoryNotificationClient()
         let scheduler = MissedTaskDailyFollowUpScheduler(
             stateStore: stateStore,
@@ -35,7 +35,7 @@ final class MissedTaskDailyFollowUpTests: XCTestCase {
     }
 
     func testSchedulerSkipsWhenAlreadyNotifiedToday() throws {
-        let stateStore = InMemoryMissedTaskReviewStateStore()
+        let stateStore = VolatileMissedTaskReviewStateStore()
         try stateStore.recordNotification(day: "2026-06-30", at: try Date.iso8601("2026-06-30T08:00:00Z"))
         let notificationClient = InMemoryNotificationClient()
         let scheduler = MissedTaskDailyFollowUpScheduler(
@@ -55,7 +55,7 @@ final class MissedTaskDailyFollowUpTests: XCTestCase {
     }
 
     func testSchedulerSkipsExistingPendingNotificationAndRepairsNotificationDay() throws {
-        let stateStore = InMemoryMissedTaskReviewStateStore()
+        let stateStore = VolatileMissedTaskReviewStateStore()
         let notificationClient = InMemoryNotificationClient()
         _ = try notificationClient.schedule(NotificationDraft(
             title: "SoloPM Catch Up",
@@ -99,7 +99,7 @@ final class MissedTaskDailyFollowUpTests: XCTestCase {
     }
 
     func testSchedulerSkipsWhenNotificationsAreDisabled() throws {
-        let stateStore = InMemoryMissedTaskReviewStateStore()
+        let stateStore = VolatileMissedTaskReviewStateStore()
         let notificationClient = InMemoryNotificationClient()
         let scheduler = MissedTaskDailyFollowUpScheduler(
             stateStore: stateStore,
@@ -117,7 +117,7 @@ final class MissedTaskDailyFollowUpTests: XCTestCase {
     }
 
     func testSchedulerSkipsWhenImmediateQueueIsEmpty() throws {
-        let stateStore = InMemoryMissedTaskReviewStateStore()
+        let stateStore = VolatileMissedTaskReviewStateStore()
         let notificationClient = InMemoryNotificationClient()
         let scheduler = MissedTaskDailyFollowUpScheduler(
             stateStore: stateStore,
@@ -135,7 +135,7 @@ final class MissedTaskDailyFollowUpTests: XCTestCase {
     }
 
     func testSchedulerDoesNotRecordDayWhenNotificationFailsAndRedactsMessage() throws {
-        let stateStore = InMemoryMissedTaskReviewStateStore()
+        let stateStore = VolatileMissedTaskReviewStateStore()
         let secret = "sk-missed-task-secret"
         let scheduler = MissedTaskDailyFollowUpScheduler(
             stateStore: stateStore,
@@ -155,7 +155,7 @@ final class MissedTaskDailyFollowUpTests: XCTestCase {
     }
 
     func testSchedulerUsesConfiguredTimeZoneForNotificationDay() throws {
-        let stateStore = InMemoryMissedTaskReviewStateStore()
+        let stateStore = VolatileMissedTaskReviewStateStore()
         let notificationClient = InMemoryNotificationClient()
         let scheduler = MissedTaskDailyFollowUpScheduler(
             stateStore: stateStore,
