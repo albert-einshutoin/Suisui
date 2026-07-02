@@ -66,6 +66,25 @@ release_candidate_source_commit() {
 
 SOURCE_COMMIT="$(release_candidate_source_commit)"
 
+sanitize_voiceover_evidence_source() {
+  local value="$1"
+  local project_id
+
+  project_id="$(sed -nE 's/.*project:([0-9][0-9]*).*/\1/p' <<<"$value" | head -n 1)"
+  if [[ -n "$project_id" && ( "$value" == *".tmp/voiceover-review"* || "$value" == *"SoloPM-voiceover-review.sqlite"* ) ]]; then
+    # Release evidence is tracked and often reviewed in public diffs. Keep the
+    # exact pinned DB path in ignored launch helpers, but abstract it here.
+    printf 'dist/%s.app manual VoiceOver pass using isolated .tmp voiceover review database project:%s' "$APP_NAME" "$project_id"
+    return
+  fi
+
+  value="${value//$ROOT_DIR/[REDACTED_REPO_ROOT]}"
+  printf '%s' "$value" | sed -E \
+    -e 's#file://[^[:space:]`)]+#[REDACTED_LOCAL_FILE_URL]#g' \
+    -e 's#/(Users|Volumes|private|tmp|var)/[^[:space:]`)]+#[REDACTED_LOCAL_PATH]#g' \
+    -e 's#~/[^[:space:]`)]+#[REDACTED_HOME_PATH]#g'
+}
+
 usage() {
   printf '%s\n' "usage: $0 (--pending|--passed|--validate-only) [--output PATH] [--checked-by NAME] [--macos-version VERSION] [--check-date YYYY-MM-DD] [--evidence-source TEXT] [--accessibility-environment TEXT] [--runtime-ax-smoke-note TEXT|--capture-runtime-ax-smoke] [--project-navigation-note TEXT] [--project-board-detail-note TEXT] [--open-task-note TEXT] [--inline-task-composer-note TEXT] [--status-controls-note TEXT] [--task-inspector-note TEXT] [--inbox-voice-triage-note TEXT] [--today-rail-actions-note TEXT] [--save-changes-note TEXT] [--task-content-execution-note TEXT] [--delete-confirmation-note TEXT] [--no-keyboard-trap-note TEXT] [--no-unlabeled-crud-note TEXT] [--confirm-manual-voiceover-pass]"
   printf '%s\n' ""
@@ -495,6 +514,8 @@ if [[ -z "${OUTPUT_FILE//[[:space:]]/}" ]]; then
   echo "--output must not be blank" >&2
   exit 2
 fi
+
+EVIDENCE_SOURCE="$(sanitize_voiceover_evidence_source "$EVIDENCE_SOURCE")"
 
 if [[ "$VOICEOVER_STATUS" == "passed" ]]; then
   if [[ "$CONFIRM_MANUAL_PASS" -ne 1 ]]; then

@@ -109,6 +109,22 @@ query_single_value() {
   "$SQLITE3" -batch -noheader "$database_path" "$sql" | tail -n 1
 }
 
+voiceover_evidence_source_for_candidate() {
+  local candidate_database_path="$1"
+  local candidate_project_id="$2"
+  local database_descriptor="isolated VoiceOver review database"
+
+  case "$candidate_database_path" in
+    "$ROOT_DIR/.tmp/voiceover-review/"*)
+      database_descriptor="isolated .tmp voiceover review database"
+      ;;
+  esac
+
+  # Tracked evidence is public repo state, so keep exact local paths in ignored
+  # helper files and describe the candidate source at the review-context level.
+  printf 'dist/%s.app manual VoiceOver pass using %s project:%s' "$APP_NAME" "$database_descriptor" "$candidate_project_id"
+}
+
 write_voiceover_evidence_invocation() {
   local mode="$1"
   local evidence_source="$2"
@@ -215,7 +231,7 @@ write_voiceover_evidence_command() {
   local candidate_project_id="$3"
   local evidence_source
 
-  evidence_source="dist/$APP_NAME.app manual VoiceOver pass using $candidate_database_path project:$candidate_project_id"
+  evidence_source="$(voiceover_evidence_source_for_candidate "$candidate_database_path" "$candidate_project_id")"
 
   {
     printf '%s\n' '#!/usr/bin/env bash'
@@ -850,7 +866,7 @@ launch_env_file="$ROOT_DIR/.tmp/voiceover-review/launch.env"
 evidence_command_file="$ROOT_DIR/.tmp/voiceover-review/create-evidence-command.sh"
 worksheet_file="$ROOT_DIR/.tmp/voiceover-review/voiceover-worksheet.md"
 pending_evidence_file="$ROOT_DIR/.tmp/voiceover-review/accessibility-voiceover-pending-$SOURCE_COMMIT.md"
-pending_evidence_source="dist/$APP_NAME.app manual VoiceOver pass using $database_path project:$seed_project_id"
+pending_evidence_source="$(voiceover_evidence_source_for_candidate "$database_path" "$seed_project_id")"
 {
   printf 'SOLOPM_DISABLE_KEYCHAIN_SECRET_STORE=1\n'
   printf 'SOLOPM_LAUNCH_RECOVERY_MODE=1\n'
