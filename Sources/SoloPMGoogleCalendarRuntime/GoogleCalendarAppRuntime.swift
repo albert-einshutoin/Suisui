@@ -118,6 +118,38 @@ public final class GoogleCalendarOAuthCredentialStore: @unchecked Sendable {
         ))
     }
 
+    public func saveRefreshedAccessToken(
+        accessToken: String,
+        refreshToken: String?,
+        grantedScopes: Set<String>,
+        expiresAt: Date?,
+        previousMetadata: GoogleCalendarOAuthCredentialMetadata
+    ) throws {
+        guard accessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            throw GoogleCalendarRuntimeError.invalidAccessToken
+        }
+        let normalizedRefreshToken = refreshToken?.trimmingCharacters(in: .whitespacesAndNewlines)
+        try secretStore.save(accessToken, for: Self.accessTokenKey)
+
+        let refreshTokenKey: SecretKey?
+        if let refreshToken, normalizedRefreshToken?.isEmpty == false {
+            try secretStore.save(refreshToken, for: Self.refreshTokenKey)
+            refreshTokenKey = Self.refreshTokenKey
+        } else {
+            // Google normally omits refresh_token on refresh responses. Preserve
+            // the existing Keychain refresh token reference so future refreshes
+            // remain possible without writing token material into SQLite.
+            refreshTokenKey = previousMetadata.refreshTokenKey
+        }
+
+        try metadataStore.saveMetadata(GoogleCalendarOAuthCredentialMetadata(
+            grantedScopes: grantedScopes,
+            expiresAt: expiresAt,
+            accessTokenKey: Self.accessTokenKey,
+            refreshTokenKey: refreshTokenKey
+        ))
+    }
+
     public func accessToken(for metadata: GoogleCalendarOAuthCredentialMetadata) throws -> String? {
         try secretStore.read(metadata.accessTokenKey)
     }
@@ -167,6 +199,22 @@ public struct GoogleCalendarOAuthAuthorizationConfiguration: Equatable, Sendable
         self.authorizationEndpoint = authorizationEndpoint
         self.tokenEndpoint = tokenEndpoint
         self.scopes = scopes
+    }
+}
+
+public struct GoogleCalendarOAuthTokenRefreshConfiguration: Equatable, Sendable {
+    public var clientID: String
+    public var tokenEndpoint: URL
+    public var minimumTokenLifetime: TimeInterval
+
+    public init(
+        clientID: String,
+        tokenEndpoint: URL = URL(string: "https://oauth2.googleapis.com/token")!,
+        minimumTokenLifetime: TimeInterval = 60
+    ) {
+        self.clientID = clientID
+        self.tokenEndpoint = tokenEndpoint
+        self.minimumTokenLifetime = minimumTokenLifetime
     }
 }
 
@@ -436,6 +484,90 @@ public struct GoogleCalendarOAuthAuthorizationService: Sendable {
     }
 }
 
+public struct GoogleCalendarOAuthTokenRefreshService: Sendable {
+    private let configuration: GoogleCalendarOAuthTokenRefreshConfiguration
+    private let httpClient: any SynchronousHTTPDataClient
+    private let credentialStore: GoogleCalendarOAuthCredentialStore
+
+    var minimumTokenLifetime: TimeInterval {
+        configuration.minimumTokenLifetime
+    }
+
+    public init(
+        configuration: GoogleCalendarOAuthTokenRefreshConfiguration,
+        httpClient: any SynchronousHTTPDataClient = URLSessionSynchronousHTTPDataClient(),
+        credentialStore: GoogleCalendarOAuthCredentialStore
+    ) {
+        self.configuration = configuration
+        self.httpClient = httpClient
+        self.credentialStore = credentialStore
+    }
+
+    public func refreshAccessToken(
+        previousMetadata: GoogleCalendarOAuthCredentialMetadata,
+        now: Date = Date()
+    ) throws -> GoogleCalendarOAuthCredentialMetadata {
+        let normalizedClientID = configuration.clientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedClientID.isEmpty == false else {
+            throw GoogleCalendarRuntimeError.apiFailure("Google OAuth token refresh client ID is not configured.")
+        }
+        guard let refreshToken = try credentialStore.refreshToken(for: previousMetadata)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            refreshToken.isEmpty == false else {
+            throw GoogleCalendarRuntimeError.invalidAccessToken
+        }
+
+        let request = try makeRefreshRequest(clientID: normalizedClientID, refreshToken: refreshToken)
+        let (data, response) = try httpClient.data(for: request)
+        guard (200..<300).contains(response.statusCode) else {
+            throw GoogleCalendarRuntimeError.apiFailure("Google OAuth token refresh failed with HTTP \(response.statusCode).")
+        }
+
+        let tokenResponse: GoogleCalendarOAuthTokenResponse
+        do {
+            tokenResponse = try JSONDecoder().decode(GoogleCalendarOAuthTokenResponse.self, from: data)
+        } catch {
+            throw GoogleCalendarRuntimeError.apiFailure("Google OAuth token refresh response could not be decoded.")
+        }
+
+        let accessToken = tokenResponse.accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard accessToken.isEmpty == false else {
+            throw GoogleCalendarRuntimeError.invalidAccessToken
+        }
+
+        try credentialStore.saveRefreshedAccessToken(
+            accessToken: accessToken,
+            refreshToken: tokenResponse.refreshToken,
+            grantedScopes: tokenResponse.grantedScopes(defaultScopes: previousMetadata.grantedScopes),
+            expiresAt: tokenResponse.expiresIn.map { now.addingTimeInterval(TimeInterval($0)) },
+            previousMetadata: previousMetadata
+        )
+        guard let metadata = try credentialStore.loadMetadata() else {
+            throw GoogleCalendarRuntimeError.invalidAccessToken
+        }
+        return metadata
+    }
+
+    private func makeRefreshRequest(clientID: String, refreshToken: String) throws -> URLRequest {
+        var request = URLRequest(url: configuration.tokenEndpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.httpBody = formURLEncoded([
+            "client_id": clientID,
+            "grant_type": "refresh_token",
+            "refresh_token": refreshToken
+        ]).data(using: .utf8)
+        return request
+    }
+
+    private func formURLEncoded(_ values: [String: String]) -> String {
+        values
+            .sorted { $0.key < $1.key }
+            .map { key, value in "\(key.formEncoded)=\(value.formEncoded)" }
+            .joined(separator: "&")
+    }
+}
+
 public struct GoogleCalendarOAuthCredentialStatusStore: GoogleCalendarRuntimeCredentialStatusStore {
     private let credentialStore: GoogleCalendarOAuthCredentialStore
     private let refreshTokenSupportEnabled: Bool
@@ -460,9 +592,9 @@ public struct GoogleCalendarOAuthCredentialStatusStore: GoogleCalendarRuntimeCre
         return GoogleCalendarRuntimeCredentialStatus(
             grantedScopes: metadata.grantedScopes,
             expiresAt: metadata.expiresAt,
-            // The personal MVP does not implement token refresh yet. Reporting
-            // refresh capability only when the runtime owns refresh avoids a
-            // misleading ready state for already-expired OAuth sessions.
+            // Report refresh capability only when app composition provides the
+            // refresh runtime, otherwise expired OAuth metadata would look ready
+            // even though the next calendar write cannot renew its bearer token.
             hasRefreshToken: refreshTokenSupportEnabled && refreshToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
         )
     }
@@ -516,28 +648,58 @@ public protocol GoogleCalendarBearerTokenProvider: Sendable {
 public struct GoogleCalendarOAuthBearerTokenProvider: GoogleCalendarBearerTokenProvider {
     private let credentialStore: GoogleCalendarOAuthCredentialStore
     private let requiredScopes: Set<String>
+    private let refreshService: GoogleCalendarOAuthTokenRefreshService?
+    private let nowProvider: @Sendable () -> Date
 
     public init(
         credentialStore: GoogleCalendarOAuthCredentialStore,
-        requiredScopes: Set<String> = [GoogleCalendarRuntimeOAuthScope.eventsWrite]
+        requiredScopes: Set<String> = [GoogleCalendarRuntimeOAuthScope.eventsWrite],
+        refreshService: GoogleCalendarOAuthTokenRefreshService? = nil,
+        nowProvider: @escaping @Sendable () -> Date = Date.init
     ) {
         self.credentialStore = credentialStore
         self.requiredScopes = requiredScopes
+        self.refreshService = refreshService
+        self.nowProvider = nowProvider
     }
 
     public func bearerToken() throws -> String {
-        guard let metadata = try credentialStore.loadMetadata() else {
-            throw GoogleCalendarRuntimeError.disconnected
-        }
-        let missingScopes = requiredScopes.subtracting(metadata.grantedScopes)
-        guard missingScopes.isEmpty else {
-            throw GoogleCalendarRuntimeError.missingRequiredScope(missingScopes.sorted().joined(separator: ","))
+        var metadata = try loadMetadata()
+        try validateScopes(metadata)
+        if shouldRefresh(metadata) {
+            guard let refreshService else {
+                throw GoogleCalendarRuntimeError.invalidAccessToken
+            }
+            metadata = try refreshService.refreshAccessToken(previousMetadata: metadata, now: nowProvider())
+            try validateScopes(metadata)
         }
         guard let accessToken = try credentialStore.accessToken(for: metadata),
               accessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
             throw GoogleCalendarRuntimeError.disconnected
         }
         return accessToken
+    }
+
+    private func loadMetadata() throws -> GoogleCalendarOAuthCredentialMetadata {
+        guard let metadata = try credentialStore.loadMetadata() else {
+            throw GoogleCalendarRuntimeError.disconnected
+        }
+        return metadata
+    }
+
+    private func validateScopes(_ metadata: GoogleCalendarOAuthCredentialMetadata) throws {
+        let missingScopes = requiredScopes.subtracting(metadata.grantedScopes)
+        guard missingScopes.isEmpty else {
+            throw GoogleCalendarRuntimeError.missingRequiredScope(missingScopes.sorted().joined(separator: ","))
+        }
+    }
+
+    private func shouldRefresh(_ metadata: GoogleCalendarOAuthCredentialMetadata) -> Bool {
+        guard let expiresAt = metadata.expiresAt else {
+            return false
+        }
+        let refreshDeadline = nowProvider().addingTimeInterval(refreshService?.minimumTokenLifetime ?? 0)
+        return expiresAt <= refreshDeadline
     }
 }
 
@@ -822,7 +984,8 @@ public struct GoogleCalendarHTTPEventSink: ExternalCalendarEventSink {
 public enum GoogleCalendarAppRuntimeFactory {
     public static func makeCalendarListClient(
         secretStore: any SecretStore,
-        metadataStore: any GoogleCalendarOAuthCredentialMetadataStore
+        metadataStore: any GoogleCalendarOAuthCredentialMetadataStore,
+        oauthClientID: String? = nil
     ) -> GoogleCalendarRuntimeCalendarListClient {
         let credentialStore = GoogleCalendarOAuthCredentialStore(
             secretStore: secretStore,
@@ -830,17 +993,20 @@ public enum GoogleCalendarAppRuntimeFactory {
         )
         return GoogleCalendarHTTPCalendarListClient(tokenProvider: GoogleCalendarOAuthBearerTokenProvider(
             credentialStore: credentialStore,
-            requiredScopes: [GoogleCalendarRuntimeOAuthScope.calendarListReadOnly]
+            requiredScopes: [GoogleCalendarRuntimeOAuthScope.calendarListReadOnly],
+            refreshService: makeRefreshService(credentialStore: credentialStore, oauthClientID: oauthClientID)
         ))
     }
 
     public static func makeCalendarListClient(
         secretStore: any SecretStore,
-        connection: SQLiteConnection
+        connection: SQLiteConnection,
+        oauthClientID: String? = nil
     ) -> GoogleCalendarRuntimeCalendarListClient {
         makeCalendarListClient(
             secretStore: secretStore,
-            metadataStore: SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+            metadataStore: SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection),
+            oauthClientID: oauthClientID
         )
     }
 
@@ -850,7 +1016,8 @@ public enum GoogleCalendarAppRuntimeFactory {
         metadataStore: any GoogleCalendarOAuthCredentialMetadataStore,
         calendarID: String = "primary",
         timeZoneIdentifier: String = TimeZone.current.identifier,
-        now: Date = Date()
+        now: Date = Date(),
+        oauthClientID: String? = nil
     ) throws -> GoogleCalendarRuntimeSyncStatus {
         let credentialStore = GoogleCalendarOAuthCredentialStore(
             secretStore: secretStore,
@@ -860,7 +1027,10 @@ public enum GoogleCalendarAppRuntimeFactory {
         // exists, while this path avoids constructing idempotency state or calendar write sinks.
         return try GoogleCalendarRuntimeSyncReadiness.status(
             entitlementStore: entitlementStore,
-            credentialStatusStore: GoogleCalendarOAuthCredentialStatusStore(credentialStore: credentialStore),
+            credentialStatusStore: GoogleCalendarOAuthCredentialStatusStore(
+                credentialStore: credentialStore,
+                refreshTokenSupportEnabled: normalizedOAuthClientID(oauthClientID) != nil
+            ),
             configuration: GoogleCalendarRuntimeSyncConfiguration(
                 calendarID: calendarID,
                 timeZoneIdentifier: timeZoneIdentifier
@@ -876,7 +1046,8 @@ public enum GoogleCalendarAppRuntimeFactory {
         connection: SQLiteConnection,
         calendarID: String = "primary",
         timeZoneIdentifier: String = TimeZone.current.identifier,
-        now: Date = Date()
+        now: Date = Date(),
+        oauthClientID: String? = nil
     ) throws -> GoogleCalendarRuntimeSyncStatus {
         try syncStatus(
             entitlementStore: entitlementStore,
@@ -884,7 +1055,8 @@ public enum GoogleCalendarAppRuntimeFactory {
             metadataStore: SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection),
             calendarID: calendarID,
             timeZoneIdentifier: timeZoneIdentifier,
-            now: now
+            now: now,
+            oauthClientID: oauthClientID
         )
     }
 
@@ -910,18 +1082,25 @@ public enum GoogleCalendarAppRuntimeFactory {
         metadataStore: any GoogleCalendarOAuthCredentialMetadataStore,
         idempotencyNamespaceStore: any GoogleCalendarIdempotencyNamespaceStore,
         calendarID: String = "primary",
-        timeZoneIdentifier: String = TimeZone.current.identifier
+        timeZoneIdentifier: String = TimeZone.current.identifier,
+        oauthClientID: String? = nil
     ) throws -> GoogleCalendarRuntimeSyncController {
         let credentialStore = GoogleCalendarOAuthCredentialStore(
             secretStore: secretStore,
             metadataStore: metadataStore
         )
         let eventSink = GoogleCalendarHTTPEventSink(client: GoogleCalendarHTTPEventClient(
-            tokenProvider: GoogleCalendarOAuthBearerTokenProvider(credentialStore: credentialStore)
+            tokenProvider: GoogleCalendarOAuthBearerTokenProvider(
+                credentialStore: credentialStore,
+                refreshService: makeRefreshService(credentialStore: credentialStore, oauthClientID: oauthClientID)
+            )
         ))
         return GoogleCalendarRuntimeSyncController(
             entitlementStore: entitlementStore,
-            credentialStatusStore: GoogleCalendarOAuthCredentialStatusStore(credentialStore: credentialStore),
+            credentialStatusStore: GoogleCalendarOAuthCredentialStatusStore(
+                credentialStore: credentialStore,
+                refreshTokenSupportEnabled: normalizedOAuthClientID(oauthClientID) != nil
+            ),
             configuration: GoogleCalendarRuntimeSyncConfiguration(
                 calendarID: calendarID,
                 timeZoneIdentifier: timeZoneIdentifier
@@ -946,7 +1125,8 @@ public enum GoogleCalendarAppRuntimeFactory {
         connection: SQLiteConnection,
         idempotencyNamespaceStore: any GoogleCalendarIdempotencyNamespaceStore,
         calendarID: String = "primary",
-        timeZoneIdentifier: String = TimeZone.current.identifier
+        timeZoneIdentifier: String = TimeZone.current.identifier,
+        oauthClientID: String? = nil
     ) throws -> GoogleCalendarRuntimeSyncController {
         try makeSyncController(
             entitlementStore: entitlementStore,
@@ -956,8 +1136,30 @@ public enum GoogleCalendarAppRuntimeFactory {
             metadataStore: SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection),
             idempotencyNamespaceStore: idempotencyNamespaceStore,
             calendarID: calendarID,
-            timeZoneIdentifier: timeZoneIdentifier
+            timeZoneIdentifier: timeZoneIdentifier,
+            oauthClientID: oauthClientID
         )
+    }
+
+    private static func makeRefreshService(
+        credentialStore: GoogleCalendarOAuthCredentialStore,
+        oauthClientID: String?
+    ) -> GoogleCalendarOAuthTokenRefreshService? {
+        guard let oauthClientID = normalizedOAuthClientID(oauthClientID) else {
+            return nil
+        }
+        return GoogleCalendarOAuthTokenRefreshService(
+            configuration: GoogleCalendarOAuthTokenRefreshConfiguration(clientID: oauthClientID),
+            credentialStore: credentialStore
+        )
+    }
+
+    private static func normalizedOAuthClientID(_ oauthClientID: String?) -> String? {
+        guard let value = oauthClientID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              value.isEmpty == false else {
+            return nil
+        }
+        return value
     }
 }
 

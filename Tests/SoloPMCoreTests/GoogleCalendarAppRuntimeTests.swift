@@ -150,6 +150,132 @@ final class GoogleCalendarAppRuntimeTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(try refreshAvailableStatusStore.loadGoogleCalendarCredentialStatus()).hasRefreshToken)
     }
 
+    func testOAuthBearerTokenProviderRefreshesExpiredAccessTokenWithoutLeakingSecrets() throws {
+        let secretStore = InMemorySecretStore()
+        let connection = try migratedConnection()
+        let metadataStore = SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        let credentialStore = GoogleCalendarOAuthCredentialStore(secretStore: secretStore, metadataStore: metadataStore)
+        try credentialStore.saveTokens(
+            accessToken: "expired-calendar-access-token",
+            refreshToken: "calendar-refresh-token",
+            grantedScopes: [
+                GoogleCalendarRuntimeOAuthScope.eventsWrite,
+                GoogleCalendarRuntimeOAuthScope.calendarListReadOnly
+            ],
+            expiresAt: Date(timeIntervalSince1970: 3_000)
+        )
+        let httpClient = GoogleCalendarRecordingHTTPDataClient(
+            responseBody: """
+            {
+              "access_token": "new-calendar-access-token",
+              "expires_in": 3600,
+              "scope": "\(GoogleCalendarRuntimeOAuthScope.eventsWrite) \(GoogleCalendarRuntimeOAuthScope.calendarListReadOnly)",
+              "token_type": "Bearer"
+            }
+            """.data(using: .utf8)!,
+            statusCode: 200
+        )
+        let provider = GoogleCalendarOAuthBearerTokenProvider(
+            credentialStore: credentialStore,
+            refreshService: GoogleCalendarOAuthTokenRefreshService(
+                configuration: GoogleCalendarOAuthTokenRefreshConfiguration(
+                    clientID: "google-client-id.apps.googleusercontent.com"
+                ),
+                httpClient: httpClient,
+                credentialStore: credentialStore
+            ),
+            nowProvider: { Date(timeIntervalSince1970: 4_000) }
+        )
+
+        let accessToken = try provider.bearerToken()
+        let request = try XCTUnwrap(httpClient.requests.first)
+        let body = String(data: try XCTUnwrap(request.httpBody), encoding: .utf8) ?? ""
+        let storedValue = try XCTUnwrap(try connection.queryRows(
+            "SELECT value FROM settings WHERE key = 'google_calendar.oauth.metadata.v1';"
+        ).first?["value"])
+        let metadata = try XCTUnwrap(try credentialStore.loadMetadata())
+
+        XCTAssertEqual(accessToken, "new-calendar-access-token")
+        XCTAssertEqual(request.url?.absoluteString, "https://oauth2.googleapis.com/token")
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/x-www-form-urlencoded")
+        XCTAssertTrue(body.contains("grant_type=refresh_token"))
+        XCTAssertTrue(body.contains("refresh_token=calendar-refresh-token"))
+        XCTAssertTrue(body.contains("client_id=google-client-id.apps.googleusercontent.com"))
+        XCTAssertFalse(body.contains("client_secret"))
+        XCTAssertEqual(try secretStore.read(GoogleCalendarOAuthCredentialStore.accessTokenKey), "new-calendar-access-token")
+        XCTAssertEqual(try secretStore.read(GoogleCalendarOAuthCredentialStore.refreshTokenKey), "calendar-refresh-token")
+        XCTAssertEqual(metadata.expiresAt, Date(timeIntervalSince1970: 7_600))
+        XCTAssertFalse(storedValue.contains("expired-calendar-access-token"))
+        XCTAssertFalse(storedValue.contains("new-calendar-access-token"))
+        XCTAssertFalse(storedValue.contains("calendar-refresh-token"))
+    }
+
+    func testOAuthBearerTokenProviderSkipsRefreshForUsableAccessToken() throws {
+        let secretStore = InMemorySecretStore()
+        let connection = try migratedConnection()
+        let metadataStore = SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        let credentialStore = GoogleCalendarOAuthCredentialStore(secretStore: secretStore, metadataStore: metadataStore)
+        try credentialStore.saveTokens(
+            accessToken: "current-calendar-access-token",
+            refreshToken: "calendar-refresh-token",
+            grantedScopes: [GoogleCalendarRuntimeOAuthScope.eventsWrite],
+            expiresAt: Date(timeIntervalSince1970: 8_000)
+        )
+        let httpClient = GoogleCalendarRecordingHTTPDataClient(responseBody: Data(), statusCode: 200)
+        let provider = GoogleCalendarOAuthBearerTokenProvider(
+            credentialStore: credentialStore,
+            refreshService: GoogleCalendarOAuthTokenRefreshService(
+                configuration: GoogleCalendarOAuthTokenRefreshConfiguration(
+                    clientID: "google-client-id.apps.googleusercontent.com"
+                ),
+                httpClient: httpClient,
+                credentialStore: credentialStore
+            ),
+            nowProvider: { Date(timeIntervalSince1970: 4_000) }
+        )
+
+        XCTAssertEqual(try provider.bearerToken(), "current-calendar-access-token")
+        XCTAssertTrue(httpClient.requests.isEmpty)
+    }
+
+    func testOAuthBearerTokenProviderRejectsFailedRefreshWithoutPersistingTokenBody() throws {
+        let secretStore = InMemorySecretStore()
+        let connection = try migratedConnection()
+        let metadataStore = SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        let credentialStore = GoogleCalendarOAuthCredentialStore(secretStore: secretStore, metadataStore: metadataStore)
+        try credentialStore.saveTokens(
+            accessToken: "expired-calendar-access-token",
+            refreshToken: "calendar-refresh-token",
+            grantedScopes: [GoogleCalendarRuntimeOAuthScope.eventsWrite],
+            expiresAt: Date(timeIntervalSince1970: 3_000)
+        )
+        let httpClient = GoogleCalendarRecordingHTTPDataClient(
+            responseBody: #"{"error":"invalid_grant","access_token":"leaked-token"}"#.data(using: .utf8)!,
+            statusCode: 400
+        )
+        let provider = GoogleCalendarOAuthBearerTokenProvider(
+            credentialStore: credentialStore,
+            refreshService: GoogleCalendarOAuthTokenRefreshService(
+                configuration: GoogleCalendarOAuthTokenRefreshConfiguration(
+                    clientID: "google-client-id.apps.googleusercontent.com"
+                ),
+                httpClient: httpClient,
+                credentialStore: credentialStore
+            ),
+            nowProvider: { Date(timeIntervalSince1970: 4_000) }
+        )
+
+        XCTAssertThrowsError(try provider.bearerToken()) { error in
+            XCTAssertEqual(
+                error as? GoogleCalendarRuntimeError,
+                .apiFailure("Google OAuth token refresh failed with HTTP 400.")
+            )
+            XCTAssertFalse(String(describing: error).contains("leaked-token"))
+        }
+        XCTAssertEqual(try secretStore.read(GoogleCalendarOAuthCredentialStore.accessTokenKey), "expired-calendar-access-token")
+    }
+
     func testSQLiteIdempotencyNamespaceSurvivesReopeningDatabase() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("SoloPMGoogleCalendarRuntime-\(UUID().uuidString)", isDirectory: true)
@@ -208,6 +334,60 @@ final class GoogleCalendarAppRuntimeTests: XCTestCase {
         XCTAssertNil(start["dateTime"])
         XCTAssertEqual(privateProperties["soloPMIdempotencyKey"] as? String, "solopm\(String(repeating: "a", count: 64))")
         XCTAssertFalse(request.url?.absoluteString.contains("calendar-access-token") ?? true)
+    }
+
+    func testHTTPEventClientRefreshesExpiredOAuthTokenBeforeInsert() throws {
+        let secretStore = InMemorySecretStore()
+        let connection = try migratedConnection()
+        let metadataStore = SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        let credentialStore = GoogleCalendarOAuthCredentialStore(secretStore: secretStore, metadataStore: metadataStore)
+        try credentialStore.saveTokens(
+            accessToken: "expired-calendar-access-token",
+            refreshToken: "calendar-refresh-token",
+            grantedScopes: [GoogleCalendarRuntimeOAuthScope.eventsWrite],
+            expiresAt: Date(timeIntervalSince1970: 3_000)
+        )
+        let refreshHTTPClient = GoogleCalendarRecordingHTTPDataClient(
+            responseBody: """
+            {
+              "access_token": "new-calendar-access-token",
+              "expires_in": 3600,
+              "token_type": "Bearer"
+            }
+            """.data(using: .utf8)!,
+            statusCode: 200
+        )
+        let eventHTTPClient = GoogleCalendarRecordingHTTPDataClient(
+            responseBody: #"{"id":"event-123"}"#.data(using: .utf8)!,
+            statusCode: 200
+        )
+        let tokenProvider = GoogleCalendarOAuthBearerTokenProvider(
+            credentialStore: credentialStore,
+            refreshService: GoogleCalendarOAuthTokenRefreshService(
+                configuration: GoogleCalendarOAuthTokenRefreshConfiguration(
+                    clientID: "google-client-id.apps.googleusercontent.com"
+                ),
+                httpClient: refreshHTTPClient,
+                credentialStore: credentialStore
+            ),
+            nowProvider: { Date(timeIntervalSince1970: 4_000) }
+        )
+        let client = GoogleCalendarHTTPEventClient(
+            tokenProvider: tokenProvider,
+            httpClient: eventHTTPClient
+        )
+
+        _ = try client.createEvent(
+            CalendarEventDraft(title: "Planning", startAt: "2026-07-07", endAt: "2026-07-08", isAllDay: true),
+            calendarID: "primary",
+            timeZoneIdentifier: "Asia/Tokyo"
+        )
+
+        let refreshRequest = try XCTUnwrap(refreshHTTPClient.requests.first)
+        let eventRequest = try XCTUnwrap(eventHTTPClient.requests.first)
+        XCTAssertEqual(refreshRequest.url?.absoluteString, "https://oauth2.googleapis.com/token")
+        XCTAssertEqual(eventRequest.value(forHTTPHeaderField: "Authorization"), "Bearer new-calendar-access-token")
+        XCTAssertFalse(eventRequest.value(forHTTPHeaderField: "Authorization")?.contains("expired-calendar-access-token") ?? true)
     }
 
     func testHTTPEventClientTreatsDuplicateStableEventIDAsIdempotentSuccess() throws {
@@ -274,6 +454,61 @@ final class GoogleCalendarAppRuntimeTests: XCTestCase {
         XCTAssertEqual(request.httpMethod, "GET")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer calendar-access-token")
         XCTAssertFalse(request.url?.absoluteString.contains("calendar-access-token") ?? true)
+    }
+
+    func testHTTPCalendarListClientRefreshesExpiredOAuthTokenBeforeListing() throws {
+        let secretStore = InMemorySecretStore()
+        let connection = try migratedConnection()
+        let metadataStore = SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        let credentialStore = GoogleCalendarOAuthCredentialStore(secretStore: secretStore, metadataStore: metadataStore)
+        try credentialStore.saveTokens(
+            accessToken: "expired-calendar-access-token",
+            refreshToken: "calendar-refresh-token",
+            grantedScopes: [
+                GoogleCalendarRuntimeOAuthScope.eventsWrite,
+                GoogleCalendarRuntimeOAuthScope.calendarListReadOnly
+            ],
+            expiresAt: Date(timeIntervalSince1970: 3_000)
+        )
+        let refreshHTTPClient = GoogleCalendarRecordingHTTPDataClient(
+            responseBody: """
+            {
+              "access_token": "new-calendar-access-token",
+              "expires_in": 3600,
+              "scope": "\(GoogleCalendarRuntimeOAuthScope.eventsWrite) \(GoogleCalendarRuntimeOAuthScope.calendarListReadOnly)",
+              "token_type": "Bearer"
+            }
+            """.data(using: .utf8)!,
+            statusCode: 200
+        )
+        let listHTTPClient = GoogleCalendarRecordingHTTPDataClient(
+            responseBody: #"{ "items": [ { "id": "primary", "summary": "Personal", "primary": true, "accessRole": "owner" } ] }"#.data(using: .utf8)!,
+            statusCode: 200
+        )
+        let tokenProvider = GoogleCalendarOAuthBearerTokenProvider(
+            credentialStore: credentialStore,
+            requiredScopes: [GoogleCalendarRuntimeOAuthScope.calendarListReadOnly],
+            refreshService: GoogleCalendarOAuthTokenRefreshService(
+                configuration: GoogleCalendarOAuthTokenRefreshConfiguration(
+                    clientID: "google-client-id.apps.googleusercontent.com"
+                ),
+                httpClient: refreshHTTPClient,
+                credentialStore: credentialStore
+            ),
+            nowProvider: { Date(timeIntervalSince1970: 4_000) }
+        )
+        let client = GoogleCalendarHTTPCalendarListClient(
+            tokenProvider: tokenProvider,
+            httpClient: listHTTPClient
+        )
+
+        let calendars = try client.listWritableCalendars()
+        let listRequest = try XCTUnwrap(listHTTPClient.requests.first)
+
+        XCTAssertEqual(calendars.map(\.id), ["primary"])
+        XCTAssertEqual(refreshHTTPClient.requests.count, 1)
+        XCTAssertEqual(listRequest.value(forHTTPHeaderField: "Authorization"), "Bearer new-calendar-access-token")
+        XCTAssertFalse(listRequest.value(forHTTPHeaderField: "Authorization")?.contains("expired-calendar-access-token") ?? true)
     }
 
     func testHTTPCalendarListClientRequiresCalendarListScopeBeforeNetwork() throws {
@@ -436,6 +671,26 @@ final class GoogleCalendarAppRuntimeTests: XCTestCase {
         let controller = try makeController(secretStore: secretStore, connection: connection)
 
         XCTAssertEqual(try controller.status(now: Date(timeIntervalSince1970: 4_000)).state, .tokenExpiredWithoutRefresh)
+    }
+
+    func testAppRuntimeFactoryTreatsExpiredRefreshTokenAsReadyWhenOAuthClientIDIsConfigured() throws {
+        let secretStore = InMemorySecretStore()
+        let connection = try migratedConnection()
+        let metadataStore = SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        try GoogleCalendarOAuthCredentialStore(secretStore: secretStore, metadataStore: metadataStore).saveTokens(
+            accessToken: "expired-calendar-access-token",
+            refreshToken: "calendar-refresh-token",
+            grantedScopes: [GoogleCalendarRuntimeOAuthScope.eventsWrite],
+            expiresAt: Date(timeIntervalSince1970: 3_000)
+        )
+
+        let controller = try makeController(
+            secretStore: secretStore,
+            connection: connection,
+            oauthClientID: "google-client-id.apps.googleusercontent.com"
+        )
+
+        XCTAssertEqual(try controller.status(now: Date(timeIntervalSince1970: 4_000)).state, .ready)
     }
 
     func testAppRuntimeStatusCheckDoesNotCreateIdempotencyNamespace() throws {
@@ -814,7 +1069,8 @@ final class GoogleCalendarAppRuntimeTests: XCTestCase {
 
     private func makeController(
         secretStore: any SecretStore,
-        connection: SQLiteConnection
+        connection: SQLiteConnection,
+        oauthClientID: String? = nil
     ) throws -> GoogleCalendarRuntimeSyncController {
         try GoogleCalendarAppRuntimeFactory.makeSyncController(
             entitlementStore: GoogleCalendarRuntimeStaticEntitlementStore(plan: .pro),
@@ -824,7 +1080,8 @@ final class GoogleCalendarAppRuntimeTests: XCTestCase {
             connection: connection,
             idempotencyNamespaceStore: SQLiteGoogleCalendarIdempotencyNamespaceStore(connection: connection),
             calendarID: "primary",
-            timeZoneIdentifier: "Asia/Tokyo"
+            timeZoneIdentifier: "Asia/Tokyo",
+            oauthClientID: oauthClientID
         )
     }
 
