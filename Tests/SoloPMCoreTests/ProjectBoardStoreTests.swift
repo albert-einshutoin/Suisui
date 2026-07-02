@@ -1241,6 +1241,29 @@ final class ProjectBoardStoreTests: XCTestCase {
         let headOID = "0123456789abcdef0123456789abcdef01234567"
 
         try receiptStore.save(developmentAutomationReceipt(
+            id: "receipt-prepare",
+            projectID: project.id,
+            branchName: branchName,
+            toolName: ActionTool.developmentPreparePullRequestWorkflow.rawValue
+        ))
+
+        let preparedProgress = viewModel.developmentAutomationProgress(for: assignedProject, task: currentTask)
+        XCTAssertEqual(preparedProgress.nextApproval?.id, "branch-push")
+        XCTAssertEqual(preparedProgress.nextApproval?.title, "Queue branch push review")
+
+        try receiptStore.save(developmentAutomationReceipt(
+            id: "receipt-push",
+            projectID: project.id,
+            branchName: branchName,
+            commitOID: headOID,
+            toolName: ActionTool.developmentPushBranch.rawValue
+        ))
+
+        let pushedProgress = viewModel.developmentAutomationProgress(for: assignedProject, task: currentTask)
+        XCTAssertEqual(pushedProgress.nextApproval?.id, "pull-request-create")
+        XCTAssertEqual(pushedProgress.nextApproval?.title, "Queue pull request creation review")
+
+        try receiptStore.save(developmentAutomationReceipt(
             id: "receipt-pr-create",
             projectID: project.id,
             branchName: branchName,
@@ -1258,6 +1281,8 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(progress.latestCommitOID, headOID)
         XCTAssertTrue(progress.canQueuePullRequestReviewGate)
         XCTAssertFalse(progress.canQueuePullRequestMergeGate)
+        XCTAssertEqual(progress.nextApproval?.id, "pull-request-review")
+        XCTAssertEqual(progress.nextApproval?.title, "Queue pull request review gate")
         XCTAssertEqual(progress.stages.map(\.id), [
             "branch-prepared",
             "branch-pushed",
@@ -1266,8 +1291,8 @@ final class ProjectBoardStoreTests: XCTestCase {
             "pull-request-merged"
         ])
         XCTAssertEqual(progress.stages.map(\.status), [
-            .waiting,
-            .waiting,
+            .succeeded,
+            .succeeded,
             .succeeded,
             .ready,
             .waiting
@@ -1318,6 +1343,8 @@ final class ProjectBoardStoreTests: XCTestCase {
         let mergeProgress = viewModel.developmentAutomationProgress(for: assignedProject, task: currentTask)
         XCTAssertFalse(mergeProgress.canQueuePullRequestReviewGate)
         XCTAssertTrue(mergeProgress.canQueuePullRequestMergeGate)
+        XCTAssertEqual(mergeProgress.nextApproval?.id, "pull-request-merge")
+        XCTAssertEqual(mergeProgress.nextApproval?.title, "Queue pull request merge gate")
         XCTAssertEqual(mergeProgress.stages.first { $0.id == "pull-request-reviewed" }?.status, .succeeded)
         XCTAssertEqual(mergeProgress.stages.first { $0.id == "pull-request-merged" }?.status, .ready)
 
@@ -1375,6 +1402,8 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         XCTAssertFalse(progress.canQueuePullRequestReviewGate)
         XCTAssertFalse(progress.canQueuePullRequestMergeGate)
+        XCTAssertEqual(progress.nextApproval?.id, "branch-prepare")
+        XCTAssertEqual(progress.nextApproval?.title, "Queue branch automation")
         XCTAssertEqual(
             progress.blockingReason,
             "Create the pull request and wait for its execution receipt before queueing review or merge."
