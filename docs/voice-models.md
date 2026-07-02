@@ -85,7 +85,20 @@ SOLOPM_KOKORO_EXECUTABLE=/absolute/path/to/kokoro-runtime \
 ./script/check_local_voice_runtime_smoke.sh
 ```
 
-The verifier defaults to `~/Library/Application Support/SoloPM/VoiceModels`, or `SOLOPM_LOCAL_VOICE_CACHE_ROOT` when testing an alternate cache. It checks the recorded `ggml-tiny.bin` and `kokoro-v1_0.pth` SHA-256 values before launching local runtimes, writes smoke artifacts under `.tmp/local-voice-runtime-smoke` by default, and accepts `SOLOPM_LOCAL_VOICE_SMOKE_OUTPUT_DIR` for a separate ignored artifact directory. The smoke requires `SOLOPM_WHISPER_CPP_EXECUTABLE`, `SOLOPM_STT_SAMPLE_WAV`, and `SOLOPM_KOKORO_EXECUTABLE` so missing local setup fails as an explicit `BLOCKER:` instead of being mistaken for release readiness.
+To create the tracked closeout evidence used by release readiness, the STT
+sample must include a known phrase and the smoke must cover both Japanese and
+English Kokoro prompts:
+
+```sh
+SOLOPM_WHISPER_CPP_EXECUTABLE=/absolute/path/to/whisper-cli \
+SOLOPM_STT_SAMPLE_WAV=/absolute/path/to/sample-ja-or-en.wav \
+SOLOPM_STT_EXPECTED_TRANSCRIPT_CONTAINS="<expected words>" \
+SOLOPM_KOKORO_EXECUTABLE=/absolute/path/to/kokoro-runtime \
+SOLOPM_LOCAL_VOICE_EVIDENCE_FILE=docs/release/evidence/local-voice-runtime.md \
+./script/check_local_voice_runtime_smoke.sh
+```
+
+The verifier defaults to `~/Library/Application Support/SoloPM/VoiceModels`, or `SOLOPM_LOCAL_VOICE_CACHE_ROOT` when testing an alternate cache. It checks the recorded `ggml-tiny.bin` and `kokoro-v1_0.pth` SHA-256 values before launching local runtimes, writes smoke artifacts under `.tmp/local-voice-runtime-smoke` by default, and accepts `SOLOPM_LOCAL_VOICE_SMOKE_OUTPUT_DIR` for a separate ignored artifact directory. The smoke requires `SOLOPM_WHISPER_CPP_EXECUTABLE`, `SOLOPM_STT_SAMPLE_WAV`, and `SOLOPM_KOKORO_EXECUTABLE` so missing local setup fails as an explicit `BLOCKER:` instead of being mistaken for release readiness. When `SOLOPM_LOCAL_VOICE_EVIDENCE_FILE` is set, `SOLOPM_STT_EXPECTED_TRANSCRIPT_CONTAINS` and both `ja` / `en` TTS languages are required so tracked evidence proves real transcription content plus Japanese and English WAV generation. The tracked evidence records no-network and no-bundled-model boundaries, but it does not prove Settings Test Play or VoiceOver accessibility; those remain separate closeout gates.
 
 By default the TTS half synthesizes both Japanese and English prompts using `SOLOPM_TTS_LANGUAGES="ja en"`, `SOLOPM_TTS_JA_VOICE_ID=jf_alpha`, and `SOLOPM_TTS_EN_VOICE_ID=af_heart`. STT defaults to `SOLOPM_STT_LANGUAGE=ja`, but release reviewers can set `SOLOPM_STT_LANGUAGE=en` or `auto` when the sample WAV is English or mixed language.
 
