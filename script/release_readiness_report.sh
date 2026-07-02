@@ -156,6 +156,8 @@ LOCAL_VOICE_REQUIRED_MARKERS=(
   "whisper.cpp tiny model SHA-256"
   "Kokoro model SHA-256"
   "No network download: passed"
+  'Kokoro runtime adapter: `script/kokoro_tts_runtime.py`'
+  "Offline env enforcement: passed"
   "No model binary committed or bundled: passed"
 )
 LOCAL_VOICE_REQUIRED_CONTEXT_LABELS=(
@@ -163,6 +165,8 @@ LOCAL_VOICE_REQUIRED_CONTEXT_LABELS=(
   "Generated at"
   "Evidence source"
   "No network download"
+  "Kokoro runtime adapter"
+  "Offline env enforcement"
   "No model binary committed or bundled"
   "Voice cache"
   "STT language"
@@ -380,6 +384,7 @@ local_voice_evidence_source_commit() {
       Sources/SoloPMApp \
       Package.swift \
       packaging/app_metadata.env \
+      script/kokoro_tts_runtime.py \
       script/check_local_voice_runtime_smoke.sh \
       docs/voice-models.md 2>/dev/null || true
   )"

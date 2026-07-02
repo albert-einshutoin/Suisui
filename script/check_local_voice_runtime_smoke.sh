@@ -24,6 +24,8 @@ STT_ONLY_MODE=0
 
 WHISPER_MODEL="$VOICE_CACHE_ROOT/whisper.cpp/ggml-tiny.bin"
 KOKORO_MODEL="$VOICE_CACHE_ROOT/Kokoro/kokoro-v1_0.pth"
+KOKORO_RUNTIME_WRAPPER_RELATIVE="script/kokoro_tts_runtime.py"
+KOKORO_RUNTIME_WRAPPER="$ROOT_DIR/$KOKORO_RUNTIME_WRAPPER_RELATIVE"
 WHISPER_TINY_SHA256="be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21"
 KOKORO_82M_SHA256="496dba118d1a58f5f3db2efc88dbdc216e0483fc89fe6e47ee1f2c53f18ad1e4"
 
@@ -46,6 +48,8 @@ Required environment for all modes:
 
 Required environment for default full STT+TTS mode:
   SOLOPM_KOKORO_EXECUTABLE        Absolute path to the Kokoro runtime
+                                      Evidence mode requires the checked-in
+                                      script/kokoro_tts_runtime.py wrapper.
 
 Optional environment:
   SOLOPM_LOCAL_VOICE_CACHE_ROOT   Defaults to ~/Library/Application Support/SoloPM/VoiceModels
@@ -73,6 +77,7 @@ local_voice_evidence_source_commit() {
       Sources/SoloPMApp \
       Package.swift \
       packaging/app_metadata.env \
+      script/kokoro_tts_runtime.py \
       script/check_local_voice_runtime_smoke.sh \
       docs/voice-models.md 2>/dev/null || true
   )"
@@ -237,6 +242,17 @@ check_output_dir_policy() {
   esac
 }
 
+has_tts_language() {
+  local expected="$1"
+  local language
+  for language in "${tts_languages[@]}"; do
+    if [[ "$language" == "$expected" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 check_evidence_file_policy() {
   local evidence_file
   evidence_file="$(absolute_path "$EVIDENCE_FILE")"
@@ -246,10 +262,9 @@ check_evidence_file_policy() {
     blocker "SOLOPM_STT_EXPECTED_TRANSCRIPT_CONTAINS is required when writing local voice runtime evidence"
   fi
   if [[ "$STT_ONLY_MODE" -eq 0 ]]; then
-    case " ${tts_languages[*]} " in
-      *" ja "*" en "*) ;;
-      *) blocker "SOLOPM_LOCAL_VOICE_EVIDENCE_FILE requires SOLOPM_TTS_LANGUAGES to include both ja and en" ;;
-    esac
+    if ! has_tts_language ja || ! has_tts_language en; then
+      blocker "SOLOPM_LOCAL_VOICE_EVIDENCE_FILE requires SOLOPM_TTS_LANGUAGES to include both ja and en"
+    fi
   fi
   case "$evidence_file" in
     "$ROOT_DIR/docs/release/evidence/"*.md) ;;
@@ -260,6 +275,24 @@ check_evidence_file_policy() {
       *stt-only*.md) ;;
       *) blocker "SOLOPM_LOCAL_VOICE_EVIDENCE_FILE in --stt-only mode must use an explicit *stt-only*.md filename and must not overwrite local-voice-runtime.md" ;;
     esac
+  fi
+}
+
+check_reference_kokoro_runtime_for_evidence() {
+  if [[ -z "$EVIDENCE_FILE" || "$STT_ONLY_MODE" -eq 1 ]]; then
+    return
+  fi
+
+  if [[ "$KOKORO_EXECUTABLE" != "$KOKORO_RUNTIME_WRAPPER" ]]; then
+    blocker "SOLOPM_LOCAL_VOICE_EVIDENCE_FILE requires SOLOPM_KOKORO_EXECUTABLE to be the checked-in reference wrapper script/kokoro_tts_runtime.py"
+  fi
+  if [[ ! -x "$KOKORO_RUNTIME_WRAPPER" || -d "$KOKORO_RUNTIME_WRAPPER" ]]; then
+    blocker "checked-in Kokoro reference wrapper is missing or not executable: $KOKORO_RUNTIME_WRAPPER_RELATIVE"
+    return
+  fi
+  if ! grep -F 'os.environ["HF_HUB_OFFLINE"] = "1"' "$KOKORO_RUNTIME_WRAPPER" >/dev/null ||
+    ! grep -F 'os.environ["TRANSFORMERS_OFFLINE"] = "1"' "$KOKORO_RUNTIME_WRAPPER" >/dev/null; then
+    blocker "checked-in Kokoro reference wrapper must force offline Hugging Face/Transformers flags before evidence can claim no-network proof"
   fi
 }
 
@@ -363,14 +396,15 @@ if [[ "$STT_ONLY_MODE" -eq 0 ]]; then
     if [[ "$language" == "ja" && "$voice_id" != j* ]]; then
       blocker "Kokoro Japanese voice id must start with j"
     fi
-    if [[ "$language" == "en" && "$voice_id" != a* ]]; then
-      blocker "Kokoro English voice id must start with a"
+    if [[ "$language" == "en" && "$voice_id" != a* && "$voice_id" != b* ]]; then
+      blocker "Kokoro English voice id must start with a or b"
     fi
   done
 fi
 
 if [[ -n "$EVIDENCE_FILE" ]]; then
   check_evidence_file_policy
+  check_reference_kokoro_runtime_for_evidence
 fi
 
 if [[ "$failure_count" -ne 0 ]]; then
@@ -469,7 +503,11 @@ write_local_voice_runtime_evidence() {
     else
       printf '%s\n' '- Evidence source: `local whisper.cpp STT and Kokoro TTS runtime smoke`'
     fi
-    printf '%s\n' '- No network download: passed - local cache and user-configured executables only'
+    printf '%s\n' '- No network download: passed - local cache and checked-in reference wrapper only'
+    if [[ "$STT_ONLY_MODE" -eq 0 ]]; then
+      printf -- '- Kokoro runtime adapter: `%s`\n' "$KOKORO_RUNTIME_WRAPPER_RELATIVE"
+      printf '%s\n' '- Offline env enforcement: passed - reference wrapper forces HF_HUB_OFFLINE=1 and TRANSFORMERS_OFFLINE=1 before importing Kokoro'
+    fi
     printf '%s\n' '- No model binary committed or bundled: passed - model files remained outside git and app artifacts'
     printf '%s\n' '- Voice cache: checksum-verified user cache; model binaries are not bundled in git or app artifacts'
     printf -- '- STT language: `%s`\n' "$STT_LANGUAGE"

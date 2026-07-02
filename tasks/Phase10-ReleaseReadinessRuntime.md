@@ -224,8 +224,8 @@
 - [x] STT-only evidence は `docs/release/evidence/*stt-only*.md` にだけ書け、TTS を証明しないことと #14 / full release closeout には使えないことを明記する。
 - [x] `script/check_security_regressions.sh` は `.tmp/local-voice-runtime-smoke` を ignored runtime artifact path として検証する。
 - [x] `release_readiness_report.sh` は `docs/release/evidence/local-voice-runtime.md` を検証し、実STT markerと日英TTS WAV証跡が無い場合はrelease blockerにする。
-- [ ] checksum 済み `ggml-tiny.bin` と `whisper-cli` で日本語または英語 sample WAV の実 transcription 証跡を取る。
-- [ ] checksum 済み `kokoro-v1_0.pth` と Kokoro runtime で日本語/英語 TTS WAV の実生成証跡を取る。
+- [x] checksum 済み `ggml-tiny.bin` と `whisper-cli` で日本語または英語 sample WAV の実 transcription 証跡を取る。
+- [x] checksum 済み `kokoro-v1_0.pth` と Kokoro runtime で日本語/英語 TTS WAV の実生成証跡を取る。
 
 ### P10-024: Project board narrow-window resilience
 

@@ -8288,6 +8288,131 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(docs.contains("they do not by themselves prove the whisper.cpp STT or Kokoro TTS providers are ready in a packaged app"))
     }
 
+    func testKokoroRuntimeWrapperUsesLocalCacheOnlyContract() throws {
+        let docs = try readPackageFile("docs/voice-models.md")
+        let wrapper = try readPackageFile("script/kokoro_tts_runtime.py")
+        let smokeScript = try readPackageFile("script/check_local_voice_runtime_smoke.sh")
+        let releaseReport = try readPackageFile("script/release_readiness_report.sh")
+
+        for marker in [
+            "--model",
+            "--text-file",
+            "--language",
+            "--voice",
+            "--output",
+            "config.json",
+            "voices",
+            "HF_HUB_OFFLINE",
+            "TRANSFORMERS_OFFLINE",
+            "check_offline_language_assets",
+            "en_core_web_sm",
+            "prefer_unidic_lite_for_japanese",
+            "unidic_lite.DICDIR",
+            "SAFE_VOICE_ID",
+            "English Kokoro voice id must start with a or b",
+            "KModel(",
+            "KPipeline("
+        ] {
+            XCTAssertTrue(wrapper.contains(marker), "Missing Kokoro wrapper marker: \(marker)")
+        }
+        XCTAssertTrue(wrapper.contains("os.environ[\"HF_HUB_OFFLINE\"] = \"1\""))
+        XCTAssertTrue(wrapper.contains("os.environ[\"TRANSFORMERS_OFFLINE\"] = \"1\""))
+        for networkMarker in ["hf_hub_download", "requests.", "curl ", "wget ", "huggingface.co"] {
+            XCTAssertFalse(wrapper.contains(networkMarker), "Kokoro wrapper must not fetch network resources during smoke: \(networkMarker)")
+        }
+        XCTAssertTrue(smokeScript.contains("script/kokoro_tts_runtime.py"))
+        XCTAssertTrue(smokeScript.contains("SOLOPM_LOCAL_VOICE_EVIDENCE_FILE requires SOLOPM_KOKORO_EXECUTABLE to be the checked-in reference wrapper script/kokoro_tts_runtime.py"))
+        XCTAssertTrue(smokeScript.contains("KOKORO_RUNTIME_WRAPPER_RELATIVE=\"script/kokoro_tts_runtime.py\""))
+        XCTAssertTrue(smokeScript.contains("Kokoro runtime adapter"))
+        XCTAssertTrue(smokeScript.contains("Offline env enforcement: passed"))
+        XCTAssertTrue(smokeScript.contains("Kokoro English voice id must start with a or b"))
+        XCTAssertTrue(releaseReport.contains("script/kokoro_tts_runtime.py"))
+        XCTAssertTrue(releaseReport.contains("Kokoro runtime adapter: `script/kokoro_tts_runtime.py`"))
+        XCTAssertTrue(releaseReport.contains("Offline env enforcement: passed"))
+        XCTAssertTrue(docs.contains("script/kokoro_tts_runtime.py"))
+        XCTAssertTrue(docs.contains("sets Hugging Face/Transformers offline flags"))
+    }
+
+    func testKokoroRuntimeWrapperFailsClosedBeforeImportForUnsafeRuntimeInputs() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-kokoro-runtime-wrapper-input-boundaries", isDirectory: true)
+        let voicesDirectory = fixtureRoot.appendingPathComponent("voices", isDirectory: true)
+        let modelURL = fixtureRoot.appendingPathComponent("kokoro-v1_0.pth")
+        let configURL = fixtureRoot.appendingPathComponent("config.json")
+        let promptURL = fixtureRoot.appendingPathComponent("prompt.txt")
+        let emptyPromptURL = fixtureRoot.appendingPathComponent("empty-prompt.txt")
+        let outputURL = fixtureRoot.appendingPathComponent("speech.wav")
+        let wrapperURL = packageRoot().appendingPathComponent("script/kokoro_tts_runtime.py")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: voicesDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        try Data([0x01]).write(to: modelURL, options: .atomic)
+        try "{}\n".write(to: configURL, atomically: true, encoding: .utf8)
+        try "今日の未完了タスクは3件です。\n".write(to: promptURL, atomically: true, encoding: .utf8)
+        try "".write(to: emptyPromptURL, atomically: true, encoding: .utf8)
+        try Data([0x02]).write(to: voicesDirectory.appendingPathComponent("jf_alpha.pt"), options: .atomic)
+
+        func runWrapper(_ arguments: [String]) throws -> (exitCode: Int32, output: String) {
+            try runTool([wrapperURL.path] + arguments)
+        }
+
+        let relativeModelResult = try runWrapper([
+            "--model", "relative-model.pth",
+            "--text-file", promptURL.path,
+            "--language", "ja",
+            "--voice", "jf_alpha",
+            "--output", outputURL.path
+        ])
+        XCTAssertNotEqual(relativeModelResult.exitCode, 0)
+        XCTAssertTrue(relativeModelResult.output.contains("Kokoro model path must be absolute"))
+
+        let unsafeVoiceResult = try runWrapper([
+            "--model", modelURL.path,
+            "--text-file", promptURL.path,
+            "--language", "ja",
+            "--voice", "../escape",
+            "--output", outputURL.path
+        ])
+        XCTAssertNotEqual(unsafeVoiceResult.exitCode, 0)
+        XCTAssertTrue(unsafeVoiceResult.output.contains("Kokoro voice id must contain only letters, numbers, underscore, or hyphen"))
+
+        let relativeOutputResult = try runWrapper([
+            "--model", modelURL.path,
+            "--text-file", promptURL.path,
+            "--language", "ja",
+            "--voice", "jf_alpha",
+            "--output", "speech.wav"
+        ])
+        XCTAssertNotEqual(relativeOutputResult.exitCode, 0)
+        XCTAssertTrue(relativeOutputResult.output.contains("Kokoro output path must be absolute"))
+
+        let emptyPromptResult = try runWrapper([
+            "--model", modelURL.path,
+            "--text-file", emptyPromptURL.path,
+            "--language", "ja",
+            "--voice", "jf_alpha",
+            "--output", outputURL.path
+        ])
+        XCTAssertNotEqual(emptyPromptResult.exitCode, 0)
+        XCTAssertTrue(emptyPromptResult.output.contains("Kokoro prompt is missing or empty"))
+
+        let englishVoicePrefixResult = try runWrapper([
+            "--model", modelURL.path,
+            "--text-file", promptURL.path,
+            "--language", "en",
+            "--voice", "jf_alpha",
+            "--output", outputURL.path
+        ])
+        XCTAssertNotEqual(englishVoicePrefixResult.exitCode, 0)
+        XCTAssertTrue(englishVoicePrefixResult.output.contains("English Kokoro voice id must start with a or b"))
+
+        let helpResult = try runWrapper(["--help"])
+        XCTAssertEqual(helpResult.exitCode, 0)
+        XCTAssertTrue(helpResult.output.contains("Generate a local WAV with a cached Kokoro model and voice pack."))
+    }
+
     func testLocalVoiceRuntimeSmokeScriptFailsClosedAndDocumentsIssueCloseout() throws {
         let docs = try readPackageFile("docs/voice-models.md")
         let script = try readPackageFile("script/check_local_voice_runtime_smoke.sh")
@@ -8304,6 +8429,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SOLOPM_LOCAL_VOICE_EVIDENCE_FILE requires SOLOPM_TTS_LANGUAGES to include both ja and en"))
         XCTAssertTrue(script.contains("No network download: passed"))
         XCTAssertTrue(script.contains("No model binary committed or bundled: passed"))
+        XCTAssertTrue(script.contains("KOKORO_RUNTIME_WRAPPER_RELATIVE=\"script/kokoro_tts_runtime.py\""))
+        XCTAssertTrue(script.contains("Kokoro runtime adapter"))
+        XCTAssertTrue(script.contains("Offline env enforcement: passed"))
         XCTAssertTrue(script.contains("be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21"))
         XCTAssertTrue(script.contains("496dba118d1a58f5f3db2efc88dbdc216e0483fc89fe6e47ee1f2c53f18ad1e4"))
         XCTAssertTrue(script.contains("whisper-cli -m <model> -f <sample.wav> -l ja -np -nt"))
@@ -8311,6 +8439,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("BLOCKER: local voice runtime smoke found"))
         XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" check-ignore -q"))
         XCTAssertTrue(script.contains("SOLOPM_LOCAL_VOICE_SMOKE_OUTPUT_DIR inside repo must be ignored by git"))
+        XCTAssertTrue(script.contains("has_tts_language()"))
+        XCTAssertTrue(script.contains("if ! has_tts_language ja || ! has_tts_language en; then"))
         XCTAssertTrue(script.contains("STT sample WAV path must be absolute"))
         XCTAssertTrue(script.contains("STT sample WAV must use a .wav file"))
         XCTAssertTrue(script.contains("Kokoro voice id must not contain whitespace"))
@@ -8330,8 +8460,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(phase10.contains("P10-023a: Local OSS voice runtime proof"))
         XCTAssertTrue(phase10.contains("[x] `script/check_local_voice_runtime_smoke.sh`"))
         XCTAssertTrue(phase10.contains("[x] `release_readiness_report.sh` は `docs/release/evidence/local-voice-runtime.md`"))
-        XCTAssertTrue(phase10.contains("[ ] checksum 済み `ggml-tiny.bin`"))
-        XCTAssertTrue(phase10.contains("[ ] checksum 済み `kokoro-v1_0.pth`"))
+        XCTAssertTrue(phase10.contains("[x] checksum 済み `ggml-tiny.bin`"))
+        XCTAssertTrue(phase10.contains("[x] checksum 済み `kokoro-v1_0.pth`"))
 
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-local-voice-runtime-smoke-missing-inputs", isDirectory: true)
@@ -8359,6 +8489,34 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("BLOCKER: Kokoro executable is missing or not executable"))
         XCTAssertTrue(result.output.contains("BLOCKER: Kokoro model is missing"))
         XCTAssertTrue(result.output.contains("BLOCKER: local voice runtime smoke found 5 prerequisite problem(s)"))
+
+        let fakeKokoroURL = fixtureRoot.appendingPathComponent("fake-kokoro")
+        try """
+        #!/usr/bin/env bash
+        exit 0
+        """.write(to: fakeKokoroURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fakeKokoroURL.path)
+
+        let nonReferenceEvidenceResult = try runScript(
+            "script/check_local_voice_runtime_smoke.sh",
+            environment: [
+                "SOLOPM_LOCAL_VOICE_CACHE_ROOT": emptyCacheRoot.path,
+                "SOLOPM_WHISPER_CPP_EXECUTABLE": fixtureRoot.appendingPathComponent("missing-whisper-cli").path,
+                "SOLOPM_STT_SAMPLE_WAV": fixtureRoot.appendingPathComponent("missing-sample.wav").path,
+                "SOLOPM_KOKORO_EXECUTABLE": fakeKokoroURL.path,
+                "SOLOPM_STT_EXPECTED_TRANSCRIPT_CONTAINS": "今日の未完了",
+                "SOLOPM_LOCAL_VOICE_EVIDENCE_FILE": packageRoot()
+                    .appendingPathComponent("docs", isDirectory: true)
+                    .appendingPathComponent("release", isDirectory: true)
+                    .appendingPathComponent("evidence", isDirectory: true)
+                    .appendingPathComponent("local-voice-runtime.md")
+                    .path,
+                "SOLOPM_LOCAL_VOICE_SMOKE_OUTPUT_DIR": outputRoot.path
+            ]
+        )
+
+        XCTAssertNotEqual(nonReferenceEvidenceResult.exitCode, 0)
+        XCTAssertTrue(nonReferenceEvidenceResult.output.contains("SOLOPM_LOCAL_VOICE_EVIDENCE_FILE requires SOLOPM_KOKORO_EXECUTABLE to be the checked-in reference wrapper script/kokoro_tts_runtime.py"))
     }
 
     func testLocalVoiceRuntimeSmokeScriptSupportsExplicitSttOnlyMode() throws {
@@ -8504,6 +8662,8 @@ final class ReleasePipelineTests: XCTestCase {
         - Source commit: `deadbee`
         - Generated at: 2026-06-19T00:00:00Z
         - Evidence source: `placeholder`
+        - Kokoro runtime adapter: `placeholder`
+        - Offline env enforcement: placeholder
         - Voice cache: placeholder
         - STT language: `ja`
         - STT expected transcript marker: `sample`
@@ -8537,6 +8697,8 @@ final class ReleasePipelineTests: XCTestCase {
         - Generated at: 2026-06-19T00:00:00Z
         - Evidence source: `local whisper.cpp STT and Kokoro TTS runtime smoke`
         - No network download: passed - local cache and user-configured executables only
+        - Kokoro runtime adapter: `script/kokoro_tts_runtime.py`
+        - Offline env enforcement: passed - reference wrapper forces HF_HUB_OFFLINE=1 and TRANSFORMERS_OFFLINE=1 before importing Kokoro
         - No model binary committed or bundled: passed - model files remained outside git and app artifacts
         - Voice cache: checksum-verified user cache; model binaries are not bundled in git or app artifacts
         - STT language: `ja`
@@ -8567,6 +8729,8 @@ final class ReleasePipelineTests: XCTestCase {
         - Generated at: 2026-06-19T00:00:00Z
         - Evidence source: `local whisper.cpp STT and Kokoro TTS runtime smoke`
         - No network download: passed - local cache and user-configured executables only
+        - Kokoro runtime adapter: `script/kokoro_tts_runtime.py`
+        - Offline env enforcement: passed - reference wrapper forces HF_HUB_OFFLINE=1 and TRANSFORMERS_OFFLINE=1 before importing Kokoro
         - No model binary committed or bundled: passed - model files remained outside git and app artifacts
         - Voice cache: checksum-verified user cache; model binaries are not bundled in git or app artifacts
         - STT language: `ja`
@@ -8586,6 +8750,104 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(validResult.output.contains("OK: local voice runtime evidence covers checksum-verified STT and Japanese/English TTS runtime proof"))
         XCTAssertFalse(validResult.output.contains("local voice runtime evidence source commit does not match current local voice source commit"))
         XCTAssertFalse(validResult.output.contains("local voice runtime evidence is not marked passed"))
+    }
+
+    func testReleaseReadinessReportTreatsKokoroWrapperChangesAsLocalVoiceStale() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-release-readiness-stale-kokoro-wrapper-evidence", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let tasksDirectory = fixtureRoot.appendingPathComponent("tasks", isDirectory: true)
+        let sourcesDirectory = fixtureRoot.appendingPathComponent("Sources", isDirectory: true)
+        let evidenceDirectory = fixtureRoot
+            .appendingPathComponent("docs", isDirectory: true)
+            .appendingPathComponent("release", isDirectory: true)
+            .appendingPathComponent("evidence", isDirectory: true)
+        let packagingDirectory = fixtureRoot.appendingPathComponent("packaging", isDirectory: true)
+        let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
+        let wrapperURL = scriptDirectory.appendingPathComponent("kokoro_tts_runtime.py")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: evidenceDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: packagingDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: sourcesDirectory.appendingPathComponent("SoloPMCore/Voice", isDirectory: true), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: sourcesDirectory.appendingPathComponent("SoloPMCore/App", isDirectory: true), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: sourcesDirectory.appendingPathComponent("SoloPMApp", isDirectory: true), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        try readPackageFile("script/release_readiness_report.sh")
+            .write(to: reportURL, atomically: true, encoding: .utf8)
+        try readPackageFile("script/check_local_voice_runtime_smoke.sh")
+            .write(to: scriptDirectory.appendingPathComponent("check_local_voice_runtime_smoke.sh"), atomically: true, encoding: .utf8)
+        try readPackageFile("script/kokoro_tts_runtime.py")
+            .write(to: wrapperURL, atomically: true, encoding: .utf8)
+        try readPackageFile("docs/voice-models.md")
+            .write(to: fixtureRoot.appendingPathComponent("docs/voice-models.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture phase is complete\n"
+            .write(to: tasksDirectory.appendingPathComponent("Phase0.md"), atomically: true, encoding: .utf8)
+        try "- [x] fixture readme has no template blockers\n"
+            .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        try "// package fixture\n"
+            .write(to: fixtureRoot.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+        try "SOLOPM_APP_VERSION=fixture\n"
+            .write(to: packagingDirectory.appendingPathComponent("app_metadata.env"), atomically: true, encoding: .utf8)
+        try "enum VoiceRuntimeFixture {}\n"
+            .write(to: sourcesDirectory.appendingPathComponent("SoloPMCore/Voice/VoiceRuntime.swift"), atomically: true, encoding: .utf8)
+        try "enum AppSettingsFixture {}\n"
+            .write(to: sourcesDirectory.appendingPathComponent("SoloPMCore/App/AppSettings.swift"), atomically: true, encoding: .utf8)
+        try "enum DailyPlanningReviewReadoutFixture {}\n"
+            .write(to: sourcesDirectory.appendingPathComponent("SoloPMCore/App/DailyPlanningReviewReadout.swift"), atomically: true, encoding: .utf8)
+        try "enum SoloPMAppFixture {}\n"
+            .write(to: sourcesDirectory.appendingPathComponent("SoloPMApp/SoloPMApp.swift"), atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
+
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "init"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "config", "user.email", "release-tests@example.invalid"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "config", "user.name", "Release Tests"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "."]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "baseline local voice runtime source"]).exitCode, 0)
+        let baselineCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+            .output.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        try """
+        # Local Voice Runtime Evidence
+
+        Status: passed
+        Generated by: script/check_local_voice_runtime_smoke.sh
+
+        ## Runtime Context
+
+        - Source commit: `\(baselineCommit)`
+        - Generated at: 2026-06-19T00:00:00Z
+        - Evidence source: `local whisper.cpp STT and Kokoro TTS runtime smoke`
+        - No network download: passed - local cache and user-configured executables only
+        - Kokoro runtime adapter: `script/kokoro_tts_runtime.py`
+        - Offline env enforcement: passed - reference wrapper forces HF_HUB_OFFLINE=1 and TRANSFORMERS_OFFLINE=1 before importing Kokoro
+        - No model binary committed or bundled: passed - model files remained outside git and app artifacts
+        - Voice cache: checksum-verified user cache; model binaries are not bundled in git or app artifacts
+        - STT language: `ja`
+        - STT expected transcript marker: `今日の未完了`
+        - STT transcript: passed - transcript contains the expected marker
+        - whisper.cpp tiny model SHA-256: `be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21`
+        - Kokoro model SHA-256: `496dba118d1a58f5f3db2efc88dbdc216e0483fc89fe6e47ee1f2c53f18ad1e4`
+        - TTS languages: `ja en`
+        - TTS Japanese WAV: passed - generated non-empty WAV and afinfo-readable when afinfo is available
+        - TTS English WAV: passed - generated non-empty WAV and afinfo-readable when afinfo is available
+        - Runtime artifacts: `.tmp/local-voice-runtime-smoke`
+        """.write(to: evidenceDirectory.appendingPathComponent("local-voice-runtime.md"), atomically: true, encoding: .utf8)
+
+        try "\n# wrapper source changed after evidence capture\n"
+            .write(to: wrapperURL, atomically: true, encoding: .utf8)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "script/kokoro_tts_runtime.py"]).exitCode, 0)
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "change kokoro runtime wrapper"]).exitCode, 0)
+        let wrapperCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+            .output.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let result = try runTool(["bash", reportURL.path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("local voice runtime evidence source commit does not match current local voice source commit: expected \(wrapperCommit)"))
     }
 
     func testReleaseReadinessReportClassifiesUncheckedPhaseItems() throws {
