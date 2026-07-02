@@ -5923,6 +5923,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("project-development-automation-edit-contents"))
         XCTAssertTrue(script.contains("project-development-automation-edit-preview"))
         XCTAssertTrue(script.contains("project-development-automation-edit-queue"))
+        XCTAssertTrue(script.contains("project-development-automation-verification-queue"))
         XCTAssertTrue(script.contains("setTextFieldContaining()"))
         XCTAssertTrue(script.contains("if itemRole is not \"AXTextArea\" then"))
         XCTAssertTrue(script.contains("assistant-queue-workflow"))
@@ -5932,8 +5933,18 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("assistant-queue-row-$repository_edit_item_id"))
         XCTAssertTrue(script.contains("assistant-queue-approve-$repository_edit_item_id"))
         XCTAssertTrue(script.contains("assistant-queue-run-$repository_edit_item_id"))
+        XCTAssertTrue(script.contains("assistant-queue-row-$verification_item_id"))
+        XCTAssertTrue(script.contains("assistant-queue-approve-$verification_item_id"))
+        XCTAssertTrue(script.contains("assistant-queue-run-$verification_item_id"))
+        XCTAssertTrue(script.contains("prepared_branch_name=\"\""))
+        XCTAssertTrue(script.contains("struct Reference: Decodable"))
         XCTAssertTrue(script.contains("wait_for_receipt_json \"visible Assistant Queue branch preparation\" \"$queued_item_id\" \"development.pr_workflow.prepare\""))
         XCTAssertTrue(script.contains("wait_for_receipt_json \"visible Assistant Queue repository edit\" \"$repository_edit_item_id\" \"development.repository.create_file\""))
+        XCTAssertTrue(script.contains("wait_for_receipt_json"))
+        XCTAssertTrue(script.contains("\"visible Assistant Queue verification\""))
+        XCTAssertTrue(script.contains("\"development.verification.run\""))
+        XCTAssertTrue(script.contains("\"development_branch\""))
+        XCTAssertTrue(script.contains("\"$prepared_branch_name\""))
         XCTAssertTrue(script.contains("ensure_no_existing_app_process"))
         XCTAssertTrue(script.contains("the smoke only terminates its own launched PID"))
         XCTAssertTrue(script.contains("kill -9 \"$app_pid\""))
@@ -5958,8 +5969,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("decoder.decode(Receipt.self"))
         XCTAssertTrue(script.contains("required_capabilities_json LIKE '%developmentPreparePullRequestWorkflow%'"))
         XCTAssertTrue(script.contains("required_capabilities_json LIKE '%developmentRepositoryCreateFile%'"))
+        XCTAssertTrue(script.contains("required_capabilities_json LIKE '%developmentRunVerification%'"))
         XCTAssertTrue(script.contains("required_capabilities_json LIKE '%providerExecutionApproval%'"))
         XCTAssertTrue(script.contains("action-plan:development-repository-edit:$seed_project_id:$seed_task_id:%"))
+        XCTAssertTrue(script.contains("action-plan:development-verification:$seed_project_id:$seed_task_id:%"))
         XCTAssertTrue(script.contains("runtime-development-pr-visible-edit.md"))
         XCTAssertTrue(script.contains("requiresPushApproval=true"))
         XCTAssertTrue(script.contains("requiresPullRequestApproval=true"))
@@ -5968,6 +5981,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("visible Assistant Queue approved and executed local branch preparation"))
         XCTAssertTrue(script.contains("visible Project automation panel queued repository edit review into Assistant Queue"))
         XCTAssertTrue(script.contains("visible Assistant Queue approved and executed repository edit"))
+        XCTAssertTrue(script.contains("visible Project automation panel queued verification review into Assistant Queue"))
+        XCTAssertTrue(script.contains("visible Assistant Queue approved and executed verification"))
         for prohibitedPattern in [
             #"\b(?:git|fixture_git)\b[^\n]*\bpush\b"#,
             #"\bgh\b[^\n]*\bpr\s+create\b"#,
@@ -5990,6 +6005,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(appSource.contains("project-development-automation-edit-contents"))
         XCTAssertTrue(appSource.contains("project-development-automation-edit-preview"))
         XCTAssertTrue(appSource.contains("project-development-automation-edit-queue"))
+        XCTAssertTrue(appSource.contains("project-development-automation-verification-queue"))
     }
 
     func testRuntimeInboxTriageSmokeScriptVerifiesAllClassificationActionsAndUndo() throws {

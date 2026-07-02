@@ -244,6 +244,8 @@ public enum DevelopmentVerificationCommandError: Error, Equatable, Sendable {
     case commandScriptEscapesWorkspace
     case commandScriptSymlinkNotAllowed
     case commandScriptNotExecutable
+    case currentBranchUnavailable
+    case branchMismatch(expected: String, actual: String)
 
     public var userMessage: String {
         switch self {
@@ -259,6 +261,10 @@ public enum DevelopmentVerificationCommandError: Error, Equatable, Sendable {
             return "Verification command script must not contain symlink components."
         case .commandScriptNotExecutable:
             return "Verification command script is not executable."
+        case .currentBranchUnavailable:
+            return "Could not confirm the current repository branch before verification."
+        case .branchMismatch(let expected, let actual):
+            return "Repository branch mismatch before verification: expected \(expected), found \(actual)."
         }
     }
 }
@@ -393,14 +399,18 @@ public struct DevelopmentVerificationCommandTool: Tool {
         properties: [
             "projectId": "integer",
             "taskId": "integer",
+            // branchName is reviewed context for receipts and handoff recovery;
+            // command execution remains scoped to the approved project directory.
+            "branchName": "string",
             "commandId": "string"
         ],
-        nonBlank: ["commandId"]
+        nonBlank: ["branchName", "commandId"]
     )
     public let permissionLevel: ToolPermissionLevel = .writeWithApproval
 
     private let projectStore: SQLiteProjectStore
     private let commandRunner: any DevelopmentCommandRunner
+    private let gitRunner: any GitCommandRunner
     private let redactor: DeveloperSecretRedactor
     private let bookmarkResolver: any ProjectWorkspaceBookmarkResolving
     private let requireBookmark: Bool
@@ -408,12 +418,14 @@ public struct DevelopmentVerificationCommandTool: Tool {
     public init(
         projectStore: SQLiteProjectStore,
         commandRunner: any DevelopmentCommandRunner = ProcessDevelopmentCommandRunner(),
+        gitRunner: any GitCommandRunner = ProcessGitCommandRunner(),
         redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
         bookmarkResolver: any ProjectWorkspaceBookmarkResolving = SecurityScopedProjectWorkspaceBookmarkResolver(),
         requireBookmark: Bool = false
     ) {
         self.projectStore = projectStore
         self.commandRunner = commandRunner
+        self.gitRunner = gitRunner
         self.redactor = redactor
         self.bookmarkResolver = bookmarkResolver
         self.requireBookmark = requireBookmark
@@ -426,6 +438,9 @@ public struct DevelopmentVerificationCommandTool: Tool {
         let args = ToolArguments(arguments, tool: name)
         let projectID = try args.requiredInt64("projectId")
         let commandID = try args.requiredTrimmedString("commandId")
+        let branchName = try args.optionalTrimmedString("branchName").map {
+            try DevelopmentBranchNamePolicy.validated($0)
+        }
 
         do {
             let command = try DevelopmentVerificationCommandPolicy.validated(commandID: commandID)
@@ -436,6 +451,7 @@ public struct DevelopmentVerificationCommandTool: Tool {
                 requireBookmark: requireBookmark
             )
             return try withExtendedLifetime(scope) {
+                try ensureCurrentBranch(matches: branchName, scope: scope)
                 let executable = try DevelopmentVerificationCommandPolicy.resolvedExecutable(for: command, scope: scope)
                 let output = try commandRunner.run(
                     executable: executable,
@@ -488,5 +504,29 @@ public struct DevelopmentVerificationCommandTool: Tool {
 
     private func redacted(_ value: String) -> String {
         redactor.redact(value).text
+    }
+
+    private func ensureCurrentBranch(matches expectedBranch: String?, scope: ProjectWorkspaceScope) throws {
+        guard let expectedBranch else {
+            return
+        }
+
+        do {
+            let output = try gitRunner.runGit(arguments: ["branch", "--show-current"], workingDirectory: scope.rootURL)
+            guard output.exitCode == 0 else {
+                throw DevelopmentVerificationCommandError.currentBranchUnavailable
+            }
+            let currentBranch = output.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !currentBranch.isEmpty else {
+                throw DevelopmentVerificationCommandError.currentBranchUnavailable
+            }
+            guard currentBranch == expectedBranch else {
+                throw DevelopmentVerificationCommandError.branchMismatch(expected: expectedBranch, actual: currentBranch)
+            }
+        } catch let error as DevelopmentVerificationCommandError {
+            throw error
+        } catch {
+            throw DevelopmentVerificationCommandError.currentBranchUnavailable
+        }
     }
 }
