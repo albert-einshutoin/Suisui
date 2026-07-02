@@ -1292,6 +1292,7 @@
 "Shows the reviewed repository operation, path, branch, replacement summary, and content digest before queueing approval." = "Shows the reviewed repository operation, path, branch, replacement summary, and content digest before queueing approval.";
 "Queue repository edit review" = "Queue repository edit review";
 "Queues a scoped create or update file review after branch preparation evidence exists." = "Queues a scoped create or update file review after branch preparation evidence exists.";
+"Queues a scoped create file review after branch preparation evidence exists." = "Queues a scoped create file review after branch preparation evidence exists.";
 "Adds the reviewed repository edit to Assistant Queue before verification." = "Adds the reviewed repository edit to Assistant Queue before verification.";
 "Queues a local commit review after verification evidence exists." = "Queues a local commit review after verification evidence exists.";
 "Adds the reviewed file list and commit message to Assistant Queue before push." = "Adds the reviewed file list and commit message to Assistant Queue before push.";
