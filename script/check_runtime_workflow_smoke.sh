@@ -14,11 +14,11 @@ source "$METADATA_FILE"
 
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 ARTIFACT_DIR="${SOLOPM_RUNTIME_WORKFLOW_ARTIFACT_DIR:-$ROOT_DIR/.tmp/runtime-workflow-smoke}"
-SCENARIOS=("project_task_crud" "inbox_triage" "today_complete" "settings_save" "voice_review" "development_pr")
+SCENARIOS=("project_task_crud" "inbox_triage" "today_complete" "settings_save" "voice_review" "development_pr" "schedule_cockpit")
 REQUESTED_SCENARIOS=()
 
 usage() {
-  printf '%s\n' "usage: $0 [--scenario project_task_crud|inbox_triage|today_complete|settings_save|voice_review|development_pr]..." >&2
+  printf '%s\n' "usage: $0 [--scenario project_task_crud|inbox_triage|today_complete|settings_save|voice_review|development_pr|schedule_cockpit]..." >&2
 }
 
 while [[ $# -gt 0 ]]; do
@@ -217,6 +217,26 @@ run_development_pr() {
   scenario_reason="development_pr command failed"
   write_scenario_artifact "development_pr" "$scenario_status" "$scenario_reason"
   echo "BLOCKER: runtime workflow scenario failed: development_pr - $scenario_reason" >&2
+  return 1
+}
+
+run_schedule_cockpit() {
+  local scenario_output
+  local scenario_status="failed"
+  local scenario_reason="schedule_cockpit scenario did not finish"
+
+  if scenario_output="$(SOLOPM_RUNTIME_SCHEDULE_COCKPIT_KEEP_DATABASE=1 ./script/check_runtime_schedule_cockpit_smoke.sh 2>&1)"; then
+    printf '%s\n' "$scenario_output"
+    scenario_status="passed"
+    scenario_reason="Schedule weekly grid, unscheduled draft add, and Calendar apply approval boundary passed"
+    write_scenario_artifact "schedule_cockpit" "$scenario_status" "$scenario_reason"
+    return 0
+  fi
+
+  printf '%s\n' "$scenario_output" >&2
+  scenario_reason="schedule_cockpit command failed"
+  write_scenario_artifact "schedule_cockpit" "$scenario_status" "$scenario_reason"
+  echo "BLOCKER: runtime workflow scenario failed: schedule_cockpit - $scenario_reason" >&2
   return 1
 }
 
