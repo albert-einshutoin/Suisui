@@ -1916,6 +1916,7 @@ public enum ExecutionReceiptFactory {
         case .developmentCommitChanges:
             appendReference(kind: .project, keys: ["projectId", "projectID"], output: values, references: &references)
             appendReference(kind: .developmentBranch, keys: ["branchName"], output: values, references: &references)
+            appendReference(kind: .developmentCommit, keys: ["headRefOid", "headRefOID", "headOid", "headOID"], output: values, references: &references)
         case .developmentCreatePullRequest:
             appendReference(kind: .project, keys: ["projectId", "projectID"], output: values, references: &references)
             appendReference(kind: .developmentBranch, keys: ["branchName"], output: values, references: &references)

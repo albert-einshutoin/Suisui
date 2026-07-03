@@ -14,6 +14,7 @@ final class DevelopmentCommitWorkflowTests: XCTestCase {
             try tool.execute(
                 arguments: [
                     "projectId": .number(Double(project.id)),
+                    "branchName": .string("feature/solopm-1-task"),
                     "relativePaths": .array([.string("Sources/App.swift")]),
                     "commitMessage": .string("Implement app shell")
                 ],
@@ -28,10 +29,16 @@ final class DevelopmentCommitWorkflowTests: XCTestCase {
     func testCommitWorkflowStagesApprovedTextPathsAndCreatesLocalCommitOnly() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
+        let branchName = "feature/solopm-1-task"
+        let headRefOID = "0123456789abcdef0123456789abcdef01234567"
         try write("let value = 1\n", to: workspace.appendingPathComponent("Sources/App.swift"))
         try write("# Plan\n", to: workspace.appendingPathComponent("docs/plan.md"))
         let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
         let runner = RecordingDevelopmentCommitGitRunner()
+        runner.stub(
+            arguments: ["branch", "--show-current"],
+            output: GitCommandOutput(standardOutput: "\(branchName)\n", standardError: "", exitCode: 0)
+        )
         runner.stub(
             arguments: ["diff", "--cached", "--name-only", "-z"],
             output: GitCommandOutput(standardOutput: "", standardError: "", exitCode: 0)
@@ -50,13 +57,18 @@ final class DevelopmentCommitWorkflowTests: XCTestCase {
         )
         runner.stub(
             arguments: ["status", "--short", "--branch"],
-            output: GitCommandOutput(standardOutput: "## feature/solopm-1-task\n", standardError: "", exitCode: 0)
+            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
+        )
+        runner.stub(
+            arguments: ["rev-parse", "HEAD"],
+            output: GitCommandOutput(standardOutput: "\(headRefOID)\n", standardError: "", exitCode: 0)
         )
         let tool = DevelopmentCommitWorkflowTool(projectStore: stores.projects, gitRunner: runner)
 
         let result = try tool.execute(
             arguments: [
                 "projectId": .number(Double(project.id)),
+                "branchName": .string(branchName),
                 "relativePaths": .array([.string("Sources/App.swift"), .string("docs/plan.md")]),
                 "commitMessage": .string("Implement app shell")
             ],
@@ -65,26 +77,179 @@ final class DevelopmentCommitWorkflowTests: XCTestCase {
 
         XCTAssertEqual(result.status, .succeeded)
         XCTAssertEqual(result.output["projectId"], .number(Double(project.id)))
+        XCTAssertEqual(result.output["branchName"], .string(branchName))
+        XCTAssertEqual(result.output["headRefOid"], .string(headRefOID))
         XCTAssertEqual(result.output["relativePaths"], .array([.string("Sources/App.swift"), .string("docs/plan.md")]))
         XCTAssertEqual(result.output["commitMessage"], .string("Implement app shell"))
         XCTAssertEqual(result.output["commitSummary"], .string("[feature abc1234] Implement app shell\n"))
-        XCTAssertEqual(result.output["status"], .string("## feature/solopm-1-task\n"))
+        XCTAssertEqual(result.output["status"], .string("## \(branchName)\n"))
         XCTAssertEqual(result.output["requiresPushApproval"], .bool(true))
         XCTAssertEqual(result.output["requiresPullRequestApproval"], .bool(true))
         XCTAssertEqual(result.output["externalWritePreview"], .string("git push -u origin HEAD && gh pr create --fill"))
         XCTAssertEqual(runner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["branch", "--show-current"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
             GitCommandInvocation(arguments: ["diff", "--cached", "--name-only", "-z"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
             GitCommandInvocation(arguments: ["add", "--", "Sources/App.swift", "docs/plan.md"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
             GitCommandInvocation(arguments: ["diff", "--cached", "--name-only", "-z"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
             GitCommandInvocation(arguments: ["-c", "core.hooksPath=/dev/null", "commit", "-m", "Implement app shell"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
-            GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
+            GitCommandInvocation(arguments: ["status", "--short", "--branch"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
+            GitCommandInvocation(arguments: ["rev-parse", "HEAD"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
         ])
+    }
+
+    func testCommitWorkflowRejectsReviewedBranchMismatchBeforeStaging() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        try write("let value = 1\n", to: workspace.appendingPathComponent("Sources/App.swift"))
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let runner = RecordingDevelopmentCommitGitRunner()
+        runner.stub(
+            arguments: ["branch", "--show-current"],
+            output: GitCommandOutput(standardOutput: "feature/other-task\n", standardError: "", exitCode: 0)
+        )
+        let tool = DevelopmentCommitWorkflowTool(projectStore: stores.projects, gitRunner: runner)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string("feature/solopm-1-task"),
+                    "relativePaths": .array([.string("Sources/App.swift")]),
+                    "commitMessage": .string("Implement app shell")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentCommitChanges, "Expected current branch feature/solopm-1-task before committing, but found feature/other-task.")
+            )
+        }
+        XCTAssertEqual(runner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["branch", "--show-current"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
+        ])
+    }
+
+    func testCommitWorkflowRejectsNonFeatureBranchBeforeRunningGit() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        try write("let value = 1\n", to: workspace.appendingPathComponent("Sources/App.swift"))
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let runner = RecordingDevelopmentCommitGitRunner()
+        let tool = DevelopmentCommitWorkflowTool(projectStore: stores.projects, gitRunner: runner)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string("main"),
+                    "relativePaths": .array([.string("Sources/App.swift")]),
+                    "commitMessage": .string("Implement app shell")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentCommitChanges, "Publish head branch must use a reviewed feature branch.")
+            )
+        }
+        XCTAssertEqual(runner.recordedInvocations, [])
+    }
+
+    func testCommitWorkflowRejectsEmptyCurrentBranchBeforeStaging() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        try write("let value = 1\n", to: workspace.appendingPathComponent("Sources/App.swift"))
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let runner = RecordingDevelopmentCommitGitRunner()
+        runner.stub(
+            arguments: ["branch", "--show-current"],
+            output: GitCommandOutput(standardOutput: "\n", standardError: "", exitCode: 0)
+        )
+        let tool = DevelopmentCommitWorkflowTool(projectStore: stores.projects, gitRunner: runner)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string("feature/solopm-1-task"),
+                    "relativePaths": .array([.string("Sources/App.swift")]),
+                    "commitMessage": .string("Implement app shell")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentCommitChanges, "Git current branch could not be read before creating the local commit.")
+            )
+        }
+        XCTAssertEqual(runner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["branch", "--show-current"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
+        ])
+    }
+
+    func testCommitWorkflowRejectsUnreadableHeadOIDAfterCommit() throws {
+        let stores = try makeStores()
+        let workspace = temporaryDirectory()
+        let branchName = "feature/solopm-1-task"
+        try write("let value = 1\n", to: workspace.appendingPathComponent("Sources/App.swift"))
+        let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
+        let runner = RecordingDevelopmentCommitGitRunner()
+        runner.stub(
+            arguments: ["branch", "--show-current"],
+            output: GitCommandOutput(standardOutput: "\(branchName)\n", standardError: "", exitCode: 0)
+        )
+        runner.stub(
+            arguments: ["diff", "--cached", "--name-only", "-z"],
+            output: GitCommandOutput(standardOutput: "", standardError: "", exitCode: 0)
+        )
+        runner.stub(
+            arguments: ["add", "--", "Sources/App.swift"],
+            output: GitCommandOutput(standardOutput: "", standardError: "", exitCode: 0)
+        )
+        runner.stub(
+            arguments: ["diff", "--cached", "--name-only", "-z"],
+            output: GitCommandOutput(standardOutput: "Sources/App.swift\u{0}", standardError: "", exitCode: 0)
+        )
+        runner.stub(
+            arguments: ["-c", "core.hooksPath=/dev/null", "commit", "-m", "Implement app shell"],
+            output: GitCommandOutput(standardOutput: "[feature abc1234] Implement app shell\n", standardError: "", exitCode: 0)
+        )
+        runner.stub(
+            arguments: ["status", "--short", "--branch"],
+            output: GitCommandOutput(standardOutput: "## \(branchName)\n", standardError: "", exitCode: 0)
+        )
+        runner.stub(
+            arguments: ["rev-parse", "HEAD"],
+            output: GitCommandOutput(standardOutput: "HEAD\n", standardError: "", exitCode: 0)
+        )
+        let tool = DevelopmentCommitWorkflowTool(projectStore: stores.projects, gitRunner: runner)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "branchName": .string(branchName),
+                    "relativePaths": .array([.string("Sources/App.swift")]),
+                    "commitMessage": .string("Implement app shell")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentCommitChanges, "Git returned an unreadable commit OID after creating the local commit.")
+            )
+        }
     }
 
     func testCommitWorkflowRejectsPreexistingStagedChangesWithRealGitIndex() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
         try runGit(["init"], in: workspace)
+        try runGit(["switch", "-c", "feature/solopm-1-task"], in: workspace)
         try write("let value = 1\n", to: workspace.appendingPathComponent("Sources/App.swift"))
         try write("token=ghp_secretvalue\n", to: workspace.appendingPathComponent(".env"))
         try runGit(["add", ".env"], in: workspace)
@@ -95,6 +260,7 @@ final class DevelopmentCommitWorkflowTests: XCTestCase {
             try tool.execute(
                 arguments: [
                     "projectId": .number(Double(project.id)),
+                    "branchName": .string("feature/solopm-1-task"),
                     "relativePaths": .array([.string("Sources/App.swift")]),
                     "commitMessage": .string("Implement app shell")
                 ],
@@ -115,6 +281,10 @@ final class DevelopmentCommitWorkflowTests: XCTestCase {
         let project = try stores.projects.create(title: "SoloPM", workspacePath: workspace.path)
         let runner = RecordingDevelopmentCommitGitRunner()
         runner.stub(
+            arguments: ["branch", "--show-current"],
+            output: GitCommandOutput(standardOutput: "feature/solopm-1-task\n", standardError: "", exitCode: 0)
+        )
+        runner.stub(
             arguments: ["diff", "--cached", "--name-only", "-z"],
             output: GitCommandOutput(standardOutput: "", standardError: "", exitCode: 0)
         )
@@ -132,6 +302,7 @@ final class DevelopmentCommitWorkflowTests: XCTestCase {
             try tool.execute(
                 arguments: [
                     "projectId": .number(Double(project.id)),
+                    "branchName": .string("feature/solopm-1-task"),
                     "relativePaths": .array([.string("Sources/App.swift")]),
                     "commitMessage": .string("Implement app shell")
                 ],
@@ -144,6 +315,7 @@ final class DevelopmentCommitWorkflowTests: XCTestCase {
             )
         }
         XCTAssertEqual(runner.recordedInvocations, [
+            GitCommandInvocation(arguments: ["branch", "--show-current"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
             GitCommandInvocation(arguments: ["diff", "--cached", "--name-only", "-z"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
             GitCommandInvocation(arguments: ["add", "--", "Sources/App.swift"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath()),
             GitCommandInvocation(arguments: ["diff", "--cached", "--name-only", "-z"], workingDirectory: workspace.standardizedFileURL.resolvingSymlinksInPath())
@@ -162,6 +334,7 @@ final class DevelopmentCommitWorkflowTests: XCTestCase {
             try tool.execute(
                 arguments: [
                     "projectId": .number(Double(project.id)),
+                    "branchName": .string("feature/solopm-1-task"),
                     "relativePaths": .array([.string("../escape.md")]),
                     "commitMessage": .string("Update config")
                 ],
@@ -178,6 +351,7 @@ final class DevelopmentCommitWorkflowTests: XCTestCase {
             try tool.execute(
                 arguments: [
                     "projectId": .number(Double(project.id)),
+                    "branchName": .string("feature/solopm-1-task"),
                     "relativePaths": .array([.string("safe/config.md")]),
                     "commitMessage": .string("Update config")
                 ],
@@ -204,6 +378,7 @@ final class DevelopmentCommitWorkflowTests: XCTestCase {
             try tool.execute(
                 arguments: [
                     "projectId": .number(Double(project.id)),
+                    "branchName": .string("feature/solopm-1-task"),
                     "relativePaths": .array([.string("Sources/App.swift")]),
                     "commitMessage": .string("token=ghp_secretvalue")
                 ],
@@ -223,11 +398,14 @@ final class DevelopmentCommitWorkflowTests: XCTestCase {
         XCTAssertTrue(DevelopmentCommitGitCommandPolicy.isAllowed(arguments: ["-c", "core.hooksPath=/dev/null", "commit", "-m", "Implement app shell"]))
         XCTAssertTrue(DevelopmentCommitGitCommandPolicy.isAllowed(arguments: ["status", "--short", "--branch"]))
         XCTAssertTrue(DevelopmentCommitGitCommandPolicy.isAllowed(arguments: ["diff", "--cached", "--name-only", "-z"]))
+        XCTAssertTrue(DevelopmentCommitGitCommandPolicy.isAllowed(arguments: ["branch", "--show-current"]))
+        XCTAssertTrue(DevelopmentCommitGitCommandPolicy.isAllowed(arguments: ["rev-parse", "HEAD"]))
 
         XCTAssertFalse(DevelopmentCommitGitCommandPolicy.isAllowed(arguments: ["add", "Sources/App.swift"]))
         XCTAssertFalse(DevelopmentCommitGitCommandPolicy.isAllowed(arguments: ["add", "--", ".git/HEAD"]))
         XCTAssertFalse(DevelopmentCommitGitCommandPolicy.isAllowed(arguments: ["commit", "-m", "Implement app shell"]))
         XCTAssertFalse(DevelopmentCommitGitCommandPolicy.isAllowed(arguments: ["diff", "--cached"]))
+        XCTAssertFalse(DevelopmentCommitGitCommandPolicy.isAllowed(arguments: ["rev-parse", "--verify", "HEAD"]))
         XCTAssertFalse(DevelopmentCommitGitCommandPolicy.isAllowed(arguments: ["push"]))
         XCTAssertFalse(DevelopmentCommitGitCommandPolicy.isAllowed(arguments: ["reset", "--hard"]))
     }
@@ -271,6 +449,7 @@ final class DevelopmentCommitWorkflowTests: XCTestCase {
             try registry.tool(named: .developmentCommitChanges).execute(
                 arguments: [
                     "projectId": .number(Double(project.id)),
+                    "branchName": .string("feature/solopm-1-task"),
                     "relativePaths": .array([.string("Sources/App.swift")]),
                     "commitMessage": .string("Implement app shell")
                 ],

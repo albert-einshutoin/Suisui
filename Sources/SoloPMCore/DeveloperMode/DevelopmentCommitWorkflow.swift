@@ -4,6 +4,9 @@ public enum DevelopmentCommitWorkflowError: Error, Equatable, Sendable {
     case noRelativePaths
     case invalidCommitMessage
     case secretLikeCommitMessage
+    case currentBranchUnavailable
+    case branchMismatch(expected: String, actual: String)
+    case invalidHeadCommitOID
     case preexistingStagedChanges
     case stagedChangesMismatch
     case commandNotAllowed([String])
@@ -17,6 +20,12 @@ public enum DevelopmentCommitWorkflowError: Error, Equatable, Sendable {
             return "Commit message must be non-blank, single-line text under 200 characters."
         case .secretLikeCommitMessage:
             return "Commit message looks like it contains credentials or secrets."
+        case .currentBranchUnavailable:
+            return "Git current branch could not be read before creating the local commit."
+        case .branchMismatch(let expected, let actual):
+            return "Expected current branch \(expected) before committing, but found \(actual)."
+        case .invalidHeadCommitOID:
+            return "Git returned an unreadable commit OID after creating the local commit."
         case .preexistingStagedChanges:
             return "Git index already contains staged changes outside the approved file list."
         case .stagedChangesMismatch:
@@ -42,6 +51,14 @@ public enum DevelopmentCommitGitCommandPolicy {
         }
 
         if arguments == ["diff", "--cached", "--name-only", "-z"] {
+            return true
+        }
+
+        if arguments == ["branch", "--show-current"] {
+            return true
+        }
+
+        if arguments == ["rev-parse", "HEAD"] {
             return true
         }
 
@@ -85,14 +102,15 @@ public struct DevelopmentCommitWorkflowTool: Tool {
     public let name: ActionTool = .developmentCommitChanges
     public let description: String = "Create a local commit from approved text-file changes inside an approved project workspace."
     public let inputSchema = ToolInputSchema(
-        required: ["projectId", "relativePaths", "commitMessage"],
+        required: ["projectId", "branchName", "relativePaths", "commitMessage"],
         properties: [
             "projectId": "integer",
             "taskId": "integer",
+            "branchName": "string",
             "relativePaths": "array",
             "commitMessage": "string"
         ],
-        nonBlank: ["commitMessage"]
+        nonBlank: ["branchName", "commitMessage"]
     )
     public let permissionLevel: ToolPermissionLevel = .writeWithApproval
 
@@ -124,6 +142,9 @@ public struct DevelopmentCommitWorkflowTool: Tool {
         let projectID = try args.requiredInt64("projectId")
 
         do {
+            let branchName = try DevelopmentPublishGitCommandPolicy.validatedPublishHeadBranch(
+                args.requiredTrimmedString("branchName")
+            )
             let project = try projectStore.get(id: projectID)
             let scope = try ProjectWorkspaceScope(
                 project: project,
@@ -137,6 +158,8 @@ public struct DevelopmentCommitWorkflowTool: Tool {
             )
 
             return try withExtendedLifetime(scope) {
+                try ensureCurrentBranch(matches: branchName, scope: scope)
+
                 let preexistingStagedPaths = try stagedRelativePaths(workingDirectory: scope.rootURL)
                 guard preexistingStagedPaths.isEmpty else {
                     throw DevelopmentCommitWorkflowError.preexistingStagedChanges
@@ -159,6 +182,7 @@ public struct DevelopmentCommitWorkflowTool: Tool {
                     workingDirectory: scope.rootURL
                 )
                 let status = try runGit(arguments: ["status", "--short", "--branch"], workingDirectory: scope.rootURL)
+                let headRefOID = try headCommitOID(workingDirectory: scope.rootURL)
 
                 let externalWritePreview = "git push -u origin HEAD && gh pr create --fill"
                 return ToolResult(
@@ -167,6 +191,8 @@ public struct DevelopmentCommitWorkflowTool: Tool {
                     summary: "Created a local development commit. Push and PR creation require a separate approval gate.",
                     output: [
                         "projectId": .number(Double(project.id)),
+                        "branchName": .string(branchName),
+                        "headRefOid": .string(headRefOID),
                         "workspacePath": .string(scope.rootURL.path),
                         "relativePaths": JSONValueFactory.strings(relativePaths),
                         "commitMessage": .string(commitMessage),
@@ -177,6 +203,8 @@ public struct DevelopmentCommitWorkflowTool: Tool {
                         "externalWritePreview": .string(externalWritePreview)
                     ],
                     rollbackMetadata: [
+                        "branchName": .string(branchName),
+                        "headRefOid": .string(headRefOID),
                         "relativePaths": JSONValueFactory.strings(relativePaths),
                         "commitMessage": .string(commitMessage)
                     ],
@@ -190,6 +218,8 @@ public struct DevelopmentCommitWorkflowTool: Tool {
         } catch let error as DevelopmentCommitWorkflowError {
             throw ToolExecutionError.executionFailed(name, redacted(error.userMessage))
         } catch let error as DevelopmentPRWorkflowError {
+            throw ToolExecutionError.executionFailed(name, redacted(error.userMessage))
+        } catch let error as DevelopmentPRPublishWorkflowError {
             throw ToolExecutionError.executionFailed(name, redacted(error.userMessage))
         } catch let error as GitReadOnlyError {
             throw ToolExecutionError.executionFailed(name, redacted(String(describing: error)))
@@ -224,6 +254,26 @@ public struct DevelopmentCommitWorkflowTool: Tool {
             throw DevelopmentCommitWorkflowError.noRelativePaths
         }
         return relativePaths
+    }
+
+    private func ensureCurrentBranch(matches expectedBranch: String, scope: ProjectWorkspaceScope) throws {
+        let output = try runGit(arguments: ["branch", "--show-current"], workingDirectory: scope.rootURL)
+        let currentBranch = output.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !currentBranch.isEmpty else {
+            throw DevelopmentCommitWorkflowError.currentBranchUnavailable
+        }
+        guard currentBranch == expectedBranch else {
+            throw DevelopmentCommitWorkflowError.branchMismatch(expected: expectedBranch, actual: currentBranch)
+        }
+    }
+
+    private func headCommitOID(workingDirectory: URL) throws -> String {
+        let output = try runGit(arguments: ["rev-parse", "HEAD"], workingDirectory: workingDirectory)
+        let oid = output.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard oid.range(of: #"^[0-9a-fA-F]{40,64}$"#, options: .regularExpression) != nil else {
+            throw DevelopmentCommitWorkflowError.invalidHeadCommitOID
+        }
+        return oid
     }
 
     private func stagedRelativePaths(workingDirectory: URL) throws -> [String] {

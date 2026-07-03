@@ -481,6 +481,8 @@ private struct ProjectDevelopmentAutomationRecoveryView: View {
     @State private var didLoad = false
     @State private var repositoryEditRelativePath = ""
     @State private var repositoryEditContents = ""
+    @State private var commitRelativePaths = ""
+    @State private var commitMessage = ""
 
     private var project: ProjectBoardProject? {
         viewModel.snapshot.projects.first { $0.id == projectID }
@@ -508,6 +510,12 @@ private struct ProjectDevelopmentAutomationRecoveryView: View {
         progress?.canQueueRepositoryEditReview == true
             && !repositoryEditRelativePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !repositoryEditContents.isEmpty
+    }
+
+    private var canQueueCommitReview: Bool {
+        progress?.canQueueCommitReview == true
+            && !commitRelativePaths.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var repositoryEditPreview: ProjectDevelopmentAutomationApprovalPreview? {
@@ -636,6 +644,38 @@ private struct ProjectDevelopmentAutomationRecoveryView: View {
                 .help("Queues an approved local verification command after branch preparation evidence exists.")
                 .accessibilityIdentifier("project-development-automation-verification-queue")
                 .accessibilityHint("Adds a local verification command to Assistant Queue before commit or push.")
+
+                // This mirrors the normal Project detail commit gate without
+                // loading the full board tree, keeping runtime AX proof fast and
+                // focused on the reviewed approval boundary.
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Commit review")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    TextField("Commit file paths", text: $commitRelativePaths)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("project-development-automation-commit-paths")
+
+                    TextField("Commit message", text: $commitMessage)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("project-development-automation-commit-message")
+
+                    Button {
+                        _ = viewModel.enqueueDevelopmentCommitReview(
+                            for: project,
+                            task: task,
+                            relativePathsText: commitRelativePaths,
+                            commitMessage: commitMessage
+                        )
+                    } label: {
+                        Label("Queue commit review", systemImage: "tray.and.arrow.down")
+                    }
+                    .disabled(!canQueueCommitReview)
+                    .help("Queues a local commit review after verification evidence exists.")
+                    .accessibilityIdentifier("project-development-automation-commit-queue")
+                    .accessibilityHint("Adds the reviewed file list and commit message to Assistant Queue before push.")
+                }
 
                 if let queueHandoff = progress?.queueHandoff {
                     VStack(alignment: .leading, spacing: 4) {
